@@ -142,7 +142,22 @@ pub fn create_router(s: AppState) -> Router {
         .route("/businesses/:id/call-logs", get(call_tracking::business_call_logs))
         .route("/phone-numbers", get(call_tracking::list_phone_numbers).post(call_tracking::create_phone_number))
         .route("/phone-numbers/:id", get(call_tracking::get_phone_number).put(call_tracking::update_phone_number).delete(call_tracking::delete_phone_number))
-        .route("/phone-numbers/:id/provision", post(call_tracking::provision_phone_number));
+        .route("/phone-numbers/:id/provision", post(call_tracking::provision_phone_number))
+        // ??? Phase 4: Data Company — Google Places, verifications, enrichment, bulk export
+        .route("/places/autocomplete", get(data_company::places_autocomplete))
+        .route("/places/details", get(data_company::place_details))
+        .route("/verifications", get(data_company::list_verifications).post(data_company::create_verification))
+        .route("/verifications/:id", get(data_company::get_verification).put(data_company::update_verification))
+        .route("/businesses/:id/verifications", get(data_company::business_verifications))
+        .route("/enrich/business", post(data_company::enrich_business))
+        .route("/enrich/logs", get(data_company::list_enrichment_logs))
+        .route("/export/bulk", get(data_company::bulk_export))
+        // ??? Phase 4: Automation — directory events, n8n bridge
+        .route("/events", get(automation::list_events).post(automation::create_event))
+        .route("/events/unprocessed", get(automation::unprocessed_events))
+        .route("/events/:id/process", post(automation::mark_event_processed))
+        .route("/n8n/webhook", post(automation::n8n_webhook_receiver))
+        .route("/n8n/health", get(automation::n8n_health));
 
     // ??? Protected API routes (with auth middleware)
     let protected_routes = Router::new()
@@ -156,6 +171,15 @@ pub fn create_router(s: AppState) -> Router {
         .route("/branding/:directory_id/extract", post(branding::extract_colors))
         .route("/portfolio/sync", post(admin::portfolio_sync))
         .route("/plans/:plan_id/domains", get(domains::check_plan_domains))
+        // ??? Phase 4: API key management
+        .route("/api-keys", get(api_complete::list_api_keys).post(api_complete::create_api_key))
+        .route("/api-keys/:id", get(api_complete::get_api_key).put(api_complete::update_api_key).delete(api_complete::delete_api_key))
+        .route("/api-keys/:id/usage", get(api_complete::get_api_key_usage))
+        .route("/api-keys/verify", post(api_complete::verify_api_key))
+        // ??? Phase 4: Webhook management
+        .route("/webhooks", get(api_complete::list_webhooks).post(api_complete::create_webhook))
+        .route("/webhooks/:id", get(api_complete::get_webhook).put(api_complete::update_webhook).delete(api_complete::delete_webhook))
+        .route("/webhooks/:id/deliveries", get(api_complete::list_webhook_deliveries))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             crate::auth::middleware::auth_middleware,
