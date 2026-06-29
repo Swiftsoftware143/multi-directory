@@ -151,6 +151,22 @@ pub async fn update_seo_meta(
     Ok((StatusCode::OK, Json(serde_json::json!(result))))
 }
 
+/// GET /api/v1/seo/sitemap-config — list all sitemap configs
+pub async fn list_all_sitemap_configs(
+    State(s): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    let configs = sqlx::query_as::<_, SitemapConfig>(
+        "SELECT id, directory_id, auto_generate, \
+         CAST(priority AS DOUBLE PRECISION) as priority, \
+         change_freq, last_generated, created_at \
+         FROM sitemap_config ORDER BY created_at DESC"
+    )
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(serde_json::json!(configs)))
+}
+
 /// GET /api/v1/seo/sitemap-config/:directory_id — get sitemap config for directory
 pub async fn get_sitemap_config(
     State(s): State<AppState>,
