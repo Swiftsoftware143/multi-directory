@@ -1,0 +1,29 @@
+//! Handler re-exports.
+
+pub mod directories;
+pub mod businesses;
+pub mod reviews;
+pub mod domains;
+pub mod branding;
+pub mod admin;
+pub mod blog;
+pub mod deals;
+pub mod submissions;
+pub mod seo;
+pub mod legal;
+pub mod auth_handler;
+pub mod analytics;
+
+pub use directories::*;
+pub use businesses::*;
+pub use reviews::*;
+pub use domains::*;
+pub use branding::*;
+pub use admin::*;
+pub use blog::*;
+pub use deals::*;
+pub use submissions::*;
+pub use seo::*;
+pub use legal::*;
+pub use auth_handler::*;
+pub use analytics::*;

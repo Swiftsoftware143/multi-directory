@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real Estate Directory | Find Properties & Agents</title>
+  <meta name="description" content="Browse real estate listings, find top-rated agents, and discover your dream property. Open houses, market insights.">
+  <meta property="og:title" content="Real Estate Directory">
+  <meta property="og:description" content="Find properties, agents, and real estate services in your area.">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="application/ld+json">
+  { "@context": "https://schema.org", "@type": "RealEstateAgent", "name": "Real Estate Directory", "areaServed": "Local" }
+  </script>
+  <style>
+    :root { --primary: #1565c0; --primary-dark: #0d47a1; --accent: #f9a825; --bg: #f0f4f8; --card: #ffffff; --text: #1a1a2e; --text-light: #6b7280; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    .hero { background: linear-gradient(135deg, #0d47a1, #1976d2); color: white; padding: 60px 20px; text-align: center; }
+    .hero h1 { font-size: 2.5rem; margin-bottom: 8px; }
+    .hero p { font-size: 1.1rem; opacity: .9; margin-bottom: 24px; }
+    .hero input { width: 100%; max-width: 500px; padding: 14px 20px; border: none; border-radius: 50px; font-size: 1rem; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { text-align: center; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .stat-card .num { font-size: 1.8rem; font-weight: 700; color: var(--primary); }
+    .stat-card .label { font-size: .85rem; color: var(--text-light); }
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .controls select { padding: 10px 16px; border: 1px solid #ddd; border-radius: 8px; background: white; font-size: .9rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap: 20px; }
+    .card { background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.08); cursor: pointer; transition: transform .2s; }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+    .card-img { height: 200px; display: flex; align-items: center; justify-content: center; font-size: 4rem; position: relative; }
+    .card-img .price { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,.7); color: white; padding: 4px 12px; border-radius: 8px; font-size: .9rem; font-weight: 600; }
+    .card-body { padding: 16px; }
+    .card h3 { font-size: 1.1rem; }
+    .card .meta { font-size: .85rem; color: var(--text-light); margin: 4px 0 8px; }
+    .card .agent { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; }
+    .card .agent-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 600; }
+    .card .agent-name { font-size: .85rem; }
+    .map-wrap { height: 400px; border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
+    #map { height: 100%; width: 100%; }
+    .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: .85rem; border-top: 1px solid #eee; margin-top: 40px; }
+    @media (max-width:640px) { .hero h1 { font-size:1.8rem; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>🏘️ Real Estate Directory</h1>
+    <p>Find top agents, browse properties, discover your dream home</p>
+    <input type="text" id="searchInput" placeholder="Search agents, cities, or neighborhoods...">
+  </div>
+  <div class="container">
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <select id="propertyType"><option value="">All Types</option><option>Residential</option><option>Commercial</option><option>Land</option><option>Rental</option></select>
+      <select id="cityFilter"><option value="">All Cities</option></select>
+    </div>
+    <div class="map-wrap"><div id="map"></div></div>
+    <div id="results" class="grid"></div>
+  </div>
+  <div class="footer">Powered by Multi-Directory Platform</div>
+  <script>
+    const SLUG = new URLSearchParams(location.search).get('slug') || 'real-estate-directory';
+    const API = '/api/v1';
+    let allBiz = [], map;
+
+    async function load() {
+      const [dir, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}`).then(r=>r.json()),
+        fetch(`${API}/directories/${SLUG}/businesses?page=1&per_page=50`).then(r=>r.json())
+      ]);
+      if (dir.branding) applyBranding(dir.branding);
+      allBiz = biz.data || biz;
+      renderStats(allBiz);
+      renderFilters(allBiz);
+      renderMap(allBiz);
+      renderList(allBiz);
+    }
+
+    function applyBranding(b) { if (b.primary_color) document.documentElement.style.setProperty('--primary', b.primary_color); }
+
+    function renderStats(biz) {
+      const cities = new Set(biz.map(b=>b.city).filter(Boolean)).size;
+      const agents = new Set(biz.map(b=>b.name)).size;
+      document.getElementById('stats').innerHTML = `
+        <div class="stat-card"><div class="num">${biz.length}</div><div class="label">Listings</div></div>
+        <div class="stat-card"><div class="num">${cities}</div><div class="label">Cities</div></div>
+        <div class="stat-card"><div class="num">${agents}</div><div class="label">Agents</div></div>
+      `;
+    }
+
+    function renderFilters(biz) {
+      const cities = [...new Set(biz.map(b=>b.city).filter(Boolean))];
+      const sel = document.getElementById('cityFilter');
+      cities.forEach(c => { const o = document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+    }
+
+    function renderMap(biz) {
+      if (!map) { map = L.map('map').setView([39.8283,-98.5795],4); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map); }
+      const coords = biz.filter(b=>b.latitude&&b.longitude);
+      if(!coords.length) return;
+      const bounds=[];
+      coords.forEach(b=>{const m=L.marker([b.latitude,b.longitude]).addTo(map);m.bindPopup(`<b>${b.name}</b>`);bounds.push([b.latitude,b.longitude]);});
+      bounds.length>1?map.fitBounds(bounds,{padding:[30,30]}):map.setView(bounds[0],12);
+    }
+
+    function renderList(biz) {
+      const el = document.getElementById('results');
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const city = document.getElementById('cityFilter').value;
+      let f = biz;
+      if (q) f = f.filter(b => b.name.toLowerCase().includes(q)||(b.description||'').toLowerCase().includes(q));
+      if (city) f = f.filter(b => b.city === city);
+      if (!f.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No listings found.</div>'; return; }
+      el.innerHTML = f.map(b => `
+        <div class="card" onclick="window.open('/#/business/${b.id}','_blank')">
+          <div class="card-img" style="background:linear-gradient(135deg,#bbdefb,#90caf9)"><span>🏠</span><span class="price">${b.website||'Contact for Price'}</span></div>
+          <div class="card-body">
+            <h3>${b.name}</h3>
+            <div class="meta">${[b.address,b.city,b.state].filter(Boolean).join(', ')}</div>
+            <div class="agent">
+              <div class="agent-avatar">${b.name.charAt(0)}</div>
+              <div class="agent-name">${b.phone||'Listed Agent'}</div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input',()=>renderList(allBiz));
+    document.getElementById('cityFilter').addEventListener('change',()=>renderList(allBiz));
+    load();
+  </script>
+</body>
+</html>

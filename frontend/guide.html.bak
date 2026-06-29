@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Directory Platform G�� User Guide</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Sidebar */
+  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; }
+  .sidebar h2 { color: #10b981; font-size: 1.1rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sidebar nav a { display: block; padding: 10px 20px; color: #94a3b8; font-size: 0.9rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+
+  /* Main */
+  .main { margin-left: 280px; flex: 1; padding: 40px 48px; max-width: 960px; }
+  .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
+  .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main p, .main li { line-height: 1.7; color: #cbd5e1; }
+  .main p { margin-bottom: 12px; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; }
+  .main li { margin-bottom: 6px; }
+
+  /* Cards */
+  .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .card h3 { margin-top: 0; color: #10b981; }
+  .card p { color: #cbd5e1; }
+
+  /* Feature Grid */
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+
+  /* Code blocks */
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #10b981; }
+  pre { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #e2e8f0; }
+
+  /* Stats */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }
+  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; text-align: center; }
+  .stat .num { font-size: 2rem; font-weight: 700; color: #10b981; display: block; }
+  .stat .label { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
+
+  /* FAQ */
+  details { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+  details summary { cursor: pointer; font-weight: 600; color: #10b981; }
+  details[open] summary { margin-bottom: 10px; }
+  details p { margin: 0; color: #cbd5e1; padding-top: 8px; }
+
+  .badge { display: inline-block; background: #065f46; color: #a7f3d0; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-right: 4px; }
+  .badge.get { background: #1e3a5f; color: #93c5fd; }
+  .badge.post { background: #14532d; color: #86efac; }
+  .badge.put { background: #713f12; color: #fde68a; }
+  .badge.delete { background: #7f1d1d; color: #fca5a5; }
+  .badge.endpoint { background: #1e1b4b; color: #c4b5fd; }
+
+  .top-link { display: inline-block; margin-top: 20px; font-size: 0.85rem; }
+  hr { border: none; border-top: 1px solid #334155; margin: 24px 0; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>=��� Directory Guide</h2>
+  <nav>
+    <a href="#introduction" class="active">1. Introduction</a>
+    <a href="#getting-started">2. Getting Started</a>
+    <a href="#dashboard">3. Dashboard</a>
+    <a href="#templates">4. Templates</a>
+    <a href="#listings">5. Listings</a>
+    <a href="#categories">6. Categories</a>
+    <a href="#themes">7. Themes</a>
+    <a href="#settings">8. Settings</a>
+    <a href="#api">9. API Reference</a>
+    <a href="#faq">10. FAQ</a>
+    <a href="#deals">11. Deals (Groupon-Style)</a>
+  </nav>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+<h1>=��� Multi-Directory Platform</h1>
+<p style="color:#64748b;margin-bottom:32px;">User Guide v1.0 G�� directory.swiftsoftware.net</p>
+
+<!-- 1. Introduction -->
+<h2 id="introduction">1. Introduction</h2>
+<p>The <strong>Multi-Directory Platform</strong> is a powerful, white-label directory builder that lets you create and manage multiple industry-specific directories from a single dashboard. Whether you need a local business directory, a restaurant guide, or a farm marketplace, the platform provides everything you need out of the box.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>=�š Multi-Industry Templates</h3>
+    <p>Choose from pre-built templates for farms, restaurants, real estate, local businesses, and more.</p>
+  </div>
+  <div class="card">
+    <h3>=�Ŀ Customizable Themes</h3>
+    <p>Set brand colors, fonts, and layout options per directory. Each directory can have its own look.</p>
+  </div>
+  <div class="card">
+    <h3>=��� SEO-Optimized Listings</h3>
+    <p>Every listing includes meta descriptions, structured data, and clean URLs for search engines.</p>
+  </div>
+  <div class="card">
+    <h3>=��� REST API</h3>
+    <p>Full CRUD API for listings, categories, and directories. Integrate with any external system.</p>
+  </div>
+  <div class="card">
+    <h3>=��� Analytics Dashboard</h3>
+    <p>Track directory views, listing clicks, API usage, and more with built-in analytics.</p>
+  </div>
+  <div class="card">
+    <h3>=��� Role-Based Access</h3>
+    <p>Admin, editor, and viewer roles. Control who can create, edit, or approve listings.</p>
+  </div>
+</div>
+
+<!-- 2. Getting Started -->
+<h2 id="getting-started">2. Getting Started</h2>
+
+<div class="card">
+  <h3>Platform URL</h3>
+  <p><a href="https://directory.swiftsoftware.net" target="_blank">https://directory.swiftsoftware.net</a></p>
+</div>
+
+<div class="card">
+  <h3>Default Login Credentials</h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+    <tr><td style="padding:8px 0;color:#94a3b8;">Email:</td><td style="padding:8px 0;"><code>admin@swiftsoftware.com</code></td></tr>
+    <tr><td style="padding:8px 0;color:#94a3b8;">Password:</td><td style="padding:8px 0;"><code>SwiftAdmin2026!</code></td></tr>
+  </table>
+  <p style="margin-top:16px;color:#ef4444;font-size:0.9rem;">G�� Change your password immediately after first login.</p>
+</div>
+
+<h3>Quick Start Steps</h3>
+<ol>
+  <li>Visit <a href="https://directory.swiftsoftware.net" target="_blank">directory.swiftsoftware.net</a> and log in with the admin credentials above.</li>
+  <li>Create your first directory from the <strong>Dashboard</strong> using a template.</li>
+  <li>Add categories relevant to your industry (e.g., "Plumbers", "Electricians" for a local biz directory).</li>
+  <li>Start adding listings G�� import via CSV or add manually.</li>
+  <li>Customize the theme (colors, logo) under <strong>Settings G�� Theme</strong>.</li>
+  <li>Share your public directory URL with visitors.</li>
+</ol>
+
+<!-- 3. Dashboard -->
+<h2 id="dashboard">3. Dashboard</h2>
+<p>The dashboard provides a high-level overview of your platform. After logging in, you'll see the following key metrics:</p>
+
+<div class="stat-grid">
+  <div class="stat"><span class="num">12</span><span class="label">Total Directories</span></div>
+  <div class="stat"><span class="num">847</span><span class="label">Active Listings</span></div>
+  <div class="stat"><span class="num">24</span><span class="label">Categories</span></div>
+  <div class="stat"><span class="num">3,421</span><span class="label">API Calls Today</span></div>
+</div>
+
+<p>From the dashboard you can:</p>
+<ul>
+  <li><strong>GP� Create a new directory</strong> G�� click "New Directory" and select a template</li>
+  <li><strong>=��� View recent listings</strong> G�� see the latest 10 listings added across all directories</li>
+  <li><strong>=��� Track growth</strong> G�� charts showing listing additions over time</li>
+  <li><strong>G��n+� Review pending items</strong> G�� listings awaiting approval if moderation is enabled</li>
+</ul>
+
+<!-- 4. Templates -->
+<h2 id="templates">4. Templates</h2>
+<p>Templates provide industry-specific field sets and layouts. When creating a new directory, choose the template that best fits your use case.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>=��+ Farm Directory</h3>
+    <p>Fields: farm name, products, acreage, certifications (organic, grass-fed), pick-your-own hours, farmers market locations.</p>
+  </div>
+  <div class="card">
+    <h3>=�Ŭ Local Business</h3>
+    <p>Fields: business name, address, phone, website, hours of operation, service area, year established.</p>
+  </div>
+  <div class="card">
+    <h3>=��+n+� Restaurant Guide</h3>
+    <p>Fields: cuisine type, price range, reservation URL, delivery options, dietary accommodations, rating.</p>
+  </div>
+  <div class="card">
+    <h3>=��� Real Estate</h3>
+    <p>Fields: property type, bedrooms/bathrooms, square footage, lot size, listing price, agent contact, open house dates.</p>
+  </div>
+  <div class="card">
+    <h3>=���n+� Service Providers</h3>
+    <p>Fields: service categories, license numbers, insurance info, service radius, availability, customer reviews.</p>
+  </div>
+  <div class="card">
+    <h3>=�� E-Commerce</h3>
+    <p>Fields: product name, SKU, price, inventory count, shipping options, category, product images.</p>
+  </div>
+</div>
+
+<p>You can also create a <strong>custom template</strong> with your own field definitions from scratch.</p>
+
+<!-- 5. Listings -->
+<h2 id="listings">5. Listings</h2>
+<p>Listings are the core content of your directories. Each listing belongs to a directory and one or more categories.</p>
+
+<h3>Listing Fields</h3>
+<div class="card">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Name</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The business or listing title</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Address</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Street, city, state, zip</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Phone</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Primary contact number</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Website</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Business website URL</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Hours</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Days and hours of operation</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Categories</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Assign one or more categories</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Description</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Rich text description (optional)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Images</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Upload up to 10 images per listing</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Status</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Published, Draft, or Pending Review</td></tr>
+  </table>
+</div>
+
+<h3>Managing Listings</h3>
+<ul>
+  <li><strong>Add:</strong> Navigate to a directory G�� click "Add Listing" G�� fill in the fields G�� click Save</li>
+  <li><strong>Edit:</strong> Click the pencil icon on any listing card or table row</li>
+  <li><strong>Delete:</strong> Click the trash icon G�� confirmation required</li>
+  <li><strong>Bulk Import:</strong> Use the Import button to upload a CSV file with listing data</li>
+  <li><strong>Search:</strong> Use the search bar to filter listings by name, category, or location</li>
+</ul>
+
+<!-- 6. Categories -->
+<h2 id="categories">6. Categories</h2>
+<p>Organize your listings with a hierarchical category tree. Each directory has its own independent category structure.</p>
+
+<div class="card">
+  <h3>Example Category Tree</h3>
+  <pre><code>=��� Local Services
+  G��G��G�� =��� Plumbing
+  G��G��G�� G�� Electrical
+  G��G��G�� =��� Carpentry
+  G��G��G�� =��� Cleaning
+=��� Dining
+  G��G��G�� =��� Pizza
+  G��G��G�� =��� Healthy
+  G��G��G�� =�� Mexican
+  G��G��G�� =��� Sushi
+=��� Shopping
+  G��G��G�� =��� Clothing
+  G��G��G�� =�� Electronics
+  G��G��G�� =��� Grocery</code></pre>
+</div>
+
+<h3>Category Operations</h3>
+<ul>
+  <li><strong>Create:</strong> Click "Add Category" G�� set name, slug, parent category (optional), and description</li>
+  <li><strong>Edit:</strong> Click the category name or edit icon</li>
+  <li><strong>Reorder:</strong> Drag and drop categories to reorder them in the tree</li>
+  <li><strong>Delete:</strong> Removing a category unlinks all listings G�� listings are not deleted</li>
+  <li><strong>Nested:</strong> Create subcategories up to 3 levels deep</li>
+</ul>
+
+<!-- 7. Themes -->
+<h2 id="themes">7. Themes</h2>
+<p>Each directory can have its own unique look and feel. Access theme settings from the directory's Settings G�� Theme tab.</p>
+
+<div class="card">
+  <h3>Theme Customization Options</h3>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Primary Color</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Main brand color (used for headers, buttons, links)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Secondary Color</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Accent color for highlights and CTAs</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Background</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Page background color or gradient</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Logo</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Upload a logo image (PNG/SVG, max 2MB)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Font</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Choose from system fonts or Google Fonts</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Layout</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Grid vs. list view for listings</td></tr>
+  </table>
+</div>
+
+<p>Changes are applied in real-time to the public-facing directory. Click "Save Theme" to persist your changes.</p>
+
+<!-- 8. Settings -->
+<h2 id="settings">8. Settings</h2>
+<p>Account and platform settings are available from the top-right user menu.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>=��� Profile</h3>
+    <p>Update your name, email, and profile picture. This affects the admin panel only.</p>
+  </div>
+  <div class="card">
+    <h3>=��� Password</h3>
+    <p>Change your password. Must include uppercase, lowercase, number, and special character (min 12 chars).</p>
+  </div>
+  <div class="card">
+    <h3>=��� API Keys</h3>
+    <p>Generate and manage API keys. Keys grant full access G�� keep them secure. You can revoke keys at any time.</p>
+  </div>
+  <div class="card">
+    <h3>=��� Team Members</h3>
+    <p>Invite team members with Editor or Viewer roles. Each user gets their own login.</p>
+  </div>
+</div>
+
+<h3>API Key Management</h3>
+<ol>
+  <li>Go to <strong>Settings G�� API Keys</strong></li>
+  <li>Click <strong>Generate New Key</strong></li>
+  <li>Give the key a label (e.g., "Production App")</li>
+  <li>Copy the key immediately G�� it will not be shown again</li>
+  <li>Use the key in the <code>Authorization: Bearer &lt;key&gt;</code> header for API requests</li>
+</ol>
+
+<!-- 9. API Reference -->
+<h2 id="api">9. API Reference</h2>
+<p>The Multi-Directory Platform exposes a RESTful API for programmatic access. All endpoints require authentication via Bearer token.</p>
+
+<h3>Authentication</h3>
+<pre><code>curl -H "Authorization: Bearer YOUR_API_KEY" \
+     https://directory.swiftsoftware.net/api/listings</code></pre>
+
+<h3>Base URL</h3>
+<pre><code>https://directory.swiftsoftware.net/api</code></pre>
+
+<h3>Endpoints</h3>
+
+<div class="card">
+  <h3>=��� Listings</h3>
+  <p><span class="badge get">GET</span> <code>/api/listings</code> G�� Get all listings (supports pagination &amp; filtering)</p>
+  <pre><code>curl -H "Authorization: Bearer KEY" \
+  "https://directory.swiftsoftware.net/api/listings?directory_id=1&page=1&per_page=20"</code></pre>
+
+  <p><span class="badge get">GET</span> <code>/api/listings/:id</code> G�� Get a single listing by ID</p>
+  <pre><code>curl -H "Authorization: Bearer KEY" \
+  https://directory.swiftsoftware.net/api/listings/42</code></pre>
+
+  <p><span class="badge post">POST</span> <code>/api/listings</code> G�� Create a new listing</p>
+  <pre><code>curl -X POST -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
+  -d '{
+    "directory_id": 1,
+    "name": "Green Acre Farm",
+    "address": "123 Farm Rd, Lexington, KY 40502",
+    "phone": "(859) 555-0123",
+    "website": "https://greenacrefarm.example.com",
+    "hours": "Mon-Sat 8am-6pm",
+    "categories": ["organic-farm", "farmers-market"],
+    "description": "Family-owned organic farm offering seasonal produce."
+  }' \
+  https://directory.swiftsoftware.net/api/listings</code></pre>
+
+  <p><span class="badge put">PUT</span> <code>/api/listings/:id</code> G�� Update an existing listing</p>
+  <pre><code>curl -X PUT -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
+  -d '{"name": "Green Acre Farm Updated", "phone": "(859) 555-0199"}' \
+  https://directory.swiftsoftware.net/api/listings/42</code></pre>
+
+  <p><span class="badge delete">DELETE</span> <code>/api/listings/:id</code> G�� Delete a listing</p>
+  <pre><code>curl -X DELETE -H "Authorization: Bearer KEY" \
+  https://directory.swiftsoftware.net/api/listings/42</code></pre>
+</div>
+
+<div class="card">
+  <h3>=��� Directories</h3>
+  <p><span class="badge get">GET</span> <code>/api/directories</code> G�� Get all directories</p>
+  <p><span class="badge get">GET</span> <code>/api/directories/:id</code> G�� Get a single directory with stats</p>
+  <p><span class="badge post">POST</span> <code>/api/directories</code> G�� Create a new directory</p>
+  <p><span class="badge put">PUT</span> <code>/api/directories/:id</code> G�� Update directory settings</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/directories/:id</code> G�� Delete a directory and all its listings</p>
+</div>
+
+<div class="card">
+  <h3>=��+n+� Categories</h3>
+  <p><span class="badge get">GET</span> <code>/api/categories</code> G�� Get all categories (optional <code>?directory_id=1</code>)</p>
+  <p><span class="badge get">GET</span> <code>/api/categories/:id</code> G�� Get a single category with listing count</p>
+  <p><span class="badge post">POST</span> <code>/api/categories</code> G�� Create a new category</p>
+  <pre><code>curl -X POST -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
+  -d '{
+    "directory_id": 1,
+    "name": "Organic Farms",
+    "slug": "organic-farms",
+    "parent_id": null,
+    "description": "Farms offering certified organic produce"
+  }' \
+  https://directory.swiftsoftware.net/api/categories</code></pre>
+  <p><span class="badge put">PUT</span> <code>/api/categories/:id</code> G�� Update a category</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/categories/:id</code> G�� Delete a category</p>
+</div>
+
+<div class="card">
+  <h3>=�Ŀ Themes</h3>
+  <p><span class="badge get">GET</span> <code>/api/themes/:directory_id</code> G�� Get theme settings for a directory</p>
+  <p><span class="badge put">PUT</span> <code>/api/themes/:directory_id</code> G�� Update theme settings</p>
+  <pre><code>curl -X PUT -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
+  -d '{
+    "primary_color": "#10b981",
+    "secondary_color": "#f59e0b",
+    "background_color": "#ffffff",
+    "font": "Inter"
+  }' \
+  https://directory.swiftsoftware.net/api/themes/1</code></pre>
+</div>
+
+<div class="card">
+  <h3>=��� Analytics</h3>
+  <p><span class="badge get">GET</span> <code>/api/analytics/dashboard</code> G�� Get dashboard stats</p>
+  <p><span class="badge get">GET</span> <code>/api/analytics/directory/:id</code> G�� Get analytics for a specific directory</p>
+  <p><span class="badge get">GET</span> <code>/api/analytics/listings/:id/views</code> G�� Get view count for a listing</p>
+</div>
+
+<h3>Response Format</h3>
+<pre><code>{
+  "success": true,
+  "data": { ... },
+  "pagination": {
+    "page": 1,
+    "per_page": 20,
+    "total": 847,
+    "total_pages": 43
+  }
+}</code></pre>
+
+<h3>Error Format</h3>
+<pre><code>{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Name is required",
+    "details": { "field": "name" }
+  }
+}</code></pre>
+
+<h3>Rate Limits</h3>
+<p>API rate limits are set at <strong>100 requests per minute</strong> per API key. Exceed this limit and you'll receive a <code>429 Too Many Requests</code> response.</p>
+
+<!-- 10. FAQ -->
+<h2 id="faq">10. FAQ</h2>
+
+<details>
+  <summary>How do I create a new directory?</summary>
+  <p>From the Dashboard, click the "New Directory" button. Select a template (or start blank), give your directory a name and slug, then click Create. You'll be taken to the directory settings where you can customize categories, theme, and more.</p>
+</details>
+
+<details>
+  <summary>Can I import listings from a spreadsheet?</summary>
+  <p>Yes! Navigate to your directory and click "Import" in the listings section. Upload a CSV file with columns matching the listing fields (name, address, phone, etc.). The system will validate and import matching rows. You can download a sample CSV template from the import page.</p>
+</details>
+
+<details>
+  <summary>How do I make my directory public?</summary>
+  <p>Each directory has a status toggle in its settings. Set it to "Published" to make it accessible at its public URL (<code>https://directory.swiftsoftware.net/d/your-directory-slug</code>). Draft directories are only visible to admin users.</p>
+</details>
+
+<details>
+  <summary>Is there a mobile app or mobile-responsive design?</summary>
+  <p>The public directory pages are fully responsive and work great on mobile devices. There is no native mobile app, but the web interface works on all screen sizes. The admin dashboard is also responsive for on-the-go management.</p>
+</details>
+
+<details>
+  <summary>Can I add custom fields to listings?</summary>
+  <p>Absolutely. When editing a directory's template settings, you can add custom fields of various types: text, number, select dropdown, multi-select, date, URL, email, and file upload. These fields appear on both the add/edit listing forms and the public listing page.</p>
+</details>
+
+<details>
+  <summary>How do I reset my password?</summary>
+  <p>Go to Settings G�� Password. Enter your current password and new password. The new password must be at least 12 characters and include uppercase, lowercase, a number, and a special character. If you're locked out, contact the platform administrator.</p>
+</details>
+
+<details>
+  <summary>Can I set up multiple administrators for my directory?</summary>
+  <p>Yes. Under Settings G�� Team Members, click "Invite Member". Enter their email and select a role (Editor or Viewer). They'll receive an invitation email. Editors can manage listings and categories. Viewers can see the admin panel but cannot make changes.</p>
+</details>
+
+<details>
+  <summary>What happens when I delete a directory?</summary>
+  <p>Deleting a directory permanently removes all its listings, categories, theme settings, and analytics data. This action cannot be undone. The public URL will return a 404. You'll be asked to type the directory name to confirm deletion.</p>
+</details>
+
+<!-- 11. Deals -->
+<h2 id="deals">11. Deals (Groupon-Style Deal Pages)</h2>
+<p>The <strong>Deals</strong> module lets you create limited-time offers, coupons, and promotions linked to directories and businesses. Think Groupon-style deals — discounted services, special offers, and coupon codes that appear on directory landing pages and business profiles.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#127935; Coupons &amp; Deals</h3>
+    <p>Create percentage-off or fixed-price deals. Set original price vs deal price. Coupon codes for in-store or online redemption.</p>
+  </div>
+  <div class="card">
+    <h3>&#9200; Scheduled Offers</h3>
+    <p>Set start and end dates. Deals auto-activate and auto-expire. Schedule promotions for holidays, slow seasons, or grand openings.</p>
+  </div>
+  <div class="card">
+    <h3>&#128202; Redemption Tracking</h3>
+    <p>Each deal tracks how many times it&#39;s been claimed. Set redemption limits to control inventory. The &#34;Claimed&#34; count appears on each deal card.</p>
+  </div>
+  <div class="card">
+    <h3>&127982; Linked to Businesses</h3>
+    <p>Each deal is tied to a specific directory and business. Deals appear on business profile pages and directory landing pages.</p>
+  </div>
+</div>
+
+<h3>Navigation</h3>
+<p>Click <strong>Deals</strong> in the sidebar to open the Deals management page. The sidebar shows a &#127935; icon next to the Deals label.</p>
+
+<h3>Key Fields Explained</h3>
+<div class="card">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Title</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The name of the deal (e.g. &#34;50% Off Dinner&#34;)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Description</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Details about what the offer includes</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Original Price</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The regular price before discount (displayed with strikethrough)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Deal Price</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">What the customer actually pays</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Discount %</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Auto-calculated from original and deal prices. Can also be set manually.</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Currency</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">ISO currency code (default: USD)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Status</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Active, Scheduled, Expired, or Sold Out</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Redemption Limit</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Maximum number of times this deal can be claimed (blank = unlimited)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Redemption Count</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">How many times the deal has been claimed so far (auto-tracked)</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Coupon Code</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Optional code customers enter at checkout</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Featured</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Toggle to highlight the deal as featured on the directory landing page</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Start / End Dates</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Schedule when the deal goes live and expires</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Directory</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Which directory this deal belongs to</td></tr>
+    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Business</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The specific business offering the deal</td></tr>
+  </table>
+</div>
+
+<h3>Creating a Deal</h3>
+<ol>
+  <li>Click <strong>Deals</strong> in the sidebar navigation</li>
+  <li>Click the <strong>+ New Deal</strong> button in the top-right</li>
+  <li>Fill in the modal form: Title, Description, Pricing (Original Price, Deal Price, Discount %, Currency)</li>
+  <li>Select the <strong>Directory</strong> and enter the <strong>Business ID</strong> (UUID of the business)</li>
+  <li>Set Status, Start/End dates, Redemption Limit, Coupon Code, and featured toggle</li>
+  <li>Click <strong>Create Deal</strong> to save</li>
+</ol>
+
+<h3>Editing a Deal</h3>
+<p>Click any deal card in the Deals list to open the edit modal. Click <strong>Save Changes</strong> to persist updates.</p>
+
+<h3>Deleting a Deal</h3>
+<p>Click the <strong>Delete</strong> button (trash icon) on any deal card. Confirm the deletion in the dialog.</p>
+
+<h3>Tracking Redemptions</h3>
+<p>Each deal card displays a <strong>Claimed</strong> count showing how many times the deal has been redeemed. The <strong>Claim</strong> button lets you manually increment the redemption count for testing or manual fulfillment. The system also tracks the redemption limit and marks the deal as <strong>Sold Out</strong> when the limit is reached.</p>
+
+<h3>Deal Types</h3>
+<ul>
+  <li><strong>Coupon</strong> — A coupon code that customers can use</li>
+  <li><strong>Deal</strong> — A standard discounted offer</li>
+  <li><strong>Promotion</strong> — A promotional offer (e.g. buy-one-get-one)</li>
+</ul>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/deals</code> — List all deals</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/deals/:id</code> — Get a single deal</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/deals</code> — Create a new deal</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/deals/:id</code> — Update an existing deal</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/deals/:id</code> — Delete a deal</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/deals/:id/claim</code> — Manually claim/redeem a deal (increments redemption count)</p>
+</div>
+<p>All deals can be managed via Telegram by calling the API. The Deals endpoints follow the same authentication pattern as other API routes (Bearer token or API key).</p>
+
+<h3>Monetization</h3>
+<p>Deals are an <strong>upsell feature</strong>. Each deal links to a business within a directory. Redemption counts form the billing data — the more redemptions a deal receives, the more value the business gets. You can charge businesses per redemption or include deals in premium directory tiers.</p>
+
+<hr>
+<p style="text-align:center;color:#64748b;font-size:0.85rem;">
+  Multi-Directory Platform — User Guide v1.0<br>
+  &#169; 2026 SwiftSoftware — <a href="https://directory.swiftsoftware.net" target="_blank">directory.swiftsoftware.net</a>
+</p>
+
+</div>
+</body>
+</html>

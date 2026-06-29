@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{{directory.name}} - Business Directory</title>
+<style>:root{--primary:{{colors.primary}};--secondary:{{colors.secondary}};--accent:{{colors.accent}};--bg:{{colors.background}};--text:{{colors.text}};--heading:{{colors.heading}};--muted:{{colors.muted}};--border:{{colors.border}}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:1100px;margin:0 auto;padding:0 20px}
+.hero{background:linear-gradient(135deg,var(--primary),var(--secondary));padding:50px 0;color:white;text-align:center}
+.hero h1{font-size:2.2rem;margin-bottom:8px;color:white}
+.hero p{font-size:1.1rem;opacity:.9;color:white}
+.search-bar{display:flex;gap:10px;margin:25px 0;flex-wrap:wrap}
+.search-bar input{flex:1;min-width:200px;padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem}
+.search-bar select{padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem;background:white}
+.search-bar button{padding:10px 22px;background:var(--primary);color:white;border:none;border-radius:8px;cursor:pointer}
+.businesses{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
+.card{background:white;border:1px solid var(--border);border-radius:10px;padding:18px}
+.card h3{color:var(--heading);margin-bottom:6px}
+.card h3 a{color:var(--primary);text-decoration:none}
+.card .rating{color:var(--accent)}
+.card .info{color:var(--muted);font-size:.9rem}
+.card .contact{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.card .contact a{padding:5px 12px;border-radius:6px;font-size:.85rem;text-decoration:none;background:var(--border);color:var(--text)}
+.empty{text-align:center;padding:50px;color:var(--muted)}
+.footer{text-align:center;padding:30px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border);margin-top:30px}
+</style></head><body>
+<section class="hero"><div class="container"><h1>{{directory.name}}</h1><p>{{directory.description}}</p></div></section>
+<div class="container">
+<form class="search-bar" method="GET">
+<input type="text" name="q" placeholder="Search..." value="{{query.q}}">
+<select name="category"><option value="">All</option>{{#each categories}}<option value="{{slug}}">{{name}}</option>{{/each}}</select>
+<button type="submit">Search</button>
+</form>
+{{#if businesses}}<div class="businesses">{{#each businesses}}
+<div class="card"><h3><a href="/{{../directory.slug}}/{{slug}}">{{name}}</a></h3>{{#if rating}}<div class="rating">{{rating}} stars ({{review_count}})</div>{{/if}}<div class="info"><p>{{city}}, {{state}}</p>{{description}}</div><div class="contact">{{#if phone}}<a href="tel:{{phone}}">Call</a>{{/if}}{{#if website}}<a href="{{website}}">Website</a>{{/if}}</div></div>{{/each}}</div>{{else}}<div class="empty"><h3>No results</h3></div>{{/if}}
+</div>
+<div class="footer"><p>&copy; {{directory.name}}</p></div>
+</body></html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Directory | Find Local Contractors & Services</title>
+  <meta name="description" content="Find trusted plumbers, electricians, roofers, landscapers, and home service professionals near you.">
+  <meta property="og:title" content="Service Directory">
+  <meta property="og:description" content="Find trusted home service professionals in your area.">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="application/ld+json">
+  { "@context": "https://schema.org", "@type": "HomeAndConstructionBusiness", "name": "Service Directory" }
+  </script>
+  <style>
+    :root { --primary: #e65100; --primary-dark: #bf360c; --accent: #ffb300; --bg: #fff8f0; --card: #ffffff; --text: #1a1a2e; --text-light: #6b7280; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    .hero { background: linear-gradient(135deg,#bf360c,#e65100); color: white; padding: 60px 20px; text-align: center; }
+    .hero h1 { font-size: 2.5rem; margin-bottom: 8px; }
+    .hero p { font-size: 1.1rem; opacity: .9; margin-bottom: 24px; }
+    .hero input { width: 100%; max-width: 500px; padding: 14px 20px; border: none; border-radius: 50px; font-size: 1rem; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .emergency-banner { background: #fce4ec; color: #c62828; padding: 12px 20px; border-radius: 12px; text-align: center; font-weight: 600; margin-bottom: 20px; border: 2px solid #ef9a9a; }
+    .service-categories { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 12px; margin-bottom: 24px; }
+    .service-cat { padding: 16px; border-radius: 12px; background: white; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.06); cursor: pointer; transition: all .2s; border: 2px solid transparent; }
+    .service-cat:hover, .service-cat.active { border-color: var(--primary); transform: translateY(-2px); }
+    .service-cat .icon { font-size: 2rem; }
+    .service-cat .name { font-size: .85rem; font-weight: 500; margin-top: 4px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap: 20px; }
+    .card { background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); cursor: pointer; transition: transform .2s; }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.1); }
+    .card-img { height: 140px; display: flex; align-items: center; justify-content: center; font-size: 3rem; }
+    .card-body { padding: 16px; }
+    .card .badge-row { display: flex; gap: 4px; margin-bottom: 8px; }
+    .card .badge { padding: 2px 10px; border-radius: 50px; font-size: .7rem; font-weight: 600; }
+    .card .badge.emergency { background: #fce4ec; color: #c62828; }
+    .card .badge.licensed { background: #e8f5e9; color: #2e7d32; }
+    .card .badge.category { background: #fff3e0; color: #e65100; }
+    .card h3 { font-size: 1.1rem; margin-bottom: 4px; }
+    .card .meta { font-size: .85rem; color: var(--text-light); margin-bottom: 4px; }
+    .card .service-area { font-size: .8rem; color: var(--primary); font-weight: 500; margin-bottom: 8px; }
+    .card .actions { display: flex; gap: 8px; }
+    .card .actions a { flex: 1; text-align: center; padding: 10px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: .85rem; }
+    .btn-call { background: #fff3e0; color: #e65100; }
+    .btn-quote { background: #e65100; color: white; }
+    .map-wrap { height: 350px; border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
+    #map { height: 100%; width: 100%; }
+    .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: .85rem; border-top: 1px solid #eee; margin-top: 40px; }
+    @media (max-width:640px) { .hero h1 { font-size:1.8rem; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>🔧 Service Directory</h1>
+    <p>Find trusted plumbers, electricians, roofers & more</p>
+    <input type="text" id="searchInput" placeholder="Search for a service or professional...">
+  </div>
+  <div class="container">
+    <div class="emergency-banner">🚨 Need emergency service? Call 24/7: <strong>1-800-EMERGENCY</strong></div>
+    <div class="service-categories" id="serviceCats"></div>
+    <div class="map-wrap"><div id="map"></div></div>
+    <div id="results" class="grid"></div>
+  </div>
+  <div class="footer">Powered by Multi-Directory Platform</div>
+  <script>
+    const SLUG = new URLSearchParams(location.search).get('slug') || 'service-directory';
+    const API = '/api/v1';
+    let allBiz = [], map, activeCat = '';
+
+    const CATEGORIES = [
+      {icon:'🔧',name:'Plumber'},{icon:'⚡',name:'Electrician'},{icon:'🏗️',name:'Contractor'},{icon:'🌿',name:'Landscaper'},{icon:'🧹',name:'Cleaning'},{icon:'🎨',name:'Painter'},{icon:'❄️',name:'HVAC'},{icon:'🪟',name:'Window Cleaner'},{icon:'🚚',name:'Moving'},{icon:'🔨',name:'Handyman'}
+    ];
+
+    async function load() {
+      const [dir, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}`).then(r=>r.json()),
+        fetch(`${API}/directories/${SLUG}/businesses?page=1&per_page=50`).then(r=>r.json())
+      ]);
+      if (dir.branding) applyBranding(dir.branding);
+      allBiz = biz.data || biz;
+      renderCategories();
+      renderMap(allBiz);
+      renderList(allBiz);
+    }
+
+    function applyBranding(b) { if (b.primary_color) document.documentElement.style.setProperty('--primary', b.primary_color); }
+
+    function renderCategories() {
+      const el = document.getElementById('serviceCats');
+      el.innerHTML = CATEGORIES.map(c => `
+        <div class="service-cat ${activeCat===c.name?'active':''}" onclick="filterCat('${c.name}')">
+          <div class="icon">${c.icon}</div>
+          <div class="name">${c.name}</div>
+        </div>
+      `).join('');
+    }
+
+    function filterCat(name) {
+      activeCat = activeCat === name ? '' : name;
+      document.querySelectorAll('.service-cat').forEach(e => e.classList.toggle('active', e.querySelector('.name').textContent === activeCat));
+      renderList(allBiz);
+    }
+
+    function renderMap(biz) {
+      if (!map) { map = L.map('map').setView([39.8283,-98.5795],4); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map); }
+      const coords = biz.filter(b=>b.latitude&&b.longitude);
+      if(!coords.length) return;
+      const bounds=[];
+      coords.forEach(b=>{const m=L.marker([b.latitude,b.longitude]).addTo(map);m.bindPopup(`<b>${b.name}</b><br>${b.city||''}`);bounds.push([b.latitude,b.longitude]);});
+      bounds.length>1?map.fitBounds(bounds,{padding:[30,30]}):map.setView(bounds[0],11);
+    }
+
+    function renderList(biz) {
+      const el = document.getElementById('results');
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      let f = biz;
+      if (q) f = f.filter(b => b.name.toLowerCase().includes(q)||(b.description||'').toLowerCase().includes(q));
+      if (activeCat) f = f.filter(b => (b.category?.name||'').toLowerCase().includes(activeCat.toLowerCase()));
+      if (!f.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No service providers found.</div>'; return; }
+      el.innerHTML = f.map(b => `
+        <div class="card" onclick="window.open('/#/business/${b.id}','_blank')">
+          <div class="card-img" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2)">🛠️</div>
+          <div class="card-body">
+            <div class="badge-row">
+              <span class="badge category">${b.category?.name||'Service'}</span>
+              <span class="badge licensed">✅ Licensed</span>
+              <span class="badge emergency">🚨 Emergency</span>
+            </div>
+            <h3>${b.name}</h3>
+            <div class="meta">${[b.city,b.state].filter(Boolean).join(', ')}</div>
+            <div class="service-area">📍 Serves ${b.city||'Your Area'} and surrounding areas</div>
+            <div class="actions">
+              ${b.phone ? `<a href="tel:${b.phone}" class="btn-call">📞 Call Now</a>` : ''}
+              <a href="#" class="btn-quote">📋 Get Quote</a>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input',()=>renderList(allBiz));
+    load();
+  </script>
+</body>
+</html>

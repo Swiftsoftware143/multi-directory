@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurant Directory | Find Local Dining</title>
+  <meta name="description" content="Discover local restaurants, cafés, and dining near you. Browse menus, hours, and make reservations.">
+  <meta property="og:title" content="Restaurant Directory">
+  <meta property="og:description" content="Find the best local restaurants and dining experiences.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="application/ld+json">
+  { "@context": "https://schema.org", "@type": "Restaurant", "name": "Restaurant Directory", "servesCuisine": "Local" }
+  </script>
+  <style>
+    :root { --primary: #d32f2f; --primary-dark: #b71c1c; --accent: #ff9800; --bg: #fdf2f2; --card: #ffffff; --text: #1a1a2e; --text-light: #6b7280; --radius: 12px; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+    .hero { background: linear-gradient(135deg, #b71c1c, #d32f2f); color: white; padding: 60px 20px; text-align: center; }
+    .hero h1 { font-size: 2.5rem; margin-bottom: 8px; }
+    .hero p { font-size: 1.1rem; opacity: .9; margin-bottom: 24px; }
+    .hero input { width: 100%; max-width: 500px; padding: 14px 20px; border: none; border-radius: 50px; font-size: 1rem; outline: none; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+    .controls select, .controls button { padding: 10px 16px; border: 1px solid #ddd; border-radius: 8px; background: white; font-size: .9rem; cursor: pointer; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-bottom: 32px; }
+    .card { background: var(--card); border-radius: var(--radius); overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: transform .2s; cursor: pointer; }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+    .card-img { height: 160px; display: flex; align-items: center; justify-content: center; font-size: 3rem; position: relative; }
+    .card-img .cuisine-badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.6); color: white; padding: 2px 10px; border-radius: 50px; font-size: .75rem; }
+    .card-body { padding: 16px; }
+    .card h3 { font-size: 1.1rem; margin-bottom: 2px; }
+    .card .stars { color: #ff9800; font-size: .9rem; margin-bottom: 4px; }
+    .card .meta { font-size: .85rem; color: var(--text-light); margin-bottom: 8px; }
+    .card .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+    .card .tag { padding: 2px 8px; border-radius: 50px; font-size: .7rem; background: #fce4ec; color: #c62828; font-weight: 500; }
+    .card .actions { display: flex; gap: 8px; }
+    .card .actions a { flex: 1; text-align: center; padding: 8px; border-radius: 8px; font-size: .85rem; text-decoration: none; font-weight: 500; }
+    .btn-menu { background: #fce4ec; color: #c62828; }
+    .btn-reserve { background: #fff3e0; color: #e65100; }
+    .map-wrap { height: 350px; border-radius: var(--radius); margin-bottom: 24px; overflow: hidden; }
+    #map { height: 100%; width: 100%; }
+    .pagination { display: flex; justify-content: center; gap: 8px; }
+    .pagination button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer; }
+    .pagination button.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: .85rem; border-top: 1px solid #eee; margin-top: 40px; }
+    @media (max-width: 640px) { .hero h1 { font-size: 1.8rem; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>🍽️ Local Dining Guide</h1>
+    <p>Discover restaurants, cafés, and the best food in town</p>
+    <input type="text" id="searchInput" placeholder="Search restaurants, cuisine, or location...">
+  </div>
+  <div class="container">
+    <div class="controls">
+      <select id="cuisineFilter"><option value="">All Cuisines</option></select>
+      <select id="cityFilter"><option value="">All Locations</option></select>
+      <button onclick="useLocation()">📍 Near Me</button>
+    </div>
+    <div class="map-wrap"><div id="map"></div></div>
+    <div id="results" class="grid"></div>
+    <div id="pagination" class="pagination"></div>
+  </div>
+  <div class="footer">Powered by Multi-Directory Platform</div>
+  <script>
+    const SLUG = new URLSearchParams(location.search).get('slug') || 'restaurant-directory';
+    const API = '/api/v1';
+    let allBiz = [], map;
+
+    async function load() {
+      const [dir, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}`).then(r => r.json()),
+        fetch(`${API}/directories/${SLUG}/businesses?page=1&per_page=50`).then(r => r.json())
+      ]);
+      if (dir.branding) applyBranding(dir.branding);
+      allBiz = biz.data || biz;
+      renderFilters(allBiz);
+      renderMap(allBiz);
+      renderList(allBiz);
+    }
+
+    function applyBranding(b) {
+      if (b.primary_color) document.documentElement.style.setProperty('--primary', b.primary_color);
+    }
+
+    function renderFilters(biz) {
+      const cuisines = [...new Set(biz.map(b => b.category?.name || 'General'))];
+      const cities = [...new Set(biz.map(b => b.city).filter(Boolean))];
+      const cSel = document.getElementById('cuisineFilter');
+      const ciSel = document.getElementById('cityFilter');
+      cuisines.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; cSel.appendChild(o); });
+      cities.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; ciSel.appendChild(o); });
+    }
+
+    function renderMap(biz) {
+      if (!map) {
+        map = L.map('map').setView([39.8283, -98.5795], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      }
+      const coords = biz.filter(b => b.latitude && b.longitude);
+      if (!coords.length) return;
+      const bounds = [];
+      coords.forEach(b => {
+        const m = L.marker([b.latitude, b.longitude]).addTo(map);
+        m.bindPopup(`<b>${b.name}</b><br>${b.city||''}`);
+        bounds.push([b.latitude, b.longitude]);
+      });
+      if (bounds.length > 1) map.fitBounds(bounds, {padding:[30,30]});
+      else map.setView(bounds[0], 12);
+    }
+
+    function renderList(biz) {
+      const el = document.getElementById('results');
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const cuisine = document.getElementById('cuisineFilter').value;
+      const city = document.getElementById('cityFilter').value;
+      let f = biz;
+      if (q) f = f.filter(b => b.name.toLowerCase().includes(q));
+      if (cuisine) f = f.filter(b => (b.category?.name||'General') === cuisine);
+      if (city) f = f.filter(b => b.city === city);
+      if (!f.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No restaurants found.</div>'; return; }
+      el.innerHTML = f.map(b => `
+        <div class="card" onclick="window.open('/#/business/${b.id}','_blank')">
+          <div class="card-img" style="background:linear-gradient(135deg,#fce4ec,#ffcdd2)"><span>🍽️</span><span class="cuisine-badge">${b.category?.name||'Restaurant'}</span></div>
+          <div class="card-body">
+            <div class="stars">${'★'.repeat(Math.round(b.rating||0))}${'☆'.repeat(5-Math.round(b.rating||0))}</div>
+            <h3>${b.name}</h3>
+            <div class="meta">${[b.city,b.state].filter(Boolean).join(', ')}</div>
+            <div class="tags">${['Italian','Mexican','Japanese','American','Indian'].slice(0,3).map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+            <div class="actions">
+              <a href="tel:${b.phone||''}" class="btn-menu">📞 Call</a>
+              ${b.website ? `<a href="${b.website}" target="_blank" class="btn-reserve">🌐 Visit</a>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function useLocation() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(p => {
+        const c = allBiz.filter(b => b.latitude && b.longitude);
+        const sorted = c.map(b => ({...b, dist: haversine(p.coords.latitude, p.coords.longitude, b.latitude, b.longitude)})).sort((a,b)=>a.dist-b.dist);
+        renderList(sorted);
+      });
+    }
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    document.getElementById('searchInput').addEventListener('input', () => renderList(allBiz));
+    document.getElementById('cuisineFilter').addEventListener('change', () => renderList(allBiz));
+    document.getElementById('cityFilter').addEventListener('change', () => renderList(allBiz));
+    load();
+  </script>
+</body>
+</html>
