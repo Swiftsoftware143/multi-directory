@@ -97,7 +97,7 @@ pub async fn create_tier(
         r#"INSERT INTO plan_tiers (name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
             featured_listing, description)
-        VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
             featured_listing, description, created_at"#
@@ -159,14 +159,14 @@ pub async fn update_tier(
 
     let tier = sqlx::query_as::<_, PlanTier>(
         r#"UPDATE plan_tiers SET
-            name = \x241, slug = \x242,
-            price_monthly = \x243, price_yearly = \x244,
-            max_listings = \x245, max_deals = \x246, max_photos = \x247,
-            has_reviews = \x248, has_analytics = \x249, has_crm = \x2410,
-            has_email = \x2411, has_call_tracking = \x2412,
-            has_import_export = \x2413, has_api_access = \x2414,
-            featured_listing = \x2415, description = \x2416
-        WHERE id = \x2417
+            name = $1, slug = $2,
+            price_monthly = $3, price_yearly = $4,
+            max_listings = $5, max_deals = $6, max_photos = $7,
+            has_reviews = $8, has_analytics = $9, has_crm = $10,
+            has_email = $11, has_call_tracking = $12,
+            has_import_export = $13, has_api_access = $14,
+            featured_listing = $15, description = $16
+        WHERE id = $17
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
             featured_listing, description, created_at"#
@@ -252,7 +252,7 @@ pub async fn create_subscription(
 
     let sub = sqlx::query_as::<_, BusinessSubscription>(
         r#"INSERT INTO business_subscriptions (business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id)
-        VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id, business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id, created_at"#
     )
     .bind(business_id)
@@ -337,10 +337,10 @@ pub async fn update_subscription(
 
     let sub = sqlx::query_as::<_, BusinessSubscription>(
         r#"UPDATE business_subscriptions SET
-            business_id = \x241, tier_id = \x242, status = \x243, billing_cycle = \x244,
-            price_paid = \x245, currency = \x246, start_date = \x247, end_date = \x248,
-            auto_renew = \x249, stripe_subscription_id = \x2410
-        WHERE id = \x2411
+            business_id = $1, tier_id = $2, status = $3, billing_cycle = $4,
+            price_paid = $5, currency = $6, start_date = $7, end_date = $8,
+            auto_renew = $9, stripe_subscription_id = $10
+        WHERE id = $11
         RETURNING id, business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id, created_at"#
     )
     .bind(business_id)
@@ -421,7 +421,7 @@ pub async fn create_ad_zone(
 
     let zone = sqlx::query_as::<_, AdZone>(
         r#"INSERT INTO ad_zones (name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image)
-        VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id, name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image, created_at"#
     )
     .bind(name)
@@ -472,10 +472,10 @@ pub async fn update_ad_zone(
 
     let zone = sqlx::query_as::<_, AdZone>(
         r#"UPDATE ad_zones SET
-            name = \x241, zone_key = \x242, width = \x243, height = \x244,
-            price_monthly = \x245, directory_id = \x246, status = \x247,
-            current_advertiser_id = \x248, current_ad_url = \x249, current_ad_image = \x2410
-        WHERE id = \x2411
+            name = $1, zone_key = $2, width = $3, height = $4,
+            price_monthly = $5, directory_id = $6, status = $7,
+            current_advertiser_id = $8, current_ad_url = $9, current_ad_image = $10
+        WHERE id = $11
         RETURNING id, name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image, created_at"#
     )
     .bind(body.get("name").and_then(|v| v.as_str()).unwrap_or(&existing.name))
