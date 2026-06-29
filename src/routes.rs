@@ -1,5 +1,3 @@
-//! Route definitions for Multi-Directory API.
-
 use axum::{
     routing::{get, post, put, delete},
     Router,
@@ -10,7 +8,7 @@ use crate::handlers::*;
 use tower_http::services::fs::ServeDir;
 
 pub fn create_router(s: AppState) -> Router {
-    // ✅ Public API routes (no auth needed)
+    // ??? Public API routes (no auth needed)
     let public_routes = Router::new()
         .route("/health", get(health_check))
         .route("/auth/login", post(auth_handler::login))
@@ -33,11 +31,11 @@ pub fn create_router(s: AppState) -> Router {
         .route("/directories/:slug/businesses/:business_id/reviews", get(reviews::list_business_reviews).post(reviews::create_review))
         .route("/directories/:slug/branding", get(branding::get_branding))
         .route("/templates", get(directories::list_templates))
-        // ✅ Blog routes (Phase 3)
+        // ??? Blog routes (Phase 3)
         .route("/blog-posts", get(blog::list_blog_posts).post(blog::create_blog_post))
         .route("/blog-posts/:id", get(blog::get_blog_post).put(blog::update_blog_post).delete(blog::delete_blog_post))
         .route("/directories/:slug/blog-posts", get(blog::list_directory_blog_posts))
-        // ✅ Blog module aliases (Phase 3 Task 5)
+        // ??? Blog module aliases (Phase 3 Task 5)
         .route("/blog", get(blog::list_blog_posts).post(blog::create_blog_post))
         .route("/blog/:id", get(blog::get_blog_post).put(blog::update_blog_post).delete(blog::delete_blog_post))
         .route("/directories/:slug/blog", get(blog::list_directory_blog_posts))
@@ -61,7 +59,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/submissions/:id", get(submissions::get_submission).put(submissions::update_submission).delete(submissions::delete_submission))
         .route("/submissions/:id/approve", post(submissions::approve_submission))
         .route("/submissions/:id/reject", post(submissions::reject_submission))
-        // ✅ SEO routes
+        // ??? SEO routes
         .route("/seo/:page_type/:page_id", get(seo::get_seo_meta).put(seo::update_seo_meta))
         .route("/seo/sitemap-config", get(seo::list_all_sitemap_configs))
         .route("/seo/sitemap-config/:directory_id", get(seo::get_sitemap_config).put(seo::update_sitemap_config))
@@ -72,20 +70,20 @@ pub fn create_router(s: AppState) -> Router {
         .route("/search/config", get(search::list_search_configs).post(search::create_search_config))
         .route("/search/config/:directory_id", get(search::get_search_config).put(search::update_search_config))
         .route("/search", get(search::search_businesses))
-        // ✅ Analytics routes (Phase 3 Task 2)
+        // ??? Analytics routes (Phase 3 Task 2)
         .route("/analytics/track", post(analytics::track_event))
         .route("/analytics", get(analytics::list_events))
         .route("/analytics/by-directory/:directory_id", get(analytics::by_directory))
         .route("/analytics/summary", get(analytics::get_summary))
         .route("/analytics/events", get(analytics::list_events))
         .route("/analytics/events/old", delete(analytics::purge_old_events))
-        // ✅ Email routes
+        // ??? Email routes
         .route("/email/templates", get(email::list_templates).post(email::create_template))
         .route("/email/templates/:id", get(email::get_template).put(email::update_template).delete(email::delete_template))
         .route("/email/campaigns", get(email::list_campaigns).post(email::create_campaign))
         .route("/email/campaigns/:id", get(email::get_campaign).put(email::update_campaign).delete(email::delete_campaign))
         .route("/email/campaigns/:id/send", post(email::send_campaign))
-        // ✅ Public / landing page routes
+        // ??? Public / landing page routes
         .route("/public/homepage", get(public::homepage_data))
         .route("/public/:slug", get(public::directory_data))
         .route("/public/:slug/:business_id", get(public::business_data))
@@ -94,13 +92,13 @@ pub fn create_router(s: AppState) -> Router {
         .route("/landing-pages/:slug/publish", post(public_pages::toggle_publish))
         .route("/public-themes", get(public_pages::list_public_themes).post(public_pages::create_public_theme))
         .route("/public-themes/:id", get(public_pages::get_public_theme).put(public_pages::update_public_theme).delete(public_pages::delete_public_theme))
-        // ✅ Public Pages module (Phase 3 Task 4) - aliases at /public-pages
+        // ??? Public Pages module (Phase 3 Task 4) - aliases at /public-pages
         .route("/public-pages", get(public_pages::list_landing_pages).post(public_pages::create_landing_page))
         .route("/public-pages/:id", get(public_pages::get_landing_page).put(public_pages::update_landing_page).delete(public_pages::delete_landing_page))
         .route("/directories/:slug/public-pages", get(public::list_directory_public_pages))
         .route("/public-pages/featured", get(public_pages::list_landing_pages))
         .route("/public-pages/:slug/publish", post(public_pages::toggle_publish))
-        // ✅ Import/Export routes
+        // ??? Import/Export routes
         .route("/import", post(import_export::import_data))
         .route("/import/logs", get(import_export::list_import_logs))
         .route("/import/logs/:id", get(import_export::get_import_log))
@@ -110,14 +108,15 @@ pub fn create_router(s: AppState) -> Router {
         .route("/export/templates", get(import_export::list_export_templates).post(import_export::create_export_template))
         .route("/export/templates/:id", get(import_export::get_export_template).put(import_export::update_export_template).delete(import_export::delete_export_template))
         .route("/export/templates/:id/run", post(import_export::run_export_template))
-        // ✅ Monetization routes (Phase 3 Task 3) - aliases at /monetization
+        // ??? Monetization routes (Phase 3 Task 3) - aliases at /monetization
+        .route("/monetization", get(monetization::monetization_dashboard))
         .route("/monetization/tiers", get(monetization::list_tiers).post(monetization::create_tier))
         .route("/monetization/tiers/:id", get(monetization::get_tier).put(monetization::update_tier).delete(monetization::delete_tier))
         .route("/monetization/subscriptions", get(monetization::list_subscriptions).post(monetization::create_subscription))
         .route("/monetization/subscriptions/:id", get(monetization::get_subscription).put(monetization::update_subscription).delete(monetization::delete_subscription))
         .route("/monetization/ad-zones", get(monetization::list_ad_zones).post(monetization::create_ad_zone))
         .route("/monetization/ad-zones/:id", get(monetization::get_ad_zone).put(monetization::update_ad_zone).delete(monetization::delete_ad_zone))
-        // ✅ Original monetization routes (keep backward compat)
+        // ??? Original monetization routes (keep backward compat)
         .route("/tiers", get(monetization::list_tiers).post(monetization::create_tier))
         .route("/tiers/:id", get(monetization::get_tier).put(monetization::update_tier).delete(monetization::delete_tier))
         .route("/subscriptions", get(monetization::list_subscriptions).post(monetization::create_subscription))
@@ -126,15 +125,15 @@ pub fn create_router(s: AppState) -> Router {
         .route("/ad-zones", get(monetization::list_ad_zones).post(monetization::create_ad_zone))
         .route("/ad-zones/:id", get(monetization::get_ad_zone).put(monetization::update_ad_zone).delete(monetization::delete_ad_zone))
         .route("/directories/:slug/ad-zones", get(monetization::directory_ad_zones))
-        // ✅ Directory tier routes (Phase 3 Task 3)
+        // ??? Directory tier routes (Phase 3 Task 3)
         .route("/monetization/directory-tiers", get(monetization::list_directory_tiers).post(monetization::create_directory_tier))
         .route("/monetization/directory-tiers/:id", get(monetization::get_directory_tier).put(monetization::update_directory_tier).delete(monetization::delete_directory_tier))
         .route("/monetization/directories/:slug/tier", get(monetization::directory_tier_by_slug))
-        // ✅ Sponsored listing routes (Phase 3 Task 3)
+        // ??? Sponsored listing routes (Phase 3 Task 3)
         .route("/monetization/sponsored-listings", get(monetization::list_sponsored_listings).post(monetization::create_sponsored_listing))
         .route("/monetization/sponsored-listings/:id", get(monetization::get_sponsored_listing).put(monetization::update_sponsored_listing).delete(monetization::delete_sponsored_listing))
         .route("/monetization/directories/:slug/sponsored-listings", get(monetization::directory_sponsored_listings))
-        // ✅ Call Tracking routes
+        // ??? Call Tracking routes
         .route("/call-logs", get(call_tracking::list_call_logs).post(call_tracking::create_call_log))
         .route("/call-logs/:id", get(call_tracking::get_call_log))
         .route("/call-logs/:id/lead", put(call_tracking::update_call_lead))
@@ -145,7 +144,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/phone-numbers/:id", get(call_tracking::get_phone_number).put(call_tracking::update_phone_number).delete(call_tracking::delete_phone_number))
         .route("/phone-numbers/:id/provision", post(call_tracking::provision_phone_number));
 
-    // ✅ Protected API routes (with auth middleware)
+    // ??? Protected API routes (with auth middleware)
     let protected_routes = Router::new()
         .route("/auth/me", get(auth_handler::me))
         .route("/auth/password", put(auth_handler::change_password))
@@ -157,13 +156,12 @@ pub fn create_router(s: AppState) -> Router {
         .route("/branding/:directory_id/extract", post(branding::extract_colors))
         .route("/portfolio/sync", post(admin::portfolio_sync))
         .route("/plans/:plan_id/domains", get(domains::check_plan_domains))
-        // Analytics endpoints moved to public /api/v1/analytics/*
         .layer(middleware::from_fn_with_state(
             s.clone(),
             crate::auth::middleware::auth_middleware,
         ));
 
-    // ✅ Serve SPA frontend at root
+    // ??? Serve SPA frontend at root
     let frontend_dir = std::path::Path::new("/opt/swift/multidirectory-rust/frontend");
     let frontend_path = if frontend_dir.exists() {
         frontend_dir.to_string_lossy().to_string()
@@ -171,7 +169,7 @@ pub fn create_router(s: AppState) -> Router {
         "./frontend".to_string()
     };
 
-    // ✅ Combine: /api/v1/* API routes + SPA fallback at /*
+    // ??? Combine: /api/v1/* API routes + SPA fallback at /*
     let app = Router::new()
         .nest("/api/v1", public_routes)
         .nest("/api/v1/admin", protected_routes)

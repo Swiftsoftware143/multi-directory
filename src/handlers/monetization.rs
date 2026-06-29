@@ -891,3 +891,88 @@ pub async fn directory_sponsored_listings(
 
     Ok(Json(json!(listings)))
 }
+
+
+// ?????? Monetization Dashboard ??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+
+/// GET /api/v1/monetization
+pub async fn monetization_dashboard(
+    State(s): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    use rust_decimal::Decimal;
+
+    let tier_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM plan_tiers"
+    )
+    .fetch_one(&s.db)
+    .await?;
+
+    let subscription_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM business_subscriptions"
+    )
+    .fetch_one(&s.db)
+    .await?;
+
+    let active_subscriptions: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM business_subscriptions WHERE status = 'active'"
+    )
+    .fetch_one(&s.db)
+    .await?;
+
+    let ad_zone_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM ad_zones"
+    )
+    .fetch_one(&s.db)
+    .await?;
+
+    let directory_tier_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM directory_tiers"
+    )
+    .fetch_one(&s.db)
+    .await?;
+
+    let sponsored_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM sponsored_listings"
+    )
+    .fetch_one(&s.db)
+    .await?;
+
+    let active_sponsored: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM sponsored_listings WHERE is_active = true AND end_date >= CURRENT_DATE"
+    )
+    .fetch_one(&s.db)
+    .await?;
+
+    let total_revenue_row: Option<(Option<Decimal>,)> = sqlx::query_as(
+        "SELECT COALESCE(SUM(price_paid), 0) FROM business_subscriptions WHERE price_paid IS NOT NULL"
+    )
+    .fetch_optional(&s.db)
+    .await?;
+    let total_subscription_revenue = total_revenue_row.and_then(|r| r.0);
+
+    let sponsored_revenue_row: Option<(Option<Decimal>,)> = sqlx::query_as(
+        "SELECT COALESCE(SUM(price_paid), 0) FROM sponsored_listings WHERE price_paid IS NOT NULL"
+    )
+    .fetch_optional(&s.db)
+    .await?;
+    let total_sponsored_revenue = sponsored_revenue_row.and_then(|r| r.0);
+
+    Ok(Json(json!({
+        "plan_tiers": tier_count.0,
+        "subscriptions": {
+            "total": subscription_count.0,
+            "active": active_subscriptions.0,
+        },
+        "ad_zones": ad_zone_count.0,
+        "directory_tiers": directory_tier_count.0,
+        "sponsored_listings": {
+            "total": sponsored_count.0,
+            "active": active_sponsored.0,
+        },
+        "revenue": {
+            "subscriptions": total_subscription_revenue,
+            "sponsored": total_sponsored_revenue,
+        },
+        "status": "ok"
+    })))
+}
