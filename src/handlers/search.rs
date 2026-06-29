@@ -122,56 +122,62 @@ pub async fn search_businesses(
     let (page, per_page) = validate_pagination(qs.page, qs.per_page);
     let offset = (page - 1) * per_page;
 
+    // Track parameter count — ONLY for parameterized clauses, not fixed SQL.
+    let mut param_count: i32 = 0;
+    let mut next_param = || { param_count += 1; param_count };
+
     let mut wheres: Vec<String> = Vec::new();
 
     if qs.directory.is_some() {
-        wheres.push(format!("b.directory_id = ${}", wheres.len() + 1));
+        let p = next_param();
+        wheres.push(format!("b.directory_id = ${}", p));
     }
 
     if let Some(ref q) = qs.q {
         if !q.is_empty() {
-            let idx = wheres.len() + 1;
+            let p = next_param();
             wheres.push(format!(
                 "(b.search_vector @@ plainto_tsquery('english', ${i}) \
                  OR b.name ILIKE '%' || ${i} || '%' \
                  OR COALESCE(b.description, '') ILIKE '%' || ${i} || '%' \
                  OR COALESCE(cat.name, '') ILIKE '%' || ${i} || '%')",
-                i = idx
+                i = p
             ));
         }
     }
 
     if let Some(ref cat) = qs.category {
         if !cat.is_empty() {
-            let idx = wheres.len() + 1;
-            wheres.push(format!("LOWER(COALESCE(cat.name, '')) = LOWER(${})", idx));
+            let p = next_param();
+            wheres.push(format!("LOWER(COALESCE(cat.name, '')) = LOWER(${})", p));
         }
     }
 
     if let Some(ref city) = qs.city {
         if !city.is_empty() {
-            let idx = wheres.len() + 1;
-            wheres.push(format!("LOWER(COALESCE(b.city, '')) = LOWER(${})", idx));
+            let p = next_param();
+            wheres.push(format!("LOWER(COALESCE(b.city, '')) = LOWER(${})", p));
         }
     }
 
     if let Some(ref st) = qs.state {
         if !st.is_empty() {
-            let idx = wheres.len() + 1;
-            wheres.push(format!("LOWER(COALESCE(b.state, '')) = LOWER(${})", idx));
+            let p = next_param();
+            wheres.push(format!("LOWER(COALESCE(b.state, '')) = LOWER(${})", p));
         }
     }
 
+    // This is NOT parameterized — just a fixed SQL condition string
     wheres.push("COALESCE(b.is_active, true) = true".to_string());
 
     let where_clause = format!("WHERE {}", wheres.join(" AND "));
     let cat_join = "LEFT JOIN directory_categories cat ON b.category_id = cat.id";
 
-    // Count
+    // --- Count query ---
     let count_sql = format!("SELECT COUNT(*) FROM businesses b {} {}", cat_join, where_clause);
     let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
 
-    // We need to bind in order
+    // Bind parameters in the same order as the closure assigned them
     if let Some(ref dir_id) = qs.directory { count_q = count_q.bind(dir_id); }
     if let Some(ref q) = qs.q { if !q.is_empty() { count_q = count_q.bind(q); } }
     if let Some(ref cat) = qs.category { if !cat.is_empty() { count_q = count_q.bind(cat); } }
@@ -180,19 +186,25 @@ pub async fn search_businesses(
 
     let total: i64 = count_q.fetch_one(&s.db).await?;
 
-    // Build data query
+    // --- Data query ---
     let has_q = qs.q.as_ref().map_or(false, |q| !q.is_empty());
+
+    // Calculate the starting parameter index for LIMIT/OFFSET.
+    // param_count covers all WHERE params.
+    // If has_q, the ORDER BY ts_rank needs the q parameter again -> +1.
+    let lo_start = param_count + if has_q { 1 } else { 0 } + 1;
+
     let order_clause = if has_q {
-        let idx = wheres.len() - 1; // the 'not active' where is last, tsquery for order needs its own
+        // Use fresh param_count+1 since the closure tracked all previous params
+        let order_p = param_count + 1;
         format!(
             "ORDER BY ts_rank(b.search_vector, plainto_tsquery('english', ${})) DESC, b.name ASC",
-            wheres.len() // placeholder index for the q param in order clause
+            order_p
         )
     } else {
         "ORDER BY b.name ASC".to_string()
     };
 
-    // For the order clause we need the q bound again if has_q
     let data_sql = format!(
         "SELECT b.id, b.name, b.slug, b.description, cat.name AS category, \
                 b.city, b.state, b.phone, b.website, b.rating, \
@@ -203,18 +215,19 @@ pub async fn search_businesses(
          {} {} \
          LIMIT ${} OFFSET ${}",
         cat_join, where_clause, order_clause,
-        wheres.len() + 1,
-        wheres.len() + 2
+        lo_start,
+        lo_start + 1
     );
 
     let mut data_q = sqlx::query_as::<_, SearchResult>(&data_sql);
 
+    // Bind WHERE params in closure order
     if let Some(ref dir_id) = qs.directory { data_q = data_q.bind(dir_id); }
     if let Some(ref q) = qs.q { if !q.is_empty() { data_q = data_q.bind(q); } }
     if let Some(ref cat) = qs.category { if !cat.is_empty() { data_q = data_q.bind(cat); } }
     if let Some(ref city) = qs.city { if !city.is_empty() { data_q = data_q.bind(city); } }
     if let Some(ref st) = qs.state { if !st.is_empty() { data_q = data_q.bind(st); } }
-    // For order clause tsquery
+    // ORDER BY tsquery param (duplicate of q for rank ordering)
     if has_q {
         if let Some(ref q) = qs.q {
             if !q.is_empty() {

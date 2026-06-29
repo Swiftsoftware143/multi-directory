@@ -21,6 +21,7 @@ pub mod monetization;
 pub mod email;
 pub mod public;
 pub mod search;
+pub mod categories;
 
 pub use directories::*;
 pub use businesses::*;
