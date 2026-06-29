@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medical Directory | Find Doctors & Healthcare Providers</title>
+  <meta name="description" content="Find doctors, specialists, clinics, and healthcare providers near you. Book appointments, read reviews.">
+  <meta property="og:title" content="Medical Directory">
+  <meta property="og:description" content="Find healthcare providers and medical specialists in your area.">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="application/ld+json">
+  { "@context": "https://schema.org", "@type": "MedicalBusiness", "name": "Medical Directory", "medicalSpecialty": "PrimaryCare" }
+  </script>
+  <style>
+    :root { --primary: #00796b; --primary-dark: #004d40; --accent: #26a69a; --bg: #f5faf9; --card: #ffffff; --text: #1a1a2e; --text-light: #6b7280; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    .hero { background: linear-gradient(135deg, #004d40, #00897b); color: white; padding: 60px 20px; text-align: center; }
+    .hero h1 { font-size: 2.5rem; margin-bottom: 8px; }
+    .hero p { font-size: 1.1rem; opacity: .9; margin-bottom: 24px; }
+    .hero input { width: 100%; max-width: 500px; padding: 14px 20px; border: none; border-radius: 50px; font-size: 1rem; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .specialties { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .specialty { padding: 8px 16px; border-radius: 50px; border: 2px solid var(--primary); background: transparent; color: var(--primary); font-weight: 500; cursor: pointer; transition: all .2s; font-size: .85rem; }
+    .specialty.active { background: var(--primary); color: white; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); gap: 20px; }
+    .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); cursor: pointer; transition: transform .2s; }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.1); }
+    .card-header { display: flex; gap: 16px; margin-bottom: 12px; }
+    .card-avatar { width: 56px; height: 56px; border-radius: 50%; background: #e0f2f1; color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0; }
+    .card-info { flex: 1; }
+    .card h3 { font-size: 1.1rem; margin-bottom: 2px; }
+    .card .specialty-badge { display: inline-block; padding: 2px 10px; border-radius: 50px; font-size: .75rem; font-weight: 600; background: #e0f2f1; color: var(--primary-dark); }
+    .card .stars { color: #f9a825; font-size: .85rem; margin: 4px 0; }
+    .card .meta { font-size: .85rem; color: var(--text-light); }
+    .card .accepting { display: inline-block; padding: 2px 8px; border-radius: 50px; font-size: .7rem; font-weight: 600; }
+    .card .accepting.yes { background: #e8f5e9; color: #2e7d32; }
+    .card .accepting.no { background: #fce4ec; color: #c62828; }
+    .map-wrap { height: 350px; border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
+    #map { height: 100%; width: 100%; }
+    .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: .85rem; border-top: 1px solid #eee; margin-top: 40px; }
+    @media (max-width:640px) { .hero h1 { font-size:1.8rem; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>🏥 Medical Directory</h1>
+    <p>Find doctors, specialists, and healthcare providers near you</p>
+    <input type="text" id="searchInput" placeholder="Search by name, specialty, or condition...">
+  </div>
+  <div class="container">
+    <div class="specialties" id="specialties"></div>
+    <div class="map-wrap"><div id="map"></div></div>
+    <div id="results" class="grid"></div>
+  </div>
+  <div class="footer">Powered by Multi-Directory Platform</div>
+  <script>
+    const SLUG = new URLSearchParams(location.search).get('slug') || 'medical-directory';
+    const API = '/api/v1';
+    let allBiz = [], map, activeSpecialty = '';
+
+    async function load() {
+      const [dir, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}`).then(r=>r.json()),
+        fetch(`${API}/directories/${SLUG}/businesses?page=1&per_page=50`).then(r=>r.json())
+      ]);
+      if (dir.branding) applyBranding(dir.branding);
+      allBiz = biz.data || biz;
+      renderSpecialties(allBiz);
+      renderMap(allBiz);
+      renderList(allBiz);
+    }
+
+    function applyBranding(b) { if (b.primary_color) document.documentElement.style.setProperty('--primary', b.primary_color); }
+
+    const SPECIALTIES = ['Primary Care', 'Cardiology', 'Dermatology', 'Pediatrics', 'Orthopedics', 'Neurology', 'Psychiatry', 'Dentistry', 'Optometry', 'Physical Therapy'];
+
+    function renderSpecialties(biz) {
+      const el = document.getElementById('specialties');
+      el.innerHTML = SPECIALTIES.map(s => `<button class="specialty" data-spec="${s}" onclick="filterSpecialty('${s}')">${s}</button>`).join('');
+    }
+
+    function filterSpecialty(spec) {
+      activeSpecialty = activeSpecialty === spec ? '' : spec;
+      document.querySelectorAll('.specialty').forEach(b => b.classList.toggle('active', b.dataset.spec === activeSpecialty));
+      renderList(allBiz);
+    }
+
+    function renderMap(biz) {
+      if (!map) { map = L.map('map').setView([39.8283,-98.5795],4); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map); }
+      const coords = biz.filter(b=>b.latitude&&b.longitude);
+      if(!coords.length) return;
+      const bounds=[];
+      coords.forEach(b=>{const m=L.marker([b.latitude,b.longitude]).addTo(map);m.bindPopup(`<b>${b.name}</b>`);bounds.push([b.latitude,b.longitude]);});
+      bounds.length>1?map.fitBounds(bounds,{padding:[30,30]}):map.setView(bounds[0],12);
+    }
+
+    function renderList(biz) {
+      const el = document.getElementById('results');
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      let f = biz;
+      if (q) f = f.filter(b => b.name.toLowerCase().includes(q)||(b.description||'').toLowerCase().includes(q));
+      if (!f.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No providers found.</div>'; return; }
+      const stars = n => '★'.repeat(Math.min(5,Math.round(n)))+'☆'.repeat(Math.max(0,5-Math.round(n)));
+      el.innerHTML = f.map(b => `
+        <div class="card" onclick="window.open('/#/business/${b.id}','_blank')">
+          <div class="card-header">
+            <div class="card-avatar">👨‍⚕️</div>
+            <div class="card-info">
+              <h3>${b.name}</h3>
+              <span class="specialty-badge">${b.category?.name||'General'}</span>
+              <div class="stars">${stars(b.rating||0)}</div>
+              <div class="meta">${[b.city,b.state].filter(Boolean).join(', ')}</div>
+              ${b.phone ? `<div class="meta">📞 ${b.phone}</div>` : ''}
+              <span class="accepting yes">✅ Accepting Patients</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input',()=>renderList(allBiz));
+    load();
+  </script>
+</body>
+</html>
