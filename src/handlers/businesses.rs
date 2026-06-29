@@ -6,6 +6,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use serde::Serialize;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -291,6 +292,62 @@ pub async fn update_business(
     .await?;
 
     Ok(Json(json!(business)))
+}
+
+/// GET /api/v1/listings
+
+#[derive(Debug, Serialize)]
+pub struct ListBusinessResult {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub phone: Option<String>,
+    pub website: Option<String>,
+    pub rating: Option<f64>,
+    pub directory_name: Option<String>,
+    pub directory_slug: Option<String>,
+}
+
+impl sqlx::FromRow<'_, sqlx::postgres::PgRow> for ListBusinessResult {
+    fn from_row(row: &sqlx::postgres::PgRow) -> sqlx::Result<Self> {
+        use sqlx::Row;
+        Ok(Self {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            slug: row.try_get("slug")?,
+            description: row.try_get("description")?,
+            category: row.try_get("category")?,
+            city: row.try_get("city")?,
+            state: row.try_get("state")?,
+            phone: row.try_get("phone")?,
+            website: row.try_get("website")?,
+            rating: row.try_get("rating")?,
+            directory_name: row.try_get("directory_name")?,
+            directory_slug: row.try_get("directory_slug")?,
+        })
+    }
+}
+
+pub async fn list_all_businesses(
+    State(s): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    let businesses = sqlx::query_as::<_, ListBusinessResult>(
+        "SELECT b.id, b.name, b.slug, b.description, cat.name AS category, \
+                b.city, b.state, b.phone, b.website, b.rating, \
+                d.name AS directory_name, d.slug AS directory_slug \
+         FROM businesses b \
+         LEFT JOIN directory_categories cat ON b.category_id = cat.id \
+         LEFT JOIN directories d ON b.directory_id = d.id \
+         ORDER BY b.name"
+    )
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(businesses))
 }
 
 /// DELETE /api/v1/directories/:slug/businesses/:business_id

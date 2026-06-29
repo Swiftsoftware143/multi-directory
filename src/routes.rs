@@ -70,6 +70,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/search/config", get(search::list_search_configs).post(search::create_search_config))
         .route("/search/config/:directory_id", get(search::get_search_config).put(search::update_search_config))
         .route("/search", get(search::search_businesses))
+        .route("/categories", get(categories::list_all_categories))
+        .route("/listings", get(businesses::list_all_businesses))
         // ??? Analytics routes (Phase 3 Task 2)
         .route("/analytics/track", post(analytics::track_event))
         .route("/analytics", get(analytics::list_events))
