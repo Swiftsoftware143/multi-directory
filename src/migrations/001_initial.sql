@@ -39,18 +39,7 @@ INSERT INTO tenants (id, name, slug, is_active)
 VALUES ('00000000-0000-0000-0000-000000000001', 'SwiftSoftware', 'swiftsoftware', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Password: SwiftAdmin2026! (argon2id hash)
-INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active)
-VALUES (
-    '00000000-0000-0000-0000-000000000002',
-    '00000000-0000-0000-0000-000000000001',
-    'admin@swiftsoftware.com',
-    '$argon2id$v=19$m=65536,t=3,p=4$qDhOIl0GNQ+Wv3TADxIhSQ$vnTEYlBJXSlQ63qLXjn/aLtCPDyhrZjk0JzEt3Mc+xI',
-    'Admin',
-    'super_admin',
-    true
-)
-ON CONFLICT (tenant_id, email) DO NOTHING;
+
 
 -- Migrations tracking
 CREATE TABLE IF NOT EXISTS _migrations (
