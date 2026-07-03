@@ -73,8 +73,7 @@ pub async fn register(
     let user_id = Uuid::new_v4();
     let now = Utc::now();
     sqlx::query(
-        r#"INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at)
-           VALUES (\x241, \x242, \x243, \x244, \x245, 'admin', true, \x246, \x246)"#,
+        "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at) VALUES (\x241, \x242, \x243, \x244, \x245, 'admin', true, \x246, \x246)",
     )
     .bind(user_id)
     .bind(tenant_id)
@@ -149,8 +148,13 @@ pub async fn login(
     )
     .bind(&req.email)
     .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::InvalidCredentials)?;
+    .await?;
+    
+    if row.is_none() {
+        tracing::warn!("Login failed: user not found for {}", &req.email);
+        return Err(AppError::InvalidCredentials);
+    }
+    let row = row.unwrap();
 
     use sqlx::Row;
     let user = User {
@@ -167,6 +171,7 @@ pub async fn login(
     };
 
     if !user.is_active {
+        tracing::warn!("Login failed: account deactivated for {}", &user.email);
         return Err(AppError::Forbidden("Account is deactivated".to_string()));
     }
 

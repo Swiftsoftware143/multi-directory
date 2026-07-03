@@ -150,9 +150,7 @@ pub async fn update_directory(
     }
 
     let directory = sqlx::query_as::<_, Directory>(
-        r#"UPDATE directories SET name = \x241, slug = \x242, description = \x243, status = \x244,
-           template = \x245, color_scheme = \x246::jsonb, updated_at = NOW()
-           WHERE id = \x247 RETURNING *"#
+        "UPDATE directories SET name = \x241, slug = \x242, description = \x243, status = \x244, template = \x245, color_scheme = \x246::jsonb, updated_at = NOW() WHERE id = \x247 RETURNING *"
     )
     .bind(&new_name)
     .bind(&new_slug)
@@ -340,8 +338,8 @@ pub async fn update_category(
     let new_sort_order = req.sort_order.unwrap_or(existing.sort_order.unwrap_or(0));
 
     let category = sqlx::query_as::<_, DirectoryCategory>(
-        r#"UPDATE directory_categories SET name = \x241, slug = \x242, sort_order = \x243
-           WHERE id = \x244 RETURNING *"#
+        "UPDATE directory_categories SET name = \x241, slug = \x242, sort_order = \x243
+           WHERE id = \x244 RETURNING *"
     )
     .bind(&new_name)
     .bind(&new_slug)

@@ -275,7 +275,7 @@ async fn provision_ssl_certificate(domain: &str) -> Result<(), String> {
 
     // Try certbot first
     let certbot = Command::new("certbot")
-        .args(["--nginx", "-d", domain, "--non-interactive", "--agree-tos", "-m", "admin@swiftsoftware.com"])
+        .args(["--nginx", "-d", domain, "--non-interactive", "--agree-tos", "-m", "swiftsoftware143@yahoo.com"])
         .output();
 
     match certbot {
