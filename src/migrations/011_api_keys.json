@@ -1,0 +1,10 @@
+{
+  "version": 11,
+  "name": "add_directory_api_keys",
+  "up": [
+    "ALTER TABLE directories ADD COLUMN IF NOT EXISTS api_config jsonb DEFAULT '{}'::jsonb"
+  ],
+  "down": [
+    "ALTER TABLE directories DROP COLUMN IF EXISTS api_config"
+  ]
+}
