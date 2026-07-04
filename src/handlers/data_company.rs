@@ -44,6 +44,7 @@ pub struct PlacesAutocompleteQuery {
     pub radius: Option<f64>,
     pub lat: Option<f64>,
     pub lng: Option<f64>,
+    pub directory_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,6 +59,7 @@ pub struct PlacesAutocompleteResult {
 #[derive(Debug, Deserialize)]
 pub struct PlaceDetailsQuery {
     pub place_id: String,
+    pub directory_id: Option<String>,
 }
 
 /// GET /api/v1/places/autocomplete — search Google Places for autocomplete suggestions
@@ -65,8 +67,7 @@ pub async fn places_autocomplete(
     State(state): State<AppState>,
     Query(q): Query<PlacesAutocompleteQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let api_key = std::env::var("GOOGLE_PLACES_API_KEY")
-        .map_err(|_| AppError::Internal("GOOGLE_PLACES_API_KEY not configured".to_string()))?;
+    let api_key = get_google_api_key(&state, q.directory_id.as_deref()).await?;
 
     // Check cache first
     let cached = sqlx::query_as::<_, GooglePlacesCache>(
@@ -159,8 +160,7 @@ pub async fn place_details(
     State(state): State<AppState>,
     Query(q): Query<PlaceDetailsQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let api_key = std::env::var("GOOGLE_PLACES_API_KEY")
-        .map_err(|_| AppError::Internal("GOOGLE_PLACES_API_KEY not configured".to_string()))?;
+    let api_key = get_google_api_key(&state, q.directory_id.as_deref()).await?;
 
     // Check cache
     let cached = sqlx::query_as::<_, GooglePlacesCache>(
@@ -250,6 +250,145 @@ pub struct BusinessVerification {
     pub verified_data: Option<serde_json::Value>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+// ── Yelp Fusion API ──
+
+#[derive(Debug, Deserialize)]
+pub struct YelpSearchQuery {
+    pub term: Option<String>,
+    pub location: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub categories: Option<String>,
+    pub limit: Option<u32>,
+    pub directory_id: Option<String>,  // used to look up per-directory API key
+}
+
+#[derive(Debug, Deserialize)]
+pub struct YelpDetailsQuery {
+    pub yelp_id: String,
+    pub directory_id: Option<String>,
+}
+
+/// GET /api/v1/yelp/search — search Yelp Fusion API for businesses
+pub async fn yelp_search(
+    State(state): State<AppState>,
+    Query(q): Query<YelpSearchQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let api_key = get_yelp_api_key(&state, q.directory_id.as_deref()).await?;
+
+    let mut url = format!("https://api.yelp.com/v3/businesses/search?limit={}", q.limit.unwrap_or(10));
+    if let Some(term) = &q.term {
+        url.push_str(&format!("&term={}", urlencoding(&term)));
+    }
+    if let Some(location) = &q.location {
+        url.push_str(&format!("&location={}", urlencoding(&location)));
+    }
+    if let Some(lat) = q.latitude {
+        if let Some(lon) = q.longitude {
+            url.push_str(&format!("&latitude={}&longitude={}", lat, lon));
+        }
+    }
+    if let Some(cats) = &q.categories {
+        url.push_str(&format!("&categories={}", urlencoding(&cats)));
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("Yelp request failed: {}", e)))?;
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("Yelp parse failed: {}", e)))?;
+
+    Ok(Json(body))
+}
+
+/// GET /api/v1/yelp/details — get detailed info for a Yelp business
+pub async fn yelp_details(
+    State(state): State<AppState>,
+    Query(q): Query<YelpDetailsQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let api_key = get_yelp_api_key(&state, q.directory_id.as_deref()).await?;
+
+    let url = format!("https://api.yelp.com/v3/businesses/{}", urlencoding(&q.yelp_id));
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("Yelp request failed: {}", e)))?;
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("Yelp parse failed: {}", e)))?;
+
+    Ok(Json(body))
+}
+
+/// Get Yelp API key — per-directory with env var fallback
+pub(crate) async fn get_yelp_api_key(state: &AppState, directory_id: Option<&str>) -> Result<String, AppError> {
+    // Check per-directory config first
+    if let Some(dir_id) = directory_id {
+        if let Ok(uid) = Uuid::parse_str(dir_id) {
+            let config: Option<serde_json::Value> = sqlx::query_scalar(
+                "SELECT api_config FROM directories WHERE id = $1"
+            )
+            .bind(uid)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| AppError::Internal("DB error reading directory config".to_string()))?
+            .flatten();
+
+            if let Some(cfg) = config {
+                if let Some(key) = cfg.get("yelp_api_key").and_then(|k| k.as_str()) {
+                    if !key.is_empty() && key != "disabled" {
+                        return Ok(key.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback to env var
+    std::env::var("YELP_API_KEY")
+        .map_err(|_| AppError::Internal("YELP_API_KEY not configured (set globally or per-directory)".to_string()))
+}
+
+/// Get Google Places API key — per-directory with env var fallback
+pub(crate) async fn get_google_api_key(state: &AppState, directory_id: Option<&str>) -> Result<String, AppError> {
+    if let Some(dir_id) = directory_id {
+        if let Ok(uid) = Uuid::parse_str(dir_id) {
+            let config: Option<serde_json::Value> = sqlx::query_scalar(
+                "SELECT api_config FROM directories WHERE id = $1"
+            )
+            .bind(uid)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| AppError::Internal("DB error reading directory config".to_string()))?
+            .flatten();
+
+            if let Some(cfg) = config {
+                if let Some(key) = cfg.get("google_places_api_key").and_then(|k| k.as_str()) {
+                    if !key.is_empty() && key != "disabled" {
+                        return Ok(key.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    std::env::var("GOOGLE_PLACES_API_KEY")
+        .map_err(|_| AppError::Internal("GOOGLE_PLACES_API_KEY not configured".to_string()))
 }
 
 #[derive(Debug, Deserialize)]

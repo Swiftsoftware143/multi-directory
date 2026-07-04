@@ -3,9 +3,9 @@ use axum::{
     Router,
     middleware,
 };
+use std::sync::Arc;
 use crate::AppState;
 use crate::handlers::*;
-use tower_http::services::fs::ServeDir;
 
 pub fn create_router(s: AppState) -> Router {
     // ??? Public API routes (no auth needed)
@@ -148,6 +148,8 @@ pub fn create_router(s: AppState) -> Router {
         // ??? Phase 4: Data Company — Google Places, verifications, enrichment, bulk export
         .route("/places/autocomplete", get(data_company::places_autocomplete))
         .route("/places/details", get(data_company::place_details))
+        .route("/yelp/search", get(data_company::yelp_search))
+        .route("/yelp/details", get(data_company::yelp_details))
         .route("/verifications", get(data_company::list_verifications).post(data_company::create_verification))
         .route("/verifications/:id", get(data_company::get_verification).put(data_company::update_verification))
         .route("/businesses/:id/verifications", get(data_company::business_verifications))
@@ -195,13 +197,91 @@ pub fn create_router(s: AppState) -> Router {
         "./frontend".to_string()
     };
 
-    // ??? Combine: /api/v1/* API routes + SPA fallback at /*
+    // ??? Load SPA index.html into memory for fast fallback
+    let index_path = std::path::Path::new(&frontend_path).join("index.html");
+    let index_html = std::fs::read_to_string(&index_path).unwrap_or_else(|_| {
+        "<!DOCTYPE html><html><head><title>Multi-Directory</title></head><body><h1>Multi-Directory</h1><p>App starting...</p></body></html>".to_string()
+    });
+
+    // Load login.html or fall back to index.html
+    let login_path = std::path::Path::new(&frontend_path).join("login.html");
+    let login_html = std::fs::read_to_string(&login_path).unwrap_or_else(|_| {
+        index_html.clone()
+    });
+
+    let index_content: Arc<str> = Arc::from(index_html);
+    let login_content: Arc<str> = Arc::from(login_html);
+
+    // ??? Clone index_content for the second closure
+    let index_content2 = index_content.clone();
+
+    // ??? Combine: /api/v1/* API routes + static file server at /* + SPA fallback
     let app = Router::new()
         .nest("/api/v1", public_routes)
         .nest("/api/v1/admin", protected_routes)
         .fallback_service(
-            ServeDir::new(&frontend_path)
-                .append_index_html_on_directories(true)
+            tower::service_fn(move |req: axum::http::Request<axum::body::Body>| {
+                let frontend = frontend_path.clone();
+                let index_clone = index_content.clone();
+                let login_clone = login_content.clone();
+                let index_clone2 = index_content2.clone();
+                async move {
+                    let path = req.uri().path();
+
+                    // ??? Serve clean login page for admin/login and login routes
+                    if path == "/admin/login" || path == "/login" || path == "/admin/" || path == "/admin" {
+                        return Ok::<_, std::convert::Infallible>(
+                            axum::response::Response::builder()
+                                .status(axum::http::StatusCode::OK)
+                                .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                .body(axum::body::Body::from(login_clone.as_ref().to_string()))
+                                .unwrap()
+                        );
+                    }
+
+                    let clean_path = path.trim_start_matches('/');
+                    let file_path = if clean_path.is_empty() {
+                        std::path::Path::new(&frontend).join("index.html")
+                    } else {
+                        std::path::Path::new(&frontend).join(clean_path)
+                    };
+
+                    if file_path.exists() && file_path.is_file() {
+                        match tokio::fs::read(&file_path).await {
+                            Ok(content) => {
+                                let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                                let mime = match ext {
+                                    "html" => "text/html; charset=utf-8",
+                                    "css" => "text/css; charset=utf-8",
+                                    "js" => "application/javascript; charset=utf-8",
+                                    "json" => "application/json",
+                                    "png" => "image/png",
+                                    "jpg" | "jpeg" => "image/jpeg",
+                                    "svg" => "image/svg+xml",
+                                    "ico" => "image/x-icon",
+                                    "woff2" => "font/woff2",
+                                    _ => "application/octet-stream",
+                                };
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(axum::http::header::CONTENT_TYPE, mime)
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap()
+                                );
+                            }
+                            Err(_) => {}
+                        }
+                    }
+
+                    // SPA fallback: serve full index.html for all unmatched routes
+                    Ok(axum::response::Response::builder()
+                        .status(axum::http::StatusCode::OK)
+                        .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                        .body(axum::body::Body::from(index_clone2.as_ref().to_string()))
+                        .unwrap())
+                }
+            })
         )
         .with_state(s);
 
