@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{{directory.name}} - Hotels &amp; Hospitality Directory</title>
+<meta name="description" content="Find hotels, B&amp;Bs, vacation rentals, and event venues in {{directory.location}}">
+<meta property="og:title" content="{{directory.name}} - Hospitality Directory">
+<meta property="og:description" content="Discover {{directory.name}} — hotels, B&amp;Bs, vacation rentals, and event venues in {{directory.location}}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://{{directory.slug}}.directory">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{directory.name}} - Hospitality Directory">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"LodgingBusiness","name":"{{directory.name}}","description":"{{directory.description}}","areaServed":"{{directory.location}}"}</script>
+<style>:root{--primary:{{colors.primary}};--secondary:{{colors.secondary}};--accent:{{colors.accent}};--bg:{{colors.background}};--text:{{colors.text}};--heading:{{colors.heading}};--muted:{{colors.muted}};--border:{{colors.border}}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:1100px;margin:0 auto;padding:0 20px}
+.hero{background:linear-gradient(135deg,#7c3aed,#a855f7);padding:50px 0;color:white;text-align:center}
+.hero .icon{font-size:3rem;margin-bottom:8px}
+.hero h1{font-size:2.2rem;margin-bottom:8px;color:white}
+.hero p{font-size:1.1rem;opacity:.9;color:white;margin-bottom:20px}
+.search-bar{display:flex;gap:10px;margin:25px 0;flex-wrap:wrap}
+.search-bar input{flex:1;min-width:200px;padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem}
+.search-bar select{padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem;background:white}
+.search-bar button{padding:10px 22px;background:var(--primary);color:white;border:none;border-radius:8px;cursor:pointer}
+.hospitality-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px}
+.card{background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all .2s}
+.card:hover{box-shadow:0 8px 24px rgba(124,58,237,0.1);transform:translateY(-2px)}
+.card-img{height:160px;background:linear-gradient(135deg,#c4b5fd,#ddd6fe);display:flex;align-items:center;justify-content:center;font-size:3rem;position:relative}
+.card-img .price-badge{position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.6);color:white;padding:4px 10px;border-radius:6px;font-size:.8rem;font-weight:600}
+.card-body{padding:18px}
+.card-body h3{color:var(--heading);margin-bottom:4px}
+.card-body h3 a{color:#5b21b6;text-decoration:none}
+.card-body h3 a:hover{text-decoration:underline}
+.card-body .stars{color:#f59e0b;font-size:.9rem;margin-bottom:2px}
+.card-body .info{color:var(--muted);font-size:.9rem;margin:4px 0}
+.card-body .info p{margin:2px 0}
+.card-body .amenities{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0}
+.card-body .amenity-badge{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:6px;font-size:.72rem;background:#ede9fe;color:#5b21b6}
+.card-body .contact{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.card-body .contact a{padding:5px 14px;border-radius:6px;font-size:.85rem;text-decoration:none;font-weight:500;flex:1;text-align:center}
+.card-body .contact .btn-book{background:#7c3aed;color:white}
+.card-body .contact .btn-call{background:#ede9fe;color:#5b21b6}
+.card-body .contact .btn-website{background:#fef3c7;color:#92400e}
+.empty{text-align:center;padding:50px;color:var(--muted)}
+.footer{text-align:center;padding:30px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border);margin-top:30px}
+@media(max-width:640px){.hero h1{font-size:1.6rem}.hospitality-grid{grid-template-columns:1fr}}
+</style></head><body>
+<section class="hero"><div class="container"><div class="icon">&#127968;</div><h1>{{directory.name}}</h1><p>{{directory.description}}</p></div></section>
+<div class="container">
+<form class="search-bar" method="GET">
+<input type="text" name="q" placeholder="Search hotels, venues, rentals..." value="{{query.q}}">
+<select name="category"><option value="">All Types</option>{{#each categories}}<option value="{{slug}}">{{name}}</option>{{/each}}</select>
+<button type="submit">Search</button>
+</form>
+{{#if businesses}}<div class="hospitality-grid">{{#each businesses}}
+<div class="card"><div class="card-img">&#127968;{{#if meta.price_range}}<span class="price-badge">{{meta.price_range}}</span>{{/if}}</div><div class="card-body"><h3><a href="/{{../directory.slug}}/{{slug}}">{{name}}</a></h3>{{#if rating}}<div class="stars">&#9733; {{rating}} ({{review_count}} reviews)</div>{{/if}}<div class="info"><p>{{city}}, {{state}}</p>{{#if address}}<p>{{address}}</p>{{/if}}</div>{{#if meta.amenities}}<div class="amenities"><span class="amenity-badge">&#10003; {{meta.amenities}}</span></div>{{/if}}<div class="contact">{{#if meta.book_url}}<a href="{{meta.book_url}}" class="btn-book">&#128197; Book Now</a>{{/if}}{{#if phone}}<a href="tel:{{phone}}" class="btn-call">&#128222; Call</a>{{/if}}{{#if website}}<a href="{{website}}" class="btn-website">&#127760; Website</a>{{/if}}</div></div></div>{{/each}}</div>{{else}}<div class="empty"><h3>No listings found</h3><p>Try adjusting your search criteria.</p></div>{{/if}}
+</div>
+<div class="footer"><p>&copy; {{directory.name}} — Hospitality Directory</p></div>
+</body></html>

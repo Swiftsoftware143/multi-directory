@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{{directory.name}} - Education &amp; Learning Directory</title>
+<meta name="description" content="Find schools, tutoring centers, colleges, and training programs in {{directory.location}}">
+<meta property="og:title" content="{{directory.name}} - Education Directory">
+<meta property="og:description" content="Discover {{directory.name}} — schools, tutoring, colleges, and training centers in {{directory.location}}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://{{directory.slug}}.directory">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{directory.name}} - Education Directory">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"EducationEvent","name":"{{directory.name}}","description":"{{directory.description}}","location":"{{directory.location}}"}</script>
+<style>:root{--primary:{{colors.primary}};--secondary:{{colors.secondary}};--accent:{{colors.accent}};--bg:{{colors.background}};--text:{{colors.text}};--heading:{{colors.heading}};--muted:{{colors.muted}};--border:{{colors.border}}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:1100px;margin:0 auto;padding:0 20px}
+.hero{background:linear-gradient(135deg,#1d4ed8,#3b82f6);padding:50px 0;color:white;text-align:center}
+.hero .icon{font-size:3rem;margin-bottom:8px}
+.hero h1{font-size:2.2rem;margin-bottom:8px;color:white}
+.hero p{font-size:1.1rem;opacity:.9;color:white}
+.search-bar{display:flex;gap:10px;margin:25px 0;flex-wrap:wrap}
+.search-bar input{flex:1;min-width:200px;padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem}
+.search-bar select{padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem;background:white}
+.search-bar button{padding:10px 22px;background:var(--primary);color:white;border:none;border-radius:8px;cursor:pointer}
+.categories{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.categories .subject{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#dbeafe;color:#1e40af;border-radius:20px;font-size:.85rem;text-decoration:none;font-weight:500;transition:background .2s}
+.categories .subject:hover{background:#bfdbfe}
+.institutions{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px}
+.card{background:white;border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s}
+.card:hover{box-shadow:0 4px 16px rgba(0,0,0,0.08)}
+.card .icon-wrap{font-size:2rem;margin-bottom:8px}
+.card h3{color:var(--heading);margin-bottom:4px}
+.card h3 a{color:#1e40af;text-decoration:none}
+.card h3 a:hover{text-decoration:underline}
+.card .rating{color:var(--accent);font-size:.9rem}
+.card .info{color:var(--muted);font-size:.9rem;margin:4px 0}
+.card .info p{margin:2px 0}
+.card .contact{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.card .contact a{padding:5px 12px;border-radius:6px;font-size:.85rem;text-decoration:none;font-weight:500}
+.card .contact .btn-visit{background:#1d4ed8;color:white}
+.card .contact .btn-call{background:#e0e7ff;color:#3730a3}
+.card .contact .btn-email{background:#fef3c7;color:#92400e}
+.empty{text-align:center;padding:50px;color:var(--muted)}
+.footer{text-align:center;padding:30px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border);margin-top:30px}
+@media(max-width:640px){.hero h1{font-size:1.6rem}.institutions{grid-template-columns:1fr}}
+</style></head><body>
+<section class="hero"><div class="container"><div class="icon">&#127891;</div><h1>{{directory.name}}</h1><p>{{directory.description}}</p></div></section>
+<div class="container">
+<form class="search-bar" method="GET">
+<input type="text" name="q" placeholder="Search schools, subjects, tutors..." value="{{query.q}}">
+<select name="category"><option value="">All Subjects</option>{{#each categories}}<option value="{{slug}}">{{name}}</option>{{/each}}</select>
+<button type="submit">Search</button>
+</form>
+{{#if categories}}<div class="categories">{{#each categories}}<a href="?category={{slug}}" class="subject">&#128218; {{name}}</a>{{/each}}</div>{{/if}}
+{{#if businesses}}<div class="institutions">{{#each businesses}}
+<div class="card"><div class="icon-wrap">&#127891;</div><h3><a href="/{{../directory.slug}}/{{slug}}">{{name}}</a></h3>{{#if rating}}<div class="rating">&#9733; {{rating}} ({{review_count}} reviews)</div>{{/if}}<div class="info"><p>{{city}}, {{state}}</p>{{#if description}}<p>{{description}}</p>{{/if}}</div>{{#if meta.subjects}}<p class="subject-tag" style="display:inline-block;padding:3px 8px;border-radius:6px;font-size:.78rem;background:#dbeafe;color:#1e40af;margin:8px 0">&#128218; {{meta.subjects}}</p>{{/if}}<div class="contact">{{#if website}}<a href="{{website}}" class="btn-visit">&#127760; Visit</a>{{/if}}{{#if phone}}<a href="tel:{{phone}}" class="btn-call">&#128222; Call</a>{{/if}}{{#if meta.email}}<a href="mailto:{{meta.email}}" class="btn-email">&#9993; Email</a>{{/if}}</div></div>{{/each}}</div>{{else}}<div class="empty"><h3>No institutions found</h3><p>Try adjusting your search or filters.</p></div>{{/if}}
+</div>
+<div class="footer"><p>&copy; {{directory.name}} — Education Directory</p></div>
+</body></html>

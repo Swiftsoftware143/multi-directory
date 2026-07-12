@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{{directory.name}} - Automotive Directory</title>
+<meta name="description" content="Find auto dealers, repair shops, body shops, and parts stores in {{directory.location}}">
+<meta property="og:title" content="{{directory.name}} - Automotive Directory">
+<meta property="og:description" content="Discover {{directory.name}} — auto dealerships, repair shops, body shops, and parts stores in {{directory.location}}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://{{directory.slug}}.directory">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{directory.name}} - Automotive Directory">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"AutoDealer","name":"{{directory.name}}","description":"{{directory.description}}","areaServed":"{{directory.location}}"}</script>
+<style>:root{--primary:{{colors.primary}};--secondary:{{colors.secondary}};--accent:{{colors.accent}};--bg:{{colors.background}};--text:{{colors.text}};--heading:{{colors.heading}};--muted:{{colors.muted}};--border:{{colors.border}}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:1100px;margin:0 auto;padding:0 20px}
+.hero{background:linear-gradient(135deg,#991b1b,#dc2626);padding:50px 0;color:white;text-align:center}
+.hero .icon{font-size:3rem;margin-bottom:8px}
+.hero h1{font-size:2.2rem;margin-bottom:8px;color:white}
+.hero p{font-size:1.1rem;opacity:.9;color:white}
+.search-bar{display:flex;gap:10px;margin:25px 0;flex-wrap:wrap}
+.search-bar input{flex:1;min-width:200px;padding:10px 14px;border:2px solid #fecaca;border-radius:8px;font-size:1rem}
+.search-bar select{padding:10px 14px;border:2px solid #fecaca;border-radius:8px;font-size:1rem;background:white}
+.search-bar button{padding:10px 22px;background:#dc2626;color:white;border:none;border-radius:8px;cursor:pointer}
+.automotive-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:20px}
+.card{background:white;border:1px solid #fecaca;border-radius:12px;overflow:hidden;transition:box-shadow .2s}
+.card:hover{box-shadow:0 4px 16px rgba(220,38,38,0.1)}
+.card-img{height:130px;background:linear-gradient(135deg,#fca5a5,#fecaca);display:flex;align-items:center;justify-content:center;font-size:3rem}
+.card-body{padding:18px}
+.card-body h3{color:var(--heading);margin-bottom:4px}
+.card-body h3 a{color:#991b1b;text-decoration:none}
+.card-body h3 a:hover{text-decoration:underline}
+.card-body .type-badge{display:inline-block;padding:3px 10px;border-radius:8px;font-size:.78rem;background:#fee2e2;color:#991b1b;margin-bottom:6px}
+.card-body .rating{color:#f59e0b;font-size:.9rem}
+.card-body .info{color:#6b7280;font-size:.9rem;margin:4px 0}
+.card-body .hours{color:#6b7280;font-size:.85rem;margin:4px 0}
+.card-body .services{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0}
+.card-body .service-tag{padding:2px 8px;border-radius:6px;font-size:.72rem;background:#1f2937;color:white}
+.card-body .contact{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.card-body .contact a{padding:5px 14px;border-radius:6px;font-size:.85rem;text-decoration:none;font-weight:500}
+.card-body .contact .btn-call{background:#dc2626;color:white}
+.card-body .contact .btn-website{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.card-body .contact .btn-map{background:#f3f4f6;color:#374151}
+.map-section{margin:24px 0;background:#1f2937;border-radius:12px;padding:24px;color:white;text-align:center}
+.map-section h3{color:white;margin-bottom:4px}
+.map-section p{color:#9ca3af;margin-bottom:12px}
+.map-section a{display:inline-block;padding:10px 24px;background:#dc2626;color:white;border-radius:8px;text-decoration:none}
+.empty{text-align:center;padding:50px;color:#6b7280}
+.footer{text-align:center;padding:30px;color:#6b7280;font-size:.85rem;border-top:1px solid #fecaca;margin-top:30px}
+@media(max-width:640px){.hero h1{font-size:1.6rem}.automotive-grid{grid-template-columns:1fr}}
+</style></head><body>
+<section class="hero"><div class="container"><div class="icon">&#128663;</div><h1>{{directory.name}}</h1><p>{{directory.description}}</p></div></section>
+<div class="container">
+<form class="search-bar" method="GET">
+<input type="text" name="q" placeholder="Search dealers, shops, parts..." value="{{query.q}}">
+<select name="category"><option value="">All Categories</option>{{#each categories}}<option value="{{slug}}">{{name}}</option>{{/each}}</select>
+<button type="submit">Search</button>
+</form>
+{{#if businesses}}<div class="automotive-grid">{{#each businesses}}
+<div class="card"><div class="card-img">&#128663;</div><div class="card-body"><h3><a href="/{{../directory.slug}}/{{slug}}">{{name}}</a></h3>{{#if category}}<span class="type-badge">{{category.name}}</span>{{/if}}{{#if rating}}<div class="rating">&#9733; {{rating}} ({{review_count}})</div>{{/if}}<div class="info"><p>{{city}}, {{state}}</p>{{#if address}}<p>{{address}}</p>{{/if}}</div>{{#if meta.hours}}<div class="hours">&#128338; {{meta.hours}}</div>{{/if}}{{#if meta.services}}<div class="services"><span class="service-tag">{{meta.services}}</span></div>{{/if}}<div class="contact">{{#if phone}}<a href="tel:{{phone}}" class="btn-call">&#128222; Call</a>{{/if}}{{#if website}}<a href="{{website}}" class="btn-website">&#127760; Website</a>{{/if}}{{#if latitude}}<a href="https://maps.google.com/?q={{latitude}},{{longitude}}" class="btn-map">&#128205; Map</a>{{/if}}</div></div></div>{{/each}}</div>{{else}}<div class="empty"><h3>No listings found</h3><p>Try adjusting your search or browse a different category.</p></div>{{/if}}
+<div class="map-section"><h3>&#128205; Find Auto Services Near You</h3><p>View all {{directory.name}} locations on the map</p><a href="https://maps.google.com/?q={{directory.location}}+automotive">View Map</a></div>
+</div>
+<div class="footer"><p>&copy; {{directory.name}} — Automotive Directory</p></div>
+</body></html>
