@@ -161,7 +161,10 @@ pub fn create_router(s: AppState) -> Router {
         .route("/events/unprocessed", get(automation::unprocessed_events))
         .route("/events/:id/process", post(automation::mark_event_processed))
         .route("/n8n/webhook", post(automation::n8n_webhook_receiver))
-        .route("/n8n/health", get(automation::n8n_health));
+        .route("/n8n/health", get(automation::n8n_health))
+        .route("/available-providers", get(provider_keys_handler::list_available_providers))
+        // ??? Public industry listing (for signup forms)
+        .route("/industries/available", get(industries::list_available_industries));
 
     // ??? Protected API routes (with auth middleware)
     let protected_routes = Router::new()
@@ -184,6 +187,14 @@ pub fn create_router(s: AppState) -> Router {
         .route("/webhooks", get(api_complete::list_webhooks).post(api_complete::create_webhook))
         .route("/webhooks/:id", get(api_complete::get_webhook).put(api_complete::update_webhook).delete(api_complete::delete_webhook))
         .route("/webhooks/:id/deliveries", get(api_complete::list_webhook_deliveries))
+        // ??? Provider keys management
+        .route("/provider-keys", get(provider_keys_handler::list_provider_keys).post(provider_keys_handler::upsert_provider_key))
+        .route("/provider-keys/:provider", delete(provider_keys_handler::delete_provider_key))
+        // ??? Industry dashboard routes
+        .route("/industries/available", get(industries::list_available_industries))
+        .route("/industries", get(industries::list_user_industries).post(industries::set_user_industry))
+        .route("/industries/:slug", delete(industries::remove_user_industry))
+        .route("/industries/limit", get(industries::get_industry_limit))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             crate::auth::middleware::auth_middleware,

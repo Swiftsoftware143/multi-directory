@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fitness Directory | Find Gyms, Studios & Trainers</title>
+  <meta name="description" content="Discover gyms, fitness studios, personal trainers, and wellness centers near you. Compare classes, pricing, and reviews.">
+  <meta property="og:title" content="Fitness & Wellness Directory">
+  <meta property="og:description" content="Find gyms, studios, trainers, and wellness centers in your area.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Fitness & Wellness Directory">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "itemListElement": [],
+    "name": "Fitness Directory"
+  }
+  </script>
+  <style>
+    :root { --primary: #059669; --primary-dark: #065f46; --primary-light: #d1fae5; --accent: #f59e0b; --bg: #f0fdf4; --card: #ffffff; --text: #1a1a2e; --text-light: #6b7280; --radius: 12px; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+    .hero { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); color: white; padding: 60px 20px; text-align: center; }
+    .hero .icon { font-size: 3.5rem; margin-bottom: 8px; }
+    .hero h1 { font-size: 2.5rem; margin-bottom: 8px; }
+    .hero p { font-size: 1.1rem; opacity: .9; margin-bottom: 24px; }
+    .hero input { width: 100%; max-width: 500px; padding: 14px 20px; border: none; border-radius: 50px; font-size: 1rem; outline: none; }
+    .hero .cta-btn { display: inline-block; margin-top: 16px; padding: 12px 32px; background: white; color: var(--primary-dark); border-radius: 50px; font-weight: 600; text-decoration: none; font-size: 1rem; transition: transform .2s; }
+    .hero .cta-btn:hover { transform: scale(1.05); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+    .controls select { padding: 10px 16px; border: 1px solid #ddd; border-radius: 8px; background: white; font-size: .9rem; cursor: pointer; }
+    .class-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+    .class-btn { padding: 6px 16px; border: 1px solid var(--primary); border-radius: 20px; background: white; color: var(--primary); font-size: .82rem; cursor: pointer; font-weight: 500; transition: all .2s; }
+    .class-btn:hover, .class-btn.active { background: var(--primary); color: white; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-bottom: 32px; }
+    .card { background: var(--card); border-radius: var(--radius); padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: all .2s; cursor: pointer; border: 1px solid transparent; }
+    .card:hover { border-color: var(--primary); box-shadow: 0 8px 24px rgba(5,150,105,0.12); transform: translateY(-4px); }
+    .card .icon-wrap { font-size: 2.2rem; margin-bottom: 6px; }
+    .card h3 { font-size: 1.1rem; margin-bottom: 2px; color: var(--primary-dark); }
+    .card .stars { color: var(--accent); font-size: .85rem; margin-bottom: 4px; }
+    .card .meta { font-size: .85rem; color: var(--text-light); margin-bottom: 4px; }
+    .card .class-tags { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+    .card .class-tag { padding: 3px 8px; border-radius: 6px; font-size: .72rem; background: var(--primary-light); color: var(--primary-dark); }
+    .card .pricing { display: flex; gap: 12px; margin: 8px 0; font-size: .85rem; }
+    .card .pricing .price-label { color: var(--text-light); }
+    .card .pricing .price-value { font-weight: 600; color: var(--primary); }
+    .card .actions { display: flex; gap: 8px; }
+    .card .actions a { flex: 1; text-align: center; padding: 8px; border-radius: 8px; font-size: .85rem; text-decoration: none; font-weight: 500; }
+    .btn-visit { background: var(--primary); color: white; }
+    .btn-call { background: var(--primary-light); color: var(--primary-dark); }
+    .btn-book { background: #fef3c7; color: #92400e; }
+    .map-wrap { height: 350px; border-radius: var(--radius); margin-bottom: 24px; overflow: hidden; }
+    #map { height: 100%; width: 100%; }
+    .skeleton { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-card { height: 280px; }
+    .pagination { display: flex; justify-content: center; gap: 8px; }
+    .pagination button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer; }
+    .pagination button.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .empty { text-align: center; padding: 60px 20px; color: var(--text-light); }
+    .empty .icon { font-size: 3rem; margin-bottom: 12px; }
+    .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: .85rem; border-top: 1px solid #eee; margin-top: 40px; }
+    @media (max-width: 640px) { .hero h1 { font-size: 1.8rem; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="icon">💪</div>
+    <h1>Fitness & Wellness Directory</h1>
+    <p>Find gyms, studios, trainers, and wellness centers near you</p>
+    <input type="text" id="searchInput" placeholder="Search gyms, classes, trainers...">
+    <a href="#" class="cta-btn" onclick="document.getElementById('searchInput').focus();return false;">Find Your Fit</a>
+  </div>
+  <div class="container">
+    <div class="controls">
+      <select id="categoryFilter"><option value="">All Categories</option></select>
+      <select id="cityFilter"><option value="">All Locations</option></select>
+      <select id="ratingFilter"><option value="all">Any Rating</option><option value="4">4+ Stars</option><option value="3">3+ Stars</option></select>
+    </div>
+    <div class="class-filters" id="classFilters"></div>
+    <div class="map-wrap"><div id="map"></div></div>
+    <div id="results" class="grid"></div>
+    <div id="pagination" class="pagination"></div>
+  </div>
+  <div class="footer">Powered by Multi-Directory Platform</div>
+  <script>
+    const SLUG = new URLSearchParams(location.search).get('slug') || 'fitness-directory';
+    const API = '/api/v1';
+    let page = 1, map, allBiz = [];
+
+    async function load() {
+      document.getElementById('results').innerHTML = '<div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">'+Array(6).fill('<div class="skeleton skeleton-card"></div>').join('')+'</div>';
+      const [dir, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}`).then(r => r.json()).catch(() => ({})),
+        fetch(`${API}/directories/${SLUG}/businesses?page=${page}&per_page=50`).then(r => r.json()).catch(() => ({data: []}))
+      ]);
+      if (dir.branding) applyBranding(dir.branding);
+      allBiz = biz.data || biz || [];
+      renderFilters(allBiz);
+      renderClassFilters(allBiz);
+      renderMap(allBiz);
+      renderList(allBiz);
+    }
+
+    function applyBranding(b) {
+      if (b.primary_color) document.documentElement.style.setProperty('--primary', b.primary_color);
+    }
+
+    function renderFilters(biz) {
+      const cats = [...new Set(biz.map(b => b.category?.name || 'All').filter(Boolean))];
+      const cities = [...new Set(biz.map(b => b.city).filter(Boolean))];
+      const catSel = document.getElementById('categoryFilter');
+      const citySel = document.getElementById('cityFilter');
+      cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catSel.appendChild(o); });
+      cities.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; citySel.appendChild(o); });
+    }
+
+    function renderClassFilters(biz) {
+      const classes = new Set();
+      biz.forEach(b => { if (b.meta && b.meta.classes) b.meta.classes.split(',').forEach(c => classes.add(c.trim())); });
+      const bar = document.getElementById('classFilters');
+      [...classes].slice(0, 10).forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = 'class-btn';
+        btn.textContent = c;
+        btn.onclick = () => { btn.classList.toggle('active'); renderList(allBiz); };
+        bar.appendChild(btn);
+      });
+    }
+
+    function renderMap(biz) {
+      if (!map) {
+        map = L.map('map').setView([39.8283, -98.5795], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      }
+      const coords = biz.filter(b => b.latitude && b.longitude);
+      if (!coords.length) return;
+      const icon = L.divIcon({html: '💪', iconSize: [30,30], className: 'fit-marker'});
+      const bounds = [];
+      coords.forEach(b => {
+        const m = L.marker([b.latitude, b.longitude], {icon}).addTo(map);
+        m.bindPopup(`<b>${b.name}</b><br>${b.city||''}<br>⭐ ${b.rating||'N/A'}`);
+        bounds.push([b.latitude, b.longitude]);
+      });
+      if (bounds.length > 1) map.fitBounds(bounds, {padding:[30,30]});
+      else if (bounds.length === 1) map.setView(bounds[0], 12);
+    }
+
+    function renderList(biz) {
+      const el = document.getElementById('results');
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const cat = document.getElementById('categoryFilter').value;
+      const city = document.getElementById('cityFilter').value;
+      const ratingFilter = document.getElementById('ratingFilter').value;
+      const activeClasses = [...document.querySelectorAll('#classFilters .class-btn.active')].map(b => b.textContent);
+      let filtered = biz;
+      if (q) filtered = filtered.filter(b => b.name.toLowerCase().includes(q) || (b.description||'').toLowerCase().includes(q));
+      if (cat) filtered = filtered.filter(b => (b.category?.name || '') === cat);
+      if (city) filtered = filtered.filter(b => b.city === city);
+      if (ratingFilter !== 'all') filtered = filtered.filter(b => (b.rating||0) >= parseInt(ratingFilter));
+      if (activeClasses.length) filtered = filtered.filter(b => {
+        const cls = (b.meta?.classes||'');
+        return activeClasses.some(c => cls.includes(c));
+      });
+      if (!filtered.length) { el.innerHTML = '<div class="empty"><div class="icon">💪</div><h3>No results found</h3><p>Try adjusting your search or filters.</p></div>'; return; }
+      el.innerHTML = filtered.map(b => `
+        <div class="card" onclick="window.open('/#/business/${b.id}','_blank')">
+          <div class="icon-wrap">💪</div>
+          <div class="stars">${'★'.repeat(Math.round(b.rating||0))}${'☆'.repeat(5-Math.round(b.rating||0))} ${b.rating ? '('+b.review_count+' reviews)' : ''}</div>
+          <h3>${b.name}</h3>
+          <div class="meta">${[b.city,b.state].filter(Boolean).join(', ')}${b.meta?.trainer ? ' · Trainer: '+b.meta.trainer : ''}</div>
+          ${b.meta?.classes ? `<div class="class-tags">${b.meta.classes.split(',').map(c => `<span class="class-tag">${c.trim()}</span>`).join('')}</div>` : ''}
+          <div class="pricing">
+            ${b.meta?.price_range ? `<span><span class="price-label">💰</span> <span class="price-value">${b.meta.price_range}</span></span>` : ''}
+            ${b.meta?.membership ? `<span><span class="price-label">📋</span> ${b.meta.membership}</span>` : ''}
+          </div>
+          <div class="actions">
+            ${b.website ? `<a href="${b.website}" target="_blank" class="btn-visit">🌐 Visit</a>` : ''}
+            ${b.phone ? `<a href="tel:${b.phone}" class="btn-call">📞 Call</a>` : ''}
+            ${b.meta?.book_url ? `<a href="${b.meta.book_url}" target="_blank" class="btn-book">📅 Book</a>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input', () => renderList(allBiz));
+    document.getElementById('categoryFilter').addEventListener('change', () => renderList(allBiz));
+    document.getElementById('cityFilter').addEventListener('change', () => renderList(allBiz));
+    document.getElementById('ratingFilter').addEventListener('change', () => renderList(allBiz));
+    load();
+  </script>
+</body>
+</html>

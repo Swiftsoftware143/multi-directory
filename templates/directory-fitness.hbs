@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{{directory.name}} - Fitness &amp; Wellness Directory</title>
+<meta name="description" content="Find gyms, fitness studios, personal trainers, and wellness centers in {{directory.location}}">
+<meta property="og:title" content="{{directory.name}} - Fitness Directory">
+<meta property="og:description" content="Discover {{directory.name}} — gyms, studios, trainers, and wellness centers in {{directory.location}}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://{{directory.slug}}.directory">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{directory.name}} - Fitness Directory">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"ExerciseGym","name":"{{directory.name}}","description":"{{directory.description}}","areaServed":"{{directory.location}}"}</script>
+<style>:root{--primary:{{colors.primary}};--secondary:{{colors.secondary}};--accent:{{colors.accent}};--bg:{{colors.background}};--text:{{colors.text}};--heading:{{colors.heading}};--muted:{{colors.muted}};--border:{{colors.border}}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:1100px;margin:0 auto;padding:0 20px}
+.hero{background:linear-gradient(135deg,#047857,#10b981);padding:50px 0;color:white;text-align:center}
+.hero .icon{font-size:3rem;margin-bottom:8px}
+.hero h1{font-size:2.2rem;margin-bottom:8px;color:white}
+.hero p{font-size:1.1rem;opacity:.9;color:white;margin-bottom:16px}
+.hero a.cta{display:inline-block;padding:12px 32px;background:white;color:#047857;border-radius:50px;font-weight:600;text-decoration:none;margin-top:8px;transition:transform .2s}
+.hero a.cta:hover{transform:scale(1.05)}
+.search-bar{display:flex;gap:10px;margin:25px 0;flex-wrap:wrap}
+.search-bar input{flex:1;min-width:200px;padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem}
+.search-bar select{padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:1rem;background:white}
+.search-bar button{padding:10px 22px;background:var(--primary);color:white;border:none;border-radius:8px;cursor:pointer}
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.filter-bar .filter-btn{padding:6px 16px;border:1px solid var(--border);border-radius:20px;background:white;color:var(--text);font-size:.85rem;cursor:pointer;transition:all .2s}
+.filter-bar .filter-btn:hover,.filter-bar .filter-btn.active{border-color:#10b981;background:#d1fae5;color:#065f46}
+.fitness-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:20px}
+.card{background:white;border:1px solid var(--border);border-radius:12px;padding:20px;transition:all .2s}
+.card:hover{border-color:#10b981;box-shadow:0 4px 16px rgba(16,185,129,0.1)}
+.card .icon-wrap{font-size:2rem;margin-bottom:6px}
+.card h3{color:var(--heading);margin-bottom:4px}
+.card h3 a{color:#065f46;text-decoration:none}
+.card h3 a:hover{text-decoration:underline}
+.card .rating{color:var(--accent);font-size:.9rem}
+.card .info{color:var(--muted);font-size:.9rem;margin:4px 0}
+.card .info p{margin:2px 0}
+.card .class-types{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0}
+.card .class-tag{padding:3px 8px;border-radius:6px;font-size:.75rem;background:#d1fae5;color:#065f46}
+.card .pricing{display:flex;gap:12px;margin:8px 0;font-size:.85rem;color:#374151}
+.card .pricing .price{font-weight:600;color:#047857}
+.card .contact{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.card .contact a{padding:5px 12px;border-radius:6px;font-size:.85rem;text-decoration:none;font-weight:500}
+.card .contact .btn-visit{background:#047857;color:white}
+.card .contact .btn-call{background:#d1fae5;color:#065f46}
+.card .contact .btn-book{background:#fef3c7;color:#92400e}
+.empty{text-align:center;padding:50px;color:var(--muted)}
+.footer{text-align:center;padding:30px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border);margin-top:30px}
+@media(max-width:640px){.hero h1{font-size:1.6rem}.fitness-grid{grid-template-columns:1fr}}
+</style></head><body>
+<section class="hero"><div class="container"><div class="icon">&#127947;</div><h1>{{directory.name}}</h1><p>{{directory.description}}</p>{{#if directory.cta_text}}<a href="{{directory.cta_url}}" class="cta">{{directory.cta_text}}</a>{{/if}}</div></section>
+<div class="container">
+<form class="search-bar" method="GET">
+<input type="text" name="q" placeholder="Search gyms, classes, trainers..." value="{{query.q}}">
+<select name="category"><option value="">All Programs</option>{{#each categories}}<option value="{{slug}}">{{name}}</option>{{/each}}</select>
+<button type="submit">Search</button>
+</form>
+{{#if businesses}}<div class="fitness-grid">{{#each businesses}}
+<div class="card"><div class="icon-wrap">&#127947;</div><h3><a href="/{{../directory.slug}}/{{slug}}">{{name}}</a></h3>{{#if rating}}<div class="rating">&#9733; {{rating}} ({{review_count}} reviews)</div>{{/if}}<div class="info"><p>{{city}}, {{state}}</p>{{#if meta.trainer}}<p>Trainer: {{meta.trainer}}</p>{{/if}}</div>{{#if meta.classes}}<div class="class-types"><span class="class-tag">{{meta.classes}}</span></div>{{/if}}<div class="pricing">{{#if meta.price_range}}<span>&#128178; <span class="price">{{meta.price_range}}</span></span>{{/if}}{{#if meta.membership}}<span>&#128179; {{meta.membership}}</span>{{/if}}</div><div class="contact">{{#if website}}<a href="{{website}}" class="btn-visit">&#127760; Visit</a>{{/if}}{{#if phone}}<a href="tel:{{phone}}" class="btn-call">&#128222; Call</a>{{/if}}{{#if meta.book_url}}<a href="{{meta.book_url}}" class="btn-book">&#128197; Book</a>{{/if}}</div></div>{{/each}}</div>{{else}}<div class="empty"><h3>No results found</h3><p>Try adjusting your search or filters.</p></div>{{/if}}
+</div>
+<div class="footer"><p>&copy; {{directory.name}} — Fitness &amp; Wellness Directory</p></div>
+</body></html>

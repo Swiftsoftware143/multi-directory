@@ -14,14 +14,22 @@ pub const TEMPLATE_RESTAURANT: &str = "restaurant";
 pub const TEMPLATE_REAL_ESTATE: &str = "real-estate";
 pub const TEMPLATE_MEDICAL: &str = "medical";
 pub const TEMPLATE_SERVICE: &str = "service";
+pub const TEMPLATE_EDUCATION: &str = "education";
+pub const TEMPLATE_AUTOMOTIVE: &str = "automotive";
+pub const TEMPLATE_FITNESS: &str = "fitness";
+pub const TEMPLATE_HOSPITALITY: &str = "hospitality";
 
-const VALID_TEMPLATES: [&str; 6] = [
+const VALID_TEMPLATES: [&str; 10] = [
     TEMPLATE_LOCAL_BUSINESS,
     TEMPLATE_FARM,
     TEMPLATE_RESTAURANT,
     TEMPLATE_REAL_ESTATE,
     TEMPLATE_MEDICAL,
     TEMPLATE_SERVICE,
+    TEMPLATE_EDUCATION,
+    TEMPLATE_AUTOMOTIVE,
+    TEMPLATE_FITNESS,
+    TEMPLATE_HOSPITALITY,
 ];
 
 // ── Compile-time embedded template strings ──────────────────────────────────
@@ -44,6 +52,10 @@ pub fn get_available_templates() -> Vec<TemplateInfo> {
         TemplateInfo { id: TEMPLATE_REAL_ESTATE.to_string(), name: "Real Estate".to_string(), description: "Property listings with agents, open houses, maps".to_string() },
         TemplateInfo { id: TEMPLATE_MEDICAL.to_string(), name: "Medical / Healthcare".to_string(), description: "Medical providers, specialties, insurance accepted".to_string() },
         TemplateInfo { id: TEMPLATE_SERVICE.to_string(), name: "Service Professionals".to_string(), description: "Plumbers, electricians, contractors with service areas".to_string() },
+        TemplateInfo { id: TEMPLATE_EDUCATION.to_string(), name: "Education".to_string(), description: "Schools, tutoring, colleges, and training centers".to_string() },
+        TemplateInfo { id: TEMPLATE_AUTOMOTIVE.to_string(), name: "Automotive".to_string(), description: "Auto dealers, repair shops, body shops, parts stores".to_string() },
+        TemplateInfo { id: TEMPLATE_FITNESS.to_string(), name: "Fitness &amp; Wellness".to_string(), description: "Gyms, studios, trainers, and wellness centers".to_string() },
+        TemplateInfo { id: TEMPLATE_HOSPITALITY.to_string(), name: "Hospitality".to_string(), description: "Hotels, B&amp;Bs, vacation rentals, event venues".to_string() },
     ]
 }
 
@@ -99,7 +111,7 @@ impl TemplateEngine {
         // Allow raw HTML in templates (don't escape &, <, >, etc.)
         registry.register_escape_fn(handlebars::no_escape);
         
-        // Register all 6 templates
+        // Register all 10 templates
         let templates = [
             (TEMPLATE_LOCAL_BUSINESS, "directory-local-business.hbs"),
             (TEMPLATE_FARM, "directory-farm.hbs"),
@@ -107,6 +119,10 @@ impl TemplateEngine {
             (TEMPLATE_REAL_ESTATE, "directory-real-estate.hbs"),
             (TEMPLATE_MEDICAL, "directory-medical.hbs"),
             (TEMPLATE_SERVICE, "directory-service.hbs"),
+            (TEMPLATE_EDUCATION, "directory-education.hbs"),
+            (TEMPLATE_AUTOMOTIVE, "directory-automotive.hbs"),
+            (TEMPLATE_FITNESS, "directory-fitness.hbs"),
+            (TEMPLATE_HOSPITALITY, "directory-hospitality.hbs"),
         ];
 
         for (id, _filename) in &templates {
@@ -117,6 +133,10 @@ impl TemplateEngine {
                 TEMPLATE_REAL_ESTATE => include_str!("../templates/directory-real-estate.hbs"),
                 TEMPLATE_MEDICAL => include_str!("../templates/directory-medical.hbs"),
                 TEMPLATE_SERVICE => include_str!("../templates/directory-service.hbs"),
+                TEMPLATE_EDUCATION => include_str!("../templates/directory-education.hbs"),
+                TEMPLATE_AUTOMOTIVE => include_str!("../templates/directory-automotive.hbs"),
+                TEMPLATE_FITNESS => include_str!("../templates/directory-fitness.hbs"),
+                TEMPLATE_HOSPITALITY => include_str!("../templates/directory-hospitality.hbs"),
                 _ => include_str!("../templates/directory-local-business.hbs"),
             };
             if let Err(e) = registry.register_template_string(id, content) {
@@ -217,6 +237,10 @@ mod tests {
         assert!(is_valid_template(TEMPLATE_REAL_ESTATE));
         assert!(is_valid_template(TEMPLATE_MEDICAL));
         assert!(is_valid_template(TEMPLATE_SERVICE));
+        assert!(is_valid_template(TEMPLATE_EDUCATION));
+        assert!(is_valid_template(TEMPLATE_AUTOMOTIVE));
+        assert!(is_valid_template(TEMPLATE_FITNESS));
+        assert!(is_valid_template(TEMPLATE_HOSPITALITY));
         assert!(!is_valid_template("nonexistent"));
     }
 
@@ -257,7 +281,7 @@ mod tests {
     fn test_template_engine_new() {
         let engine = TemplateEngine::new();
         let templates = engine.available_templates();
-        assert_eq!(templates.len(), 6);
+        assert_eq!(templates.len(), 10);
     }
 
     #[test]
@@ -326,5 +350,163 @@ mod tests {
         // Unknown template should use fallback
         let result = engine.render_directory_page("unknown-template", &data);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_render_education() {
+        let engine = TemplateEngine::new();
+        let data = serde_json::json!({
+            "directory": {
+                "name": "LearnLocal",
+                "description": "Find schools and tutors",
+                "slug": "learnlocal",
+                "location": "Springfield"
+            },
+            "businesses": [
+                {
+                    "name": "Springfield Academy",
+                    "slug": "springfield-academy",
+                    "description": "K-12 private school",
+                    "city": "Springfield",
+                    "state": "IL",
+                    "phone": "+15551112222",
+                    "rating": 4.5,
+                    "review_count": 28,
+                    "category": {"name": "School", "slug": "school"},
+                    "meta": {"subjects": "Math,Science,Arts", "email": "info@springfield.edu"}
+                }
+            ],
+            "categories": [{"name": "School", "slug": "school"}, {"name": "Tutoring", "slug": "tutoring"}],
+            "colors": default_color_scheme(),
+            "query": {}
+        });
+        let result = engine.render_directory_page(TEMPLATE_EDUCATION, &data);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("LearnLocal"));
+        assert!(html.contains("Springfield Academy"));
+        assert!(html.contains("School"));
+        assert!(html.contains("Education"));
+    }
+
+    #[test]
+    fn test_render_automotive() {
+        let engine = TemplateEngine::new();
+        let data = serde_json::json!({
+            "directory": {
+                "name": "AutoHub",
+                "description": "Local auto services",
+                "slug": "autohub",
+                "location": "Chicago"
+            },
+            "businesses": [
+                {
+                    "name": "Bob's Auto Repair",
+                    "slug": "bobs-auto-repair",
+                    "description": "Full-service auto repair",
+                    "city": "Chicago",
+                    "state": "IL",
+                    "phone": "+15553334444",
+                    "category": {"name": "Repair Shop", "slug": "repair"},
+                    "rating": 4.2,
+                    "review_count": 56,
+                    "address": "123 Main St",
+                    "latitude": 41.8781,
+                    "longitude": -87.6298,
+                    "meta": {"hours": "Mon-Fri 8-6", "services": "Oil Change,Brakes,Tires"}
+                }
+            ],
+            "categories": [{"name": "Dealer", "slug": "dealer"}, {"name": "Repair Shop", "slug": "repair"}],
+            "colors": default_color_scheme(),
+            "query": {}
+        });
+        let result = engine.render_directory_page(TEMPLATE_AUTOMOTIVE, &data);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("AutoHub"));
+        assert!(html.contains("Bob's Auto Repair"));
+        assert!(html.contains("Automotive"));
+    }
+
+    #[test]
+    fn test_render_fitness() {
+        let engine = TemplateEngine::new();
+        let data = serde_json::json!({
+            "directory": {
+                "name": "FitCity",
+                "description": "Gyms and wellness",
+                "slug": "fitcity",
+                "location": "Portland"
+            },
+            "businesses": [
+                {
+                    "name": "Iron Haven Gym",
+                    "slug": "iron-haven",
+                    "description": "Premium fitness center",
+                    "city": "Portland",
+                    "state": "OR",
+                    "phone": "+15554445555",
+                    "website": "https://ironhaven.com",
+                    "rating": 4.8,
+                    "review_count": 120,
+                    "meta": {
+                        "classes": "Yoga,CrossFit,Spin",
+                        "price_range": "$50/mo",
+                        "membership": "Monthly",
+                        "book_url": "https://ironhaven.com/book"
+                    }
+                }
+            ],
+            "categories": [{"name": "Gym", "slug": "gym"}, {"name": "Yoga", "slug": "yoga"}],
+            "colors": default_color_scheme(),
+            "query": {}
+        });
+        let result = engine.render_directory_page(TEMPLATE_FITNESS, &data);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("FitCity"));
+        assert!(html.contains("Iron Haven Gym"));
+        assert!(html.contains("Fitness"));
+    }
+
+    #[test]
+    fn test_render_hospitality() {
+        let engine = TemplateEngine::new();
+        let data = serde_json::json!({
+            "directory": {
+                "name": "StayLocal",
+                "description": "Hotels and rentals",
+                "slug": "staylocal",
+                "location": "Miami"
+            },
+            "businesses": [
+                {
+                    "name": "Oceanview Resort",
+                    "slug": "oceanview-resort",
+                    "description": "Beachfront luxury resort",
+                    "city": "Miami",
+                    "state": "FL",
+                    "phone": "+15556667777",
+                    "website": "https://oceanview.com",
+                    "rating": 4.7,
+                    "review_count": 340,
+                    "address": "100 Ocean Dr",
+                    "meta": {
+                        "amenities": "Pool,Spa,Wifi,Breakfast",
+                        "price_range": "$$$",
+                        "book_url": "https://oceanview.com/book"
+                    }
+                }
+            ],
+            "categories": [{"name": "Hotel", "slug": "hotel"}, {"name": "B&B", "slug": "bnb"}],
+            "colors": default_color_scheme(),
+            "query": {}
+        });
+        let result = engine.render_directory_page(TEMPLATE_HOSPITALITY, &data);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("StayLocal"));
+        assert!(html.contains("Oceanview Resort"));
+        assert!(html.contains("Hospitality"));
     }
 }

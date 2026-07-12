@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Directory Portal</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--purple:#7c3aed;--purple-light:#a78bfa;--purple-bg:#f5f3ff;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--sidebar:#0f172a;--sidebar-text:#94a3b8;--sidebar-active:#a78bfa;--danger:#ef4444;--danger-hover:#dc2626;--success:#22c55e;--warning:#f59e0b;--info:#3b82f6}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+a{color:var(--purple);text-decoration:none}a:hover{text-decoration:underline}
+.login-container{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);width:100%}
+.login-card{background:var(--card);border-radius:16px;padding:40px;width:400px;max-width:90vw;box-shadow:0 25px 50px -12px rgba(0,0,0,.4)}
+.login-card h1{font-size:1.75rem;color:var(--purple);text-align:center;margin-bottom:4px}
+.login-card .tagline{text-align:center;color:var(--text-secondary);font-size:.9rem;margin-bottom:28px}
+.login-card .error{background:#fef2f2;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:.85rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.form-group input,.form-group textarea,.form-group select{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;outline:none;transition:border-color .2s;font-family:inherit}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:var(--purple);box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 20px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:6px}
+.btn-primary{background:var(--purple);color:#fff}.btn-primary:hover{background:#6d28d9}
+.btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{background:#cbd5e1}
+.btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:var(--danger-hover)}
+.btn-sm{padding:6px 12px;font-size:.8rem}
+.btn-full{width:100%}.btn:disabled{opacity:.6;cursor:not-allowed}
+.sidebar{width:260px;min-height:100vh;background:var(--sidebar);position:fixed;top:0;left:0;display:flex;flex-direction:column;z-index:100}
+.sidebar-brand{padding:24px 20px 16px;border-bottom:1px solid #1e293b}
+.sidebar-brand h2{color:var(--purple-light);font-size:1.1rem;letter-spacing:.5px}
+.sidebar-brand p{color:var(--sidebar-text);font-size:.75rem;margin-top:2px}
+.sidebar-nav{flex:1;padding:12px 0;overflow-y:auto}
+.sidebar-nav a{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--sidebar-text);font-size:.85rem;transition:all .2s;border-left:3px solid transparent;cursor:pointer}
+.sidebar-nav a:hover,.sidebar-nav a.active{color:#fff;background:rgba(124,58,237,.1);border-left-color:var(--purple-light)}
+.sidebar-nav a .icon{font-size:1.1rem;width:22px;text-align:center}
+.sidebar-footer{padding:16px 20px;border-top:1px solid #1e293b;font-size:.8rem;color:var(--sidebar-text)}
+.sidebar-footer .dir-name{color:#fff;font-weight:600;margin-bottom:4px}
+.sidebar-footer a{color:var(--sidebar-text);cursor:pointer}
+.sidebar-footer a:hover{color:var(--danger)}
+.main{margin-left:260px;flex:1;padding:0;min-height:100vh}
+.main-header{display:flex;align-items:center;justify-content:space-between;padding:20px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50}
+.main-header h1{font-size:1.4rem;font-weight:700}
+.main-header-actions{display:flex;gap:8px;align-items:center}
+.main-content{padding:24px 32px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-header h3{font-size:1rem;font-weight:700}
+.card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center}
+.stat-card .num{font-size:2.25rem;font-weight:800;color:var(--purple);display:block}
+.stat-card .label{font-size:.85rem;color:var(--text-secondary);margin-top:4px}
+.stat-card .icon{font-size:1.5rem;margin-bottom:8px}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);font-size:.85rem}
+th{font-weight:600;color:var(--text-secondary);background:#f8fafc;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px}
+tr:hover td{background:#f5f3ff}
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--card);border-radius:16px;width:520px;max-width:100%;max-height:90vh;overflow-y:auto;padding:28px}
+.modal h2{font-size:1.2rem;margin-bottom:20px;color:var(--text)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.toast-container{position:fixed;top:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:10px;font-size:.85rem;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.15);animation:slideIn .3s ease;max-width:360px}
+.toast.success{background:#14532d;color:#bbf7d0}.toast.error{background:#7f1d1d;color:#fca5a5}.toast.info{background:#1e3a5f;color:#bfdbfe}
+.search-box{display:flex;gap:8px;margin-bottom:20px}
+.search-box input{flex:1;padding:12px 16px;border:1px solid var(--border);border-radius:10px;font-size:.95rem;outline:none}
+.search-box input:focus{border-color:var(--purple);box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge.active{background:#14532d;color:#bbf7d0}
+.badge.inactive{background:#7f1d1d;color:#fca5a5}
+.badge.premium{background:#14532d;color:#bbf7d0}
+.badge.free{background:#1e3a5f;color:#bfdbfe}
+.badge.enterprise{background:#713f12;color:#fde68a}
+.badge.published{background:#14532d;color:#bbf7d0}
+.badge.draft{background:#7f1d1d;color:#fca5a5}
+.tabs{display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)}
+.tabs button{padding:10px 20px;font-size:.85rem;font-weight:600;border:none;background:none;cursor:pointer;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tabs button.active{color:var(--purple);border-bottom-color:var(--purple)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-secondary)}
+.empty-state .icon{font-size:3rem;margin-bottom:12px}
+.empty-state p{font-size:.95rem}
+.spinner{display:inline-block;width:20px;height:20px;border:3px solid var(--border);border-top-color:var(--purple);border-radius:50%;animation:spin .6s linear infinite}
+.spinner-teal{display:inline-block;width:20px;height:20px;border:3px solid #e2e8f0;border-top-color:var(--purple);border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+input[type="color"]{height:40px;padding:4px;border-radius:8px;cursor:pointer}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dir-selector{display:flex;align-items:center;gap:8px;margin-bottom:20px;padding:12px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px}
+.dir-selector select{flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:.9rem;outline:none}
+.dir-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600}
+.dir-badge.primary{background:#f3e8ff;color:#7c3aed}
+.preview-section{border:1px dashed var(--border);border-radius:8px;padding:16px;margin-top:12px;background:#fafafa}
+.code-block{background:#0f172a;color:#e2e8f0;padding:16px;border-radius:8px;font-family:monospace;font-size:.8rem;overflow-x:auto;white-space:pre-wrap;margin-top:8px}
+.help-text{font-size:.78rem;color:var(--text-secondary);margin-top:4px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast-container" id="toastContainer"></div>
+<div class="modal-overlay" id="modalOverlay" style="display:none" onclick="if(event.target===this)closeModal()"><div class="modal" id="modalContent" onclick="event.stopPropagation()"></div></div>
+<script>
+
+// ── Utilities ──────────────────────────────────────────
+function esc(s){if(typeof s!=='string')s=String(s||'');return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(m,t){var c=document.getElementById('toastContainer'),e=document.createElement('div');e.className='toast '+(t||'info');e.textContent=m;c.appendChild(e);setTimeout(function(){e.style.opacity='0';e.style.transition='opacity .3s';setTimeout(function(){e.remove()},300)},3500);}
+function spinner(){return '<span class="spinner"></span>';}
+function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}
+
+// ── API Helpers ────────────────────────────────────────
+function api(mth,path,body,cb,err){
+  var opts={method:mth,headers:{'Authorization':'Bearer '+localStorage.token,'Accept':'application/json'}};
+  if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
+  fetch('/api/v1'+path,opts).then(function(r){if(!r.ok)throw r;return r.json();}).then(function(d){if(cb)cb(d);}).catch(function(e){if(err)err(e);else{e.text().then(function(t){toast(t||'Request failed','error');});}});
+}
+function g(path,cb,err){return api('GET',path,null,cb,err);}
+function po(path,b,cb,err){return api('POST',path,b,cb,err);}
+function pu(path,b,cb,err){return api('PUT',path,b,cb,err);}
+function dl(path,cb,err){return api('DELETE',path,null,cb,err);}
+
+// ── Modal ──────────────────────────────────────────────
+function showModal(html){document.getElementById('modalContent').innerHTML=html;document.getElementById('modalOverlay').style.display='flex';}
+function closeModal(){document.getElementById('modalOverlay').style.display='none';}
+
+// ── State ──────────────────────────────────────────────
+var CP='dashboard';
+var DIRS=[];
+var CUR_DIR=null;
+var PAGES=['dashboard','listings','categories','reviews','deals','branding','domains','webhooks','datacompany','monetization','crm','analytics','seo','blog','legals'];
+var PAGE_ICONS={'dashboard':'📊','listings':'📋','categories':'🏷️','reviews':'⭐','deals':'🏆','branding':'🎨','domains':'🌐','webhooks':'🔗','datacompany':'📁','monetization':'💰','crm':'👥','analytics':'📈','seo':'🔍','blog':'✍️','legals':'⚖️'};
+var PAGE_TITLES={'dashboard':'Dashboard','listings':'Listings','categories':'Categories','reviews':'Reviews','deals':'Deals & Coupons','branding':'Branding','domains':'Custom Domains','webhooks':'Webhooks','datacompany':'Data Company','monetization':'Monetization','crm':'CRM','analytics':'Analytics','seo':'SEO','blog':'Blog','legals':'Legal Pages'};
+
+function navigate(p){CP=p;history.pushState({page:p},'',location.pathname+'#'+p);renderApp();}
+
+// ── Login / Init ───────────────────────────────────────
+function logout(){localStorage.removeItem('token');localStorage.removeItem('user');render();}
+
+function init(){
+  var hash=location.hash.replace(/^#/,'');
+  if(hash&&PAGES.indexOf(hash)>-1)CP=hash;
+  var token=localStorage.getItem('token');
+  var user=localStorage.getItem('user');
+  if(!token||!user){render();return;}
+  try{user=JSON.parse(user);}catch(e){localStorage.removeItem('token');localStorage.removeItem('user');render();return;}
+  g('/admin/directories',function(dirs){
+    DIRS=dirs||[];
+    if(DIRS.length>0){CUR_DIR=DIRS[0];}
+    else{CUR_DIR={id:0,slug:'default',name:'My Directory',tier:'free'};}
+    renderApp();
+  },function(){
+    localStorage.removeItem('token');localStorage.removeItem('user');render();
+  });
+}
+
+// ── Render ─────────────────────────────────────────────
+function render(){
+  var app=document.getElementById('app');
+  var token=localStorage.getItem('token');
+  if(!token){
+    app.innerHTML=
+    '<div class="login-container">'+
+      '<div class="login-card">'+
+        '<h1>📂 Directory Portal</h1>'+
+        '<p class="tagline">Manage your directory listings, reviews, and more.</p>'+
+        '<div class="error" id="loginError"></div>'+
+        '<div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="you@example.com" value="swiftsoftware143@yahoo.com"></div>'+
+        '<div class="form-group"><label>Password</label><input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key===\'Enter\')doLogin()"></div>'+
+        '<button class="btn btn-primary btn-full" onclick="doLogin()">Sign In</button>'+
+      '</div>'+
+    '</div>';
+    return;
+  }
+  // Check if dirs loaded
+  if(!CUR_DIR){
+    app.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;width:100%">'+spinner()+'</div>';
+    return;
+  }
+  renderApp();
+}
+
+function doLogin(){
+  var email=document.getElementById('loginEmail').value;
+  var pass=document.getElementById('loginPassword').value;
+  if(!email||!pass){document.getElementById('loginError').textContent='Please enter email and password.';document.getElementById('loginError').style.display='block';return;}
+  document.getElementById('loginError').style.display='none';
+  po('/auth/login',{email:email,password:pass},function(r){
+    localStorage.setItem('token',r.token);
+    localStorage.setItem('user',JSON.stringify(r.user||{}));
+    init();
+  },function(e){
+    e.text().then(function(t){document.getElementById('loginError').textContent=t||'Login failed';document.getElementById('loginError').style.display='block';});
+  });
+}
+
+function renderApp(){
+  var app=document.getElementById('app');
+  var dirSelect='';
+  if(DIRS.length>1){
+    dirSelect='<div class="dir-selector"><label>🌐 Directory:</label><select onchange="switchDir(this.value)">';
+    for(var i=0;i<DIRS.length;i++)dirSelect+='<option value="'+esc(DIRS[i].slug||DIRS[i].id)+'"'+(CUR_DIR&&CUR_DIR.slug===DIRS[i].slug?' selected':'')+'>'+esc(DIRS[i].name)+'</option>';
+    dirSelect+='</select></div>';
+  }
+  var nav='';
+  for(var i=0;i<PAGES.length;i++){
+    var p=PAGES[i];
+    nav+='<a class="'+(p===CP?'active':'')+'" onclick="navigate(\x27'+p+'\x27)"><span class="icon">'+PAGE_ICONS[p]+'</span> '+PAGE_TITLES[p]+'</a>';
+  }
+  app.innerHTML=
+  '<div class="sidebar">'+
+    '<div class="sidebar-brand"><h2>📂 Directory Portal</h2><p>Owner Dashboard</p></div>'+
+    '<div class="sidebar-nav">'+nav+'</div>'+
+    '<div class="sidebar-footer">'+
+      '<div class="dir-name">'+(CUR_DIR?esc(CUR_DIR.name):'')+'</div>'+
+      '<div><a onclick="logout()">🚪 Sign Out</a></div>'+
+    '</div>'+
+  '</div>'+
+  '<div class="main">'+
+    '<div class="main-header"><h1>'+PAGE_TITLES[CP]+'</h1><div class="main-header-actions"></div></div>'+
+    '<div class="main-content" id="pageContent">'+spinner()+'</div>'+
+  '</div>';
+  renderPage();
+}
+
+function switchDir(slug){
+  for(var i=0;i<DIRS.length;i++){
+    if(DIRS[i].slug===slug||String(DIRS[i].id)===slug){CUR_DIR=DIRS[i];break;}
+  }
+  renderApp();
+}
+
+// ── Page Router ────────────────────────────────────────
+function renderPage(){
+  var el=document.getElementById('pageContent');
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  switch(CP){
+    case 'dashboard': renderDashboard();break;
+    case 'listings': renderListings();break;
+    case 'categories': renderCategories();break;
+    case 'reviews': renderReviews();break;
+    case 'deals': renderDeals();break;
+    case 'branding': renderBranding();break;
+    case 'domains': renderDomains();break;
+    case 'webhooks': renderWebhooks();break;
+    case 'datacompany': renderDataCompany();break;
+    case 'monetization': renderMonetization();break;
+    case 'crm': renderCRM();break;
+    case 'analytics': renderAnalytics();break;
+    case 'seo': renderSEO();break;
+    case 'blog': renderBlog();break;
+    case 'legals': renderLegals();break;
+    default: el.innerHTML='<div class="empty-state"><div class="icon">📂</div><p>Page not found</p></div>';
+  }
+}
+
+// ── Dashboard ──────────────────────────────────────────
+function renderDashboard(){
+  if(!CUR_DIR){return setContent('<div class="empty-state"><p>No directory selected.</p></div>');}
+  var el=document.getElementById('pageContent');
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  var slug=CUR_DIR.slug;
+  var did=CUR_DIR.id;
+  g('/directories/'+slug+'/businesses?limit=5',function(listings){
+    var lcount=listings&&listings.data?listings.data.length:0;
+    var ltotal=listings&&listings.total!==undefined?listings.total:(listings&&listings.data?listings.data.length:0);
+    g('/deals?directory_id='+did+'&limit=5',function(deals){
+      var dcount=deals&&deals.data?deals.data.length:0;
+      var dtotal=deals&&deals.total!==undefined?deals.total:dcount;
+      g('/admin/reviews?directory_id='+did+'&limit=5',function(reviews){
+        var rcount=reviews&&reviews.data?reviews.data.length:0;
+        var rtotal=reviews&&reviews.total!==undefined?reviews.total:rcount;
+        g('/admin/ad-zones?directory_id='+did,function(zones){
+          var zcount=zones&&zones.length?zones.length:0;
+          var tier=(CUR_DIR&&CUR_DIR.tier)||'free';
+          el.innerHTML=
+          '<div class="stat-grid">'+
+            '<div class="stat-card"><div class="icon">📋</div><span class="num">'+ltotal+'</span><div class="label">Total Listings</div></div>'+
+            '<div class="stat-card"><div class="icon">⭐</div><span class="num">'+rtotal+'</span><div class="label">Reviews</div></div>'+
+            '<div class="stat-card"><div class="icon">🏆</div><span class="num">'+dtotal+'</span><div class="label">Active Deals</div></div>'+
+            '<div class="stat-card"><div class="icon">💰</div><span class="num">'+zcount+'</span><div class="label">Ad Zones</div></div>'+
+          '</div>'+
+          '<div class="card"><div class="card-header"><h3>📋 Directory Info</h3></div>'+
+            '<p><strong>Name:</strong> '+esc(CUR_DIR.name)+'</p>'+
+            '<p><strong>Slug:</strong> '+esc(CUR_DIR.slug)+'</p>'+
+            '<p><strong>Plan:</strong> <span class="badge '+(tier==='enterprise'?'enterprise':tier==='premium'?'premium':'free')+'">'+esc(tier)+'</span></p>'+
+          '</div>'+
+          (listings&&listings.data&&listings.data.length>0?
+          '<div class="card"><div class="card-header"><h3>📋 Recent Listings</h3></div><div class="table-wrap"><table><tr><th>Name</th><th>Status</th><th>Category</th></tr>'+
+            listings.data.map(function(b){return '<tr><td>'+esc(b.name||b.business_name||'')+'</td><td><span class="badge '+(b.status==='published'?'published':'draft')+'">'+esc(b.status||'draft')+'</span></td><td>'+esc(b.category||'')+'</td></tr>';}).join('')+
+          '</table></div></div>':'');
+        },function(){setContent(el,'<div class="empty-state"><p>Could not load dashboard data.</p></div>');});
+      },function(){setContent(el,'<div class="empty-state"><p>Could not load reviews.</p></div>');});
+    },function(){setContent(el,'<div class="empty-state"><p>Could not load deals.</p></div>');});
+  },function(){setContent(el,'<div class="empty-state"><p>Could not load listings.</p></div>');});
+}
+
+// ── Listings ───────────────────────────────────────────
+var LISTINGS_LISTING_DATA=null;
+function renderListings(){
+  var el=document.getElementById('pageContent');
+  if(!CUR_DIR){el.innerHTML='<div class="empty-state"><p>No directory selected.</p></div>';return;}
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  var slug=CUR_DIR.slug;
+  g('/directories/'+slug+'/businesses',function(r){
+    LISTINGS_LISTING_DATA=r;
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>All Listings</h3><button class="btn btn-primary btn-sm" onclick="showAddListing()">+ Add Listing</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Name</th><th>Category</th><th>Email</th><th>Phone</th><th>Status</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="6" style="text-align:center;color:var(--text-secondary)">No listings yet</td></tr>':
+      data.map(function(b,i){
+        var bn=b.name||b.business_name||'';
+        return '<tr><td>'+esc(bn)+'</td><td>'+esc(b.category||'')+'</td><td>'+esc(b.email||'')+'</td><td>'+esc(b.phone||'')+'</td><td><span class="badge '+(b.status==='published'?'published':'draft')+'">'+esc(b.status||'draft')+'</span></td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditListing('+i+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteListing('+(b.id||i)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load listings.</p></div>';});
+}
+function showAddListing(){
+  showModal(
+    '<h2>Add Listing</h2>'+
+    '<div class="form-group"><label>Business Name</label><input id="f_bname" placeholder="Business name"></div>'+
+    '<div class="form-group"><label>Category</label><input id="f_bcat" placeholder="Category slug or name"></div>'+
+    '<div class="form-group"><label>Description</label><textarea id="f_bdesc" rows="3" placeholder="Description"></textarea></div>'+
+    '<div class="form-group"><label>Email</label><input id="f_bemail" type="email" placeholder="email@example.com"></div>'+
+    '<div class="form-group"><label>Phone</label><input id="f_bphone" placeholder="+1234567890"></div>'+
+    '<div class="form-group"><label>Website</label><input id="f_bweb" placeholder="https://example.com"></div>'+
+    '<div class="form-group"><label>Address</label><input id="f_baddr" placeholder="123 Main St, City"></div>'+
+    '<div class="form-group"><label>Status</label><select id="f_bstatus"><option value="published">Published</option><option value="draft">Draft</option></select></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveListing()">Save</button></div>'
+  );
+}
+function saveListing(){
+  var data={name:document.getElementById('f_bname').value,category:document.getElementById('f_bcat').value,description:document.getElementById('f_bdesc').value,email:document.getElementById('f_bemail').value,phone:document.getElementById('f_bphone').value,website:document.getElementById('f_bweb').value,address:document.getElementById('f_baddr').value,status:document.getElementById('f_bstatus').value};
+  if(!data.name){toast('Business name is required','error');return;}
+  closeModal();
+  po('/directories/'+CUR_DIR.slug+'/businesses',data,function(){toast('Listing added','success');renderListings();},function(){toast('Failed to add listing','error');renderListings();});
+}
+function showEditListing(i){
+  var data=LISTINGS_LISTING_DATA&&LISTINGS_LISTING_DATA.data?LISTINGS_LISTING_DATA.data[i]:LISTINGS_LISTING_DATA[i];
+  if(!data){toast('Could not load listing data','error');return;}
+  var bid=data.id||i;
+  showModal(
+    '<h2>Edit Listing</h2>'+
+    '<div class="form-group"><label>Business Name</label><input id="f_bname" value="'+esc(data.name||data.business_name||'')+'"></div>'+
+    '<div class="form-group"><label>Category</label><input id="f_bcat" value="'+esc(data.category||'')+'"></div>'+
+    '<div class="form-group"><label>Description</label><textarea id="f_bdesc" rows="3">'+esc(data.description||'')+'</textarea></div>'+
+    '<div class="form-group"><label>Email</label><input id="f_bemail" value="'+esc(data.email||'')+'"></div>'+
+    '<div class="form-group"><label>Phone</label><input id="f_bphone" value="'+esc(data.phone||'')+'"></div>'+
+    '<div class="form-group"><label>Website</label><input id="f_bweb" value="'+esc(data.website||'')+'"></div>'+
+    '<div class="form-group"><label>Address</label><input id="f_baddr" value="'+esc(data.address||'')+'"></div>'+
+    '<div class="form-group"><label>Status</label><select id="f_bstatus"><option value="published" '+(data.status==='published'?'selected':'')+'>Published</option><option value="draft" '+(data.status!=='published'?'selected':'')+'>Draft</option></select></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateListing('+bid+')">Update</button></div>'
+  );
+}
+function updateListing(id){
+  var data={name:document.getElementById('f_bname').value,category:document.getElementById('f_bcat').value,description:document.getElementById('f_bdesc').value,email:document.getElementById('f_bemail').value,phone:document.getElementById('f_bphone').value,website:document.getElementById('f_bweb').value,address:document.getElementById('f_baddr').value,status:document.getElementById('f_bstatus').value};
+  closeModal();
+  pu('/directories/'+CUR_DIR.slug+'/businesses/'+id,data,function(){toast('Listing updated','success');renderListings();},function(){toast('Failed to update listing','error');renderListings();});
+}
+function deleteListing(id){
+  if(!confirm('Delete this listing?'))return;
+  dl('/directories/'+CUR_DIR.slug+'/businesses/'+id,function(){toast('Listing deleted','success');renderListings();},function(){toast('Failed to delete listing','error');renderListings();});
+}
+
+// ── Categories ─────────────────────────────────────────
+function renderCategories(){
+  var el=document.getElementById('pageContent');
+  if(!CUR_DIR){el.innerHTML='<div class="empty-state"><p>No directory selected.</p></div>';return;}
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/directories/'+CUR_DIR.slug+'/categories',function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>Categories</h3><button class="btn btn-primary btn-sm" onclick="showAddCategory()">+ Add Category</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Name</th><th>Slug</th><th>Description</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">No categories yet</td></tr>':
+      data.map(function(c,i){
+        return '<tr><td>'+esc(c.name)+'</td><td>'+esc(c.slug||'')+'</td><td>'+esc((c.description||'').substring(0,60))+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditCategory('+i+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteCategory('+(c.id||i)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load categories.</p></div>';});
+}
+var CAT_DATA=null;
+function showAddCategory(){
+  showModal(
+    '<h2>Add Category</h2>'+
+    '<div class="form-group"><label>Name</label><input id="f_cname" placeholder="Category name"></div>'+
+    '<div class="form-group"><label>Description</label><textarea id="f_cdesc" rows="3" placeholder="Description"></textarea></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveCategory()">Save</button></div>'
+  );
+}
+function saveCategory(){
+  var name=document.getElementById('f_cname').value;
+  if(!name){toast('Category name is required','error');return;}
+  closeModal();
+  po('/directories/'+CUR_DIR.slug+'/categories',{name:name,description:document.getElementById('f_cdesc').value},function(){toast('Category added','success');renderCategories();},function(){toast('Failed to add category','error');renderCategories();});
+}
+function showEditCategory(i){
+  if(window.catDataCache)CAT_DATA=window.catDataCache;
+  var data=null;
+  if(CAT_DATA&&CAT_DATA.data)data=CAT_DATA.data[i];
+  else if(window.catDataCache&&window.catDataCache.data)data=window.catDataCache.data[i];
+  if(!data)return toast('No data','error');
+  showModal(
+    '<h2>Edit Category</h2>'+
+    '<div class="form-group"><label>Name</label><input id="f_cname" value="'+esc(data.name)+'"></div>'+
+    '<div class="form-group"><label>Description</label><textarea id="f_cdesc" rows="3">'+esc(data.description||'')+'</textarea></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateCategory('+(data.id||i)+')">Update</button></div>'
+  );
+}
+function updateCategory(id){
+  closeModal();
+  pu('/directories/'+CUR_DIR.slug+'/categories/'+id,{name:document.getElementById('f_cname').value,description:document.getElementById('f_cdesc').value},function(){toast('Category updated','success');renderCategories();},function(){toast('Failed to update category','error');renderCategories();});
+}
+function deleteCategory(id){
+  if(!confirm('Delete this category?'))return;
+  dl('/directories/'+CUR_DIR.slug+'/categories/'+id,function(){toast('Category deleted','success');renderCategories();},function(){toast('Failed','error');renderCategories();});
+}
+
+// ── Reviews ────────────────────────────────────────────
+function renderReviews(){
+  var el=document.getElementById('pageContent');
+  var did=CUR_DIR.id;
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/admin/reviews?directory_id='+did,function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>Reviews</h3></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>ID</th><th>Business</th><th>Rating</th><th>Review</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">No reviews</td></tr>':
+      data.map(function(rv){
+        return '<tr><td>'+esc(rv.id)+'</td><td>'+esc(rv.business_name||'')+'</td><td>'+'★'.repeat(rv.rating||0)+'☆'.repeat(5-(rv.rating||0))+'</td><td>'+esc((rv.review_text||rv.content||'').substring(0,80))+'</td>'+
+        '<td><button class="btn btn-danger btn-sm" onclick="deleteReview('+(rv.id||0)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load reviews.</p></div>';});
+}
+function deleteReview(id){
+  if(!confirm('Delete this review?'))return;
+  dl('/admin/reviews/'+id,function(){toast('Review deleted','success');renderReviews();},function(){toast('Failed','error');renderReviews();});
+}
+
+
+// ── Deals ──────────────────────────────────────────────
+function renderDeals(){
+  var el=document.getElementById('pageContent');
+  var did=CUR_DIR.id;
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/deals?directory_id='+did,function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>Deals & Coupons</h3><button class="btn btn-primary btn-sm" onclick="showAddDeal()">+ Add Deal</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Title</th><th>Discount</th><th>Type</th><th>Status</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">No deals yet</td></tr>':
+      data.map(function(d,i){
+        return '<tr><td>'+esc(d.title||'')+'</td><td>'+esc(d.discount||d.discount_percentage||'')+'</td><td>'+esc(d.type||d.deal_type||'')+'</td><td><span class="badge '+((d.status==='active'||d.is_active)?'active':'inactive')+'">'+esc(d.status||(d.is_active?'active':'inactive'))+'</span></td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditDeal('+(d.id||i)+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteDeal('+(d.id||i)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load deals.</p></div>';});
+}
+function showAddDeal(){
+  showModal(
+    '<h2>Add Deal</h2>'+
+    '<div class="form-group"><label>Title</label><input id="f_dtitle" placeholder="Deal title"></div>'+
+    '<div class="form-group"><label>Discount</label><input id="f_ddisc" placeholder="e.g. 20% or $10 off"></div>'+
+    '<div class="form-group"><label>Type</label><select id="f_dtype"><option value="percentage">Percentage</option><option value="fixed">Fixed Amount</option><option value="bogo">BOGO</option></select></div>'+
+    '<div class="form-group"><label>Description</label><textarea id="f_ddesc" rows="3"></textarea></div>'+
+    '<div class="form-group"><label>Expires</label><input id="f_dexp" type="date"></div>'+
+    '<div class="form-group"><label>Status</label><select id="f_dstat"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveDeal()">Save</button></div>'
+  );
+}
+function saveDeal(){
+  closeModal();
+  po('/deals?directory_id='+CUR_DIR.id,{
+    title:document.getElementById('f_dtitle').value,
+    discount:document.getElementById('f_ddisc').value,
+    type:document.getElementById('f_dtype').value,
+    description:document.getElementById('f_ddesc').value,
+    expires_at:document.getElementById('f_dexp').value,
+    status:document.getElementById('f_dstat').value
+  },function(){toast('Deal added','success');renderDeals();},function(){toast('Failed','error');renderDeals();});
+}
+function showEditDeal(id){
+  g('/deals?directory_id='+CUR_DIR.id,function(r){
+    var data=r.data||r||[];
+    var deal=null;
+    for(var i=0;i<data.length;i++){if(data[i].id===id||i===id){deal=data[i];break;}}
+    if(!deal){toast('Deal not found','error');return;}
+    showModal(
+      '<h2>Edit Deal</h2>'+
+      '<div class="form-group"><label>Title</label><input id="f_dtitle" value="'+esc(deal.title||'')+'"></div>'+
+      '<div class="form-group"><label>Discount</label><input id="f_ddisc" value="'+esc(deal.discount||deal.discount_percentage||'')+'"></div>'+
+      '<div class="form-group"><label>Type</label><select id="f_dtype"><option value="percentage" '+(deal.type==='percentage'?'selected':'')+'>Percentage</option><option value="fixed" '+(deal.type==='fixed'?'selected':'')+'>Fixed</option><option value="bogo" '+(deal.type==='bogo'?'selected':'')+'>BOGO</option></select></div>'+
+      '<div class="form-group"><label>Description</label><textarea id="f_ddesc" rows="3">'+esc(deal.description||'')+'</textarea></div>'+
+      '<div class="form-group"><label>Status</label><select id="f_dstat"><option value="active" '+(deal.status==='active'||deal.is_active?'selected':'')+'>Active</option><option value="inactive" '+(deal.status!=='active'&&!deal.is_active?'selected':'')+'>Inactive</option></select></div>'+
+      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateDeal('+(deal.id||0)+')">Update</button></div>'
+    );
+  });
+}
+function updateDeal(id){
+  closeModal();
+  pu('/deals/'+id,{title:document.getElementById('f_dtitle').value,discount:document.getElementById('f_ddisc').value,type:document.getElementById('f_dtype').value,description:document.getElementById('f_ddesc').value,status:document.getElementById('f_dstat').value},function(){toast('Deal updated','success');renderDeals();},function(){toast('Failed','error');renderDeals();});
+}
+function deleteDeal(id){
+  if(!confirm('Delete this deal?'))return;
+  dl('/deals/'+id,function(){toast('Deal deleted','success');renderDeals();},function(){toast('Failed','error');renderDeals();});
+}
+
+// ── Branding ───────────────────────────────────────────
+function renderBranding(){
+  var el=document.getElementById('pageContent');
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/directories/'+CUR_DIR.slug+'/branding',function(b){
+    b=b||{};
+    el.innerHTML=
+    '<div class="card"><div class="card-header"><h3>🎨 Branding</h3><button class="btn btn-primary btn-sm" onclick="saveBranding()">💾 Save</button></div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>Primary Color</label><input id="br_primary" type="color" value="'+esc(b.primary_color||'#7c3aed')+'"></div>'+
+      '<div class="form-group"><label>Secondary Color</label><input id="br_secondary" type="color" value="'+esc(b.secondary_color||'#a78bfa')+'"></div>'+
+    '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>Accent Color</label><input id="br_accent" type="color" value="'+esc(b.accent_color||'#5b21b6')+'"></div>'+
+      '<div class="form-group"><label>Background Color</label><input id="br_bg" type="color" value="'+esc(b.background_color||'#f5f3ff')+'"></div>'+
+    '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>Logo URL</label><input id="br_logo" value="'+esc(b.logo_url||'')+'" placeholder="https://example.com/logo.png"></div>'+
+      '<div class="form-group"><label>Favicon URL</label><input id="br_favicon" value="'+esc(b.favicon_url||'')+'" placeholder="https://example.com/favicon.ico"></div>'+
+    '</div>'+
+    '<div class="form-group"><label>Custom Font</label><input id="br_font" value="'+esc(b.font_family||'')+'" placeholder="e.g. Inter, Lato (Google Fonts)"></div>'+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3>🔍 Preview</h3></div><div class="preview-section" id="brandingPreview" style="background:'+esc(b.background_color||'#f5f3ff')+'">'+
+      '<h3 style="color:'+esc(b.primary_color||'#7c3aed')+'">Preview Heading</h3>'+
+      '<p style="color:'+esc(b.accent_color||'#5b21b6')+'">Sample text in the accent color.</p>'+
+      '<button style="background:'+esc(b.primary_color||'#7c3aed')+';color:#fff;border:none;padding:8px 16px;border-radius:6px">Preview Button</button>'+
+    '</div></div>';
+    // Live preview on color change
+    setTimeout(function(){
+      ['br_primary','br_secondary','br_accent','br_bg'].forEach(function(id){
+        var el2=document.getElementById(id);
+        if(el2)el2.oninput=function(){updateBrandingPreview();};
+      });
+      ['br_font'].forEach(function(id){
+        var el2=document.getElementById(id);
+        if(el2)el2.oninput=function(){updateBrandingPreview();};
+      });
+    },100);
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load branding.</p></div>';});
+}
+function updateBrandingPreview(){
+  var pre=document.getElementById('brandingPreview');
+  if(!pre)return;
+  var primary=document.getElementById('br_primary')?document.getElementById('br_primary').value:'#7c3aed';
+  var accent=document.getElementById('br_accent')?document.getElementById('br_accent').value:'#5b21b6';
+  var bg=document.getElementById('br_bg')?document.getElementById('br_bg').value:'#f5f3ff';
+  var font=document.getElementById('br_font')?document.getElementById('br_font').value:'';
+  pre.style.background=bg;
+  var h=pre.querySelector('h3');if(h)h.style.color=primary;
+  var p=pre.querySelector('p');if(p)p.style.color=accent;
+  var btn=pre.querySelector('button');if(btn)btn.style.background=primary;
+  if(font)pre.style.fontFamily=font;
+}
+function saveBranding(){
+  var data={
+    primary_color:document.getElementById('br_primary').value,
+    secondary_color:document.getElementById('br_secondary').value,
+    accent_color:document.getElementById('br_accent').value,
+    background_color:document.getElementById('br_bg').value,
+    logo_url:document.getElementById('br_logo').value,
+    favicon_url:document.getElementById('br_favicon').value,
+    font_family:document.getElementById('br_font').value
+  };
+  pu('/admin/branding/'+CUR_DIR.id,data,function(){toast('Branding saved','success');},function(){toast('Failed to save branding','error');});
+}
+
+// ── Domains ────────────────────────────────────────────
+function renderDomains(){
+  var el=document.getElementById('pageContent');
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/domains',function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>🌐 Custom Domains</h3><button class="btn btn-primary btn-sm" onclick="showAddDomain()">+ Add Domain</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Domain</th><th>Status</th><th>Verified</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">No custom domains</td></tr>':
+      data.map(function(d){
+        return '<tr><td>'+esc(d.domain||'')+'</td><td><span class="badge '+(d.status==='active'?'active':'inactive')+'">'+esc(d.status||'pending')+'</span></td><td>'+(d.verified?'✅':'❌')+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm"'+(d.verified?' disabled':'')+' onclick="verifyDomain('+(d.id||0)+')">Verify</button></td></tr>';
+      }).join(''))+
+    '</table></div>'+
+    '<div class="card" style="margin-top:16px"><div class="card-header"><h3>📖 How to set up</h3></div>'+
+      '<p>1. Purchase a domain from any registrar (Namecheap, GoDaddy, Cloudflare, etc.)</p>'+
+      '<p>2. Add a <strong>CNAME record</strong> pointing to <code>directory.swiftsoftware.net</code></p>'+
+      '<p>3. Click "Verify" on this domain</p>'+
+      '<p>4. Once verified, your directory will be accessible at your custom domain</p>'+
+    '</div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load domains.</p></div>';});
+}
+function showAddDomain(){
+  showModal(
+    '<h2>Add Custom Domain</h2>'+
+    '<div class="form-group"><label>Domain</label><input id="f_domain" placeholder="mydirectory.com"></div>'+
+    '<p class="help-text">Add a CNAME record pointing to <strong>directory.swiftsoftware.net</strong> first, then verify.</p>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveDomain()">Add</button></div>'
+  );
+}
+function saveDomain(){
+  var domain=document.getElementById('f_domain').value;
+  if(!domain){toast('Domain is required','error');return;}
+  closeModal();
+  po('/domains',{domain:domain,directory_id:CUR_DIR.id},function(){toast('Domain added','success');renderDomains();},function(){toast('Failed','error');renderDomains();});
+}
+function verifyDomain(id){
+  po('/domains/'+id+'/verify',{},function(r){toast(r.message||'Domain verified!','success');renderDomains();},function(){toast('Verification failed - check your DNS','error');renderDomains();});
+}
+
+// ── Webhooks ───────────────────────────────────────────
+function renderWebhooks(){
+  var el=document.getElementById('pageContent');
+  var did=CUR_DIR.id;
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/webhooks?directory_id='+did,function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>🔗 Webhooks</h3><button class="btn btn-primary btn-sm" onclick="showAddWebhook()">+ Add Webhook</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Name</th><th>URL</th><th>Events</th><th>Active</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">No webhooks configured</td></tr>':
+      data.map(function(w,i){
+        return '<tr><td>'+esc(w.name||'')+'</td><td>'+esc((w.url||'').substring(0,40))+'…</td><td>'+esc((w.events||[]).join(', ')||'all')+'</td><td>'+(w.active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditWebhook('+(w.id||i)+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteWebhook('+(w.id||i)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load webhooks.</p></div>';});
+}
+function showAddWebhook(){
+  showModal(
+    '<h2>Add Webhook</h2>'+
+    '<div class="form-group"><label>Name</label><input id="f_wname" placeholder="My webhook"></div>'+
+    '<div class="form-group"><label>URL</label><input id="f_wurl" placeholder="https://hooks.example.com/webhook"></div>'+
+    '<div class="form-group"><label>Events (comma separated)</label><input id="f_wevents" placeholder="listing.created, listing.updated, review.created"></div>'+
+    '<div class="form-check"><label><input type="checkbox" id="f_wactive" checked> Active</label></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveWebhook()">Save</button></div>'
+  );
+}
+function saveWebhook(){
+  closeModal();
+  po('/webhooks?directory_id='+CUR_DIR.id,{
+    name:document.getElementById('f_wname').value,
+    url:document.getElementById('f_wurl').value,
+    events:document.getElementById('f_wevents').value.split(',').map(function(s){return s.trim();}).filter(function(s){return s;}),
+    active:document.getElementById('f_wactive').checked
+  },function(){toast('Webhook added','success');renderWebhooks();},function(){toast('Failed','error');renderWebhooks();});
+}
+function showEditWebhook(id){
+  g('/webhooks?directory_id='+CUR_DIR.id,function(r){
+    var data=r.data||r||[];
+    var wh=null;
+    for(var i=0;i<data.length;i++){if(data[i].id===id||i===id){wh=data[i];break;}}
+    if(!wh){toast('Not found','error');return;}
+    showModal(
+      '<h2>Edit Webhook</h2>'+
+      '<div class="form-group"><label>Name</label><input id="f_wname" value="'+esc(wh.name||'')+'"></div>'+
+      '<div class="form-group"><label>URL</label><input id="f_wurl" value="'+esc(wh.url||'')+'"></div>'+
+      '<div class="form-group"><label>Events</label><input id="f_wevents" value="'+esc((wh.events||[]).join(', '))+'"></div>'+
+      '<div class="form-group"><label><input type="checkbox" id="f_wactive"'+(wh.active!==false?' checked':'')+'> Active</label></div>'+
+      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateWebhook('+(wh.id||0)+')">Update</button></div>'
+    );
+  });
+}
+function updateWebhook(id){
+  closeModal();
+  pu('/webhooks/'+id,{
+    name:document.getElementById('f_wname').value,
+    url:document.getElementById('f_wurl').value,
+    events:document.getElementById('f_wevents').value.split(',').map(function(s){return s.trim();}).filter(function(s){return s;}),
+    active:document.getElementById('f_wactive').checked
+  },function(){toast('Webhook updated','success');renderWebhooks();},function(){toast('Failed','error');renderWebhooks();});
+}
+function deleteWebhook(id){
+  if(!confirm('Delete this webhook?'))return;
+  dl('/webhooks/'+id,function(){toast('Deleted','success');renderWebhooks();},function(){toast('Failed','error');renderWebhooks();});
+}
+
+// ── Data Company ───────────────────────────────────────
+function renderDataCompany(){
+  var el=document.getElementById('pageContent');
+  var did=CUR_DIR.id;
+  el.innerHTML=
+  '<div class="card-header"><h3>📁 Data Company</h3></div>'+
+  '<div class="card"><div class="card-header"><h3>📤 Export Data</h3></div>'+
+    '<p>Export all listings as CSV or JSON.</p>'+
+    '<div style="margin-top:12px;display:flex;gap:8px">'+
+      '<button class="btn btn-primary btn-sm" onclick="exportData(\'csv\')">📥 Export CSV</button>'+
+      '<button class="btn btn-secondary btn-sm" onclick="exportData(\'json\')">📥 Export JSON</button>'+
+    '</div>'+
+  '</div>'+
+  '<div class="card"><div class="card-header"><h3>📥 Import Data</h3></div>'+
+    '<div class="form-group"><label>Upload CSV or JSON file</label><input type="file" id="importFile" accept=".csv,.json"></div>'+
+    '<button class="btn btn-primary btn-sm" onclick="importData()">⬆️ Import</button>'+
+  '</div>';
+}
+function exportData(fmt){
+  var did=CUR_DIR.id;
+  var a=document.createElement('a');
+  a.href='/api/v1/export/bulk?directory_id='+did+'&format='+fmt;
+  a.download='export.'+fmt;
+  a.click();
+  toast('Download started','info');
+}
+function importData(){
+  var file=document.getElementById('importFile').files[0];
+  if(!file){toast('Select a file','error');return;}
+  var fd=new FormData();
+  fd.append('file',file);
+  var xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/v1/import');
+  xhr.setRequestHeader('Authorization','Bearer '+localStorage.token);
+  xhr.onload=function(){if(xhr.status>=200&&xhr.status<300){toast('Import successful','success');}else{toast('Import failed: '+xhr.statusText,'error');}};
+  xhr.onerror=function(){toast('Import failed','error');};
+  xhr.send(fd);
+}
+
+// ── Monetization ───────────────────────────────────────
+function renderMonetization(){
+  var el=document.getElementById('pageContent');
+  var did=CUR_DIR.id;
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/admin/ad-zones?directory_id='+did,function(zones){
+    var data=zones||[];
+    var tier=(CUR_DIR&&CUR_DIR.tier)||'free';
+    el.innerHTML=
+    '<div class="stat-grid">'+
+      '<div class="stat-card"><div class="icon">💰</div><span class="num">'+(CUR_DIR.plan||tier)+'</span><div class="label">Current Plan</div></div>'+
+      '<div class="stat-card"><div class="icon">📢</div><span class="num">'+data.length+'</span><div class="label">Ad Zones</div></div>'+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3>📢 Ad Zones</h3></div>'+
+      (data.length===0?'<p style="color:var(--text-secondary)">No ad zones configured.</p>':
+      data.map(function(z){
+        return '<p><strong>'+esc(z.name||'Zone')+'</strong> — '+esc(z.position||'')+' — '+(z.active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</p>';
+      }).join(''))+
+    '</div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load monetization data.</p></div>';});
+}
+
+
+// ── CRM ────────────────────────────────────────────────
+function renderCRM(){
+  var el=document.getElementById('pageContent');
+  var did=CUR_DIR.id;
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/crm/contacts?directory_id='+did,function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>👥 CRM Contacts</h3><button class="btn btn-primary btn-sm" onclick="showAddContact()">+ Add Contact</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">No contacts yet</td></tr>':
+      data.map(function(c,i){
+        return '<tr><td>'+esc(c.name||c.first_name+' '+c.last_name)+'</td><td>'+esc(c.email||'')+'</td><td>'+esc(c.phone||'')+'</td><td>'+esc(c.status||'lead')+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditContact('+(c.id||i)+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteContact('+(c.id||i)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load contacts.</p></div>';});
+}
+function showAddContact(){
+  showModal(
+    '<h2>Add Contact</h2>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>First Name</label><input id="c_fn" placeholder="John"></div>'+
+      '<div class="form-group"><label>Last Name</label><input id="c_ln" placeholder="Doe"></div>'+
+    '</div>'+
+    '<div class="form-group"><label>Email</label><input id="c_em" type="email" placeholder="john@example.com"></div>'+
+    '<div class="form-group"><label>Phone</label><input id="c_ph" placeholder="+1234567890"></div>'+
+    '<div class="form-group"><label>Status</label><select id="c_st"><option value="lead">Lead</option><option value="active">Active</option><option value="closed">Closed</option></select></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveContact()">Save</button></div>'
+  );
+}
+function saveContact(){
+  closeModal();
+  po('/crm/contacts?directory_id='+CUR_DIR.id,{
+    first_name:document.getElementById('c_fn').value,
+    last_name:document.getElementById('c_ln').value,
+    email:document.getElementById('c_em').value,
+    phone:document.getElementById('c_ph').value,
+    status:document.getElementById('c_st').value
+  },function(){toast('Contact added','success');renderCRM();},function(){toast('Failed','error');renderCRM();});
+}
+function showEditContact(id){
+  g('/crm/contacts?directory_id='+CUR_DIR.id,function(r){
+    var data=r.data||r||[];
+    var c=null;
+    for(var i=0;i<data.length;i++){if(data[i].id===id||i===id-1){c=data[i];break;}}
+    if(!c){toast('Not found','error');return;}
+    showModal(
+      '<h2>Edit Contact</h2>'+
+      '<div class="form-row"><div class="form-group"><label>First Name</label><input id="c_fn" value="'+esc(c.first_name||'')+'"></div>'+
+      '<div class="form-group"><label>Last Name</label><input id="c_ln" value="'+esc(c.last_name||'')+'"></div></div>'+
+      '<div class="form-group"><label>Email</label><input id="c_em" value="'+esc(c.email||'')+'"></div>'+
+      '<div class="form-group"><label>Phone</label><input id="c_ph" value="'+esc(c.phone||'')+'"></div>'+
+      '<div class="form-group"><label>Status</label><select id="c_st"><option value="lead" '+(c.status==='lead'?'selected':'')+'>Lead</option><option value="active" '+(c.status==='active'?'selected':'')+'>Active</option><option value="closed" '+(c.status==='closed'?'selected':'')+'>Closed</option></select></div>'+
+      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateContact('+(c.id||0)+')">Update</button></div>'
+    );
+  });
+}
+function updateContact(id){
+  closeModal();
+  pu('/crm/contacts/'+id,{
+    first_name:document.getElementById('c_fn').value,
+    last_name:document.getElementById('c_ln').value,
+    email:document.getElementById('c_em').value,
+    phone:document.getElementById('c_ph').value,
+    status:document.getElementById('c_st').value
+  },function(){toast('Contact updated','success');renderCRM();},function(){toast('Failed','error');renderCRM();});
+}
+function deleteContact(id){
+  if(!confirm('Delete this contact?'))return;
+  dl('/crm/contacts/'+id,function(){toast('Deleted','success');renderCRM();},function(){toast('Failed','error');renderCRM();});
+}
+
+// ── Analytics ──────────────────────────────────────────
+function renderAnalytics(){
+  var el=document.getElementById('pageContent');
+  var did=CUR_DIR.id;
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/analytics/by-directory/'+CUR_DIR.slug,function(a){
+    a=a||{};
+    el.innerHTML=
+    '<div class="stat-grid">'+
+      '<div class="stat-card"><div class="icon">👁️</div><span class="num">'+(a.page_views||0)+'</span><div class="label">Page Views</div></div>'+
+      '<div class="stat-card"><div class="icon">📋</div><span class="num">'+(a.listing_views||0)+'</span><div class="label">Listing Views</div></div>'+
+      '<div class="stat-card"><div class="icon">🖱️</div><span class="num">'+(a.clicks||0)+'</span><div class="label">Clicks</div></div>'+
+      '<div class="stat-card"><div class="icon">🔍</div><span class="num">'+(a.searches||0)+'</span><div class="label">Searches</div></div>'+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3>📈 Analytics Overview</h3></div>'+
+      '<p>Directory: <strong>'+esc(CUR_DIR.name)+'</strong></p>'+
+      '<p>Total Events: '+(a.total_events||(a.page_views||0)+(a.listing_views||0)+(a.clicks||0))+'</p>'+
+      (a.by_day?'<h4 style="margin-top:16px;margin-bottom:8px">Daily Breakdown</h4><div class="table-wrap"><table><tr><th>Date</th><th>Views</th><th>Actions</th></tr>'+
+        a.by_day.map(function(d){return '<tr><td>'+esc(d.date||'')+'</td><td>'+esc(d.views||0)+'</td><td>'+esc(d.actions||0)+'</td></tr>';}).join('')+
+      '</table></div>':'')+
+    '</div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load analytics.</p></div>';});
+}
+
+// ── SEO ────────────────────────────────────────────────
+function renderSEO(){
+  var el=document.getElementById('pageContent');
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/admin/seo-meta?directory_id='+CUR_DIR.id,function(seo){
+    seo=seo||{};
+    el.innerHTML=
+    '<div class="card"><div class="card-header"><h3>🔍 SEO Settings</h3><button class="btn btn-primary btn-sm" onclick="saveSEO()">💾 Save</button></div>'+
+    '<div class="form-group"><label>Meta Title</label><input id="seo_title" value="'+esc(seo.meta_title||'')+'" placeholder="My Directory - Find Local Businesses"></div>'+
+    '<div class="form-group"><label>Meta Description</label><textarea id="seo_desc" rows="3" placeholder="Description for search engines">'+esc(seo.meta_description||'')+'</textarea></div>'+
+    '<div class="form-group"><label>Meta Keywords</label><input id="seo_kw" value="'+esc(seo.meta_keywords||'')+'" placeholder="local, businesses, directory"></div>'+
+    '<div class="form-group"><label>Custom Header HTML (head)</label><textarea id="seo_head" rows="3" placeholder="&lt;script type=&quot;application/ld+json&quot;&gt;...&lt;/script&gt;">'+esc(seo.custom_head||'')+'</textarea></div>'+
+    '<div class="form-group"><label>Google Analytics ID</label><input id="seo_ga" value="'+esc(seo.google_analytics_id||'')+'" placeholder="G-XXXXXXXXXX"></div>'+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3>🗺️ Sitemap</h3></div>'+
+      '<p>Your sitemap is available at:</p>'+
+      '<div class="code-block"><a href="/sitemap.xml" target="_blank">https://directory.swiftsoftware.net/sitemap.xml</a></div>'+
+    '</div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load SEO settings.</p></div>';});
+}
+function saveSEO(){
+  var data={
+    meta_title:document.getElementById('seo_title').value,
+    meta_description:document.getElementById('seo_desc').value,
+    meta_keywords:document.getElementById('seo_kw').value,
+    custom_head:document.getElementById('seo_head').value,
+    google_analytics_id:document.getElementById('seo_ga').value
+  };
+  pu('/admin/seo-meta?directory_id='+CUR_DIR.id,data,function(){toast('SEO settings saved','success');},function(){toast('Failed','error');});
+}
+
+// ── Blog ───────────────────────────────────────────────
+function renderBlog(){
+  var el=document.getElementById('pageContent');
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/blog-posts?directory_id='+CUR_DIR.id,function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>✍️ Blog Posts</h3><button class="btn btn-primary btn-sm" onclick="showAddBlogPost()">+ New Post</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Title</th><th>Status</th><th>Published</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">No posts yet</td></tr>':
+      data.map(function(p,i){
+        return '<tr><td>'+esc(p.title||'')+'</td><td><span class="badge '+(p.status==='published'?'published':'draft')+'">'+esc(p.status||'draft')+'</span></td><td>'+(p.published_at?new Date(p.published_at).toLocaleDateString():'—')+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditBlogPost('+(p.id||i)+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteBlogPost('+(p.id||i)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load blog posts.</p></div>';});
+}
+function showAddBlogPost(){
+  showModal(
+    '<h2>New Blog Post</h2>'+
+    '<div class="form-group"><label>Title</label><input id="bp_title" placeholder="Post title"></div>'+
+    '<div class="form-group"><label>Slug</label><input id="bp_slug" placeholder="my-post-title"><span class="help-text">Leave empty to auto-generate</span></div>'+
+    '<div class="form-group"><label>Content (Markdown)</label><textarea id="bp_content" rows="8" placeholder="Write your post in Markdown..."></textarea></div>'+
+    '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft">Draft</option><option value="published">Published</option></select></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveBlogPost()">Save</button></div>'
+  );
+}
+function saveBlogPost(){
+  closeModal();
+  po('/blog-posts?directory_id='+CUR_DIR.id,{
+    title:document.getElementById('bp_title').value,
+    slug:document.getElementById('bp_slug').value,
+    content:document.getElementById('bp_content').value,
+    status:document.getElementById('bp_status').value
+  },function(){toast('Post created','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
+}
+function showEditBlogPost(id){
+  g('/blog-posts?directory_id='+CUR_DIR.id,function(r){
+    var data=r.data||r||[];
+    var bp=null;
+    for(var i=0;i<data.length;i++){if(data[i].id===id||i===id-1){bp=data[i];break;}}
+    if(!bp){toast('Not found','error');return;}
+    showModal(
+      '<h2>Edit Post</h2>'+
+      '<div class="form-group"><label>Title</label><input id="bp_title" value="'+esc(bp.title||'')+'"></div>'+
+      '<div class="form-group"><label>Slug</label><input id="bp_slug" value="'+esc(bp.slug||'')+'"></div>'+
+      '<div class="form-group"><label>Content</label><textarea id="bp_content" rows="8">'+esc(bp.content||'')+'</textarea></div>'+
+      '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft" '+(bp.status==='draft'?'selected':'')+'>Draft</option><option value="published" '+(bp.status==='published'?'selected':'')+'>Published</option></select></div>'+
+      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateBlogPost('+(bp.id||0)+')">Update</button></div>'
+    );
+  });
+}
+function updateBlogPost(id){
+  closeModal();
+  pu('/blog-posts/'+id,{
+    title:document.getElementById('bp_title').value,
+    slug:document.getElementById('bp_slug').value,
+    content:document.getElementById('bp_content').value,
+    status:document.getElementById('bp_status').value
+  },function(){toast('Post updated','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
+}
+function deleteBlogPost(id){
+  if(!confirm('Delete this post?'))return;
+  dl('/blog-posts/'+id,function(){toast('Deleted','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
+}
+
+// ── Legal Pages ────────────────────────────────────────
+function renderLegals(){
+  var el=document.getElementById('pageContent');
+  el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
+  g('/legal-pages?directory_id='+CUR_DIR.id,function(r){
+    var data=r.data||r||[];
+    el.innerHTML=
+    '<div class="card-header"><h3>⚖️ Legal Pages</h3><button class="btn btn-primary btn-sm" onclick="showAddLegal()">+ Add Page</button></div>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Type</th><th>Title</th><th>Updated</th><th>Actions</th></tr>'+
+      (data.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">No legal pages yet</td></tr>':
+      data.map(function(l,i){
+        return '<tr><td><span class="badge">'+esc(l.type||'page')+'</span></td><td>'+esc(l.title||'')+'</td><td>'+(l.updated_at?new Date(l.updated_at).toLocaleDateString():'—')+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditLegal('+(l.id||i)+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteLegal('+(l.id||i)+')">🗑️</button></td></tr>';
+      }).join(''))+
+    '</table></div>';
+  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load legal pages.</p></div>';});
+}
+function showAddLegal(){
+  showModal(
+    '<h2>Add Legal Page</h2>'+
+    '<div class="form-group"><label>Type</label><select id="lg_type"><option value="privacy">Privacy Policy</option><option value="terms">Terms of Service</option><option value="cookies">Cookie Policy</option><option value="custom">Custom</option></select></div>'+
+    '<div class="form-group"><label>Title</label><input id="lg_title" placeholder="Page title"></div>'+
+    '<div class="form-group"><label>Content (Markdown)</label><textarea id="lg_content" rows="8" placeholder="Page content in Markdown..."></textarea></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveLegal()">Save</button></div>'
+  );
+}
+function saveLegal(){
+  closeModal();
+  po('/legal-pages?directory_id='+CUR_DIR.id,{
+    type:document.getElementById('lg_type').value,
+    title:document.getElementById('lg_title').value,
+    content:document.getElementById('lg_content').value
+  },function(){toast('Legal page created','success');renderLegals();},function(){toast('Failed','error');renderLegals();});
+}
+function showEditLegal(id){
+  g('/legal-pages?directory_id='+CUR_DIR.id,function(r){
+    var data=r.data||r||[];
+    var lg=null;
+    for(var i=0;i<data.length;i++){if(data[i].id===id||i===id-1){lg=data[i];break;}}
+    if(!lg){toast('Not found','error');return;}
+    showModal(
+      '<h2>Edit Legal Page</h2>'+
+      '<div class="form-group"><label>Type</label><select id="lg_type"><option value="privacy" '+(lg.type==='privacy'?'selected':'')+'>Privacy Policy</option><option value="terms" '+(lg.type==='terms'?'selected':'')+'>Terms of Service</option><option value="cookies" '+(lg.type==='cookies'?'selected':'')+'>Cookie Policy</option><option value="custom" '+(lg.type==='custom'?'selected':'')+'>Custom</option></select></div>'+
+      '<div class="form-group"><label>Title</label><input id="lg_title" value="'+esc(lg.title||'')+'"></div>'+
+      '<div class="form-group"><label>Content</label><textarea id="lg_content" rows="8">'+esc(lg.content||'')+'</textarea></div>'+
+      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateLegal('+(lg.id||0)+')">Update</button></div>'
+    );
+  });
+}
+function updateLegal(id){
+  closeModal();
+  pu('/legal-pages/'+id,{
+    type:document.getElementById('lg_type').value,
+    title:document.getElementById('lg_title').value,
+    content:document.getElementById('lg_content').value
+  },function(){toast('Legal page updated','success');renderLegals();},function(){toast('Failed','error');renderLegals();});
+}
+function deleteLegal(id){
+  if(!confirm('Delete this legal page?'))return;
+  dl('/legal-pages/'+id,function(){toast('Deleted','success');renderLegals();},function(){toast('Failed','error');renderLegals();});
+}
+
+// ── Helper ─────────────────────────────────────────────
+function setContent(el,html){
+  el=el||document.getElementById('pageContent');
+  if(typeof el==='string')el=document.getElementById('pageContent');
+  if(el){el.innerHTML=html||'<div class="empty-state"><p>No data.</p></div>';}
+}
+
+// ── Init on popstate ───────────────────────────────────
+window.onpopstate=function(e){
+  var p=e.state&&e.state.page;
+  if(p&&PAGES.indexOf(p)>-1){CP=p;renderApp();}
+};
+
+// ── Boot ───────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
