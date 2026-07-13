@@ -518,5 +518,5 @@ async function doExtract(){var url=document.getElementById("extractUrl").value.t
 
 async function doPortfolioSync(){var el=document.getElementById("pageContent");el.innerHTML='<div style="text-align:center;padding:40px"><span class="spinner-teal"></span></div>';try{var r=await po("/api/v1/admin/portfolio-sync",{});el.innerHTML='<div class="empty-state"><div class="icon">🔄</div><h3>Portfolio Sync '+(r.status==="processing"?"Started":"Complete")+'</h3><p>'+esc(r.message||"")+'</p></div>';toast(r.message||"Portfolio synced","success");}catch(e){el.innerHTML='<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>'+esc(e.message)+'</p></div>';}}
 </script>
-</body>
+<script src=" admin-seo.js></script></body>
 </html>
