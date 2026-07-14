@@ -318,6 +318,58 @@
 
 <!-- 9. API Reference -->
 
+<h2 id="public-blog">12.5 Public Blog Pages</h2>
+<p>Each directory now has a public blog at <code>https://directory.swiftsoftware.net/api/v1/d/{slug}/blog</code>. Blog posts are automatically part of the directory with the same header, colors, and navigation.</p>
+
+<h3>Blog List Page</h3>
+<ul>
+  <li><strong>URL:</strong> <code>/api/v1/d/{slug}/blog</code> — lists all published posts</li>
+  <li><strong>Inherits</strong> the directory's header, Google Fonts (Inter + Roboto), color scheme, and footer</li>
+  <li>Each post shows: title, publish date, excerpt</li>
+  <li>Click a post title to view the full article</li>
+</ul>
+
+<h3>Individual Blog Post</h3>
+<ul>
+  <li><strong>URL:</strong> <code>/api/v1/d/{slug}/blog/{post-slug}</code></li>
+  <li>Full article with content, author info, publish date</li>
+  <li>SEO: meta description, focus keyword, featured image, canonical URL</li>
+  <li>Backlinks: "← Back to Blog" and "Back to {Directory}" links for navigation</li>
+</ul>
+
+<h3>URL Handling</h3>
+<ul>
+  <li>Slugs auto-generate from the post title: lowercased, hyphens for spaces, special chars removed</li>
+  <li>No dates in URL — best for SEO (clean keyword-based URLs)</li>
+  <li>Custom slugs can be set manually in the admin panel</li>
+</ul>
+
+<h3>Google Fonts</h3>
+<ul>
+  <li><strong>Inter</strong> for headings (h1-h6) — clean, modern, Google-friendly</li>
+  <li><strong>Roboto</strong> for body text — fast-loading, excellent readability</li>
+  <li>Preloaded via <code>rel="preconnect"</code> for fast CSS delivery</li>
+  <li><code>display=swap</code> ensures text remains visible while fonts load</li>
+</ul>
+
+<h3>SEO Benefits</h3>
+<ul>
+  <li>Each blog post has its own unique URL and SEO metadata</li>
+  <li>Content is part of the directory site — shares domain authority</li>
+  <li>Posts link back to the directory homepage (internal linking)</li>
+  <li>JSON-LD structured data via schema_type field (Article, HowTo, FAQPage)</li>
+</ul>
+
+<h3>Admin Management</h3>
+<ul>
+  <li>Go to <strong>Admin → Blog</strong> for a specific directory</li>
+  <li>Click <strong>👁 View Blog</strong> to preview the public blog</li>
+  <li>Add/edit/delete posts with title, excerpt, and Markdown content</li>
+  <li>Status: Draft or Published — only published posts appear publicly</li>
+  <li>Scheduled posts: set a <code>scheduled_at</code> date for future publishing</li>
+</ul>
+
+<br/>
 <h2 id="blog-generator">13. Blog Generator (AI-Powered Content)</h2>
 <p>Create SEO/AEO/geo-optimized blog posts with AI. Templates use merge fields (city, industry, business name) for personalization.</p>
 

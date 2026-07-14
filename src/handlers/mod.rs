@@ -22,6 +22,8 @@ pub mod email;
 pub mod public;
 pub mod search;
 pub mod categories;
+pub mod host_resolver;
+pub use host_resolver::*;
 
 pub use directories::*;
 pub use businesses::*;
@@ -63,4 +65,5 @@ pub use seo_config::*;
 pub mod newsletter;
 pub use newsletter::*;
 pub mod blog_generator;
+pub mod blog_pages;
 pub use blog_generator::*;

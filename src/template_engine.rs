@@ -181,6 +181,59 @@ impl TemplateEngine {
             .map_err(|e| format!("Render error for template '{}': {}", tid, e))
     }
 
+    /// Render a directory page with blog content injected into the main content area.
+    ///
+    /// Renders the directory template normally (hero, header, footer), then replaces
+    /// the inner container content with the blog listing or blog post HTML.
+    pub fn render_blog_page(&self, template_id: &str, data: &Value, blog_content: &str) -> Result<String, String> {
+        let tid = if is_valid_template(template_id) {
+            template_id
+        } else {
+            TEMPLATE_LOCAL_BUSINESS
+        };
+
+        let mut html = self.registry
+            .render(tid, data)
+            .map_err(|e| format!("Render error for template '{}': {}", tid, e))?;
+
+        // Look for the hero section's closing div and inject blog content after it
+        // but before the footer. Strategy: find ".footer {" CSS selector and go backwards
+        // to find the main container end.
+        let rendered = html;
+        if let Some(footer_pos) = rendered.find("<div class=\"footer\"") {
+            let before = rendered[..footer_pos].to_string();
+            let after = rendered[footer_pos..].to_string();
+
+            // Find the last .container div before footer
+            if let Some(container_end) = before.rfind('<') {
+                // Simple approach: remove the last closing </div> before footer
+                // and insert blog content + a new </div>
+                let mut cleaned = before.trim_end().to_string();
+                // Remove trailing </div> tags that would be the container close
+                while cleaned.ends_with("</div>") {
+                    cleaned = cleaned[..cleaned.len()-6].trim_end().to_string();
+                }
+                let blog_section = format!(
+                    "{}",
+                    blog_content
+                );
+                html = format!(
+                    "<div class=\x22container\x22 style=\x22padding-top:30px;padding-bottom:30px\x22>\n{}\n</div>",
+                    blog_section
+                );
+                html = format!("{}\n{}\n{}", cleaned, html, after);
+            } else {
+                let inner = format!("<div style=\x22max-width:1100px;margin:0 auto;padding:20px\x22>\n{}\n</div>", blog_content);
+                html = format!("{}\n{}\n{}", before, inner, after);
+            }
+        } else {
+            let inner = format!("<div style=\x22max-width:1100px;margin:0 auto;padding:20px\x22>\n{}\n</div>", blog_content);
+            html = format!("{}\n{}", rendered, inner);
+        }
+
+        Ok(html)
+    }
+
     /// Get a list of all available template names
     pub fn available_templates(&self) -> Vec<String> {
         let template_ids: Vec<String> = VALID_TEMPLATES.iter().map(|&s| s.to_string()).collect();
