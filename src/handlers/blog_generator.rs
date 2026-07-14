@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use chrono::NaiveDateTime;
 use std::collections::HashMap;
 
 use crate::AppState;
@@ -344,15 +345,20 @@ pub async fn generate_blog_posts(
         match call_llm(provider, model, &prompt).await {
             Ok(generated) => {
                 // Parse title from generated content (first h1 or first line)
-                let (title, content) = extract_title_and_content(&generated, &fields, &tpl.name);
+                let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
+
+                let date_str = Utc::now().format("%B %d, %Y").to_string();
+                let byline = "Admin";
+                let meta = format!(r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by {}</p>"#, date_str, byline);
+                content = meta + "\n" + &content;
 
                 // Generate slug
                 let slug = slugify(&title);
 
                 // Create the blog post
                 let post = sqlx::query_as::<_, (Uuid,)>(
-                    r#"INSERT INTO blog_posts (title, slug, content, directory_id, published, template_id, template_data, focus_keyword, blog_category, feature_image, feature_video, media_json)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb)
+                    r#"INSERT INTO blog_posts (title, slug, content, directory_id, published, template_id, template_data, focus_keyword, blog_category, feature_image, feature_video, media_json, scheduled_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb, $13)
                        RETURNING id"#
                 )
                 .bind(&title)
@@ -440,7 +446,12 @@ pub async fn regenerate_blog_post(
 
     match call_llm(provider, model, &prompt).await {
         Ok(generated) => {
-            let (title, content) = extract_title_and_content(&generated, &fields, &tpl.name);
+            let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
+
+                let date_str = Utc::now().format("%B %d, %Y").to_string();
+                let byline = "Admin";
+                let meta = format!(r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by {}</p>"#, date_str, byline);
+                content = meta + "\n" + &content;
             let slug = slugify(&title);
 
             sqlx::query(

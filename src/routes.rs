@@ -276,6 +276,9 @@ pub fn create_router(s: AppState) -> Router {
     // ??? Clone index_content for the second closure
     let index_content2 = index_content.clone();
 
+    // Clone state for host resolution before it enters move closures
+    let _state_for_host = s.clone();
+
     // ??? Combine: /api/v1/* API routes + static file server at /* + SPA fallback
     let app = Router::new()
         .nest("/api/v1", public_routes)
@@ -286,7 +289,61 @@ pub fn create_router(s: AppState) -> Router {
                 let index_clone = index_content.clone();
                 let login_clone = login_content.clone();
                 let index_clone2 = index_content2.clone();
+                let _pool_for_host = _state_for_host.db.clone();
                 async move {
+                    // ── Host-based directory resolution ──
+                    // Check if Host header matches a registered domain mapping
+                    let host = req.headers().get("Host")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|h| h.trim().to_lowercase());
+
+                    let path = req.uri().path().to_string();
+
+                    if let Some(ref host) = host {
+                        let is_app = host == "directory.swiftsoftware.net"
+                            || host == "www.directory.swiftsoftware.net"
+                            || host == "localhost"
+                            || host.starts_with("127.0.0.1")
+                            || host.starts_with("192.168.")
+                            || host.starts_with("10.");
+
+                        if !is_app && !path.starts_with("/api/") && !path.starts_with("/admin") && path != "/health" {
+                            let domain = host.split(':').next().unwrap_or(host).to_string();
+
+                            let result = sqlx::query_as::<_, (uuid::Uuid, String)>(
+                                r#"SELECT dm.directory_id, d.slug
+                                   FROM domain_mappings dm
+                                   JOIN directories d ON d.id = dm.directory_id
+                                   WHERE dm.domain = $1 AND dm.status = 'active'
+                                   LIMIT 1"#
+                            )
+                            .bind(&domain)
+                            .fetch_optional(&_pool_for_host)
+                            .await;
+
+                            if let Ok(Some((_dir_id, slug))) = result {
+                                if !path.starts_with(&format!("/d/{}", slug)) {
+                                    let pq = req.uri().path_and_query()
+                                        .map(|pq| pq.as_str())
+                                        .unwrap_or("/");
+
+                                    let new_path = if pq == "/" {
+                                        format!("/d/{}", slug)
+                                    } else {
+                                        format!("/d/{}{}", slug, pq)
+                                    };
+
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::FOUND)
+                                            .header("Location", &new_path)
+                                            .body(axum::body::Body::empty())
+                                            .unwrap()
+                                    );
+                                }
+                            }
+                        }
+                    }
                     let path = req.uri().path();
 
                     // ??? Serve clean login page for admin/login and login routes

@@ -887,7 +887,7 @@ function renderBlog(){
   g('/blog-posts?directory_id='+CUR_DIR.id,function(r){
     var data=r.data||r||[];
     el.innerHTML=
-    '<div class="card-header"><h3>✍️ Blog Posts</h3><button class="btn btn-primary btn-sm" onclick="showAddBlogPost()">+ New Post</button></div>'+
+    '<div class="card-header"><h3>✍️ Blog Posts</h3><div class="header-actions"><a href="/api/v1/d/'+CUR_DIR.slug+'/blog" class="btn btn-secondary btn-sm" target="_blank">👁 View Blog</a><button class="btn btn-primary btn-sm" onclick="showAddBlogPost()">+ New Post</button></div></div>'+
     '<div class="table-wrap"><table>'+
       '<tr><th>Title</th><th>Status</th><th>Published</th><th>Actions</th></tr>'+
       (data.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">No posts yet</td></tr>':
@@ -903,6 +903,7 @@ function showAddBlogPost(){
     '<h2>New Blog Post</h2>'+
     '<div class="form-group"><label>Title</label><input id="bp_title" placeholder="Post title"></div>'+
     '<div class="form-group"><label>Slug</label><input id="bp_slug" placeholder="my-post-title"><span class="help-text">Leave empty to auto-generate</span></div>'+
+    '<div class="form-group"><label>Excerpt</label><textarea id="bp_excerpt" rows="2" placeholder="Short description for listings"></textarea></div>'+
     '<div class="form-group"><label>Content (Markdown)</label><textarea id="bp_content" rows="8" placeholder="Write your post in Markdown..."></textarea></div>'+
     '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft">Draft</option><option value="published">Published</option></select></div>'+
     '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveBlogPost()">Save</button></div>'
@@ -913,6 +914,7 @@ function saveBlogPost(){
   po('/blog-posts?directory_id='+CUR_DIR.id,{
     title:document.getElementById('bp_title').value,
     slug:document.getElementById('bp_slug').value,
+    excerpt:document.getElementById('bp_excerpt').value,
     content:document.getElementById('bp_content').value,
     status:document.getElementById('bp_status').value
   },function(){toast('Post created','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
@@ -927,7 +929,8 @@ function showEditBlogPost(id){
       '<h2>Edit Post</h2>'+
       '<div class="form-group"><label>Title</label><input id="bp_title" value="'+esc(bp.title||'')+'"></div>'+
       '<div class="form-group"><label>Slug</label><input id="bp_slug" value="'+esc(bp.slug||'')+'"></div>'+
-      '<div class="form-group"><label>Content</label><textarea id="bp_content" rows="8">'+esc(bp.content||'')+'</textarea></div>'+
+      '<div class="form-group"><label>Excerpt</label><textarea id="bp_excerpt" rows="2">'+esc(bp.excerpt||'')+'</textarea></div>'+
+    '<div class="form-group"><label>Content</label><textarea id="bp_content" rows="8">'+esc(bp.content||'')+'</textarea></div>'+
       '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft" '+(bp.status==='draft'?'selected':'')+'>Draft</option><option value="published" '+(bp.status==='published'?'selected':'')+'>Published</option></select></div>'+
       '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateBlogPost('+(bp.id||0)+')">Update</button></div>'
     );
@@ -938,6 +941,7 @@ function updateBlogPost(id){
   pu('/blog-posts/'+id,{
     title:document.getElementById('bp_title').value,
     slug:document.getElementById('bp_slug').value,
+    excerpt:document.getElementById('bp_excerpt').value,
     content:document.getElementById('bp_content').value,
     status:document.getElementById('bp_status').value
   },function(){toast('Post updated','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
