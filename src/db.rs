@@ -79,11 +79,11 @@ pub async fn run_migrations(pool: &PgPool) {
             }
         }
 
-        sqlx::query("INSERT INTO _migrations (filename) VALUES (\x241)")
+        sqlx::query("INSERT INTO _migrations (filename) VALUES (\x241) ON CONFLICT (filename) DO NOTHING")
             .bind(&filename)
             .execute(pool)
             .await
-            .expect("Failed to record migration");
+            .unwrap_or_default();
     }
 
     tracing::info!("All migrations applied successfully");

@@ -146,7 +146,7 @@ async function editDeal(did){showDealModal(did);}
 async function deleteDeal(did){if(!confirm("Delete this deal?"))return;try{await dl("/api/v1/deals/"+did);toast("Deal deleted");loadDeals();}catch(e){toast(e.message,"error");}}
 async function claimDeal(did){try{var d=await po("/api/v1/deals/"+did+"/claim");toast("Deal claimed! Redemptions: "+d.redemption_count,"success");loadDeals();}catch(e){toast(e.message,"error");}}
 
-var PGS=["dashboard","directories","listings","search","categories","reviews","blog","legals","deals","analytics","submissions","seo","apikeys","settings","pages","calls","crm","monetization","email","datacompany","webhooks","domains","branding"];
+var PGS=["dashboard","directories","listings","search","categories","reviews","blog","legals","deals","analytics","submissions","seo","apikeys","settings","pages","calls","crm","monetization","email","datacompany","webhooks","domains","branding",'bloggen','newsletter'];
 if(PGS.indexOf(CP)===-1)CP="dashboard";
 function esc(s){if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 var WT={
@@ -192,7 +192,7 @@ app.innerHTML='<div class="sidebar"><div class="sidebar-brand"><h2>📊 Multi-Di
 document.getElementById("pageTitle").textContent=TTL[CP]||"Dashboard";
 document.getElementById("pageActions").innerHTML="";
 document.getElementById("pageContent").innerHTML="";
-switch(CP){case"dashboard":loadDashboard();break;case"directories":loadDirectories();break;case"listings":loadListings();break;case"search":loadSearch();break;case"categories":loadCategories();break;case"reviews":loadReviews();break;case"reviews":loadReviews();break;case"apikeys":loadApiKeys();break;case"settings":loadSettings();break;case"blog":loadBlog();break;case"legals":loadLegals();break;case"analytics":loadAnalytics();break;case"deals":loadDeals();break;case"submissions":loadSubmissions();break;case"seo":loadSeo();break;
+switch(CP){case"bloggen":loadBlogGen();break;case"newsletter":loadNewsletter();break;case"dashboard":loadDashboard();break;case"directories":loadDirectories();break;case"listings":loadListings();break;case"search":loadSearch();break;case"categories":loadCategories();break;case"reviews":loadReviews();break;case"reviews":loadReviews();break;case"apikeys":loadApiKeys();break;case"settings":loadSettings();break;case"blog":loadBlog();break;case"legals":loadLegals();break;case"analytics":loadAnalytics();break;case"deals":loadDeals();break;case"submissions":loadSubmissions();break;case"seo":loadSeo();break;
 case"email":loadEmail();break;case"pages":loadPublicPages();break;case"crm":loadCrm();break;case"calls":loadCalls();break;case"monetization":loadMonetization();break;case"datacompany":loadDataCompany();break;case"webhooks":loadWebhooks();break;case"domains":loadDomains();break;case"branding":loadBranding();break;}
 setTimeout(function(){showWalkthrough(CP)},100);}
 async function loadDashboard(){var el=document.getElementById("pageContent");el.appendChild(spn());try{var s=await g("/api/v1/dashboard/stats");
@@ -518,5 +518,6 @@ async function doExtract(){var url=document.getElementById("extractUrl").value.t
 
 async function doPortfolioSync(){var el=document.getElementById("pageContent");el.innerHTML='<div style="text-align:center;padding:40px"><span class="spinner-teal"></span></div>';try{var r=await po("/api/v1/admin/portfolio-sync",{});el.innerHTML='<div class="empty-state"><div class="icon">🔄</div><h3>Portfolio Sync '+(r.status==="processing"?"Started":"Complete")+'</h3><p>'+esc(r.message||"")+'</p></div>';toast(r.message||"Portfolio synced","success");}catch(e){el.innerHTML='<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>'+esc(e.message)+'</p></div>';}}
 </script>
+<script src="admin-seo.js"></script><script src="admin-bloggen.js"></script>
 </body>
 </html>
