@@ -18,14 +18,12 @@ pub async fn register_domain(
     State(s): State<AppState>,
     Json(req): Json<RegisterDomainRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Validate domain format (basic)
-    if req.domain.is_empty() || !req.domain.contains('.') {
-        return Err(AppError::Validation("Invalid domain format".to_string()));
-    }
+    // Validate domain format (safe for all operations)
+    validate_domain_safe(&req.domain)?;
 
     // Check if domain already registered
     let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM domain_mappings WHERE domain = \x241 "
+        "SELECT COUNT(*) FROM domain_mappings WHERE domain = $1 "
     )
     .bind(&req.domain)
     .fetch_one(&s.db)
@@ -41,7 +39,7 @@ pub async fn register_domain(
 
     let mapping = sqlx::query_as::<_, DomainMapping>(
         r#"INSERT INTO domain_mappings (domain, type, status, verification_token)
-           VALUES (\x241, \x242, \x243, \x244)
+           VALUES ($1, $2, $3, $4)
            RETURNING id, directory_id, domain, type as domain_type, status, ssl_enabled,
                      cloudflare_record_id, dns_records, verification_token, auto_configured,
                      created_at, updated_at"#
@@ -77,7 +75,7 @@ pub async fn remove_domain(
     State(s): State<AppState>,
     Path(domain_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let result = sqlx::query("DELETE FROM domain_mappings WHERE id = \x241")
+    let result = sqlx::query("DELETE FROM domain_mappings WHERE id = $1")
         .bind(domain_id)
         .execute(&s.db)
         .await?;
@@ -98,27 +96,27 @@ pub async fn verify_domain(
         r#"SELECT id, directory_id, domain, type as domain_type, status, ssl_enabled,
                   cloudflare_record_id, dns_records, verification_token, auto_configured,
                   created_at, updated_at
-           FROM domain_mappings WHERE id = \x241"#
+           FROM domain_mappings WHERE id = $1"#
     )
     .bind(domain_id)
     .fetch_optional(&s.db)
     .await?
     .ok_or(AppError::NotFound("Domain mapping not found".to_string()))?;
 
-    // DNS verification via TXT record check
-    let is_verified = check_dns_verification(&mapping.domain, &mapping.verification_token.as_deref().unwrap_or("")).await;
+    // DNS verification via TXT record check (using safe DNS library)
+    let token_ref = mapping.verification_token.as_deref().unwrap_or("");
+    let is_verified = check_dns_verification(&mapping.domain, token_ref).await;
 
     if !is_verified {
         return Err(AppError::BadRequest(
-            "Domain verification failed. Please add the TXT record to your DNS. \
-             Verification token: ".to_string() + &mapping.verification_token.as_deref().unwrap_or("")
+            "Domain verification failed. Please add the TXT record to your DNS.              Verification token: ".to_string() + token_ref
         ));
     }
 
     // Update status
     let updated = sqlx::query_as::<_, DomainMapping>(
         r#"UPDATE domain_mappings SET status = 'active', updated_at = NOW()
-           WHERE id = \x241
+           WHERE id = $1
            RETURNING id, directory_id, domain, type as domain_type, status, ssl_enabled,
                      cloudflare_record_id, dns_records, verification_token, auto_configured,
                      created_at, updated_at"#
@@ -180,45 +178,69 @@ pub async fn check_plan_domains(
     })))
 }
 
+/// Validate a domain name is safe to use.
+/// RFC 1035 compliant: letters, digits, hyphens, dots, max 253 chars
+fn validate_domain_safe(domain: &str) -> Result<(), AppError> {
+    if domain.is_empty() || domain.len() > 253 {
+        return Err(AppError::Validation("Invalid domain length".to_string()));
+    }
+    for label in domain.split('.') {
+        if label.is_empty() || label.len() > 63 {
+            return Err(AppError::Validation("Invalid domain label".to_string()));
+        }
+        if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return Err(AppError::Validation("Invalid characters in domain".to_string()));
+        }
+        if label.starts_with('-') || label.ends_with('-') {
+            return Err(AppError::Validation("Domain label cannot start/end with hyphen".to_string()));
+        }
+    }
+    Ok(())
+}
+
 // ── Helper functions ─────────────────────────────────────────────────────────
 
-/// Check DNS TXT record for verification token
+/// Check DNS TXT record for verification token using trust-dns-resolver.
+/// Safe: no shell commands, no command injection risk.
 async fn check_dns_verification(domain: &str, token: &str) -> bool {
-    use std::process::Command;
+    use trust_dns_resolver::TokioAsyncResolver;
 
-    let output = Command::new("dig")
-        .arg("TXT")
-        .arg(&format!("_swift-verify.{}", domain))
-        .arg("+short")
-        .output();
+    let lookup = format!("_swift-verify.{}", domain);
 
-    match output {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            stdout.contains(token)
+    let resolver = match TokioAsyncResolver::tokio_from_system_conf() {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Failed to create DNS resolver: {}", e);
+            return false;
         }
-        Err(_) => {
-            // dig not available, try nslookup
-            let output = Command::new("nslookup")
-                .arg("-type=TXT")
-                .arg(&format!("_swift-verify.{}", domain))
-                .output();
+    };
 
-            match output {
-                Ok(out) => {
-                    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-                    stdout.contains(token)
+    match resolver.txt_lookup(&lookup).await {
+        Ok(response) => {
+            for record in response.iter() {
+                let txt_string = record.to_string();
+                if txt_string.contains(token) {
+                    return true;
                 }
-                Err(_) => false
             }
+            false
+        }
+        Err(e) => {
+            tracing::warn!("DNS TXT lookup failed for {}: {}", lookup, e);
+            false
         }
     }
 }
 
-/// Provision nginx site config for a custom domain
+/// Provision nginx site config for a custom domain.
+/// Domain is validated before use. Paths use validated domain only.
 async fn provision_nginx_site(domain: &str) -> Result<(), String> {
     use std::process::Command;
     use std::fs;
+
+    if let Err(e) = validate_domain_safe(domain) {
+        return Err(format!("Invalid domain: {}", e.to_string()));
+    }
 
     let config_content = format!(
         r#"server {{
@@ -237,6 +259,7 @@ async fn provision_nginx_site(domain: &str) -> Result<(), String> {
         domain = domain
     );
 
+    // Path uses domain name as filename - safe because domain is validated alphanumeric/hyphen only
     let config_path = format!("/etc/nginx/sites-available/{}", domain);
     fs::write(&config_path, &config_content)
         .map_err(|e| format!("Failed to write nginx config: {}", e))?;
@@ -269,11 +292,16 @@ async fn provision_nginx_site(domain: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Provision SSL certificate via certbot or self-signed
+/// Provision SSL certificate via certbot or self-signed.
+/// Domain is validated before use. Certbot -d arg uses single validated argument only.
 async fn provision_ssl_certificate(domain: &str) -> Result<(), String> {
     use std::process::Command;
 
-    // Try certbot first
+    if let Err(e) = validate_domain_safe(domain) {
+        return Err(format!("Invalid domain: {}", e.to_string()));
+    }
+
+    // Try certbot first - domain is validated so -d argument is safe
     let certbot = Command::new("certbot")
         .args(["--nginx", "-d", domain, "--non-interactive", "--agree-tos", "-m", "swiftsoftware143@yahoo.com"])
         .output();

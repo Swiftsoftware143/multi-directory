@@ -11,6 +11,8 @@ pub struct Claims {
     pub role: String,
     pub exp: usize,
     pub iat: usize,
+    pub aud: Option<String>,
+    pub iss: Option<String>,
 }
 
 // ── Login / Register ─────────────────────────────────────────────────────────

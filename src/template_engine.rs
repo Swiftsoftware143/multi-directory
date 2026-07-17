@@ -18,6 +18,7 @@ pub const TEMPLATE_EDUCATION: &str = "education";
 pub const TEMPLATE_AUTOMOTIVE: &str = "automotive";
 pub const TEMPLATE_FITNESS: &str = "fitness";
 pub const TEMPLATE_HOSPITALITY: &str = "hospitality";
+pub const TEMPLATE_BUSINESS_DETAIL: &str = "business-detail";
 
 const VALID_TEMPLATES: [&str; 10] = [
     TEMPLATE_LOCAL_BUSINESS,
@@ -257,6 +258,77 @@ impl Default for TemplateEngine {
 /// - `categories`: array of category objects
 /// - `color_scheme`: optional color scheme (will be normalized)
 /// - `query`: optional search query parameters
+
+
+// -- HTML sanitization ------------------------------------------------
+
+/// Escape HTML special characters to prevent XSS
+pub fn html_escape(s: &str) -> String {
+    s.chars().map(|c| match c {
+        '<' => "&lt;".to_string(),
+        '>' => "&gt;".to_string(),
+        '"' => "&quot;".to_string(),
+        '\'' => "&#x27;".to_string(),
+        _ => c.to_string(),
+    }).collect()
+}
+
+/// Sanitize HTML by removing dangerous tags/attributes
+pub fn sanitize_html(input: &str) -> String {
+    let mut output = input.to_string();
+    // Remove script tags and their content
+    while let Some(start) = output.to_lowercase().find("<script") {
+        let close = match output[start..].find(">") {
+            Some(p) => start + p + 1,
+            None => break,
+        };
+        let end_tag = match output[close..].to_lowercase().find("</script") {
+            Some(p) => close + p,
+            None => break,
+        };
+        let closer = match output[end_tag..].find(">") {
+            Some(p) => end_tag + p + 1,
+            None => break,
+        };
+        output.drain(start..closer);
+    }
+    // Remove on* event handlers
+    let dangerous = [
+        "onclick", "onload", "onerror", "onmouseover", "onmouseout",
+        "onkeydown", "onkeyup", "onfocus", "onblur", "onsubmit", "onchange",
+    ];
+    for attr in &dangerous {
+        while let Some(pos) = output.to_lowercase().find(attr) {
+            let end = output[pos..].find(|c: char| !c.is_alphanumeric() && c != '-' && c != ':')
+                .map(|p| pos + p)
+                .unwrap_or(output.len());
+            let val_start = end;
+            if val_start < output.len() && output[val_start..].starts_with('=') {
+                let quote = output[val_start + 1..].chars().next();
+                if let Some(q) = quote {
+                    if q == '"' || q == '\'' {
+                        let close_quote = output[val_start + 2..].find(q)
+                            .map(|p| val_start + 2 + p + 1)
+                            .unwrap_or(val_start + 2);
+                        output.drain(pos..close_quote);
+                    } else {
+                        let space = output[val_start..].find(|c: char| c.is_whitespace() || c == '>')
+                            .map(|p| val_start + p)
+                            .unwrap_or(output.len());
+                        output.drain(pos..space);
+                    }
+                }
+            } else {
+                output.drain(pos..end);
+            }
+        }
+    }
+    // Remove javascript: links
+    while let Some(pos) = output.to_lowercase().find("javascript:") {
+        output.drain(pos..pos + 11);
+    }
+    output
+}
 pub fn build_template_context(
     directory: &Value,
     businesses: &Value,
@@ -276,9 +348,6 @@ pub fn build_template_context(
     })
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -1,4 +1,6 @@
 mod email;
+mod reminders;
+mod coreswift;
 
 mod config;
 mod db;
@@ -9,6 +11,7 @@ mod handlers;
 mod auth;
 mod routes;
 mod template_engine;
+pub mod tracking_script;
 
 use axum::Router;
 use std::time::Duration;
@@ -35,6 +38,9 @@ async fn main() {
     db::run_migrations(&pool).await;
 
     let state = AppState::new(pool, config.clone());
+
+    // Start background reminder cron
+    reminders::start_reminder_cron(state.db.clone());
 
     let app = routes::create_router(state.clone())
         .layer(TraceLayer::new_for_http())

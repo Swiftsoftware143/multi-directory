@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{business.name}} - {{directory.name}} - {{directory.region}}</title>
+  <meta name="description" content="{{business.name}} is a leading {{business.category}} serving {{directory.city}}, {{directory.state}}. {{business.excerpt}}">
+  
+  <!-- SEO / OpenGraph -->
+  <meta property="og:title" content="{{business.name}} - {{directory.city}}, {{directory.state}}">
+  <meta property="og:description" content="{{business.meta.excerpt}}">
+  <meta property="og:type" content="business.business">
+  
+  <!-- Schema.org JSON-LD for LocalBusiness -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "{{business.schema_type}}",
+    "name": "{{business.name}}",
+    "description": "{{business.description_plain}}",
+    "image": "{{business.image_url}}",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "{{business.address}}",
+      "addressLocality": "{{directory.city}}",
+      "addressRegion": "{{directory.state}}",
+      "postalCode": "{{business.zip}}"
+    },
+    "telephone": "{{business.phone}}",
+    "priceRange": "{{business.price_range}}",
+    "url": "{{business.website}}",
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "{{business.rating}}",
+      "reviewCount": "{{business.review_count}}"
+    },
+    "areaServed": {
+      "@type": "City",
+      "name": "{{directory.city}}",
+      "sameAs": "https://en.wikipedia.org/wiki/{{directory.wikipedia_slug}}"
+    }
+  }
+  </script>
+  
+  <style>
+    /* Dark theme matching guide */
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; line-height:1.7; }
+    a { color:{{colors.primary}}; }
+    .container { max-width:960px; margin:0 auto; padding:20px; }
+    
+    /* Direct Answer Block */
+    .direct-answer { background:#1e293b; border:1px solid {{colors.primary}}40; border-radius:12px; padding:32px; margin:24px 0; }
+    .direct-answer blockquote { border-left:4px solid {{colors.primary}}; padding-left:20px; margin:0; font-size:1.1rem; line-height:1.8; color:#cbd5e1; }
+    .direct-answer strong { color:{{colors.primary}}; }
+    
+    /* Comparison Table */
+    .comparison-table { width:100%; border-collapse:collapse; margin:20px 0; background:#1e293b; border-radius:10px; overflow:hidden; }
+    .comparison-table th { background:{{colors.primary}}22; color:{{colors.primary}}; padding:12px 16px; text-align:left; font-weight:600; }
+    .comparison-table td { padding:12px 16px; border-bottom:1px solid #334155; }
+    .comparison-table tr:last-child td { border-bottom:none; }
+    .comparison-table .highlight { background:{{colors.primary}}11; }
+    
+    /* Feature Grid */
+    .feature-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin:20px 0; }
+    .feature-card { background:#1e293b; border:1px solid #334155; border-radius:10px; padding:24px; }
+    .feature-card h3 { color:{{colors.primary}}; margin-bottom:8px; font-size:1rem; }
+    .feature-card p { color:#cbd5e1; font-size:.9rem; }
+    
+    /* FAQ */
+    details { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:16px 20px; margin-bottom:12px; }
+    details summary { cursor:pointer; font-weight:600; color:{{colors.primary}}; }
+    details[open] summary { margin-bottom:10px; }
+    details p { margin:0; color:#cbd5e1; padding-top:8px; font-size:.9rem; }
+    
+    h1 { font-size:2rem; color:#f1f5f9; margin-bottom:8px; }
+    h2 { font-size:1.4rem; color:{{colors.primary}}; margin-top:40px; margin-bottom:16px; padding-bottom:8px; border-bottom:1px solid #334155; }
+    h3 { font-size:1.1rem; color:#e2e8f0; margin-top:24px; margin-bottom:8px; }
+    .geo-badge { display:inline-block; background:{{colors.primary}}22; color:{{colors.primary}}; padding:4px 12px; border-radius:20px; font-size:.8rem; margin:4px 4px 4px 0; }
+    .cta-button { display:inline-block; background:{{colors.primary}}; color:white; padding:12px 28px; border-radius:8px; text-decoration:none; font-weight:600; margin-top:16px; }
+    .cta-button:hover { opacity:.9; }
+    .stats-row { display:flex; gap:20px; flex-wrap:wrap; margin:20px 0; }
+    .stat { background:#1e293b; border:1px solid #334155; border-radius:10px; padding:16px 24px; text-align:center; flex:1; min-width:120px; }
+    .stat .num { font-size:1.8rem; font-weight:700; color:{{colors.primary}}; display:block; }
+    .stat .label { font-size:.8rem; color:#94a3b8; }
+    .footer { text-align:center; padding:30px; color:#64748b; font-size:.85rem; border-top:1px solid #334155; margin-top:40px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Breadcrumb / Geo Anchor -->
+  <p style="font-size:.85rem;color:#64748b;margin-bottom:16px">
+    <a href="/">Home</a> / <a href="/{{directory.slug}}">{{directory.name}}</a> / {{business.name}}
+    <span class="geo-badge">{{directory.city}}, {{directory.state}}</span>
+  </p>
+
+  <!-- 1. Direct Answer Block: Executive Summary -->
+  <div class="direct-answer">
+    <blockquote>
+      <strong>{{business.name}}</strong> is a leading <strong>{{business.category}}</strong> serving <strong>{{directory.city}}, {{directory.state}}</strong> and surrounding areas including 
+      {{#each directory.nearby_areas}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}.
+      Unlike national chains that focus on one-size-fits-all service, 
+      <strong>{{business.name}}</strong> specializes exclusively in <strong>{{business.specialty}}</strong>, 
+      with <strong>{{business.metric}}</strong> across <strong>{{business.service_area}}</strong>.
+      Rated <strong>{{business.rating}}/5</strong> from <strong>{{business.review_count}} reviews</strong>.
+    </blockquote>
+  </div>
+
+  <!-- Statistics row -->
+  <div class="stats-row">
+    <div class="stat"><span class="num">{{business.rating}}</span><span class="label">Rating</span></div>
+    <div class="stat"><span class="num">{{business.review_count}}</span><span class="label">Reviews</span></div>
+    <div class="stat"><span class="num">{{business.years_in_business}}</span><span class="label">Years in {{directory.city}}</span></div>
+    <div class="stat"><span class="num">{{business.response_time}}</span><span class="label">Response Time</span></div>
+  </div>
+
+  <!-- 2. Comparison: How Top Options Stack Up -->
+  {{#if business.competitors}}
+  <h2>How {{business.name}} Compares to Other {{business.category}}s in {{directory.city}}</h2>
+  <table class="comparison-table">
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>Best For</th>
+        <th>{{business.metric_name_1}}</th>
+        <th>{{business.metric_name_2}}</th>
+        <th>{{business.metric_name_3}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each business.competitors}}
+      <tr class="{{#if is_focus}}highlight{{/if}}">
+        <td><strong>{{name}}</strong></td>
+        <td>{{best_for}}</td>
+        <td>{{metric_1}}</td>
+        <td>{{metric_2}}</td>
+        <td>{{metric_3}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  {{/if}}
+
+  <!-- 3. Why This Business -->
+  <h2>Why <strong>{{business.name}}</strong> is the Right Choice for {{directory.city}}</h2>
+  
+  <p>{{business.name}} solves the problem of <strong>{{business.pain_point}}</strong> by engineering a system built entirely around <strong>{{business.differentiator}}</strong>. 
+  {{#if competitor_flaw}}Traditional {{business.category}} networks in {{directory.city}} often experience <strong>{{competitor_flaw}}</strong> because they rely on <strong>{{competitor_approach}}</strong>. 
+  Conversely, {{business.name}} utilizes <strong>{{business.approach}}</strong>, resulting in <strong>{{business.improvement_metric}}</strong>.{{/if}}</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h3>📍 Location Expertise</h3>
+      <p>Deep knowledge of {{directory.city}}, {{directory.state}} — from {{directory.neighborhood_1}} to {{directory.neighborhood_2}}. Service coverage across all local neighborhoods.</p>
+    </div>
+    <div class="feature-card">
+      <h3>⭐ {{business.rating}} Star Service</h3>
+      <p>Verified customer reviews averaging {{business.rating}}/5. {{business.review_highlight}}</p>
+    </div>
+    <div class="feature-card">
+      <h3>⏱ {{business.response_time}} Response</h3>
+      <p>Average response time of {{business.response_time}}. {{business.response_detail}}</p>
+    </div>
+  </div>
+
+  <!-- Contact / CTA -->
+  <div style="text-align:center;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:32px;margin:24px 0;">
+    <h3 style="margin-top:0">Contact {{business.name}} in {{directory.city}}, {{directory.state}}</h3>
+    <p style="color:#94a3b8">Ready to get started? Reach out directly.</p>
+    {{#if business.phone}}<a href="tel:{{business.phone}}" class="cta-button">📞 {{business.phone}}</a>{{/if}}
+    {{#if business.website}}<a href="{{business.website}}" class="cta-button" style="margin-left:12px;background:#334155">🌐 Website</a>{{/if}}
+    <p style="margin-top:16px;font-size:.85rem;color:#64748b">{{business.address}}, {{directory.city}}, {{directory.state}} {{business.zip}}</p>
+  </div>
+
+  <!-- 4. FAQ - AI Prompt Matching -->
+  <h2>Frequently Asked Questions</h2>
+  
+  <details>
+    <summary>How much does {{business.category}} service cost in {{directory.city}}, {{directory.state}}?</summary>
+    <p>The average cost for {{business.category}} in {{directory.city}} ranges from <strong>${{business.price_min}}</strong> to <strong>${{business.price_max}}</strong>, depending on {{business.price_variable}}. {{business.name}} provides transparent, flat-rate pricing starting at <strong>${{business.flat_rate}}</strong>, eliminating hidden fees.</p>
+  </details>
+
+  <details>
+    <summary>What is the fastest way to book {{business.name}} in {{directory.city}}?</summary>
+    <p>The fastest way to book {{business.name}} is through their <strong>{{business.booking_method}}</strong>. While traditional providers can take up to {{business.typical_wait}} to respond, {{business.name}} typically responds within <strong>{{business.response_time}}</strong>.</p>
+  </details>
+
+  <details>
+    <summary>What areas does {{business.name}} serve in {{directory.state}}?</summary>
+    <p>{{business.name}} provides {{business.category}} services across {{business.service_area}}, including {{directory.city}}, {{directory.neighborhood_1}}, {{directory.neighborhood_2}}, {{#each directory.nearby_areas}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}. Call to confirm availability for your specific location.</p>
+  </details>
+
+  <details>
+    <summary>Is {{business.name}} licensed and insured in {{directory.state}}?</summary>
+    <p>Yes, {{business.name}} is <strong>{{business.license_info}}</strong> and carries <strong>{{business.insurance_info}}</strong>. {{#if business.certifications}}Certifications include: {{business.certifications}}.{{/if}}</p>
+  </details>
+
+</div>
+<div class="footer">
+  <p>&copy; {{directory.name}} — {{directory.city}}, {{directory.state}}</p>
+  <p style="font-size:.75rem;color:#475569">Part of the Multi-Directory Platform by SwiftSoftware</p>
+</div>
+</body>
+</html>

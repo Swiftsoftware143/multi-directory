@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Business Dashboard</title>
+<style>
+:root{--teal:#0d9488;--primary:#2563eb;--bg:#f0fdfa;--card:#fff;--text:#0f172a;--text-secondary:#64748b;--border:#e2e8f0;--success:#22c55e;--warning:#eab308;--danger:#ef4444}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:var(--teal);color:#fff;padding:20px 24px;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:1.3rem;font-weight:700}
+.header .sub{font-size:.85rem;opacity:.85;margin-top:2px}
+.header .badge{background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:.75rem}
+.container{max-width:900px;margin:0 auto;padding:20px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center}
+.stat-card .num{font-size:1.8rem;font-weight:700;color:var(--teal)}
+.stat-card .label{font-size:.75rem;color:var(--text-secondary);margin-top:4px}
+.stat-card .change{font-size:.7rem;margin-top:2px}
+.change.up{color:var(--success)}
+.change.down{color:var(--danger)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.card h3{font-size:.95rem;color:var(--text);margin-bottom:12px}
+.visitor-location{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.location-item{display:flex;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px;font-size:.85rem}
+.location-item .city{font-weight:600}
+.location-item .count{color:var(--teal);font-weight:700}
+.chart{display:flex;align-items:flex-end;gap:3px;height:100px;padding:8px 0}
+.chart-bar{flex:1;background:var(--teal);border-radius:3px 3px 0 0;transition:height .3s;min-width:4px}
+.chart-label{font-size:.55rem;color:var(--text-secondary);text-align:center;margin-top:2px;writing-mode:vertical-lr;text-orientation:mixed}
+.empty{text-align:center;padding:60px 20px}
+.empty .icon{font-size:3rem;margin-bottom:12px}
+.empty h3{font-size:1.1rem;margin-bottom:8px}
+.empty p{color:var(--text-secondary);font-size:.85rem}
+.login-container{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.06)}
+.login-card h1{font-size:1.4rem;margin-bottom:8px;text-align:center}
+.login-card .tagline{font-size:.85rem;color:var(--text-secondary);text-align:center;margin-bottom:24px}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;margin-bottom:4px;color:var(--text-secondary)}
+.form-group input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;color:var(--text);background:var(--card);transition:border-color .2s}
+.form-group input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.15)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:#0f766e}
+.btn-full{width:100%;justify-content:center;padding:12px}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error{background:#fef2f2;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:.8rem;margin-bottom:16px;display:none}
+#app{min-height:100vh}
+</style>
+</head>
+<body>
+<div id="app">
+<div class="login-container" id="loginView">
+<div class="login-card">
+<h1>🏪 My Business Dashboard</h1>
+<p class="tagline">Track how customers find your business</p>
+<div class="error" id="loginError"></div>
+<div class="form-group">
+<label>Business ID</label>
+<input type="text" id="bizId" placeholder="Paste your business ID" autocomplete="off">
+</div>
+<div class="form-group">
+<label>Owner Email</label>
+<input type="email" id="ownerEmail" placeholder="Your email address" autocomplete="email">
+</div>
+<button class="btn btn-primary btn-full" id="viewBtn">View My Dashboard</button>
+</div>
+</div>
+<div class="dashboard-view" id="dashboardView" style="display:none">
+<div class="header">
+<div>
+<h1>🏪 <span id="bizName">Business Dashboard</span></h1>
+<div class="sub" id="bizSub">Track your listing performance</div>
+</div>
+<span class="badge" id="bizBadge">Free Tier</span>
+</div>
+<div class="container" id="dashboardContent">
+<div class="empty">
+<div class="icon">📊</div>
+<h3>Loading your data...</h3>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+async function loadBusinessDashboard() {
+  var bizId = localStorage.getItem("biz_dash_id");
+  if (!bizId) return;
+  
+  var el = document.getElementById("dashboardContent");
+  el.innerHTML = '<div class="empty"><div class="icon">📊</div><h3>Loading your data...</h3></div>';
+  
+  try {
+    var data = await fetch("/api/v1/visitors/business/" + bizId).then(function(r){ return r.json(); });
+    
+    // Fetch subscription info
+    var subData = null;
+    try {
+      subData = await fetch("/api/v1/businesses/" + bizId + "/subscription").then(function(r){ return r.ok ? r.json() : null; });
+    } catch(e) {}
+    
+    // Fetch the plan tier info if subscription exists
+    var planInfo = null;
+    if (subData && subData.tier_id) {
+      try {
+        planInfo = await fetch("/api/v1/tiers/" + subData.tier_id).then(function(r){ return r.ok ? r.json() : null; });
+      } catch(e) {}
+    }
+    if (!data || data.total_views === undefined) {
+      el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>No data yet</h3><p>We haven't collected enough visitor data for your business yet. Check back after customers start finding your listing.</p></div>';
+      return;
+    }
+    
+    var weeklyChange = data.weekly_change_pct || 0;
+    var changeClass = weeklyChange >= 0 ? "up" : "down";
+    var changeIcon = weeklyChange >= 0 ? "📈" : "📉";
+    
+    var h = '<div class="stats">' +
+      '<div class="stat-card"><div class="num">' + (data.total_views || 0) + '</div><div class="label">Total Views</div></div>' +
+      '<div class="stat-card"><div class="num">' + (data.phone_clicks || 0) + '</div><div class="label">📞 Phone Clicks</div></div>' +
+      '<div class="stat-card"><div class="num">' + (data.website_clicks || 0) + '</div><div class="label">🌐 Website Clicks</div></div>' +
+      '<div class="stat-card"><div class="num">' + (data.direction_clicks || 0) + '</div><div class="label">🗺️ Direction Clicks</div></div>' +
+      '<div class="stat-card"><div class="num">' + (data.views_this_week || 0) + '</div><div class="label">Views This Week</div><div class="change ' + changeClass + '">' + changeIcon + ' ' + (weeklyChange > 0 ? "+" : "") + weeklyChange.toFixed(1) + '% vs last week</div></div>' +
+      '</div>';
+    
+    // Subscription & Plan section - render inline directly
+    h += renderSubscriptionSection(subData, planInfo);
+    
+    // Visitor locations
+    h += '<div class="card"><h3>📍 Where Your Viewers Come From</h3><div class="visitor-location">';
+    if (data.visitor_locations && data.visitor_locations.length) {
+      for (var i = 0; i < data.visitor_locations.length; i++) {
+        var l = data.visitor_locations[i];
+        h += '<div class="location-item"><span class="city">' + esc(l.city || "Unknown") + (l.region ? ", " + esc(l.region) : "") + '</span><span class="count">' + l.count + '</span></div>';
+      }
+    } else {
+      h += '<p style="font-size:.85rem;color:var(--text-secondary)">No location data yet</p>';
+    }
+    h += '</div></div>';
+    
+    // Views over time
+    h += '<div class="card"><h3>📅 Views Over Time (Last 30 Days)</h3><div class="chart">';
+    if (data.views_over_time && data.views_over_time.length) {
+      var mx = 1;
+      for (var i = 0; i < data.views_over_time.length; i++) {
+        if (data.views_over_time[i].count > mx) mx = data.views_over_time[i].count;
+      }
+      for (var i = 0; i < data.views_over_time.length; i++) {
+        var d = data.views_over_time[i];
+        var pct = (d.count / mx) * 100;
+        h += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end"><div class="chart-bar" style="height:' + Math.max(pct, 2) + '%" title="' + d.date + ': ' + d.count + '"></div><div class="chart-label">' + d.date.substring(5) + '</div></div>';
+      }
+    } else {
+      h += '<p style="color:var(--text-secondary);font-size:.85rem">Not enough data yet</p>';
+    }
+    h += '</div></div>';
+    
+    // Raw data export
+    h += '<div class="card"><h3>📥 Export Your Data</h3><p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Download your visitor data as JSON for your own analysis.</p><button class="btn btn-primary" onclick="exportMyData(\'' + bizId + '\')">Download My Data</button></div>';
+    
+    el.innerHTML = h;
+    document.getElementById("bizBadge").textContent = "📊 " + data.total_views + " total views";
+  } catch (e) {
+    el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>Error</h3><p>' + esc(e.message) + '</p></div>';
+  }
+}
+
+function renderSubscriptionSection(subData, planInfo){
+  if (!subData) {
+    return '<div class="card"><h3>💳 Subscription & Plan</h3><p style="color:var(--text-secondary);font-size:.85rem">No active subscription. <a href="#" onclick="alert('Contact admin to upgrade or use the checkout link from your plan.')">Upgrade your plan</a> to unlock more features.</p></div>';
+  }
+  var statusBadge = subData.status;
+  var statusClass = subData.status === "active" || subData.status === "trial" ? "up" : "down";
+  var planName = planInfo ? esc(planInfo.name) : (subData.tier_id ? "Plan #"+subData.tier_id.substring(0,8) : "Free");
+  var checkoutUrl = planInfo && planInfo.plan_sales_page_url ? planInfo.plan_sales_page_url : null;
+  var h = '<div class="card"><h3>💳 Subscription & Plan</h3>';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:700;font-size:1.1rem">'+planName+'</span><span style="font-size:.8rem;padding:4px 10px;border-radius:20px;background:var(--'+(subData.status==="active"?"success":"warning")+');color:#fff">'+statusBadge+'</span></div>';
+  if (subData.billing_cycle) h += '<div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:4px">Billing: '+subData.billing_cycle+' | Price: $'+(subData.price_paid||"0")+' '+(subData.currency||"USD")+'</div>';
+  if (subData.start_date) h += '<div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:4px">Started: '+subData.start_date+'</div>';
+  if (subData.end_date) h += '<div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:4px">Ends: '+subData.end_date+'</div>';
+  if (subData.auto_renew) h += '<div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:8px">↻ Auto-renew enabled</div>';
+  if (planInfo) {
+    var features = [];
+    if (planInfo.max_listings) features.push(planInfo.max_listings + ' listings');
+    if (planInfo.has_reviews) features.push('Reviews');
+    if (planInfo.has_crm) features.push('CRM');
+    if (planInfo.featured_listing) features.push('Featured listing');
+    if (features.length) h += '<div style="font-size:.8rem;color:var(--teal)">Includes: '+features.join(', ')+'</div>';
+  }
+  if (subData.status === "active" && checkoutUrl) {
+    h += '<div style="margin-top:12px"><a href="' + esc(checkoutUrl) + '" target="_blank" class="btn btn-primary">Manage Subscription</a></div>';
+  } else if (!subData || subData.status !== "active") {
+    h += '<div style="margin-top:12px"><a href="' + (checkoutUrl ? esc(checkoutUrl) : "#") + '" target="_blank" class="btn btn-primary" onclick="if(!''+(checkoutUrl||"")+''){alert('No checkout URL configured. Contact admin.');return false}">Upgrade Plan</a></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function esc(s){
+  if(!s) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function exportMyData(bizId) {
+  fetch("/api/v1/visitors/business/" + bizId + "/events")
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "my-business-data-" + new Date().toISOString().substring(0,10) + ".json";
+      a.click();
+    })
+    .catch(function(e){
+      alert("Failed to export: " + e.message);
+    });
+}
+
+// Login flow
+document.getElementById("viewBtn").addEventListener("click", function(){
+  var bizId = document.getElementById("bizId").value.trim();
+  var email = document.getElementById("ownerEmail").value.trim();
+  var errEl = document.getElementById("loginError");
+  
+  if (!bizId || !email) {
+    errEl.textContent = "Both Business ID and Owner Email are required";
+    errEl.style.display = "block";
+    return;
+  }
+  
+  errEl.style.display = "none";
+  var btn = document.getElementById("viewBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Loading...';
+  
+  // Store in localStorage
+  localStorage.setItem("biz_dash_id", bizId);
+  localStorage.setItem("biz_dash_email", email);
+  
+  // Try to load
+  document.getElementById("loginView").style.display = "none";
+  document.getElementById("dashboardView").style.display = "";
+  loadBusinessDashboard();
+  
+  btn.disabled = false;
+  btn.textContent = "View My Dashboard";
+});
+
+// Check if already logged in
+(function(){
+  var bizId = localStorage.getItem("biz_dash_id");
+  var email = localStorage.getItem("biz_dash_email");
+  if (bizId && email) {
+    document.getElementById("bizId").value = bizId;
+    document.getElementById("ownerEmail").value = email;
+    document.getElementById("loginView").style.display = "none";
+    document.getElementById("dashboardView").style.display = "";
+    loadBusinessDashboard();
+  }
+})();
+</script>
+</body>
+</html>

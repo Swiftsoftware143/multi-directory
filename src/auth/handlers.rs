@@ -92,6 +92,8 @@ pub async fn register(
         role: "admin".to_string(),
         exp: now_ts + s.config.jwt_access_expiry as usize,
         iat: now_ts,
+        aud: Some("multidirectory-api".to_string()),
+        iss: Some("multidirectory".to_string()),
     };
     let token = create_token(&claims, &s.config.jwt_secret)?;
 
@@ -101,6 +103,8 @@ pub async fn register(
         role: "admin".to_string(),
         exp: now_ts + s.config.jwt_refresh_expiry as usize,
         iat: now_ts,
+        aud: Some("multidirectory-api".to_string()),
+        iss: Some("multidirectory".to_string()),
     };
     let refresh_token = create_token(&refresh_claims, &s.config.jwt_secret)?;
 
@@ -150,11 +154,11 @@ pub async fn login(
     .fetch_optional(&s.db)
     .await?;
     
-    if row.is_none() {
-        tracing::warn!("Login failed: user not found for {}", &req.email);
-        return Err(AppError::InvalidCredentials);
-    }
-    let row = row.unwrap();
+    let row = row
+        .ok_or_else(|| {
+            tracing::warn!("Login failed: user not found for {}", &req.email);
+            AppError::InvalidCredentials
+        })?;
 
     use sqlx::Row;
     let user = User {
@@ -212,6 +216,8 @@ pub async fn login(
         role: user.role.clone(),
         exp: now_ts + s.config.jwt_access_expiry as usize,
         iat: now_ts,
+        aud: Some("multidirectory-api".to_string()),
+        iss: Some("multidirectory".to_string()),
     };
     let token = create_token(&claims, &s.config.jwt_secret)?;
 
@@ -221,6 +227,8 @@ pub async fn login(
         role: user.role.clone(),
         exp: now_ts + s.config.jwt_refresh_expiry as usize,
         iat: now_ts,
+        aud: Some("multidirectory-api".to_string()),
+        iss: Some("multidirectory".to_string()),
     };
     let refresh_token = create_token(&refresh_claims, &s.config.jwt_secret)?;
 

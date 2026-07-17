@@ -120,22 +120,33 @@ pub async fn list_templates(
     let category = params.get("category");
 
     let mut sql = "SELECT * FROM blog_templates WHERE status = 'active'".to_string();
-    let mut binds: Vec<String> = Vec::new();
+    let mut p = 2;
 
-    if let Some(did) = dir_id {
-        sql.push_str(&format!(" AND (directory_id = '{}' OR is_global = true)", did));
+    if dir_id.is_some() {
+        sql.push_str(&format!(" AND (directory_id = ${p} OR is_global = true)"));
+        p += 1;
     }
-    if let Some(tt) = template_type {
-        sql.push_str(&format!(" AND template_type = '{}'", tt.replace('\'', "''")));
+    if template_type.is_some() {
+        sql.push_str(&format!(" AND template_type = ${p}"));
+        p += 1;
     }
-    if let Some(cat) = category {
-        sql.push_str(&format!(" AND category = '{}'", cat.replace('\'', "''")));
+    if category.is_some() {
+        sql.push_str(&format!(" AND category = ${p}"));
+        p += 1;
     }
     sql.push_str(" ORDER BY name ASC");
 
-    let templates = sqlx::query_as::<_, BlogTemplate>(&sql)
-        .fetch_all(&s.db)
-        .await?;
+    let mut q = sqlx::query_as::<_, BlogTemplate>(&sql);
+    if let Some(did) = dir_id {
+        q = q.bind(did);
+    }
+    if let Some(tt) = template_type {
+        q = q.bind(tt);
+    }
+    if let Some(cat) = category {
+        q = q.bind(cat);
+    }
+    let templates = q.fetch_all(&s.db).await?;
 
     Ok(Json(templates))
 }
