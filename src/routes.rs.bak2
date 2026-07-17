@@ -1,20 +1,15 @@
 use axum::{
     routing::{get, post, put, delete},
     Router,
-    middleware::{self, Next},
-    response::Response,
-    extract::{Request, State},
+    middleware,
 };
 use std::sync::Arc;
-use crate::error::AppError;
-use tracing::warn;
 use crate::AppState;
 use crate::handlers::*;
 
 pub fn create_router(s: AppState) -> Router {
     // ??? Public API routes (no auth needed)
-    let all_routes = Router::new()
-        
+    let public_routes = Router::new()
         .route("/health", get(health_check))
         .route("/auth/login", post(auth_handler::login))
         .route("/auth/register", post(auth_handler::register))
@@ -219,7 +214,10 @@ pub fn create_router(s: AppState) -> Router {
         .route("/directories/:id/schema-configs", get(seo_config::list_schema_configs))
         .route("/directories/:id/schema-configs/:schema_type", put(seo_config::upsert_schema_config))
         .route("/directories/:id/seo-settings", get(seo_config::get_dir_seo_settings).put(seo_config::update_dir_seo_settings))
-        .route("/directories/:id/sitemap", get(seo_config::generate_sitemap))
+        .route("/directories/:id/sitemap", get(seo_config::generate_sitemap));
+
+    // ??? Protected API routes (with auth middleware)
+    let protected_routes = Router::new()
         .route("/auth/me", get(auth_handler::me))
         .route("/auth/password", put(auth_handler::change_password))
         .route("/dashboard/stats", get(admin::dashboard_stats))
@@ -243,12 +241,13 @@ pub fn create_router(s: AppState) -> Router {
         .route("/provider-keys", get(provider_keys_handler::list_provider_keys).post(provider_keys_handler::upsert_provider_key))
         .route("/provider-keys/:provider", delete(provider_keys_handler::delete_provider_key))
         // ??? Industry dashboard routes
+        .route("/industries/available", get(industries::list_available_industries))
         .route("/industries", get(industries::list_user_industries).post(industries::set_user_industry))
         .route("/industries/:slug", delete(industries::remove_user_industry))
         .route("/industries/limit", get(industries::get_industry_limit))
         .layer(middleware::from_fn_with_state(
             s.clone(),
-            auth_guard,
+            crate::auth::middleware::auth_middleware,
         ));
 
     // ??? Serve SPA frontend at root
@@ -282,7 +281,8 @@ pub fn create_router(s: AppState) -> Router {
 
     // ??? Combine: /api/v1/* API routes + static file server at /* + SPA fallback
     let app = Router::new()
-        .nest("/api/v1", all_routes)
+        .nest("/api/v1", public_routes)
+        .nest("/api/v1/admin", protected_routes)
         .fallback_service(
             tower::service_fn(move |req: axum::http::Request<axum::body::Body>| {
                 let frontend = frontend_path.clone();
@@ -405,58 +405,6 @@ pub fn create_router(s: AppState) -> Router {
 
     app
 }
-
-
-/// Auth guard middleware — requires JWT on all routes except public ones
-async fn auth_guard(
-    State(s): State<AppState>,
-    mut req: Request,
-    next: Next,
-) -> Result<Response, AppError> {
-    let path = req.uri().path().to_string();
-    let has_auth = req.headers().get("Authorization").is_some();
-    let auth_preview = req.headers().get("Authorization").and_then(|v| v.to_str().ok()).unwrap_or("none").chars().take(40).collect::<String>();
-    warn!("AUTH_GUARD: path={}, has_auth={}, auth_preview={}", path, has_auth, auth_preview);
-    
-    // Public paths that don't need authentication
-    let is_public = path == "/health"
-        || path == "/auth/login"
-        || path == "/auth/register"
-        || path == "/auth/forgot-password"
-        || path == "/auth/reset-password"
-        || path.starts_with("/sitemap.xml")
-        || path.starts_with("/robots.txt")
-        || path.starts_with("/public/")
-        || path == "/categories"
-        || path == "/search"
-        || path == "/listings"
-        || path.starts_with("/reviews/stats/");
-    
-    if is_public {
-        return Ok(next.run(req).await);
-    }
-    
-    // For all other routes, require valid JWT
-    use crate::auth::middleware::verify_token;
-    
-    let auth_header = req
-        .headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized)?;
-    
-    let token = auth_header.strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized)?;
-    
-    let claims = verify_token(token, &s.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
-    
-    // Insert claims into request extensions for handlers that need them
-    req.extensions_mut().insert(claims);
-    
-    Ok(next.run(req).await)
-}
-
 
 /// GET /api/v1/health
 async fn health_check() -> impl axum::response::IntoResponse {
