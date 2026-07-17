@@ -3,49 +3,47 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Multi-Directory Platform G�� User Guide</title>
+<title>Multi-Directory Platform User Guide</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
   a { color: #10b981; text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  /* Sidebar */
-  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; }
+  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; z-index: 10; }
   .sidebar h2 { color: #10b981; font-size: 1.1rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
-  .sidebar nav a { display: block; padding: 10px 20px; color: #94a3b8; font-size: 0.9rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a { display: block; padding: 8px 20px; color: #94a3b8; font-size: 0.85rem; border-left: 3px solid transparent; transition: all 0.2s; }
   .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+  .sidebar .section-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 4px; }
 
-  /* Main */
   .main { margin-left: 280px; flex: 1; padding: 40px 48px; max-width: 960px; }
   .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
   .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
   .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main h4 { font-size: 1rem; color: #cbd5e1; margin-top: 16px; margin-bottom: 6px; }
   .main p, .main li { line-height: 1.7; color: #cbd5e1; }
   .main p { margin-bottom: 12px; }
   .main ul, .main ol { margin: 8px 0 16px 24px; }
   .main li { margin-bottom: 6px; }
 
-  /* Cards */
   .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
   .card h3 { margin-top: 0; color: #10b981; }
   .card p { color: #cbd5e1; }
+  .card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .card td { padding: 6px 12px; border-bottom: 1px solid #334155; }
+  .card td:first-child { color: #94a3b8; white-space: nowrap; }
 
-  /* Feature Grid */
   .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
 
-  /* Code blocks */
   code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #10b981; }
   pre { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
   pre code { background: none; padding: 0; color: #e2e8f0; }
 
-  /* Stats */
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }
   .stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; text-align: center; }
   .stat .num { font-size: 2rem; font-weight: 700; color: #10b981; display: block; }
   .stat .label { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
 
-  /* FAQ */
   details { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
   details summary { cursor: pointer; font-weight: 600; color: #10b981; }
   details[open] summary { margin-bottom: 10px; }
@@ -72,63 +70,137 @@
 
 <!-- Sidebar -->
 <div class="sidebar">
-  <h2>=��� Directory Guide</h2>
+  <h2>&#x1F4C2; Directory Guide</h2>
   <nav>
     <a href="#introduction" class="active">1. Introduction</a>
     <a href="#getting-started">2. Getting Started</a>
     <a href="#dashboard">3. Dashboard</a>
-    <a href="#templates">4. Templates</a>
-    <a href="#listings">5. Listings</a>
-    <a href="#categories">6. Categories</a>
-    <a href="#themes">7. Themes</a>
-    <a href="#settings">8. Settings</a>
-    <a href="#blog-generator">13. Blog Generator</a>
+    <a href="#directories">4. Directories &amp; Cities</a>
+    <a href="#templates">5. Templates</a>
+    <a href="#businesses">6. Businesses / Listings</a>
+    <a href="#categories">7. Categories</a>
+    <a href="#reviews">8. Reviews &amp; Submissions</a>
+    <a href="#deals">9. Deals (Groupon-Style)</a>
+    <a href="#seo">10. SEO Module</a>
+    <a href="#blog">11. Blog System</a>
+    <a href="#blog-generator">12. Blog Generator (AI)</a>
+    <a href="#business-articles">13. Business Articles</a>
     <a href="#newsletter">14. Newsletter</a>
-    <a href="#api">9. API Reference</a>
-    <a href="#faq">10. FAQ</a>
-    <a href="#deals">11. Deals (Groupon-Style)</a>
-    <a href="#directory-structure">12. Directory Structure</a>
+    <a href="#email">15. Email Campaigns</a>
+    <a href="#crm">16. CRM</a>
+    <a href="#analytics">17. Analytics</a>
+    <a href="#monetization">18. Monetization</a>
+    <a href="#call-tracking">19. Call Tracking</a>
+    <a href="#data-company">20. Data Company &amp; Enrichment</a>
+    <a href="#import-export">21. Import/Export</a>
+    <a href="#programmatic-pages">22. Programmatic Pages</a>
+    <a href="#services-locations">23. Services &amp; Locations</a>
+    <a href="#networks">24. Networks</a>
+    <a href="#legal-pages">25. Legal Pages</a>
+    <a href="#branding">26. Branding</a>
+    <a href="#api-keys">27. API Keys</a>
+    <a href="#webhooks">28. Webhooks</a>
+    <a href="#provider-keys">29. Provider Keys</a>
+    <a href="#visitor-tracking">30. Visitor Tracking</a>
+    <a href="#landing-pages">31. Landing Pages</a>
+    <a href="#domains">32. Domains</a>
+    <a href="#automation">33. Automation / n8n</a>
+    <a href="#industries">34. Industries</a>
+    <a href="#settings">35. Settings</a>
+    <a href="#api">36. API Reference</a>
+    <a href="#faq">37. FAQ</a>
+    <div class="section-label">UPDATED FEATURES</div>
+    <a href="#admin-vs-directory">38. Admin vs Directory Dashboard</a>
+    <a href="#ai-article-writer">39. AI Article Writer (Answer-First)</a>
+    <a href="#core-swift">40. Core Swift Native Integration</a>
+    <a href="#integrations">41. Integrations Panel</a>
+    <a href="#trap-doors">42. Trap Door Pages</a>
+    <a href="#sponsored-articles">43. Sponsored Articles</a>
   </nav>
 </div>
 
 <!-- Main Content -->
 <div class="main">
 
-<h1>=��� Multi-Directory Platform</h1>
-<p style="color:#64748b;margin-bottom:32px;">User Guide v1.0 G�� directory.swiftsoftware.net</p>
+<h1>&#x1F4C2; Multi-Directory Platform</h1>
+<p style="color:#64748b;margin-bottom:32px;">User Guide v2.0 &mdash; directory.swiftsoftware.net</p>
 
 <!-- 1. Introduction -->
 <h2 id="introduction">1. Introduction</h2>
-<p>The <strong>Multi-Directory Platform</strong> is a powerful, white-label directory builder that lets you create and manage multiple industry-specific directories from a single dashboard. Whether you need a local business directory, a restaurant guide, or a farm marketplace, the platform provides everything you need out of the box.</p>
+<p>The <strong>Multi-Directory Platform</strong> is a full-stack white-label directory SAAS. Create and manage multiple city-specific or industry-specific directories from a single dashboard. Each directory has its own public URL, theme, SEO settings, blog, newsletter, deals, CRM, call tracking, monetization, and more.</p>
 
 <div class="feature-grid">
   <div class="card">
-    <h3>=�š Multi-Industry Templates</h3>
-    <p>Choose from pre-built templates for farms, restaurants, real estate, local businesses, and more.</p>
+    <h3>&#x1F3ED; Multi-Industry Templates</h3>
+    <p>10 pre-built templates: local business, farm, restaurant, real estate, medical, service, education, automotive, fitness, hospitality.</p>
   </div>
   <div class="card">
-    <h3>=�Ŀ Customizable Themes</h3>
-    <p>Set brand colors, fonts, and layout options per directory. Each directory can have its own look.</p>
+    <h3>&#x1F3A8; Customizable Themes</h3>
+    <p>Brand colors, fonts, logos, layout per directory. Each directory looks unique.</p>
   </div>
   <div class="card">
-    <h3>=��� SEO-Optimized Listings</h3>
-    <p>Every listing includes meta descriptions, structured data, and clean URLs for search engines.</p>
+    <h3>&#x1F4F1; City-Based URLs</h3>
+    <p>Each directory gets its own public URL at /{slug}. Auto geo-redirect for visitors.</p>
   </div>
   <div class="card">
-    <h3>=��� REST API</h3>
-    <p>Full CRUD API for listings, categories, and directories. Integrate with any external system.</p>
+    <h3>&#x1F9EE; AI Content Engine</h3>
+    <p>Blog generator, business articles, programmatic pages, content repurposing.</p>
   </div>
   <div class="card">
-    <h3>=��� Analytics Dashboard</h3>
-    <p>Track directory views, listing clicks, API usage, and more with built-in analytics.</p>
+    <h3>&#x1F4CA; Analytics &amp; CRM</h3>
+    <p>Track views, clicks, calls, visitors. Manage contacts, pipelines, and deals.</p>
   </div>
   <div class="card">
-    <h3>=��� Role-Based Access</h3>
-    <p>Admin, editor, and viewer roles. Control who can create, edit, or approve listings.</p>
+    <h3>&#x1F4B0; Monetization</h3>
+    <p>Tiers, subscriptions, ad zones, sponsored listings, article sponsorships.</p>
   </div>
 </div>
 
 <!-- 2. Getting Started -->
+<h2 id="admin-vs-directory">38. Admin Panel vs Directory Dashboard</h2>
+
+<p>This platform has <strong>two layers</strong> of navigation. Think of it like a mall:</p>
+
+<div class="feature-grid">
+<div class="card">
+<h3>🏢 Global Admin (The Mall)</h3>
+<ul>
+<li><strong>Dashboard</strong> — cross-directory stats (foot traffic across stores)</li>
+<li><strong>Directories</strong> — create, manage, clone, sell directories</li>
+<li><strong>API Keys</strong> — Google, OpenAI, Stripe (fuels all directories)</li>
+<li><strong>Settings</strong> — tenant name, password</li>
+</ul>
+<p style="margin-top:12px;color:#94a3b8;font-size:.85rem">This is where you walk between directories and manage the building.</p>
+</div>
+<div class="card">
+<h3>🏪 Directory Dashboard (Each Store)</h3>
+<ul>
+<li><strong>Dashboard</strong> — directory stats (listings, articles, posts)</li>
+<li><strong>Listings + Categories</strong> — manage businesses</li>
+<li><strong>Blog + SEO Articles (AI Writer)</strong> — content marketing</li>
+<li><strong>SEO + Trap Doors + Branding</strong> — rankings & appearance</li>
+<li><strong>Monetize</strong> — tiers, subscriptions, ad zones, sponsored articles</li>
+<li><strong>Analytics</strong> — per-directory views, clicks, events</li>
+<li><strong>Integrations</strong> — Core Swift, CRM, webhooks, SMTP</li>
+<li><strong>Settings + Legal + Domains</strong> — directory config</li>
+</ul>
+<p style="margin-top:12px;color:#94a3b8;font-size:.85rem">Everything the directory owner needs in one place.</p>
+</div>
+</div>
+
+<h3>How to Enter a Directory Dashboard</h3>
+<ol>
+<li>Go to <strong>Directories</strong> in the global admin</li>
+<li>Click the <strong>📂 Dashboard</strong> button on any directory card</li>
+<li>The sidebar swaps to that directory's controls</li>
+<li>Click the back arrow to return to global admin</li>
+</ol>
+
+<h3>What Happens When You Sell a Directory</h3>
+<p>The buyer logs into their own dashboard and sees <strong>only their directory</strong> — with full access to listings, SEO Articles, monetization, analytics, branding, integrations, and SMTP. They connect their own Core Swift tenant, their own CRM, their own sending email. Everything is independent.</p>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
 <h2 id="getting-started">2. Getting Started</h2>
 
 <div class="card">
@@ -138,617 +210,1379 @@
 
 <div class="card">
   <h3>Default Login Credentials</h3>
-  <table style="width:100%;border-collapse:collapse;margin-top:8px;">
-    <tr><td style="padding:8px 0;color:#94a3b8;">Email:</td><td style="padding:8px 0;"><code>swiftsoftware143@yahoo.com</code></td></tr>
-    <tr><td style="padding:8px 0;color:#94a3b8;">Password:</td><td style="padding:8px 0;"><code>SwiftAdmin2026!</code></td></tr>
+  <table>
+    <tr><td>Email:</td><td><code>swiftsoftware143@yahoo.com</code></td></tr>
+    <tr><td>Password:</td><td><code>SwiftAdmin2026!</code></td></tr>
   </table>
-  <p style="margin-top:16px;color:#ef4444;font-size:0.9rem;">G�� Change your password immediately after first login.</p>
+  <p style="margin-top:16px;color:#ef4444;font-size:0.9rem;">Change your password immediately after first login.</p>
 </div>
 
 <h3>Quick Start Steps</h3>
 <ol>
-  <li>Visit <a href="https://directory.swiftsoftware.net" target="_blank">directory.swiftsoftware.net</a> and log in with the admin credentials above.</li>
+  <li>Visit <strong>directory.swiftsoftware.net</strong> and log in with admin credentials.</li>
   <li>Create your first directory from the <strong>Dashboard</strong> using a template.</li>
-  <li>Add categories relevant to your industry (e.g., "Plumbers", "Electricians" for a local biz directory).</li>
-  <li>Start adding listings G�� import via CSV or add manually.</li>
-  <li>Customize the theme (colors, logo) under <strong>Settings G�� Theme</strong>.</li>
-  <li>Share your public directory URL with visitors.</li>
+  <li>Add categories relevant to your industry.</li>
+  <li>Add businesses manually or import via CSV.</li>
+  <li>Customize the theme (colors, logo, fonts) under directory settings.</li>
+  <li>Share the public directory URL (e.g., <code>/palm-bay</code>) with visitors.</li>
 </ol>
 
 <!-- 3. Dashboard -->
 <h2 id="dashboard">3. Dashboard</h2>
-<p>The dashboard provides a high-level overview of your platform. After logging in, you'll see the following key metrics:</p>
+<p>High-level overview with key metrics:</p>
 
 <div class="stat-grid">
-  <div class="stat"><span class="num">12</span><span class="label">Total Directories</span></div>
-  <div class="stat"><span class="num">847</span><span class="label">Active Listings</span></div>
-  <div class="stat"><span class="num">24</span><span class="label">Categories</span></div>
-  <div class="stat"><span class="num">3,421</span><span class="label">API Calls Today</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Total Directories</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Active Listings</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Categories</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">API Calls Today</span></div>
 </div>
 
-<p>From the dashboard you can:</p>
+<h3>Dashboard Actions</h3>
 <ul>
-  <li><strong>GP� Create a new directory</strong> G�� click "New Directory" and select a template</li>
-  <li><strong>=��� View recent listings</strong> G�� see the latest 10 listings added across all directories</li>
-  <li><strong>=��� Track growth</strong> G�� charts showing listing additions over time</li>
-  <li><strong>G��n+� Review pending items</strong> G�� listings awaiting approval if moderation is enabled</li>
+  <li><strong>Create a new directory</strong> &mdash; Click "New Directory" and select a template</li>
+  <li><strong>View recent listings</strong> &mdash; Latest 10 listings across all directories</li>
+  <li><strong>Track growth</strong> &mdash; Charts showing listing additions over time</li>
+  <li><strong>Review pending items</strong> &mdash; Listings awaiting approval</li>
 </ul>
 
-<!-- 4. Templates -->
-<h2 id="templates">4. Templates</h2>
-<p>Templates provide industry-specific field sets and layouts. When creating a new directory, choose the template that best fits your use case.</p>
+<h3>API Endpoint</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/dashboard/stats</code> &mdash; Dashboard statistics</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/admin/portfolio-sync</code> &mdash; Sync portfolio data</p>
+</div>
+
+<!-- 4. Directories & Cities -->
+<h2 id="directories">4. Directories &amp; Cities</h2>
+<p>Each directory represents a city or industry. Directories use a <strong>city-based URL structure</strong>. The root domain is a homepage city grid; each directory lives at <code>/{slug}</code>.</p>
 
 <div class="feature-grid">
   <div class="card">
-    <h3>=��+ Farm Directory</h3>
-    <p>Fields: farm name, products, acreage, certifications (organic, grass-fed), pick-your-own hours, farmers market locations.</p>
+    <h3>&#x1F3E0; Root Homepage</h3>
+    <p><code>directory.swiftsoftware.net</code> shows a city grid. Visitors browse available cities.</p>
   </div>
   <div class="card">
-    <h3>=�Ŭ Local Business</h3>
-    <p>Fields: business name, address, phone, website, hours of operation, service area, year established.</p>
+    <h3>&#x1F3E1; Per-City Pages</h3>
+    <p><code>/{city-slug}</code> (e.g., <code>/palm-bay</code>). Displays businesses, deals, blog posts, categories.</p>
   </div>
   <div class="card">
-    <h3>=��+n+� Restaurant Guide</h3>
-    <p>Fields: cuisine type, price range, reservation URL, delivery options, dietary accommodations, rating.</p>
+    <h3>&#x1F30D; Geo-Redirect</h3>
+    <p>IP-based detection offers to redirect visitors to their nearest city directory. Non-blocking, dismissible banner.</p>
   </div>
   <div class="card">
-    <h3>=��� Real Estate</h3>
-    <p>Fields: property type, bedrooms/bathrooms, square footage, lot size, listing price, agent contact, open house dates.</p>
-  </div>
-  <div class="card">
-    <h3>=���n+� Service Providers</h3>
-    <p>Fields: service categories, license numbers, insurance info, service radius, availability, customer reviews.</p>
-  </div>
-  <div class="card">
-    <h3>=�� E-Commerce</h3>
-    <p>Fields: product name, SKU, price, inventory count, shipping options, category, product images.</p>
+    <h3>&#x1F50D; Per-City SEO</h3>
+    <p>Unique meta title, description, OG tags, JSON-LD schema, canonical URL, sitemap entry per city.</p>
   </div>
 </div>
 
-<p>You can also create a <strong>custom template</strong> with your own field definitions from scratch.</p>
-
-<!-- 5. Listings -->
-<h2 id="listings">5. Listings</h2>
-<p>Listings are the core content of your directories. Each listing belongs to a directory and one or more categories.</p>
-
-<h3>Listing Fields</h3>
+<h3>Directory CRUD</h3>
 <div class="card">
-  <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Name</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The business or listing title</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Address</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Street, city, state, zip</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Phone</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Primary contact number</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Website</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Business website URL</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Hours</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Days and hours of operation</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Categories</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Assign one or more categories</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Description</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Rich text description (optional)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Images</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Upload up to 10 images per listing</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Status</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Published, Draft, or Pending Review</td></tr>
-  </table>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories</code> &mdash; List all directories</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug</code> &mdash; Get single directory with stats</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories</code> &mdash; Create directory</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:slug</code> &mdash; Update directory</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:slug</code> &mdash; Delete directory and all data</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/render</code> &mdash; Render directory template</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/templates</code> &mdash; List available templates</p>
 </div>
 
-<h3>Managing Listings</h3>
-<ul>
-  <li><strong>Add:</strong> Navigate to a directory G�� click "Add Listing" G�� fill in the fields G�� click Save</li>
-  <li><strong>Edit:</strong> Click the pencil icon on any listing card or table row</li>
-  <li><strong>Delete:</strong> Click the trash icon G�� confirmation required</li>
-  <li><strong>Bulk Import:</strong> Use the Import button to upload a CSV file with listing data</li>
-  <li><strong>Search:</strong> Use the search bar to filter listings by name, category, or location</li>
-</ul>
-
-<!-- 6. Categories -->
-<h2 id="categories">6. Categories</h2>
-<p>Organize your listings with a hierarchical category tree. Each directory has its own independent category structure.</p>
-
+<h3>Transfer</h3>
 <div class="card">
-  <h3>Example Category Tree</h3>
-  <pre><code>=��� Local Services
-  G��G��G�� =��� Plumbing
-  G��G��G�� G�� Electrical
-  G��G��G�� =��� Carpentry
-  G��G��G�� =��� Cleaning
-=��� Dining
-  G��G��G�� =��� Pizza
-  G��G��G�� =��� Healthy
-  G��G��G�� =�� Mexican
-  G��G��G�� =��� Sushi
-=��� Shopping
-  G��G��G�� =��� Clothing
-  G��G��G�� =�� Electronics
-  G��G��G�� =��� Grocery</code></pre>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/transfer</code> &mdash; Transfer directory to another network</p>
 </div>
 
-<h3>Category Operations</h3>
-<ul>
-  <li><strong>Create:</strong> Click "Add Category" G�� set name, slug, parent category (optional), and description</li>
-  <li><strong>Edit:</strong> Click the category name or edit icon</li>
-  <li><strong>Reorder:</strong> Drag and drop categories to reorder them in the tree</li>
-  <li><strong>Delete:</strong> Removing a category unlinks all listings G�� listings are not deleted</li>
-  <li><strong>Nested:</strong> Create subcategories up to 3 levels deep</li>
-</ul>
-
-<!-- 7. Themes -->
-<h2 id="themes">7. Themes</h2>
-<p>Each directory can have its own unique look and feel. Access theme settings from the directory's Settings G�� Theme tab.</p>
-
-<div class="card">
-  <h3>Theme Customization Options</h3>
-  <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Primary Color</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Main brand color (used for headers, buttons, links)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Secondary Color</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Accent color for highlights and CTAs</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Background</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Page background color or gradient</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Logo</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Upload a logo image (PNG/SVG, max 2MB)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Font</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Choose from system fonts or Google Fonts</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Layout</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Grid vs. list view for listings</td></tr>
-  </table>
-</div>
-
-<p>Changes are applied in real-time to the public-facing directory. Click "Save Theme" to persist your changes.</p>
-
-<!-- 8. Settings -->
-<h2 id="settings">8. Settings</h2>
-<p>Account and platform settings are available from the top-right user menu.</p>
+<!-- 5. Templates -->
+<h2 id="templates">5. Templates</h2>
+<p>10 industry-specific templates with pre-configured fields and layouts. Templates are loaded from Handlebar files and embeddable at compile time.</p>
 
 <div class="feature-grid">
   <div class="card">
-    <h3>=��� Profile</h3>
-    <p>Update your name, email, and profile picture. This affects the admin panel only.</p>
+    <h3>&#x1F3E0; Local Business</h3>
+    <p>Business name, address, phone, website, hours, service area, year established.</p>
   </div>
   <div class="card">
-    <h3>=��� Password</h3>
-    <p>Change your password. Must include uppercase, lowercase, number, and special character (min 12 chars).</p>
+    <h3>&#x1F33F; Farm / Farmers Market</h3>
+    <p>Farm name, products, acreage, certifications, pick-your-own hours, market locations.</p>
   </div>
   <div class="card">
-    <h3>=��� API Keys</h3>
-    <p>Generate and manage API keys. Keys grant full access G�� keep them secure. You can revoke keys at any time.</p>
+    <h3>&#x1F372; Restaurant</h3>
+    <p>Cuisine type, price range, reservation URL, delivery options, dietary accommodations.</p>
   </div>
   <div class="card">
-    <h3>=��� Team Members</h3>
-    <p>Invite team members with Editor or Viewer roles. Each user gets their own login.</p>
+    <h3>&#x1F3E2; Real Estate</h3>
+    <p>Property type, beds/baths, sqft, lot size, listing price, agent, open house dates.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3E5; Medical / Healthcare</h3>
+    <p>Providers, specialties, insurance accepted, board certifications, telehealth available.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F527; Service Professionals</h3>
+    <p>Categories, license numbers, insurance, service radius, availability, reviews.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F393; Education</h3>
+    <p>Schools, tutoring, colleges, training centers, grade levels, accreditation.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F697; Automotive</h3>
+    <p>Dealers, repair shops, body shops, parts stores, makes serviced.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4AA; Fitness &amp; Wellness</h3>
+    <p>Gyms, studios, trainers, class types, membership options.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3E8; Hospitality</h3>
+    <p>Hotels, B&amp;Bs, vacation rentals, event venues, amenities.</p>
   </div>
 </div>
 
-<h3>API Key Management</h3>
-<ol>
-  <li>Go to <strong>Settings G�� API Keys</strong></li>
-  <li>Click <strong>Generate New Key</strong></li>
-  <li>Give the key a label (e.g., "Production App")</li>
-  <li>Copy the key immediately G�� it will not be shown again</li>
-  <li>Use the key in the <code>Authorization: Bearer &lt;key&gt;</code> header for API requests</li>
-</ol>
+<p>Custom templates with your own field definitions can also be created.</p>
 
-<!-- 9. API Reference -->
+<!-- 6. Businesses / Listings -->
+<h2 id="businesses">6. Businesses / Listings</h2>
+<p>Core content of your directories. Each business belongs to a directory and one or more categories.</p>
 
-<h2 id="public-blog">12.5 Public Blog Pages</h2>
-<p>Each directory now has a public blog at <code>https://directory.swiftsoftware.net/api/v1/d/{slug}/blog</code>. Blog posts are automatically part of the directory with the same header, colors, and navigation.</p>
+<h3>Key Fields</h3>
+<div class="card">
+  <table>
+    <tr><td>Name</td><td>Business or listing title</td></tr>
+    <tr><td>Address</td><td>Street, city, state, zip</td></tr>
+    <tr><td>Phone</td><td>Primary contact number</td></tr>
+    <tr><td>Website</td><td>Business website URL</td></tr>
+    <tr><td>Hours</td><td>Days and hours of operation</td></tr>
+    <tr><td>Categories</td><td>Assign one or more categories</td></tr>
+    <tr><td>Description</td><td>Rich text description (optional)</td></tr>
+    <tr><td>Images</td><td>Upload up to 10 images per listing</td></tr>
+    <tr><td>Status</td><td>Published, Draft, or Pending Review</td></tr>
+  </table>
+</div>
 
-<h3>Blog List Page</h3>
-<ul>
-  <li><strong>URL:</strong> <code>/api/v1/d/{slug}/blog</code> — lists all published posts</li>
-  <li><strong>Inherits</strong> the directory's header, Google Fonts (Inter + Roboto), color scheme, and footer</li>
-  <li>Each post shows: title, publish date, excerpt</li>
-  <li>Click a post title to view the full article</li>
-</ul>
+<h3>CRUD &amp; Search</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/listings</code> &mdash; All listings (paginated)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/businesses</code> &mdash; Directory businesses</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/businesses/suggestions</code> &mdash; Search suggestions</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/businesses/:business_id</code> &mdash; Single business</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:slug/businesses</code> &mdash; Create business</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:slug/businesses/:business_id</code> &mdash; Update business</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:slug/businesses/:business_id</code> &mdash; Delete business</p>
+</div>
 
-<h3>Individual Blog Post</h3>
-<ul>
-  <li><strong>URL:</strong> <code>/api/v1/d/{slug}/blog/{post-slug}</code></li>
-  <li>Full article with content, author info, publish date</li>
-  <li>SEO: meta description, focus keyword, featured image, canonical URL</li>
-  <li>Backlinks: "← Back to Blog" and "Back to {Directory}" links for navigation</li>
-</ul>
+<h3>Search</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/search?q=...</code> &mdash; Search businesses across directories</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/search/config</code> &mdash; List search configs</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/search/config/:directory_id</code> &mdash; Get directory search config</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/search/config/:directory_id</code> &mdash; Update search config</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/search/filters/:directory_id</code> &mdash; Directory search filters</p>
+</div>
 
-<h3>URL Handling</h3>
-<ul>
-  <li>Slugs auto-generate from the post title: lowercased, hyphens for spaces, special chars removed</li>
-  <li>No dates in URL — best for SEO (clean keyword-based URLs)</li>
-  <li>Custom slugs can be set manually in the admin panel</li>
-</ul>
+<!-- 7. Categories -->
+<h2 id="categories">7. Categories</h2>
+<p>Hierarchical category trees per directory. Up to 3 levels deep.</p>
 
-<h3>Google Fonts</h3>
-<ul>
-  <li><strong>Inter</strong> for headings (h1-h6) — clean, modern, Google-friendly</li>
-  <li><strong>Roboto</strong> for body text — fast-loading, excellent readability</li>
-  <li>Preloaded via <code>rel="preconnect"</code> for fast CSS delivery</li>
-  <li><code>display=swap</code> ensures text remains visible while fonts load</li>
-</ul>
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/categories</code> &mdash; All categories (optional <code>?directory_id=</code>)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/categories/:id</code> &mdash; Single category with listing count</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/categories</code> &mdash; Directory categories</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:slug/categories</code> &mdash; Create category</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:slug/categories/:category_id</code> &mdash; Update category</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:slug/categories/:category_id</code> &mdash; Delete category</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:slug/categories/bulk-move</code> &mdash; Bulk move categories</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:slug/categories/bulk-delete</code> &mdash; Bulk delete categories</p>
+</div>
 
-<h3>SEO Benefits</h3>
-<ul>
-  <li>Each blog post has its own unique URL and SEO metadata</li>
-  <li>Content is part of the directory site — shares domain authority</li>
-  <li>Posts link back to the directory homepage (internal linking)</li>
-  <li>JSON-LD structured data via schema_type field (Article, HowTo, FAQPage)</li>
-</ul>
+<!-- 8. Reviews & Submissions -->
+<h2 id="reviews">8. Reviews &amp; Submissions</h2>
+<p>Review moderation and business submission approval flows.</p>
 
-<h3>Admin Management</h3>
-<ul>
-  <li>Go to <strong>Admin → Blog</strong> for a specific directory</li>
-  <li>Click <strong>👁 View Blog</strong> to preview the public blog</li>
-  <li>Add/edit/delete posts with title, excerpt, and Markdown content</li>
-  <li>Status: Draft or Published — only published posts appear publicly</li>
-  <li>Scheduled posts: set a <code>scheduled_at</code> date for future publishing</li>
-</ul>
+<h3>Reviews</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/reviews</code> &mdash; List all reviews</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/reviews/stats/:business_id</code> &mdash; Review stats per business</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/businesses/:business_id/reviews</code> &mdash; Business reviews</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/reviews</code> &mdash; Create review</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/reviews/:id</code> &mdash; Update review</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/reviews/:id</code> &mdash; Delete review</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/reviews/:id/approve</code> &mdash; Approve review</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/reviews/:id/reject</code> &mdash; Reject review</p>
+</div>
 
-<br/>
-<h2 id="blog-generator">13. Blog Generator (AI-Powered Content)</h2>
-<p>Create SEO/AEO/geo-optimized blog posts with AI. Templates use merge fields (city, industry, business name) for personalization.</p>
+<h3>Submissions</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/submissions</code> &mdash; List submissions</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/submissions/:id</code> &mdash; Single submission</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/submissions</code> &mdash; Create submission</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/submissions/:id</code> &mdash; Update submission</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/submissions/:id</code> &mdash; Delete submission</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/submissions/:id/approve</code> &mdash; Approve submission (creates business)</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/submissions/:id/reject</code> &mdash; Reject submission</p>
+</div>
 
-<h3>Available Templates</h3>
-<ul>
-  <li><strong>Answer-First Comparison (GEO/AEO)</strong> — comparison listicles optimized for AI search</li>
-  <li><strong>Top 10 List</strong> — ranking articles for local search</li>
-  <li><strong>FAQ Schema</strong> — FAQ format for featured snippets</li>
-  <li><strong>How-To Guide</strong> — step-by-step guides</li>
-  <li><strong>Local Business Guide</strong> — city-specific industry coverage</li>
-  <li><strong>Industry News</strong> — news-style articles</li>
-</ul>
+<!-- 9. Deals -->
+<h2 id="deals">9. Deals (Groupon-Style)</h2>
+<p>Limited-time offers, coupons, and promotions linked to directories and businesses.</p>
 
-<h3>LLM Providers</h3>
-<ul>
-  <li><strong>DeepSeek</strong> — fast content generation (default)</li>
-  <li><strong>OpenAI GPT-4o</strong> — higher quality</li>
-  <li><strong>Gemini</strong> — Google AI</li>
-</ul>
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F3AF; Coupons &amp; Deals</h3>
+    <p>Percentage-off or fixed-price deals. Original vs deal price. Coupon codes for redemption.</p>
+  </div>
+  <div class="card">
+    <h3>&#x23F0; Scheduled Offers</h3>
+    <p>Start/end dates. Deals auto-activate and auto-expire.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CA; Redemption Tracking</h3>
+    <p>Track claims, set limits, auto-mark "Sold Out". Manual claim for testing.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3E2; Featured Deals</h3>
+    <p>Toggle deals as featured. They appear prominently on directory landing pages.</p>
+  </div>
+</div>
 
-<h3>Admin Generation</h3>
-<p>Select multiple directories and generate one post per directory with auto-filled merge fields.</p>
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/deals</code> &mdash; List all deals</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/deals/featured</code> &mdash; List featured deals</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/deals/:id</code> &mdash; Single deal</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/deals</code> &mdash; Directory deals</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/businesses/:bid/deals</code> &mdash; Business deals</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/deals</code> &mdash; Create deal</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/deals/:id</code> &mdash; Update deal</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/deals/:id</code> &mdash; Delete deal</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/deals/:id/claim</code> &mdash; Claim/redeem a deal</p>
+</div>
 
-<br/>
-<h2 id="newsletter">14. Newsletter System</h2>
-<p>Send email newsletters to directory subscribers with per-directory SMTP settings.</p>
+<!-- 10. SEO Module -->
+<h2 id="seo">10. SEO Module</h2>
+<p>Per-page SEO meta, sitemap generation, robots.txt, search config, and schema markup.</p>
 
-<h3>Features</h3>
-<ul>
-  <li>Per-directory SMTP configuration (Gmail, SendGrid, etc.)</li>
-  <li>Subscriber management with bulk import</li>
-  <li>HTML newsletter composition</li>
-  <li>Auto-populates blog post titles, excerpts, and links</li>
-  <li>Feature deals/paid listings in newsletters</li>
-  <li>Unsubscribe management</li>
-</ul>
-<h2 id="api">9. API Reference</h2>
-<p>The Multi-Directory Platform exposes a RESTful API for programmatic access. All endpoints require authentication via Bearer token.</p>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/seo/sitemap-config</code> &mdash; List all sitemap configs</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/seo/sitemap-config/:directory_id</code> &mdash; Get sitemap config</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/seo/sitemap-config/:directory_id</code> &mdash; Update sitemap config</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/seo/:page_type/:page_id</code> &mdash; Get SEO meta</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/seo/:page_type/:page_id</code> &mdash; Update SEO meta</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/seo/regenerate-sitemap</code> &mdash; Regenerate sitemap</p>
+  <p><span class="badge get">GET</span> <code>/sitemap.xml</code> &mdash; Generated sitemap</p>
+  <p><span class="badge get">GET</span> <code>/robots.txt</code> &mdash; Robots.txt</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/sitemap.xml</code> &mdash; API sitemap</p>
+</div>
+
+<h3>Advanced SEO Config</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/seo-settings</code> &mdash; Get directory SEO settings</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:id/seo-settings</code> &mdash; Update directory SEO settings</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/sitemap</code> &mdash; Generate directory sitemap</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/seo-fallbacks</code> &mdash; List SEO fallbacks</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:id/seo-fallbacks/:page_type</code> &mdash; Upsert SEO fallback</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/schema-configs</code> &mdash; List schema configs</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:id/schema-configs/:schema_type</code> &mdash; Upsert schema config</p>
+<!-- 11. Blog System -->
+<h2 id="blog">11. Blog System</h2>
+<p>Full-featured blog per directory. Write, schedule, publish, and distribute blog posts. Supports multiple templates, extended content fields, and scheduled publishing.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4D6; Posts &amp; Content</h3>
+    <p>Rich text editor, featured images, tags, categories, author attribution.</p>
+  </div>
+  <div class="card">
+    <h3>&#x23F0; Scheduling</h3>
+    <p>Schedule posts for future publishing. Auto-processes scheduled posts on CRON.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E4; Distribution</h3>
+    <p>Distribute posts across multiple directories simultaneously.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4C4; Templates</h3>
+    <p>Pre-built blog post templates for consistent formatting.</p>
+  </div>
+</div>
+
+<h3>Posts CRUD</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/blog-posts</code> &mdash; List all posts</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/blog-posts</code> &mdash; Directory posts</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/blog-posts/:id</code> &mdash; Single post</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog-posts</code> &mdash; Create post</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/blog-posts/:id</code> &mdash; Update post</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/blog-posts/:id</code> &mdash; Delete post</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog-posts/:id/publish</code> &mdash; Publish post</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/blog-posts/scheduled</code> &mdash; List scheduled posts</p>
+</div>
+
+<h3>Extended Posts</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/blog-posts/ext</code> &mdash; List extended posts</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog-posts/ext</code> &mdash; Create extended post</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/blog-posts/:id/ext</code> &mdash; Update extended fields</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/blog-posts/ext</code> &mdash; Directory extended posts</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog/distribute</code> &mdash; Distribute post</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog/process-scheduled</code> &mdash; Process scheduled posts</p>
+</div>
+
+<h3>Blog Templates</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/blog-templates</code> &mdash; List templates</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog-templates</code> &mdash; Create template</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/blog-templates/:id</code> &mdash; Get template</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/blog-templates/:id</code> &mdash; Update template</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/blog-templates/:id</code> &mdash; Delete template</p>
+</div>
+
+<h3>Legacy Blog Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/blog</code> &mdash; List posts (legacy)</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog</code> &mdash; Create post (legacy)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/blog/:id</code> &mdash; Single post (legacy)</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/blog/:id</code> &mdash; Update post (legacy)</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/blog/:id</code> &mdash; Delete post (legacy)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/blog</code> &mdash; Directory posts (legacy)</p>
+</div>
+
+<!-- 12. Blog Generator (AI) -->
+<h2 id="blog-generator">12. Blog Generator (AI)</h2>
+<p>AI-powered blog post generation. Generate SEO-optimized content for your directories using templates and topic feeds.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F916; AI Generation</h3>
+    <p>Generate complete blog posts from topic prompts or template configurations.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F504; Regeneration</h3>
+    <p>Regenerate existing posts with updated or expanded content.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CB; Template Mapping</h3>
+    <p>Assign blog templates to specific directories for consistent AI output.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge post">POST</span> <code>/api/v1/blog-generate</code> &mdash; Generate blog posts via AI</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog-posts/:id/regenerate</code> &mdash; Regenerate a post</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/blog-templates/:id/directories</code> &mdash; List template directories</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/blog-templates/:id/directories</code> &mdash; Set template directories</p>
+</div>
+
+<!-- 13. Business Articles -->
+<h2 id="business-articles">13. Business Articles</h2>
+<p>Generate and manage individual business profile articles. Each article is tied to a business in a directory and can be auto-generated with AI on a weekly schedule.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4DD; Per-Business Content</h3>
+    <p>Generate unique articles for each business listing with AI-driven content.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F504; Weekly Automation</h3>
+    <p>Auto-generate weekly articles for all businesses in a directory.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4C8; Tracking</h3>
+    <p>Track article views and engagement events.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/business-articles</code> &mdash; List articles for directory</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/business-articles/generate</code> &mdash; Generate articles</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/business-articles/:id</code> &mdash; Update article</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/business-articles/:id</code> &mdash; Delete article</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/business-articles/:id/generate-weekly</code> &mdash; Generate weekly batch</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/articles/:slug</code> &mdash; Serve article publicly</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/business-articles/:id/track</code> &mdash; Track article event</p>
+</div>
+
+<!-- 14. Newsletter -->
+<h2 id="newsletter">14. Newsletter</h2>
+<p>Email newsletter system per directory. Build subscriber lists, create AI-generated newsletters, send campaigns.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4E5; Subscriber Management</h3>
+    <p>Collect subscribers via opt-in forms. Import in bulk. One-click unsubscribe.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F916; AI Generation</h3>
+    <p>Auto-generate newsletter content from directory blog posts and listings.</p>
+  </div>
+  <div class="card">
+    <h3>&#x2709;&#xFE0F; Send Campaigns</h3>
+    <p>Send newsletters to all subscribers. Per-directory sender settings.</p>
+  </div>
+</div>
+
+<h3>Newsletters</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/newsletters</code> &mdash; List newsletters</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/newsletters</code> &mdash; Create newsletter</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/newsletters/:id</code> &mdash; Get newsletter</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/newsletters/:id</code> &mdash; Update newsletter</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/newsletters/:id</code> &mdash; Delete newsletter</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/newsletters/:id/generate</code> &mdash; AI-generate content</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/newsletters/:id/send</code> &mdash; Send newsletter</p>
+</div>
+
+<h3>Subscribers &amp; Settings</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/email-settings</code> &mdash; Get email settings</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:slug/email-settings</code> &mdash; Update email settings</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:slug/email-settings</code> &mdash; Delete email settings</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/subscribers</code> &mdash; List subscribers</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:slug/subscribers</code> &mdash; Add subscriber</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:slug/subscribers/import</code> &mdash; Bulk import subscribers</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:slug/subscribers/:id/unsubscribe</code> &mdash; Unsubscribe</p>
+</div>
+
+<!-- 15. Email Campaigns -->
+<h2 id="email">15. Email Campaigns</h2>
+<p>Standalone email campaign system with templates and send scheduling.</p>
+
+<h3>Email Templates</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/email/templates</code> &mdash; List email templates</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/email/templates</code> &mdash; Create email template</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/email/templates/:id</code> &mdash; Get template</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/email/templates/:id</code> &mdash; Update template</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/email/templates/:id</code> &mdash; Delete template</p>
+</div>
+
+<h3>Campaigns</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/email/campaigns</code> &mdash; List campaigns</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/email/campaigns</code> &mdash; Create campaign</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/email/campaigns/:id</code> &mdash; Get campaign</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/email/campaigns/:id</code> &mdash; Update campaign</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/email/campaigns/:id</code> &mdash; Delete campaign</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/email/campaigns/:id/send</code> &mdash; Send campaign</p>
+</div>
+
+<!-- 16. CRM -->
+<h2 id="crm">16. CRM</h2>
+<p>Built-in CRM for managing contacts, pipelines, and deals. Track leads from directory listings, form submissions, and manual entry.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F464; Contacts</h3>
+    <p>Contact records with search, custom fields, and directory association.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CB; Pipelines</h3>
+    <p>Custom sales pipelines with stages. Move deals through stages.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4B0; Deals</h3>
+    <p>Deal tracking per pipeline with value, stage, expected close date.</p>
+  </div>
+</div>
+
+<h3>Contacts</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/crm/contacts</code> &mdash; List contacts</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/crm/contacts/search</code> &mdash; Search contacts</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/crm/contacts</code> &mdash; Create contact</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/crm/contacts/:id</code> &mdash; Update contact</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/crm/contacts/:id</code> &mdash; Delete contact</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/crm/stats</code> &mdash; Directory CRM stats</p>
+</div>
+
+<h3>Pipelines</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/crm/pipelines</code> &mdash; List pipelines</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/crm/pipelines</code> &mdash; Create pipeline</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/crm/pipelines/:id</code> &mdash; Update pipeline</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/crm/pipelines/:id</code> &mdash; Delete pipeline</p>
+</div>
+
+<h3>Deals</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/crm/deals</code> &mdash; List deals</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/crm/deals</code> &mdash; Create deal</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/crm/deals/:id</code> &mdash; Update deal</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/crm/deals/:id</code> &mdash; Delete deal</p>
+</div>
+
+<!-- 17. Analytics -->
+<h2 id="analytics">17. Analytics</h2>
+<p>Track events, page views, and directory performance metrics. Built-in event tracking system with per-directory breakdowns.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4CA; Event Tracking</h3>
+    <p>Track custom events with type, metadata, and directory association.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CB; Directory Breakdown</h3>
+    <p>View analytics filtered by individual directory.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F5D1;&#xFE0F; Data Purge</h3>
+    <p>Purge old events to maintain database performance.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge post">POST</span> <code>/api/v1/analytics/track</code> &mdash; Track an event</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/analytics</code> &mdash; List all events</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/analytics/events</code> &mdash; List events (paginated)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/analytics/summary</code> &mdash; Analytics summary</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/analytics/by-directory/:directory_id</code> &mdash; Directory analytics</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/analytics/events/old</code> &mdash; Purge old events</p>
+</div>
+
+<!-- 18. Monetization -->
+<h2 id="monetization">18. Monetization</h2>
+<p>Revenue features for directory operators. Tiered subscription plans, ad zones, sponsored listings, invoices, and payouts.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4B5; Subscription Tiers</h3>
+    <p>Define pricing tiers with different features per directory. Monthly/annual billing.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4F0; Ad Zones</h3>
+    <p>Sell ad placements within directory pages. Multiple zone positions.</p>
+  </div>
+  <div class="card">
+    <h3>&#x2B50; Sponsored Listings</h3>
+    <p>Premium business listings with enhanced visibility and badges.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4C4; Invoices &amp; Payouts</h3>
+    <p>Generate invoices for advertisers. Track payouts and commissions.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/monetization</code> &mdash; Monetization dashboard</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/monetization/tiers</code> &mdash; List tiers</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/monetization/tiers</code> &mdash; Create tier</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/monetization/tiers/:id</code> &mdash; Get tier</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/monetization/tiers/:id</code> &mdash; Update tier</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/monetization/tiers/:id</code> &mdash; Delete tier</p>
+</div>
+
+<!-- 19. Call Tracking -->
+<h2 id="call-tracking">19. Call Tracking</h2>
+<p>Track phone calls generated from directory listings. Provision local phone numbers per business, record calls, and view analytics.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4DE; Phone Numbers</h3>
+    <p>Provision local phone numbers for directory businesses. Numbers are assigned and forwarded.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F399;&#xFE0F; Call Recording</h3>
+    <p>Record inbound calls for quality assurance. Store recordings per call.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CA; Analytics</h3>
+    <p>Track call volume, duration, source directory, and time of day.</p>
+  </div>
+</div>
+
+<h3>Number Management</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/call-tracking/numbers</code> &mdash; List provisioned numbers</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/call-tracking/numbers</code> &mdash; Provision a number</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/call-tracking/numbers/available</code> &mdash; List available numbers</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/call-tracking/numbers/:id</code> &mdash; Get number details</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/call-tracking/numbers/:id</code> &mdash; Update number config</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/call-tracking/numbers/:id</code> &mdash; Release a number</p>
+</div>
+
+<h3>Call Logs &amp; Analytics</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/call-tracking/calls</code> &mdash; List calls</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/call-tracking/calls/:id</code> &mdash; Get call details</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/call-tracking/calls/:id/recording</code> &mdash; Upload recording</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/call-tracking/summary</code> &mdash; Call tracking summary</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/call-tracking/by-directory/:directory_id</code> &mdash; Per-directory call stats</p>
+</div>
+
+<!-- 20. Data Company & Enrichment -->
+<h2 id="data-company">20. Data Company &amp; Enrichment</h2>
+<p>Import business data from third-party sources and enrich existing listings with additional information.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F50D; Yelp Search</h3>
+    <p>Search Yelp for businesses in any location. Pull name, address, rating, review count, and URL.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E6; Business Enrichment</h3>
+    <p>Enrich listings with Google Places data, contact info, hours, and social profiles.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3A8; Brand Color Extraction</h3>
+    <p>Extract brand colors from logo images. Auto-suggest color palettes for directory branding.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F504; Portfolio Sync</h3>
+    <p>Synchronize portfolio data across directories from external data feeds.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/yelp/search?term=...</code> &mdash; Yelp business search</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/enrich/:id</code> &mdash; Enrich a business listing</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/branding/:directory_id/extract</code> &mdash; Extract brand colors</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/admin/portfolio-sync</code> &mdash; Sync portfolio data</p>
+</div>
+
+<!-- 21. Import/Export -->
+<h2 id="import-export">21. Import/Export</h2>
+<p>Bulk import and export data. CSV import for businesses. Export businesses, reviews, contacts in CSV or JSON. Custom export templates for scheduled runs.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4E5; CSV Import</h3>
+    <p>Import businesses, services, and locations from CSV files. View import logs for error tracking.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E4; Export Data</h3>
+    <p>Export businesses, reviews, and contacts per directory in CSV or JSON format.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4C4; Export Templates</h3>
+    <p>Create reusable export templates with field mapping and scheduling.</p>
+  </div>
+</div>
+
+<h3>Import</h3>
+<div class="card">
+  <p><span class="badge post">POST</span> <code>/api/v1/import</code> &mdash; Import business data (CSV)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/import/logs</code> &mdash; List import logs</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/import/logs/:id</code> &mdash; Get import log details</p>
+</div>
+
+<h3>Export</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/export/businesses/:directory_id</code> &mdash; Export businesses</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/export/reviews/:directory_id</code> &mdash; Export reviews</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/export/contacts/:directory_id</code> &mdash; Export contacts</p>
+</div>
+
+<h3>Export Templates</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/export/templates</code> &mdash; List export templates</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/export/templates</code> &mdash; Create export template</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/export/templates/:id</code> &mdash; Get template</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/export/templates/:id</code> &mdash; Update template</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/export/templates/:id</code> &mdash; Delete template</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/export/templates/:id/run</code> &mdash; Execute export template</p>
+</div>
+
+<!-- 22. Programmatic Pages -->
+<h2 id="programmatic-pages">22. Programmatic Pages</h2>
+<p>AI-generated content pages at scale. Generate hundreds of location+service+keyword combination pages with SEO metadata, topics, and author profiles.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4C4; Page Generation</h3>
+    <p>Generate programmatic pages from topic templates. Bulk status updates.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4DD; Topic Management</h3>
+    <p>Manage topics with suggestions, bulk actions, and author assignment.</p>
+  </div>
+  <div class="card">
+    <h3>&#x270F;&#xFE0F; AI Drafting</h3>
+    <p>Generate AI drafts from topic outlines. Repurpose existing content.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F517; Internal Links</h3>
+    <p>Get internal link suggestions for content SEO optimization.</p>
+  </div>
+</div>
+
+<h3>Pages</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/programmatic-pages</code> &mdash; List pages</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/programmatic-pages/:page_id</code> &mdash; Get page</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/programmatic-pages/generate</code> &mdash; Generate pages</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/programmatic-pages/bulk-status</code> &mdash; Bulk status update</p>
+</div>
+
+<h3>Topics &amp; Authors</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/topics</code> &mdash; List topics</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/topics</code> &mdash; Create topic</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:id/topics/:topic_id</code> &mdash; Update topic</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:id/topics/:topic_id</code> &mdash; Delete topic</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/topics/bulk</code> &mdash; Bulk topic action</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/topics/suggestions</code> &mdash; Topic suggestions</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/authors</code> &mdash; List authors</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/authors</code> &mdash; Create author</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:id/authors/:author_id</code> &mdash; Update author</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:id/authors/:author_id</code> &mdash; Delete author</p>
+</div>
+
+<h3>AI Content Tools</h3>
+<div class="card">
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/ai-draft</code> &mdash; Generate AI draft</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/repurpose</code> &mdash; Repurpose content</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/internal-links</code> &mdash; Internal link suggestions</p>
+</div>
+
+<!-- 23. Services & Locations -->
+<h2 id="services-locations">23. Services &amp; Locations</h2>
+<p>Manage services and locations for directory businesses. Useful for multi-location businesses and service-area professionals.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F3E2; Services</h3>
+    <p>Define services offered by businesses. Name, description, price range, duration.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CD; Locations</h3>
+    <p>Manage multiple business locations per directory. Address, phone, hours per location.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4C1; CSV Import</h3>
+    <p>Bulk import services and locations from CSV files.</p>
+  </div>
+</div>
+
+<h3>Services</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/services</code> &mdash; List services</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/services</code> &mdash; Create service</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:id/services/:svc_id</code> &mdash; Update service</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:id/services/:svc_id</code> &mdash; Delete service</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/services/import</code> &mdash; CSV import services</p>
+</div>
+
+<h3>Locations</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:id/locations</code> &mdash; List locations</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/locations</code> &mdash; Create location</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/directories/:id/locations/:loc_id</code> &mdash; Update location</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:id/locations/:loc_id</code> &mdash; Delete location</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/directories/:id/locations/import</code> &mdash; CSV import locations</p>
+</div>
+
+<!-- 24. Networks -->
+<h2 id="networks">24. Networks</h2>
+<p>Group directories into networks for shared branding, cross-directory navigation, and homepage management.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F310; Multi-Directory Groups</h3>
+    <p>Group related directories into networks. Shared themes and navigation.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3E0; Homepage Editor</h3>
+    <p>Customizable homepage sections per network. Hero, featured cities, categories, blog feed.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3A8; Network Branding</h3>
+    <p>Apply consistent branding across all directories in a network.</p>
+  </div>
+</div>
+
+<h3>Networks CRUD</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/networks</code> &mdash; List networks</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/networks</code> &mdash; Create network</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/networks/:id</code> &mdash; Get network</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/networks/:id</code> &mdash; Update network</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/networks/:id</code> &mdash; Delete network</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/networks/:id/directories</code> &mdash; Network directories</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/networks/:id/export</code> &mdash; Export network</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/networks/:id/transfer</code> &mdash; Transfer network</p>
+</div>
+
+<h3>Branding &amp; Homepage</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/networks/:id/branding</code> &mdash; Get network branding</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/networks/:id/branding</code> &mdash; Update network branding</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/networks/:id/homepage</code> &mdash; Get network homepage</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/homepage</code> &mdash; Get directory homepage</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/homepage-sections</code> &mdash; Create homepage section</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/homepage-sections/:id</code> &mdash; Get section</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/homepage-sections/:id</code> &mdash; Update section</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/homepage-sections/:id</code> &mdash; Delete section</p>
+</div>
+
+<!-- 25. Legal Pages -->
+<h2 id="legal-pages">25. Legal Pages</h2>
+<p>Create and manage legal pages for each directory. Privacy policy, terms of service, cookie policy, and custom legal content.</p>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/legal-pages</code> &mdash; List legal pages</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/legal-pages</code> &mdash; Create legal page</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/legal-pages/:id</code> &mdash; Get legal page</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/legal-pages/:id</code> &mdash; Update legal page</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/legal-pages/:id</code> &mdash; Delete legal page</p>
+</div>
+
+<!-- 26. Branding -->
+<h2 id="branding">26. Branding</h2>
+<p>Custom branding per directory. Colors, logos, fonts, and visual identity settings.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F3A8; Brand Settings</h3>
+    <p>Primary/secondary colors, logo upload, custom CSS, font selection.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3A5; Color Extraction</h3>
+    <p>Auto-extract brand colors from uploaded logo images.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F504; Portfolio Sync</h3>
+    <p>Sync branding assets across portfolio directories.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/branding</code> &mdash; Get directory branding</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/branding/:directory_id</code> &mdash; Update branding</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/branding/:directory_id/extract</code> &mdash; Extract brand colors</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/admin/portfolio-sync</code> &mdash; Sync portfolio</p>
+</div>
+
+<!-- 27. API Keys -->
+<h2 id="api-keys">27. API Keys</h2>
+<p>Manage API keys for external integrations. Create scoped keys with usage tracking and rate limiting.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F511; Key Management</h3>
+    <p>Create, revoke, and manage API keys with optional expiry dates.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CA; Usage Tracking</h3>
+    <p>Track API call volume per key. View usage history and quotas.</p>
+  </div>
+  <div class="card">
+    <h3>&#x2705; Verification</h3>
+    <p>Verify API keys are valid and active before use.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/api-keys</code> &mdash; List API keys</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/api-keys</code> &mdash; Create API key</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/api-keys/:id</code> &mdash; Get API key</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/api-keys/:id</code> &mdash; Update API key</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/api-keys/:id</code> &mdash; Delete API key</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/api-keys/:id/usage</code> &mdash; Get key usage</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/api-keys/verify</code> &mdash; Verify API key</p>
+</div>
+
+<!-- 28. Webhooks -->
+<h2 id="webhooks">28. Webhooks</h2>
+<p>Send real-time notifications to external services when events occur. Integrate with n8n and other automation platforms.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F517; Event Triggers</h3>
+    <p>Trigger webhooks on listing creation, review submission, deal claims, and more.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CB; Delivery Logs</h3>
+    <p>View delivery status and retry logs for each webhook.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/webhooks</code> &mdash; List webhooks</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/webhooks</code> &mdash; Create webhook</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/webhooks/:id</code> &mdash; Get webhook</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/webhooks/:id</code> &mdash; Update webhook</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/webhooks/:id</code> &mdash; Delete webhook</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/webhooks/:id/deliveries</code> &mdash; List deliveries</p>
+</div>
+
+<!-- 29. Provider Keys -->
+<h2 id="provider-keys">29. Provider Keys</h2>
+<p>Manage third-party API provider keys. Store and rotate keys for external services used by the platform.</p>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/provider-keys</code> &mdash; List provider keys</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/provider-keys</code> &mdash; Upsert provider key</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/provider-keys/:provider</code> &mdash; Delete provider key</p>
+</div>
+
+<!-- 30. Visitor Tracking -->
+<h2 id="visitor-tracking">30. Visitor Tracking</h2>
+<p>Track visitor sessions, page views, and events across directories. Understand how users interact with your listings.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F464; Session Tracking</h3>
+    <p>Track visitor sessions with pag views, events, and duration.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CB; Business Analytics</h3>
+    <p>Per-business visitor summary with page views and actions.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E5; Export</h3>
+    <p>Export visitor data per directory for external analysis.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3AF; Business Claim</h3>
+    <p>Visitors can claim business listings through the tracking system.</p>
+  </div>
+</div>
+
+<h3>Tracking</h3>
+<div class="card">
+  <p><span class="badge post">POST</span> <code>/api/v1/visitors/track</code> &mdash; Track visitor session</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/visitors/page-view</code> &mdash; Track page view</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/visitors/event</code> &mdash; Track visitor event</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/visitors/session/:id/end</code> &mdash; End session</p>
+</div>
+
+<h3>Analytics &amp; Claims</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/visitors/summary</code> &mdash; Visitor summary</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/visitors/business/:business_id</code> &mdash; Business visitor summary</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/visitors/category-summary/:directory_id</code> &mdash; Category visitor summary</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/visitors/export/:directory_id</code> &mdash; Export visitors</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/businesses/:id/claim</code> &mdash; Claim business listing</p>
+</div>
+
+<!-- 31. Landing Pages -->
+<h2 id="landing-pages">31. Landing Pages</h2>
+<p>Create and manage public landing pages per directory. Customizable themes, publish controls, and SEO-friendly URLs.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4C4; Page Builder</h3>
+    <p>Create landing pages with rich content, images, and call-to-action sections.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F3A8; Public Themes</h3>
+    <p>Pre-built public themes for landing pages. Customizable colors and layout.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E2; Publish Controls</h3>
+    <p>Toggle publish status per page. Preview before going live.</p>
+  </div>
+</div>
+
+<h3>Landing Pages</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/landing-pages</code> &mdash; List landing pages</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/landing-pages</code> &mdash; Create landing page</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/landing-pages/:id</code> &mdash; Get landing page</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/landing-pages/:id</code> &mdash; Update landing page</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/landing-pages/:id</code> &mdash; Delete landing page</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/landing-pages/:slug/publish</code> &mdash; Toggle publish status</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/landing-pages/featured</code> &mdash; List featured pages</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/public-pages</code> &mdash; Directory pages</p>
+</div>
+
+<h3>Public Pages (Alias)</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/public-pages</code> &mdash; List public pages</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/public-pages</code> &mdash; Create public page</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/public-pages/:id</code> &mdash; Get public page</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/public-pages/:id</code> &mdash; Update public page</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/public-pages/:id</code> &mdash; Delete public page</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/public-pages/:slug/publish</code> &mdash; Toggle publish</p>
+</div>
+
+<h3>Themes</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/public-themes</code> &mdash; List public themes</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/public-themes</code> &mdash; Create theme</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/public-themes/:id</code> &mdash; Get theme</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/public-themes/:id</code> &mdash; Update theme</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/public-themes/:id</code> &mdash; Delete theme</p>
+</div>
+
+<!-- 32. Domains -->
+<h2 id="domains">32. Domains</h2>
+<p>Register custom domains for directories. Map your own domain names to individual directories with automatic SSL.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F310; Custom Domains</h3>
+    <p>Point your own domain to a directory. Automatic DNS verification.</p>
+  </div>
+  <div class="card">
+    <h3>&#x2705; Verification</h3>
+    <p>Verify domain ownership via DNS record or HTML file upload.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CB; Domain Limit</h3>
+    <p>Domain limits are managed per subscription plan.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/domains</code> &mdash; List registered domains</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/domains</code> &mdash; Register domain</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/domains/:domain_id</code> &mdash; Remove domain</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/domains/:domain_id/verify</code> &mdash; Verify domain</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/plans/:plan_id/domains</code> &mdash; Check plan domain limits</p>
+</div>
+
+<!-- 33. Automation / n8n -->
+<h2 id="automation">33. Automation / n8n</h2>
+<p>The platform integrates with n8n for workflow automation. Webhooks, CRON triggers, and event-driven actions enable automated content generation, lead sync, review moderation, and more.</p>
+
+<h3>Key Automation Use Cases</h3>
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4E1; Lead Sync</h3>
+    <p>Forward new business submissions and review notifications to external CRMs or email lists via webhooks.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F504; Content Automation</h3>
+    <p>Schedule AI content generation on CRON. Auto-publish blog posts and programmatic pages.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4CB; Review Moderation</h3>
+    <p>Auto-approve or flag reviews based on content rules. Send alerts for critical reviews.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E2; Broadcast Notifications</h3>
+    <p>Send email digests, SMS alerts, or Slack messages when new listings are created.</p>
+  </div>
+</div>
+
+<h3>Integration Points</h3>
+<div class="card">
+  <p><strong>Webhooks</strong> &mdash; Configure webhooks per-directory or globally for each event type.</p>
+  <p><strong>API Keys</strong> &mdash; Use scoped API keys in n8n HTTP Request nodes to call platform APIs.</p>
+  <p><strong>Provider Keys</strong> &mdash; Store OpenAI or other provider keys for AI-powered n8n workflows.</p>
+  <p><strong>CRON</strong> &mdash; Schedule recurring content generation and data export workflows via n8n CRON triggers.</p>
+  <p><strong>Format</strong> &mdash; Webhook payloads use JSON with consistent event envelope format.</p>
+</div>
+
+<!-- 34. Industries -->
+<h2 id="industries">34. Industries</h2>
+<p>Manage industry categories for your directories. Filter available industries and assign specific industries to your account.</p>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/industries/available</code> &mdash; List all available industries</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/industries</code> &mdash; List user industries</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/industries</code> &mdash; Set user industry</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/industries/:slug</code> &mdash; Remove user industry</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/industries/limit</code> &mdash; Get industry limit</p>
+</div>
+
+<!-- 35. Settings -->
+<h2 id="settings">35. Settings</h2>
+<p>User profile settings, password management, and account configuration.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F464; Profile</h3>
+    <p>Manage your name, email, and account preferences.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F510; Security</h3>
+    <p>Change password and manage session tokens.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E7; Notifications</h3>
+    <p>Configure email notification preferences per directory.</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/auth/me</code> &mdash; Get user profile</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/auth/password</code> &mdash; Change password</p>
+</div>
+
+<!-- 36. API Reference -->
+<h2 id="api">36. API Reference</h2>
+<p>General API usage guidelines for the Multi-Directory Platform.</p>
 
 <h3>Authentication</h3>
-<pre><code>curl -H "Authorization: Bearer YOUR_API_KEY" \
-     https://directory.swiftsoftware.net/api/listings</code></pre>
-
-<h3>Base URL</h3>
-<pre><code>https://directory.swiftsoftware.net/api</code></pre>
-
-<h3>Endpoints</h3>
-
 <div class="card">
-  <h3>=��� Listings</h3>
-  <p><span class="badge get">GET</span> <code>/api/listings</code> G�� Get all listings (supports pagination &amp; filtering)</p>
-  <pre><code>curl -H "Authorization: Bearer KEY" \
-  "https://directory.swiftsoftware.net/api/listings?directory_id=1&page=1&per_page=20"</code></pre>
-
-  <p><span class="badge get">GET</span> <code>/api/listings/:id</code> G�� Get a single listing by ID</p>
-  <pre><code>curl -H "Authorization: Bearer KEY" \
-  https://directory.swiftsoftware.net/api/listings/42</code></pre>
-
-  <p><span class="badge post">POST</span> <code>/api/listings</code> G�� Create a new listing</p>
-  <pre><code>curl -X POST -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
-  -d '{
-    "directory_id": 1,
-    "name": "Green Acre Farm",
-    "address": "123 Farm Rd, Lexington, KY 40502",
-    "phone": "(859) 555-0123",
-    "website": "https://greenacrefarm.example.com",
-    "hours": "Mon-Sat 8am-6pm",
-    "categories": ["organic-farm", "farmers-market"],
-    "description": "Family-owned organic farm offering seasonal produce."
-  }' \
-  https://directory.swiftsoftware.net/api/listings</code></pre>
-
-  <p><span class="badge put">PUT</span> <code>/api/listings/:id</code> G�� Update an existing listing</p>
-  <pre><code>curl -X PUT -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
-  -d '{"name": "Green Acre Farm Updated", "phone": "(859) 555-0199"}' \
-  https://directory.swiftsoftware.net/api/listings/42</code></pre>
-
-  <p><span class="badge delete">DELETE</span> <code>/api/listings/:id</code> G�� Delete a listing</p>
-  <pre><code>curl -X DELETE -H "Authorization: Bearer KEY" \
-  https://directory.swiftsoftware.net/api/listings/42</code></pre>
+  <p>All API requests require a Bearer token in the <code>Authorization</code> header:</p>
+  <pre><code>Authorization: Bearer &lt;your-api-key&gt;</code></pre>
+  <p>API keys are managed from the admin dashboard or via the <code>/api/v1/api-keys</code> endpoint.</p>
 </div>
-
-<div class="card">
-  <h3>=��� Directories</h3>
-  <p><span class="badge get">GET</span> <code>/api/directories</code> G�� Get all directories</p>
-  <p><span class="badge get">GET</span> <code>/api/directories/:id</code> G�� Get a single directory with stats</p>
-  <p><span class="badge post">POST</span> <code>/api/directories</code> G�� Create a new directory</p>
-  <p><span class="badge put">PUT</span> <code>/api/directories/:id</code> G�� Update directory settings</p>
-  <p><span class="badge delete">DELETE</span> <code>/api/directories/:id</code> G�� Delete a directory and all its listings</p>
-</div>
-
-<div class="card">
-  <h3>=��+n+� Categories</h3>
-  <p><span class="badge get">GET</span> <code>/api/categories</code> G�� Get all categories (optional <code>?directory_id=1</code>)</p>
-  <p><span class="badge get">GET</span> <code>/api/categories/:id</code> G�� Get a single category with listing count</p>
-  <p><span class="badge post">POST</span> <code>/api/categories</code> G�� Create a new category</p>
-  <pre><code>curl -X POST -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
-  -d '{
-    "directory_id": 1,
-    "name": "Organic Farms",
-    "slug": "organic-farms",
-    "parent_id": null,
-    "description": "Farms offering certified organic produce"
-  }' \
-  https://directory.swiftsoftware.net/api/categories</code></pre>
-  <p><span class="badge put">PUT</span> <code>/api/categories/:id</code> G�� Update a category</p>
-  <p><span class="badge delete">DELETE</span> <code>/api/categories/:id</code> G�� Delete a category</p>
-</div>
-
-<div class="card">
-  <h3>=�Ŀ Themes</h3>
-  <p><span class="badge get">GET</span> <code>/api/themes/:directory_id</code> G�� Get theme settings for a directory</p>
-  <p><span class="badge put">PUT</span> <code>/api/themes/:directory_id</code> G�� Update theme settings</p>
-  <pre><code>curl -X PUT -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
-  -d '{
-    "primary_color": "#10b981",
-    "secondary_color": "#f59e0b",
-    "background_color": "#ffffff",
-    "font": "Inter"
-  }' \
-  https://directory.swiftsoftware.net/api/themes/1</code></pre>
-</div>
-
-<div class="card">
-  <h3>=��� Analytics</h3>
-  <p><span class="badge get">GET</span> <code>/api/analytics/dashboard</code> G�� Get dashboard stats</p>
-  <p><span class="badge get">GET</span> <code>/api/analytics/directory/:id</code> G�� Get analytics for a specific directory</p>
-  <p><span class="badge get">GET</span> <code>/api/analytics/listings/:id/views</code> G�� Get view count for a listing</p>
-</div>
-
-<h3>Response Format</h3>
-<pre><code>{
-  "success": true,
-  "data": { ... },
-  "pagination": {
-    "page": 1,
-    "per_page": 20,
-    "total": 847,
-    "total_pages": 43
-  }
-}</code></pre>
-
-<h3>Error Format</h3>
-<pre><code>{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Name is required",
-    "details": { "field": "name" }
-  }
-}</code></pre>
 
 <h3>Rate Limits</h3>
-<p>API rate limits are set at <strong>100 requests per minute</strong> per API key. Exceed this limit and you'll receive a <code>429 Too Many Requests</code> response.</p>
+<div class="card">
+  <table>
+    <tr><td>General API</td><td>60 requests per minute per key</td></tr>
+    <tr><td>Search endpoints</td><td>30 requests per minute per key</td></tr>
+    <tr><td>Import/Export</td><td>10 requests per minute per key</td></tr>
+  </table>
+</div>
 
-<!-- 10. FAQ -->
-<h2 id="faq">10. FAQ</h2>
+<h3>Content Types</h3>
+<div class="card">
+  <p><strong>Request:</strong> <code>application/json</code> for all POST/PUT requests</p>
+  <p><strong>Response:</strong> <code>application/json</code> for all API responses</p>
+  <p><strong>File uploads:</strong> <code>multipart/form-data</code> for image and CSV uploads</p>
+</div>
+
+<h3>Error Handling</h3>
+<div class="card">
+  <p>Standard HTTP status codes are used:</p>
+  <table>
+    <tr><td>200</td><td>Success</td></tr>
+    <tr><td>201</td><td>Created</td></tr>
+    <tr><td>400</td><td>Bad request / validation error</td></tr>
+    <tr><td>401</td><td>Unauthorized / missing API key</td></tr>
+    <tr><td>403</td><td>Forbidden / insufficient permissions</td></tr>
+    <tr><td>404</td><td>Not found</td></tr>
+    <tr><td>409</td><td>Conflict / duplicate entry</td></tr>
+    <tr><td>429</td><td>Rate limit exceeded</td></tr>
+    <tr><td>500</td><td>Internal server error</td></tr>
+  </table>
+  <p>Error responses include a <code>message</code> field with details and an optional <code>errors</code> field with field-level validation messages.</p>
+</div>
+
+<h3>Pagination</h3>
+<div class="card">
+  <p>List endpoints support pagination with query parameters:</p>
+  <pre><code>GET /api/v1/businesses?page=1&per_page=20</code></pre>
+  <table>
+    <tr><td><code>page</code></td><td>Page number (default: 1)</td></tr>
+    <tr><td><code>per_page</code></td><td>Items per page (default: 20, max: 100)</td></tr>
+  </table>
+  <p>Responses include <code>total</code>, <code>page</code>, <code>per_page</code>, and <code>total_pages</code> in the response metadata.</p>
+</div>
+
+<!-- 37. FAQ -->
+<!-- 38. AI Article Writer -->
+<h2 id="ai-article-writer">39. AI Article Writer (Answer-First)</h2>
+
+<p>The <strong>AI Article Writer</strong> generates SEO-optimized content in the Answer-First format. Access it via <strong>SEO Articles</strong> in the directory dashboard sidebar.</p>
+
+<h3>How It Works</h3>
+<p>A 10-question wizard collects the business name, category, city, competitors, and nearby areas. The AI generates:</p>
+<ul>
+<li><strong>Direct Answer</strong> — bold blockquote answering "Who is the best X in Y?"</li>
+<li><strong>Comparison Table</strong> — side-by-side comparison with competitors</li>
+<li><strong>"Why [City] Trusts"</strong> — community trust section with nearby cities woven in</li>
+<li><strong>FAQ</strong> — 4-6 questions in <code>&lt;details&gt;</code> elements</li>
+</ul>
+
+<h3>Competitor Auto-Suggest</h3>
+<p>When you select a directory and enter a business name, the system automatically queries the directory for other businesses that could serve as competitors. These appear as clickable badges — click one to add it. Manual entry is still supported.</p>
+
+<h3>AI Article Writer Endpoints</h3>
+<div class="card">
+<p><span class="badge post">POST</span> <code>/api/v1/admin/articles/generate-answer-first</code> &mdash; Generate Answer-First article</p>
+<p><span class="badge post">POST</span> <code>/api/v1/admin/articles/suggest-competitors</code> &mdash; Suggest competitors from same directory</p>
+</div>
+
+<h3>Where Articles Appear</h3>
+<ul>
+<li><strong>Blog Posts</strong> — published in the <code>blog_posts</code> table, visible on the blog</li>
+<li><strong>Business Detail Page</strong> — saved to <code>business_meta</code>, rendered on the business profile</li>
+<li><strong>SEO Tab</strong> — saved to <code>business_articles</code>, visible in the directory dashboard</li>
+</ul>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 39. Core Swift Native Integration -->
+<h2 id="core-swift">40. Core Swift Native Integration</h2>
+
+<p><strong>Core Swift</strong> is the sister company engine that handles all CRM, communication campaigns, automation, and tagging. Directories are <strong>capture points</strong> that feed contacts and trigger campaigns. Every directory network gets its own Core Swift tenant account (not the admin account).</p>
+
+<div class="card" style="border-left:4px solid #10b981">
+<h3>&#x26a1; Built-In Architecture</h3>
+<ul>
+<li><strong>Core Swift</strong> — CRM, campaigns, deal pipelines, call tracking, automation</li>
+<li><strong>Multi-Directory</strong> — capture points for signups, sponsorships, upgrades</li>
+<li><strong>SMTP (per-directory)</strong> — newsletters, receipts, transactional emails only</li>
+<li><strong>Third-party CRM</strong> — optional add-on for sold directories</li>
+</ul>
+</div>
+
+<h3>One-Click Tenant + Campaign Creation</h3>
+<ol>
+<li>Go to a directory Dashboard &rarr; Integrations</li>
+<li>Click <strong>&#x2728; Auto-Create Tenant + Campaigns</strong></li>
+<li>The system creates a Core Swift tenant account scoped to this directory:</li>
+<ul>
+<li>Generates a unique API token</li>
+<li>Seeds a <strong>Signup Campaign</strong> (fires when a business signs up)</li>
+<li>Seeds a <strong>Sponsor Campaign</strong> (fires when a business upgrades)</li>
+<li>Creates default email lists per city</li>
+</ul>
+<li>Auto-fills the endpoint + token fields</li>
+<li>Calls Test Connection to verify</li>
+<li>Saves everything automatically</li>
+</ol>
+
+<h3>Per-Directory Configuration</h3>
+<p>Each directory stores its own Core Swift endpoint and token in <code>template_config.integrations</code>. When you sell a directory, the buyer connects their own Core Swift tenant:</p>
+<div class="card">
+<table>
+<tr><td>ZaarHub (your directory)</td><td><code>http://localhost:3001/tenant/zaarhub</code></td></tr>
+<tr><td>Palm Bay Plumbers (sold)</td><td><code>https://core.buyer.com/tenant/palmbay-plumbers</code></td></tr>
+</table>
+</div>
+
+<h3>Endpoints</h3>
+<div class="card">
+<p><span class="badge post">POST</span> <code>/api/v1/admin/core-swift/setup-tenant</code> &mdash; Create tenant + campaigns, get token</p>
+<p><span class="badge post">POST</span> <code>/api/v1/admin/core-swift/test-connection</code> &mdash; Test Core Swift reachability</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 40. Integrations Panel -->
+<h2 id="integrations">41. Integrations Panel</h2>
+
+<p>Each directory has its own Integrations panel (Dashboard &rarr; Integrations). The system is designed around Core Swift as the built-in engine.</p>
+
+<div class="feature-grid">
+<div class="card" style="border-left:4px solid #10b981">
+<h3>&#x26a1; Core Swift (Built-in)</h3>
+<p><strong>This is the default.</strong> Core Swift handles all CRM, campaigns, and communication. No API keys required for your own directories.</p>
+<ul>
+<li>Business signs up &rarr; flows into Core Swift CRM as a contact, tagged with directory + tier</li>
+<li>Business sponsors/upgrades &rarr; tag changes, moves to sponsor campaign</li>
+<li>Auto-Create button seeds signup + sponsor campaigns with one click</li>
+</ul>
+</div>
+<div class="card">
+<h3>&#x1f4e7; Email (SMTP per Directory)</h3>
+<p>Configured in Directory Settings &rarr; SMTP. Used for newsletters, receipts, and confirmation emails. Each directory has its own sending reputation.</p>
+</div>
+<div class="card">
+<h3>&#x1f4de; External CRM (Optional)</h3>
+<p>Connect HubSpot, Salesforce, Zoho, or Pipedrive for sold directories that want their own stack.</p>
+</div>
+<div class="card">
+<h3>&#x1f517; Webhooks</h3>
+<p>Configure URLs for new businesses, new articles, and lead captures. Each directory has its own webhook endpoints.</p>
+</div>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 41. Trap Door Pages -->
+<h2 id="trap-doors">42. Trap Door Pages</h2>
+
+<p>Hyper-niche landing pages targeting long-tail SEO queries. Generated from combinations of services, cities, days of the week, and time slots.</p>
+
+<div class="stat-grid">
+<div class="stat"><span class="num">8,400+</span><span class="label">Pages per Directory</span></div>
+<div class="stat"><span class="num">4</span><span class="label">Factors (svc x city x day x time)</span></div>
+<div class="stat"><span class="num">7</span><span class="label">API Endpoints</span></div>
+</div>
+
+<h3>How It Works</h3>
+<ol>
+<li>Enter your services, cities, days, and time tags</li>
+<li>Preview the estimated page count</li>
+<li>Generate all combinations as Trap Door pages</li>
+<li>Each page has unique SEO meta, content, FAQ, and CTA</li>
+<li>Weekly automation via n8n discovers new factors and generates fresh pages</li>
+</ol>
+
+<h3>Templates</h3>
+<p>Create Trap Door templates with patterns like: <code>Best {service} in {city} open {day} {time}</code>. Templates auto-fill placeholders for batch generation.</p>
+
+<h3>Public Pages</h3>
+<p>Each Trap Door page lives at <code>/p/{slug}</code> with:</p>
+<ul>
+<li>SEO meta title, description, canonical URL</li>
+<li>Structured JSON-LD FAQPage schema for rich snippets</li>
+<li>Visible FAQ accordion before call-to-action</li>
+<li>Asynchronous impression tracking</li>
+<li>Click tracking on business links</li>
+</ul>
+
+<h3>Analytics</h3>
+<p>The Analytics tab shows impressions, clicks, and conversion data. Filter by day, time slot, or service.</p>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 42. Sponsored Articles -->
+<h2 id="sponsored-articles">43. Sponsored Articles</h2>
+
+<p>Monetize directory content by selling article sponsorships to businesses. One of 4 monetization methods alongside Plan Tiers, Subscriptions, and Ad Zones.</p>
+
+<h3>How Sponsorship Works</h3>
+<ol>
+<li>Create a sponsorship from the Monetization &rarr; Sponsored Articles tab</li>
+<li>Select directory, business, target keyword, weekly price, and duration</li>
+<li>Article is generated and published with a <strong>Sponsored</strong> badge</li>
+<li>Business gets exposure; directory gets recurring revenue</li>
+</ol>
+
+<h3>Tracking</h3>
+<ul>
+<li>Per-article impression count (page views)</li>
+<li>Per-article click count (business link clicks)</li>
+<li>Subscription status, expiration date, billing cycle</li>
+<li>Archive sponsorships that end</li>
+</ul>
+
+<p><strong>Two-tier model:</strong> Owner articles (directory SEO) are free. Business-sponsored articles are paid, with weekly renewal.</p>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+<h2 id="faq">37. FAQ</h2>
 
 <details>
   <summary>How do I create a new directory?</summary>
-  <p>From the Dashboard, click the "New Directory" button. Select a template (or start blank), give your directory a name and slug, then click Create. You'll be taken to the directory settings where you can customize categories, theme, and more.</p>
+  <p>From the Dashboard, click <strong>New Directory</strong>. Select a template, enter your city/industry name, and choose a URL slug. The directory will be created with default settings and categories matching the template.</p>
 </details>
 
 <details>
-  <summary>Can I import listings from a spreadsheet?</summary>
-  <p>Yes! Navigate to your directory and click "Import" in the listings section. Upload a CSV file with columns matching the listing fields (name, address, phone, etc.). The system will validate and import matching rows. You can download a sample CSV template from the import page.</p>
+  <summary>Can I change a directory's template after creation?</summary>
+  <p>Yes. Go to the directory settings page and select a new template. Note that custom field values from the old template that don't exist in the new one will be preserved in the database but hidden from the public view.</p>
 </details>
 
 <details>
-  <summary>How do I make my directory public?</summary>
-  <p>Each directory has a status toggle in its settings. Set it to "Published" to make it accessible at its public URL (<code>https://directory.swiftsoftware.net/d/your-directory-slug</code>). Draft directories are only visible to admin users.</p>
+  <summary>How do I add businesses in bulk?</summary>
+  <p>Use the <strong>CSV Import</strong> feature under the Import/Export section. Download the sample CSV template, fill in your business data, and upload. The system validates and imports with a detailed log.</p>
 </details>
 
 <details>
-  <summary>Is there a mobile app or mobile-responsive design?</summary>
-  <p>The public directory pages are fully responsive and work great on mobile devices. There is no native mobile app, but the web interface works on all screen sizes. The admin dashboard is also responsive for on-the-go management.</p>
+  <summary>What AI content features are available?</summary>
+  <p>The platform offers AI blog generation, business article generation, programmatic page generation, newsletter content generation, and content repurposing. Each feature has directory-level configuration for tone, length, and topic focus.</p>
 </details>
 
 <details>
-  <summary>Can I add custom fields to listings?</summary>
-  <p>Absolutely. When editing a directory's template settings, you can add custom fields of various types: text, number, select dropdown, multi-select, date, URL, email, and file upload. These fields appear on both the add/edit listing forms and the public listing page.</p>
+  <summary>How do I set up call tracking?</summary>
+  <p>Navigate to Call Tracking in the admin panel. Provision a local phone number from available inventory, assign it to a business, and configure forwarding. Calls are automatically logged and recorded.</p>
 </details>
 
 <details>
-  <summary>How do I reset my password?</summary>
-  <p>Go to Settings G�� Password. Enter your current password and new password. The new password must be at least 12 characters and include uppercase, lowercase, a number, and a special character. If you're locked out, contact the platform administrator.</p>
+  <summary>Can I use my own domain?</summary>
+  <p>Yes. Register your domain under Domains in the admin panel. Follow the verification instructions (DNS TXT record or file upload). Once verified, assign the domain to any directory. SSL is automatic.</p>
 </details>
 
 <details>
-  <summary>Can I set up multiple administrators for my directory?</summary>
-  <p>Yes. Under Settings G�� Team Members, click "Invite Member". Enter their email and select a role (Editor or Viewer). They'll receive an invitation email. Editors can manage listings and categories. Viewers can see the admin panel but cannot make changes.</p>
+  <summary>How does monetization work?</summary>
+  <p>Define subscription tiers with different feature sets and pricing. Businesses can subscribe to premium tiers for enhanced listings, ad zones, and sponsored placements. Invoices are generated automatically and payouts are tracked per directory.</p>
 </details>
 
 <details>
-  <summary>What happens when I delete a directory?</summary>
-  <p>Deleting a directory permanently removes all its listings, categories, theme settings, and analytics data. This action cannot be undone. The public URL will return a 404. You'll be asked to type the directory name to confirm deletion.</p>
+  <summary>How do I integrate with n8n?</summary>
+  <p>Create an API key under Settings &gt; API Keys. Use the webhook system to send events to n8n endpoints. The platform exposes all CRUD operations via REST API for n8n HTTP Request nodes to consume.</p>
 </details>
 
-<!-- 11. Deals -->
-<h2 id="deals">11. Deals (Groupon-Style Deal Pages)</h2>
-<p>The <strong>Deals</strong> module lets you create limited-time offers, coupons, and promotions linked to directories and businesses. Think Groupon-style deals — discounted services, special offers, and coupon codes that appear on directory landing pages and business profiles.</p>
+<details>
+  <summary>Is there a mobile app?</summary>
+  <p>The platform is fully responsive and works on mobile browsers. There is no native mobile app, but the admin dashboard and public directory pages are optimized for mobile viewing.</p>
+</details>
 
-<div class="feature-grid">
-  <div class="card">
-    <h3>&#127935; Coupons &amp; Deals</h3>
-    <p>Create percentage-off or fixed-price deals. Set original price vs deal price. Coupon codes for in-store or online redemption.</p>
-  </div>
-  <div class="card">
-    <h3>&#9200; Scheduled Offers</h3>
-    <p>Set start and end dates. Deals auto-activate and auto-expire. Schedule promotions for holidays, slow seasons, or grand openings.</p>
-  </div>
-  <div class="card">
-    <h3>&#128202; Redemption Tracking</h3>
-    <p>Each deal tracks how many times it&#39;s been claimed. Set redemption limits to control inventory. The &#34;Claimed&#34; count appears on each deal card.</p>
-  </div>
-  <div class="card">
-    <h3>&127982; Linked to Businesses</h3>
-    <p>Each deal is tied to a specific directory and business. Deals appear on business profile pages and directory landing pages.</p>
-  </div>
-</div>
-
-<h3>Navigation</h3>
-<p>Click <strong>Deals</strong> in the sidebar to open the Deals management page. The sidebar shows a &#127935; icon next to the Deals label.</p>
-
-<h3>Key Fields Explained</h3>
-<div class="card">
-  <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Title</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The name of the deal (e.g. &#34;50% Off Dinner&#34;)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Description</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Details about what the offer includes</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Original Price</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The regular price before discount (displayed with strikethrough)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Deal Price</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">What the customer actually pays</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Discount %</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Auto-calculated from original and deal prices. Can also be set manually.</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Currency</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">ISO currency code (default: USD)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Status</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Active, Scheduled, Expired, or Sold Out</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Redemption Limit</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Maximum number of times this deal can be claimed (blank = unlimited)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Redemption Count</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">How many times the deal has been claimed so far (auto-tracked)</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Coupon Code</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Optional code customers enter at checkout</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Featured</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Toggle to highlight the deal as featured on the directory landing page</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Start / End Dates</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Schedule when the deal goes live and expires</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Directory</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Which directory this deal belongs to</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Business</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">The specific business offering the deal</td></tr>
-  </table>
-</div>
-
-<h3>Creating a Deal</h3>
-<ol>
-  <li>Click <strong>Deals</strong> in the sidebar navigation</li>
-  <li>Click the <strong>+ New Deal</strong> button in the top-right</li>
-  <li>Fill in the modal form: Title, Description, Pricing (Original Price, Deal Price, Discount %, Currency)</li>
-  <li>Select the <strong>Directory</strong> and enter the <strong>Business ID</strong> (UUID of the business)</li>
-  <li>Set Status, Start/End dates, Redemption Limit, Coupon Code, and featured toggle</li>
-  <li>Click <strong>Create Deal</strong> to save</li>
-</ol>
-
-<h3>Editing a Deal</h3>
-<p>Click any deal card in the Deals list to open the edit modal. Click <strong>Save Changes</strong> to persist updates.</p>
-
-<h3>Deleting a Deal</h3>
-<p>Click the <strong>Delete</strong> button (trash icon) on any deal card. Confirm the deletion in the dialog.</p>
-
-<h3>Tracking Redemptions</h3>
-<p>Each deal card displays a <strong>Claimed</strong> count showing how many times the deal has been redeemed. The <strong>Claim</strong> button lets you manually increment the redemption count for testing or manual fulfillment. The system also tracks the redemption limit and marks the deal as <strong>Sold Out</strong> when the limit is reached.</p>
-
-<h3>Deal Types</h3>
-<ul>
-  <li><strong>Coupon</strong> — A coupon code that customers can use</li>
-  <li><strong>Deal</strong> — A standard discounted offer</li>
-  <li><strong>Promotion</strong> — A promotional offer (e.g. buy-one-get-one)</li>
-</ul>
-
-<h3>API Endpoints</h3>
-<div class="card">
-  <p><span class="badge get">GET</span> <code>/api/v1/deals</code> — List all deals</p>
-  <p><span class="badge get">GET</span> <code>/api/v1/deals/:id</code> — Get a single deal</p>
-  <p><span class="badge post">POST</span> <code>/api/v1/deals</code> — Create a new deal</p>
-  <p><span class="badge put">PUT</span> <code>/api/v1/deals/:id</code> — Update an existing deal</p>
-  <p><span class="badge delete">DELETE</span> <code>/api/v1/deals/:id</code> — Delete a deal</p>
-  <p><span class="badge post">POST</span> <code>/api/v1/deals/:id/claim</code> — Manually claim/redeem a deal (increments redemption count)</p>
-</div>
-<p>All deals can be managed via Telegram by calling the API. The Deals endpoints follow the same authentication pattern as other API routes (Bearer token or API key).</p>
-
-<h3>Monetization</h3>
-<p>Deals are an <strong>upsell feature</strong>. Each deal links to a business within a directory. Redemption counts form the billing data — the more redemptions a deal receives, the more value the business gets. You can charge businesses per redemption or include deals in premium directory tiers.</p>
-
-<!-- 12. Directory Structure -->
-<h2 id="directory-structure">12. Directory Structure &amp; City Homepages</h2>
-<p>The Multi-Directory Platform uses a <strong>city-based URL structure</strong> for its public-facing directories. Each city (or location) gets its own dedicated subpage with unique SEO, and the root domain serves as a hub linking to all cities.</p>
-
-<div class="feature-grid">
-  <div class="card">
-    <h3>&#127968; Root Domain = Homepage</h3>
-    <p><code>directory.swiftsoftware.net</code> shows a city grid homepage. Visitors can browse all available cities and click through to any directory.</p>
-  </div>
-  <div class="card">
-    <h3>&#127963; Per-City Subpages</h3>
-    <p>Each directory gets a dedicated page at <code>/{city-slug}</code> (e.g., <code>/palm-bay</code>, <code>/orlando</code>, <code>/miami</code>). These pages display businesses, deals, and content specific to that city.</p>
-  </div>
-  <div class="card">
-    <h3>&#127758; Auto Geo-Redirect</h3>
-    <p>When a visitor lands on the homepage, their IP is used to detect their approximate city. A soft banner offers to redirect them to their nearest city directory. Non-blocking and dismissible.</p>
-  </div>
-  <div class="card">
-    <h3>&#128270; Per-City SEO</h3>
-    <p>Each city directory has unique SEO settings: meta title, meta description, Open Graph tags, JSON-LD structured data (LocalBusiness schema), and its own sitemap entry.</p>
-  </div>
-</div>
-
-<h3>URL Path Structure</h3>
-<div class="card">
-  <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Homepage</td><td style="padding:6px 12px;border-bottom:1px solid #334155;"><code>https://directory.swiftsoftware.net/</code></td><td style="padding:6px 12px;border-bottom:1px solid #334155;">City grid with links to all directories</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">City Directory</td><td style="padding:6px 12px;border-bottom:1px solid #334155;"><code>https://directory.swiftsoftware.net/palm-bay</code></td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Business listings, deals, categories for that city</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Business Detail</td><td style="padding:6px 12px;border-bottom:1px solid #334155;"><code>https://directory.swiftsoftware.net/palm-bay/business-slug</code></td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Full business profile, deals, reviews</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Admin Dashboard</td><td style="padding:6px 12px;border-bottom:1px solid #334155;"><code>https://directory.swiftsoftware.net/#/...</code></td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Hash-based SPA routing for admin panel</td></tr>
-  </table>
-</div>
-
-<h3>How City Directories Work</h3>
-<ol>
-  <li><strong>Create a directory</strong> - Go to Admin &rarr; Directories &rarr; New Directory. Give it a name (e.g., "Palm Bay") and a slug (e.g., "palm-bay").</li>
-  <li><strong>City page auto-creates</strong> - The slug becomes a public URL at <code>/{slug}</code>. The city page inherits the directory template, theme, and categories.</li>
-  <li><strong>Add businesses</strong> - Add businesses to the directory as normal. They appear on the city page with full listings.</li>
-  <li><strong>Configure SEO</strong> - Under Admin &rarr; SEO, select the directory and set per-city meta title, description, and keywords. The sitemap auto-generates entries for each city.</li>
-  <li><strong>Homepage updates</strong> - The root homepage automatically lists all published directories as clickable city cards.</li>
-</ol>
-
-<h3>Geo-Redirect Setup</h3>
-<p>The geo-redirect is a soft, client-side check:</p>
-<ul>
-  <li>Visits a free IP geolocation API to detect the visitor&rsquo;s city from their IP address</li>
-  <li>Matches the detected city to the nearest available directory slug</li>
-  <li>Shows a dismissible banner: <strong>"You appear to be near [City] &rarr; Visit [City] Directory"</strong></li>
-  <li>The visitor clicks the link to navigate, or dismisses the banner to stay on the homepage</li>
-  <li>No forced redirects &mdash; always non-blocking and optional</li>
-</ul>
-
-<h3>SEO Per City</h3>
-<div class="card">
-  <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Meta Title</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Unique per city: "Palm Bay Businesses | Directory"</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Meta Description</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Per city: "Discover the best local businesses in Palm Bay, FL"</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Open Graph</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Unique og:title, og:description, og:url per city page</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Schema Markup</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">City-level LocalBusiness and Place schema with geocoordinates</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Sitemap</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Each city URL appears as a separate <code>&lt;url&gt;</code> entry in sitemap.xml</td></tr>
-    <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Canonical URL</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Each city page has a self-referencing canonical to prevent duplicate content</td></tr>
-  </table>
-</div>
-
-<h3>Managing City Directories from Admin</h3>
-<table style="width:100%;border-collapse:collapse;margin-top:8px;">
-  <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">&#128736;&#65039; Create City</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Admin &rarr; Directories &rarr; New Directory</td></tr>
-  <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">&#128221; Edit City SEO</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Admin &rarr; SEO &rarr; Select directory &rarr; Edit meta</td></tr>
-  <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">&#127912; Change City Theme</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Admin &rarr; Themes &rarr; Select directory &rarr; Customize</td></tr>
-  <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">&#128227; Disable City</td><td style="padding:6px 12px;border-bottom:1px solid #334155;">Set directory to "Draft" in directory settings</td></tr>
-</table>
-
-<h3>API Endpoints</h3>
-<div class="card">
-  <p><span class="badge get">GET</span> <code>/api/v1/public/homepage</code> &mdash; Get all directories (cities) with listing counts for homepage city grid</p>
-  <pre><code>curl https://directory.swiftsoftware.net/api/v1/public/homepage</code></pre>
-  <p><span class="badge get">GET</span> <code>/api/v1/public/{slug}</code> &mdash; Get a single city directory with businesses, categories, and SEO data</p>
-  <pre><code>curl https://directory.swiftsoftware.net/api/v1/public/palm-bay</code></pre>
-  <p><span class="badge get">GET</span> <code>/api/v1/public/{slug}/{business_id}</code> &mdash; Get a single business listing detail</p>
-  <pre><code>curl https://directory.swiftsoftware.net/api/v1/public/palm-bay/business-uuid</code></pre>
-</div>
-
-<h3>Example URLs (Live)</h3>
-<table style="width:100%;border-collapse:collapse;margin-top:8px;">
-  <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Homepage</td><td style="padding:6px 12px;border-bottom:1px solid #334155;"><a href="https://directory.swiftsoftware.net/" target="_blank">directory.swiftsoftware.net</a></td></tr>
-  <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Palm Bay Directory</td><td style="padding:6px 12px;border-bottom:1px solid #334155;"><a href="https://directory.swiftsoftware.net/palm-bay" target="_blank">directory.swiftsoftware.net/palm-bay</a></td></tr>
-  <tr><td style="padding:6px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Orlando Directory</td><td style="padding:6px 12px;border-bottom:1px solid #334155;"><a href="https://directory.swiftsoftware.net/orlando" target="_blank">directory.swiftsoftware.net/orlando</a></td></tr>
-</table>
-
-<hr><hr>
-<p style="text-align:center;color:#64748b;font-size:0.85rem;">
-  Multi-Directory Platform — User Guide v1.0<br>
-  &#169; 2026 SwiftSoftware — <a href="https://directory.swiftsoftware.net" target="_blank">directory.swiftsoftware.net</a>
-</p>
+<details>
+  <summary>How do I get support?</summary>
+  <p>Contact support at <strong>swiftsoftware143@yahoo.com</strong> for technical issues, account questions, or feature requests. Include your account email and a description of the issue.</p>
+</details>
 
 </div>
+
 </body>
 </html>

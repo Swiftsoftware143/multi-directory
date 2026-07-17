@@ -35,6 +35,7 @@ pub struct PlanTier {
     pub has_api_access: Option<bool>,
     pub featured_listing: Option<bool>,
     pub description: Option<String>,
+    pub plan_sales_page_url: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -51,6 +52,7 @@ pub struct BusinessSubscription {
     pub end_date: Option<chrono::NaiveDate>,
     pub auto_renew: Option<bool>,
     pub stripe_subscription_id: Option<String>,
+    pub external_payment_ref: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -67,6 +69,7 @@ pub struct AdZone {
     pub current_advertiser_id: Option<Uuid>,
     pub current_ad_url: Option<String>,
     pub current_ad_image: Option<String>,
+    pub external_payment_ref: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -82,6 +85,9 @@ pub struct DirectoryTier {
     pub stripe_subscription_id: Option<String>,
     pub stripe_customer_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub plan_tier_id: Option<Uuid>,
+    pub external_plan_id: Option<String>,
+    pub external_checkout_url: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -98,6 +104,7 @@ pub struct SponsoredListing {
     pub price_paid: Option<rust_decimal::Decimal>,
     pub currency: Option<String>,
     pub stripe_payment_intent_id: Option<String>,
+    pub external_payment_ref: Option<String>,
     pub featured: Option<bool>,
     pub badge_text: Option<String>,
     pub metadata: Option<serde_json::Value>,
@@ -132,11 +139,11 @@ pub async fn create_tier(
     let tier = sqlx::query_as::<_, PlanTier>(
         r#"INSERT INTO plan_tiers (name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            featured_listing, description, plan_sales_page_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, created_at"#
+            featured_listing, description, plan_sales_page_url, created_at"#
     )
     .bind(name)
     .bind(slug)
@@ -154,6 +161,7 @@ pub async fn create_tier(
     .bind(body.get("has_api_access").and_then(|v| v.as_bool()))
     .bind(body.get("featured_listing").and_then(|v| v.as_bool()))
     .bind(body.get("description").and_then(|v| v.as_str()))
+    .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
@@ -201,11 +209,12 @@ pub async fn update_tier(
             has_reviews = $8, has_analytics = $9, has_crm = $10,
             has_email = $11, has_call_tracking = $12,
             has_import_export = $13, has_api_access = $14,
-            featured_listing = $15, description = $16
-        WHERE id = $17
+            featured_listing = $15, description = $16,
+            plan_sales_page_url = $17
+        WHERE id = $18
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, created_at"#
+            featured_listing, description, plan_sales_page_url, created_at"#
     )
     .bind(name)
     .bind(slug)
@@ -227,6 +236,7 @@ pub async fn update_tier(
     .bind(body.get("has_api_access").and_then(|v| v.as_bool()).or(existing.has_api_access))
     .bind(body.get("featured_listing").and_then(|v| v.as_bool()).or(existing.featured_listing))
     .bind(body.get("description").and_then(|v| v.as_str()).or(existing.description.as_deref()))
+    .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()).or(existing.plan_sales_page_url.as_deref()))
     .bind(id)
     .fetch_one(&s.db)
     .await?;
@@ -287,9 +297,9 @@ pub async fn create_subscription(
     let end_date = end_date_str.and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
 
     let sub = sqlx::query_as::<_, BusinessSubscription>(
-        r#"INSERT INTO business_subscriptions (business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id, business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id, created_at"#
+        r#"INSERT INTO business_subscriptions (business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id, external_payment_ref)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id, business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id, external_payment_ref, created_at"#
     )
     .bind(business_id)
     .bind(tier_id)
@@ -301,6 +311,7 @@ pub async fn create_subscription(
     .bind(end_date)
     .bind(body.get("auto_renew").and_then(|v| v.as_bool()))
     .bind(body.get("stripe_subscription_id").and_then(|v| v.as_str()))
+    .bind(body.get("external_payment_ref").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
@@ -375,9 +386,10 @@ pub async fn update_subscription(
         r#"UPDATE business_subscriptions SET
             business_id = $1, tier_id = $2, status = $3, billing_cycle = $4,
             price_paid = $5, currency = $6, start_date = $7, end_date = $8,
-            auto_renew = $9, stripe_subscription_id = $10
-        WHERE id = $11
-        RETURNING id, business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id, created_at"#
+            auto_renew = $9, stripe_subscription_id = $10,
+            external_payment_ref = $11
+        WHERE id = $12
+        RETURNING id, business_id, tier_id, status, billing_cycle, price_paid, currency, start_date, end_date, auto_renew, stripe_subscription_id, external_payment_ref, created_at"#
     )
     .bind(business_id)
     .bind(tier_id)
@@ -389,6 +401,7 @@ pub async fn update_subscription(
     .bind(end_date)
     .bind(body.get("auto_renew").and_then(|v| v.as_bool()).or(existing.auto_renew))
     .bind(body.get("stripe_subscription_id").and_then(|v| v.as_str()).or(existing.stripe_subscription_id.as_deref()))
+    .bind(body.get("external_payment_ref").and_then(|v| v.as_str()).or(existing.external_payment_ref.as_deref()))
     .bind(id)
     .fetch_one(&s.db)
     .await?;
@@ -456,9 +469,9 @@ pub async fn create_ad_zone(
         .and_then(|v| Uuid::parse_str(v).ok());
 
     let zone = sqlx::query_as::<_, AdZone>(
-        r#"INSERT INTO ad_zones (name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id, name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image, created_at"#
+        r#"INSERT INTO ad_zones (name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image, external_payment_ref)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id, name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image, external_payment_ref, created_at"#
     )
     .bind(name)
     .bind(zone_key)
@@ -470,6 +483,7 @@ pub async fn create_ad_zone(
     .bind(body.get("current_advertiser_id").and_then(|v| v.as_str()).and_then(|v| Uuid::parse_str(v).ok()))
     .bind(body.get("current_ad_url").and_then(|v| v.as_str()))
     .bind(body.get("current_ad_image").and_then(|v| v.as_str()))
+    .bind(body.get("external_payment_ref").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
@@ -510,9 +524,10 @@ pub async fn update_ad_zone(
         r#"UPDATE ad_zones SET
             name = $1, zone_key = $2, width = $3, height = $4,
             price_monthly = $5, directory_id = $6, status = $7,
-            current_advertiser_id = $8, current_ad_url = $9, current_ad_image = $10
-        WHERE id = $11
-        RETURNING id, name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image, created_at"#
+            current_advertiser_id = $8, current_ad_url = $9, current_ad_image = $10,
+            external_payment_ref = $11
+        WHERE id = $12
+        RETURNING id, name, zone_key, width, height, price_monthly, directory_id, status, current_advertiser_id, current_ad_url, current_ad_image, external_payment_ref, created_at"#
     )
     .bind(body.get("name").and_then(|v| v.as_str()).unwrap_or(&existing.name))
     .bind(body.get("zone_key").and_then(|v| v.as_str()).unwrap_or(&existing.zone_key))
@@ -524,6 +539,7 @@ pub async fn update_ad_zone(
     .bind(body.get("current_advertiser_id").and_then(|v| v.as_str()).and_then(|v| Uuid::parse_str(v).ok()).or(existing.current_advertiser_id))
     .bind(body.get("current_ad_url").and_then(|v| v.as_str()).or(existing.current_ad_url.as_deref()))
     .bind(body.get("current_ad_image").and_then(|v| v.as_str()).or(existing.current_ad_image.as_deref()))
+    .bind(body.get("external_payment_ref").and_then(|v| v.as_str()).or(existing.external_payment_ref.as_deref()))
     .bind(id)
     .fetch_one(&s.db)
     .await?;
@@ -603,8 +619,8 @@ pub async fn create_directory_tier(
 
     let dt = sqlx::query_as::<_, DirectoryTier>(
         r#"
-INSERT INTO directory_tiers (directory_id, tier_slug, tier_name, is_active, expires_at, stripe_subscription_id, stripe_customer_id, metadata)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO directory_tiers (directory_id, tier_slug, tier_name, is_active, expires_at, stripe_subscription_id, stripe_customer_id, metadata, plan_tier_id, external_plan_id, external_checkout_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (directory_id) DO UPDATE SET
     tier_slug = EXCLUDED.tier_slug,
     tier_name = EXCLUDED.tier_name,
@@ -613,9 +629,12 @@ ON CONFLICT (directory_id) DO UPDATE SET
     stripe_subscription_id = EXCLUDED.stripe_subscription_id,
     stripe_customer_id = EXCLUDED.stripe_customer_id,
     metadata = EXCLUDED.metadata,
+    plan_tier_id = EXCLUDED.plan_tier_id,
+    external_plan_id = EXCLUDED.external_plan_id,
+    external_checkout_url = EXCLUDED.external_checkout_url,
     updated_at = NOW()
 RETURNING id, directory_id, tier_slug, tier_name, is_active, started_at, expires_at,
-    stripe_subscription_id, stripe_customer_id, metadata, created_at, updated_at
+    stripe_subscription_id, stripe_customer_id, metadata, plan_tier_id, external_plan_id, external_checkout_url, created_at, updated_at
 "#
     )
     .bind(directory_id)
@@ -626,6 +645,9 @@ RETURNING id, directory_id, tier_slug, tier_name, is_active, started_at, expires
     .bind(body.get("stripe_subscription_id").and_then(|v| v.as_str()))
     .bind(body.get("stripe_customer_id").and_then(|v| v.as_str()))
     .bind(body.get("metadata").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new())))
+    .bind(body.get("plan_tier_id").and_then(|v| v.as_str()).and_then(|v| Uuid::parse_str(v).ok()))
+    .bind(body.get("external_plan_id").and_then(|v| v.as_str()))
+    .bind(body.get("external_checkout_url").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
@@ -670,10 +692,11 @@ UPDATE directory_tiers SET
     tier_slug = $1, tier_name = $2, is_active = $3,
     expires_at = $4, stripe_subscription_id = $5,
     stripe_customer_id = $6, metadata = $7,
+    plan_tier_id = $8, external_plan_id = $9, external_checkout_url = $10,
     updated_at = NOW()
-WHERE id = $8
+WHERE id = $11
 RETURNING id, directory_id, tier_slug, tier_name, is_active, started_at, expires_at,
-    stripe_subscription_id, stripe_customer_id, metadata, created_at, updated_at
+    stripe_subscription_id, stripe_customer_id, metadata, plan_tier_id, external_plan_id, external_checkout_url, created_at, updated_at
 "#
     )
     .bind(body.get("tier_slug").and_then(|v| v.as_str()).unwrap_or(&existing.tier_slug))
@@ -683,6 +706,9 @@ RETURNING id, directory_id, tier_slug, tier_name, is_active, started_at, expires
     .bind(body.get("stripe_subscription_id").and_then(|v| v.as_str()).or(existing.stripe_subscription_id.as_deref()))
     .bind(body.get("stripe_customer_id").and_then(|v| v.as_str()).or(existing.stripe_customer_id.as_deref()))
     .bind(body.get("metadata").cloned().or(existing.metadata))
+    .bind(body.get("plan_tier_id").and_then(|v| v.as_str()).and_then(|v| Uuid::parse_str(v).ok()).or(existing.plan_tier_id))
+    .bind(body.get("external_plan_id").and_then(|v| v.as_str()).or(existing.external_plan_id.as_deref()))
+    .bind(body.get("external_checkout_url").and_then(|v| v.as_str()).or(existing.external_checkout_url.as_deref()))
     .bind(id)
     .fetch_one(&s.db)
     .await?;
@@ -764,9 +790,9 @@ pub async fn create_sponsored_listing(
 
     let listing = sqlx::query_as::<_, SponsoredListing>(
         r#"
-INSERT INTO sponsored_listings (directory_id, business_id, slot_position, start_date, end_date, is_active, price_paid, currency, stripe_payment_intent_id, featured, badge_text, metadata)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is_active, price_paid, currency, stripe_payment_intent_id, featured, badge_text, metadata, created_at, updated_at
+INSERT INTO sponsored_listings (directory_id, business_id, slot_position, start_date, end_date, is_active, price_paid, currency, stripe_payment_intent_id, external_payment_ref, featured, badge_text, metadata)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is_active, price_paid, currency, stripe_payment_intent_id, external_payment_ref, featured, badge_text, metadata, created_at, updated_at
 "#
     )
     .bind(directory_id)
@@ -778,9 +804,13 @@ RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is
     .bind(body.get("price_paid").and_then(|v| v.as_f64()).map(|v| rust_decimal::Decimal::try_from(v).unwrap_or_default()))
     .bind(body.get("currency").and_then(|v| v.as_str()))
     .bind(body.get("stripe_payment_intent_id").and_then(|v| v.as_str()))
+    .bind(body.get("external_payment_ref").and_then(|v| v.as_str()))
     .bind(body.get("featured").and_then(|v| v.as_bool()).unwrap_or(false))
     .bind(body.get("badge_text").and_then(|v| v.as_str()))
     .bind(body.get("metadata").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new())))
+    .bind(body.get("plan_tier_id").and_then(|v| v.as_str()).and_then(|v| Uuid::parse_str(v).ok()))
+    .bind(body.get("external_plan_id").and_then(|v| v.as_str()))
+    .bind(body.get("external_checkout_url").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
@@ -831,10 +861,10 @@ pub async fn update_sponsored_listing(
 UPDATE sponsored_listings SET
     slot_position = $1, start_date = $2, end_date = $3,
     is_active = $4, price_paid = $5, currency = $6,
-    stripe_payment_intent_id = $7, featured = $8, badge_text = $9,
-    metadata = $10, updated_at = NOW()
-WHERE id = $11
-RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is_active, price_paid, currency, stripe_payment_intent_id, featured, badge_text, metadata, created_at, updated_at
+    stripe_payment_intent_id = $7, external_payment_ref = $8, featured = $9, badge_text = $10,
+    metadata = $11, updated_at = NOW()
+WHERE id = $12
+RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is_active, price_paid, currency, stripe_payment_intent_id, external_payment_ref, featured, badge_text, metadata, created_at, updated_at
 "#
     )
     .bind(body.get("slot_position").and_then(|v| v.as_i64()).map(|v| v as i32).or(existing.slot_position))
@@ -844,6 +874,7 @@ RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is
     .bind(body.get("price_paid").and_then(|v| v.as_f64()).map(|v| rust_decimal::Decimal::try_from(v).unwrap_or_default()).or(existing.price_paid))
     .bind(body.get("currency").and_then(|v| v.as_str()).or(existing.currency.as_deref()))
     .bind(body.get("stripe_payment_intent_id").and_then(|v| v.as_str()).or(existing.stripe_payment_intent_id.as_deref()))
+    .bind(body.get("external_payment_ref").and_then(|v| v.as_str()).or(existing.external_payment_ref.as_deref()))
     .bind(body.get("featured").and_then(|v| v.as_bool()).or(existing.featured))
     .bind(body.get("badge_text").and_then(|v| v.as_str()).or(existing.badge_text.as_deref()))
     .bind(body.get("metadata").cloned().or(existing.metadata))

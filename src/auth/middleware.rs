@@ -38,6 +38,8 @@ pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::e
     let mut validation = Validation::new(Algorithm::HS256);
     validation.leeway = 30;
     validation.validate_exp = true;
+    validation.set_issuer(&["multidirectory"]);
+    validation.set_audience(&["multidirectory-api"]);
 
     let token_data = decode::<Claims>(token, &decoding_key, &validation)?;
     Ok(token_data.claims)

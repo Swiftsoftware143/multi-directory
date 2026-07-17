@@ -40,13 +40,12 @@ pub async fn list_programmatic_pages(
 ) -> ApiResult<impl IntoResponse> {
     use sqlx::Row;
     let status_filter = params.get("status").cloned();
-    let base = "SELECT pp.*, ds.name as service_name, dl.name as location_name                 FROM programmatic_pages pp                 LEFT JOIN directory_services ds ON ds.id=pp.service_id                 LEFT JOIN directory_locations dl ON dl.id=pp.location_id                 WHERE pp.directory_id=$1".to_string();
-    let sql = if let Some(ref s) = status_filter {
-        format!("{} AND pp.status='{}' ORDER BY pp.updated_at DESC", base, s.replace("'", "''"))
-    } else {
-        format!("{} ORDER BY pp.updated_at DESC", base)
-    };
-    let rows = sqlx::query(&sql).bind(dir_id).fetch_all(&s.db).await?;
+    // Consistent parameterized query eliminates fragile string concatenation
+    let sql = "SELECT pp.*, ds.name as service_name, dl.name as location_name                 FROM programmatic_pages pp                 LEFT JOIN directory_services ds ON ds.id=pp.service_id                 LEFT JOIN directory_locations dl ON dl.id=pp.location_id                 WHERE pp.directory_id=$1 AND ($2::text IS NULL OR pp.status=$2)                 ORDER BY pp.updated_at DESC";
+    let rows = sqlx::query(sql)
+        .bind(dir_id)
+        .bind(status_filter)
+        .fetch_all(&s.db).await?;
     let mut results: Vec<serde_json::Value> = Vec::new();
     for row in &rows {
         results.push(json!({
@@ -157,13 +156,12 @@ pub struct TopicBulkReq { pub topic_ids: Vec<Uuid>, pub action: String }
 pub async fn list_topics(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Query(params): Query<HashMap<String, String>>) -> ApiResult<impl IntoResponse> {
     use sqlx::Row;
     let status_filter = params.get("status").cloned();
-    let base = "SELECT ct.*, ds.name as service_name, dl.name as location_name                 FROM content_topics ct                 LEFT JOIN directory_services ds ON ds.id=ct.service_id                 LEFT JOIN directory_locations dl ON dl.id=ct.location_id                 WHERE ct.directory_id=$1".to_string();
-    let sql = if let Some(ref s) = status_filter {
-        format!("{} AND ct.status='{}' ORDER BY ct.created_at DESC", base, s.replace("'", "''"))
-    } else {
-        format!("{} ORDER BY ct.created_at DESC", base)
-    };
-    let rows = sqlx::query(&sql).bind(dir_id).fetch_all(&s.db).await?;
+    // Consistent parameterized query eliminates fragile string concatenation
+    let sql = "SELECT ct.*, ds.name as service_name, dl.name as location_name                 FROM content_topics ct                 LEFT JOIN directory_services ds ON ds.id=ct.service_id                 LEFT JOIN directory_locations dl ON dl.id=ct.location_id                 WHERE ct.directory_id=$1 AND ($2::text IS NULL OR ct.status=$2)                 ORDER BY ct.created_at DESC";
+    let rows = sqlx::query(sql)
+        .bind(dir_id)
+        .bind(status_filter)
+        .fetch_all(&s.db).await?;
     let mut results: Vec<serde_json::Value> = Vec::new();
     for row in &rows {
         results.push(json!({

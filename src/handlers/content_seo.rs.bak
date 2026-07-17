@@ -1,0 +1,437 @@
+//! Handlers: Programmatic Pages, Content Topics, Authors, AI Drafting, Repurpose
+
+use axum::{
+    extract::{Path, State, Query},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::collections::HashMap;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+use crate::AppState;
+use crate::error::{AppError, ApiResult};
+
+// ── Programmatic Pages ──
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ProgrammaticPage {
+    pub id: Uuid, pub directory_id: Uuid,
+    pub service_id: Option<Uuid>, pub location_id: Option<Uuid>,
+    pub slug: String, pub title: Option<String>,
+    pub meta_title: Option<String>, pub meta_description: Option<String>,
+    pub h1: Option<String>, pub content: Option<String>,
+    pub template_name: Option<String>, pub status: Option<String>,
+    pub created_at: Option<DateTime<Utc>>, pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GeneratePagesReq { pub service_ids: Vec<Uuid>, pub location_ids: Vec<Uuid> }
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePageStatusReq { pub page_ids: Vec<Uuid>, pub status: String }
+
+pub async fn list_programmatic_pages(
+    State(s): State<AppState>, Path(dir_id): Path<Uuid>,
+    Query(params): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    use sqlx::Row;
+    let status_filter = params.get("status").cloned();
+    let base = "SELECT pp.*, ds.name as service_name, dl.name as location_name                 FROM programmatic_pages pp                 LEFT JOIN directory_services ds ON ds.id=pp.service_id                 LEFT JOIN directory_locations dl ON dl.id=pp.location_id                 WHERE pp.directory_id=$1".to_string();
+    let sql = if status_filter.is_some() {
+        format!("{} AND pp.status=$2 ORDER BY pp.updated_at DESC", base)
+    } else {
+        format!("{} ORDER BY pp.updated_at DESC", base)
+    };
+    let mut q = sqlx::query(&sql).bind(dir_id);
+    if let Some(ref s) = status_filter {
+        q = q.bind(s);
+    }
+    let rows = q.fetch_all(&s.db).await?;
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    for row in &rows {
+        results.push(json!({
+            "id": row.try_get::<Uuid,_>("id").unwrap_or_default(),
+            "directory_id": row.try_get::<Uuid,_>("directory_id").unwrap_or_default(),
+            "service_id": row.try_get::<Option<Uuid>,_>("service_id").ok().flatten(),
+            "location_id": row.try_get::<Option<Uuid>,_>("location_id").ok().flatten(),
+            "slug": row.try_get::<String,_>("slug").unwrap_or_default(),
+            "title": row.try_get::<Option<String>,_>("title").ok().flatten(),
+            "meta_title": row.try_get::<Option<String>,_>("meta_title").ok().flatten(),
+            "meta_description": row.try_get::<Option<String>,_>("meta_description").ok().flatten(),
+            "h1": row.try_get::<Option<String>,_>("h1").ok().flatten(),
+            "content": row.try_get::<Option<String>,_>("content").ok().flatten(),
+            "template_name": row.try_get::<Option<String>,_>("template_name").ok().flatten(),
+            "status": row.try_get::<Option<String>,_>("status").ok().flatten(),
+            "created_at": row.try_get::<Option<DateTime<Utc>>,_>("created_at").ok().flatten(),
+            "updated_at": row.try_get::<Option<DateTime<Utc>>,_>("updated_at").ok().flatten(),
+            "service_name": row.try_get::<Option<String>,_>("service_name").ok().flatten(),
+            "location_name": row.try_get::<Option<String>,_>("location_name").ok().flatten(),
+        }));
+    }
+    Ok(Json(results))
+}
+
+pub async fn get_programmatic_page(State(s): State<AppState>, Path((dir_id, page_id)): Path<(Uuid, Uuid)>) -> ApiResult<impl IntoResponse> {
+    let page = sqlx::query_as::<_, ProgrammaticPage>(
+        "SELECT * FROM programmatic_pages WHERE id=$1 AND directory_id=$2"
+    ).bind(page_id).bind(dir_id).fetch_optional(&s.db).await?.ok_or(AppError::NotFound("Page".into()))?;
+    Ok(Json(page))
+}
+
+pub async fn generate_programmatic_pages(
+    State(s): State<AppState>, Path(dir_id): Path<Uuid>,
+    Json(req): Json<GeneratePagesReq>,
+) -> ApiResult<impl IntoResponse> {
+    let dir = sqlx::query_as::<_, (String, Option<String>, String)>(
+        "SELECT name, page_slug_pattern, slug FROM directories WHERE id=$1"
+    ).bind(dir_id).fetch_optional(&s.db).await?.ok_or(AppError::NotFound("Directory".into()))?;
+    let site_name = dir.0.clone();
+    let slug_pattern = dir.1.unwrap_or_else(|| "/{service}/{city}".into());
+
+    let services = sqlx::query_as::<_, (Uuid, String, String)>(
+        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true"
+    ).bind(dir_id).bind(&req.service_ids).fetch_all(&s.db).await?;
+
+    let locations = sqlx::query_as::<_, (Uuid, String, String)>(
+        "SELECT id, name, slug FROM directory_locations WHERE directory_id=$1 AND id=ANY($2) AND is_active=true"
+    ).bind(dir_id).bind(&req.location_ids).fetch_all(&s.db).await?;
+
+    let mut created = 0; let mut skipped = 0;
+    for (s_id, s_name, s_slug) in &services {
+        for (l_id, l_name, l_slug) in &locations {
+            let cslug = slug_pattern.replace("{service}", s_slug).replace("{city}", l_slug)
+                .replace("{site_name}", &dir.2).trim_matches('/').to_string();
+            let exists: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM programmatic_pages WHERE directory_id=$1 AND service_id=$2 AND location_id=$3"
+            ).bind(dir_id).bind(s_id).bind(l_id).fetch_one(&s.db).await.unwrap_or(0);
+            if exists > 0 { skipped += 1; continue; }
+            let year = Utc::now().format("%Y");
+            let h1 = format!("Best {} in {} — {}", s_name, l_name, year);
+            let mt = format!("Best {} in {} | {}", s_name, l_name, site_name);
+            let md = format!("Find the best {} providers in {}. Compare top-rated services near you.", s_name, l_name);
+            sqlx::query(
+                "INSERT INTO programmatic_pages (directory_id,service_id,location_id,slug,title,meta_title,meta_description,h1,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'draft')"
+            ).bind(dir_id).bind(s_id).bind(l_id).bind(&cslug).bind(&h1).bind(&mt).bind(&md).bind(&h1)
+            .execute(&s.db).await?;
+            created += 1;
+        }
+    }
+    Ok(Json(json!({"created": created, "skipped": skipped, "total": services.len() * locations.len()})))
+}
+
+pub async fn bulk_update_page_status(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Json(req): Json<UpdatePageStatusReq>) -> ApiResult<impl IntoResponse> {
+    let r = sqlx::query("UPDATE programmatic_pages SET status=$1,updated_at=NOW() WHERE directory_id=$2 AND id=ANY($3)")
+        .bind(&req.status).bind(dir_id).bind(&req.page_ids).execute(&s.db).await?;
+    Ok(Json(json!({"updated": r.rows_affected()})))
+}
+
+// ── Content Topics / Calendar ──
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ContentTopic {
+    pub id: Uuid, pub directory_id: Uuid,
+    pub service_id: Option<Uuid>, pub location_id: Option<Uuid>,
+    pub title: String, pub format_template: Option<String>,
+    pub target_keyword: Option<String>, pub status: Option<String>,
+    pub scheduled_date: Option<DateTime<Utc>>, pub word_count_target: Option<i32>,
+    pub assigned_author_id: Option<Uuid>, pub created_at: Option<DateTime<Utc>>, pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTopicReq {
+    pub service_id: Option<Uuid>, pub location_id: Option<Uuid>, pub title: String,
+    pub format_template: Option<String>, pub target_keyword: Option<String>,
+    pub status: Option<String>, pub scheduled_date: Option<DateTime<Utc>>,
+    pub word_count_target: Option<i32>, pub assigned_author_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTopicReq {
+    pub title: Option<String>, pub status: Option<String>, pub scheduled_date: Option<DateTime<Utc>>,
+    pub word_count_target: Option<i32>, pub assigned_author_id: Option<Uuid>, pub target_keyword: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TopicBulkReq { pub topic_ids: Vec<Uuid>, pub action: String }
+
+pub async fn list_topics(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Query(params): Query<HashMap<String, String>>) -> ApiResult<impl IntoResponse> {
+    use sqlx::Row;
+    let status_filter = params.get("status").cloned();
+    let sql = "SELECT ct.*, ds.name as service_name, dl.name as location_name                 FROM content_topics ct                 LEFT JOIN directory_services ds ON ds.id=ct.service_id                 LEFT JOIN directory_locations dl ON dl.id=ct.location_id                 WHERE ct.directory_id=$1".to_string();
+    let (sql, has_status) = if status_filter.is_some() {
+        (format!("{} AND ct.status=$2 ORDER BY ct.created_at DESC", sql), true)
+    } else {
+        (format!("{} ORDER BY ct.created_at DESC", sql), false)
+    };
+    let mut q = sqlx::query(&sql).bind(dir_id);
+    if let Some(ref s) = status_filter {
+        q = q.bind(s);
+    }
+    let rows = q.fetch_all(&s.db).await?;
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    for row in &rows {
+        results.push(json!({
+            "id": row.try_get::<Uuid,_>("id").unwrap_or_default(),
+            "directory_id": row.try_get::<Uuid,_>("directory_id").unwrap_or_default(),
+            "service_id": row.try_get::<Option<Uuid>,_>("service_id").ok().flatten(),
+            "location_id": row.try_get::<Option<Uuid>,_>("location_id").ok().flatten(),
+            "title": row.try_get::<String,_>("title").unwrap_or_default(),
+            "format_template": row.try_get::<Option<String>,_>("format_template").ok().flatten(),
+            "target_keyword": row.try_get::<Option<String>,_>("target_keyword").ok().flatten(),
+            "status": row.try_get::<Option<String>,_>("status").ok().flatten(),
+            "scheduled_date": row.try_get::<Option<DateTime<Utc>>,_>("scheduled_date").ok().flatten(),
+            "word_count_target": row.try_get::<Option<i32>,_>("word_count_target").ok().flatten(),
+            "assigned_author_id": row.try_get::<Option<Uuid>,_>("assigned_author_id").ok().flatten(),
+            "created_at": row.try_get::<Option<DateTime<Utc>>,_>("created_at").ok().flatten(),
+            "updated_at": row.try_get::<Option<DateTime<Utc>>,_>("updated_at").ok().flatten(),
+            "service_name": row.try_get::<Option<String>,_>("service_name").ok().flatten(),
+            "location_name": row.try_get::<Option<String>,_>("location_name").ok().flatten(),
+        }));
+    }
+    Ok(Json(results))
+}
+
+pub async fn create_topic(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Json(req): Json<CreateTopicReq>) -> ApiResult<impl IntoResponse> {
+    let topic = sqlx::query_as::<_, ContentTopic>(
+        "INSERT INTO content_topics (directory_id,service_id,location_id,title,format_template,target_keyword,status,scheduled_date,word_count_target,assigned_author_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *"
+    ).bind(dir_id).bind(req.service_id).bind(req.location_id).bind(&req.title).bind(&req.format_template)
+    .bind(&req.target_keyword).bind(req.status.unwrap_or_else(|| "suggested".into()))
+    .bind(req.scheduled_date).bind(req.word_count_target).bind(req.assigned_author_id)
+    .fetch_one(&s.db).await?;
+    Ok((StatusCode::CREATED, Json(topic)))
+}
+
+pub async fn update_topic(State(s): State<AppState>, Path((dir_id, topic_id)): Path<(Uuid, Uuid)>, Json(req): Json<UpdateTopicReq>) -> ApiResult<impl IntoResponse> {
+    let topic = sqlx::query_as::<_, ContentTopic>(
+        "UPDATE content_topics SET title=COALESCE($1,title),status=COALESCE($2,status),scheduled_date=COALESCE($3,scheduled_date),word_count_target=COALESCE($4,word_count_target),assigned_author_id=COALESCE($5,assigned_author_id),target_keyword=COALESCE($6,target_keyword),updated_at=NOW() WHERE id=$7 AND directory_id=$8 RETURNING *"
+    ).bind(&req.title).bind(&req.status).bind(req.scheduled_date).bind(req.word_count_target)
+    .bind(req.assigned_author_id).bind(&req.target_keyword).bind(topic_id).bind(dir_id)
+    .fetch_one(&s.db).await?;
+    Ok(Json(topic))
+}
+
+pub async fn delete_topic(State(s): State<AppState>, Path((dir_id, topic_id)): Path<(Uuid, Uuid)>) -> ApiResult<impl IntoResponse> {
+    let r = sqlx::query("DELETE FROM content_topics WHERE id=$1 AND directory_id=$2").bind(topic_id).bind(dir_id).execute(&s.db).await?;
+    if r.rows_affected() == 0 { return Err(AppError::NotFound("Topic".into())); }
+    Ok(Json(json!({"ok":true})))
+}
+
+pub async fn bulk_topic_action(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Json(req): Json<TopicBulkReq>) -> ApiResult<impl IntoResponse> {
+    let ns = match req.action.as_str() { "accept"|"schedule" => "scheduled", "dismiss" => "archived", "publish" => "published", _ => return Err(AppError::BadRequest("Invalid action".into())) };
+    let r = sqlx::query("UPDATE content_topics SET status=$1,updated_at=NOW() WHERE directory_id=$2 AND id=ANY($3)")
+        .bind(ns).bind(dir_id).bind(&req.topic_ids).execute(&s.db).await?;
+    Ok(Json(json!({"updated": r.rows_affected()})))
+}
+
+// ── Topic Suggestions (AI-like) ──
+
+#[derive(Debug, Serialize)]
+pub struct TopicSuggestion { pub service_name: String, pub location_name: String, pub title: String, pub format: String, pub target_keyword: String }
+
+pub async fn suggest_topics(State(s): State<AppState>, Path(dir_id): Path<Uuid>) -> ApiResult<impl IntoResponse> {
+    let services = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM directory_services WHERE directory_id=$1 AND is_active=true"
+    ).bind(dir_id).fetch_all(&s.db).await?;
+    let locations = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM directory_locations WHERE directory_id=$1 AND is_active=true"
+    ).bind(dir_id).fetch_all(&s.db).await?;
+    let fmt_templates: Vec<String> = sqlx::query_scalar(
+        "SELECT template FROM topic_format_templates WHERE directory_id=$1 AND is_active=true"
+    ).bind(dir_id).fetch_all(&s.db).await?;
+
+    let year = Utc::now().format("%Y").to_string();
+    let formats = if fmt_templates.is_empty() {
+        vec![
+            format!("Best {{service}} in {{city}} — {year} Guide"),
+            format!("How Much Does {{service}} Cost in {{city}}?"),
+            format!("How to Choose a {{service}} Provider in {{city}}"),
+            format!("Top {{service}} Questions Answered for {{city}} Residents"),
+        ]
+    } else { fmt_templates };
+
+    let mut suggestions = Vec::new();
+    for (_, sn) in &services {
+        for (_, ln) in &locations {
+            for fmt in &formats {
+                let title = fmt.replace("{service}", sn).replace("{city}", ln).replace("{year}", &year);
+                suggestions.push(TopicSuggestion {
+                    service_name: sn.clone(), location_name: ln.clone(),
+                    title, format: fmt.clone(), target_keyword: format!("{} {}", sn, ln),
+                });
+            }
+        }
+    }
+    Ok(Json(suggestions))
+}
+
+// ── Author Profiles ──
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AuthorProfile {
+    pub id: Uuid, pub directory_id: Uuid, pub user_id: Option<Uuid>,
+    pub name: String, pub slug: String, pub bio: Option<String>,
+    pub avatar_url: Option<String>, pub twitter_url: Option<String>, pub linkedin_url: Option<String>,
+    pub website_url: Option<String>, pub role: Option<String>, pub is_active: Option<bool>,
+    pub created_at: Option<DateTime<Utc>>, pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAuthorReq {
+    pub user_id: Option<Uuid>, pub name: String, pub slug: Option<String>,
+    pub bio: Option<String>, pub avatar_url: Option<String>,
+    pub twitter_url: Option<String>, pub linkedin_url: Option<String>,
+    pub website_url: Option<String>, pub role: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateAuthorReq {
+    pub name: Option<String>, pub slug: Option<String>, pub bio: Option<String>,
+    pub avatar_url: Option<String>, pub twitter_url: Option<String>, pub linkedin_url: Option<String>,
+    pub website_url: Option<String>, pub role: Option<String>, pub is_active: Option<bool>,
+}
+
+pub async fn list_authors(State(s): State<AppState>, Path(dir_id): Path<Uuid>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(sqlx::query_as::<_, AuthorProfile>(
+        "SELECT * FROM author_profiles WHERE directory_id=$1 ORDER BY name"
+    ).bind(dir_id).fetch_all(&s.db).await?))
+}
+
+pub async fn create_author(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Json(req): Json<CreateAuthorReq>) -> ApiResult<impl IntoResponse> {
+    let slug = req.slug.unwrap_or_else(|| req.name.to_lowercase().replace(' ', "-"));
+    let author = sqlx::query_as::<_, AuthorProfile>(
+        "INSERT INTO author_profiles (directory_id,user_id,name,slug,bio,avatar_url,twitter_url,linkedin_url,website_url,role) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *"
+    ).bind(dir_id).bind(req.user_id).bind(&req.name).bind(&slug).bind(&req.bio).bind(&req.avatar_url)
+    .bind(&req.twitter_url).bind(&req.linkedin_url).bind(&req.website_url)
+    .bind(req.role.unwrap_or_else(|| "author".into())).fetch_one(&s.db).await?;
+    Ok((StatusCode::CREATED, Json(author)))
+}
+
+pub async fn update_author(State(s): State<AppState>, Path((dir_id, aid)): Path<(Uuid, Uuid)>, Json(req): Json<UpdateAuthorReq>) -> ApiResult<impl IntoResponse> {
+    let author = sqlx::query_as::<_, AuthorProfile>(
+        "UPDATE author_profiles SET name=COALESCE($1,name),slug=COALESCE($2,slug),bio=COALESCE($3,bio),avatar_url=COALESCE($4,avatar_url),twitter_url=COALESCE($5,twitter_url),linkedin_url=COALESCE($6,linkedin_url),website_url=COALESCE($7,website_url),role=COALESCE($8,role),is_active=COALESCE($9,is_active),updated_at=NOW() WHERE id=$10 AND directory_id=$11 RETURNING *"
+    ).bind(&req.name).bind(&req.slug).bind(&req.bio).bind(&req.avatar_url).bind(&req.twitter_url)
+    .bind(&req.linkedin_url).bind(&req.website_url).bind(&req.role).bind(req.is_active).bind(aid).bind(dir_id)
+    .fetch_one(&s.db).await?;
+    Ok(Json(author))
+}
+
+pub async fn delete_author(State(s): State<AppState>, Path((dir_id, aid)): Path<(Uuid, Uuid)>) -> ApiResult<impl IntoResponse> {
+    let r = sqlx::query("DELETE FROM author_profiles WHERE id=$1 AND directory_id=$2").bind(aid).bind(dir_id).execute(&s.db).await?;
+    if r.rows_affected() == 0 { return Err(AppError::NotFound("Author".into())); }
+    Ok(Json(json!({"ok":true})))
+}
+
+// ── AI Draft Generation ──
+
+#[derive(Debug, Deserialize)]
+pub struct AiDraftReq { pub title: String, pub service_id: Option<Uuid>, pub location_id: Option<Uuid>, pub target_keyword: Option<String>, pub word_count: Option<i32> }
+
+pub async fn generate_ai_draft(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Json(req): Json<AiDraftReq>) -> ApiResult<impl IntoResponse> {
+    let wc = req.word_count.unwrap_or(1000);
+    let svc_name = if let Some(sid) = req.service_id {
+        sqlx::query_scalar::<_, String>("SELECT name FROM directory_services WHERE id=$1").bind(sid).fetch_optional(&s.db).await?.unwrap_or_default()
+    } else { String::new() };
+    let loc_name = if let Some(lid) = req.location_id {
+        sqlx::query_scalar::<_, String>("SELECT name FROM directory_locations WHERE id=$1").bind(lid).fetch_optional(&s.db).await?.unwrap_or_default()
+    } else { String::new() };
+
+    // Build AI prompt
+    let prompt = format!(
+        "Write a {} word blog post titled: '{}'. Focus keyword: {}. Service: {}. Location: {}. Use proper HTML structure with h2, h3, p, ul. Include a FAQ section. Make it informative and SEO-optimized.",
+        wc, &req.title, req.target_keyword.as_deref().unwrap_or(""), svc_name, loc_name
+    );
+
+    // Store draft as pending for now — returns prompt for display
+    let draft = json!({
+        "title": req.title,
+        "prompt": prompt,
+        "word_count": wc,
+        "service_name": svc_name,
+        "location_name": loc_name,
+        "keyword": req.target_keyword,
+        "status": "draft_pending"
+    });
+    Ok(Json(draft))
+}
+
+// ── Content Repurpose Toolkit ──
+
+#[derive(Debug, Deserialize)]
+pub struct RepurposeReq { pub post_id: Uuid, pub output_type: String }
+
+pub async fn repurpose_content(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Json(req): Json<RepurposeReq>) -> ApiResult<impl IntoResponse> {
+    let post = sqlx::query_as::<_, (String, Option<String>, String)>(
+        "SELECT title, excerpt, content FROM blog_posts WHERE id=$1 AND directory_id=$2"
+    ).bind(req.post_id).bind(dir_id).fetch_optional(&s.db).await?.ok_or(AppError::NotFound("Post".into()))?;
+
+    let content = match req.output_type.as_str() {
+        "email_teaser" => json!({"teaser": format!("**{}**\n\n{}\n\n[Read the full article →]", post.0, post.1.as_deref().unwrap_or(&post.2[..150.min(post.2.len())])) }),
+        "faq_extract" => {
+            let faq: Vec<&str> = post.2.lines().skip_while(|l| !l.to_lowercase().contains("faq") && !l.contains("q:")).collect();
+            json!({"faq_section": faq.join("\n")})
+        }
+        "social_pack" => json!({"short": format!("{} — {}", post.0, post.1.as_ref().cloned().unwrap_or_default()), "medium": format!("📌 {}\n\n{}", post.0, post.1.as_ref().cloned().unwrap_or_default()), "long": format!("{}\n\nRead more →", &post.2[..300.min(post.2.len())]) }),
+        _ => return Err(AppError::BadRequest("Invalid output type".into())),
+    };
+    Ok(Json(json!({"output_type": req.output_type, "content": content})))
+}
+
+// ── Internal Linking Suggestions ──
+
+pub async fn internal_link_suggestions(State(s): State<AppState>, Path(dir_id): Path<Uuid>, Query(params): Query<HashMap<String, String>>) -> ApiResult<impl IntoResponse> {
+    let post_id = params.get("post_id").and_then(|v| Uuid::parse_str(v).ok());
+    let post_content = if let Some(pid) = post_id {
+        sqlx::query_scalar::<_, String>("SELECT content FROM blog_posts WHERE id=$1 AND directory_id=$2")
+            .bind(pid).bind(dir_id).fetch_optional(&s.db).await?
+    } else { None };
+
+    let keywords = post_content.as_ref().map(|c| {
+        let mut words: Vec<String> = c.split_whitespace()
+            .filter(|w| w.len() > 3).map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .collect();
+        words.sort(); words.dedup();
+        // Try to match against services
+        words
+    }).unwrap_or_default();
+
+    let mut suggestions: Vec<serde_json::Value> = Vec::new();
+
+    // Match against blog posts
+    let blog_posts: Vec<(String, String)> = sqlx::query_as(
+        "SELECT title, slug FROM blog_posts WHERE directory_id=$1 AND published=true ORDER BY created_at DESC LIMIT 20"
+    ).bind(dir_id).fetch_all(&s.db).await?;
+    for (title, slug) in &blog_posts {
+        let tl = title.to_lowercase(); let _ = &tl;
+        if keywords.iter().any(|k| tl.contains(k)) {
+            suggestions.push(json!({"type":"blog_post","title":title,"url":format!("/blog/{}",slug)}));
+        }
+    }
+
+    // Match against business listings
+    let biz: Vec<(String, String)> = sqlx::query_as(
+        "SELECT name, slug FROM businesses WHERE directory_id=$1 ORDER BY name LIMIT 20"
+    ).bind(dir_id).fetch_all(&s.db).await?;
+    for (name, slug) in &biz {
+        let nl = name.to_lowercase();
+        if keywords.iter().any(|k| nl.contains(k)) {
+            suggestions.push(json!({"type":"listing","title":name,"url":format!("/listing/{}",slug)}));
+        }
+    }
+
+    // Match against programmatic pages
+    let pages: Vec<(String, String)> = sqlx::query_as(
+        "SELECT title, slug FROM programmatic_pages WHERE directory_id=$1 AND status='published' LIMIT 20"
+    ).bind(dir_id).fetch_all(&s.db).await?;
+    for (title, slug) in &pages {
+        let tl = title.to_lowercase();
+        if keywords.iter().any(|k| tl.contains(k)) {
+            suggestions.push(json!({"type":"programmatic_page","title":title,"url":format!("/{}",slug)}));
+        }
+    }
+
+    Ok(Json(suggestions))
+}

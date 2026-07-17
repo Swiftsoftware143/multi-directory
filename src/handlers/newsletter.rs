@@ -400,6 +400,18 @@ pub async fn add_subscriber(
     .fetch_one(&s.db)
     .await?;
 
+    // Push to CoreSwift CRM (fire-and-forget, log on failure)
+    let db = s.db.clone();
+    let dir_id = dir.0;
+    let email = req.email.clone();
+    let name = req.name.clone();
+    tokio::spawn(async move {
+        match crate::coreswift::push_newsletter_signup(&db, dir_id, &email, name.as_deref()).await {
+            Ok(_) => tracing::info!("[newsletter] CoreSwift push OK for {email}"),
+            Err(e) => tracing::warn!("[newsletter] CoreSwift push failed for {email}: {e}"),
+        }
+    });
+
     Ok((StatusCode::CREATED, Json(sub)))
 }
 

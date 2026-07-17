@@ -17,6 +17,18 @@ pub struct Directory {
     pub owner_id: Option<Uuid>,
     pub template: Option<String>,
     pub color_scheme: Option<serde_json::Value>,
+    pub network_id: Option<Uuid>,
+    pub url_type: Option<String>,
+    pub url_value: Option<String>,
+    pub custom_domain: Option<String>,
+    pub city: Option<String>,
+    pub template_config: Option<serde_json::Value>,
+    pub tracking_enabled: Option<bool>,
+    pub head_injection: Option<String>,
+    pub body_injection: Option<String>,
+    pub footer_injection: Option<String>,
+    pub email_signature_html: Option<String>,
+    pub email_signature_text: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -24,11 +36,26 @@ pub struct Directory {
 #[derive(Debug, Deserialize)]
 pub struct CreateDirectoryRequest {
     pub name: String,
-    pub slug: String,
+    pub slug: Option<String>,
     pub description: Option<String>,
     pub status: Option<String>,
     pub template: Option<String>,
     pub color_scheme: Option<serde_json::Value>,
+    pub city: Option<String>,
+    pub template_config: Option<serde_json::Value>,
+    /// "standalone" | "new_network" | "connect"
+    pub network_mode: Option<String>,
+    /// When network_mode="connect", the network UUID to join
+    pub parent_network_id: Option<Uuid>,
+    /// URL config — only when connecting to a network
+    pub url_type: Option<String>,
+    pub url_value: Option<String>,
+    pub custom_domain: Option<String>,
+    pub head_injection: Option<String>,
+    pub body_injection: Option<String>,
+    pub footer_injection: Option<String>,
+    pub email_signature_html: Option<String>,
+    pub email_signature_text: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +66,17 @@ pub struct UpdateDirectoryRequest {
     pub status: Option<String>,
     pub template: Option<String>,
     pub color_scheme: Option<serde_json::Value>,
+    pub city: Option<String>,
+    pub template_config: Option<serde_json::Value>,
+    pub network_id: Option<Uuid>,
+    pub url_type: Option<String>,
+    pub url_value: Option<String>,
+    pub custom_domain: Option<String>,
+    pub head_injection: Option<String>,
+    pub body_injection: Option<String>,
+    pub footer_injection: Option<String>,
+    pub email_signature_html: Option<String>,
+    pub email_signature_text: Option<String>,
 }
 
 // ── DirectoryCategory ────────────────────────────────────────────────────────
@@ -50,6 +88,18 @@ pub struct DirectoryCategory {
     pub name: String,
     pub slug: String,
     pub sort_order: Option<i32>,
+    pub parent_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DirectoryCategoryWithParent {
+    pub id: Uuid,
+    pub directory_id: Option<Uuid>,
+    pub name: String,
+    pub slug: String,
+    pub sort_order: Option<i32>,
+    pub parent_id: Option<Uuid>,
+    pub parent_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +107,7 @@ pub struct CreateCategoryRequest {
     pub name: String,
     pub slug: String,
     pub sort_order: Option<i32>,
+    pub parent_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,7 +115,50 @@ pub struct UpdateCategoryRequest {
     pub name: Option<String>,
     pub slug: Option<String>,
     pub sort_order: Option<i32>,
+    pub parent_id: Option<Uuid>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct BulkMoveRequest {
+    pub category_ids: Vec<Uuid>,
+    pub target_category_id: Uuid,
+    pub move_businesses: bool,
+    pub move_subcategories: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BulkDeleteCategoriesRequest {
+    pub category_ids: Vec<Uuid>,
+    pub reassign_to: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CategoryVisitorSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub parent_id: Option<Uuid>,
+    pub unique_visitors: i64,
+    pub total_events: i64,
+    pub businesses_clicked: i64,
+    pub listing_views: i64,
+    pub phone_clicks: i64,
+    pub website_clicks: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CategoryDeleteCheck {
+    pub business_count: i64,
+    pub subcategory_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CategoryBulkResult {
+    pub success: bool,
+    pub message: String,
+    pub affected_categories: usize,
+}
+
+
 
 // ── Business ─────────────────────────────────────────────────────────────────
 

@@ -12,6 +12,7 @@ use crate::error::{AppError, ApiResult};
 use crate::models::directory::Directory;
 use crate::models::directory::{BlogPost, AuthorProfile};
 use crate::template_engine;
+use crate::tracking_script;
 
 /// GET /api/v1/directories/:slug/blog — public blog listing page
 pub async fn render_blog_list(
@@ -80,7 +81,25 @@ pub async fn render_blog_list(
     let full_html = engine.render_blog_page(template_id, &ctx, &blog_section)
         .map_err(|e| AppError::Internal(e))?;
 
-    Ok(axum::response::Html(full_html))
+    let mut output = crate::tracking_script::inject_tracking_script(&full_html);
+    // Apply custom head/body/footer injections
+    let dir = &directory;
+    if let Some(ref hi) = dir.head_injection {
+        if !hi.trim().is_empty() {
+            output = output.replace("</head>", &format!("\n{}\n</head>", crate::template_engine::sanitize_html(hi)));
+        }
+    }
+    if let Some(ref bi) = dir.body_injection {
+        if !bi.trim().is_empty() {
+            output = output.replace("<body", &format!("\n{}\n<body", crate::template_engine::sanitize_html(bi)));
+        }
+    }
+    if let Some(ref fi) = dir.footer_injection {
+        if !fi.trim().is_empty() {
+            output = output.replace("</body>", &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)));
+        }
+    }
+    Ok(axum::response::Html(output))
 }
 
 /// GET /api/v1/directories/:slug/blog/:post_slug — public single blog post
@@ -163,7 +182,24 @@ pub async fn render_blog_post(
     let full_html = engine.render_blog_page(template_id, &ctx, &article_html)
         .map_err(|e| AppError::Internal(e))?;
 
-    Ok(axum::response::Html(full_html))
+    let mut output = crate::tracking_script::inject_tracking_script(&full_html);
+    // Apply custom head/body/footer injections
+    if let Some(ref hi) = directory.head_injection {
+        if !hi.trim().is_empty() {
+            output = output.replace("</head>", &format!("\n{}\n</head>", crate::template_engine::sanitize_html(hi)));
+        }
+    }
+    if let Some(ref bi) = directory.body_injection {
+        if !bi.trim().is_empty() {
+            output = output.replace("<body", &format!("\n{}\n<body", crate::template_engine::sanitize_html(bi)));
+        }
+    }
+    if let Some(ref fi) = directory.footer_injection {
+        if !fi.trim().is_empty() {
+            output = output.replace("</body>", &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)));
+        }
+    }
+    Ok(axum::response::Html(output))
 }
 
 fn strip_blockquote(content: &str) -> String {
