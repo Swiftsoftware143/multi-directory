@@ -171,7 +171,163 @@
     {{#if business.phone}}<a href="tel:{{business.phone}}" class="cta-button">📞 {{business.phone}}</a>{{/if}}
     {{#if business.website}}<a href="{{business.website}}" class="cta-button" style="margin-left:12px;background:#334155">🌐 Website</a>{{/if}}
     <p style="margin-top:16px;font-size:.85rem;color:#64748b">{{business.address}}, {{directory.city}}, {{directory.state}} {{business.zip}}</p>
+    <!-- Book Appointment Button -->
+    <div style="margin-top:20px">
+      <button onclick="document.getElementById('bookingModal').style.display='flex'" class="cta-button" style="cursor:pointer;border:none;font-size:1rem">📅 Book Appointment</button>
+    </div>
   </div>
+
+  <!-- Book Appointment Section -->
+  <h2>Book an Appointment with {{business.name}}</h2>
+  <div style="text-align:center;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:32px;margin:24px 0;">
+    <p style="color:#94a3b8;margin-bottom:16px">Schedule a consultation or service appointment online.</p>
+    <button onclick="document.getElementById('bookingModal').style.display='flex'" style="background:{{colors.primary}};color:white;padding:14px 36px;border:none;border-radius:8px;font-size:1.1rem;font-weight:600;cursor:pointer">📅 Book Now</button>
+  </div>
+
+  <!-- Booking Modal -->
+  <div id="bookingModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:#1e293b;border:1px solid {{colors.primary}};border-radius:16px;padding:32px;max-width:480px;width:90%;max-height:90vh;overflow-y:auto;position:relative;">
+      <button onclick="document.getElementById('bookingModal').style.display='none'" style="position:absolute;top:12px;right:16px;background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer">&times;</button>
+      <h3 style="margin-top:0;margin-bottom:24px;color:{{colors.primary}};text-align:center">Book Appointment</h3>
+      <p style="text-align:center;color:#94a3b8;font-size:.9rem;margin-bottom:20px">{{business.name}} &mdash; {{directory.city}}, {{directory.state}}</p>
+      
+      <div id="bookingForm">
+        <div style="margin-bottom:16px">
+          <label style="display:block;color:#cbd5e1;font-size:.85rem;margin-bottom:4px">Your Name *</label>
+          <input type="text" id="bk_name" placeholder="Full name" style="width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.95rem">
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;color:#cbd5e1;font-size:.85rem;margin-bottom:4px">Email Address *</label>
+          <input type="email" id="bk_email" placeholder="your@email.com" style="width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.95rem">
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;color:#cbd5e1;font-size:.85rem;margin-bottom:4px">Phone Number</label>
+          <input type="tel" id="bk_phone" placeholder="(555) 123-4567" style="width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.95rem">
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:16px">
+          <div style="flex:1">
+            <label style="display:block;color:#cbd5e1;font-size:.85rem;margin-bottom:4px">Preferred Date *</label>
+            <input type="date" id="bk_date" style="width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.95rem">
+          </div>
+          <div style="flex:1">
+            <label style="display:block;color:#cbd5e1;font-size:.85rem;margin-bottom:4px">Preferred Time</label>
+            <input type="time" id="bk_time" style="width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.95rem">
+          </div>
+        </div>
+        <div style="margin-bottom:20px">
+          <label style="display:block;color:#cbd5e1;font-size:.85rem;margin-bottom:4px">Notes (optional)</label>
+          <textarea id="bk_notes" placeholder="Any special requests or information..." rows="3" style="width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.95rem;resize:vertical"></textarea>
+        </div>
+        <div id="bk_error" style="display:none;background:#991b1b33;border:1px solid #ef4444;border-radius:8px;padding:10px;color:#fca5a5;font-size:.85rem;margin-bottom:16px"></div>
+        <button onclick="submitBooking()" id="bk_submit_btn" style="width:100%;background:{{colors.primary}};color:white;padding:12px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">
+          <span id="bk_submit_text">Submit Booking Request</span>
+          <span id="bk_spinner" style="display:none">⏳ Submitting...</span>
+        </button>
+      </div>
+      
+      <div id="bookingSuccess" style="display:none;text-align:center;padding:20px">
+        <div style="font-size:3rem;margin-bottom:12px">✅</div>
+        <h3 style="color:#22c55e;margin-bottom:8px">Booking Submitted!</h3>
+        <p style="color:#cbd5e1;font-size:.9rem">Your appointment request has been sent. {{business.name}} will confirm your booking shortly.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  async function submitBooking() {
+    const name = document.getElementById('bk_name').value.trim();
+    const email = document.getElementById('bk_email').value.trim();
+    const phone = document.getElementById('bk_phone').value.trim();
+    const date = document.getElementById('bk_date').value;
+    const time = document.getElementById('bk_time').value;
+    const notes = document.getElementById('bk_notes').value.trim();
+    const errorDiv = document.getElementById('bk_error');
+    const submitBtn = document.getElementById('bk_submit_btn');
+    const submitText = document.getElementById('bk_submit_text');
+    const spinner = document.getElementById('bk_spinner');
+    const form = document.getElementById('bookingForm');
+    const success = document.getElementById('bookingSuccess');
+
+    // Reset
+    errorDiv.style.display = 'none';
+
+    // Validate
+    if (!name) { showError('Please enter your name'); return; }
+    if (!email || !email.includes('@')) { showError('Please enter a valid email address'); return; }
+    if (!date) { showError('Please select a preferred date'); return; }
+
+    // Disable button
+    submitBtn.disabled = true;
+    submitText.style.display = 'none';
+    spinner.style.display = 'inline';
+
+    try {
+      const businessId = '{{business.id}}';
+      const dirSlug = '{{directory.slug}}';
+      const res = await fetch('/api/v1/directories/' + dirSlug + '/businesses/' + businessId + '/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact_name: name,
+          contact_email: email,
+          contact_phone: phone || undefined,
+          preferred_date: date,
+          preferred_time: time || undefined,
+          notes: notes || undefined,
+          slot_id: undefined
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.message || data.error || 'Booking failed. Please try again.');
+        submitBtn.disabled = false;
+        submitText.style.display = 'inline';
+        spinner.style.display = 'none';
+        return;
+      }
+
+      // Success
+      form.style.display = 'none';
+      success.style.display = 'block';
+
+      // Auto-close after 8 seconds
+      setTimeout(function() {
+        document.getElementById('bookingModal').style.display = 'none';
+        form.style.display = 'block';
+        success.style.display = 'none';
+        document.getElementById('bk_name').value = '';
+        document.getElementById('bk_email').value = '';
+        document.getElementById('bk_phone').value = '';
+        document.getElementById('bk_date').value = '';
+        document.getElementById('bk_time').value = '';
+        document.getElementById('bk_notes').value = '';
+        submitBtn.disabled = false;
+        submitText.style.display = 'inline';
+        spinner.style.display = 'none';
+      }, 8000);
+
+    } catch (err) {
+      showError('Network error. Please try again.');
+      submitBtn.disabled = false;
+      submitText.style.display = 'inline';
+      spinner.style.display = 'none';
+    }
+
+    function showError(msg) {
+      errorDiv.textContent = msg;
+      errorDiv.style.display = 'block';
+    }
+  }
+
+  // Close modal on backdrop click
+  document.getElementById('bookingModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.style.display = 'none';
+    }
+  });
+  </script>
 
   <!-- 4. FAQ - AI Prompt Matching -->
   <h2>Frequently Asked Questions</h2>

@@ -126,13 +126,14 @@ pub async fn verify_domain(
     .await?;
 
     // Attempt to provision nginx config and SSL
-    let provision_result = provision_nginx_site(&mapping.domain).await;
+    let upstream_addr = format!("http://{}:{}", s.config.host, s.config.port);
+    let provision_result = provision_nginx_site(&mapping.domain, &upstream_addr).await;
     let nginx_ok = provision_result.is_ok();
     if let Err(e) = provision_result {
         tracing::warn!("Nginx provisioning for {} failed: {}", mapping.domain, e);
     }
 
-    let ssl_result = provision_ssl_certificate(&mapping.domain).await;
+    let ssl_result = provision_ssl_certificate(&mapping.domain, &s.config.admin_email, &upstream_addr).await;
     let ssl_ok = ssl_result.is_ok();
     if let Err(e) = ssl_result {
         tracing::warn!("SSL provisioning for {} failed: {}", mapping.domain, e);
@@ -234,7 +235,7 @@ async fn check_dns_verification(domain: &str, token: &str) -> bool {
 
 /// Provision nginx site config for a custom domain.
 /// Domain is validated before use. Paths use validated domain only.
-async fn provision_nginx_site(domain: &str) -> Result<(), String> {
+async fn provision_nginx_site(domain: &str, upstream_addr: &str) -> Result<(), String> {
     use std::process::Command;
     use std::fs;
 
@@ -248,7 +249,7 @@ async fn provision_nginx_site(domain: &str) -> Result<(), String> {
     server_name {domain};
 
     location / {{
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass {upstream_addr};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -294,7 +295,7 @@ async fn provision_nginx_site(domain: &str) -> Result<(), String> {
 
 /// Provision SSL certificate via certbot or self-signed.
 /// Domain is validated before use. Certbot -d arg uses single validated argument only.
-async fn provision_ssl_certificate(domain: &str) -> Result<(), String> {
+async fn provision_ssl_certificate(domain: &str, admin_email: &str, upstream_addr: &str) -> Result<(), String> {
     use std::process::Command;
 
     if let Err(e) = validate_domain_safe(domain) {
@@ -303,7 +304,7 @@ async fn provision_ssl_certificate(domain: &str) -> Result<(), String> {
 
     // Try certbot first - domain is validated so -d argument is safe
     let certbot = Command::new("certbot")
-        .args(["--nginx", "-d", domain, "--non-interactive", "--agree-tos", "-m", "swiftsoftware143@yahoo.com"])
+        .args(["--nginx", "-d", domain, "--non-interactive", "--agree-tos", "-m", admin_email])
         .output();
 
     match certbot {
@@ -329,7 +330,7 @@ async fn provision_ssl_certificate(domain: &str) -> Result<(), String> {
     ssl_certificate_key /etc/ssl/private/self-signed.key;
 
     location / {{
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass {upstream_addr};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

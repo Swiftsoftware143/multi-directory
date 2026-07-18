@@ -123,7 +123,7 @@
 <div class="main">
 
 <h1>&#x1F4C2; Multi-Directory Platform</h1>
-<p style="color:#64748b;margin-bottom:32px;">User Guide v2.0 &mdash; directory.swiftsoftware.net</p>
+<p style="color:#64748b;margin-bottom:32px;">User Guide v2.0</p>
 
 <!-- 1. Introduction -->
 <h2 id="introduction">1. Introduction</h2>
@@ -205,21 +205,21 @@
 
 <div class="card">
   <h3>Platform URL</h3>
-  <p><a href="https://directory.swiftsoftware.net" target="_blank">https://directory.swiftsoftware.net</a></p>
+  <p>Your directory platform — deployed on your domain.</p>
 </div>
 
 <div class="card">
   <h3>Default Login Credentials</h3>
   <table>
-    <tr><td>Email:</td><td><code>swiftsoftware143@yahoo.com</code></td></tr>
-    <tr><td>Password:</td><td><code>SwiftAdmin2026!</code></td></tr>
+    <tr><td>Email:</td><td>Your admin email</td></tr>
+    <tr><td>Password:</td><td>Your admin password</td></tr>
   </table>
   <p style="margin-top:16px;color:#ef4444;font-size:0.9rem;">Change your password immediately after first login.</p>
 </div>
 
 <h3>Quick Start Steps</h3>
 <ol>
-  <li>Visit <strong>directory.swiftsoftware.net</strong> and log in with admin credentials.</li>
+  <li>Log into your platform with admin credentials.</li>
   <li>Create your first directory from the <strong>Dashboard</strong> using a template.</li>
   <li>Add categories relevant to your industry.</li>
   <li>Add businesses manually or import via CSV.</li>
@@ -249,7 +249,6 @@
 <h3>API Endpoint</h3>
 <div class="card">
   <p><span class="badge get">GET</span> <code>/api/v1/dashboard/stats</code> &mdash; Dashboard statistics</p>
-  <p><span class="badge post">POST</span> <code>/api/v1/admin/portfolio-sync</code> &mdash; Sync portfolio data</p>
 </div>
 
 <!-- 4. Directories & Cities -->
@@ -259,7 +258,7 @@
 <div class="feature-grid">
   <div class="card">
     <h3>&#x1F3E0; Root Homepage</h3>
-    <p><code>directory.swiftsoftware.net</code> shows a city grid. Visitors browse available cities.</p>
+    <p>The root domain shows a city grid. Visitors browse available cities.</p>
   </div>
   <div class="card">
     <h3>&#x1F3E1; Per-City Pages</h3>
@@ -826,17 +825,12 @@
     <h3>&#x1F3A8; Brand Color Extraction</h3>
     <p>Extract brand colors from logo images. Auto-suggest color palettes for directory branding.</p>
   </div>
-  <div class="card">
-    <h3>&#x1F504; Portfolio Sync</h3>
-    <p>Synchronize portfolio data across directories from external data feeds.</p>
-  </div>
 </div>
 
 <div class="card">
   <p><span class="badge get">GET</span> <code>/api/v1/yelp/search?term=...</code> &mdash; Yelp business search</p>
   <p><span class="badge post">POST</span> <code>/api/v1/enrich/:id</code> &mdash; Enrich a business listing</p>
   <p><span class="badge post">POST</span> <code>/api/v1/branding/:directory_id/extract</code> &mdash; Extract brand colors</p>
-  <p><span class="badge post">POST</span> <code>/api/v1/admin/portfolio-sync</code> &mdash; Sync portfolio data</p>
 </div>
 
 <!-- 21. Import/Export -->
@@ -1040,8 +1034,8 @@
     <p>Auto-extract brand colors from uploaded logo images.</p>
   </div>
   <div class="card">
-    <h3>&#x1F504; Portfolio Sync</h3>
-    <p>Sync branding assets across portfolio directories.</p>
+    <h3>&#x1F504; Brand Sync</h3>
+    <p>Sync branding assets across directories.</p>
   </div>
 </div>
 
@@ -1049,7 +1043,7 @@
   <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/branding</code> &mdash; Get directory branding</p>
   <p><span class="badge put">PUT</span> <code>/api/v1/branding/:directory_id</code> &mdash; Update branding</p>
   <p><span class="badge post">POST</span> <code>/api/v1/branding/:directory_id/extract</code> &mdash; Extract brand colors</p>
-  <p><span class="badge post">POST</span> <code>/api/v1/admin/portfolio-sync</code> &mdash; Sync portfolio</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/admin/brand-sync</code> &mdash; Sync branding</p>
 </div>
 
 <!-- 27. API Keys -->
@@ -1424,8 +1418,8 @@
 <p>Each directory stores its own Core Swift endpoint and token in <code>template_config.integrations</code>. When you sell a directory, the buyer connects their own Core Swift tenant:</p>
 <div class="card">
 <table>
-<tr><td>ZaarHub (your directory)</td><td><code>http://localhost:3001/tenant/zaarhub</code></td></tr>
-<tr><td>Palm Bay Plumbers (sold)</td><td><code>https://core.buyer.com/tenant/palmbay-plumbers</code></td></tr>
+<tr><td>Your directory</td><td><code>https://core.yourplatform.com/tenant/your-city</code></td></tr>
+<tr><td>Sold directory</td><td><code>https://core.buyer.com/tenant/their-city</code></td></tr>
 </table>
 </div>
 
@@ -1579,7 +1573,7 @@
 
 <details>
   <summary>How do I get support?</summary>
-  <p>Contact support at <strong>swiftsoftware143@yahoo.com</strong> for technical issues, account questions, or feature requests. Include your account email and a description of the issue.</p>
+  <p>Contact your platform admin for technical issues, account questions, or feature requests. Include your account email and a description of the issue.</p>
 </details>
 
 </div>

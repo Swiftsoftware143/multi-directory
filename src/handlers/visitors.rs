@@ -655,5 +655,78 @@ pub async fn claim_business(
         }
     });
 
+        // Create a CRM deal record in the default pipeline
+    let _ = create_claim_deal(&s.db, business_id, &req.owner_name, &req.owner_email, &req.owner_phone).await;
+
     Ok((StatusCode::CREATED, Json(json!(cb))))
+}
+
+/// Create a deal record in the default pipeline when a business is claimed.
+async fn create_claim_deal(
+    db: &sqlx::PgPool,
+    business_id: Uuid,
+    owner_name: &Option<String>,
+    owner_email: &str,
+    owner_phone: &Option<String>,
+) -> Result<(), String> {
+    // Get the business info
+    let biz = sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+        "SELECT directory_id, name, COALESCE(city, '') FROM businesses WHERE id = $1"
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error looking up business: {e}"))?
+    .ok_or_else(|| format!("Business {business_id} not found"))?;
+    
+    let (directory_id, biz_name, biz_city) = biz;
+    
+    // Find the default pipeline for this directory (or the global one)
+    let pipeline = sqlx::query_as::<_, (Uuid, serde_json::Value)>(
+        r#"SELECT id, COALESCE(stages, '[]'::jsonb) FROM crm_pipelines 
+           WHERE directory_id = $1 OR directory_id IS NULL 
+           ORDER BY CASE WHEN directory_id = $1 THEN 0 ELSE 1 END, default_pipeline DESC
+           LIMIT 1"#
+    )
+    .bind(directory_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error finding pipeline: {e}"))?;
+    
+    let (pipeline_id, stages_json) = match pipeline {
+        Some(p) => p,
+        None => return Ok(()), // No pipeline configured, silently skip
+    };
+    
+    // First stage is the default
+    let first_stage: String = stages_json
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_str())
+        .unwrap_or("Lead")
+        .to_string();
+    
+    let title = format!("{} - Claimed{}", biz_name, 
+        if biz_city.is_empty() { String::new() } else { format!(" ({})", biz_city) }
+    );
+    
+    let deal_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO crm_deal_records (id, title, value, currency, pipeline_id, stage, status, directory_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#
+    )
+    .bind(deal_id)
+    .bind(&title)
+    .bind(None::<rust_decimal::Decimal>) // no value yet
+    .bind("USD")
+    .bind(pipeline_id)
+    .bind(&first_stage)
+    .bind("open")
+    .bind(directory_id)
+    .execute(db)
+    .await
+    .map_err(|e| format!("Failed to create deal record: {e}"))?;
+    
+    tracing::info!("[claim] Created deal {deal_id} for business {business_id} at stage '{first_stage}'");
+    Ok(())
 }

@@ -342,7 +342,7 @@ pub async fn generate_blog_posts(
 
         // Auto-fill directory merge fields
         fields.insert("directory_name".to_string(), dir_name.clone());
-        fields.insert("directory_url".to_string(), format!("https://{}.swiftsoftware.net", dir_slug));
+        fields.insert("directory_url".to_string(), format!("https://{}.{}", dir_slug, s.config.base_domain));
         fields.insert("directory_slug".to_string(), dir_slug.clone());
         fields.insert("city".to_string(), if dir_city.is_empty() { fields.get("city").cloned().unwrap_or_default() } else { dir_city.clone() });
 
@@ -353,7 +353,7 @@ pub async fn generate_blog_posts(
         let prompt = build_llm_prompt(&filled_template, &fields, word_count, provider, &merge_fields_str);
 
         // Call LLM
-        match call_llm(provider, model, &prompt).await {
+        match call_llm(&s.db, provider, model, &prompt).await {
             Ok(generated) => {
                 // Parse title from generated content (first h1 or first line)
                 let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
@@ -455,7 +455,7 @@ pub async fn regenerate_blog_post(
     let filled_template = fill_template(&tpl.content_template, &fields);
     let prompt = build_llm_prompt(&filled_template, &fields, tpl.word_count.unwrap_or(1000), provider, "{}");
 
-    match call_llm(provider, model, &prompt).await {
+    match call_llm(&s.db, provider, model, &prompt).await {
         Ok(generated) => {
             let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
 
@@ -573,17 +573,19 @@ Generate the complete HTML blog post now. Start with an <h1> title tag."#,
     )
 }
 
-async fn call_llm(provider: &str, model: &str, prompt: &str) -> Result<String, AppError> {
+async fn call_llm(db: &sqlx::PgPool, provider: &str, model: &str, prompt: &str) -> Result<String, AppError> {
     match provider {
-        "deepseek" => call_deepseek(model, prompt).await,
-        "openai" => call_openai(model, prompt).await,
-        "gemini" => call_gemini(model, prompt).await,
-        _ => call_deepseek(model, prompt).await,
+        "deepseek" => call_deepseek(db, model, prompt).await,
+        "openai" => call_openai(db, model, prompt).await,
+        "gemini" => call_gemini(db, model, prompt).await,
+        _ => call_deepseek(db, model, prompt).await,
     }
 }
 
-async fn call_deepseek(model: &str, prompt: &str) -> Result<String, AppError> {
-    let api_key = std::env::var("DEEPSEEK_API_KEY").map_err(|_| AppError::Internal("DEEPSEEK_API_KEY not set".into()))?;
+async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
+    let api_key = fetch_provider_key(db, "deepseek").await
+        .or_else(|| std::env::var("DEEPSEEK_API_KEY").ok())
+        .ok_or_else(|| AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into()))?;
     let url = "https://api.deepseek.com/v1/chat/completions";
 
     let body = json!({
@@ -613,8 +615,10 @@ async fn call_deepseek(model: &str, prompt: &str) -> Result<String, AppError> {
     Ok(content)
 }
 
-async fn call_openai(model: &str, prompt: &str) -> Result<String, AppError> {
-    let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| AppError::Internal("OPENAI_API_KEY not set".into()))?;
+async fn call_openai(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
+    let api_key = fetch_provider_key(db, "openai").await
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        .ok_or_else(|| AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into()))?;
     let url = "https://api.openai.com/v1/chat/completions";
 
     let body = json!({
@@ -644,10 +648,10 @@ async fn call_openai(model: &str, prompt: &str) -> Result<String, AppError> {
     Ok(content)
 }
 
-async fn call_gemini(_model: &str, _prompt: &str) -> Result<String, AppError> {
+async fn call_gemini(db: &sqlx::PgPool, _model: &str, _prompt: &str) -> Result<String, AppError> {
     // Gemini integration placeholder — will use Google AI API
     // For now, forward to DeepSeek as fallback
-    call_deepseek("deepseek-chat", _prompt).await
+    call_deepseek(db, "deepseek-chat", _prompt).await
 }
 
 // ── Helpers ──
@@ -717,4 +721,16 @@ fn slugify(s: &str) -> String {
     }
 
     result.trim_matches('-').to_string()
+}
+
+/// Fetch the first active API key for a provider from the provider_keys table.
+async fn fetch_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT api_key FROM provider_keys WHERE provider = $1 AND is_active = true LIMIT 1"
+    )
+    .bind(provider)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
 }

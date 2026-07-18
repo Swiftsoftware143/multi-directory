@@ -359,9 +359,21 @@ pub(crate) async fn get_yelp_api_key(state: &AppState, directory_id: Option<&str
         }
     }
 
-    // Fallback to env var
+    // Fallback: check provider_keys table
+    let from_db: Option<String> = sqlx::query_scalar::<_, String>(
+        "SELECT api_key FROM provider_keys WHERE provider = 'yelp' AND is_active = true LIMIT 1"
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| AppError::Internal("DB error reading provider keys".to_string()))?;
+
+    if let Some(ref key) = from_db {
+        return Ok(key.clone());
+    }
+
+    // Last fallback to env var
     std::env::var("YELP_API_KEY")
-        .map_err(|_| AppError::Internal("YELP_API_KEY not configured (set globally or per-directory)".to_string()))
+        .map_err(|_| AppError::Internal("YELP_API_KEY not configured (set via Provider Keys or env var)".to_string()))
 }
 
 /// Get Google Places API key — per-directory with env var fallback
@@ -387,8 +399,20 @@ pub(crate) async fn get_google_api_key(state: &AppState, directory_id: Option<&s
         }
     }
 
+    // Fallback: check provider_keys table
+    let from_db: Option<String> = sqlx::query_scalar::<_, String>(
+        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND is_active = true LIMIT 1"
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| AppError::Internal("DB error reading provider keys".to_string()))?;
+
+    if let Some(ref key) = from_db {
+        return Ok(key.clone());
+    }
+
     std::env::var("GOOGLE_PLACES_API_KEY")
-        .map_err(|_| AppError::Internal("GOOGLE_PLACES_API_KEY not configured".to_string()))
+        .map_err(|_| AppError::Internal("GOOGLE_PLACES_API_KEY not configured (set via Provider Keys or env var)".to_string()))
 }
 
 #[derive(Debug, Deserialize)]

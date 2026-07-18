@@ -8,6 +8,7 @@ onclick="navigateDirPage(\x27busarticles\x27)"><h4>📝 SEO Articles</h4><p styl
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27trapdoors\x27)"><h4>🪤 Hyper-Niche Pages</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Build trapdoor pages for long-tail SEO.</p></div>\x27
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27deals\x27)"><h4>🎟️ Deals</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Create coupons and promotions for businesses.</p></div>\x27
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27calls\x27)"><h4>📞 Call Tracking</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Track phone calls from listings.</p></div>\x27
+      +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27workflows\x27)"><h4>⚡ Workflows</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Automate with pre-built workflow templates.</p></div>\x27
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27integrations\x27)"><h4>🔌 Integrations</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">CRM, email responder, webhooks, and more.</p></div>\x27<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -179,8 +180,7 @@ async function editDeal(did){showDealModal(did);}
 async function deleteDeal(did){if(!confirm("Delete this deal?"))return;try{await dl("/api/v1/deals/"+did);toast("Deal deleted");loadDeals();}catch(e){toast(e.message,"error");}}
 async function claimDeal(did){try{var d=await po("/api/v1/deals/"+did+"/claim");toast("Deal claimed! Redemptions: "+d.redemption_count,"success");loadDeals();}catch(e){toast(e.message,"error");}}
 
-var PGS=["dashboard","directories","dirdash","listings","search","categories","reviews","blog","legals","deals","analytics","submissions","seo","apikeys","settings","pages","calls","crm","monetization","email","datacompany","webhooks","domains","branding",'bloggen','newsletter','busarticles','integrations'];
-if(PGS.indexOf(CP)===-1)CP="dashboard";
+var PGS=["dashboard","directories","dirdash","listings","search","categories","reviews","blog","legals","deals","analytics","submissions","seo","apikeys","settings","pages","calls","crm","monetization","email","datacompany","webhooks","domains","branding",'bloggen','newsletter','busarticles','integrations','workflows'];if(PGS.indexOf(CP)===-1)CP="dashboard";
 function esc(s){if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 var WT={
 dashboard:{i:"📊",t:"Dashboard",x:"Welcome to Multi-Directory! Monitor your directory network, track listings, searches, and user engagement at a glance."},
@@ -193,7 +193,7 @@ settings:{i:"⚙️",t:"Settings",x:"Configure your directory platform, manage t
 blog:{i:"📝",t:"Blog",x:"Publish SEO-optimized blog posts per directory. Write articles about local businesses, events, guides. Each post is indexed by search engines."},
 legals:{i:"⚖️",t:"Legal Pages",x:"Create and manage legal pages for your directories. Privacy policy, terms of service, disclaimers, and more. Pages appear in the footer of directory landing pages."},deals:{i:"🎟️",t:"Deals",x:"Create and manage deals, coupons, and promotions. Set up Groupon-style offers with discounts, redemption limits, and scheduling for your directory businesses."},analytics:{i:"📊",t:"Analytics",x:"Track page views, listing views, clicks, and deal claims. View summary stats, per-directory breakdowns, and recent events across your directory network."},seo:{i:"🔍",t:"SEO",x:"Manage SEO meta tags, sitemap configuration, and search engine optimization for your directories and listings."},
 trapdoors:{i:"🪤",t:"Hyper-Niche Pages",x:"Create automated hyper-specific landing pages targeting long-tail SEO queries. These trap doors catch traffic that big competitors ignore."},
-busarticles:{i:"📝",t:"SEO Articles",x:"Generate SEO-optimized articles for businesses in your directory. Each article targets specific keywords and links back to a business listing. Free for your own SEO, paid recurring for businesses."},integrations:{i:"🔌",t:"Integrations",x:"Connect third-party services: CRM, email autoresponder, webhooks, and more."}};
+busarticles:{i:"📝",t:"SEO Articles",x:"Generate SEO-optimized articles for businesses in your directory. Each article targets specific keywords and links back to a business listing. Free for your own SEO, paid recurring for businesses."},integrations:{i:"🔌",t:"Integrations",x:"Connect third-party services: CRM, email autoresponder, webhooks, and more."},workflows:{i:"⚡",t:"Workflows",x:"Automate your business processes with pre-built workflow templates. Trigger actions, query data, send emails, and more."}};
 var TEMPLATES=[{slug:"default",name:"Teal (Default)",colors:{primary:"#0d9488",secondary:"#14b8a6",accent:"#0f766e",background:"#f0fdfa",text:"#0f172a"},emoji:"\ud83c\udfe0"},{slug:"farm",name:"Farm and Ag",colors:{primary:"#2d6a4f",secondary:"#40916c",accent:"#d4a373",background:"#fafaf5",text:"#1a1a2e"},emoji:"\ud83c\udf3e"},{slug:"medical",name:"Medical and Health",colors:{primary:"#2563eb",secondary:"#3b82f6",accent:"#1d4ed8",background:"#eff6ff",text:"#0f172a"},emoji:"\ud83c\udfe5"},{slug:"real-estate",name:"Real Estate",colors:{primary:"#1e3a5f",secondary:"#1e4d8c",accent:"#cbd5e1",background:"#f8fafc",text:"#0f172a"},emoji:"\ud83c\udfe2"},{slug:"restaurant",name:"Restaurants",colors:{primary:"#d97706",secondary:"#f59e0b",accent:"#92400e",background:"#fffbeb",text:"#0f172a"},emoji:"\ud83c\udf7d\ufe0f"},{slug:"service",name:"Services",colors:{primary:"#7c3aed",secondary:"#8b5cf6",accent:"#5b21b6",background:"#f5f3ff",text:"#0f172a"},emoji:"\ud83d\udd27"}];function getTemplate(s){for(var i=0;i<TEMPLATES.length;i++){if(TEMPLATES[i].slug===s)return TEMPLATES[i];}return TEMPLATES[0];}function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");}function showWalkthrough(p){var w=WT[p];if(!w)return;var k="ws_dir_"+p+"_dismissed";if(localStorage.getItem(k))return;document.getElementById("walkthroughIcon").textContent=w.i;document.getElementById("walkthroughTitle").textContent=w.t;document.getElementById("walkthroughText").textContent=w.x;var d=document.getElementById("walkthroughDots"),h="";for(var i=0;i<PGS.length;i++)h+="<span"+(PGS[i]===p?" class=\"active\"":"")+"></span>";d.innerHTML=h;document.getElementById("walkthroughOverlay").style.display="flex";}
 function dismissWalkthrough(){localStorage.setItem("ws_dir_"+CP+"_dismissed","true");closeWalkthrough();}
 function closeWalkthrough(){document.getElementById("walkthroughOverlay").style.display="none";}
@@ -205,8 +205,8 @@ function g(p){return api("GET",p);}function po(p,b){return api("POST",p,b);}func
 function closeModal(id){var m=document.getElementById(id);if(m)m.remove();}
 function spn(){var d=document.createElement("div");d.style.cssText="text-align:center;padding:40px";d.innerHTML="<span class=\"spinner-teal\"></span>";return d;}
 var TTL={dirdash:"Directory",dashboard:"Dashboard",directories:"Directories",listings:"Listings",search:"Search",categories:"Categories",seo:"SEO",apikeys:"API Keys",settings:"Settings",blog:"Blog",legals:"Legal Pages",reviews:"Reviews",reviews:"Reviews",deals:"Deals",analytics:"Analytics",submissions:"Submissions",calls:"Call Tracking",crm:"CRM"};
-var TTL={dirdash:"Directory",dashboard:"Dashboard",directories:"Directories",listings:"Listings",search:"Search",categories:"Categories",seo:"SEO",apikeys:"API Keys",settings:"Settings",blog:"Blog",legals:"Legal Pages",reviews:"Reviews",reviews:"Reviews",deals:"Deals",analytics:"Analytics",submissions:"Submissions",pages:"Public Pages",calls:"Call Tracking",crm:"CRM",monetization:"Monetization",email:"Email",datacompany:"Data Company",webhooks:"Webhooks",domains:"Domains",branding:"Branding",admanager:"Ad Manager",bloggen:"Blog Generator",newsletter:"Newsletter",trapdoors:"Trap Doors",busarticles:"SEO Articles",dirdash:"Directory",integrations:"Integrations"};
-var ICO={dirdash:"📂",dashboard:"📊",directories:"📁",listings:"📋",search:"🔍",categories:"🏷",seo:"🔍",apikeys:"🔑",settings:"⚙️",blog:"📝",legals:"⚖️",reviews:"⭐",reviews:"⭐",deals:"🎟️",analytics:"📊",submissions:"📋",pages:"🌐",calls:"📞",crm:"👥",monetization:"💰",email:"📧",datacompany:"🏢",webhooks:"🔗",domains:"🌍",branding:"🎨",admanager:"📢",bloggen:"🤖",newsletter:"📧",trapdoors:"🪨",busarticles:"📝"};
+var TTL={dirdash:"Directory",dashboard:"Dashboard",directories:"Directories",listings:"Listings",search:"Search",categories:"Categories",seo:"SEO",apikeys:"API Keys",settings:"Settings",blog:"Blog",legals:"Legal Pages",reviews:"Reviews",reviews:"Reviews",deals:"Deals",analytics:"Analytics",submissions:"Submissions",pages:"Public Pages",calls:"Call Tracking",crm:"CRM",monetization:"Monetization",email:"Email",datacompany:"Data Company",webhooks:"Webhooks",domains:"Domains",branding:"Branding",admanager:"Ad Manager",bloggen:"Blog Generator",newsletter:"Newsletter",trapdoors:"Trap Doors",busarticles:"SEO Articles",dirdash:"Directory",integrations:"Integrations",workflows:"Workflows"};
+var ICO={dirdash:"📂",dashboard:"📊",directories:"📁",listings:"📋",search:"🔍",categories:"🏷",seo:"🔍",apikeys:"🔑",settings:"⚙️",blog:"📝",legals:"⚖️",reviews:"⭐",reviews:"⭐",deals:"🎟️",analytics:"📊",submissions:"📋",pages:"🌐",calls:"📞",crm:"👥",monetization:"💰",email:"📧",datacompany:"🏢",webhooks:"🔗",domains:"🌍",branding:"🎨",admanager:"📢",bloggen:"🤖",newsletter:"📧",trapdoors:"🪨",busarticles:"📝",workflows:"⚡"};
 function navigate(p){CP=p;history.pushState({page:p},"",location.pathname+"#"+p);render();}
 window.addEventListener("popstate",function(e){CP=(e.state&&e.state.page)||"dashboard";if(DD&&CP!=="dirdash"&&CP.indexOf("dir")!==0){DD=null;}render();});
 function renderLogin(){var hi=document.getElementById("helpIcon");if(hi)hi.style.display="none";document.getElementById("app").innerHTML=
@@ -238,6 +238,7 @@ async function loadAnalytics(){var el=document.getElementById("pageContent"),pa=
       {label:"🔍 SEO & TRAP DOORS",pages:["seo","trapdoors","branding"]},
       {label:"💰 MONETIZE",pages:["monetization","deals","calls","crm","email"]},
       {label:"📊 GROWTH",pages:["analytics","submissions"]},
+      {label:"⚡ AUTOMATION",pages:["workflows"]},
       {label:"🔌 INTEGRATIONS",pages:["integrations"]},
       {label:"⚙️ DIRECTORY SETTINGS",pages:["settings","legals","domains"]}
     ];
@@ -270,6 +271,7 @@ async function loadAnalytics(){var el=document.getElementById("pageContent"),pa=
   {label:"📝 CONTENT",pages:["listings","categories","blog","bloggen","busarticles","newsletter","pages"]},
   {label:"🔍 SEO",pages:["seo","branding"]},
   {label:"💰 MONETIZATION",pages:["monetization","deals","calls","crm","email"]},
+  {label:"⚡ AUTOMATION",pages:["workflows"]},
   {label:"🔌 INTEGRATIONS",pages:["datacompany","webhooks","domains","apikeys"]},
   {label:"⚙️ SYSTEM",pages:["legals","analytics","submissions","search","settings"]}
 ];
@@ -297,7 +299,7 @@ document.getElementById("pageTitle").textContent=TTL[CP]||"Dashboard";
 document.getElementById("pageActions").innerHTML="";
 document.getElementById("pageContent").innerHTML="";
 switch(CP){case"bloggen":loadBlogGen();break;case"newsletter":loadNewsletter();break;case"dashboard":loadDashboard();break;case"directories":loadDirectories();break;case"listings":loadListings();break;case"search":loadSearch();break;case"categories":loadCategories();break;case"reviews":loadReviews();break;case"reviews":loadReviews();break;case"apikeys":loadApiKeys();break;case"settings":loadSettings();break;case"blog":loadBlog();break;case"legals":loadLegals();break;case"analytics":loadAnalytics();break;case"deals":loadDeals();break;case"submissions":loadSubmissions();break;case"seo":loadSeo();break;
-case"email":loadEmail();break;case"pages":loadPublicPages();break;case"crm":loadCrm();break;case"calls":loadCalls();break;case"monetization":loadMonetization();break;case"datacompany":loadDataCompany();break;case"webhooks":loadWebhooks();break;case"domains":loadDomains();break;case"branding":loadBranding();break;case"trapdoors":loadTrapDoors();break;case"busarticles":loadBusArticles();break;case"dirdash":loadDirDashboard();break;case"integrations":loadIntegrations();break;}
+case"email":loadEmail();break;case"pages":loadPublicPages();break;case"crm":loadCrm();break;case"calls":loadCalls();break;case"monetization":loadMonetization();break;case"datacompany":loadDataCompany();break;case"webhooks":loadWebhooks();break;case"domains":loadDomains();break;case"branding":loadBranding();break;case"trapdoors":loadTrapDoors();break;case"busarticles":loadBusArticles();break;case"dirdash":loadDirDashboard();break;case"integrations":loadIntegrations();break;case"workflows":loadWorkflows();break;}
 setTimeout(function(){showWalkthrough(CP)},100);;if(DD){var sbt=document.getElementById("sidebarTitle");var sbs=document.getElementById("sidebarSubtitle");if(sbt){sbt.innerHTML=\x27<a onclick="exitDirDashboard()" style="cursor:pointer;text-decoration:none;color:inherit"><span style="font-size:.85rem">\u2B05</span></a> \U0001F4C2 \x27+esc(DD.name);}if(sbs){sbs.textContent=\x27Directory Dashboard\x27;}}}
 
 // ── Directory Dashboard Mode ─────────────────────────────────────────
@@ -424,6 +426,76 @@ async function testCrmConn(){
     toast("Connection failed: "+e.message,"error");
   }
 }
+async function loadWorkflows(){
+  var el=document.getElementById("pageContent"),pa=document.getElementById("pageActions");
+  pa.innerHTML='<button class="btn btn-secondary btn-sm" onclick="loadWorkflows()">↻ Refresh</button>';
+  el.innerHTML='<div style="text-align:center;padding:40px"><span class="spinner-teal"></span></div>';
+  try{
+    var cats=await g("/api/v1/workflow-templates/categories");
+    var tpls=await g("/api/v1/workflow-templates");
+    if(!tpls||!tpls.length){
+      el.innerHTML='<div class="empty-state"><div class="icon">⚡</div><h3>No Workflow Templates</h3><p>Workflow automation templates are not yet available. API endpoint needs wiring.</p><p style="font-size:.8rem;color:var(--text-secondary);margin-top:8px">To set up, run: <code>psql -d workflowswift -c "SELECT id, name FROM workflow_templates"</code></p></div>';
+      return;
+    }
+    var catMap={};
+    if(cats)cats.forEach(function(c){catMap[c.id]=c.name;});
+    var groups={};
+    tpls.forEach(function(t){
+      var catId=t.category_id||"uncategorized";
+      if(!groups[catId])groups[catId]=[];
+      groups[catId].push(t);
+    });
+    var h='';
+    var order=["marketing","sales-lead-gen","government-contracting","recruitment-staffing","professional-services","operations","service-businesses","ecommerce-retail","construction-development","healthcare-wellness","grant-funding","education-training","publishing-media","content-creation","onboarding","site-flipping","general"];
+    var sortedCats=cats?cats.slice().sort(function(a,b){return (order.indexOf(a.slug)>-1?order.indexOf(a.slug):99)-(order.indexOf(b.slug)>-1?order.indexOf(b.slug):99);}):[];
+    sortedCats.forEach(function(cat){
+      var items=groups[cat.id];
+      if(!items||!items.length)return;
+      h+='<h3 style="color:var(--teal);margin:24px 0 12px 0;font-size:1.05rem">'+esc(cat.icon||"\U0001f4c1")+' '+esc(cat.name)+'</h3>';
+      h+='<div class="card-grid">';
+      items.forEach(function(t){
+        var stepCount=t.step_count||0;
+        var catName=cat.name||"";
+        h+='<div class="card" style="cursor:pointer" onclick="expandWorkflow("'+t.id+'")"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px"><h4 style="font-size:.95rem;color:var(--teal)">'+esc(t.name)+'</h4><span class="badge active">'+stepCount+' steps</span></div><p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:6px">'+(t.description?esc(t.description).substring(0,120):"")+'</p><div><span class="badge category">'+esc(catName)+'</span></div></div>';
+      });
+      h+='</div>';
+    });
+    if(!h)h='<div class="empty-state"><div class="icon">⚡</div><h3>No Workflows Yet</h3><p>No workflow templates found. Run the database setup first.</p></div>';
+    el.innerHTML='<div style="max-width:100%">'+h+'</div>';
+  } catch(e){
+    el.innerHTML='<div class="empty-state"><div class="icon">⚡</div><h3>Workflow Templates</h3><p>'+esc(e.message||"Could not load workflows")+'</p><p style="font-size:.8rem;color:var(--text-secondary);margin-top:8px">The API endpoint is not yet wired to the workflows database. The templates are ready in PostgreSQL (workflowswift database).</p></div>';
+  }
+}
+
+function expandWorkflow(id){
+  var card=event&&event.target&&event.target.closest(".card");
+  if(!card)return;
+  var existing=card.querySelector(".workflow-steps");
+  if(existing){
+    existing.remove();
+    return;
+  }
+  var stepsDiv=document.createElement("div");
+  stepsDiv.className="workflow-steps";
+  stepsDiv.style.cssText="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)";
+  stepsDiv.innerHTML='<div style="text-align:center;padding:10px"><span class="spinner-teal"></span></div>';
+  card.appendChild(stepsDiv);
+  fetch("/api/v1/workflow-templates/"+id+"/steps").then(function(r){return r.json();}).then(function(steps){
+    if(!steps||!steps.length){
+      stepsDiv.innerHTML='<p style="font-size:.8rem;color:var(--text-secondary);text-align:center">No steps defined.</p>';
+      return;
+    }
+    var sh='<div style="font-size:.85rem;font-weight:600;color:var(--text);margin-bottom:8px">⏳ Steps ('+steps.length+'):</div><ol style="padding-left:20px;margin:0">';
+    steps.forEach(function(s){
+      sh+='<li style="font-size:.8rem;color:var(--text-secondary);margin-bottom:4px"><strong>'+esc(s.name||s.step_type||"Step")+'</strong> <span class="badge active" style="font-size:.65rem">'+esc(s.step_type||"")+'</span></li>';
+    });
+    sh+='</ol>';
+    stepsDiv.innerHTML=sh;
+  }).catch(function(){
+    stepsDiv.innerHTML='<p style="font-size:.8rem;color:var(--text-secondary);text-align:center">Steps API not wired yet.</p>';
+  });
+}
+
 async function loadDirDashboard(){
   var el=document.getElementById("pageContent"),pa=document.getElementById("pageActions");
   if(!DD){navigate("directories");return;}
@@ -455,6 +527,7 @@ async function loadDirDashboard(){
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27deals\x27)"><h4>🎟️ Deals</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Create coupons and promotions for businesses.</p></div>\x27
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27calls\x27)"><h4>📞 Call Tracking</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Track phone calls from listings.</p></div>\x27
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27integrations\x27)"><h4>🔌 Integrations</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">CRM, email responder, webhooks, and more.</p></div>\x27
+      +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27workflows\x27)"><h4>⚡ Workflows</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Automate with pre-built workflow templates.</p></div>\x27
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27crm\x27)"><h4>👥 CRM</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Manage contacts, deals, and pipelines.</p></div>\x27
       +\x27<div class="card" style="cursor:pointer" onclick="navigateDirPage(\x27email\x27)"><h4>📧 Email</h4><p style="font-size:.85rem;color:var(--text-secondary);margin-top:4px">Send emails to directory businesses.</p></div>\x27
       +\x27<div class="card" style="margin-top:12px"><h4 style="color:var(--text-secondary)">⚙️ Directory Info</h4>\x27

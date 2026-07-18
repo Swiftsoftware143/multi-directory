@@ -11,6 +11,8 @@ pub struct AppConfig {
     pub db_min_connections: u32,
     pub db_max_connections: u32,
     pub template_dir: String,
+    pub base_domain: String,
+    pub admin_email: String,
 }
 
 impl AppConfig {
@@ -52,6 +54,12 @@ impl AppConfig {
         let template_dir = std::env::var("TEMPLATE_DIR")
             .unwrap_or_else(|_| "./templates".to_string());
 
+        let base_domain = std::env::var("BASE_DOMAIN")
+            .unwrap_or_else(|_| "directory.swiftsoftware.net".to_string());
+
+        let admin_email = std::env::var("ADMIN_EMAIL")
+            .unwrap_or_else(|_| "admin@example.com".to_string());
+
         Self {
             host,
             port,
@@ -62,6 +70,8 @@ impl AppConfig {
             db_min_connections,
             db_max_connections,
             template_dir,
+            base_domain,
+            admin_email,
         }
     }
 }
