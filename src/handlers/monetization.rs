@@ -36,6 +36,7 @@ pub struct PlanTier {
     pub featured_listing: Option<bool>,
     pub description: Option<String>,
     pub plan_sales_page_url: Option<String>,
+    pub payment_provider: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -139,11 +140,11 @@ pub async fn create_tier(
     let tier = sqlx::query_as::<_, PlanTier>(
         r#"INSERT INTO plan_tiers (name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, plan_sales_page_url)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            featured_listing, description, plan_sales_page_url, payment_provider)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, plan_sales_page_url, created_at"#
+            featured_listing, description, plan_sales_page_url, payment_provider, created_at"#
     )
     .bind(name)
     .bind(slug)
@@ -162,6 +163,7 @@ pub async fn create_tier(
     .bind(body.get("featured_listing").and_then(|v| v.as_bool()))
     .bind(body.get("description").and_then(|v| v.as_str()))
     .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()))
+    .bind(body.get("payment_provider").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
@@ -210,11 +212,12 @@ pub async fn update_tier(
             has_email = $11, has_call_tracking = $12,
             has_import_export = $13, has_api_access = $14,
             featured_listing = $15, description = $16,
-            plan_sales_page_url = $17
-        WHERE id = $18
+            plan_sales_page_url = $17,
+            payment_provider = $18
+        WHERE id = $19
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, plan_sales_page_url, created_at"#
+            featured_listing, description, plan_sales_page_url, payment_provider, created_at"#
     )
     .bind(name)
     .bind(slug)
@@ -237,6 +240,7 @@ pub async fn update_tier(
     .bind(body.get("featured_listing").and_then(|v| v.as_bool()).or(existing.featured_listing))
     .bind(body.get("description").and_then(|v| v.as_str()).or(existing.description.as_deref()))
     .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()).or(existing.plan_sales_page_url.as_deref()))
+    .bind(body.get("payment_provider").and_then(|v| v.as_str()).or(existing.payment_provider.as_deref()))
     .bind(id)
     .fetch_one(&s.db)
     .await?;
