@@ -635,7 +635,7 @@ pub async fn setup_core_swift_tenant(
     
     // Generate a unique API token for this tenant
     let api_token = uuid::Uuid::new_v4().to_string();
-    let api_url = format!("http://localhost:3001/tenant/{}", tenant_slug);
+    let api_url = format!("http://{}:{}/tenant/{}", app.config.host, app.config.port, tenant_slug);
     
     // In self-hosted mode, the tenant is implicit (same DB/app)
     // For multi-tenant, this would POST to Core Swift API
@@ -656,9 +656,10 @@ pub struct SwiftTestRequest {
 
 /// Test connection to Core Swift instance.
 pub async fn test_core_swift_connection(
+    State(app): State<AppState>,
     Json(req): Json<SwiftTestRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let url = req.url.unwrap_or_else(|| "http://localhost:3001".to_string());
+    let url = req.url.unwrap_or_else(|| format!("http://{}:{}", app.config.host, app.config.port));
     
     // In self-hosted mode, localhost is always reachable
     // In production, would call Core Swift health endpoint

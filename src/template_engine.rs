@@ -20,7 +20,7 @@ pub const TEMPLATE_FITNESS: &str = "fitness";
 pub const TEMPLATE_HOSPITALITY: &str = "hospitality";
 pub const TEMPLATE_BUSINESS_DETAIL: &str = "business-detail";
 
-const VALID_TEMPLATES: [&str; 10] = [
+const VALID_TEMPLATES: [&str; 11] = [
     TEMPLATE_LOCAL_BUSINESS,
     TEMPLATE_FARM,
     TEMPLATE_RESTAURANT,
@@ -31,6 +31,7 @@ const VALID_TEMPLATES: [&str; 10] = [
     TEMPLATE_AUTOMOTIVE,
     TEMPLATE_FITNESS,
     TEMPLATE_HOSPITALITY,
+    TEMPLATE_BUSINESS_DETAIL,
 ];
 
 // ── Compile-time embedded template strings ──────────────────────────────────
@@ -57,6 +58,7 @@ pub fn get_available_templates() -> Vec<TemplateInfo> {
         TemplateInfo { id: TEMPLATE_AUTOMOTIVE.to_string(), name: "Automotive".to_string(), description: "Auto dealers, repair shops, body shops, parts stores".to_string() },
         TemplateInfo { id: TEMPLATE_FITNESS.to_string(), name: "Fitness &amp; Wellness".to_string(), description: "Gyms, studios, trainers, and wellness centers".to_string() },
         TemplateInfo { id: TEMPLATE_HOSPITALITY.to_string(), name: "Hospitality".to_string(), description: "Hotels, B&amp;Bs, vacation rentals, event venues".to_string() },
+        TemplateInfo { id: TEMPLATE_BUSINESS_DETAIL.to_string(), name: "Business Detail".to_string(), description: "Individual business listing page with booking".to_string() },
     ]
 }
 
@@ -112,7 +114,7 @@ impl TemplateEngine {
         // Allow raw HTML in templates (don't escape &, <, >, etc.)
         registry.register_escape_fn(handlebars::no_escape);
         
-        // Register all 10 templates
+        // Register all 10 directory templates + 1 business detail template
         let templates = [
             (TEMPLATE_LOCAL_BUSINESS, "directory-local-business.hbs"),
             (TEMPLATE_FARM, "directory-farm.hbs"),
@@ -124,6 +126,7 @@ impl TemplateEngine {
             (TEMPLATE_AUTOMOTIVE, "directory-automotive.hbs"),
             (TEMPLATE_FITNESS, "directory-fitness.hbs"),
             (TEMPLATE_HOSPITALITY, "directory-hospitality.hbs"),
+            (TEMPLATE_BUSINESS_DETAIL, "business-detail.hbs"),
         ];
 
         for (id, _filename) in &templates {
@@ -138,12 +141,16 @@ impl TemplateEngine {
                 TEMPLATE_AUTOMOTIVE => include_str!("../templates/directory-automotive.hbs"),
                 TEMPLATE_FITNESS => include_str!("../templates/directory-fitness.hbs"),
                 TEMPLATE_HOSPITALITY => include_str!("../templates/directory-hospitality.hbs"),
+                TEMPLATE_BUSINESS_DETAIL => include_str!("../templates/business-detail.hbs"),
                 _ => include_str!("../templates/directory-local-business.hbs"),
             };
             if let Err(e) = registry.register_template_string(id, content) {
                 eprintln!("Warning: failed to register template '{}': {}", id, e);
             }
         }
+
+        // Also register business-detail in render_directory_page's is_valid fallback
+        // by adding a special validate override (see render_directory_page)
 
         Self { registry }
     }

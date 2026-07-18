@@ -223,17 +223,41 @@ pub async fn create_directory(
         .bind(directory.id)
         .fetch_one(&s.db)
         .await?;
+
+        // For new networks, provision the network tenant + directory resources
+        let db2 = s.db.clone();
+        let dir_id2 = directory.id;
+        let dir_name2 = req.name.clone();
+        let dir_slug2 = slug.clone();
+        tokio::spawn(async move {
+            // First provision the network tenant
+            match crate::coreswift::provision_tenant(&db2, dir_id2, &dir_name2, &dir_slug2, true).await {
+                Ok(_) => tracing::info!("[directory] CoreSwift network tenant provisioned for {dir_slug2}"),
+                Err(e) => tracing::warn!("[directory] CoreSwift network tenant provisioning failed: {e}"),
+            }
+            // Then provision directory resources (booking calendar, tags, etc.)
+            match crate::coreswift::provision_directory_resources(&db2, dir_id2, &dir_slug2).await {
+                Ok(prefix) => tracing::info!("[directory] CoreSwift resources provisioned for {dir_slug2} (prefix={prefix})"),
+                Err(e) => tracing::warn!("[directory] CoreSwift resource provisioning failed for {dir_slug2}: {e}"),
+            }
+        });
     }
 
-    // Provision CoreSwift tenant for standalone directories (no network)
-    if network_id.is_none() && network_mode != "new_network" {
+    // Provision CoreSwift tenant + all resources for standalone directories
+    if network_mode == "standalone" {
         let db = s.db.clone();
         let dir_id = directory.id;
         let dir_name = req.name.clone();
         let dir_slug = slug.clone();
         tokio::spawn(async move {
             match crate::coreswift::provision_tenant(&db, dir_id, &dir_name, &dir_slug, false).await {
-                Ok(_) => tracing::info!("[directory] CoreSwift provisioned for {dir_slug}"),
+                Ok(_) => {
+                    tracing::info!("[directory] CoreSwift tenant provisioned for {dir_slug}");
+                    match crate::coreswift::provision_directory_resources(&db, dir_id, &dir_slug).await {
+                        Ok(prefix) => tracing::info!("[directory] CoreSwift resources provisioned for {dir_slug} (prefix={prefix})"),
+                        Err(e) => tracing::warn!("[directory] CoreSwift resource provisioning failed for {dir_slug}: {e}"),
+                    }
+                },
                 Err(e) => tracing::warn!("[directory] CoreSwift provisioning failed for {dir_slug}: {e}"),
             }
         });

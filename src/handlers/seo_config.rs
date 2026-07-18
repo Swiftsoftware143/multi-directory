@@ -126,7 +126,7 @@ pub async fn generate_sitemap(State(s): State<AppState>, Path(dir_id): Path<Uuid
     let domains: Vec<String> = sqlx::query_scalar(
         "SELECT domain FROM domains WHERE directory_id=$1 AND verified=true"
     ).bind(dir_id).fetch_all(&s.db).await?;
-    let base_url = domains.first().map(|d| format!("https://{}", d)).unwrap_or_else(|| format!("https://{}.multi-dir.swiftsoftware.net", site_name.to_lowercase().replace(' ', "-")));
+    let base_url = domains.first().map(|d| format!("https://{}", d)).unwrap_or_else(|| format!("https://{}.{}", site_name.to_lowercase().replace(' ', "-"), s.config.base_domain));
 
     let mut urls = Vec::new();
     urls.push(format!("{}", base_url));

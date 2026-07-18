@@ -400,14 +400,14 @@ pub async fn add_subscriber(
     .fetch_one(&s.db)
     .await?;
 
-    // Push to CoreSwift CRM (fire-and-forget, log on failure)
+    // Push to CoreSwift CRM with city tag (fire-and-forget, log on failure)
     let db = s.db.clone();
     let dir_id = dir.0;
     let email = req.email.clone();
     let name = req.name.clone();
     tokio::spawn(async move {
         match crate::coreswift::push_newsletter_signup(&db, dir_id, &email, name.as_deref()).await {
-            Ok(_) => tracing::info!("[newsletter] CoreSwift push OK for {email}"),
+            Ok(contact_id) => tracing::info!("[newsletter] CoreSwift push OK for {email}, contact={contact_id}"),
             Err(e) => tracing::warn!("[newsletter] CoreSwift push failed for {email}: {e}"),
         }
     });
@@ -573,7 +573,7 @@ pub async fn send_newsletter(
         .map_err(|e| AppError::Internal(e.to_string()))?
         .map(|r| r.0);
 
-    let base_url = format!("https://{}.swiftsoftware.net", dir_slug.as_deref().unwrap_or("directory"));
+    let base_url = format!("https://{}.{}", dir_slug.as_deref().unwrap_or("directory"), s.config.base_domain);
 
     let mut sent = 0u64;
     let mut failed = 0u64;
@@ -636,7 +636,7 @@ async fn build_newsletter_render(
 
     let dir_name = dir_info.as_ref().map(|d| d.0.as_str()).unwrap_or("Your Directory").to_string();
     let dir_slug = dir_info.as_ref().map(|d| d.1.as_str()).unwrap_or("directory");
-    let dir_url = format!("https://{}.swiftsoftware.net", dir_slug);
+    let dir_url = format!("https://{}.{}", dir_slug, s.config.base_domain);
 
     let mut sections: Vec<serde_json::Value> = Vec::new();
     let mut html_parts: Vec<String> = Vec::new();

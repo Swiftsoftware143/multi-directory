@@ -732,6 +732,7 @@ function importData(){
 function renderMonetization(){
   var el=document.getElementById('pageContent');
   var did=CUR_DIR.id;
+  var slug=CUR_DIR.slug;
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
   g('/admin/ad-zones?directory_id='+did,function(zones){
     var data=zones||[];
@@ -746,8 +747,65 @@ function renderMonetization(){
       data.map(function(z){
         return '<p><strong>'+esc(z.name||'Zone')+'</strong> — '+esc(z.position||'')+' — '+(z.active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</p>';
       }).join(''))+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3>⭐ Sponsored Listings</h3></div>'+
+      '<div id="sponsoredContent"><p style="color:var(--text-secondary)">Loading sponsored listings...</p></div>'+
     '</div>';
+    g('/monetization/sponsored-listings',function(sponsors){
+      var slist=sponsors||[];
+      var dirSponsors=slist.filter(function(s){return s.directory_id===did;});
+      var html='';
+      if(dirSponsors.length===0){
+        html='<p style="color:var(--text-secondary)">No sponsored listings for this directory.</p>';
+      } else {
+        html='<table class="data-table" style="width:100%;border-collapse:collapse"><tr><th>Business</th><th>Slot</th><th>Dates</th><th>Status</th><th></th></tr>';
+        dirSponsors.forEach(function(s){
+          var dates=(s.start_date||'?')+' — '+(s.end_date||'?');
+          var active=s.is_active?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>';
+          var featured=s.featured?'⭐ ':' ';
+          html+='<tr><td>'+featured+esc(s.business_id||'?').substring(0,8)+'...</td><td>'+(s.slot_position||'-')+'</td><td>'+esc(dates)+'</td><td>'+active+'</td><td><button class="btn btn-sm" onclick="toggleSponsor(\x27'+s.id+'\x27,'+s.is_active+')">'+(s.is_active?'Deactivate':'Activate')+'</button></td></tr>';
+        });
+        html+='</table>';
+      }
+      html+='<hr style="margin:16px 0;border-color:var(--border)"><h4>Create Sponsored Listing</h4>'+
+        '<div class="form-row"><label>Business ID</label><input type="text" id="spBizId" placeholder="UUID" style="width:300px"></div>'+
+        '<div class="form-row"><label>Start Date</label><input type="date" id="spStart"></div>'+
+        '<div class="form-row"><label>End Date</label><input type="date" id="spEnd"></div>'+
+        '<div class="form-row"><label>Slot Position</label><input type="number" id="spSlot" value="1" style="width:80px"></div>'+
+        '<div class="form-row"><label>Featured</label><input type="checkbox" id="spFeatured"></div>'+
+        '<button class="btn btn-primary" onclick="createSponsor()">Create</button>';
+      document.getElementById('sponsoredContent').innerHTML=html;
+    },function(){
+      document.getElementById('sponsoredContent').innerHTML='<p style="color:var(--danger)">Could not load sponsored listings.</p>';
+    });
   },function(){el.innerHTML='<div class="empty-state"><p>Failed to load monetization data.</p></div>';});
+}
+
+function toggleSponsor(id,currentlyActive){
+  var newState=!currentlyActive;
+  p('/monetization/sponsored-listings/'+id,{is_active:newState},function(r){
+    renderMonetization();
+  },function(){alert('Failed to update sponsored listing.');});
+}
+
+function createSponsor(){
+  var did=CUR_DIR.id;
+  var bizId=document.getElementById('spBizId').value.trim();
+  var start=document.getElementById('spStart').value;
+  var end=document.getElementById('spEnd').value;
+  var slot=document.getElementById('spSlot').value||'1';
+  var featured=document.getElementById('spFeatured').checked;
+  if(!bizId||!start||!end){alert('Business ID, start date, and end date are required.');return;}
+  p('/monetization/sponsored-listings',{
+    directory_id: did,
+    business_id: bizId,
+    start_date: start,
+    end_date: end,
+    slot_position: parseInt(slot),
+    featured: featured
+  },function(r){
+    renderMonetization();
+  },function(){alert('Failed to create sponsored listing.');});
 }
 
 

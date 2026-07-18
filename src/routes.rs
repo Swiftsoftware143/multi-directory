@@ -192,6 +192,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/n8n/webhook", post(automation::n8n_webhook_receiver))
         .route("/n8n/health", get(automation::n8n_health))
         .route("/available-providers", get(provider_keys_handler::list_available_providers))
+        .route("/webhooks/stripe", post(checkout_handler::stripe_webhook))
+        .route("/webhooks/paypal", post(checkout_handler::paypal_webhook))
         // ??? Public industry listing (for signup forms)
         .route("/industries/available", get(industries::list_available_industries))
         // � Directory SEO & Content Infrastructure
@@ -242,10 +244,23 @@ pub fn create_router(s: AppState) -> Router {
         // ??? Provider keys management
         .route("/provider-keys", get(provider_keys_handler::list_provider_keys).post(provider_keys_handler::upsert_provider_key))
         .route("/provider-keys/:provider", delete(provider_keys_handler::delete_provider_key))
+        // ??? Payment provider management
+        .route("/payment-providers", get(checkout_handler::list_payment_providers).post(checkout_handler::upsert_payment_provider))
+        .route("/payment-providers/{provider_type}", delete(checkout_handler::delete_payment_provider))
+        .route("/checkout/create", post(checkout_handler::create_checkout_session))
+        .route("/checkout/sessions", get(checkout_handler::list_checkout_sessions))
         // ??? Industry dashboard routes
         .route("/industries", get(industries::list_user_industries).post(industries::set_user_industry))
         .route("/industries/:slug", delete(industries::remove_user_industry))
         .route("/industries/limit", get(industries::get_industry_limit))
+        // ? Public endpoints (no auth required)
+        .route("/businesses/:id/claim", post(visitors::claim_business))
+        .route("/businesses/:id/images", post(businesses::upload_business_images))
+        // ? Booking routes (no auth required)
+        .route("/directories/:slug/businesses/:business_id/available-slots", get(bookings::get_available_slots))
+        .route("/directories/:slug/businesses/:business_id/book", post(bookings::create_booking))
+        // ? Public booking page (no auth required, also outside the auth middleware)
+        .route("/book/:slug/:business_id", get(booking_page::booking_page))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
@@ -279,6 +294,7 @@ pub fn create_router(s: AppState) -> Router {
 
     // Clone state for host resolution before it enters move closures
     let _state_for_host = s.clone();
+    let _config_for_host = s.config.clone();
 
     // ??? Combine: /api/v1/* API routes + static file server at /* + SPA fallback
     let app = Router::new()
@@ -290,6 +306,7 @@ pub fn create_router(s: AppState) -> Router {
                 let login_clone = login_content.clone();
                 let index_clone2 = index_content2.clone();
                 let _pool_for_host = _state_for_host.db.clone();
+                let _base_domain = _config_for_host.base_domain.clone();
                 async move {
                     // ── Host-based directory resolution ──
                     // Check if Host header matches a registered domain mapping
@@ -300,8 +317,10 @@ pub fn create_router(s: AppState) -> Router {
                     let path = req.uri().path().to_string();
 
                     if let Some(ref host) = host {
-                        let is_app = host == "directory.swiftsoftware.net"
-                            || host == "www.directory.swiftsoftware.net"
+                        let app_domain = _base_domain.to_lowercase();
+                        let www_domain = format!("www.{}", app_domain);
+                        let is_app = host == &app_domain
+                            || host == &www_domain
                             || host == "localhost"
                             || host.starts_with("127.0.0.1")
                             || host.starts_with("192.168.")
@@ -430,7 +449,20 @@ async fn auth_guard(
         || path == "/categories"
         || path == "/search"
         || path == "/listings"
-        || path.starts_with("/reviews/stats/");
+        || path.starts_with("/reviews/stats/")
+        // Public newsletter signup — no auth needed
+        || (path.contains("/subscribers") && req.method() == "POST")
+        // Public directory search suggestions
+        || path.ends_with("/suggestions")
+        // Public business claim form
+        || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
+        // Public business image upload
+        || (path.starts_with("/businesses/") && path.ends_with("/images") && req.method() == "POST")
+        // Public booking endpoints
+        || (path.contains("/available-slots") && req.method() == "GET")
+        || (path.contains("/book") && req.method() == "POST" && !path.contains("blog"))
+        // Public booking page (GET)
+        || (path.starts_with("/book/") && req.method() == "GET");
     
     if is_public {
         return Ok(next.run(req).await);

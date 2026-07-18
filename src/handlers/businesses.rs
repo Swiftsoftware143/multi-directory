@@ -6,7 +6,8 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+use base64::Engine as _;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -390,15 +391,15 @@ pub async fn search_suggestions(
     }
 
     let results: Vec<BusinessSearchResult> = sqlx::query_as::<_, BusinessSearchResult>(
-        r#"SELECT b.id, b.name, b.slug, b.city, b.s, dc.name as category_name
+        r#"SELECT b.id, b.name, b.slug, b.city, b.state, dc.name as category_name
            FROM businesses b
            LEFT JOIN directory_categories dc ON b.category_id = dc.id
-           WHERE b.directory_id = \x241
-             AND (b.name ILIKE \x242 OR b.city ILIKE \x242)
+           WHERE b.directory_id = $1
+             AND (b.name ILIKE $2 OR b.city ILIKE $2)
            ORDER BY
-             CASE WHEN b.name ILIKE \x242 THEN 0 ELSE 1 END,
+             CASE WHEN b.name ILIKE $2 THEN 0 ELSE 1 END,
              b.name ASC
-           LIMIT \x243"#
+           LIMIT $3"#
     )
     .bind(dir.id)
     .bind(format!("%{}%", q))
@@ -407,4 +408,152 @@ pub async fn search_suggestions(
     .await?;
 
     Ok(Json(serde_json::json!(results)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UploadImagesRequest {
+    pub images: Vec<String>, // base64-encoded or full data URIs
+}
+
+/// POST /api/v1/businesses/:id/images — upload images for a business
+/// Accepts JSON with `images` array of base64 or data URIs.
+pub async fn upload_business_images(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+    Json(req): Json<UploadImagesRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // Verify business exists
+    let exists = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM businesses WHERE id = $1"
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await?;
+    
+    if exists == 0 {
+        return Err(AppError::NotFound("Business not found".to_string()));
+    }
+    
+    // Build URLs for uploaded images — for now store references to /uploads/ 
+    // In future, upload to CDN. For MVP, we save base64 data to local files.
+    let upload_dir = format!("/opt/swift/www/zaarhub.com/uploads/businesses/{}", business_id);
+    tokio::fs::create_dir_all(&upload_dir).await
+        .map_err(|e| AppError::Internal(format!("Failed to create upload dir: {e}")))?;
+    
+    let mut saved_images: Vec<String> = Vec::new();
+    
+    for (i, img_data) in req.images.iter().enumerate() {
+        // Support both data URIs and raw base64
+        let (format_name, base64_data) = if let Some(stripped) = img_data.strip_prefix("data:image/") {
+            let parts: Vec<&str> = stripped.splitn(2, ';').collect();
+            let fmt = parts[0].to_string(); // e.g., "jpeg", "png", "webp"
+            if parts.len() < 2 || !parts[1].starts_with("base64,") {
+                continue;
+            }
+            let data = &parts[1][7..]; // after "base64,"
+            (fmt, data.to_string())
+        } else {
+            // Assume raw base64, default to jpeg
+            ("jpeg".to_string(), img_data.clone())
+        };
+        
+        match base64::engine::general_purpose::STANDARD.decode(&base64_data) {
+            Ok(bytes) => {
+                let ext = if format_name == "jpeg" { "jpg" } else { &format_name };
+                let filename = format!("photo_{}.{}", i, ext);
+                let path = format!("{}/{}", upload_dir, filename);
+                if let Err(e) = tokio::fs::write(&path, &bytes).await {
+                    tracing::warn!("Failed to write photo {i} for business {business_id}: {e}");
+                    continue;
+                }
+                // URL accessible at /uploads/businesses/{uuid}/photo_{i}.{ext}
+                saved_images.push(format!("/uploads/businesses/{}/{}", business_id, filename));
+            }
+            Err(e) => {
+                tracing::warn!("Failed to decode base64 photo {i}: {e}");
+            }
+        }
+    }
+    
+    if saved_images.is_empty() {
+        return Err(AppError::Validation("No valid images found in request".to_string()));
+    }
+    
+    // Append to existing images JSONB array (dedup by URL)
+    let existing: Vec<String> = sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await?
+    .as_array()
+    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+    .unwrap_or_default();
+    
+    // Merge: existing first, then new ones that aren't already present
+    let all_images: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        let mut merged = Vec::new();
+        for img in &existing {
+            if seen.insert(img.clone()) {
+                merged.push(img.clone());
+            }
+        }
+        for img in &saved_images {
+            if seen.insert(img.clone()) {
+                merged.push(img.clone());
+            }
+        }
+        merged
+    };
+    
+    let images_json = serde_json::to_value(&all_images).map_err(|e| AppError::Internal(format!("JSON error: {e}")))?;
+    
+    sqlx::query("UPDATE businesses SET images = $1::jsonb, updated_at = NOW() WHERE id = $2")
+        .bind(&images_json)
+        .bind(business_id)
+        .execute(&s.db)
+        .await?;
+
+    // Advance any open deal to "Contacted" stage if we're still at "Lead"
+    let _ = advance_deal_to_contacted(&s.db, business_id).await;
+    
+    Ok((StatusCode::OK, Json(json!({
+        "success": true,
+        "uploaded": saved_images.len(),
+        "total_images": all_images.len(),
+        "images": all_images
+    }))))
+}
+
+/// Advance a deal from "Lead" to "Contacted" when images are uploaded.
+async fn advance_deal_to_contacted(
+    db: &sqlx::PgPool,
+    business_id: Uuid,
+) -> Result<(), String> {
+    // Find a claimed business that has an open deal at "Lead" stage
+    let deal_id: Option<Uuid> = sqlx::query_scalar(
+        r#"SELECT dr.id FROM crm_deal_records dr
+           JOIN claimed_businesses cb ON cb.business_id = $1
+           WHERE dr.title ILIKE (SELECT name FROM businesses WHERE id = $1) || '%'
+             AND dr.stage = 'Lead'
+             AND dr.status = 'open'
+           LIMIT 1"#
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error finding deal: {e}"))?
+    .flatten();
+
+    if let Some(deal_id) = deal_id {
+        sqlx::query("UPDATE crm_deal_records SET stage = 'Contacted', updated_at = NOW() WHERE id = $1")
+            .bind(deal_id)
+            .execute(db)
+            .await
+            .map_err(|e| format!("Failed to advance deal: {e}"))?;
+        tracing::info!("[pipeline] Advanced deal {deal_id} to 'Contacted' after image upload");
+    }
+
+    Ok(())
 }

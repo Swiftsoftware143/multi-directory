@@ -248,7 +248,7 @@ pub async fn regenerate_sitemap(
 pub async fn generate_sitemap(
     State(s): State<AppState>,
 ) -> impl IntoResponse {
-    let base_url = "https://directory.swiftsoftware.net";
+    let base_url = format!("https://{}", s.config.base_domain);
 
     // Collect all directories
     let directories = sqlx::query_as::<_, (Uuid, String)>(
@@ -345,11 +345,14 @@ pub async fn generate_sitemap(
 }
 
 /// GET /api/v1/robots.txt — serve dynamic robots.txt
-pub async fn get_robots_txt() -> impl IntoResponse {
-    let robots = "User-agent: *\nAllow: /\n\nSitemap: https://directory.swiftsoftware.net/sitemap.xml\n";
+pub async fn get_robots_txt(
+    State(s): State<AppState>,
+) -> impl IntoResponse {
+    let base_url = format!("https://{}", s.config.base_domain);
+    let robots = format!("User-agent: *\nAllow: /\n\nSitemap: {base_url}/sitemap.xml\n");
     (
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/plain")],
-        robots.to_string(),
+        robots,
     )
 }
