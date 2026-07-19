@@ -1,4 +1,7 @@
-# Admin Guide — Multi-Directory Platform
+# Admin Guide — ZaarHub Multi-Directory Platform
+
+## Overview
+The admin panel manages all directories, listings, suppliers, deals, and system configuration. Access at `zaarhub.com` with admin credentials.
 
 ## Admin Pages
 
@@ -11,7 +14,7 @@
 | SEO | `/seo` | SEO settings, sitemaps, meta defaults |
 | Blog | `/blog` | Write and manage blog posts |
 | Deals | `/deals` | Create/manage deals, view redemptions |
-| API Keys | `/apikeys` | Configure third-party API keys (Google Places, BrightLocal, Yext, Uberall, etc.) |
+| API Keys | `/apikeys` | Configure third-party API keys for scrapers and integrations |
 | Settings | `/settings` | Tenant name, password, SMTP config |
 | Monetization | `/monetization` | Plan tiers, subscriptions, sponsored articles, ad zones |
 | Analytics | `/analytics` | View tracking data and engagement metrics |
@@ -25,7 +28,7 @@
 
 ## Feature Toggles per Directory
 
-Each directory has a `feature_config` JSONB field that controls what features are available:
+Each directory has a `feature_config` JSONB field that controls features:
 
 ```json
 {
@@ -38,11 +41,9 @@ Each directory has a `feature_config` JSONB field that controls what features ar
 }
 ```
 
-Toggle these in the Directory Settings panel.
+Toggle these in the Directory Settings panel. Use this to create simple directories (e.g., a Farmer's Directory with just listings) vs full community directories.
 
 ## API Keys (Settings > API Keys)
-
-Configure provider keys for data enrichment and scraping:
 
 | Provider | Purpose |
 |---|---|
@@ -56,21 +57,30 @@ Configure provider keys for data enrichment and scraping:
 
 ## Scraper Engine
 
-The scraper engine (`/api/v1/scraper/`) supports multiple sources:
+The scraper engine (`/api/v1/scraper/`) ingests business data from multiple sources:
 
 - **Google Places** — fully integrated. Run a search by location + keyword, results stream through the pipeline.
 - **BrightLocal, Yext, Uberall** — provider framework ready. Add your API key in Settings > API Keys.
-- **Nextdoor, Chamber, YellowPages** — scraper framework ready. Add provider key in Settings.
+- **Nextdoor, Chamber, YellowPages** — scraper framework ready.
 
-Results from all scrapers flow through `/api/v1/pipeline/ingest` for dedup, merge, and enrichment.
+All results flow through `/api/v1/pipeline/ingest` for dedup, merge, and enrichment.
 
 ## B2B Marketplace
 
-The B2B marketplace distinguishes suppliers (distributors, wholesalers, farms, associations) from local businesses. Suppliers appear in their own search tab with product listings.
+The B2B marketplace distinguishes suppliers from local businesses. Suppliers appear in their own search tab with product listings. Business types:
 
-- `/api/v1/b2b/products` — search and manage supplier products
-- `/api/v1/b2b/suppliers` — list all supplier-type businesses
-- Business type is set per-listing: `local`, `supplier`, `distributor`, `wholesaler`, `farm`, `association`
+- `local` — Standard local business (restaurant, plumber, dentist, etc.)
+- `supplier` — General supplier
+- `distributor` — Product distributor
+- `wholesaler` — Wholesale goods provider
+- `farm` — Farm / agricultural producer
+- `association` — Trade association
+
+Endpoints: `/api/v1/b2b/products`, `/api/v1/b2b/suppliers`
+
+## Supplier Portal
+
+Suppliers have their own back office at `zaarhub.com/supplier/`. See the [Supplier Guide](supplier-guide.md) for details.
 
 ## Deal Management
 
@@ -93,3 +103,16 @@ Admin-only endpoints at `/api/v1/pricing/`:
 | `/pricing/bundles` | Create/manage pricing bundles |
 | `/pricing/grandfather` | Set grandfathered pricing per business |
 | `/pricing/public` | Public-facing standard pricing |
+
+## Visitor Accounts
+
+Visitors can create free accounts to:
+- Save favorite businesses
+- Claim and redeem deals
+- Leave reviews
+- Subscribe to city newsletters
+- Participate in community engagement
+
+## Networks
+
+Directories can belong to a network, inheriting shared feature flags. Standalone directories use their own settings.
