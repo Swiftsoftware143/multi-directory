@@ -93,3 +93,5 @@ pub mod b2b;
 pub use b2b::*;
 pub mod pipeline;
 pub use pipeline::*;
+pub mod scraper;
+pub use scraper::*;
