@@ -7,6 +7,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
@@ -34,6 +35,7 @@ pub struct CreateBlogPostRequest {
     pub content: String,
     pub directory_id: Uuid,
     pub published: Option<bool>,
+    pub author_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +45,7 @@ pub struct UpdateBlogPostRequest {
     pub excerpt: Option<String>,
     pub content: Option<String>,
     pub published: Option<bool>,
+    pub status: Option<String>,
 }
 
 /// GET /api/v1/blog-posts — list all blog posts
@@ -509,4 +512,71 @@ fn render_template_str(template: &str, data: &Value) -> String {
         }
     }
     result
+}
+
+/// GET /api/v1/community/posts — list community posts
+pub async fn list_community_posts(
+    State(s): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    let posts = sqlx::query_as::<_, (Uuid, String, String, Option<String>, String, Option<chrono::DateTime<chrono::Utc>>)>(
+        r#"SELECT id, title, slug, excerpt, post_type, created_at
+           FROM blog_posts WHERE post_type = 'community' AND status = 'published'
+           ORDER BY created_at DESC LIMIT 50"#
+    )
+    .fetch_all(&s.db)
+    .await?;
+
+    let result: Vec<serde_json::Value> = posts.into_iter().map(|p| json!({
+        "id": p.0, "title": p.1, "slug": p.2, "excerpt": p.3, "type": p.4, "created_at": p.5
+    })).collect();
+
+    Ok(Json(json!({"posts": result})))
+}
+
+/// POST /api/v1/community/posts — create a community post (business owner or visitor)
+pub async fn create_community_post(
+    State(s): State<AppState>,
+    Json(req): Json<CreateBlogPostRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let id = Uuid::new_v4();
+    let slug = req.title.to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")
+        .chars().take(100).collect::<String>();
+
+    sqlx::query(
+        "INSERT INTO blog_posts (id, title, slug, content, excerpt, directory_id, post_type, status, author_name, published)
+         VALUES ($1, $2, $3, $4, $5, $6, 'community', 'pending_review', $7, false)"
+    )
+    .bind(id)
+    .bind(&req.title)
+    .bind(&slug)
+    .bind(&req.content)
+    .bind(&req.excerpt)
+    .bind(req.directory_id)
+    .bind(&req.author_name)
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({"id": id, "slug": slug, "status": "pending_review"})))
+}
+
+/// PUT /api/v1/community/posts/:id — update a community post
+pub async fn update_community_post(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateBlogPostRequest>,
+) -> ApiResult<impl IntoResponse> {
+    sqlx::query(
+        "UPDATE blog_posts SET title=COALESCE($1,title), content=COALESCE($2,content), excerpt=COALESCE($3,excerpt),
+         status=COALESCE($4,status), updated_at=NOW() WHERE id=$5 AND post_type='community'"
+    )
+    .bind(&req.title)
+    .bind(&req.content)
+    .bind(&req.excerpt)
+    .bind(&req.status)
+    .bind(id)
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({"status": "updated"})))
 }

@@ -106,6 +106,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/search", get(search::search_businesses))
         .route("/search/suppliers", get(search::search_suppliers))
         .route("/categories", get(categories::list_all_categories))
+        // Community posts (BL27)
+        .route("/community/posts", get(blog::list_community_posts).post(blog::create_community_post))
+        .route("/community/posts/:id", get(blog::get_blog_post).put(blog::update_community_post).delete(blog::delete_blog_post))
         .route("/listings", get(businesses::list_all_businesses))
         // ??? Analytics routes (Phase 3 Task 2)
         .route("/analytics/track", post(analytics::track_event))
@@ -541,6 +544,9 @@ async fn auth_guard(
         || path == "/pricing/public"
         // Public data pipeline ingest (external sources push here)
         || path == "/pipeline/ingest"
+        // Public community posts (GET only, POST/PUT/DELETE need auth)
+        || (path == "/community/posts" && req.method() == "GET")
+        || (path.starts_with("/community/posts/") && req.method() == "GET")
         // Public deal redemption (visitors redeem codes without auth)
         || (path.starts_with("/deals/") && path.ends_with("/redeem") && req.method() == "POST")
         || (path.starts_with("/deals/redemptions/code/") && req.method() == "GET")
