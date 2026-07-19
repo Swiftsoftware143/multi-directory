@@ -219,6 +219,8 @@ pub struct UpdateBusinessRequest {
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub is_active: Option<bool>,
+    pub business_type: Option<String>,
+    pub supplier_fields: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]

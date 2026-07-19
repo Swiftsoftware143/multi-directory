@@ -61,3 +61,13 @@ pub fn is_admin(claims: &Claims) -> bool {
 pub fn is_super_admin(claims: &Claims) -> bool {
     claims.role == "super_admin"
 }
+
+/// Check if user is a business owner
+pub fn is_business_owner(claims: &Claims) -> bool {
+    claims.role == "business_owner"
+}
+
+/// Check if user is a visitor account
+pub fn is_visitor(claims: &Claims) -> bool {
+    claims.role == "visitor"
+}

@@ -99,6 +99,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/search/config", get(search::list_search_configs).post(search::create_search_config))
         .route("/search/config/:directory_id", get(search::get_search_config).put(search::update_search_config))
         .route("/search", get(search::search_businesses))
+        .route("/search/suppliers", get(search::search_suppliers))
         .route("/categories", get(categories::list_all_categories))
         .route("/listings", get(businesses::list_all_businesses))
         // ??? Analytics routes (Phase 3 Task 2)
@@ -253,6 +254,14 @@ pub fn create_router(s: AppState) -> Router {
         .route("/industries", get(industries::list_user_industries).post(industries::set_user_industry))
         .route("/industries/:slug", delete(industries::remove_user_industry))
         .route("/industries/limit", get(industries::get_industry_limit))
+        // ? Portal routes (business_owner auth)
+        .route("/portal/business/profile", get(portal::business_profile))
+        // ? Visitor account routes
+        .route("/visitor/register", post(portal::visitor_register))
+        .route("/visitor/login", post(portal::visitor_login))
+        .route("/visitor/profile", get(portal::visitor_profile))
+        // ? Directory feature config (public GET, admin PUT)
+        .route("/directories/:id/features", get(portal::get_directory_features).put(portal::update_directory_features))
         // ? Public endpoints (no auth required)
         .route("/businesses/:id/claim", post(visitors::claim_business))
         .route("/businesses/:id/images", post(businesses::upload_business_images))
@@ -261,6 +270,15 @@ pub fn create_router(s: AppState) -> Router {
         .route("/directories/:slug/businesses/:business_id/book", post(bookings::create_booking))
         // ? Public booking page (no auth required, also outside the auth middleware)
         .route("/book/:slug/:business_id", get(booking_page::booking_page))
+        // ? BL29: Pricing engine — admin routes
+        .route("/pricing/services", get(pricing::list_services))
+        .route("/pricing/services/:service_key", put(pricing::update_service_price))
+        .route("/pricing/bundles", get(pricing::list_bundles).post(pricing::create_bundle))
+        .route("/pricing/bundles/:id", get(pricing::get_bundle).put(pricing::update_bundle).delete(pricing::delete_bundle))
+        .route("/pricing/grandfather", post(pricing::set_grandfathered))
+        .route("/pricing/grandfather/:business_id", get(pricing::get_grandfathered))
+        // ? BL29: Pricing engine — public endpoint (no auth)
+        .route("/pricing/public", get(pricing::public_pricing))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
@@ -376,6 +394,61 @@ pub fn create_router(s: AppState) -> Router {
                         );
                     }
 
+                    // ??? BL29: Serve pricing admin page
+                    if path == "/admin/pricing" || path.starts_with("/admin/pricing/") {
+                        let pricing_path = std::path::Path::new(&frontend).join("pricing-admin.html");
+                        if pricing_path.exists() {
+                            match tokio::fs::read(&pricing_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // ??? Serve portal pages by redirecting to the HTML file (fallback file serve handles it)
+                    if path == "/portal" || path == "/portal/" || path.starts_with("/portal/business") {
+                        let portal_path = std::path::Path::new(&frontend).join("business-portal.html");
+                        if portal_path.exists() {
+                            match tokio::fs::read(&portal_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+                    if path == "/visitor" || path == "/visitor/" || path.starts_with("/visitor/portal") {
+                        let portal_path = std::path::Path::new(&frontend).join("visitor-portal.html");
+                        if portal_path.exists() {
+                            match tokio::fs::read(&portal_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     let clean_path = path.trim_start_matches('/');
                     let file_path = if clean_path.is_empty() {
                         std::path::Path::new(&frontend).join("index.html")
@@ -454,6 +527,13 @@ async fn auth_guard(
         || (path.contains("/subscribers") && req.method() == "POST")
         // Public directory search suggestions
         || path.ends_with("/suggestions")
+        // Public visitor account routes
+        || path == "/visitor/register"
+        || path == "/visitor/login"
+        // Public pricing endpoint
+        || path == "/pricing/public"
+        // Public directory features (GET only, PUT is admin)
+        || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
         || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
         // Public business image upload
