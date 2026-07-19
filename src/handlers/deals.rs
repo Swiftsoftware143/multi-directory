@@ -7,6 +7,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
@@ -304,4 +305,66 @@ pub async fn list_business_deals(
     .await?;
 
     Ok(Json(deals))
+}
+
+/// POST /api/v1/deals/:id/redeem — generate redemption code and store claim
+pub async fn redeem_deal(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    use rand::Rng;
+    let code: String = rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect();
+    let code = code.to_uppercase();
+
+    let redemption = sqlx::query_as::<_, (Uuid, String)>(
+        "INSERT INTO deal_redemptions (id, deal_id, redemption_code, status)
+         VALUES ($1, $2, $3, 'active') RETURNING id, redemption_code"
+    )
+    .bind(Uuid::new_v4())
+    .bind(id)
+    .bind(&code)
+    .fetch_one(&s.db)
+    .await?;
+
+    sqlx::query("UPDATE deals SET redemption_count = COALESCE(redemption_count, 0) + 1 WHERE id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await
+        .ok();
+
+    Ok(Json(json!({
+        "redemption_id": redemption.0,
+        "redemption_code": redemption.1,
+        "status": "active"
+    })))
+}
+
+/// GET /api/v1/deals/redemptions/code/:code — look up a redemption by code
+pub async fn lookup_redemption(
+    State(s): State<AppState>,
+    Path(code): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let redemption = sqlx::query_as::<_, (Uuid, Uuid, String, String, String)>(
+        r#"SELECT dr.id, dr.deal_id, dr.redemption_code, dr.status,
+                  COALESCE(d.title, '') as deal_title
+           FROM deal_redemptions dr
+           LEFT JOIN deals d ON d.id = dr.deal_id
+           WHERE dr.redemption_code = $1"#
+    )
+    .bind(&code)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Redemption not found".into()))?;
+
+    Ok(Json(json!({
+        "id": redemption.0,
+        "deal_id": redemption.1,
+        "code": redemption.2,
+        "status": redemption.3,
+        "deal_title": redemption.4
+    })))
 }

@@ -82,6 +82,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/deals/featured", get(deals::list_featured_deals))
         .route("/deals/:id", get(deals::get_deal).put(deals::update_deal).delete(deals::delete_deal))
         .route("/deals/:id/claim", post(deals::claim_deal))
+        .route("/deals/:id/redeem", post(deals::redeem_deal))
+        .route("/deals/redemptions/code/:code", get(deals::lookup_redemption))
         .route("/directories/:slug/deals", get(deals::list_directory_deals))
         .route("/directories/:slug/businesses/:business_id/deals", get(deals::list_business_deals))
         .route("/submissions", get(submissions::list_submissions).post(submissions::create_submission))
@@ -536,7 +538,10 @@ async fn auth_guard(
         || path == "/pricing/public"
         // Public data pipeline ingest (external sources push here)
         || path == "/pipeline/ingest"
-        // Public directory features (GET only, PUT is admin)
+        // Public deal redemption (visitors redeem codes without auth)
+        || (path.starts_with("/deals/") && path.ends_with("/redeem") && req.method() == "POST")
+        || (path.starts_with("/deals/redemptions/code/") && req.method() == "GET")
+        // Public featured deals
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
         || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
