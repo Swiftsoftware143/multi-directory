@@ -89,3 +89,5 @@ pub mod portal;
 pub use portal::*;
 pub mod pricing;
 pub use pricing::*;
+pub mod pipeline;
+pub use pipeline::*;

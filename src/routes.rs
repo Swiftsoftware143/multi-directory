@@ -195,6 +195,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/available-providers", get(provider_keys_handler::list_available_providers))
         .route("/webhooks/stripe", post(checkout_handler::stripe_webhook))
         .route("/webhooks/paypal", post(checkout_handler::paypal_webhook))
+        // Data Pipeline (BL20) — public ingress endpoint
+        .route("/pipeline/ingest", post(pipeline::pipeline_ingest))
         // ??? Public industry listing (for signup forms)
         .route("/industries/available", get(industries::list_available_industries))
         // � Directory SEO & Content Infrastructure
@@ -532,6 +534,8 @@ async fn auth_guard(
         || path == "/visitor/login"
         // Public pricing endpoint
         || path == "/pricing/public"
+        // Public data pipeline ingest (external sources push here)
+        || path == "/pipeline/ingest"
         // Public directory features (GET only, PUT is admin)
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
