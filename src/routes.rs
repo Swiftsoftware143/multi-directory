@@ -113,6 +113,10 @@ pub fn create_router(s: AppState) -> Router {
         .route("/b2b/products", get(b2b::search_products).post(b2b::create_product))
         .route("/b2b/products/:id", get(b2b::get_product).put(b2b::update_product).delete(b2b::delete_product))
         .route("/b2b/suppliers", get(b2b::list_suppliers))
+        // Scraper Engine (BL18, BL19, BL21, BL24)
+        .route("/scraper/providers", get(scraper::list_scraper_providers))
+        .route("/scraper/run", post(scraper::run_scraper))
+        .route("/scraper/google-places", post(scraper::scrape_google_places))
         .route("/listings", get(businesses::list_all_businesses))
         // ??? Analytics routes (Phase 3 Task 2)
         .route("/analytics/track", post(analytics::track_event))
@@ -555,6 +559,8 @@ async fn auth_guard(
         || (path == "/b2b/products" && req.method() == "GET")
         || (path.starts_with("/b2b/products/") && req.method() == "GET")
         || path == "/b2b/suppliers"
+        // Public scraper provider list (read-only)
+        || path == "/scraper/providers"
         // Public deal redemption (visitors redeem codes without auth)
         || (path.starts_with("/deals/") && path.ends_with("/redeem") && req.method() == "POST")
         || (path.starts_with("/deals/redemptions/code/") && req.method() == "GET")
