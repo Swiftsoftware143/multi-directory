@@ -95,3 +95,5 @@ pub mod pipeline;
 pub use pipeline::*;
 pub mod scraper;
 pub use scraper::*;
+pub mod supplier;
+pub use supplier::*;
