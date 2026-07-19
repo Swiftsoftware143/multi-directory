@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Portal - ZaarHub</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--teal:#0d9488;--teal-light:#14b8a6;--teal-bg:#f0fdfa;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Auth screens */
+.auth-container{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)}
+.auth-card{background:var(--card);border-radius:16px;padding:40px;width:420px;max-width:90vw;box-shadow:0 25px 50px -12px rgba(0,0,0,.4)}
+.auth-card h1{font-size:1.75rem;color:var(--teal);text-align:center;margin-bottom:4px}
+.auth-card .tagline{text-align:center;color:var(--text-secondary);font-size:.9rem;margin-bottom:28px}
+.auth-card .error{background:#fef2f2;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.auth-card .success-msg{background:#f0fdf4;color:#16a34a;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.tab-bar{display:flex;margin-bottom:24px;border-bottom:2px solid var(--border)}
+.tab{flex:1;text-align:center;padding:10px;cursor:pointer;font-weight:600;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab.active{color:var(--teal);border-bottom-color:var(--teal)}
+
+/* Dashboard */
+.dashboard{display:none;max-width:1200px;margin:0 auto;padding:24px}
+.dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.dashboard-header h1{font-size:1.5rem;color:var(--text)}
+.dashboard-header .user-info{font-size:.85rem;color:var(--text-secondary)}
+.logout-btn{background:none;border:1px solid var(--border);color:var(--text-secondary);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:.85rem;transition:all .2s}
+.logout-btn:hover{background:#f1f5f9;color:var(--danger);border-color:var(--danger)}
+
+/* Cards */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s}
+.card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.card h3{font-size:1rem;margin-bottom:4px;color:var(--text)}
+.card p{font-size:.85rem;color:var(--text-secondary);margin-bottom:8px}
+.card .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge.active{background:#dcfce7;color:#16a34a}
+.badge.inactive{background:#f1f5f9;color:#64748b}
+.badge.warning{background:#fef3c7;color:#d97706}
+.card .meta{font-size:.8rem;color:var(--text-secondary);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.card-actions{display:flex;gap:8px;margin-top:12px}
+.card-actions .btn{flex:1}
+
+/* Coming soon */
+.coming-soon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:16px}
+.coming-soon-card{background:var(--card);border:1px dashed var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:all .2s}
+.coming-soon-card:hover{border-color:var(--teal);background:var(--teal-bg)}
+.coming-soon-card .icon{font-size:2rem;margin-bottom:8px}
+.coming-soon-card h4{font-size:.9rem;margin-bottom:4px}
+.coming-soon-card p{font-size:.8rem;color:var(--text-secondary)}
+
+/* Loading */
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:#0f766e}
+.btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#cbd5e1}
+.btn-sm{padding:5px 12px;font-size:.8rem}
+.btn-danger{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.btn-danger:hover{background:#fee2e2}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;font-family:inherit}
+.form-group input:focus,.form-group select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.15)}
+
+/* Section headers */
+.section-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+
+/* Responsive */
+@media(max-width:768px){
+  .dashboard{padding:16px}
+  .card-grid{grid-template-columns:1fr}
+  .coming-soon-grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="authScreen" class="auth-container">
+  <div class="auth-card">
+    <h1>🏪 ZaarHub</h1>
+    <p class="tagline">Business Owner Portal</p>
+    <div id="authError" class="error"></div>
+    <div id="authSuccess" class="success-msg"></div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchAuthTab('login')" id="loginTab">Login</div>
+      <div class="tab" onclick="switchAuthTab('register')" id="registerTab">Register</div>
+    </div>
+
+    <!-- Login Form -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter your password">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="doLogin()">Sign In</button>
+      <p style="text-align:center;margin-top:12px;font-size:.8rem;color:var(--text-secondary)">
+        Forgot your password? <a href="/admin/login">Reset here</a>
+      </p>
+    </div>
+
+    <!-- Register Form -->
+    <div id="registerForm" style="display:none">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="regName" placeholder="Your full name">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="regPassword" placeholder="At least 6 characters">
+      </div>
+      <div class="form-group">
+        <label>Directory Slug</label>
+        <input type="text" id="regSlug" placeholder="my-business-directory">
+        <p style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">Leave blank to auto-generate</p>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="doRegister()">Create Account</button>
+      <p style="text-align:center;margin-top:12px;font-size:.8rem;color:var(--text-secondary)">
+        Already have an account? <a href="#" onclick="switchAuthTab('login');return false">Sign in</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="dashboard">
+  <div class="dashboard-header">
+    <div>
+      <h1>🏪 My Business Portal</h1>
+      <div class="user-info" id="userInfo">Loading...</div>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingState" style="text-align:center;padding:40px">
+    <div class="spinner"></div>
+    <p style="margin-top:12px;color:var(--text-secondary)">Loading your businesses...</p>
+  </div>
+
+  <!-- Content (shown after load) -->
+  <div id="dashboardContent" style="display:none">
+
+    <!-- My Businesses -->
+    <div id="businessList"></div>
+
+    <!-- Quick Actions Nav -->
+    <div class="section-title" style="margin-top:32px">⚡ Quick Actions</div>
+    <div class="coming-soon-grid">
+      <div class="coming-soon-card" onclick="showComingSoon('Deals Manager')">
+        <div class="icon">🎟️</div>
+        <h4>Deals & Coupons</h4>
+        <p>Create and manage promotions</p>
+      </div>
+      <div class="coming-soon-card" onclick="showComingSoon('Blogging')">
+        <div class="icon">📝</div>
+        <h4>Articles & Blog</h4>
+        <p>Write SEO blog posts</p>
+      </div>
+      <div class="coming-soon-card" onclick="showComingSoon('Community')">
+        <div class="icon">💬</div>
+        <h4>Community Posts</h4>
+        <p>Engage with your audience</p>
+      </div>
+      <div class="coming-soon-card" onclick="showComingSoon('Analytics')">
+        <div class="icon">📊</div>
+        <h4>Analytics</h4>
+        <p>Track views and engagement</p>
+      </div>
+      <div class="coming-soon-card" onclick="showComingSoon('B2B Marketplace')">
+        <div class="icon">🤝</div>
+        <h4>B2B Marketplace</h4>
+        <p>Connect with other businesses</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+
+// ── Helpers ──
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+// ── Auth Tab Switching ──
+function switchAuthTab(tab) {
+  if (tab === 'login') {
+    $('loginTab').classList.add('active');
+    $('registerTab').classList.remove('active');
+    show('loginForm');
+    hide('registerForm');
+  } else {
+    $('registerTab').classList.add('active');
+    $('loginTab').classList.remove('active');
+    hide('loginForm');
+    show('registerForm');
+  }
+  hide('authError');
+  hide('authSuccess');
+}
+
+function showError(msg) {
+  var el = $('authError');
+  el.textContent = msg;
+  el.style.display = '';
+}
+function showSuccess(msg) {
+  var el = $('authSuccess');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── API Calls ──
+async function g(path) {
+  var token = localStorage.getItem('bizToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { headers: h });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+async function po(path, body) {
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { method: 'POST', headers: h, body: JSON.stringify(body) });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+async function pu(path, body) {
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { method: 'PUT', headers: h, body: JSON.stringify(body) });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+// ── Auth ──
+async function doLogin() {
+  var email = $('loginEmail').value.trim();
+  var password = $('loginPassword').value;
+  if (!email || !password) { showError('Please enter email and password'); return; }
+  hide('authError');
+  try {
+    var r = await po('/auth/login', { email, password });
+    localStorage.setItem('bizToken', r.access_token);
+    localStorage.setItem('bizUser', JSON.stringify(r.user));
+    // Check if user is a business owner — if not, try to find claimed businesses
+    loadDashboard();
+  } catch(e) {
+    showError(e.message);
+  }
+}
+
+async function doRegister() {
+  var name = $('regName').value.trim();
+  var email = $('regEmail').value.trim();
+  var password = $('regPassword').value;
+  var slug = $('regSlug').value.trim() || undefined;
+  if (!name || !email || !password) { showError('Please fill in all fields'); return; }
+  if (password.length < 6) { showError('Password must be at least 6 characters'); return; }
+  hide('authError');
+  try {
+    var r = await po('/auth/register', { name, email, password, tenant_name: name + "'s Directory", tenant_slug: slug });
+    localStorage.setItem('bizToken', r.access_token);
+    localStorage.setItem('bizUser', JSON.stringify(r.user));
+    showSuccess('Account created successfully! Loading dashboard...');
+    setTimeout(loadDashboard, 500);
+  } catch(e) {
+    showError(e.message);
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('bizToken');
+  localStorage.removeItem('bizUser');
+  hide('dashboard');
+  show('authScreen');
+  show('loginForm');
+  hide('registerForm');
+  $('loginTab').classList.add('active');
+  $('registerTab').classList.remove('active');
+}
+
+// ── Dashboard ──
+async function loadDashboard() {
+  var token = localStorage.getItem('bizToken');
+  if (!token) { show('authScreen'); hide('dashboard'); return; }
+  
+  hide('authScreen');
+  show('dashboard');
+  show('loadingState');
+  hide('dashboardContent');
+  
+  try {
+    var data = await g('/portal/business/profile');
+    $('userInfo').textContent = 'You have ' + (data.claimed_businesses || []).length + ' claimed business(es)';
+    renderBusinesses(data.claimed_businesses || []);
+    hide('loadingState');
+    show('dashboardContent');
+  } catch(e) {
+    // If portal endpoint fails, try /auth/me to see if token is valid
+    try {
+      var me = await g('/auth/me');
+      $('userInfo').textContent = 'Welcome, ' + (me.user?.name || 'Owner');
+      $('businessList').innerHTML = '<div class="card"><p>No claimed businesses yet. <a href="/">Browse directories</a> to claim your business listing.</p></div>';
+      hide('loadingState');
+      show('dashboardContent');
+    } catch(e2) {
+      // Token invalid, go back to login
+      doLogout();
+    }
+  }
+}
+
+function renderBusinesses(businesses) {
+  if (!businesses || businesses.length === 0) {
+    $('businessList').innerHTML = '<div class="section-title">🏢 My Businesses</div>' +
+      '<div class="card" style="text-align:center;padding:32px">' +
+      '<div class="icon" style="font-size:2.5rem;margin-bottom:12px">🏪</div>' +
+      '<h3>No claimed businesses yet</h3>' +
+      '<p style="margin:8px 0 16px">Claim your business listing to access the owner dashboard.</p>' +
+      '<a href="/" class="btn btn-primary">Browse Directories</a>' +
+      '</div>';
+    return;
+  }
+
+  var html = '<div class="section-title">🏢 My Businesses (' + businesses.length + ')</div>';
+  html += '<div class="card-grid">';
+  
+  for (var b of businesses) {
+    var biz = b.business || {};
+    var claim = b.claim || {};
+    var sub = b.subscription || {};
+    
+    var statusClass = sub.status === 'active' ? 'active' : 'inactive';
+    var statusLabel = sub.status || 'No subscription';
+    var tierLabel = sub.tier_name || 'Basic';
+    var priceDisplay = sub.price_paid ? '$' + parseFloat(sub.price_paid).toFixed(2) + '/' + (sub.billing_cycle || 'mo') : 'Free';
+    
+    html += '<div class="card">';
+    html += '<h3>' + esc(biz.name) + '</h3>';
+    html += '<p>';
+    if (biz.city) html += '📍 ' + esc(biz.city);
+    if (biz.state) html += ', ' + esc(biz.state);
+    if (!biz.city) html += '📍 Location not set';
+    html += '</p>';
+    
+    html += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
+    html += '<span class="badge ' + statusClass + '">' + esc(statusLabel) + '</span>';
+    html += '<span class="badge warning">' + esc(tierLabel) + '</span>';
+    html += '</div>';
+    
+    html += '<div class="meta">';
+    if (sub.start_date) html += 'Started: ' + new Date(sub.start_date).toLocaleDateString() + ' | ';
+    html += priceDisplay;
+    html += '</div>';
+    
+    html += '<div class="card-actions">';
+    html += '<button class="btn btn-sm btn-secondary" onclick="showComingSoon(\'Analytics for ' + esc(biz.name) + '\')">📊 Analytics</button>';
+    html += '<button class="btn btn-sm btn-secondary" onclick="showComingSoon(\'Manage ' + esc(biz.name) + '\')">⚙️ Manage</button>';
+    html += '</div>';
+    
+    html += '</div>';
+  }
+  
+  html += '</div>';
+  $('businessList').innerHTML = html;
+}
+
+// ── Coming Soon ──
+function showComingSoon(feature) {
+  var msg = '🔜 ' + feature + ' is coming soon!';
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;font-size:.9rem;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:fadeIn .3s';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; setTimeout(function() { toast.remove(); }, 300); }, 3000);
+}
+
+// Inject fade-in animation
+var style = document.createElement('style');
+style.textContent = '@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+document.head.appendChild(style);
+
+// ── Init ──
+(function init() {
+  if (localStorage.getItem('bizToken')) {
+    loadDashboard();
+  }
+})();
+</script>
+</body>
+</html>

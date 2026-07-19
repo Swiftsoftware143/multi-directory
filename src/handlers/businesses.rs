@@ -270,9 +270,11 @@ pub async fn update_business(
            website = COALESCE(\x2411, website),
            latitude = COALESCE(\x2412, latitude),
            longitude = COALESCE(\x2413, longitude),
-           is_active = COALESCE(\x2414, is_active),
+           is_active = COALESCE($14, is_active),
+           business_type = COALESCE($15, business_type),
+           supplier_fields = COALESCE($16, supplier_fields),
            updated_at = NOW()
-           WHERE id = \x2415 RETURNING *"#
+           WHERE id = $17 RETURNING *"#
     )
     .bind(&req.name)
     .bind(&req.slug)
@@ -288,6 +290,8 @@ pub async fn update_business(
     .bind(req.latitude)
     .bind(req.longitude)
     .bind(req.is_active)
+    .bind(&req.business_type)
+    .bind(&req.supplier_fields)
     .bind(business_id)
     .fetch_one(&s.db)
     .await?;

@@ -13,7 +13,6 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(db: PgPool, config: AppConfig) -> Self {
-        let template_dir = config.template_dir.clone();
         let mut engine = TemplateEngine::new();
         engine.load_all();
         Self {

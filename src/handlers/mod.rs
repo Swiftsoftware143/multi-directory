@@ -85,3 +85,7 @@ pub mod booking_page;
 pub use booking_page::*;
 pub mod checkout_handler;
 pub use checkout_handler::*;
+pub mod portal;
+pub use portal::*;
+pub mod pricing;
+pub use pricing::*;
