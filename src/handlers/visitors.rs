@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+use std::env;
 
 use crate::AppState;
 use crate::error::{AppError, ApiResult};
@@ -658,6 +659,20 @@ pub async fn claim_business(
         // Create a CRM deal record in the default pipeline
     let _ = create_claim_deal(&s.db, business_id, &req.owner_name, &req.owner_email, &req.owner_phone).await;
 
+    // Auto-fetch business images from Google Places (fire-and-forget)
+    let db_fetch = s.db.clone();
+    let biz_id_fetch = business_id;
+    tokio::spawn(async move {
+        match fetch_business_images_on_claim(&db_fetch, biz_id_fetch).await {
+            Ok(count) => {
+                if count > 0 {
+                    tracing::info!("[claim] Fetched {count} images for business {biz_id_fetch}");
+                }
+            }
+            Err(e) => tracing::warn!("[claim] Image fetch failed for business {biz_id_fetch}: {e}"),
+        }
+    });
+
     Ok((StatusCode::CREATED, Json(json!(cb))))
 }
 
@@ -729,4 +744,118 @@ async fn create_claim_deal(
     
     tracing::info!("[claim] Created deal {deal_id} for business {business_id} at stage '{first_stage}'");
     Ok(())
+}
+
+/// Auto-fetch business images from Google Places when a business is claimed.
+/// Queries Places API by business name + city, pulls photo_references, constructs URLs.
+async fn fetch_business_images_on_claim(db: &sqlx::PgPool, business_id: Uuid) -> Result<usize, String> {
+    let api_key = match env::var("GOOGLE_PLACES_API_KEY") {
+        Ok(k) => k,
+        Err(_) => return Err("GOOGLE_PLACES_API_KEY not set".to_string()),
+    };
+
+    // Get business info
+    let biz = sqlx::query_as::<_, (String, String)>(
+        r#"SELECT name, COALESCE(city, '') FROM businesses WHERE id = $1"#
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error: {e}"))?
+    .ok_or_else(|| "Business not found".to_string())?;
+
+    let (name, city) = biz;
+    let search_query = format!("{} {}", name, city).trim().to_string();
+    if search_query.is_empty() {
+        return Err("No search query available".to_string());
+    }
+
+    // Search for place_id
+    fn urlenc(s: &str) -> String {
+        s.replace(' ', "%20")
+            .replace('&', "%26")
+            .replace('?', "%3F")
+            .replace('#', "%23")
+            .replace(',', "%2C")
+            .replace('"', "%22")
+            .replace('<', "%3C")
+            .replace('>', "%3E")
+            .replace('{', "%7B")
+            .replace('}', "%7D")
+            .replace('|', "%7C")
+            .replace('\\', "%5C")
+            .replace('^', "%5E")
+            .replace('~', "%7E")
+            .replace('[', "%5B")
+            .replace(']', "%5D")
+            .replace('`', "%60")
+    }
+
+    let search_url = format!(
+        "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id&key={}",
+        urlenc(&search_query), api_key
+    );
+
+    let resp = reqwest::get(&search_url).await.map_err(|e| format!("Places search request failed: {e}"))?;
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Places parse failed: {e}"))?;
+
+    let place_id = body["candidates"]
+        .as_array()
+        .and_then(|c| c.first())
+        .and_then(|c| c["place_id"].as_str())
+        .map(|s| s.to_string());
+
+    let place_id = match place_id {
+        Some(p) => p,
+        None => return Ok(0), // No match, skip silently
+    };
+
+    // Get place details with photos
+    let details_url = format!(
+        "https://maps.googleapis.com/maps/api/place/details/json?place_id={}&fields=photos&key={}",
+        place_id, api_key
+    );
+
+    let resp = reqwest::get(&details_url).await.map_err(|e| format!("Places details request failed: {e}"))?;
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Places details parse failed: {e}"))?;
+
+    let photos = body["result"]["photos"]
+        .as_array()
+        .map(|arr| {
+            arr.iter().filter_map(|p| {
+                let ref_ = p["photo_reference"].as_str()?;
+                Some(format!(
+                    "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference={}&key={}",
+                    urlenc(ref_), api_key
+                ))
+            }).collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
+    if photos.is_empty() {
+        return Ok(0);
+    }
+
+    let count = photos.len();
+    let photos_json = serde_json::to_value(&photos).unwrap_or_default();
+
+    // Get existing images and merge
+    let existing: serde_json::Value = sqlx::query_scalar(
+        r#"SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"#
+    )
+    .bind(business_id)
+    .fetch_one(db)
+    .await
+    .map_err(|e| format!("DB error reading existing images: {e}"))?;
+
+    sqlx::query(
+        r#"UPDATE businesses SET images = $1, updated_at = NOW() WHERE id = $2"#
+    )
+    .bind(&photos_json)
+    .bind(business_id)
+    .execute(db)
+    .await
+    .map_err(|e| format!("DB error updating images: {e}"))?;
+
+    Ok(count)
 }
