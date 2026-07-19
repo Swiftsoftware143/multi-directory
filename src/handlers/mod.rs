@@ -89,5 +89,7 @@ pub mod portal;
 pub use portal::*;
 pub mod pricing;
 pub use pricing::*;
+pub mod b2b;
+pub use b2b::*;
 pub mod pipeline;
 pub use pipeline::*;
