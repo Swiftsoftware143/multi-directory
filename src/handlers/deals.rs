@@ -1,7 +1,7 @@
 //! Deal CRUD handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, State, Query},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -367,4 +367,69 @@ pub async fn lookup_redemption(
         "status": redemption.3,
         "deal_title": redemption.4
     })))
+}
+
+/// POST /api/v1/deals/redemptions/:id/use — mark a redemption as used (business scans code)
+pub async fn use_redemption(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let result = sqlx::query(
+        "UPDATE deal_redemptions SET status = 'used', used_at = NOW() WHERE id = $1 AND status = 'active'"
+    )
+    .bind(id)
+    .execute(&s.db)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Redemption not found or already used".into()));
+    }
+
+    Ok(Json(json!({"status": "used"})))
+}
+
+/// GET /api/v1/deals/:id/redemptions — list all redemptions for a deal
+pub async fn list_deal_redemptions(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let redemptions = sqlx::query_as::<_, (Uuid, String, String, Option<DateTime<Utc>>, DateTime<Utc>)>(
+        r#"SELECT id, redemption_code, status, used_at, created_at
+           FROM deal_redemptions WHERE deal_id = $1
+           ORDER BY created_at DESC"#
+    )
+    .bind(id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let result: Vec<serde_json::Value> = redemptions.into_iter().map(|r| json!({
+        "id": r.0,
+        "code": r.1,
+        "status": r.2,
+        "used_at": r.3,
+        "created_at": r.4
+    })).collect();
+
+    Ok(Json(json!({"redemptions": result, "total": result.len()})))
+}
+
+/// GET /api/v1/deals/redemptions/expire — expire redemptions older than N days (default 30)
+pub async fn expire_redemptions(
+    State(s): State<AppState>,
+    Query(q): Query<ExpireQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let days = q.days.unwrap_or(30);
+    let result = sqlx::query(
+        "UPDATE deal_redemptions SET status = 'expired' WHERE status = 'active' AND created_at < NOW() - make_interval(days => $1)"
+    )
+    .bind(days as i32)
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({"expired": result.rows_affected()})))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExpireQuery {
+    pub days: Option<i64>,
 }
