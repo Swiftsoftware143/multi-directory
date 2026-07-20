@@ -173,7 +173,12 @@ pub fn create_router(s: AppState) -> Router {
         .route("/tiers/:id", get(monetization::get_tier).put(monetization::update_tier).delete(monetization::delete_tier))
         .route("/subscriptions", get(monetization::list_subscriptions).post(monetization::create_subscription))
         .route("/subscriptions/:id", get(monetization::get_subscription).put(monetization::update_subscription).delete(monetization::delete_subscription))
+        .route("/subscriptions/plans", get(monetization::list_plans))
+        .route("/subscriptions/upgrade", post(monetization::upgrade_subscription))
+        .route("/subscriptions/downgrade", post(monetization::downgrade_subscription))
+        .route("/subscriptions/features", get(monetization::check_feature_access))
         .route("/businesses/:id/subscription", get(monetization::business_subscription))
+        .route("/businesses/:id/categories", get(monetization::list_business_categories).post(monetization::update_business_categories))
         .route("/ad-zones", get(monetization::list_ad_zones).post(monetization::create_ad_zone))
         .route("/ad-zones/:id", get(monetization::get_ad_zone).put(monetization::update_ad_zone).delete(monetization::delete_ad_zone))
         .route("/directories/:slug/ad-zones", get(monetization::directory_ad_zones))
@@ -563,6 +568,9 @@ async fn auth_guard(
         || (path == "/b2b/products" && req.method() == "GET")
         || (path.starts_with("/b2b/products/") && req.method() == "GET")
         || path == "/b2b/suppliers"
+        // Public subscription plans & feature check
+        || path == "/subscriptions/plans"
+        || path == "/subscriptions/features"
         // Public scraper provider list (read-only)
         || path == "/scraper/providers"
         // Public deal redemption (visitors redeem codes without auth)
