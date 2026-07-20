@@ -1,78 +1,29 @@
-# Supplier Guide — ZaarHub Supplier Portal
+# Supplier Guide
 
-The Supplier Portal is your back office for managing products, delivery, and orders. Access at **zaarhub.com/supplier/**
-
-## Getting Started
-
-1. Go to `zaarhub.com/supplier/` and sign in with your supplier account credentials.
-2. If you don't have an account, register at `zaarhub.com/claim-business/?type=supplier`.
-3. Once logged in, you'll land on your **Dashboard** showing product count, active listings, and delivery zones.
+Access your back office at **zaarhub.com/supplier/**
 
 ## Dashboard
+See your product count, active listings, delivery zones.
 
-The dashboard gives you a quick overview:
-- **Total Products** — all products in your catalog
-- **Active Products** — currently listed and visible to buyers
-- **Delivery Zones** — number of areas you serve
-- **Pending Orders** — incoming B2B purchase requests
+## Products
+Add/edit your catalog — name, category, price, unit, min order. Products appear instantly on the B2B marketplace.
 
-Quick-access cards let you jump to any section.
-
-## Managing Products
-
-Navigate to **Products** in the sidebar.
-
-### Add a Product
-1. Click **+ New Product**
-2. Fill in:
-   - **Product Name** — what you're selling
-   - **Category** — e.g., Produce, Dairy, Meat, Cleaning Supplies
-   - **Description** — details about the product
-   - **Price** — unit price in USD
-   - **Unit** — lb, case, pallet, each, etc.
-   - **Min Order Qty** — minimum purchase quantity
-3. Click **Create** — your product is immediately listed on the B2B marketplace
-
-### Edit a Product
-Click **Edit** on any product row, update the fields, and click **Update**.
-
-### Delete a Product
-Click **Delete** and confirm. The product is removed from the marketplace.
+## Featured Product
+Pick one product to feature on your supplier profile. Customize the CTA button text. Suppliers on premium plans can set up scheduled product rotation.
 
 ## Delivery Zones
-
-Navigate to **Delivery Zones** in the sidebar.
-
-1. Enter the cities/areas you deliver to — one per line
-2. Set your **Minimum Order Amount**
-3. Click **Save Delivery Zones**
-
-Businesses searching for suppliers will see your delivery areas and minimum order requirements.
+Set the areas you serve and minimum order amount.
 
 ## Order Inbox
+When a business orders your products, manage it here.
 
-When a business places an order for your products, it appears here. You can:
-- View order details (product, quantity, buyer info)
-- Accept or decline orders
-- Mark orders as shipped/completed
+## Profile
+Keep your business name, contact info, and description updated.
 
-## Business Profile
+## Deal Pages
+Suppliers can create B2B offers with the same deal system — templates, timer, custom colors. Featured offers link from your profile.
 
-Navigate to **Business Profile** to update:
-- Business name
-- Email
-- Phone
-- Website
-- Description
-
-This is the information businesses see when they find you on the marketplace.
-
-## Analytics
-
-View metrics on:
-- **Product Views** — how many times your products have been seen
-- **Inquiries** — businesses that reached out
-- **Completed Orders** — fulfilled orders
-- **Revenue** — total order value
-
-Analytics populate as your products receive views and orders.
+## Tips
+- Detailed descriptions get more inquiries
+- Accurate pricing builds trust
+- Set realistic delivery zones
