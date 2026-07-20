@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS tag_rules (
     name TEXT NOT NULL,
     tag_id UUID NOT NULL,
     trigger_type TEXT NOT NULL CHECK (trigger_type IN ('tag_applied', 'tag_removed', 'workflow_completed')),
-    action_type TEXT NOT NULL CHECK (action_type IN ('send_email', 'send_sms', 'webhook', 'pipeline_move', 'scoring_update', 'add_tag', 'remove_tag')),
+    action_type TEXT NOT NULL CHECK (action_type IN ('send_email', 'send_sms', 'webhook', 'pipeline_move', 'scoring_update', 'add_tag', 'remove_tag', 'issue_voucher')),
     action_config JSONB NOT NULL DEFAULT '{}',
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),

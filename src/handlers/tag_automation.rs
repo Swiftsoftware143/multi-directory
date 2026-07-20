@@ -10,6 +10,7 @@ use axum::{
     response::{IntoResponse, Redirect},
     Json,
 };
+use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -426,6 +427,21 @@ pub async fn execute_rules_for_contact(
                     }));
                 }
             }
+            "issue_voucher" => {
+                match execute_voucher_action(
+                    &s,
+                    rule,
+                    payload.contact_id,
+                ).await {
+                    Ok(res) => results.push(res),
+                    Err(e) => results.push(json!({
+                        "rule_id": rule.id,
+                        "action": "issue_voucher",
+                        "error": e.to_string(),
+                        "status": "failed"
+                    })),
+                }
+            }
             _ => {
                 results.push(json!({
                     "rule_id": rule.id,
@@ -448,6 +464,60 @@ pub struct ExecuteRulesPayload {
     pub tag_id: Uuid,
     pub trigger_type: String,
     pub contact_id: Option<Uuid>,
+}
+
+/// Execute the issue_voucher action by calling IncentiveSwift's local endpoint
+async fn execute_voucher_action(
+    s: &AppState,
+    rule: &TagRule,
+    contact_id: Option<Uuid>,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let contact_id = contact_id.ok_or("contact_id required for issue_voucher action")?;
+
+    let campaign_slug = rule.action_config
+        .get("campaign_slug").and_then(|v| v.as_str())
+        .ok_or("action_config.campaign_slug is required")?;
+    let discount_value = rule.action_config
+        .get("discount_value").and_then(|v| v.as_str())
+        .ok_or("action_config.discount_value is required")?;
+    let source_business_id = rule.action_config
+        .get("source_business_id").and_then(|v| v.as_str())
+        .ok_or("action_config.source_business_id is required")?;
+    let target_business_id = rule.action_config
+        .get("target_business_id").and_then(|v| v.as_str())
+        .ok_or("action_config.target_business_id is required")?;
+    let voucher_type = rule.action_config
+        .get("voucher_type").and_then(|v| v.as_str())
+        .unwrap_or("discount");
+    let expires_in_days = rule.action_config
+        .get("expires_in_days").and_then(|v| v.as_i64())
+        .unwrap_or(30);
+
+    let client = HttpClient::new();
+    let resp = client
+        .post("http://localhost:8083/api/v1/loyalty/issue-voucher")
+        .json(&json!({
+            "campaign_slug": campaign_slug,
+            "contact_id": contact_id,
+            "source_business_id": source_business_id,
+            "target_business_id": target_business_id,
+            "discount_value": discount_value,
+            "voucher_type": voucher_type,
+            "expires_in_days": expires_in_days,
+        }))
+        .send()
+        .await?;
+
+    let status_code = resp.status();
+    let body: Value = resp.json().await?;
+
+    Ok(json!({
+        "rule_id": rule.id,
+        "action": "issue_voucher",
+        "incentiveswift_status": status_code.as_u16(),
+        "incentiveswift_response": body,
+        "status": if status_code.is_success() { "issued" } else { "failed" }
+    }))
 }
 
 // ── Tracked Links CRUD ──
