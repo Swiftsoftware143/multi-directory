@@ -97,3 +97,10 @@ pub mod scraper;
 pub use scraper::*;
 pub mod supplier;
 pub use supplier::*;
+pub mod demand_curve;
+pub use demand_curve::*;
+pub mod contact_intelligence;
+pub use contact_intelligence::*;
+pub mod content_queue;
+// pub use content_queue::*;  -- accessed via content_queue:: prefix in routes
+pub mod tag_automation;
