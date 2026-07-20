@@ -25,6 +25,7 @@ pub struct Deal {
     pub currency: Option<String>,
     pub image_url: Option<String>,
     pub terms: Option<String>,
+    pub fine_print: Option<String>,
     pub redemption_limit: Option<i32>,
     pub redemption_count: Option<i32>,
     pub status: Option<String>,
@@ -35,6 +36,14 @@ pub struct Deal {
     pub featured: Option<bool>,
     pub deal_type: Option<String>,
     pub coupon_code: Option<String>,
+    pub page_template: Option<String>,
+    pub accent_color: Option<String>,
+    pub cta_color: Option<String>,
+    pub cta_text: Option<String>,
+    pub show_timer: Option<bool>,
+    pub gallery_images: Option<serde_json::Value>,
+    pub rotation_schedule: Option<String>,
+    pub rotation_order: Option<i32>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -49,15 +58,23 @@ pub struct CreateDealRequest {
     pub currency: Option<String>,
     pub image_url: Option<String>,
     pub terms: Option<String>,
+    pub fine_print: Option<String>,
     pub redemption_limit: Option<i32>,
-    pub status: Option<String>,
     pub directory_id: Option<Uuid>,
     pub business_id: Uuid,
-    pub start_date: Option<DateTime<Utc>>,
-    pub end_date: Option<DateTime<Utc>>,
-    pub featured: Option<bool>,
+    pub start_date: Option<chrono::DateTime<chrono::Utc>>,
+    pub end_date: Option<chrono::DateTime<chrono::Utc>>,
     pub deal_type: Option<String>,
     pub coupon_code: Option<String>,
+    pub page_template: Option<String>,
+    pub accent_color: Option<String>,
+    pub cta_color: Option<String>,
+    pub cta_text: Option<String>,
+    pub show_timer: Option<bool>,
+    pub gallery_images: Option<Vec<String>>,
+    pub status: Option<String>,
+    pub featured: Option<bool>,
+    pub rotation_schedule: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,6 +87,7 @@ pub struct UpdateDealRequest {
     pub currency: Option<String>,
     pub image_url: Option<String>,
     pub terms: Option<String>,
+    pub fine_print: Option<String>,
     pub redemption_limit: Option<i32>,
     pub status: Option<String>,
     pub directory_id: Option<Uuid>,
@@ -79,6 +97,14 @@ pub struct UpdateDealRequest {
     pub featured: Option<bool>,
     pub deal_type: Option<String>,
     pub coupon_code: Option<String>,
+    pub page_template: Option<String>,
+    pub accent_color: Option<String>,
+    pub cta_color: Option<String>,
+    pub cta_text: Option<String>,
+    pub show_timer: Option<bool>,
+    pub gallery_images: Option<Vec<String>>,
+    pub rotation_schedule: Option<String>,
+    pub rotation_order: Option<i32>,
 }
 
 /// GET /api/v1/deals — list all deals
@@ -86,7 +112,7 @@ pub async fn list_deals(
     State(s): State<AppState>,
 ) -> ApiResult<impl IntoResponse> {
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, created_at, updated_at FROM deals ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals ORDER BY created_at DESC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -99,7 +125,7 @@ pub async fn list_featured_deals(
     State(s): State<AppState>,
 ) -> ApiResult<impl IntoResponse> {
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, created_at, updated_at FROM deals WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -144,7 +170,7 @@ pub async fn get_deal(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let deal = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, created_at, updated_at FROM deals WHERE id = \x241 "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -161,7 +187,7 @@ pub async fn update_deal(
     Json(req): Json<UpdateDealRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let existing = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, created_at, updated_at FROM deals WHERE id = \x241 "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -236,7 +262,7 @@ pub async fn claim_deal(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let deal = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, created_at, updated_at FROM deals WHERE id = \x241 "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -274,7 +300,7 @@ pub async fn list_directory_deals(
     .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, created_at, updated_at FROM deals WHERE directory_id = \x241 ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals WHERE directory_id = \x241 ORDER BY created_at DESC "
     )
     .bind(dir.0)
     .fetch_all(&s.db)
@@ -297,7 +323,7 @@ pub async fn list_business_deals(
     .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, created_at, updated_at FROM deals WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
     )
     .bind(dir.0)
     .bind(business_id)
