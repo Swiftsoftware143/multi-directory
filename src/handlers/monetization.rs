@@ -1011,3 +1011,209 @@ pub async fn monetization_dashboard(
         "status": "ok"
     })))
 }
+
+/// GET /api/v1/subscriptions/plans — list available plan tiers with feature access
+pub async fn list_plans(
+    State(s): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    let plans = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, rust_decimal::Decimal, Option<String>, Option<serde_json::Value>, Option<i32>)>(
+        "SELECT id, name, price_monthly, price_yearly, description, feature_access, max_listings FROM plan_tiers ORDER BY price_monthly ASC"
+    )
+    .fetch_all(&s.db)
+    .await?;
+
+    let result: Vec<serde_json::Value> = plans.into_iter().map(|p| json!({
+        "id": p.0, "name": p.1, "price_monthly": p.2, "price_yearly": p.3,
+        "description": p.4, "features": p.5, "max_listings": p.6
+    })).collect();
+
+    Ok(Json(json!({"plans": result})))
+}
+
+/// POST /api/v1/subscriptions/upgrade — upgrade a business subscription (self-serve)
+#[derive(Debug, Deserialize)]
+pub struct UpgradeRequest {
+    pub business_id: Uuid,
+    pub plan_id: Uuid,
+    pub billing_cycle: Option<String>,
+}
+
+pub async fn upgrade_subscription(
+    State(s): State<AppState>,
+    Json(req): Json<UpgradeRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let plan = sqlx::query_as::<_, (String, rust_decimal::Decimal, rust_decimal::Decimal, Option<serde_json::Value>)>(
+        "SELECT name, price_monthly, price_yearly, feature_access FROM plan_tiers WHERE id = $1"
+    )
+    .bind(req.plan_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+
+    let price: f64 = if req.billing_cycle.as_deref() == Some("yearly") { plan.2.try_into().unwrap_or(0.0) } else { plan.1.try_into().unwrap_or(0.0) };
+
+    sqlx::query(
+        "INSERT INTO business_subscriptions (id, business_id, plan_name, price, currency, billing_cycle, status, start_date, auto_renew)          VALUES ($1, $2, $3, $4, 'USD', $5, 'active', NOW(), true)          ON CONFLICT (business_id) DO UPDATE SET plan_name = $3, price = $4, status = 'active', updated_at = NOW()"
+    )
+    .bind(Uuid::new_v4())
+    .bind(req.business_id)
+    .bind(&plan.0)
+    .bind(price)
+    .bind(req.billing_cycle.as_deref().unwrap_or("monthly"))
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({"status": "upgraded", "plan": plan.0, "price": price.to_string(), "features": plan.3})))
+}
+
+/// POST /api/v1/subscriptions/downgrade — downgrade or cancel
+#[derive(Debug, Deserialize)]
+pub struct DowngradeRequest {
+    pub business_id: Uuid,
+    pub plan_id: Option<Uuid>,
+}
+
+pub async fn downgrade_subscription(
+    State(s): State<AppState>,
+    Json(req): Json<DowngradeRequest>,
+) -> ApiResult<impl IntoResponse> {
+    if let Some(plan_id) = req.plan_id {
+        let plan = sqlx::query_as::<_, (String, f64)>(
+            "SELECT name, price_monthly FROM plan_tiers WHERE id = $1"
+        )
+        .bind(plan_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+
+        sqlx::query(
+            "UPDATE business_subscriptions SET plan_name = $1, price = $2, status = 'active', updated_at = NOW() WHERE business_id = $3"
+        )
+        .bind(&plan.0)
+        .bind(plan.1)
+        .bind(req.business_id)
+        .execute(&s.db)
+        .await?;
+
+        Ok(Json(json!({"status": "downgraded", "plan": plan.0})))
+    } else {
+        sqlx::query(
+            "UPDATE business_subscriptions SET status = 'cancelled', updated_at = NOW() WHERE business_id = $1"
+        )
+        .bind(req.business_id)
+        .execute(&s.db)
+        .await?;
+
+        Ok(Json(json!({"status": "cancelled"})))
+    }
+}
+
+/// GET /api/v1/subscriptions/features — check feature access for a business
+pub async fn check_feature_access(
+    State(s): State<AppState>,
+    Query(qs): Query<FeatureCheckQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let features = sqlx::query_as::<_, (Option<String>, Option<serde_json::Value>, Option<i32>)>(
+        r#"SELECT bs.plan_name, pt.feature_access, pt.max_listings
+           FROM business_subscriptions bs
+           LEFT JOIN plan_tiers pt ON LOWER(pt.name) = LOWER(bs.plan_name)
+           WHERE bs.business_id = $1 AND bs.status = 'active'"#
+    )
+    .bind(qs.business_id)
+    .fetch_optional(&s.db)
+    .await?;
+
+    match features {
+        Some((plan_name, feature_access, max_cats)) => {
+            Ok(Json(json!({
+                "plan": plan_name,
+                "features": feature_access.unwrap_or(serde_json::json!({})),
+                "max_listings": max_cats.unwrap_or(1)
+            })))
+        }
+        None => Ok(Json(json!({
+            "plan": "Listed",
+            "features": {
+                "deals": false, "community_posts": false, "blogging": false,
+                "b2b_access": false, "multi_category": false, "custom_branding": false
+            },
+            "max_listings": 1
+        })))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FeatureCheckQuery {
+    pub business_id: Uuid,
+}
+
+/// POST /api/v1/businesses/:id/categories — manage multi-category assignment
+#[derive(Debug, Deserialize)]
+pub struct UpdateCategoriesRequest {
+    pub category_ids: Vec<Uuid>,
+    pub primary_category_id: Option<Uuid>,
+}
+
+pub async fn update_business_categories(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateCategoriesRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // Check max categories from subscription
+    let sub_info = sqlx::query_as::<_, (Option<i32>,)>(
+        "SELECT pt.max_listings FROM business_subscriptions bs          LEFT JOIN plan_tiers pt ON LOWER(pt.name) = LOWER(bs.plan_name)          WHERE bs.business_id = $1 AND bs.status = 'active'"
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .unwrap_or((Some(1),));
+
+    let max_cats = sub_info.0.unwrap_or(1) as usize;
+    if req.category_ids.len() > max_cats {
+        return Err(AppError::BadRequest(format!("Your plan allows max {} categories. Upgrade to add more.", max_cats)));
+    }
+
+    // Remove existing
+    sqlx::query("DELETE FROM business_categories WHERE business_id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+
+    // Insert new
+    for (i, cat_id) in req.category_ids.iter().enumerate() {
+        let is_primary = Some(*cat_id) == req.primary_category_id || (req.primary_category_id.is_none() && i == 0);
+        sqlx::query(
+            "INSERT INTO business_categories (business_id, category_id, is_primary) VALUES ($1, $2, $3)"
+        )
+        .bind(id)
+        .bind(cat_id)
+        .bind(is_primary)
+        .execute(&s.db)
+        .await?;
+    }
+
+    Ok(Json(json!({"status": "updated", "categories": req.category_ids.len()})))
+}
+
+/// GET /api/v1/businesses/:id/categories — list all categories for a business
+pub async fn list_business_categories(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let cats = sqlx::query_as::<_, (Uuid, String, bool)>(
+        r#"SELECT bc.category_id, dc.name, bc.is_primary
+           FROM business_categories bc
+           LEFT JOIN directory_categories dc ON dc.id = bc.category_id
+           WHERE bc.business_id = $1
+           ORDER BY bc.is_primary DESC, dc.name ASC"#
+    )
+    .bind(id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let result: Vec<serde_json::Value> = cats.into_iter().map(|c| json!({
+        "id": c.0, "name": c.1, "is_primary": c.2
+    })).collect();
+
+    Ok(Json(result))
+}
