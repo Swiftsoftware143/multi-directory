@@ -426,6 +426,88 @@ async function testCrmConn(){
     toast("Connection failed: "+e.message,"error");
   }
 }
+
+async function loadApiKeys(){
+  var el=document.getElementById("pageContent"),pa=document.getElementById("pageActions");
+  pa.innerHTML='<button class="btn btn-secondary btn-sm" onclick="loadApiKeys()">↻ Refresh</button>';
+  el.innerHTML='<div style="text-align:center;padding:40px"><span class="spinner-teal"></span></div>';
+  try{
+    // Load available providers
+    var provs=await g("/api/v1/scraper/providers");
+    // Load existing provider keys
+    var keys={};
+    try{
+      var allKeys=await g("/api/v1/provider-keys");
+      allKeys.forEach(function(k){keys[k.provider]=k;});
+    }catch(e){/* no keys yet */}
+    
+    var h='<div style="max-width:700px">'+
+      '<h3 style="color:var(--teal);margin-bottom:16px">🔑 API Keys & Data Sources</h3>'+
+      '<p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:20px">Configure API keys for data import and enrichment. Keys set here are available across all directories in your network.</p>'+
+      '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--teal)">'+
+      '<h4 style="margin-bottom:4px">🌐 Google Places</h4>'+
+      '<p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px">Search and import business listings by location and category. Results are deduplicated and merged automatically.</p>'+
+      '<div class="form-group"><label>Google Places API Key</label><input id="gk_google_places" value="'+esc((keys.google_places||{}).api_key||"")+'" placeholder="AIza..." style="width:100%"></div>'+
+      '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" onclick="saveApiKey('google_places')">Save Key</button><button class="btn btn-secondary btn-sm" onclick="testApiKey('google_places')">Test Key</button><span id="gk_status_google_places" style="font-size:.8rem;margin-left:8px"></span></div>'+
+      '</div>';
+    
+    h+='<div class="card" style="margin-bottom:16px">'+
+      '<h4 style="margin-bottom:4px">📊 BrightLocal</h4>'+
+      '<p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px">Local business data — listings, reviews, citations across multiple directories.</p>'+
+      '<div class="form-group"><label>BrightLocal API Key</label><input id="gk_brightlocal" value="'+esc((keys.brightlocal||{}).api_key||"")+'" placeholder="Enter API key..." style="width:100%"></div>'+
+      '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" onclick="saveApiKey('brightlocal')">Save Key</button><span id="gk_status_brightlocal" style="font-size:.8rem;margin-left:8px"></span></div>'+
+      '</div>';
+    
+    h+='<div class="card" style="margin-bottom:16px">'+
+      '<h4 style="margin-bottom:4px">📋 Yext</h4>'+
+      '<p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px">Business listings management across major platforms.</p>'+
+      '<div class="form-group"><label>Yext API Key</label><input id="gk_yext" value="'+esc((keys.yext||{}).api_key||"")+'" placeholder="Enter API key..." style="width:100%"></div>'+
+      '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" onclick="saveApiKey('yext')">Save Key</button><span id="gk_status_yext" style="font-size:.8rem;margin-left:8px"></span></div>'+
+      '</div>';
+    
+    h+='<div class="card" style="margin-bottom:16px">'+
+      '<h4 style="margin-bottom:4px">📍 Uberall</h4>'+
+      '<p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px">Local business presence management and listing sync.</p>'+
+      '<div class="form-group"><label>Uberall API Key</label><input id="gk_uberall" value="'+esc((keys.uberall||{}).api_key||"")+'" placeholder="Enter API key..." style="width:100%"></div>'+
+      '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" onclick="saveApiKey('uberall')">Save Key</button><span id="gk_status_uberall" style="font-size:.8rem;margin-left:8px"></span></div>'+
+      '</div>'+
+      '</div>';
+    
+    h+='<div class="card" style="margin-top:24px"><h4 style="margin-bottom:8px">🔌 Data Import</h4>'+
+      '<p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">With your API keys configured, go to the Data Import tab or use the scraper API to populate directories.</p>'+
+      '<p style="font-size:.8rem;color:var(--text-secondary)">API endpoints: <code>/api/v1/scraper/import</code> (POST) & <code>/api/v1/pipeline/ingest</code> (POST)</p></div>';
+    
+    el.innerHTML = h;
+  }catch(e){
+    el.innerHTML = '<div class="empty-state"><div class="icon">🔑</div><h3>API Keys</h3><p>'+esc(e.message||"Could not load API key settings")+'</p></div>';
+  }
+}
+
+async function saveApiKey(provider){
+  var key=document.getElementById("gk_"+provider)?.value?.trim();
+  var statusEl=document.getElementById("gk_status_"+provider);
+  if(!key){statusEl.textContent="❌ Key required";statusEl.style.color="#ef4444";return;}
+  statusEl.textContent="Saving...";statusEl.style.color="";
+  try{
+    await po("/api/v1/provider-keys/"+provider,{api_key:key});
+    statusEl.textContent="✅ Saved";statusEl.style.color="#22c55e";
+    setTimeout(function(){statusEl.textContent="";},3000);
+  }catch(e){
+    statusEl.textContent="❌ "+e.message;statusEl.style.color="#ef4444";
+  }
+}
+
+async function testApiKey(provider){
+  var statusEl=document.getElementById("gk_status_"+provider);
+  statusEl.textContent="Testing...";statusEl.style.color="";
+  try{
+    var res=await g("/api/v1/provider-keys/"+provider+"/test");
+    statusEl.textContent="✅ "+res.message;statusEl.style.color="#22c55e";
+  }catch(e){
+    statusEl.textContent="❌ "+e.message;statusEl.style.color="#ef4444";
+  }
+}
+
 async function loadWorkflows(){
   var el=document.getElementById("pageContent"),pa=document.getElementById("pageActions");
   pa.innerHTML='<button class="btn btn-secondary btn-sm" onclick="loadWorkflows()">↻ Refresh</button>';
