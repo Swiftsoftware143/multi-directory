@@ -1,85 +1,30 @@
-# Business Owner Guide — ZaarHub
+# Business Owner Guide
 
-The Business Owner Portal lets you manage your listing, run deals, publish articles, and engage with your community. Access through your city's directory page by signing into your claimed business account.
+Sign into your dashboard through your city's directory page.
 
-## Getting Started
-
-1. Find your business on your city's ZaarHub directory page.
-2. Click **Claim Your Business** and verify ownership.
-3. Set up your dashboard password and sign in.
-4. Complete your business profile.
-
-## Dashboard
-
-Your dashboard shows:
-- **Listings** — your claimed businesses
-- **Subscription Status** — current plan and billing
-- **Recent Activity** — views, deal claims, reviews
-
-## Managing Your Listing
-
-Keep your business information up to date:
-- Hours of operation
-- Phone, email, website
-- Description and services
-- Photos
-- Categories
-
-An accurate, complete listing ranks higher in search and attracts more customers.
+## Your Dashboard
+Manage your listing, run deals, publish articles, engage with your community.
 
 ## Running Deals
+Create deals with templates — percentage off, fixed price, BOGO, free gift. Set colors, CTA text, countdown timer, gallery images. **Feature a deal on your listing** with a custom button text ("Deal of the Week 🔥", "Today's Special").
 
-Deals are your most powerful tool. Create them with templates:
+### Tier Limits
+| Plan | Active Deals | Rotations |
+|---|---|---|
+| Free/Listed | 0 | 0 |
+| Featured | 3 | 0 |
+| Premium | 10 | 5 |
 
-1. Go to **Deals** in your dashboard
-2. Click **+ New Deal**
-3. Choose a template:
-   - **Percentage Off** — X% discount
-   - **Fixed Price** — item/service at a set price
-   - **BOGO** — buy one get one
-   - **Free Gift** — free item or service
-4. Set limits, start/end dates, and terms
-5. Submit for admin approval (usually same day)
+Set rotation schedules on Premium to auto-rotate deals daily, weekly, or monthly.
 
-Customers claim your deal and get a redemption code. You scan their code to redeem it.
+## Deal Pages
+Each deal gets a public page at `zaarhub.com/deals/{id}` with live countdown timer, your branding, and a redeem button. Customers claim deals and get a code to use in-store.
 
 ## Community Posts
+Share updates with your local community. Posts appear on your city's community page.
 
-Share updates, events, and news with your local community:
-- Posts appear on your city's community page
-- Use templates for consistent formatting
-- Include photos to get more engagement
-- Posts are reviewed by admin before publishing
-
-## Business Blogging
-
-Publish articles to showcase your expertise:
-- SEO-optimized articles improve your search ranking
-- Each article links back to your listing
-- Use templates for professional formatting
-- Track views and engagement in your analytics
-
-## B2B Supply Chain
-
-If you're a restaurant, retailer, or service business:
-1. Browse the **Suppliers** section to find distributors, farms, and wholesalers
-2. Search by product category or delivery area
-3. Contact suppliers directly through the platform
-4. Build local supply chains that save money and support nearby businesses
+## B2B Suppliers
+Browse the Suppliers tab in your city to find distributors, farms, and wholesalers. Search by type or product category.
 
 ## Analytics
-
-Track your performance:
-- **Listing Views** — how many people see your business
-- **Deal Claims** — how many customers claim your offers
-- **Article Views** — engagement with your published content
-- **Review Stats** — ratings and feedback from customers
-
-## Subscription
-
-Your subscription determines what features you can use:
-- **Free** — listing, basic profile
-- **Featured** — deals, community posts, enhanced listing
-- **Premium** — everything including blog articles, analytics, B2B access
-
-Pricing is locked in at signup — grandfathered rates never increase as long as your subscription stays active.
+Track listing views, deal claims, and engagement.
