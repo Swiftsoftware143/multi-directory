@@ -237,3 +237,25 @@ pub async fn list_available_providers(
         "data": providers
     })))
 }
+
+
+/// GET /api/v1/provider-keys/:provider/test — test if a provider key is configured
+pub async fn test_provider_key(
+    State(s): State<AppState>,
+    Path(provider): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let key = sqlx::query_scalar::<_, String>(
+        "SELECT api_key FROM provider_keys WHERE provider = $1 AND is_active = true LIMIT 1"
+    )
+    .bind(&provider)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("No API key found for provider '{}'", provider)))?;
+
+    Ok(Json(json!({
+        "provider": provider,
+        "configured": true,
+        "key_preview": format!("{}...", &key[..8.min(key.len())]),
+        "message": format!("{} API key is configured", provider)
+    })))
+}

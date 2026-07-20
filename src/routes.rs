@@ -271,7 +271,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/webhooks/:id/deliveries", get(api_complete::list_webhook_deliveries))
         // ??? Provider keys management
         .route("/provider-keys", get(provider_keys_handler::list_provider_keys).post(provider_keys_handler::upsert_provider_key))
-        .route("/provider-keys/:provider", delete(provider_keys_handler::delete_provider_key))
+        .route("/provider-keys/:provider", put(provider_keys_handler::upsert_provider_key).delete(provider_keys_handler::delete_provider_key))
+        .route("/provider-keys/:provider/test", get(provider_keys_handler::test_provider_key))
         // ??? Payment provider management
         .route("/payment-providers", get(checkout_handler::list_payment_providers).post(checkout_handler::upsert_payment_provider))
         .route("/payment-providers/{provider_type}", delete(checkout_handler::delete_payment_provider))
@@ -568,11 +569,14 @@ async fn auth_guard(
         || (path == "/b2b/products" && req.method() == "GET")
         || (path.starts_with("/b2b/products/") && req.method() == "GET")
         || path == "/b2b/suppliers"
-        // Public subscription plans & feature check
+        // Public scraper provider list (read-only)
+        || path == "/scraper/providers"
+        // Public provider key test
+        || (path.starts_with("/provider-keys/") && path.ends_with("/test"))
+        // Public subscription plans + features
         || path == "/subscriptions/plans"
         || path == "/subscriptions/features"
         // Public scraper provider list (read-only)
-        || path == "/scraper/providers"
         // Public deal redemption (visitors redeem codes without auth)
         || (path.starts_with("/deals/") && path.ends_with("/redeem") && req.method() == "POST")
         || (path.starts_with("/deals/redemptions/code/") && req.method() == "GET")
