@@ -180,7 +180,7 @@ async function editDeal(did){showDealModal(did);}
 async function deleteDeal(did){if(!confirm("Delete this deal?"))return;try{await dl("/api/v1/deals/"+did);toast("Deal deleted");loadDeals();}catch(e){toast(e.message,"error");}}
 async function claimDeal(did){try{var d=await po("/api/v1/deals/"+did+"/claim");toast("Deal claimed! Redemptions: "+d.redemption_count,"success");loadDeals();}catch(e){toast(e.message,"error");}}
 
-var PGS=["dashboard","directories","dirdash","listings","search","categories","reviews","blog","legals","deals","analytics","submissions","seo","apikeys","settings","pages","calls","crm","monetization","email","datacompany","webhooks","domains","branding",'bloggen','newsletter','busarticles','integrations','workflows'];if(PGS.indexOf(CP)===-1)CP="dashboard";
+var PGS=["dashboard","directories","dirdash","listings","search","categories","reviews","blog","legals","deals","analytics","submissions","seo","apikeys","settings","pages","calls","crm","monetization","email","datacompany","webhooks","domains","branding",'bloggen','newsletter','busarticles','integrations','workflows','contentqueue'];if(PGS.indexOf(CP)===-1)CP="dashboard";
 function esc(s){if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 var WT={
 dashboard:{i:"📊",t:"Dashboard",x:"Welcome to Multi-Directory! Monitor your directory network, track listings, searches, and user engagement at a glance."},
@@ -193,6 +193,7 @@ settings:{i:"⚙️",t:"Settings",x:"Configure your directory platform, manage t
 blog:{i:"📝",t:"Blog",x:"Publish SEO-optimized blog posts per directory. Write articles about local businesses, events, guides. Each post is indexed by search engines."},
 legals:{i:"⚖️",t:"Legal Pages",x:"Create and manage legal pages for your directories. Privacy policy, terms of service, disclaimers, and more. Pages appear in the footer of directory landing pages."},deals:{i:"🎟️",t:"Deals",x:"Create and manage deals, coupons, and promotions. Set up Groupon-style offers with discounts, redemption limits, and scheduling for your directory businesses."},analytics:{i:"📊",t:"Analytics",x:"Track page views, listing views, clicks, and deal claims. View summary stats, per-directory breakdowns, and recent events across your directory network."},seo:{i:"🔍",t:"SEO",x:"Manage SEO meta tags, sitemap configuration, and search engine optimization for your directories and listings."},
 trapdoors:{i:"🪤",t:"Hyper-Niche Pages",x:"Create automated hyper-specific landing pages targeting long-tail SEO queries. These trap doors catch traffic that big competitors ignore."},
+contentqueue:{i:"📅",t:"Content Queue",x:"Schedule blog posts and hyper-niche pages in advance. View pending, edit, cancel, or bulk-add jobs. Set weekly email campaigns and recurring content generation."},
 busarticles:{i:"📝",t:"SEO Articles",x:"Generate SEO-optimized articles for businesses in your directory. Each article targets specific keywords and links back to a business listing. Free for your own SEO, paid recurring for businesses."},integrations:{i:"🔌",t:"Integrations",x:"Connect third-party services: CRM, email autoresponder, webhooks, and more."},workflows:{i:"⚡",t:"Workflows",x:"Automate your business processes with pre-built workflow templates. Trigger actions, query data, send emails, and more."}};
 var TEMPLATES=[{slug:"default",name:"Teal (Default)",colors:{primary:"#0d9488",secondary:"#14b8a6",accent:"#0f766e",background:"#f0fdfa",text:"#0f172a"},emoji:"\ud83c\udfe0"},{slug:"farm",name:"Farm and Ag",colors:{primary:"#2d6a4f",secondary:"#40916c",accent:"#d4a373",background:"#fafaf5",text:"#1a1a2e"},emoji:"\ud83c\udf3e"},{slug:"medical",name:"Medical and Health",colors:{primary:"#2563eb",secondary:"#3b82f6",accent:"#1d4ed8",background:"#eff6ff",text:"#0f172a"},emoji:"\ud83c\udfe5"},{slug:"real-estate",name:"Real Estate",colors:{primary:"#1e3a5f",secondary:"#1e4d8c",accent:"#cbd5e1",background:"#f8fafc",text:"#0f172a"},emoji:"\ud83c\udfe2"},{slug:"restaurant",name:"Restaurants",colors:{primary:"#d97706",secondary:"#f59e0b",accent:"#92400e",background:"#fffbeb",text:"#0f172a"},emoji:"\ud83c\udf7d\ufe0f"},{slug:"service",name:"Services",colors:{primary:"#7c3aed",secondary:"#8b5cf6",accent:"#5b21b6",background:"#f5f3ff",text:"#0f172a"},emoji:"\ud83d\udd27"}];function getTemplate(s){for(var i=0;i<TEMPLATES.length;i++){if(TEMPLATES[i].slug===s)return TEMPLATES[i];}return TEMPLATES[0];}function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");}function showWalkthrough(p){var w=WT[p];if(!w)return;var k="ws_dir_"+p+"_dismissed";if(localStorage.getItem(k))return;document.getElementById("walkthroughIcon").textContent=w.i;document.getElementById("walkthroughTitle").textContent=w.t;document.getElementById("walkthroughText").textContent=w.x;var d=document.getElementById("walkthroughDots"),h="";for(var i=0;i<PGS.length;i++)h+="<span"+(PGS[i]===p?" class=\"active\"":"")+"></span>";d.innerHTML=h;document.getElementById("walkthroughOverlay").style.display="flex";}
 function dismissWalkthrough(){localStorage.setItem("ws_dir_"+CP+"_dismissed","true");closeWalkthrough();}
@@ -205,8 +206,8 @@ function g(p){return api("GET",p);}function po(p,b){return api("POST",p,b);}func
 function closeModal(id){var m=document.getElementById(id);if(m)m.remove();}
 function spn(){var d=document.createElement("div");d.style.cssText="text-align:center;padding:40px";d.innerHTML="<span class=\"spinner-teal\"></span>";return d;}
 var TTL={dirdash:"Directory",dashboard:"Dashboard",directories:"Directories",listings:"Listings",search:"Search",categories:"Categories",seo:"SEO",apikeys:"API Keys",settings:"Settings",blog:"Blog",legals:"Legal Pages",reviews:"Reviews",reviews:"Reviews",deals:"Deals",analytics:"Analytics",submissions:"Submissions",calls:"Call Tracking",crm:"CRM"};
-var TTL={dirdash:"Directory",dashboard:"Dashboard",directories:"Directories",listings:"Listings",search:"Search",categories:"Categories",seo:"SEO",apikeys:"API Keys",settings:"Settings",blog:"Blog",legals:"Legal Pages",reviews:"Reviews",reviews:"Reviews",deals:"Deals",analytics:"Analytics",submissions:"Submissions",pages:"Public Pages",calls:"Call Tracking",crm:"CRM",monetization:"Monetization",email:"Email",datacompany:"Data Company",webhooks:"Webhooks",domains:"Domains",branding:"Branding",admanager:"Ad Manager",bloggen:"Blog Generator",newsletter:"Newsletter",trapdoors:"Trap Doors",busarticles:"SEO Articles",dirdash:"Directory",integrations:"Integrations",workflows:"Workflows"};
-var ICO={dirdash:"📂",dashboard:"📊",directories:"📁",listings:"📋",search:"🔍",categories:"🏷",seo:"🔍",apikeys:"🔑",settings:"⚙️",blog:"📝",legals:"⚖️",reviews:"⭐",reviews:"⭐",deals:"🎟️",analytics:"📊",submissions:"📋",pages:"🌐",calls:"📞",crm:"👥",monetization:"💰",email:"📧",datacompany:"🏢",webhooks:"🔗",domains:"🌍",branding:"🎨",admanager:"📢",bloggen:"🤖",newsletter:"📧",trapdoors:"🪨",busarticles:"📝",workflows:"⚡"};
+var TTL={dirdash:"Directory",dashboard:"Dashboard",directories:"Directories",listings:"Listings",search:"Search",categories:"Categories",seo:"SEO",apikeys:"API Keys",settings:"Settings",blog:"Blog",legals:"Legal Pages",reviews:"Reviews",reviews:"Reviews",deals:"Deals",analytics:"Analytics",submissions:"Submissions",pages:"Public Pages",calls:"Call Tracking",crm:"CRM",monetization:"Monetization",email:"Email",datacompany:"Data Company",webhooks:"Webhooks",domains:"Domains",branding:"Branding",admanager:"Ad Manager",bloggen:"Blog Generator",newsletter:"Newsletter",trapdoors:"Trap Doors",busarticles:"SEO Articles",dirdash:"Directory",integrations:"Integrations",workflows:"Workflows",contentqueue:"Content Queue"};
+var ICO={dirdash:"📂",dashboard:"📊",directories:"📁",listings:"📋",search:"🔍",categories:"🏷",seo:"🔍",apikeys:"🔑",settings:"⚙️",blog:"📝",legals:"⚖️",reviews:"⭐",reviews:"⭐",deals:"🎟️",analytics:"📊",submissions:"📋",pages:"🌐",calls:"📞",crm:"👥",monetization:"💰",email:"📧",datacompany:"🏢",webhooks:"🔗",domains:"🌍",branding:"🎨",admanager:"📢",bloggen:"🤖",newsletter:"📧",trapdoors:"🪨",busarticles:"📝",workflows:"⚡",contentqueue:"📅"};
 function navigate(p){CP=p;history.pushState({page:p},"",location.pathname+"#"+p);render();}
 window.addEventListener("popstate",function(e){CP=(e.state&&e.state.page)||"dashboard";if(DD&&CP!=="dirdash"&&CP.indexOf("dir")!==0){DD=null;}render();});
 function renderLogin(){var hi=document.getElementById("helpIcon");if(hi)hi.style.display="none";document.getElementById("app").innerHTML=
@@ -268,7 +269,7 @@ async function loadAnalytics(){var el=document.getElementById("pageContent"),pa=
     // ── Global admin sidebar ──────────────────────────────────────────────
     var groups=[
   {label:"",pages:["dashboard","directories"]},
-  {label:"📝 CONTENT",pages:["listings","categories","blog","bloggen","busarticles","newsletter","pages"]},
+  {label:"📝 CONTENT",pages:["listings","categories","blog","bloggen","busarticles","newsletter","pages","contentqueue"]},
   {label:"🔍 SEO",pages:["seo","branding"]},
   {label:"💰 MONETIZATION",pages:["monetization","deals","calls","crm","email"]},
   {label:"⚡ AUTOMATION",pages:["workflows"]},
@@ -299,7 +300,7 @@ document.getElementById("pageTitle").textContent=TTL[CP]||"Dashboard";
 document.getElementById("pageActions").innerHTML="";
 document.getElementById("pageContent").innerHTML="";
 switch(CP){case"bloggen":loadBlogGen();break;case"newsletter":loadNewsletter();break;case"dashboard":loadDashboard();break;case"directories":loadDirectories();break;case"listings":loadListings();break;case"search":loadSearch();break;case"categories":loadCategories();break;case"reviews":loadReviews();break;case"reviews":loadReviews();break;case"apikeys":loadApiKeys();break;case"settings":loadSettings();break;case"blog":loadBlog();break;case"legals":loadLegals();break;case"analytics":loadAnalytics();break;case"deals":loadDeals();break;case"submissions":loadSubmissions();break;case"seo":loadSeo();break;
-case"email":loadEmail();break;case"pages":loadPublicPages();break;case"crm":loadCrm();break;case"calls":loadCalls();break;case"monetization":loadMonetization();break;case"datacompany":loadDataCompany();break;case"webhooks":loadWebhooks();break;case"domains":loadDomains();break;case"branding":loadBranding();break;case"trapdoors":loadTrapDoors();break;case"busarticles":loadBusArticles();break;case"dirdash":loadDirDashboard();break;case"integrations":loadIntegrations();break;case"workflows":loadWorkflows();break;}
+case"email":loadEmail();break;case"pages":loadPublicPages();break;case"crm":loadCrm();break;case"calls":loadCalls();break;case"monetization":loadMonetization();break;case"datacompany":loadDataCompany();break;case"webhooks":loadWebhooks();break;case"domains":loadDomains();break;case"branding":loadBranding();break;case"trapdoors":loadTrapDoors();break;case"busarticles":loadBusArticles();break;case"dirdash":loadDirDashboard();break;case"integrations":loadIntegrations();break;case"workflows":loadWorkflows();break;case"contentqueue":loadContentQueue();break;}
 setTimeout(function(){showWalkthrough(CP)},100);;if(DD){var sbt=document.getElementById("sidebarTitle");var sbs=document.getElementById("sidebarSubtitle");if(sbt){sbt.innerHTML=\x27<a onclick="exitDirDashboard()" style="cursor:pointer;text-decoration:none;color:inherit"><span style="font-size:.85rem">\u2B05</span></a> \U0001F4C2 \x27+esc(DD.name);}if(sbs){sbs.textContent=\x27Directory Dashboard\x27;}}}
 
 // ── Directory Dashboard Mode ─────────────────────────────────────────
@@ -628,3 +629,274 @@ function renderCrmPipelines(pipelines){if(!pipelines||!pipelines.length)return'<
 function renderCrmDeals(deals){if(!deals||!deals.length)return'<div class="empty-state"><div class="icon">💰</div><h3>No Deals Yet</h3><p>Create deals to track opportunities and revenue.</p><div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="showDealModal()">+ New Deal</button></div></div>';var h='<div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="showDealModal()">+ New Deal</button></div><div class="card-grid">';for(var i=0;i<deals.length;i++){var d=deals[i];var statusColor=d.status==="open"?"blue":d.status==="won"?"green":"red";var statusBg=d.status==="open"?"#1e3a5f":d.status==="won"?"#14532d":"#7f1d1d";var statusText=d.status==="open"?"#bfdbfe":d.status==="won"?"#bbf7d0":"#fca5a5";h+='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h4 style="font-size:1rem;color:var(--teal)">'+esc(d.title)+'</h4><span class="badge" style="background:'+statusBg+';color:'+statusText+'">'+esc(d.status||"open")+'</span></div>';if(d.value)h+='<div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:4px">'+esc(d.currency||"USD")+" "+d.value+'</div>';if(d.stage)h+='<div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:4px">Stage: '+esc(d.stage)+'</div>';if(d.expected_close_date)h+='<div style="font-size:.75rem;color:var(--text-secondary)">Close: '+esc(d.expected_close_date)+'</div>';h+='<div class="flex mt-2"><button class="btn btn-sm btn-secondary" onclick="showDealModal(\x27+d.id+\x27)">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteDeal(\x27+d.id+\x27)">Delete</button></div></div>';}h+="</div>";return h;}
 
 function showCrmTab(tab){var c=document.getElementById("crmTabContent");if(!c)return;if(tab==="contacts")c.innerHTML=renderCrmContacts(window.crmContacts);else if(tab==="pipelines")c.innerHTML=renderCrmPipelines(window.crmPipelines);else if(tab==="deals")c.innerHTML=renderCrmDeals(window.crmDeals);var btns=document.querySelectorAll("#pageContent .btn-primary");if(btns.length)for(var i=0;i<btns.length;i++){btns[i].className=btns[i].className.replace(" btn-primary","")+" btn-secondary";}var tabs=document.querySelectorAll("#pageContent div[style*=\"display:flex\"][style*=\"gap:8px\"] button");if(tabs&&tabs.length){for(var i=0;i<tabs.length;i++){if(tabs[i].textContent.includes(tab==="contacts"?"👥":tab==="pipelines"?"🔄":"💰")){tabs[i].className="btn btn-primary btn-sm";}else{tabs[i].className="btn btn-secondary btn-sm";}}}}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📅 CONTENT QUEUE — Schedule blog and trap door content in advance
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var CQ={}; // cache
+
+async function loadContentQueue(){
+  var el=document.getElementById("pageContent");
+  var pa=document.getElementById("pageActions");
+  var statusFilter=localStorage.getItem("cq_status")||"";
+  var page=parseInt(localStorage.getItem("cq_page"))||1;
+  pa.innerHTML='<button class="btn btn-primary btn-sm" onclick="showAddJobModal()">+ Add Job</button><button class="btn btn-secondary btn-sm" onclick="showBulkAddModal()">📋 Bulk Add</button><button class="btn btn-secondary btn-sm" onclick="loadContentQueue()">↻ Refresh</button>';
+  el.innerHTML='<div style="text-align:center;padding:40px"><span class="spinner-teal"></span></div>';
+  try{
+    var qs="";
+    if(statusFilter)qs+="&status="+encodeURIComponent(statusFilter);
+    var data=await g("/api/v1/admin/content-queue?page="+page+"&per_page=25"+qs);
+    if(!data){el.innerHTML='<div class="empty-state"><div class="icon">📅</div><h3>Could not load queue</h3><p>API returned empty response.</p></div>';return;}
+    var items=data.items||[];
+    var total=data.total||0;
+    var totalPages=data.total_pages||1;
+    CQ.items=items;
+    CQ.total=total;
+    CQ.page=page;
+    CQ.totalPages=totalPages;
+    // ── Filter bar ──
+    var h='<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
+    h+='<select id="cqStatusFilter" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem" onchange="CQfilterChange()">';
+    h+='<option value="">All Statuses</option>';
+    h+='<option value="pending"'+(statusFilter==="pending"?" selected":"")+'>⏳ Pending</option>';
+    h+='<option value="generating"'+(statusFilter==="generating"?" selected":"")+'>🔄 Generating</option>';
+    h+='<option value="completed"'+(statusFilter==="completed"?" selected":"")+'>✅ Completed</option>';
+    h+='<option value="failed"'+(statusFilter==="failed"?" selected":"")+'>❌ Failed</option>';
+    h+='<option value="cancelled"'+(statusFilter==="cancelled"?" selected":"")+'>🚫 Cancelled</option>';
+    h+='</select>';
+    h+='<span style="font-size:.85rem;color:var(--text-secondary);align-self:center">'+total+' job'+(total!==1?"s":"")+' total</span>';
+    h+='</div>';
+    if(!items.length){
+      h+='<div class="empty-state"><div class="icon">📅</div><h3>No Jobs in Queue</h3><p>Schedule blog posts or trap door pages in advance. Click "+ Add Job" to get started.</p><div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="showAddJobModal()">+ Add Job</button><button class="btn btn-secondary btn-sm" onclick="showBulkAddModal()">📋 Bulk Add</button></div></div>';
+      el.innerHTML=h;return;
+    }
+    // ── Table ──
+    h+='<div class="table-wrap"><table><thead><tr>';
+    h+='<th>Keyword</th><th>Type</th><th>Directory</th><th>Scheduled</th><th>Status</th><th>Retries</th><th>Actions</th>';
+    h+='</tr></thead><tbody>';
+    for(var i=0;i<items.length;i++){
+      var j=items[i];
+      var badge=CQstatusBadge(j.status);
+      var typeLabel=j.queue_type==="trap_door"?'<span class="badge" style="background:#1e3a5f;color:#bfdbfe">🪤 Trap Door</span>':'<span class="badge" style="background:#713f12;color:#fde68a">📝 Blog</span>';
+      var retries=j.retry_count||0;
+      var sched=formatDate(j.scheduled_for);
+      var canEdit=j.status==="pending";
+      var canCancel=j.status!=="completed"&&j.status!=="cancelled";
+      h+='<tr>';
+      h+='<td><strong>'+esc(j.keyword)+'</strong></td>';
+      h+='<td>'+typeLabel+'</td>';
+      h+='<td><code style="font-size:.75rem">'+(j.directory_id?j.directory_id.substring(0,8):"-")+'</code></td>';
+      h+='<td style="white-space:nowrap;font-size:.85rem">'+sched+'</td>';
+      h+='<td>'+badge+'</td>';
+      h+='<td style="text-align:center">'+retries+'</td>';
+      h+='<td><div class="flex">';
+      if(canEdit)h+='<button class="btn btn-sm btn-secondary" onclick="showEditJobModal(\x27'+j.id+'\x27)">✏️ Edit</button>';
+      if(canCancel)h+='<button class="btn btn-sm btn-danger" onclick="confirmCancelJob(\x27'+j.id+'\x27)">🚫 Cancel</button>';
+      if(j.error_message)h+='<button class="btn btn-sm btn-secondary" style="background:#fef2f2;color:#dc2626" onclick="toast(\x27'+esc(j.error_message).replace(/'/g,"\\'")+'\x27,\'error\')">ℹ️ Error</button>';
+      h+='</div></td>';
+      h+='</tr>';
+    }
+    h+='</tbody></table></div>';
+    // ── Pagination ──
+    if(totalPages>1){
+      h+='<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px">';
+      h+='<button class="btn btn-sm btn-secondary" onclick="CQgoPage(1)" '+(page<=1?'disabled':'')+'>&#171; First</button>';
+      h+='<button class="btn btn-sm btn-secondary" onclick="CQgoPage('+(page-1)+')" '+(page<=1?'disabled':'')+'>&#8249; Prev</button>';
+      h+='<span style="font-size:.85rem;color:var(--text-secondary)">Page '+page+' of '+totalPages+'</span>';
+      h+='<button class="btn btn-sm btn-secondary" onclick="CQgoPage('+(page+1)+')" '+(page>=totalPages?'disabled':'')+'>Next &#8250;</button>';
+      h+='<button class="btn btn-sm btn-secondary" onclick="CQgoPage('+totalPages+')" '+(page>=totalPages?'disabled':'')+'>Last &#187;</button>';
+      h+='</div>';
+    }
+    el.innerHTML=h;
+  }catch(e){
+    el.innerHTML='<div class="empty-state"><div class="icon">⚠️</div><h3>Error Loading Queue</h3><p>'+esc(e.message)+'</p><div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="loadContentQueue()">Retry</button></div></div>';
+  }
+}
+
+function CQstatusBadge(status){
+  var map={
+    pending:'<span class="badge" style="background:#475569;color:#e2e8f0">⏳ Pending</span>',
+    generating:'<span class="badge" style="background:#1e40af;color:#bfdbfe">🔄 Generating</span>',
+    completed:'<span class="badge" style="background:#14532d;color:#bbf7d0">✅ Completed</span>',
+    failed:'<span class="badge" style="background:#7f1d1d;color:#fca5a5">❌ Failed</span>',
+    cancelled:'<span class="badge" style="background:#713f12;color:#fde68a">🚫 Cancelled</span>'
+  };
+  return map[status]||'<span class="badge">'+esc(status)+'</span>';
+}
+
+function CQfilterChange(){
+  var f=document.getElementById("cqStatusFilter");
+  if(f){localStorage.setItem("cq_status",f.value);localStorage.setItem("cq_page","1");loadContentQueue();}
+}
+
+function CQgoPage(p){
+  localStorage.setItem("cq_page",String(p));
+  loadContentQueue();
+}
+
+function formatDate(iso){
+  if(!iso)return"-";
+  try{
+    var d=new Date(iso);
+    var opts={month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"};
+    return d.toLocaleDateString("en-US",opts);
+  }catch(e){return iso.substring(0,16).replace("T"," ");}
+}
+
+// ── Add Single Job Modal ──
+
+async function showAddJobModal(){
+  var dirs;
+  try{dirs=await g("/api/v1/directories");}catch(e){dirs=[];}
+  var dirOpts='<option value="">Select a directory...</option>';
+  for(var i=0;i<dirs.length;i++){
+    dirOpts+='<option value="'+dirs[i].id+'">'+esc(dirs[i].name)+'</option>';
+  }
+  var ov=document.createElement("div");ov.className="modal-overlay";ov.id="cqAddModal";
+  var html='<div class="modal" style="width:600px"><h2>📅 Schedule Content</h2>';
+  html+='<div class="form-group"><label>Content Type *</label><select id="cqType" onchange="CQtypeChange()"><option value="trap_door">🪤 Trap Door (Hyper-Niche Page)</option><option value="blog">📝 Blog Post</option></select><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">Trap doors generate SEO landing pages per service×city×day×time. Blog posts schedule AI-written articles.</div></div>';
+  html+='<div class="form-group"><label>Directory *</label><select id="cqDir">'+dirOpts+'</select><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">The directory where this content will be published. Required.</div></div>';
+  html+='<div class="form-group"><label>Keyword *</label><input id="cqKeyword" placeholder="e.g., emergency plumbing, HVAC repair"><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">Primary SEO keyword for this content. Used in page titles, slugs, and metadata.</div></div>';
+  html+='<div class="form-group" id="cqTemplateGroup"><label>Template ID (optional)</label><input id="cqTemplate" placeholder="UUID of template"><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">For blog posts, specify a blog template. For trap doors, not used.</div></div>';
+  html+='<div class="form-group"><label>Merge Fields (JSON, optional)</label><textarea id="cqMerge" rows="3" placeholder=\'{"city":"Miami","industry":"Plumbing"}\'></textarea><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">Custom fields used in template rendering. Must be valid JSON.</div></div>';
+  html+='<div class="form-group"><label>Scheduled For *</label><input id="cqScheduled" type="datetime-local" step="900"><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">When this content should be generated. Select a future date and time.</div></div>';
+  html+='<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal(\x27cqAddModal\x27)">Cancel</button><button class="btn btn-primary" onclick="saveSingleJob()">📅 Schedule</button></div></div>';
+  ov.innerHTML=html;
+  document.body.appendChild(ov);
+  // Set default to 1 hour from now
+  var def=new Date(Date.now()+3600000);
+  var d=document.getElementById("cqScheduled");
+  if(d)d.value=def.toISOString().substring(0,16);
+}
+
+function CQtypeChange(){
+  var t=document.getElementById("cqType");
+  var tg=document.getElementById("cqTemplateGroup");
+  if(tg)tg.style.display=(t&&t.value==="blog")?"block":"none";
+}
+
+async function saveSingleJob(){
+  var type=document.getElementById("cqType").value;
+  var dir=document.getElementById("cqDir").value;
+  var kw=document.getElementById("cqKeyword").value.trim();
+  var tmpl=document.getElementById("cqTemplate").value.trim()||null;
+  var mergeRaw=document.getElementById("cqMerge").value.trim();
+  var sched=document.getElementById("cqScheduled").value;
+  if(!dir||!kw||!sched){toast("Directory, keyword, and scheduled date are required","error");return;}
+  var mergeFields=null;
+  if(mergeRaw){try{mergeFields=JSON.parse(mergeRaw);}catch(e){toast("Invalid JSON in merge fields: "+e.message,"error");return;}}
+  var schedISO=new Date(sched).toISOString();
+  try{
+    await po("/api/v1/admin/content-queue",{
+      queue_type:type,directory_id:dir,keyword:kw,
+      template_id:tmpl,merge_fields:mergeFields,scheduled_for:schedISO
+    });
+    toast("Job scheduled! 🎯","success");
+    closeModal("cqAddModal");
+    loadContentQueue();
+  }catch(e){toast(e.message,"error");}
+}
+
+// ── Edit Job Modal ──
+
+async function showEditJobModal(id){
+  var job=null;
+  if(CQ.items){for(var i=0;i<CQ.items.length;i++){if(CQ.items[i].id===id){job=CQ.items[i];break;}}}
+  if(!job){
+    try{job=await g("/api/v1/admin/content-queue?status=pending&per_page=200");
+      if(job&&job.items){for(var i=0;i<job.items.length;i++){if(job.items[i].id===id){job=job.items[i];break;}}}
+    }catch(e){toast("Could not load job details","error");return;}
+  }
+  if(!job){toast("Job not found","error");return;}
+  var ov=document.createElement("div");ov.className="modal-overlay";ov.id="cqEditModal";
+  var schedVal=job.scheduled_for?job.scheduled_for.substring(0,16):"";
+  var mergeStr=job.merge_fields?JSON.stringify(job.merge_fields,null,2):"";
+  var html='<div class="modal" style="width:600px"><h2>✏️ Edit Scheduled Job</h2>';
+  html+='<p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Update keyword, scheduled date, template, or merge fields. Only pending jobs can be edited.</p>';
+  html+='<div class="form-group"><label>Keyword *</label><input id="cqEditKeyword" value="'+esc(job.keyword)+'"></div>';
+  html+='<div class="form-group"><label>Template ID</label><input id="cqEditTemplate" value="'+(job.template_id||"")+'" placeholder="UUID"><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">Blog template UUID. Leave blank for trap doors.</div></div>';
+  html+='<div class="form-group"><label>Merge Fields (JSON)</label><textarea id="cqEditMerge" rows="4" placeholder=\'{}\'>'+esc(mergeStr)+'</textarea><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">Must be valid JSON. Used as template variables.</div></div>';
+  html+='<div class="form-group"><label>Scheduled For *</label><input id="cqEditScheduled" type="datetime-local" step="900" value="'+schedVal+'"></div>';
+  html+='<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal(\x27cqEditModal\x27)">Cancel</button><button class="btn btn-primary" onclick="saveEditJob(\x27'+id+'\x27)">💾 Save Changes</button></div></div>';
+  ov.innerHTML=html;
+  document.body.appendChild(ov);
+}
+
+async function saveEditJob(id){
+  var kw=document.getElementById("cqEditKeyword").value.trim();
+  var tmpl=document.getElementById("cqEditTemplate").value.trim()||null;
+  var mergeRaw=document.getElementById("cqEditMerge").value.trim();
+  var sched=document.getElementById("cqEditScheduled").value;
+  if(!kw||!sched){toast("Keyword and scheduled date are required","error");return;}
+  var mergeFields=null;
+  if(mergeRaw){try{mergeFields=JSON.parse(mergeRaw);}catch(e){toast("Invalid JSON: "+e.message,"error");return;}}
+  var schedISO=new Date(sched).toISOString();
+  try{
+    await pu("/api/v1/admin/content-queue/"+id,{
+      keyword:kw,template_id:tmpl,merge_fields:mergeFields,scheduled_for:schedISO
+    });
+    toast("Job updated! ✨","success");
+    closeModal("cqEditModal");
+    loadContentQueue();
+  }catch(e){toast(e.message,"error");}
+}
+
+// ── Cancel Job ──
+
+function confirmCancelJob(id){
+  var ov=document.createElement("div");ov.className="modal-overlay";ov.id="cqCancelModal";
+  var html='<div class="modal" style="width:400px"><h2>🚫 Cancel Queue Job?</h2>';
+  html+='<p style="font-size:.9rem;color:var(--text-secondary);margin-bottom:16px">This will set the job status to "cancelled". It will not be processed by the background worker.</p>';
+  html+='<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal(\x27cqCancelModal\x27)">Keep</button><button class="btn btn-danger" onclick="doCancelJob(\x27'+id+'\x27)">🚫 Yes, Cancel</button></div></div>';
+  ov.innerHTML=html;
+  document.body.appendChild(ov);
+}
+
+async function doCancelJob(id){
+  try{
+    await dl("/api/v1/admin/content-queue/"+id);
+    toast("Job cancelled","success");
+    closeModal("cqCancelModal");
+    loadContentQueue();
+  }catch(e){toast(e.message,"error");}
+}
+
+// ── Bulk Add Modal ──
+
+function showBulkAddModal(){
+  var ov=document.createElement("div");ov.className="modal-overlay";ov.id="cqBulkModal";
+  var html='<div class="modal" style="width:650px"><h2>📋 Bulk Schedule Content</h2>';
+  html+='<p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Paste a JSON array of jobs or use the format below. Each job must have: queue_type, directory_id, keyword, scheduled_for.</p>';
+  html+='<div class="form-group"><label>JSON Array of Jobs *</label><textarea id="cqBulkJson" rows="10" style="font-family:monospace;font-size:.8rem">[{"queue_type":"trap_door","directory_id":"UUID","keyword":"keyword","scheduled_for":"2027-01-01T08:00:00Z"}]</textarea><div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">
+- <strong>queue_type</strong>: "trap_door" or "blog"<br>
+- <strong>directory_id</strong>: UUID of target directory<br>
+- <strong>keyword</strong>: SEO keyword for the content<br>
+- <strong>scheduled_for</strong>: ISO 8601 datetime in UTC<br>
+- <strong>template_id</strong>: (optional) UUID for blog template<br>
+- <strong>merge_fields</strong>: (optional) JSON object of template variables<br>
+Max 100 jobs per batch.
+</div></div>';
+  html+='<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal(\x27cqBulkModal\x27)">Cancel</button><button class="btn btn-primary" onclick="saveBulkJobs()">📋 Schedule All</button></div></div>';
+  ov.innerHTML=html;
+  document.body.appendChild(ov);
+}
+
+async function saveBulkJobs(){
+  var raw=document.getElementById("cqBulkJson").value.trim();
+  if(!raw){toast("Please enter job data","error");return;}
+  var jobs;
+  try{jobs=JSON.parse(raw);}catch(e){toast("Invalid JSON: "+e.message,"error");return;}
+  if(!Array.isArray(jobs)){toast("Must be an array of job objects","error");return;}
+  if(jobs.length>100){toast("Maximum 100 jobs per batch","error");return;}
+  try{
+    var result=await po("/api/v1/admin/content-queue/bulk",{jobs:jobs});
+    var created=result.created||0;
+    var errors=result.errors||0;
+    var msg="Created "+created+" job"+(created!==1?"s":"");
+    if(errors>0)msg+=" with "+errors+" error"+(errors!==1?"s":"");
+    toast(msg,"success");
+    closeModal("cqBulkModal");
+    loadContentQueue();
+  }catch(e){toast(e.message,"error");}
+}

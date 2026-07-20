@@ -129,6 +129,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/analytics/summary", get(analytics::get_summary))
         .route("/analytics/events", get(analytics::list_events))
         .route("/analytics/events/old", delete(analytics::purge_old_events))
+        .route("/analytics/demand-curve", get(demand_curve::get_demand_curve))
         // ??? Email routes
         .route("/email/templates", get(email::list_templates).post(email::create_template))
         .route("/email/templates/:id", get(email::get_template).put(email::update_template).delete(email::delete_template))
@@ -307,6 +308,21 @@ pub fn create_router(s: AppState) -> Router {
         .route("/pricing/grandfather/:business_id", get(pricing::get_grandfathered))
         // ? BL29: Pricing engine — public endpoint (no auth)
         .route("/pricing/public", get(pricing::public_pricing))
+        // ??? Contact Intelligence Pipeline — monthly cron for unclaimed business enrichment
+        .route("/cron/contact-intelligence", post(contact_intelligence::contact_intelligence_pipeline))
+        // ??? Content Queue routes (Phase 5 Task 3)
+        .route("/admin/content-queue", get(content_queue::list_queue).post(content_queue::add_job))
+        .route("/admin/content-queue/:id", put(content_queue::update_job).delete(content_queue::cancel_job))
+        .route("/admin/content-queue/bulk", post(content_queue::bulk_add_jobs))
+        .route("/cron/content-queue-worker", post(content_queue::process_content_queue))
+        // ??? Tag Automation + Tracked Links (Task 4)
+        .route("/admin/tag-rules", get(tag_automation::list_rules).post(tag_automation::create_rule))
+        .route("/admin/tag-rules/:id", put(tag_automation::update_rule).delete(tag_automation::delete_rule))
+        .route("/admin/tag-rules/execute", post(tag_automation::execute_rules_for_contact))
+        .route("/admin/tracked-links", get(tag_automation::list_tracked_links).post(tag_automation::create_tracked_link))
+        .route("/admin/tracked-links/:id", put(tag_automation::update_tracked_link).delete(tag_automation::delete_tracked_link))
+        .route("/admin/tracked-links/bulk", post(tag_automation::bulk_create_tracked_links))
+        .route("/admin/tracked-links/stats/:id", get(tag_automation::get_link_stats))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
@@ -344,6 +360,7 @@ pub fn create_router(s: AppState) -> Router {
 
     // ??? Combine: /api/v1/* API routes + static file server at /* + SPA fallback
     let app = Router::new()
+        .route("/l/:short_code", get(tag_automation::track_link_click))
         .nest("/api/v1", all_routes)
         .fallback_service(
             tower::service_fn(move |req: axum::http::Request<axum::body::Body>| {
@@ -584,6 +601,9 @@ async fn auth_guard(
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
         || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
+        // Cron endpoints (triggered by cron daemon with optional API key)
+        || (path == "/cron/contact-intelligence" && req.method() == "POST")
+        || (path == "/cron/content-queue-worker" && req.method() == "POST")
         // Public business image upload
         || (path.starts_with("/businesses/") && path.ends_with("/images") && req.method() == "POST")
         // Public booking endpoints

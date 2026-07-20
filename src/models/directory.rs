@@ -184,6 +184,7 @@ pub struct Business {
     pub is_active: Option<bool>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    pub enriched_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
