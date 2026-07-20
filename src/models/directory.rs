@@ -24,6 +24,7 @@ pub struct Directory {
     pub city: Option<String>,
     pub template_config: Option<serde_json::Value>,
     pub tracking_enabled: Option<bool>,
+    pub feature_config: Option<serde_json::Value>,
     pub head_injection: Option<String>,
     pub body_injection: Option<String>,
     pub footer_injection: Option<String>,
