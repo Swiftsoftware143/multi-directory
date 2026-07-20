@@ -561,3 +561,28 @@ async fn advance_deal_to_contacted(
 
     Ok(())
 }
+
+
+/// PUT /api/v1/businesses/:id/featured-deal — set featured deal for a business
+#[derive(Debug, Deserialize)]
+pub struct FeaturedDealRequest {
+    pub deal_id: Option<Uuid>,
+    pub cta_text: Option<String>,
+}
+
+pub async fn set_featured_deal(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<FeaturedDealRequest>,
+) -> ApiResult<impl IntoResponse> {
+    sqlx::query(
+        "UPDATE businesses SET featured_deal_id = $1, featured_cta = COALESCE($2, featured_cta, 'Deal of the Week 🔥'),          updated_at = NOW() WHERE id = $3"
+    )
+    .bind(req.deal_id)
+    .bind(&req.cta_text)
+    .bind(id)
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({"status": "updated"})))
+}

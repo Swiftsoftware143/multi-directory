@@ -114,3 +114,25 @@ fn get_user_id_from_jwt() -> Option<Uuid> {
     // Placeholder — real implementation extracts from the JWT claims set by auth middleware
     None
 }
+
+/// PUT /api/v1/supplier/featured-product — set featured product for a supplier
+#[derive(Debug, Deserialize)]
+pub struct FeaturedProductRequest {
+    pub product_id: Option<Uuid>,
+    pub cta_text: Option<String>,
+}
+
+pub async fn set_featured_product(
+    State(s): State<AppState>,
+    Json(req): Json<FeaturedProductRequest>,
+) -> ApiResult<impl IntoResponse> {
+    sqlx::query(
+        "UPDATE businesses SET featured_product_id = $1, featured_product_cta = COALESCE($2, featured_product_cta, 'Featured Product'),          updated_at = NOW() WHERE business_type IN ('supplier','distributor','wholesaler','farm','association')"
+    )
+    .bind(req.product_id)
+    .bind(&req.cta_text)
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({"status": "updated"})))
+}

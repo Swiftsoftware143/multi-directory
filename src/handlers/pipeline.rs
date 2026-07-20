@@ -88,7 +88,7 @@ fn normalize_website(website: &str) -> String {
 
 // ── Dedup Lookups ──
 
-async fn find_existing_by_phone(pool: &PgPool, phone: &str, dir_id: Option<Uuid>) -> Result<Option<Uuid>, sqlx::Error> {
+pub async fn find_existing_by_phone(pool: &PgPool, phone: &str, dir_id: Option<Uuid>) -> Result<Option<Uuid>, sqlx::Error> {
     let normalized = normalize_phone(phone);
     if let Some(did) = dir_id {
         sqlx::query_scalar("SELECT id FROM businesses WHERE phone = $1 AND directory_id = $2 LIMIT 1")
@@ -99,7 +99,7 @@ async fn find_existing_by_phone(pool: &PgPool, phone: &str, dir_id: Option<Uuid>
     }
 }
 
-async fn find_existing_by_website(pool: &PgPool, website: &str, dir_id: Option<Uuid>) -> Result<Option<Uuid>, sqlx::Error> {
+pub async fn find_existing_by_website(pool: &PgPool, website: &str, dir_id: Option<Uuid>) -> Result<Option<Uuid>, sqlx::Error> {
     let normalized = normalize_website(website);
     if let Some(did) = dir_id {
         sqlx::query_scalar("SELECT id FROM businesses WHERE website = $1 AND directory_id = $2 LIMIT 1")
