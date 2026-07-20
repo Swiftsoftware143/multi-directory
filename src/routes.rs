@@ -138,8 +138,15 @@ pub fn create_router(s: AppState) -> Router {
         .route("/email/campaigns/:id/send", post(email::send_campaign))
         // ??? Public / landing page routes
         .route("/public/homepage", get(public::homepage_data))
+        // Dynamic OG image SVG generation (MUST come before :slug routes)
+        .route("/public/og/:page_type/:page_id", get(dynamic_og::dynamic_og_image))
         .route("/public/:slug", get(public::directory_data))
         .route("/public/:slug/:business_id", get(public::business_data))
+        // ??? Onboarding survey public endpoints
+        .route("/public/directories/:slug/survey", get(onboarding_survey::public_get_survey))
+        .route("/public/directories/:slug/survey/respond", post(onboarding_survey::public_submit_survey))
+        // ? Public articles XML feed (RSS)
+        .route("/public/directories/:slug/articles.xml", get(articles_feed::articles_xml_feed))
         .route("/landing-pages", get(public_pages::list_landing_pages).post(public_pages::create_landing_page))
         .route("/landing-pages/:id", get(public_pages::get_landing_page).put(public_pages::update_landing_page).delete(public_pages::delete_landing_page))
         .route("/landing-pages/:slug/publish", post(public_pages::toggle_publish))
@@ -285,6 +292,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/industries/limit", get(industries::get_industry_limit))
         // ? Portal routes (business_owner auth)
         .route("/portal/business/profile", get(portal::business_profile))
+        .route("/portal/business/dashboard", get(business_dashboard::business_dashboard))
         // ? Visitor account routes
         .route("/visitor/register", post(portal::visitor_register))
         .route("/visitor/login", post(portal::visitor_login))
@@ -323,6 +331,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/admin/tracked-links/:id", put(tag_automation::update_tracked_link).delete(tag_automation::delete_tracked_link))
         .route("/admin/tracked-links/bulk", post(tag_automation::bulk_create_tracked_links))
         .route("/admin/tracked-links/stats/:id", get(tag_automation::get_link_stats))
+        // ??? Onboarding Survey admin endpoints
+        .route("/admin/directories/:id/survey", get(onboarding_survey::get_survey_config).put(onboarding_survey::upsert_survey_config))
+        .route("/admin/directories/:id/survey/toggle", post(onboarding_survey::toggle_survey))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
@@ -361,6 +372,8 @@ pub fn create_router(s: AppState) -> Router {
     // ??? Combine: /api/v1/* API routes + static file server at /* + SPA fallback
     let app = Router::new()
         .route("/l/:short_code", get(tag_automation::track_link_click))
+        // Dynamic OG images also available at root level (mirrors /api/v1/public/og/...)
+        .route("/public/og/:page_type/:page_id", get(dynamic_og::dynamic_og_image))
         .nest("/api/v1", all_routes)
         .fallback_service(
             tower::service_fn(move |req: axum::http::Request<axum::body::Body>| {
@@ -564,6 +577,7 @@ async fn auth_guard(
         || path.starts_with("/sitemap.xml")
         || path.starts_with("/robots.txt")
         || path.starts_with("/public/")
+        || path.starts_with("/api/v1/public/")
         || path == "/categories"
         || path == "/search"
         || path == "/listings"

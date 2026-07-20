@@ -99,6 +99,13 @@ pub async fn render_blog_list(
             output = output.replace("</body>", &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)));
         }
     }
+    // Inject survey widget if onboarding_survey is enabled
+    if let Some(ref fc) = dir.feature_config {
+        if fc.get("onboarding_survey").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let survey_tag = "<script src=\"/survey-widget.js\"></script>";
+            output = output.replace("</head>", &format!("\n{}\n</head>", survey_tag));
+        }
+    }
     Ok(axum::response::Html(output))
 }
 
@@ -197,6 +204,13 @@ pub async fn render_blog_post(
     if let Some(ref fi) = directory.footer_injection {
         if !fi.trim().is_empty() {
             output = output.replace("</body>", &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)));
+        }
+    }
+    // Inject survey widget if onboarding_survey is enabled in feature_config
+    if let Some(ref fc) = directory.feature_config {
+        if fc.get("onboarding_survey").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let survey_tag = "<script src=\"/survey-widget.js\"></script>";
+            output = output.replace("</head>", &format!("\n{}\n</head>", survey_tag));
         }
     }
     Ok(axum::response::Html(output))

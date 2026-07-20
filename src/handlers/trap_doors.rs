@@ -879,11 +879,17 @@ pub async fn serve_trap_door_page(
         &dir_slug,
     );
 
+    // Determine domain for OG image URL
+    let og_page_id_str = &page_id.to_string();
+    let base_domain = &s.config.base_domain;
+    let og_image_url = format!("https://{}/public/og/trapdoor/{}", base_domain, og_page_id_str);
+
     let mt = htmlesc(&meta_title);
     let md = htmlesc(&meta_description);
     let sl = htmlesc(&slug);
     let hn = htmlesc(&dir_name);
     let year_str = Utc::now().format("%Y").to_string();
+    let og_img = htmlesc(&og_image_url);
 
     let html = format!(
         r##"<!DOCTYPE html>
@@ -895,6 +901,11 @@ pub async fn serve_trap_door_page(
     <meta name="description" content="{md}">
     <meta property="og:title" content="{mt}">
     <meta property="og:description" content="{md}">
+    <meta property="og:image" content="{og_img}">
+    <meta property="og:type" content="article">
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="{mt}">
+    <meta property="twitter:description" content="{md}">
     <meta name="robots" content="index,follow">
     <link rel="canonical" href="/p/{sl}">
     {faq_schema}
@@ -932,6 +943,7 @@ pub async fn serve_trap_door_page(
         cta_html = cta_html,
         year_str = year_str,
         hn = hn,
+        og_img = og_img,
     );
 
     Ok((StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html))

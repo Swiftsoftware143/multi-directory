@@ -486,6 +486,14 @@ pub async fn render_directory(
         }
     }
 
+    // Inject survey widget if onboarding_survey is enabled in feature_config
+    if let Some(ref fc) = directory.feature_config {
+        if fc.get("onboarding_survey").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let survey_tag = "<script src=\"/survey-widget.js\"></script>";
+            output = output.replace("</head>", &format!("\n{}\n</head>", survey_tag));
+        }
+    }
+
     Ok(axum::response::Html(output))
 }
 
