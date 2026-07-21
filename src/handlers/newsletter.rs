@@ -460,6 +460,90 @@ pub async fn add_subscriber(
     Ok((StatusCode::CREATED, Json(sub)))
 }
 
+/// POST /api/v1/directories/newsletter
+/// Global newsletter signup — no directory slug required.
+/// Uses the "global" directory as target and pushes to CoreSwift with a "Global" tag.
+pub async fn add_global_subscriber(
+    State(s): State<AppState>,
+    JsonBody(req): JsonBody<AddSubscriberRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // Resolve the "global" directory, or fall back to the first directory
+    let dir_id = match sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM directories WHERE slug = 'zaarhub' OR slug = 'global' ORDER BY created_at ASC LIMIT 1"
+    )
+    .fetch_optional(&s.db)
+    .await?
+    {
+        Some(id) => id,
+        None => {
+            // Fall back to first directory if no zaarhub/global directory exists
+            sqlx::query_scalar::<_, Uuid>(
+                "SELECT id FROM directories ORDER BY created_at ASC LIMIT 1"
+            )
+            .fetch_optional(&s.db)
+            .await?
+            .unwrap_or(Uuid::nil())
+        }
+    };
+
+    let sub = sqlx::query_as::<_, NewsletterSubscriber>(
+        r#"INSERT INTO newsletter_subscribers (directory_id, email, name)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (directory_id, email)
+           DO UPDATE SET status = 'active', name = COALESCE($3, newsletter_subscribers.name), unsubscribed_at = NULL, subscribed_at = NOW()
+           RETURNING *"#
+    )
+    .bind(dir_id)
+    .bind(&req.email)
+    .bind(&req.name)
+    .fetch_one(&s.db)
+    .await?;
+
+    // Push to CoreSwift CRM with "Global" tag (fire-and-forget, log on failure)
+    let db = s.db.clone();
+    let dir_id_clone = dir_id;
+    let email = req.email.clone();
+    let name = req.name.clone();
+    tokio::spawn(async move {
+        // Try the standard directory-based push first (it'll use whatever list is configured)
+        if dir_id_clone != Uuid::nil() {
+            match crate::coreswift::push_newsletter_signup(&db, dir_id_clone, &email, name.as_deref()).await {
+                Ok(contact_id) => tracing::info!("[global-newsletter] CoreSwift push OK for {email}, contact={contact_id}"),
+                Err(e) => tracing::warn!("[global-newsletter] CoreSwift push failed for {email}: {e}"),
+            }
+        }
+    });
+
+    // Fire cross-platform tag sync (fire-and-forget) — Global Subscriber tag
+    let ts_db = s.db.clone();
+    let ts_email = sub.email.clone();
+    let ts_name = sub.name.clone();
+    let ts_dir_id = dir_id;
+    tokio::spawn(async move {
+        let tags = vec!["Subscriber".to_string(), "Global-Newsletter".to_string()];
+
+        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id).await.ok()
+            .map(|(tid, _, _, _)| tid.to_string());
+
+        crate::handlers::tag_sync::fire_tag_sync(
+            &ts_db,
+            ts_email,
+            ts_name,
+            None,
+            None, // phone
+            tags,
+            None, // city_list
+            Some("subscribers".to_string()),
+            None, // dir_slug
+            Some("global_newsletter_signup".to_string()),
+            resolved_tenant,
+            None, // coreswift_list_id
+        );
+    });
+
+    Ok((StatusCode::CREATED, Json(sub)))
+}
+
 pub async fn import_subscribers(
     State(s): State<AppState>,
     Path(slug): Path<String>,
