@@ -43,6 +43,9 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 .card-actions{display:flex;gap:8px;margin-top:12px}
 .card-actions .btn{flex:1}
 
+/* Plan cards */
+.plan-card{border:2px solid var(--border);overflow:hidden}.plan-card.featured{border-color:var(--teal);box-shadow:0 4px 20px rgba(13,148,136,.15)}.plan-card .plan-header{text-align:center;padding:16px;border-bottom:1px solid var(--border)}.plan-card .plan-name{font-size:1rem;font-weight:700}.plan-card .plan-price{font-size:1.8rem;font-weight:800;color:var(--teal);margin:4px 0}.plan-card .plan-period{font-size:.78rem;color:var(--text-secondary)}.plan-card .plan-body{padding:16px}.plan-card .plan-features{list-style:none;padding:0;margin:0 0 12px}.plan-card .plan-features li{padding:6px 0;font-size:.82rem;color:var(--text);border-bottom:1px solid var(--border)}.plan-card .plan-features li:last-child{border-bottom:none}.plan-card .plan-features li .check{color:var(--success);font-weight:700;margin-right:6px}.plan-card .plan-subscribe{margin-top:8px}.plan-select{display:none}
+
 /* Coming soon */
 .coming-soon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:16px}
 .coming-soon-card{background:var(--card);border:1px dashed var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:all .2s}
@@ -158,6 +161,13 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 
     <!-- My Businesses -->
     <div id="businessList"></div>
+
+    <!-- Upgrade Plans -->
+    <div id="upgradePlans" style="display:none">
+      <div class="section-title">⬆️ Upgrade Plan</div>
+      <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Choose a plan to boost your listing visibility and access premium features.</div>
+      <div id="plansGrid" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))"></div>
+    </div>
 
     <!-- Quick Actions Nav -->
     <div class="section-title" style="margin-top:32px">⚡ Quick Actions</div>
@@ -319,6 +329,7 @@ async function loadDashboard() {
     renderBusinesses(data.claimed_businesses || []);
     hide('loadingState');
     show('dashboardContent');
+    loadPlans();
   } catch(e) {
     // If portal endpoint fails, try /auth/me to see if token is valid
     try {
@@ -397,6 +408,102 @@ function showComingSoon(feature) {
   toast.textContent = msg;
   document.body.appendChild(toast);
   setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; setTimeout(function() { toast.remove(); }, 300); }, 3000);
+}
+
+// ── Plans / Upgrade ──
+var _currentPlanBizId = null;
+
+function loadPlans() {
+  fetch(API + '/subscriptions/plans')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var plans = data.plans || [];
+      if (plans.length === 0) { renderHardcodedPlans(); return; }
+      renderPlans(plans);
+    })
+    .catch(function() {
+      renderHardcodedPlans();
+    });
+}
+
+function renderHardcodedPlans() {
+  renderPlans([
+    { id: 'listed', name: 'Listed', price_monthly: '0', price_yearly: '0', description: 'Free basic listing on the directory.', features: { listings: '1', photos: '3', support: 'Email' }, max_listings: 1 },
+    { id: 'featured', name: 'Featured', price_monthly: '29.99', price_yearly: '299.99', description: 'Featured placement with more photos and priority.', features: { listings: '3', photos: '10', support: 'Priority Email', badge: 'Featured Badge', analytics: 'Basic' }, max_listings: 3 },
+    { id: 'premium', name: 'Premium', price_monthly: '99.99', price_yearly: '999.99', description: 'Top priority placement with full feature access.', features: { listings: 'Unlimited', photos: 'Unlimited', support: '24/7 Priority', badge: 'Premium Badge', analytics: 'Advanced', deals: 'Deals & Coupons', spotlight: 'Spotlight Eligible' }, max_listings: 999 }
+  ]);
+}
+
+function renderPlans(plans) {
+  window._cachedPlans = plans;
+  var container = $('plansGrid');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  var featuredIdx = -1;
+  for (var i = 0; i < plans.length; i++) {
+    if (plans[i].name && plans[i].name.toLowerCase() === 'featured') featuredIdx = i;
+  }
+  
+  for (var i = 0; i < plans.length; i++) {
+    var p = plans[i];
+    var price = parseFloat(p.price_monthly || 0).toFixed(2);
+    
+    // Build features list
+    var features = p.features || {};
+    var featureKeys = Object.keys(features);
+    var featureHtml = '';
+    if (featureKeys.length > 0) {
+      featureHtml = '<ul class="plan-features">';
+      for (var k = 0; k < featureKeys.length; k++) {
+        var val = features[featureKeys[k]];
+        featureHtml += '<li><span class="check">✓</span> ' + esc(featureKeys[k].charAt(0).toUpperCase() + featureKeys[k].slice(1).replace(/_/g,' ')) + ': <strong>' + esc(String(val)) + '</strong></li>';
+      }
+      featureHtml += '</ul>';
+    } else {
+      // Default feature list based on plan name
+      var defaultFeatures = [];
+      var pname = (p.name || '').toLowerCase();
+      if (pname === 'listed') defaultFeatures = ['Basic listing', 'Up to 3 photos', 'Email support'];
+      else if (pname === 'featured') defaultFeatures = ['Featured placement', 'Up to 10 photos', 'Priority support', 'Featured badge', 'Basic analytics'];
+      else defaultFeatures = ['Top priority placement', 'Unlimited photos', '24/7 priority support', 'Premium badge', 'Advanced analytics', 'Deals & coupons', 'Blog & articles'];
+      featureHtml = '<ul class="plan-features">';
+      for (var f = 0; f < defaultFeatures.length; f++) {
+        featureHtml += '<li><span class="check">✓</span> ' + defaultFeatures[f] + '</li>';
+      }
+      featureHtml += '</ul>';
+    }
+    
+    var isFeatured = i === featuredIdx;
+    var featuredClass = isFeatured ? ' plan-card featured' : '';
+    
+    container.innerHTML +=
+      '<div class="plan-card card' + featuredClass + '">' +
+        '<div class="plan-header">' +
+          '<div class="plan-name">' + esc(p.name || 'Plan') + '</div>' +
+          (isFeatured ? '<div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--teal);font-weight:700;margin-top:2px">Best Value</div>' : '') +
+          '<div class="plan-price">$' + price + '</div>' +
+          '<div class="plan-period">per month</div>' +
+          (p.description ? '<div style="font-size:.8rem;color:var(--text-secondary);margin-top:6px">' + esc(p.description) + '</div>' : '') +
+        '</div>' +
+        '<div class="plan-body">' +
+          featureHtml +
+          '<div class="plan-subscribe">' +
+            '<button class="btn btn-block ' + (isFeatured ? 'btn-primary' : 'btn-secondary') + '" onclick="showSubscribe(' + i + ')">' +
+              (isFeatured ? 'Subscribe' : 'Choose') +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+  
+  show('upgradePlans');
+}
+
+function showSubscribe(planIdx) {
+  var plans = window._cachedPlans || [];
+  // For now show the subscribe interaction as coming soon
+  showComingSoon('Subscription upgrade — plan: ' + (plans[planIdx] ? plans[planIdx].name : 'Plan #' + (planIdx+1)));
 }
 
 // Inject fade-in animation
