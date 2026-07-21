@@ -1,21 +1,42 @@
 (function() {
   'use strict';
 
-  // ── Detect directory slug from URL ──
+  // ── Detect directory slug and portal type from URL ──
   var slug = null;
-  var pathParts = window.location.pathname.split('/').filter(Boolean);
-  // Directory pages are typically /{slug} or /{slug}/something
-  // We detect by checking if the first path component is a known directory
-  // Simplest: use the first path segment as the potential slug
-  if (pathParts.length > 0) {
+  var portalType = 'visitor'; // default: visitor (public directory pages)
+
+  var path = window.location.pathname;
+  var pathParts = path.split('/').filter(Boolean);
+
+  if (path.startsWith('/portal/business') || path.startsWith('/portal/business/')) {
+    // Business portal
+    // Fetch from a default directory (we need a slug — try first path after /portal/business/)
+    portalType = 'business';
+    // Business portal users are associated with a directory via auth
+    // For now, we try to get slug from the page or from URL
+    // The page itself should have a data attribute or we detect from the second path part
+    if (pathParts.length >= 3 && pathParts[2] !== 'dashboard') {
+      slug = pathParts[2];
+    } else {
+      // Fallback: use localStorage cached slug from previous navigation
+      slug = localStorage.getItem('md_active_slug');
+    }
+  } else if (path.startsWith('/distributor') || path.startsWith('/distributor/')) {
+    // Supplier portal — network-wide, no city
+    portalType = 'supplier';
+    // Use the first directory as a reference for fetching survey config
+    slug = localStorage.getItem('md_active_slug') || null;
+  } else if (pathParts.length > 0) {
+    // Public directory page — e.g., /apopka, /palm-coast
     slug = pathParts[0];
+    portalType = 'visitor';
   }
 
   if (!slug) return;
 
   // ── Check if already responded ──
-  var storageKey = 'survey_completed_' + slug;
-  var skipKey = 'survey_skipped_' + slug;
+  var storageKey = 'survey_completed_' + slug + '_' + portalType;
+  var skipKey = 'survey_skipped_' + slug + '_' + portalType;
 
   if (localStorage.getItem(storageKey) || localStorage.getItem(skipKey)) {
     return;
@@ -23,18 +44,35 @@
 
   // ── Fetch survey config ──
   var xhr = new XMLHttpRequest();
-  xhr.open('GET', '/public/directories/' + encodeURIComponent(slug) + '/survey', true);
+  xhr.open('GET', '/api/v1/public/directories/' + encodeURIComponent(slug) + '/survey', true);
   xhr.onload = function() {
     if (xhr.status !== 200) return;
     try {
       var survey = JSON.parse(xhr.responseText);
       if (!survey.enabled || !survey.questions || survey.questions.length === 0) return;
+
+      // Filter questions by portal type using the `tags` array on each question
+      var filteredQuestions = survey.questions.filter(function(q) {
+        var qTags = q.tags || [];
+        return qTags.length === 0 || qTags.indexOf(portalType) !== -1;
+      });
+
+      if (filteredQuestions.length === 0) return;
+
+      survey.questions = filteredQuestions;
       showSurvey(survey);
     } catch(e) {
       // silent fail
     }
   };
   xhr.send();
+
+  // ── Update slug reference on visitor portal login ──
+  // If the page is a portal, cache the slug from the page's data attributes
+  var slugEl = document.querySelector('[data-directory-slug]');
+  if (slugEl) {
+    localStorage.setItem('md_active_slug', slugEl.getAttribute('data-directory-slug'));
+  }
 
   // ── Survey Modal ──
   function showSurvey(survey) {
@@ -83,7 +121,6 @@
     for (var i = 0; i < questions.length; i++) {
       var q = questions[i];
 
-      // If q is an object with type/label, use it; otherwise treat as string
       var qType = q.type || 'text';
       var qLabel = q.label || q.question || (typeof q === 'string' ? q : 'Question ' + (i+1));
       var qId = q.id || ('q_' + i);
@@ -99,7 +136,7 @@
       qWrap.appendChild(label);
 
       if (qType === 'choice') {
-        // Radio buttons
+        // Radio buttons (single select)
         for (var j = 0; j < qOptions.length; j++) {
           var opt = qOptions[j];
           var optLabel = typeof opt === 'string' ? opt : (opt.label || opt);
@@ -123,8 +160,38 @@
           radioWrap.appendChild(document.createTextNode(optLabel));
           qWrap.appendChild(radioWrap);
         }
+      } else if (qType === 'select') {
+        // Dropdown menu (single select)
+        var select = document.createElement('select');
+        select.style.cssText = 'width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.9rem;font-family:inherit;background:#fff;outline:none;box-sizing:border-box;cursor:pointer;';
+
+        var placeholderOpt = document.createElement('option');
+        placeholderOpt.value = '';
+        placeholderOpt.textContent = 'Select an option...';
+        placeholderOpt.disabled = true;
+        placeholderOpt.selected = true;
+        select.appendChild(placeholderOpt);
+
+        for (var m = 0; m < qOptions.length; m++) {
+          var opt3 = qOptions[m];
+          var optLabel3 = typeof opt3 === 'string' ? opt3 : (opt3.label || opt3);
+          var optVal3 = typeof opt3 === 'string' ? opt3 : (opt3.value || opt3);
+
+          var option = document.createElement('option');
+          option.value = optVal3;
+          option.textContent = optLabel3;
+          select.appendChild(option);
+        }
+
+        select.onchange = function(sel, id, tags) {
+          return function() {
+            answers[id] = { value: sel.value, tags: tags };
+          };
+        }(select, qId, qTags);
+
+        qWrap.appendChild(select);
       } else if (qType === 'multi') {
-        // Checkboxes
+        // Checkboxes (multi-select)
         for (var k = 0; k < qOptions.length; k++) {
           var opt2 = qOptions[k];
           var optLabel2 = typeof opt2 === 'string' ? opt2 : (opt2.label || opt2);
@@ -224,7 +291,7 @@
     };
 
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/public/directories/' + encodeURIComponent(slug) + '/survey/respond', true);
+    xhr.open('POST', '/api/v1/public/directories/' + encodeURIComponent(slug) + '/survey/respond', true);
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.onload = function() {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -241,7 +308,7 @@
   }
 
   function skipSurvey() {
-    localStorage.setItem('survey_skipped_' + slug, '1');
+    localStorage.setItem(skipKey, '1');
     var overlay = document.getElementById('md-survey-overlay');
     if (overlay) overlay.remove();
   }

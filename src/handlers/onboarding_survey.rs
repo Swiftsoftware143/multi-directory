@@ -335,8 +335,8 @@ pub async fn public_submit_survey(
     Json(req): Json<SubmitSurveyRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Resolve directory by slug
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = $1"
+    let dir = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM directories WHERE slug = $1"
     )
     .bind(&slug)
     .fetch_optional(&s.db)
@@ -344,6 +344,7 @@ pub async fn public_submit_survey(
     .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
 
     let directory_id = dir.0;
+    let directory_name = dir.1;
 
     // Look up the enabled survey for this directory
     let config = sqlx::query_as::<_, SurveyConfig>(
@@ -364,6 +365,62 @@ pub async fn public_submit_survey(
         })
         .unwrap_or_default();
 
+    // Derive tags from answer values (classification + channel questions)
+    let mut answer_tags: Vec<String> = Vec::new();
+    let mut wants_newsletter: bool = false;
+    if let Some(answers_arr) = req.answers.as_array() {
+        for ans in answers_arr {
+            let qid = ans.get("question_id").and_then(|v| v.as_str()).unwrap_or("");
+            let value = ans.get("value");
+            match qid {
+                // Supplier classification → granular tag
+                "supplier_classification" => {
+                    if let Some(v) = value.and_then(|v| v.as_str()) {
+                        let tag = match v {
+                            "Farmer / Agricultural Producer" => "Farmer",
+                            "Wholesale Distributor" => "Wholesale Distributor",
+                            "Manufacturer / Factory Producer" => "Manufacturer",
+                            "Trade Association / Co-op" => "Co-op",
+                            "Food Hub / Aggregator" => "Food Hub",
+                            "Artisan / Specialty Craft Producer" => "Artisan",
+                            "Importer / Exporter" => "Importer / Exporter",
+                            "Logistics & Freight Provider" => "Logistics Provider",
+                            "Raw Material Supplier" => "Raw Material Supplier",
+                            _ => v,
+                        };
+                        if !answer_tags.contains(&tag.to_string()) {
+                            answer_tags.push(tag.to_string());
+                        }
+                    }
+                }
+                // Visitor channel → Weekly Email Digest → Newsletter auto-subscribe + tag
+                "visitor_channel" => {
+                    if let Some(v) = value.and_then(|v| v.as_str()) {
+                        if v == "Weekly Email Digest" {
+                            wants_newsletter = true;
+                            // Short code based on directory slug for ZaarHub newsletter tags
+                            // Format: {code}-zh-newsletter (e.g., pc-zh-newsletter, pb-zh-newsletter)
+                            let newsletter_tag = format!(
+                                "{}-zh-newsletter",
+                                directory_slug_to_code(&slug)
+                            );
+                            if !answer_tags.contains(&newsletter_tag) {
+                                answer_tags.push(newsletter_tag);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut all_tags = applied_tags.clone();
+    for t in &answer_tags {
+        if !all_tags.contains(&t) {
+            all_tags.push(t.to_string());
+        }
+    }
+
     // Insert survey response
     let response = sqlx::query_as::<_, SurveyResponse>(
         r#"INSERT INTO survey_responses
@@ -376,13 +433,13 @@ pub async fn public_submit_survey(
     .bind(&req.visitor_fingerprint)
     .bind(directory_id)
     .bind(&req.answers)
-    .bind(&applied_tags)
+    .bind(&all_tags)
     .fetch_one(&s.db)
     .await?;
 
     // Apply tags to visitor account if one was provided
     if let Some(visitor_id) = req.visitor_account_id {
-        if !applied_tags.is_empty() {
+        if !all_tags.is_empty() {
             sqlx::query(
                 r#"UPDATE visitor_accounts
                    SET interest_tags = array_cat(
@@ -391,20 +448,32 @@ pub async fn public_submit_survey(
                    ), updated_at = NOW()
                    WHERE id = $2"#
             )
-            .bind(&applied_tags)
+            .bind(&all_tags)
             .bind(visitor_id)
             .execute(&s.db)
             .await?;
         }
     }
 
-    // ── Fire-and-forget: Pipeline to IncentiveSwift ──
+    // ── Resolve visitor email for IncentiveSwift pipeline ──
+    let visitor_email: Option<String> = if let Some(visitor_id) = req.visitor_account_id {
+        sqlx::query_scalar("SELECT email FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_optional(&s.db)
+            .await
+            .unwrap_or_default()
+    } else {
+        None
+    };
+
+    // ── Fire-and-forget: Pipeline to IncentiveSwift (rewards + points) ──
     let pipeline_payload = json!({
         "directory_slug": slug,
         "survey_id": config.id,
         "visitor_account_id": req.visitor_account_id,
+        "visitor_email": visitor_email,
         "answers": req.answers,
-        "applied_tags": applied_tags,
+        "applied_tags": all_tags,
     });
 
     let client = reqwest::Client::new();
@@ -420,6 +489,74 @@ pub async fn public_submit_survey(
             Err(e) => tracing::warn!("Failed to forward survey response to IncentiveSwift: {}", e),
         }
     });
+
+    // ── Auto-subscribe to newsletter if visitor chose Weekly Email Digest ──
+    if wants_newsletter {
+        if let Some(visitor_id) = req.visitor_account_id {
+            let visitor_email_for_nl = visitor_email.clone().unwrap_or_default();
+            if !visitor_email_for_nl.is_empty() {
+                let nl_directory_id = directory_id;
+                let db_nl = s.db.clone();
+                tokio::spawn(async move {
+                    // Upsert into newsletter_subscribers — on conflict (email + directory) do nothing
+                    match sqlx::query(
+                        r#"INSERT INTO newsletter_subscribers (directory_id, email, name, status)
+                           VALUES ($1, $2, '', 'active')
+                           ON CONFLICT (directory_id, email) DO NOTHING"#
+                    )
+                    .bind(nl_directory_id)
+                    .bind(&visitor_email_for_nl)
+                    .execute(&db_nl)
+                    .await
+                    {
+                        Ok(r) => {
+                            if r.rows_affected() > 0 {
+                                tracing::info!(
+                                    "[newsletter] Auto-subscribed {} to directory {}",
+                                    visitor_email_for_nl, nl_directory_id
+                                );
+                            } else {
+                                tracing::info!(
+                                    "[newsletter] {} already subscribed to directory {}",
+                                    visitor_email_for_nl, nl_directory_id
+                                );
+                            }
+                        }
+                        Err(e) => tracing::warn!(
+                            "[newsletter] Failed to auto-subscribe {}: {}",
+                            visitor_email_for_nl, e
+                        ),
+                    }
+                });
+            }
+        }
+    }
+
+    // ── Fire tag sync to CoreSwift + IncentiveSwift (tag propagation) ──
+    let survey_answer_tags = answer_tags.clone();
+    let survey_visitor_email = visitor_email.clone();
+    if !survey_answer_tags.is_empty() {
+        if let Some(visitor_email_str) = survey_visitor_email {
+            let survey_slug = slug.to_string();
+            let db = s.db.clone();
+            tokio::spawn(async move {
+                crate::handlers::tag_sync::fire_tag_sync(
+                    &db,
+                    visitor_email_str.clone(),
+                    None,
+                    None,
+                    None,
+                    survey_answer_tags,
+                    None,
+                    None,
+                    Some(survey_slug),
+                    Some("onboarding_survey".to_string()),
+                    Some("2944af81-2086-44b8-93c1-d83e93a5dec1".to_string()),
+                    None,
+                );
+            });
+        }
+    }
 
     Ok(Json(json!({
         "id": response.id,
@@ -458,4 +595,22 @@ async fn sync_feature_config(
     .await?;
 
     Ok(())
+}
+
+/// Map a directory slug to its short city code for ZaarHub newsletter tags.
+/// Format: {code}-zh-newsletter (e.g., pc-zh-newsletter, pb-zh-newsletter)
+fn directory_slug_to_code(slug: &str) -> &str {
+    match slug {
+        "apopka" => "ap",
+        "boca-raton" => "br",
+        "hollywood" => "hw",
+        "lake-nona" => "ln",
+        "palm-bay" => "pb",
+        "palm-coast" => "pc",
+        "pompano-beach" => "pp",
+        "st-cloud" => "sc",
+        "st-petersburg" => "sp",
+        "winter-garden" => "wg",
+        _ => slug, // fallback: use slug as-is
+    }
 }

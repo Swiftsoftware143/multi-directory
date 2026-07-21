@@ -270,6 +270,50 @@ pub async fn visitor_register(
         .execute(&s.db)
         .await?;
 
+    // Fire cross-platform tag sync for visitor signup (fire-and-forget)
+    {
+        let ts_db = s.db.clone();
+        let ts_email = visitor.email.clone();
+        let ts_name = visitor.name.clone();
+        let ts_phone = visitor.phone.clone();
+        let ts_dir_id = visitor.directory_id;
+        tokio::spawn(async move {
+            let (dir_slug, city) = if let Some(did) = ts_dir_id {
+                let slug: Option<String> = sqlx::query_scalar(
+                    "SELECT slug FROM directories WHERE id = $1"
+                )
+                .bind(did)
+                .fetch_optional(&ts_db)
+                .await
+                .unwrap_or(None)
+                .flatten();
+                let s = slug.unwrap_or_default();
+                let c = s.replace("-", " ");
+                (s, c)
+            } else {
+                (String::new(), String::new())
+            };
+
+            let tags = vec!["Customer".to_string(), city.clone()];
+            let city_list = if city.is_empty() { None } else { Some(format!("{} - Subscribers", city)) };
+
+            crate::handlers::tag_sync::fire_tag_sync(
+                &ts_db,
+                ts_email,
+                ts_name,
+                None,
+                ts_phone,
+                tags,
+                city_list,
+                Some("subscribers".to_string()),
+                Some(dir_slug),
+                Some("visitor_signup".to_string()),
+                None,
+                None,
+            );
+        });
+    }
+
     // Generate JWT with role=visitor
     let now_ts = Utc::now().timestamp() as usize;
     let claims = Claims {

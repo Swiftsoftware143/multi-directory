@@ -111,3 +111,5 @@ pub mod onboarding_survey;
 pub use onboarding_survey::*;
 pub mod dynamic_og;
 pub use dynamic_og::*;
+pub mod tag_sync;
+pub use tag_sync::*;
