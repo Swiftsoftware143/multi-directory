@@ -510,6 +510,42 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // ??? Serve hotel-savings FAQ and Terms pages
+                    if path == "/hotel-savings/faq" {
+                        let faq_path = std::path::Path::new(&frontend).join("hotel-savings-faq.html");
+                        if faq_path.exists() {
+                            match tokio::fs::read(&faq_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+                    if path == "/hotel-savings/terms" {
+                        let terms_path = std::path::Path::new(&frontend).join("hotel-savings-terms.html");
+                        if terms_path.exists() {
+                            match tokio::fs::read(&terms_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     // ??? Serve distributor/B2B supplier portal
                     if path == "/distributor" || path == "/distributor/" || path.starts_with("/distributor/dashboard") {
                         let portal_path = std::path::Path::new(&frontend).join("distributor-portal.html");
