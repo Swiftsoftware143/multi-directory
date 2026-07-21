@@ -43,6 +43,12 @@ pub struct BusinessProfile {
     pub images: Option<Value>,
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct BusinessVerificationRow {
+    pub status: Option<String>,
+    pub verified_at: Option<chrono::DateTime<Utc>>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BusinessPortalResponse {
     pub claimed_businesses: Vec<BusinessWithSubscription>,
@@ -53,6 +59,7 @@ pub struct BusinessWithSubscription {
     pub claim: ClaimedBusinessRow,
     pub business: BusinessProfile,
     pub subscription: Option<BusinessSubscriptionInfo>,
+    pub verification: Option<BusinessVerificationRow>,
 }
 
 #[derive(Debug, Serialize)]
@@ -186,10 +193,19 @@ pub async fn business_profile(
             }
         });
 
+        // Fetch verification status
+        let verification = sqlx::query_as::<_, BusinessVerificationRow>(
+            r#"SELECT status, verified_at FROM business_verifications WHERE business_id = $1"#
+        )
+        .bind(claim.business_id)
+        .fetch_optional(&s.db)
+        .await?;
+
         businesses_with_subs.push(BusinessWithSubscription {
             claim: claim.clone(),
             business: business_profile,
             subscription,
+            verification,
         });
     }
 

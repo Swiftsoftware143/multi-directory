@@ -39,6 +39,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/directories/:slug/subscribers", get(newsletter::list_subscribers).post(newsletter::add_subscriber))
         .route("/directories/:slug/subscribers/import", post(newsletter::import_subscribers))
         .route("/directories/:slug/subscribers/:id/unsubscribe", post(newsletter::unsubscribe_subscriber))
+        .route("/directories/newsletter", post(newsletter::add_global_subscriber))
         .route("/templates", get(directories::list_templates))
         // ??? Blog routes (Phase 3)
         .route("/blog-posts", get(blog::list_blog_posts).post(blog::create_blog_post))

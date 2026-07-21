@@ -370,6 +370,12 @@ function renderBusinesses(businesses) {
     var tierLabel = sub.tier_name || 'Basic';
     var priceDisplay = sub.price_paid ? '$' + parseFloat(sub.price_paid).toFixed(2) + '/' + (sub.billing_cycle || 'mo') : 'Free';
     
+    // Verification status
+    var v = b.verification || {};
+    var vStatus = v.status || 'pending';
+    var vClass = vStatus === 'approved' ? 'active' : (vStatus === 'rejected' ? 'badge' : 'warning');
+    var vLabel = vStatus === 'approved' ? '✅ Verified' : (vStatus === 'rejected' ? '❌ Rejected' : '⏳ Pending Verification');
+    
     html += '<div class="card">';
     html += '<h3>' + esc(biz.name) + '</h3>';
     html += '<p>';
@@ -381,6 +387,7 @@ function renderBusinesses(businesses) {
     html += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
     html += '<span class="badge ' + statusClass + '">' + esc(statusLabel) + '</span>';
     html += '<span class="badge warning">' + esc(tierLabel) + '</span>';
+    html += '<span class="badge ' + vClass + '">' + vLabel + '</span>';
     html += '</div>';
     
     html += '<div class="meta">';
