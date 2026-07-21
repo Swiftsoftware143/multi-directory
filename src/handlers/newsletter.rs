@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+
 use lettre::{
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, Tokio1Executor,
@@ -410,6 +411,50 @@ pub async fn add_subscriber(
             Ok(contact_id) => tracing::info!("[newsletter] CoreSwift push OK for {email}, contact={contact_id}"),
             Err(e) => tracing::warn!("[newsletter] CoreSwift push failed for {email}: {e}"),
         }
+    });
+
+    // Fire cross-platform tag sync (fire-and-forget) — Subscriber tag for IncentiveSwift
+    let ts_db = s.db.clone();
+    let ts_email = sub.email.clone();
+    let ts_name = sub.name.clone();
+    let ts_dir_id = dir.0;
+    let ts_dir_slug = slug.clone();
+    tokio::spawn(async move {
+        // Map directory slug to ZaarHub newsletter tag (e.g., palm-coast → pc-zh-newsletter)
+        let newsletter_tag = match ts_dir_slug.as_str() {
+            "apopka" => "ap-zh-newsletter",
+            "boca-raton" => "br-zh-newsletter",
+            "hollywood" => "hw-zh-newsletter",
+            "lake-nona" => "ln-zh-newsletter",
+            "palm-bay" => "pb-zh-newsletter",
+            "palm-coast" => "pc-zh-newsletter",
+            "pompano-beach" => "pp-zh-newsletter",
+            "st-cloud" => "sc-zh-newsletter",
+            "st-petersburg" => "sp-zh-newsletter",
+            "winter-garden" => "wg-zh-newsletter",
+            _ => &ts_dir_slug,
+        }.to_string();
+
+        let tags = vec!["Subscriber".to_string(), newsletter_tag];
+
+        // Resolve tenant_id from directory so CoreSwift tag-sync doesn't 422
+        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id).await.ok()
+            .map(|(tid, _, _, _)| tid.to_string());
+
+        crate::handlers::tag_sync::fire_tag_sync(
+            &ts_db,
+            ts_email,
+            ts_name,
+            None,
+            None, // phone
+            tags,
+            None, // city_list
+            Some("subscribers".to_string()),
+            Some(ts_dir_slug),
+            Some("newsletter_signup".to_string()),
+            resolved_tenant, // tenant_id (resolved)
+            None, // coreswift_list_id
+        );
     });
 
     Ok((StatusCode::CREATED, Json(sub)))

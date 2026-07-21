@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supplier &amp; Distributor Portal - ZaarHub</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--teal:#0d9488;--teal-light:#14b8a6;--teal-bg:#f0fdfa;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b;--accent:#8b5cf6}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Auth screens */
+.auth-container{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)}
+.auth-card{background:var(--card);border-radius:16px;padding:40px;width:420px;max-width:90vw;box-shadow:0 25px 50px -12px rgba(0,0,0,.4)}
+.auth-card h1{font-size:1.75rem;color:var(--teal);text-align:center;margin-bottom:4px}
+.auth-card .tagline{text-align:center;color:var(--text-secondary);font-size:.9rem;margin-bottom:28px}
+.auth-card .error{background:#fef2f2;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.auth-card .success-msg{background:#f0fdf4;color:#16a34a;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.tab-bar{display:flex;margin-bottom:24px;border-bottom:2px solid var(--border)}
+.tab{flex:1;text-align:center;padding:10px;cursor:pointer;font-weight:600;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab.active{color:var(--teal);border-bottom-color:var(--teal)}
+
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;font-family:inherit;background:var(--card)}
+.form-group input:focus,.form-group select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.15)}
+.form-hint{font-size:.75rem;color:var(--text-secondary);margin-top:2px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:#0f766e}
+.btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#cbd5e1}
+.btn-block{width:100%;margin-top:8px}
+
+/* Dashboard */
+.dashboard{display:none;max-width:1000px;margin:0 auto;padding:24px}
+.dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.dashboard-header h1{font-size:1.5rem;color:var(--text)}
+.dashboard-header .user-info{font-size:.85rem;color:var(--text-secondary)}
+.logout-btn{background:none;border:1px solid var(--border);color:var(--text-secondary);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:.85rem;transition:all .2s}
+.logout-btn:hover{background:#f1f5f9;color:var(--danger);border-color:var(--danger)}
+
+/* Quick stats */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s;text-align:center}
+.stat-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.stat-card .stat-icon{font-size:2rem;margin-bottom:8px}
+.stat-card .stat-value{font-size:1.5rem;font-weight:700;color:var(--teal)}
+.stat-card .stat-label{font-size:.82rem;color:var(--text-secondary);margin-top:2px}
+
+.links-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.link-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s;cursor:pointer}
+.link-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08);border-color:var(--teal)}
+.link-card h4{font-size:.95rem;margin-bottom:4px;color:var(--text)}
+.link-card h4 a{color:var(--text)}
+.link-card p{font-size:.82rem;color:var(--text-secondary);margin-bottom:8px}
+
+/* Section */
+.section{margin-bottom:24px}
+.section-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.section-subtitle{font-size:.85rem;color:var(--text-secondary);margin-bottom:16px}
+
+/* Profile card */
+.profile-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.profile-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--accent));display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#fff;flex-shrink:0}
+.profile-info h2{font-size:1.2rem;margin-bottom:2px}
+.profile-info p{font-size:.85rem;color:var(--text-secondary)}
+.profile-info .email{color:var(--teal);font-weight:500}
+
+/* Loading */
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Toast */
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:10px;color:#fff;font-size:.85rem;font-weight:500;z-index:9999;opacity:0;transform:translateY(-10px);transition:all .3s;max-width:360px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:var(--success)}
+.toast.error{background:var(--danger)}
+.toast.info{background:var(--teal)}
+
+/* Empty state */
+.empty-state{text-align:center;padding:40px 20px}
+.empty-state .icon{font-size:3rem;margin-bottom:12px}
+.empty-state h3{font-size:1.1rem;margin-bottom:4px}
+.empty-state p{font-size:.85rem;color:var(--text-secondary)}
+
+/* Badge */
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge.accent{background:#f3e8ff;color:#7c3aed}
+.badge.teal{background:#f0fdfa;color:#0d9488}
+
+/* Responsive */
+@media(max-width:768px){
+  .dashboard{padding:16px}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .links-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div id="toastContainer"></div>
+
+<!-- Auth Screen -->
+<div id="authScreen" class="auth-container">
+  <div class="auth-card">
+    <h1>🏪 ZaarHub Network</h1>
+    <p class="tagline">Supplier &amp; Distributor Portal</p>
+    <div id="authError" class="error"></div>
+    <div id="authSuccess" class="success-msg"></div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchAuthTab('login')" id="loginTab">Login</div>
+      <div class="tab" onclick="switchAuthTab('register')" id="registerTab">Register</div>
+    </div>
+
+    <!-- Login Form -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="your@business.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter your password">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doLogin()">Sign In</button>
+      <p style="text-align:center;margin-top:12px;font-size:.8rem;color:var(--text-secondary)">
+        New supplier? <a href="#" onclick="switchAuthTab('register');return false">Register here</a>
+      </p>
+    </div>
+
+    <!-- Register Form -->
+    <div id="registerForm" style="display:none">
+      <div class="form-group">
+        <label>Business Name</label>
+        <input type="text" id="regName" placeholder="Your business name">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="your@business.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="regPassword" placeholder="At least 6 characters">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="tel" id="regPhone" placeholder="+1 (555) 123-4567">
+      </div>
+      <div class="form-group">
+        <label>Business Type</label>
+        <select id="regBusinessType">
+          <option value="">Select your business type...</option>
+          <option value="association">Association</option>
+          <option value="farm">Farm</option>
+          <option value="wholesaler">Wholesaler</option>
+          <option value="distributor">Distributor</option>
+          <option value="manufacturer">Manufacturer</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doRegister()">Register as Supplier</button>
+      <p style="text-align:center;margin-top:12px;font-size:.8rem;color:var(--text-secondary)">
+        Already registered? <a href="#" onclick="switchAuthTab('login');return false">Sign in</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="dashboard">
+  <div class="dashboard-header">
+    <div>
+      <h1 id="dashboardTitle">🏪 Supplier Dashboard</h1>
+      <div class="user-info" id="userInfo">Connected to ZaarHub Network</div>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingState" style="text-align:center;padding:40px">
+    <div class="spinner"></div>
+    <p style="margin-top:12px;color:var(--text-secondary)">Loading your dashboard...</p>
+  </div>
+
+  <!-- Content -->
+  <div id="dashboardContent" style="display:none">
+
+    <!-- Profile -->
+    <div class="profile-card" id="profileCard">
+      <div class="profile-avatar" id="profileAvatar">🏪</div>
+      <div class="profile-info">
+        <h2 id="profileName">Supplier</h2>
+        <p class="email" id="profileEmail">email@example.com</p>
+        <p id="profileMeta"><span id="profileType" class="badge teal">Distributor</span> &middot; Member since today</p>
+      </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">🌐</div>
+        <div class="stat-value">✓</div>
+        <div class="stat-label">Connected to ZaarHub Network</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📦</div>
+        <div class="stat-value" id="productCount">-</div>
+        <div class="stat-label">Products Listed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🤝</div>
+        <div class="stat-value">-</div>
+        <div class="stat-label">B2B Connections</div>
+      </div>
+    </div>
+
+    <!-- Quick Links & Tools -->
+    <div class="section">
+      <div class="section-title">🔗 Quick Links</div>
+      <div class="section-subtitle">Tools and resources for suppliers and distributors</div>
+      <div class="links-grid">
+        <div class="link-card" onclick="window.open('/api/v1/b2b/products','_blank')">
+          <h4>📦 <a href="/api/v1/b2b/products" target="_blank">B2B Marketplace</a></h4>
+          <p>Browse products from all suppliers. Search by category, price, or delivery area.</p>
+        </div>
+        <div class="link-card" onclick="window.open('/api/v1/b2b/suppliers','_blank')">
+          <h4>🤝 <a href="/api/v1/b2b/suppliers" target="_blank">Supplier Directory</a></h4>
+          <p>View all registered suppliers, farms, wholesalers, and distributors on the network.</p>
+        </div>
+        <div class="link-card" id="profileLink" style="opacity:0.7">
+          <h4>📋 Supplier Profile</h4>
+          <p>Manage your business profile and delivery settings. (Coming with linked accounts)</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Info Section -->
+    <div class="section">
+      <div class="section-title">💡 Getting Started</div>
+      <div class="section-subtitle">What you can do as a ZaarHub supplier</div>
+      <div class="empty-state" style="padding:20px;background:var(--card);border-radius:12px;border:1px solid var(--border)">
+        <p style="font-size:.85rem;color:var(--text-secondary);line-height:1.6">
+          <strong>List your products</strong> &mdash; Add products to the B2B marketplace so other businesses can find them.<br>
+          <strong>Connect with buyers</strong> &mdash; Businesses across ZaarHub directories can discover your offerings.<br>
+          <strong>Manage delivery</strong> &mdash; Set your delivery areas, minimum orders, and pricing.<br><br>
+          <em>Full product management and profile customization are on the roadmap. Stay tuned!</em>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function toast(msg, type) {
+  type = type || 'info';
+  var t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.getElementById('toastContainer').appendChild(t);
+  requestAnimationFrame(function() { t.classList.add('show'); });
+  setTimeout(function() { t.classList.remove('show'); setTimeout(function() { t.remove(); }, 300); }, 4000);
+}
+
+function switchAuthTab(tab) {
+  if (tab === 'login') {
+    $('loginTab').classList.add('active');
+    $('registerTab').classList.remove('active');
+    $('loginForm').style.display = '';
+    $('registerForm').style.display = 'none';
+  } else {
+    $('registerTab').classList.add('active');
+    $('loginTab').classList.remove('active');
+    $('loginForm').style.display = 'none';
+    $('registerForm').style.display = '';
+  }
+  hideAuthMessages();
+}
+
+function hideAuthMessages() {
+  $('authError').style.display = 'none';
+  $('authSuccess').style.display = 'none';
+}
+
+function showAuthError(msg) {
+  var el = $('authError');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+function showAuthSuccess(msg) {
+  var el = $('authSuccess');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── API Calls ──
+async function g(path) {
+  var token = localStorage.getItem('distributorToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { headers: h });
+  if (!r.ok) { var e = await r.json().catch(function(){ return {}; }); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+async function po(path, body) {
+  var h = { 'Content-Type': 'application/json' };
+  var r = await fetch(API + path, { method: 'POST', headers: h, body: JSON.stringify(body) });
+  if (!r.ok) { var e = await r.json().catch(function(){ return {}; }); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+// ── Auth ──
+async function doLogin() {
+  var email = $('loginEmail').value.trim();
+  var password = $('loginPassword').value;
+  if (!email || !password) { showAuthError('Please enter email and password'); return; }
+  hideAuthMessages();
+  try {
+    var r = await po('/visitor/login', { email: email, password: password });
+    localStorage.setItem('distributorToken', r.access_token);
+    localStorage.setItem('distributorInfo', JSON.stringify(r.visitor));
+    toast('Signed in successfully!', 'success');
+    loadDashboard();
+  } catch(e) {
+    showAuthError(e.message);
+  }
+}
+
+async function doRegister() {
+  var name = $('regName').value.trim() || undefined;
+  var email = $('regEmail').value.trim();
+  var password = $('regPassword').value;
+  var phone = $('regPhone').value.trim() || undefined;
+  var businessType = $('regBusinessType').value;
+
+  if (!email || !password || !businessType) {
+    showAuthError('Email, password, and business type are required');
+    return;
+  }
+  if (password.length < 6) { showAuthError('Password must be at least 6 characters'); return; }
+  hideAuthMessages();
+  try {
+    var r = await po('/b2b/register', {
+      email: email,
+      password: password,
+      name: name,
+      phone: phone,
+      business_type: businessType
+    });
+    localStorage.setItem('distributorToken', r.access_token);
+    localStorage.setItem('distributorInfo', JSON.stringify(r.visitor));
+    showAuthSuccess('Account created! Loading your dashboard...');
+    toast('Welcome to the ZaarHub Supplier Network!', 'success');
+    setTimeout(loadDashboard, 500);
+  } catch(e) {
+    showAuthError(e.message);
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('distributorToken');
+  localStorage.removeItem('distributorInfo');
+  $('dashboard').style.display = 'none';
+  $('authScreen').style.display = '';
+  $('loginForm').style.display = '';
+  $('registerForm').style.display = 'none';
+  $('loginTab').classList.add('active');
+  $('registerTab').classList.remove('active');
+  toast('Signed out', 'info');
+}
+
+// ── Dashboard ──
+function businessTypeLabel(bt) {
+  var map = {
+    'association': 'Association',
+    'farm': 'Farm',
+    'wholesaler': 'Wholesaler',
+    'distributor': 'Distributor',
+    'other': 'Other'
+  };
+  return map[bt] || bt;
+}
+
+async function loadDashboard() {
+  var token = localStorage.getItem('distributorToken');
+  if (!token) {
+    $('authScreen').style.display = '';
+    $('dashboard').style.display = 'none';
+    return;
+  }
+
+  $('authScreen').style.display = 'none';
+  $('dashboard').style.display = '';
+  $('loadingState').style.display = '';
+  $('dashboardContent').style.display = 'none';
+
+  try {
+    // Try to load profile
+    var data = await g('/visitor/profile');
+    var v = data.visitor || {};
+    $('profileName').textContent = v.name || 'Supplier';
+    $('profileEmail').textContent = v.email;
+    var bt = v.business_type || 'supplier';
+    $('profileType').textContent = businessTypeLabel(bt);
+    $('profileMeta').innerHTML = '<span class="badge teal">' + esc(businessTypeLabel(bt)) + '</span> &middot; Member since ' + (v.created_at ? new Date(v.created_at).toLocaleDateString() : 'today');
+    if (v.name) {
+      $('profileAvatar').textContent = v.name.charAt(0).toUpperCase();
+    }
+
+    // Update dashboard title
+    $('dashboardTitle').textContent = '🏪 ' + businessTypeLabel(bt) + ' Dashboard';
+
+    // Try to fetch product count (public endpoint)
+    try {
+      var prodData = await g('/b2b/products?per_page=1');
+      $('productCount').textContent = (prodData.total || 0);
+    } catch(e) {
+      $('productCount').textContent = '-';
+    }
+
+    $('loadingState').style.display = 'none';
+    $('dashboardContent').style.display = '';
+  } catch(e) {
+    // Token expired or invalid
+    doLogout();
+  }
+}
+
+// ── Init ──
+(function init() {
+  if (localStorage.getItem('distributorToken')) {
+    loadDashboard();
+  }
+})();
+</script>
+</body>
+</html>

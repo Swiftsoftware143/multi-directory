@@ -110,6 +110,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/community/posts", get(blog::list_community_posts).post(blog::create_community_post))
         .route("/community/posts/:id", get(blog::get_blog_post).put(blog::update_community_post).delete(blog::delete_blog_post))
         // B2B Marketplace (Phase 4 — BL23)
+        .route("/b2b/register", post(b2b::b2b_register))
         .route("/b2b/products", get(b2b::search_products).post(b2b::create_product))
         .route("/b2b/products/:id", get(b2b::get_product).put(b2b::update_product).delete(b2b::delete_product))
         .route("/b2b/suppliers", get(b2b::list_suppliers))
@@ -140,13 +141,13 @@ pub fn create_router(s: AppState) -> Router {
         .route("/public/homepage", get(public::homepage_data))
         // Dynamic OG image SVG generation (MUST come before :slug routes)
         .route("/public/og/:page_type/:page_id", get(dynamic_og::dynamic_og_image))
+        // ??? Onboarding survey public endpoints (MUST come before :slug routes)
+        .route("/public/directories/:slug/survey/respond", post(onboarding_survey::public_submit_survey))
+        .route("/public/directories/:slug/survey", get(onboarding_survey::public_get_survey))
+        // ? Public articles XML feed (RSS) (MUST come before :slug routes)
+        .route("/public/directories/:slug/articles.xml", get(articles_feed::articles_xml_feed))
         .route("/public/:slug", get(public::directory_data))
         .route("/public/:slug/:business_id", get(public::business_data))
-        // ??? Onboarding survey public endpoints
-        .route("/public/directories/:slug/survey", get(onboarding_survey::public_get_survey))
-        .route("/public/directories/:slug/survey/respond", post(onboarding_survey::public_submit_survey))
-        // ? Public articles XML feed (RSS)
-        .route("/public/directories/:slug/articles.xml", get(articles_feed::articles_xml_feed))
         .route("/landing-pages", get(public_pages::list_landing_pages).post(public_pages::create_landing_page))
         .route("/landing-pages/:id", get(public_pages::get_landing_page).put(public_pages::update_landing_page).delete(public_pages::delete_landing_page))
         .route("/landing-pages/:slug/publish", post(public_pages::toggle_publish))
@@ -334,6 +335,8 @@ pub fn create_router(s: AppState) -> Router {
         // ??? Onboarding Survey admin endpoints
         .route("/admin/directories/:id/survey", get(onboarding_survey::get_survey_config).put(onboarding_survey::upsert_survey_config))
         .route("/admin/directories/:id/survey/toggle", post(onboarding_survey::toggle_survey))
+        // ??? Cross-platform tag sync
+        .route("/admin/tag-sync", post(tag_sync::sync_tag_across_platforms))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
@@ -507,6 +510,25 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // ??? Serve distributor/B2B supplier portal
+                    if path == "/distributor" || path == "/distributor/" || path.starts_with("/distributor/dashboard") {
+                        let portal_path = std::path::Path::new(&frontend).join("distributor-portal.html");
+                        if portal_path.exists() {
+                            match tokio::fs::read(&portal_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     let clean_path = path.trim_start_matches('/');
                     let file_path = if clean_path.is_empty() {
                         std::path::Path::new(&frontend).join("index.html")
@@ -589,6 +611,8 @@ async fn auth_guard(
         // Public visitor account routes
         || path == "/visitor/register"
         || path == "/visitor/login"
+        // Public B2B register (distributor/supplier signup)
+        || (path == "/b2b/register" && req.method() == "POST")
         // Public pricing endpoint
         || path == "/pricing/public"
         // Public data pipeline ingest (external sources push here)

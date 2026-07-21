@@ -8,11 +8,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::auth::models::Claims;
+use crate::auth::middleware::create_token;
 use crate::error::{AppError, ApiResult};
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +66,146 @@ pub struct SupplierProduct {
     pub delivery_areas: Option<Vec<String>>,
     pub is_active: Option<bool>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct B2bRegisterRequest {
+    pub email: String,
+    pub password: String,
+    pub name: Option<String>,
+    pub phone: Option<String>,
+    pub business_type: String,  // one of: association, farm, wholesaler, distributor, manufacturer, other
+}
+
+/// POST /api/v1/b2b/register — distributor/B2B supplier registration (network-wide, no directory)
+pub async fn b2b_register(
+    State(s): State<AppState>,
+    Json(req): Json<B2bRegisterRequest>,
+) -> ApiResult<impl IntoResponse> {
+    if req.email.is_empty() || req.password.is_empty() || req.business_type.is_empty() {
+        return Err(AppError::Validation("Email, password, and business type are required".to_string()));
+    }
+    if req.password.len() < 6 {
+        return Err(AppError::Validation("Password must be at least 6 characters".to_string()));
+    }
+
+    // Validate business_type is one of the allowed values
+    let valid_types = ["association", "farm", "wholesaler", "distributor", "manufacturer", "other"];
+    if !valid_types.contains(&req.business_type.to_lowercase().as_str()) {
+        return Err(AppError::Validation(format!(
+            "Invalid business_type '{}'. Must be one of: association, farm, wholesaler, distributor, manufacturer, other",
+            req.business_type
+        )));
+    }
+
+    // Check if email already exists in visitor_accounts
+    let existing = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_accounts WHERE email = $1"
+    )
+    .bind(&req.email)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    if existing > 0 {
+        return Err(AppError::Duplicate("An account with this email already exists".to_string()));
+    }
+
+    // Hash password with argon2
+    use argon2::{
+        password_hash::{rand_core::OsRng, SaltString},
+        Argon2, PasswordHasher,
+    };
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let password_hash = argon2
+        .hash_password(req.password.as_bytes(), &salt)
+        .map_err(|e| AppError::Hash(e.to_string()))?
+        .to_string();
+
+    // Insert into visitor_accounts — set directory_id NULL (network-wide), include business_type
+    let visitor = sqlx::query_as::<_, crate::handlers::portal::VisitorAccount>(
+        "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, business_type) \
+         VALUES ($1, $2, $3, $4, NULL, $5) RETURNING *"
+    )
+    .bind(&req.email)
+    .bind(&password_hash)
+    .bind(&req.name)
+    .bind(&req.phone)
+    .bind(&req.business_type.to_lowercase())
+    .fetch_one(&s.db)
+    .await?;
+
+    // Update last_login
+    sqlx::query("UPDATE visitor_accounts SET last_login_at = NOW() WHERE id = $1")
+        .bind(visitor.id)
+        .execute(&s.db)
+        .await?;
+
+    // Fire tag sync in background (fire-and-forget)
+    {
+        let ts_db = s.db.clone();
+        let ts_email = visitor.email.clone();
+        let ts_name = visitor.name.clone();
+        let ts_phone = visitor.phone.clone();
+        let ts_business_type = req.business_type.to_lowercase();
+        tokio::spawn(async move {
+            // Capitalize first letter for display tags
+            let capitalized = {
+                let mut c = ts_business_type.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                }
+            };
+
+            let tags = vec!["Supplier".to_string(), capitalized];
+
+            crate::handlers::tag_sync::fire_tag_sync(
+                &ts_db,
+                ts_email,
+                ts_name,
+                None,
+                ts_phone,
+                tags,
+                None,                     // city_list
+                Some("suppliers".to_string()), // list_type
+                None,                     // directory_slug (network-wide)
+                Some("b2b_register".to_string()),
+                Some("2944af81-2086-44b8-93c1-d83e93a5dec1".to_string()), // tenant_id
+                Some("043fb15c-0874-4f41-b81a-4f324ce98b23".to_string()), // coreswift_list_id
+            );
+        });
+    }
+
+    // Generate JWT with role=visitor (same pattern as visitor_register)
+    let now_ts = Utc::now().timestamp() as usize;
+    let claims = Claims {
+        sub: visitor.id.to_string(),
+        tid: "00000000-0000-0000-0000-000000000000".to_string(),
+        role: "visitor".to_string(),
+        exp: now_ts + s.config.jwt_access_expiry as usize,
+        iat: now_ts,
+        aud: Some("multidirectory-api".to_string()),
+        iss: Some("multidirectory".to_string()),
+    };
+    let token = create_token(&claims, &s.config.jwt_secret)?;
+
+    Ok((StatusCode::CREATED, Json(json!({
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": s.config.jwt_access_expiry,
+        "visitor": {
+            "id": visitor.id,
+            "email": visitor.email,
+            "name": visitor.name,
+            "phone": visitor.phone,
+            "business_type": req.business_type.to_lowercase(),
+            "directory_id": serde_json::Value::Null,
+            "is_active": visitor.is_active,
+            "created_at": visitor.created_at,
+        },
+    }))))
 }
 
 /// POST /api/v1/b2b/products — supplier adds a product

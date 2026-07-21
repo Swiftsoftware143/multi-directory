@@ -656,6 +656,59 @@ pub async fn claim_business(
         }
     });
 
+    // Fire cross-platform tag sync (fire-and-forget)
+    // Look up business city + directory slug, then fire the tag sync
+    let ts_db = s.db.clone();
+    let ts_biz_id = business_id;
+    let ts_email = req.owner_email.clone();
+    let ts_name = req.owner_name.clone();
+    let ts_phone = req.owner_phone.clone();
+    tokio::spawn(async move {
+        let biz_info = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT b.directory_id, COALESCE(b.city, d.slug, '') FROM businesses b LEFT JOIN directories d ON d.id = b.directory_id WHERE b.id = $1"
+        )
+        .bind(ts_biz_id)
+        .fetch_optional(&ts_db)
+        .await;
+
+        if let Ok(Some((dir_id, city_or_slug))) = biz_info {
+            let dir_slug: String = sqlx::query_scalar(
+                "SELECT slug FROM directories WHERE id = $1"
+            )
+            .bind(dir_id)
+            .fetch_optional(&ts_db)
+            .await
+            .unwrap_or(None)
+            .flatten()
+            .unwrap_or_default();
+
+            let city = if city_or_slug.is_empty() { dir_slug.replace("-", " ") } else { city_or_slug };
+            let tags = vec!["Business".to_string(), city.clone()];
+            let city_list_name = if city.is_empty() {
+                String::new()
+            } else {
+                format!("{} - Businesses", city)
+            };
+
+            crate::handlers::tag_sync::fire_tag_sync(
+                &ts_db,
+                ts_email,
+                Some(ts_name.unwrap_or_else(|| "Business".to_string())),
+                Some("Owner".to_string()),
+                ts_phone,
+                tags,
+                Some(city_list_name),
+                Some("businesses".to_string()),
+                Some(dir_slug),
+                Some("business_signup".to_string()),
+                None,
+                None,
+            );
+        } else {
+            tracing::warn!("[claim] Could not resolve directory info for business {ts_biz_id}, skipping tag sync");
+        }
+    });
+
         // Create a CRM deal record in the default pipeline
     let _ = create_claim_deal(&s.db, business_id, &req.owner_name, &req.owner_email, &req.owner_phone).await;
 
