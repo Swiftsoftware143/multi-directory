@@ -2,8 +2,8 @@
 //! Tracks anonymous visitors, sessions, events, and business owner claims.
 
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Extension, Path, Query, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -14,7 +14,41 @@ use uuid::Uuid;
 use std::env;
 
 use crate::AppState;
+use crate::auth::models::Claims;
+use crate::auth::middleware::verify_token;
 use crate::error::{AppError, ApiResult};
+
+// ── Auth Helpers (used by handlers that are before the auth_guard middleware) ──
+
+/// Extract and verify visitor JWT from Authorization header. Returns 401 if missing/invalid.
+pub fn extract_visitor_id(headers: &HeaderMap, jwt_secret: &str) -> Result<Uuid, AppError> {
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| AppError::Unauthorized)?;
+    
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| AppError::Unauthorized)?;
+    
+    let claims = verify_token(token, jwt_secret)
+        .map_err(|_| AppError::Unauthorized)?;
+    
+    Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
+}
+
+/// Extract visitor ID from JWT if present, returns None if no auth header or invalid token.
+pub fn extract_visitor_id_optional(headers: &HeaderMap, jwt_secret: &str) -> Option<Uuid> {
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())?;
+    
+    let token = auth_header.strip_prefix("Bearer ")?;
+    
+    let claims = verify_token(token, jwt_secret).ok()?;
+    
+    Uuid::parse_str(&claims.sub).ok()
+}
 
 // ── Data Types ──
 
@@ -601,6 +635,7 @@ pub struct ClaimBusinessRequest {
     pub owner_email: String,
     pub owner_name: Option<String>,
     pub owner_phone: Option<String>,
+    pub website: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -615,6 +650,260 @@ pub struct ClaimedBusiness {
     pub is_active: Option<bool>,
     pub created_at: Option<DateTime<Utc>>,
 }
+
+// ── Visitor Favorites (Saved Places) ──
+
+/// POST /api/v1/visitor/favorites/{business_id} — toggle favorite (add if not exists, remove if exists)
+pub async fn toggle_favorite(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    // Manually verify JWT from Authorization header (route is before auth_guard)
+    let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
+
+    // Get the business's directory_id
+    let biz_info = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT directory_id FROM businesses WHERE id = $1"
+    )
+    .bind(business_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    let directory_id = biz_info.0;
+
+    // Check if already favorited
+    let existing = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+    )
+    .bind(visitor_id)
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    let saved = if existing > 0 {
+        // Remove
+        sqlx::query(
+            "DELETE FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+        )
+        .bind(visitor_id)
+        .bind(business_id)
+        .execute(&s.db)
+        .await?;
+        false
+    } else {
+        // Add
+        sqlx::query(
+            "INSERT INTO visitor_favorites (visitor_account_id, business_id, directory_id) VALUES ($1, $2, $3)"
+        )
+        .bind(visitor_id)
+        .bind(business_id)
+        .bind(directory_id)
+        .execute(&s.db)
+        .await?;
+        true
+    };
+
+    Ok(Json(json!({
+        "saved": saved,
+        "business_id": business_id,
+    })))
+}
+
+/// GET /api/v1/visitor/favorites — list all saved businesses for the logged-in visitor
+pub async fn list_favorites(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    // Manually verify JWT from Authorization header (route is before auth_guard)
+    let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
+
+    let favorites = sqlx::query_as::<_, FavoriteBusinessRow>(
+        r#"SELECT
+            vf.id,
+            vf.created_at as saved_at,
+            b.id as business_id,
+            b.name as business_name,
+            b.slug as business_slug,
+            b.city,
+            b.state,
+            dc.name as category_name,
+            b.images,
+            b.rating,
+            b.review_count,
+            b.phone,
+            d.slug as directory_slug
+        FROM visitor_favorites vf
+        JOIN businesses b ON b.id = vf.business_id
+        LEFT JOIN directory_categories dc ON dc.id = b.category_id
+        JOIN directories d ON d.id = vf.directory_id
+        WHERE vf.visitor_account_id = $1
+        ORDER BY vf.created_at DESC"#
+    )
+    .bind(visitor_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(json!({
+        "favorites": favorites,
+        "count": favorites.len(),
+    })))
+}
+
+/// GET /api/v1/visitor/favorites/check/{business_id} — check if a business is saved
+pub async fn check_favorite(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    // Try to get visitor ID from JWT if present, otherwise return saved=false
+    let visitor_id = match extract_visitor_id_optional(&headers, &s.config.jwt_secret) {
+        Some(id) => id,
+        None => {
+            return Ok(Json(json!({
+                "saved": false,
+                "business_id": business_id,
+            })));
+        }
+    };
+
+    let saved = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+    )
+    .bind(visitor_id)
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0) > 0;
+
+    Ok(Json(json!({
+        "saved": saved,
+        "business_id": business_id,
+    })))
+}
+
+/// GET /api/v1/visitor/favorites/count/{business_id} — public bookmark count for a business
+pub async fn get_bookmark_count(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_favorites WHERE business_id = $1"
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(json!({
+        "count": count,
+        "business_id": business_id,
+    })))
+}
+
+/// POST /api/v1/bookmarks/toggle — toggle bookmark via Query params
+/// Alternative endpoint that uses query params instead of path + claims.
+/// Expects visitor_account_id and business_id as query params.
+/// This is called from the business detail page JS.
+#[derive(Debug, Deserialize)]
+pub struct ToggleBookmarkQuery {
+    pub visitor_account_id: Option<Uuid>,
+    pub business_id: Uuid,
+}
+pub async fn toggle_bookmark(
+    State(s): State<AppState>,
+    Json(req): Json<ToggleBookmarkQuery>,
+) -> ApiResult<impl IntoResponse> {
+    // If no visitor account id is provided, try claims extension (JWT auth)
+    let visitor_id = req.visitor_account_id;
+    
+    let visitor_id = match visitor_id {
+        Some(id) => id,
+        None => {
+            return Err(AppError::Unauthorized);
+        }
+    };
+
+    // Get the business's directory_id
+    let biz_info = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT directory_id FROM businesses WHERE id = $1"
+    )
+    .bind(req.business_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    let directory_id = biz_info.0;
+
+    // Check if already favorited
+    let existing = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+    )
+    .bind(visitor_id)
+    .bind(req.business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    let bookmarked = if existing > 0 {
+        // Remove
+        sqlx::query(
+            "DELETE FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+        )
+        .bind(visitor_id)
+        .bind(req.business_id)
+        .execute(&s.db)
+        .await?;
+        false
+    } else {
+        // Add
+        sqlx::query(
+            "INSERT INTO visitor_favorites (visitor_account_id, business_id, directory_id) VALUES ($1, $2, $3)"
+        )
+        .bind(visitor_id)
+        .bind(req.business_id)
+        .bind(directory_id)
+        .execute(&s.db)
+        .await?;
+        true
+    };
+
+    // Get updated count
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_favorites WHERE business_id = $1"
+    )
+    .bind(req.business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(json!({
+        "bookmarked": bookmarked,
+        "count": count,
+        "business_id": req.business_id,
+    })))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct FavoriteBusinessRow {
+    pub id: Uuid,
+    pub saved_at: chrono::DateTime<Utc>,
+    pub business_id: Uuid,
+    pub business_name: String,
+    pub business_slug: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub category_name: Option<String>,
+    pub images: Option<serde_json::Value>,
+    pub rating: Option<f64>,
+    pub review_count: Option<i32>,
+    pub phone: Option<String>,
+    pub directory_slug: Option<String>,
+}
+
+// ── Business Claim Handlers ──
 
 /// POST /api/v1/businesses/:id/claim — business owner claims their listing
 pub async fn claim_business(
@@ -726,7 +1015,166 @@ pub async fn claim_business(
         }
     });
 
-    Ok((StatusCode::CREATED, Json(json!(cb))))
+    // ── Auto-approval: Check if owner email matches business domain ──
+    // If the claimant's email domain matches the business website domain,
+    // or the business email field matches the claimant email, auto-approve.
+    // The claimant submits a website URL in the claim form — use that plus the DB's website.
+    let owner_email_domain = req.owner_email.split('@').nth(1).unwrap_or("").to_lowercase();
+    
+    // Fetch existing business info from DB
+    let biz_domain_info = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT website, email FROM businesses WHERE id = $1"
+    )
+    .bind(business_id)
+    .fetch_optional(&s.db)
+    .await?
+    .unwrap_or((None, None));
+    
+    let (biz_website, biz_email) = biz_domain_info;
+    
+    // The submitted website from the claim form takes priority over the DB website
+    let submitted_website = req.website.as_ref()
+        .map(|w| w.trim())
+        .filter(|w| !w.is_empty())
+        .or_else(|| biz_website.as_ref().map(|w| w.as_str()));
+    
+    let mut auto_approved = false;
+    let mut temp_password = String::new();
+    let mut no_website = submitted_website.is_none();
+    
+    // Check business email field match
+    if let Some(ref be) = biz_email {
+        if be.to_lowercase() == req.owner_email.to_lowercase() {
+            auto_approved = true;
+            tracing::info!("[claim] Auto-approved {} — email matches business email field", req.owner_email);
+        }
+    }
+    
+    // Check website domain match (without url crate — manual extraction)
+    if !auto_approved {
+        if let Some(ref w) = submitted_website {
+            // Extract host from website URL
+            let w_lower = w.to_lowercase();
+            let host = w_lower
+                .strip_prefix("https://")
+                .or_else(|| w_lower.strip_prefix("http://"))
+                .or_else(|| w_lower.strip_prefix("ftp://"))
+                .unwrap_or(&w_lower);
+            // Take just the hostname (before first /)
+            let host_clean = host.split('/').next().unwrap_or(host);
+            // Remove www. prefix
+            let host_clean = host_clean.strip_prefix("www.").unwrap_or(host_clean);
+            // Check if email domain matches the website host, or is a subdomain of it
+            if !owner_email_domain.is_empty() && (host_clean == owner_email_domain 
+                || owner_email_domain.ends_with(&format!(".{}", host_clean)))
+            {
+                auto_approved = true;
+                tracing::info!("[claim] Auto-approved {} — domain {} matches website {}", 
+                    req.owner_email, owner_email_domain, host_clean);
+            }
+        }
+    }
+    
+    // Save the submitted website to the business listing if provided
+    if let Some(ref w) = req.website {
+        let w = w.trim();
+        if !w.is_empty() {
+            let _ = sqlx::query(
+                "UPDATE businesses SET website = $1, updated_at = NOW() WHERE id = $2 AND (website IS NULL OR website = '')"
+            )
+            .bind(w)
+            .bind(business_id)
+            .execute(&s.db)
+            .await;
+        }
+    }
+    
+    if auto_approved {
+        // Get directory_id for the business
+        let dir_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT directory_id FROM businesses WHERE id = $1"
+        )
+        .bind(business_id)
+        .fetch_optional(&s.db)
+        .await?
+        .flatten();
+        
+        if let Some(directory_id) = dir_id {
+            // Upsert business_verifications with approved status
+            let _ = sqlx::query(
+                r#"INSERT INTO business_verifications (business_id, directory_id, method, status, verified_at)
+                   VALUES ($1, $2, 'auto_domain', 'approved', NOW())
+                   ON CONFLICT (business_id) DO UPDATE
+                   SET status = 'approved', verified_at = NOW(), method = 'auto_domain', updated_at = NOW()"#
+            )
+            .bind(business_id)
+            .bind(directory_id)
+            .execute(&s.db)
+            .await;
+            
+            // Update claimed_businesses verified_at
+            let _ = sqlx::query(
+                "UPDATE claimed_businesses SET verified_at = NOW(), updated_at = NOW() WHERE id = $1"
+            )
+            .bind(cb.id)
+            .execute(&s.db)
+            .await;
+            
+            // Create visitor account with temp password
+            use argon2::{Argon2, PasswordHasher};
+            use argon2::password_hash::SaltString;
+            use rand::rngs::OsRng;
+            
+            // Generate 8-char password from random bytes
+            use rand::RngCore;
+            let mut bytes = [0u8; 6];
+            OsRng.fill_bytes(&mut bytes);
+            temp_password = hex::encode(bytes);
+            
+            let salt = SaltString::generate(&mut OsRng);
+            let password_hash = Argon2::default()
+                .hash_password(temp_password.as_bytes(), &salt)
+                .map(|h| h.to_string())
+                .unwrap_or_default();
+            
+            if !password_hash.is_empty() {
+                let owner_name = req.owner_name.clone().unwrap_or_default();
+                let owner_phone = req.owner_phone.clone().unwrap_or_default();
+                let _ = sqlx::query(
+                    r#"INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, is_active, business_type)
+                       VALUES ($1, $2, $3, $4, $5, true, 'merchant')
+                       ON CONFLICT (email) DO NOTHING"#
+                )
+                .bind(&req.owner_email)
+                .bind(&password_hash)
+                .bind(&owner_name)
+                .bind(&owner_phone)
+                .bind(directory_id)
+                .execute(&s.db)
+                .await;
+            }
+        }
+    }
+
+    Ok((StatusCode::CREATED, Json(json!({
+        "id": cb.id,
+        "business_id": cb.business_id,
+        "owner_email": cb.owner_email,
+        "owner_name": cb.owner_name,
+        "owner_phone": cb.owner_phone,
+        "is_active": cb.is_active,
+        "created_at": cb.created_at,
+        "auto_approved": auto_approved,
+        "temp_password": if auto_approved { Some(&temp_password) } else { None },
+        "no_website": if auto_approved { false } else { no_website },
+        "message": if auto_approved {
+            "Your business has been verified! Check your email for login credentials."
+        } else if no_website {
+            "A website URL is required to claim a listing. Please provide your website."
+        } else {
+            "We couldn't automatically verify your ownership. Our team will review your claim within 24 hours."
+        }
+    }))))
 }
 
 /// Create a deal record in the default pipeline when a business is claimed.
@@ -911,4 +1359,162 @@ async fn fetch_business_images_on_claim(db: &sqlx::PgPool, business_id: Uuid) ->
     .map_err(|e| format!("DB error updating images: {e}"))?;
 
     Ok(count)
+}
+
+
+// ── City Request / Poll Feature ──
+
+#[derive(Debug, Deserialize)]
+pub struct CityRequestInput {
+    pub city_name: String,
+    pub state: Option<String>,
+    pub email: Option<String>,
+    pub directory_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CityRequestVote {
+    pub id: Uuid,
+    pub city_name: String,
+    pub state: String,
+    pub votes: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct AdminCityRequest {
+    pub id: Uuid,
+    pub city_name: String,
+    pub state: String,
+    pub votes: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub processed_at: Option<DateTime<Utc>>,
+}
+
+/// Submit a city request (creates or upvotes)
+pub async fn request_city(
+    State(app_state): State<AppState>,
+    Json(req): Json<CityRequestInput>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let city_name = req.city_name.trim();
+    if city_name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "City name is required"}))));
+    }
+    
+    // Check if city already exists in directory
+    let slug = city_name.to_lowercase()
+        .replace(' ', "-")
+        .replace(|c: char| !c.is_alphanumeric() && c != '-', "");
+    
+    let existing_dir: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM directories WHERE slug = $1"
+    )
+    .bind(&slug)
+    .fetch_optional(&app_state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .flatten();
+    
+    if existing_dir.is_some() {
+        return Err((StatusCode::CONFLICT, Json(json!({"error": "This city is already listed on ZaarHub!"}))));
+    }
+    
+    // Upsert vote
+    let state = req.state.as_deref().unwrap_or("FL");
+    let email = req.email.as_ref().map(|e| e.trim()).filter(|e| !e.is_empty());
+    
+    let result = sqlx::query_as::<_, (Uuid, i32)>(
+        r#"INSERT INTO city_requests (city_name, state, email, votes)
+           VALUES ($1, $2, $3, 1)
+           ON CONFLICT (city_name, state) DO UPDATE
+           SET votes = city_requests.votes + 1,
+               updated_at = NOW()
+           RETURNING id, votes"#
+    )
+    .bind(&city_name)
+    .bind(state)
+    .bind(email)
+    .fetch_optional(&app_state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    
+    // If we have a directory_id and the INSERT path includes it, we need to handle the ON CONFLICT
+    // The query above doesn't use directory_id since it's simple upsert. 
+    // The real directory_id scoping happens on the admin/managed side.
+    
+    match result {
+        Some((id, votes)) => {
+            Ok(Json(json!({
+                "id": id,
+                "city_name": city_name,
+                "state": state,
+                "votes": votes,
+                "message": "Thanks! Your vote has been counted."
+            })))
+        },
+        None => {
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Could not process request"}))))
+        }
+    }
+}
+
+/// Get all requested cities with vote counts (ordered by popularity)
+pub async fn get_city_requests(
+    State(app_state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let requests = sqlx::query_as::<_, CityRequestVote>(
+        r#"SELECT id, city_name, state, votes, created_at
+           FROM city_requests
+           WHERE status = 'pending'
+           ORDER BY votes DESC, created_at DESC
+           LIMIT 50"#
+    )
+    .fetch_all(&app_state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    
+    Ok(Json(json!({"requests": requests})))
+}
+
+/// Admin: get all city requests for a specific directory (including processed)
+pub async fn admin_get_city_requests(
+    State(app_state): State<AppState>,
+    Path(dir_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let requests = sqlx::query_as::<_, AdminCityRequest>(
+        r#"SELECT id, city_name, state, votes, status, created_at, processed_at
+           FROM city_requests
+           WHERE directory_id = $1
+           ORDER BY votes DESC, created_at DESC"#
+    )
+    .bind(dir_id)
+    .fetch_all(&app_state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    
+    Ok(Json(json!({"requests": requests})))
+}
+
+/// Admin: mark a city request as added (processed)
+pub async fn admin_mark_city_added(
+    State(app_state): State<AppState>,
+    Path((_dir_id, request_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let result = sqlx::query(
+        r#"UPDATE city_requests
+           SET status = 'added',
+               processed_at = NOW()
+           WHERE id = $1"#
+    )
+    .bind(request_id)
+    .execute(&app_state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "City request not found"}))));
+    }
+    
+    Ok(Json(json!({"message": "City marked as added", "id": request_id})))
 }

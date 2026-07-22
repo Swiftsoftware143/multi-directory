@@ -33,11 +33,17 @@ async fn main() {
     let config = config::AppConfig::from_env();
     let pool = db::connect(&config.database_url, config.db_min_connections, config.db_max_connections).await;
 
+    // Connect to IncentiveSwift database as well
+    let is_db_url = std::env::var("IS_DATABASE_URL").unwrap_or_else(|_| {
+        "postgres://swift:SwiftSecure2026!@127.0.0.1:5432/incentiveswift".to_string()
+    });
+    let is_db = db::connect(&is_db_url, config.db_min_connections, config.db_max_connections).await;
+
     // Run migrations
     tracing::info!("Running database migrations...");
     db::run_migrations(&pool).await;
 
-    let state = AppState::new(pool, config.clone());
+    let state = AppState::new(pool, config.clone(), is_db);
 
     // Start background reminder cron
     reminders::start_reminder_cron(state.db.clone());

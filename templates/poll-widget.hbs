@@ -1,0 +1,214 @@
+{{!-- Poll Widget — One-question micro-poll for visitor directories --}}
+{{!-- Include this partial in directory templates to show polls --}}
+{{!-- Usage: {{> poll-widget poll=poll}} --}}
+{{!-- The poll data is fetched via JS from GET /api/v1/polls?directory_id=X&status=active --}}
+
+<div class="poll-widget" data-poll-id="{{poll.id}}" data-has-voted="{{#if poll.user_vote}}true{{else}}false{{/if}}">
+    <div class="poll-header">
+        <h3 class="poll-question">{{poll.question}}</h3>
+        <span class="poll-status-badge">{{#if (eq poll.status "active")}}Active{{else}}Closed{{/if}}</span>
+    </div>
+
+    {{#if poll.user_vote}}
+        {{!-- Show results --}}
+        <div class="poll-results">
+            {{#each poll.options}}
+                {{#with (lookup ../poll.option_votes @index)}}
+                <div class="poll-option-row">
+                    <div class="poll-option-text">{{lookup ../poll.options @index}}</div>
+                    <div class="poll-bar-container">
+                        <div class="poll-bar" style="width: {{#if ../poll.total_votes}}{{percentage this ../poll.total_votes}}{{else}}0{{/if}}%;"></div>
+                    </div>
+                    <span class="poll-vote-count">{{this}} vote{{#unless (eq this 1)}}s{{/unless}}</span>
+                    {{#if (eq @index ../poll.user_vote)}}
+                        <span class="poll-your-vote-badge">Your vote</span>
+                    {{/if}}
+                </div>
+                {{/with}}
+            {{/each}}
+            <div class="poll-total-votes">{{poll.total_votes}} total vote{{#unless (eq poll.total_votes 1)}}s{{/unless}}</div>
+        </div>
+    {{else}}
+        {{!-- Show radio options for voting --}}
+        <div class="poll-options">
+            {{#each poll.options}}
+            <label class="poll-option">
+                <input type="radio" name="poll-option-{{../poll.id}}" value="{{@index}}">
+                <span class="poll-option-label">{{this}}</span>
+            </label>
+            {{/each}}
+        </div>
+        <button class="poll-vote-btn" onclick="submitPollVote('{{poll.id}}')">Vote</button>
+    {{/if}}
+</div>
+
+<style>
+.poll-widget {
+    background: #fff;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.poll-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+.poll-question {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--heading, #1e293b);
+    margin: 0;
+    flex: 1;
+}
+.poll-status-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: var(--primary, #0d9488);
+    color: #fff;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+.poll-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.poll-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.poll-option:hover {
+    background: #f8fafc;
+}
+.poll-option input[type="radio"] {
+    accent-color: var(--primary, #0d9488);
+}
+.poll-option-label {
+    font-size: 0.9rem;
+    color: var(--text, #1e293b);
+}
+.poll-vote-btn {
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px;
+    background: var(--primary, #0d9488);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.poll-vote-btn:hover {
+    background: #0f766e;
+}
+.poll-results {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.poll-option-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.poll-option-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text, #1e293b);
+}
+.poll-bar-container {
+    height: 8px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.poll-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary, #0d9488), var(--teal-light, #14b8a6));
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+.poll-vote-count {
+    font-size: 0.75rem;
+    color: var(--muted, #94a3b8);
+}
+.poll-your-vote-badge {
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: #dbeafe;
+    color: #3b82f6;
+    font-weight: 600;
+}
+.poll-total-votes {
+    font-size: 0.8rem;
+    color: var(--muted, #94a3b8);
+    text-align: center;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border, #e2e8f0);
+}
+</style>
+
+<script>
+// Handlebars helper: {{percentage count total}}
+(function() {
+    if (typeof Handlebars !== 'undefined') {
+        Handlebars.registerHelper('percentage', function(count, total) {
+            if (!total || total === 0) return 0;
+            return Math.round((count / total) * 100);
+        });
+    }
+})();
+
+// Submit poll vote via JS
+async function submitPollVote(pollId) {
+    var selected = document.querySelector('input[name="poll-option-' + pollId + '"]:checked');
+    if (!selected) {
+        alert('Please select an option.');
+        return;
+    }
+    var optionIndex = parseInt(selected.value);
+    var token = getVisitorToken();
+    if (!token) {
+        alert('Please log in to vote.');
+        return;
+    }
+    try {
+        var resp = await fetch('/api/v1/polls/' + pollId + '/vote', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ option_index: optionIndex })
+        });
+        if (!resp.ok) {
+            var err = await resp.json();
+            alert(err.error || 'Vote failed. Please try again.');
+            return;
+        }
+        // Reload the poll widget with results
+        location.reload();
+    } catch (e) {
+        alert('Vote failed: ' + e.message);
+    }
+}
+
+function getVisitorToken() {
+    return localStorage.getItem('visitor_token') || sessionStorage.getItem('visitor_token') || null;
+}
+</script>

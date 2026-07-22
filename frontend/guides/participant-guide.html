@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarHub Loyalty — Participant Guide</title>
+<style>
+:root{--teal:#0d9488;--teal-light:#14b8a6;--teal-bg:#f0fdfa;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;margin:0;padding:0}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.header{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:0}
+.header-inner{max-width:960px;margin:0 auto;padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:1.3rem;font-weight:700}
+.header a{color:#fff;font-size:.85rem;opacity:.9}
+.header a:hover{opacity:1;text-decoration:underline}
+
+/* Hero */
+.hero{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:48px 32px 56px;text-align:center}
+.hero h2{font-size:2rem;margin-bottom:8px}
+.hero p{font-size:1.1rem;opacity:.9;max-width:600px;margin:0 auto}
+
+/* Main content */
+.container{max-width:860px;margin:0 auto;padding:0 24px 60px}
+
+/* Quick Start box */
+.quick-start{background:var(--teal-bg);border:2px solid var(--teal);border-radius:12px;padding:24px 28px;margin:-24px auto 32px;position:relative;z-index:2;max-width:600px;box-shadow:0 4px 12px rgba(13,148,136,.15)}
+.quick-start h3{color:var(--teal);font-size:1.1rem;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.quick-start ol{margin:0;padding-left:20px}
+.quick-start li{margin-bottom:8px;color:var(--text);font-size:.95rem;line-height:1.5}
+.quick-start li:last-child{margin-bottom:0}
+
+/* Cards */
+.card{background:var(--card);border-radius:12px;padding:28px 32px;margin-bottom:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card h3{font-size:1.15rem;color:var(--teal);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.card h3 .emoji{font-size:1.4rem}
+.card p{color:var(--text-secondary);margin-bottom:12px;line-height:1.7}
+.card p:last-child{margin-bottom:0}
+.card ul,.card ol{margin:8px 0 14px 20px}
+.card li{margin-bottom:6px;color:var(--text-secondary);line-height:1.6}
+
+/* Step list inside cards */
+.step-item{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;padding:12px 16px;background:var(--bg);border-radius:8px;border:1px solid var(--border)}
+.step-item:last-child{margin-bottom:0}
+.step-num{width:30px;height:30px;min-width:30px;background:var(--teal);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
+.step-text{flex:1}
+.step-text p{margin:0;font-size:.9rem}
+.step-text p strong{color:var(--text)}
+
+/* Tip box */
+.tip-box{background:var(--teal-bg);border-left:4px solid var(--teal);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
+.tip-box strong{color:var(--teal)}
+
+/* Badges */
+.badge{display:inline-block;background:var(--teal-bg);color:var(--teal);font-size:.75rem;padding:2px 10px;border-radius:20px;font-weight:600}
+
+/* Footer link */
+.back-link{display:inline-block;margin-top:32px;color:var(--teal);font-size:.9rem}
+
+@media(max-width:640px){
+  .header-inner{padding:12px 16px}
+  .hero{padding:32px 16px 48px}
+  .hero h2{font-size:1.5rem}
+  .container{padding:0 16px 40px}
+  .card{padding:20px 18px}
+  .quick-start{padding:18px 20px;margin:-16px 16px 24px}
+  .step-item{padding:10px 12px}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <h1>🏪 ZaarHub</h1>
+    <a href="/">← Back to Portal</a>
+  </div>
+</div>
+
+<div class="hero">
+  <h2>🎉 How the Loyalty Program Works for You</h2>
+  <p>Earn credits when you shop. Redeem them anywhere in the ZaarHub network. It's that simple.</p>
+</div>
+
+<div class="container">
+
+<div class="quick-start">
+  <h3>⚡ Quick Start</h3>
+  <ol>
+    <li>Show your QR code when you pay</li>
+    <li>Tell the cashier the purchase amount</li>
+    <li>Credits appear in your account instantly</li>
+    <li>Redeem at any participating business</li>
+  </ol>
+</div>
+
+<!-- 1. Getting Started -->
+<div class="card">
+  <h3><span class="emoji">🚀</span> 1. Getting Started</h3>
+  <p>Getting started with the ZaarHub Loyalty Program is quick and free. Here's what you need to know:</p>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p><strong>Scan a Business QR Code</strong> — When you visit a participating business, look for their ZaarHub QR code. Scanning it opens the sign-up flow directly.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p><strong>Create Your Free Account</strong> — You need a ZaarHub account to participate. Sign up is free — do it at the business or online at the ZaarHub portal.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p><strong>You're In!</strong> — Once signed up, you'll get your personal QR code and referral code. Start earning credits on your next purchase.</p></div>
+  </div>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> No need to print anything. Your QR code lives in the visitor portal on your phone — just pull it up when you check out.
+  </div>
+</div>
+
+<!-- 2. Earning Credits -->
+<div class="card">
+  <h3><span class="emoji">💰</span> 2. Earning Credits</h3>
+  <p>Every time you spend money at a participating business, you earn credits. The process is automatic once the business verifies your purchase.</p>
+  <p><strong>How it works:</strong></p>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Make a purchase at any participating ZaarHub business</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Show your personal loyalty QR code at checkout</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>The cashier scans your code and verifies the purchase amount</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Credits are added to your account <strong>instantly</strong></p></div>
+  </div>
+  <p><strong>Earning rate:</strong> Each business sets their own rate. For example, if a business offers 10 credits per $1, a $5 purchase earns you 50 credits. Higher rates mean you earn faster!</p>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> You can check a business's earn rate before you shop by looking at their profile in the ZaarHub directory.
+  </div>
+</div>
+
+<!-- 3. Your QR Code -->
+<div class="card">
+  <h3><span class="emoji">📱</span> 3. Your QR Code</h3>
+  <p>Your personal QR code is your key to the ZaarHub Loyalty Program. Businesses scan this to identify you and award credits.</p>
+  <ul>
+    <li><strong>Where to find it:</strong> Log into your visitor portal and navigate to the loyalty section. Your QR code is displayed on screen.</li>
+    <li><strong>Safe to share:</strong> Your QR code only contains a unique participant ID — no personal information. It's safe to show to any cashier.</li>
+    <li><strong>Never share your password:</strong> Your account password is secret. Your QR code is just an identifier, not a credential.</li>
+    <li><strong>Permanent:</strong> Your QR code doesn't change. Screenshot it for quick access if you like.</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Turn up your screen brightness so the scanner can read your QR code easily, especially in bright store lighting.
+  </div>
+</div>
+
+<!-- 4. Redeeming Credits -->
+<div class="card">
+  <h3><span class="emoji">🎁</span> 4. Redeeming Credits</h3>
+  <p>Redeeming credits is where you turn your loyalty into real savings. Here's how:</p>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Browse the business's <strong>Offers tab</strong> to see available discounts and rewards</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Choose an offer — e.g., "25% off up to $6"</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Make your purchase and tell the cashier you want to <strong>redeem</strong> an offer</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Show your QR code. The cashier verifies the purchase and selects your chosen offer</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Discount is applied automatically — credits are deducted, savings are yours!</p></div>
+  </div>
+  <p><strong>Example:</strong> You have 800 credits ($8 value). You pick a "25% off up to $6" offer on a $30 purchase. Your discount is 25% of $30 = $7.50, but capped at $6, so you save $6. That's 600 credits redeemed. You keep 200 credits in your account.</p>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Keep an eye on each business's offers page. Discounts rotate seasonally, and some offers are limited-time!
+  </div>
+</div>
+
+<!-- 5. Referrals -->
+<div class="card">
+  <h3><span class="emoji">👥</span> 5. Referrals</h3>
+  <p>Love the program? Share it with friends and earn bonus credits!</p>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Find your <strong>referral code</strong> in the visitor portal</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Share it with friends via text, email, or social media</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>When they sign up and complete their <strong>first verified purchase</strong>, you earn bonus credits automatically</p></div>
+  </div>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Refer friends who shop at participating businesses regularly — their first purchase triggers your bonus, and then you both earn from every visit.
+  </div>
+</div>
+
+<!-- 6. Checking Your Balance -->
+<div class="card">
+  <h3><span class="emoji">📊</span> 6. Checking Your Balance</h3>
+  <p>Stay on top of your credits, vouchers, and available rewards anytime:</p>
+  <ul>
+    <li><strong>Log into the visitor portal</strong> — Your dashboard shows your current credit balance, recent transactions, and active vouchers</li>
+    <li><strong>View available rewards</strong> — Browse offers from all participating businesses in one place</li>
+    <li><strong>Transaction history</strong> — See every credit earned and redeemed, including which business and the date</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Set a reminder to check your balance weekly. You might discover new offers or see your credits growing faster than you expected!
+  </div>
+</div>
+
+<a href="/guides/" class="back-link">← Back to All Guides</a>
+<a href="merchant-guide.html" class="back-link" style="float:right;">Merchant Guide →</a>
+
+</div>
+
+</body>
+</html>

@@ -5,6 +5,9 @@ Access your back office at **zaarhub.com/supplier/**
 ## Dashboard
 See your product count, active listings, delivery zones.
 
+## Bookmarks
+Buyers can bookmark your supplier profile. Keep your product catalog accurate — bookmarks indicate serious interest from businesses looking to order.
+
 ## Products
 Add/edit your catalog — name, category, price, unit, min order. Products appear instantly on the B2B marketplace.
 
@@ -22,6 +25,9 @@ Keep your business name, contact info, and description updated.
 
 ## Deal Pages
 Suppliers can create B2B offers with the same deal system — templates, timer, custom colors. Featured offers link from your profile.
+
+## Community Polls
+Local polls appear on city directory pages. Cast your vote on community topics relevant to your industry.
 
 ## Tips
 - Detailed descriptions get more inquiries

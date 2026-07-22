@@ -19,8 +19,12 @@ pub const TEMPLATE_AUTOMOTIVE: &str = "automotive";
 pub const TEMPLATE_FITNESS: &str = "fitness";
 pub const TEMPLATE_HOSPITALITY: &str = "hospitality";
 pub const TEMPLATE_BUSINESS_DETAIL: &str = "business-detail";
+pub const TEMPLATE_SAVED_PLACES: &str = "saved-places";
+pub const TEMPLATE_EVENTS: &str = "events";
+pub const TEMPLATE_FEED: &str = "feed";
+pub const TEMPLATE_MY_BOOKINGS: &str = "my-bookings";
 
-const VALID_TEMPLATES: [&str; 11] = [
+const VALID_TEMPLATES: [&str; 15] = [
     TEMPLATE_LOCAL_BUSINESS,
     TEMPLATE_FARM,
     TEMPLATE_RESTAURANT,
@@ -32,6 +36,10 @@ const VALID_TEMPLATES: [&str; 11] = [
     TEMPLATE_FITNESS,
     TEMPLATE_HOSPITALITY,
     TEMPLATE_BUSINESS_DETAIL,
+    TEMPLATE_SAVED_PLACES,
+    TEMPLATE_EVENTS,
+    TEMPLATE_FEED,
+    TEMPLATE_MY_BOOKINGS,
 ];
 
 // ── Compile-time embedded template strings ──────────────────────────────────
@@ -114,7 +122,7 @@ impl TemplateEngine {
         // Allow raw HTML in templates (don't escape &, <, >, etc.)
         registry.register_escape_fn(handlebars::no_escape);
         
-        // Register all 10 directory templates + 1 business detail template
+        // Register all directory templates + business detail + saved places
         let templates = [
             (TEMPLATE_LOCAL_BUSINESS, "directory-local-business.hbs"),
             (TEMPLATE_FARM, "directory-farm.hbs"),
@@ -127,6 +135,10 @@ impl TemplateEngine {
             (TEMPLATE_FITNESS, "directory-fitness.hbs"),
             (TEMPLATE_HOSPITALITY, "directory-hospitality.hbs"),
             (TEMPLATE_BUSINESS_DETAIL, "business-detail.hbs"),
+            (TEMPLATE_SAVED_PLACES, "saved-places.hbs"),
+            (TEMPLATE_EVENTS, "events.hbs"),
+            (TEMPLATE_FEED, "feed.hbs"),
+            (TEMPLATE_MY_BOOKINGS, "my-bookings.hbs"),
         ];
 
         for (id, _filename) in &templates {
@@ -142,6 +154,10 @@ impl TemplateEngine {
                 TEMPLATE_FITNESS => include_str!("../templates/directory-fitness.hbs"),
                 TEMPLATE_HOSPITALITY => include_str!("../templates/directory-hospitality.hbs"),
                 TEMPLATE_BUSINESS_DETAIL => include_str!("../templates/business-detail.hbs"),
+                TEMPLATE_SAVED_PLACES => include_str!("../templates/saved-places.hbs"),
+                TEMPLATE_EVENTS => include_str!("../templates/events.hbs"),
+                TEMPLATE_FEED => include_str!("../templates/feed.hbs"),
+                TEMPLATE_MY_BOOKINGS => include_str!("../templates/my-bookings.hbs"),
                 _ => include_str!("../templates/directory-local-business.hbs"),
             };
             if let Err(e) = registry.register_template_string(id, content) {
@@ -410,7 +426,7 @@ mod tests {
     fn test_template_engine_new() {
         let engine = TemplateEngine::new();
         let templates = engine.available_templates();
-        assert_eq!(templates.len(), 10);
+        assert_eq!(templates.len(), 11);
     }
 
     #[test]

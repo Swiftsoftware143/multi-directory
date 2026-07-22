@@ -146,7 +146,9 @@ pub async fn login(
         Argon2, PasswordHash, PasswordVerifier,
     };
 
-    // Manually query user row
+    // Try users table first, then fall back to visitor_accounts
+    use sqlx::Row;
+    
     let row = sqlx::query(
         "SELECT id, tenant_id, email, password_hash, name, role, is_active, last_login_at, created_at, updated_at FROM users WHERE email = \x241"
     )
@@ -154,24 +156,57 @@ pub async fn login(
     .fetch_optional(&s.db)
     .await?;
     
-    let row = row
+    let (user, is_visitor) = if let Some(r) = row {
+        (
+            User {
+                id: r.try_get("id")?,
+                tenant_id: r.try_get("tenant_id")?,
+                email: r.try_get("email")?,
+                password_hash: r.try_get("password_hash")?,
+                name: r.try_get("name")?,
+                role: r.try_get("role")?,
+                is_active: r.try_get("is_active")?,
+                last_login_at: r.try_get("last_login_at")?,
+                created_at: r.try_get("created_at")?,
+                updated_at: r.try_get("updated_at")?,
+            },
+            false,
+        )
+    } else {
+        // Fall back to visitor_accounts (ZaarHub business portal users)
+        let vrow = sqlx::query(
+            "SELECT id, email, password_hash, name, is_active FROM visitor_accounts WHERE email = \x241"
+        )
+        .bind(&req.email)
+        .fetch_optional(&s.db)
+        .await?
         .ok_or_else(|| {
             tracing::warn!("Login failed: user not found for {}", &req.email);
             AppError::InvalidCredentials
         })?;
 
-    use sqlx::Row;
-    let user = User {
-        id: row.try_get("id")?,
-        tenant_id: row.try_get("tenant_id")?,
-        email: row.try_get("email")?,
-        password_hash: row.try_get("password_hash")?,
-        name: row.try_get("name")?,
-        role: row.try_get("role")?,
-        is_active: row.try_get("is_active")?,
-        last_login_at: row.try_get("last_login_at")?,
-        created_at: row.try_get("created_at")?,
-        updated_at: row.try_get("updated_at")?,
+        let is_active: bool = vrow.try_get("is_active")?;
+        if !is_active {
+            tracing::warn!("Login failed: account deactivated for {}", &req.email);
+            return Err(AppError::Forbidden("Account is deactivated".to_string()));
+        }
+
+        (
+            User {
+                id: vrow.try_get("id")?,
+                // Use the SwiftSoftware system tenant for visitor/business portal accounts
+                tenant_id: uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+                email: vrow.try_get("email")?,
+                password_hash: vrow.try_get("password_hash")?,
+                name: vrow.try_get("name")?,
+                role: "company_admin".to_string(),
+                is_active: true,
+                last_login_at: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+            true,
+        )
     };
 
     if !user.is_active {
@@ -188,25 +223,30 @@ pub async fn login(
         .map_err(|_| AppError::InvalidCredentials)?;
 
     // Update last_login
-    sqlx::query("UPDATE users SET last_login_at = NOW() WHERE id = \x241")
+    let table = if is_visitor { "visitor_accounts" } else { "users" };
+    let update_query = format!("UPDATE {} SET last_login_at = NOW() WHERE id = \x241", table);
+    sqlx::query(&update_query)
         .bind(user.id)
         .execute(&s.db)
         .await?;
 
-    // Get tenant info
-    let tenant_row = sqlx::query("SELECT id, name, slug, is_active FROM tenants WHERE id = \x241")
-        .bind(user.tenant_id)
-        .fetch_optional(&s.db)
-        .await?;
-
-    let tenant = tenant_row.map(|r| -> Result<TenantResponse, sqlx::Error> {
-        Ok(TenantResponse {
-            id: r.try_get("id")?,
-            name: r.try_get("name")?,
-            slug: r.try_get("slug")?,
-            is_active: r.try_get("is_active")?,
-        })
-    }).transpose()?;
+    // Get tenant info (skip for visitors — use a placeholder)
+    let tenant = if is_visitor {
+        None
+    } else {
+        let tenant_row = sqlx::query("SELECT id, name, slug, is_active FROM tenants WHERE id = \x241")
+            .bind(user.tenant_id)
+            .fetch_optional(&s.db)
+            .await?;
+        tenant_row.map(|r| -> Result<TenantResponse, sqlx::Error> {
+            Ok(TenantResponse {
+                id: r.try_get("id")?,
+                name: r.try_get("name")?,
+                slug: r.try_get("slug")?,
+                is_active: r.try_get("is_active")?,
+            })
+        }).transpose()?
+    };
 
     // Generate JWT
     let now_ts = Utc::now().timestamp() as usize;

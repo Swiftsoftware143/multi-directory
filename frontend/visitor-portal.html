@@ -81,7 +81,15 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 @media(max-width:768px){
   .dashboard{padding:16px}
   .card-grid{grid-template-columns:1fr}
+  .loy-stats-grid{grid-template-columns:repeat(2,1fr)}
 }
+/* Loyalty Wallet */
+.loy-stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s;text-align:center}
+.stat-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.stat-card .stat-icon{font-size:2rem;margin-bottom:6px}
+.stat-card .stat-value{font-size:1.6rem;font-weight:700;color:var(--teal)}
+.stat-card .stat-label{font-size:.82rem;color:var(--text-secondary)}
 </style>
 </head>
 <body>
@@ -144,7 +152,11 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
       <h1>👤 My Account</h1>
       <div class="user-info" id="userInfo">Community Visitor</div>
     </div>
-    <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/saved-places" style="color:var(--teal);font-size:.9rem;cursor:pointer;text-decoration:none;padding:4px 8px;border:1px solid var(--teal);border-radius:4px;" title="My Saved Places">⭐ Saved</a>
+      <a href="/guides/participant-guide.html" target="_blank" style="color:var(--teal);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="How it Works">❓</a>
+      <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    </div>
   </div>
 
   <!-- Loading -->
@@ -204,9 +216,47 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
         </div>
       </div>
     </div>
+
+    <!-- Loyalty Wallet (if available) -->
+    <div class="section">
+      <div class="section-title">🎯 My Loyalty Wallet</div>
+      <div class="section-subtitle">Credits, vouchers & rewards</div>
+      <div id="visitorLoyalty" class="loy-stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+        <div class="stat-card">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value" id="visLoyCredits">-</div>
+          <div class="stat-label">Credits</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🎟️</div>
+          <div class="stat-value" id="visLoyVouchers">-</div>
+          <div class="stat-label">Vouchers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">👥</div>
+          <div class="stat-value" id="visLoyReferrals">-</div>
+          <div class="stat-label">Referrals</div>
+        </div>
+        <div class="stat-card" style="grid-column:1/-1">
+          <div class="stat-icon">🎯</div>
+          <div class="stat-value" id="visLoyCode" style="font-size:1rem;letter-spacing:2px;font-family:monospace;color:var(--accent)">-</div>
+          <div class="stat-label">Referral Code</div>
+        </div>
+        <!-- QR Code Card -->
+        <div class="stat-card" style="grid-column:1/-1">
+          <div class="stat-icon">📱</div>
+          <div style="text-align:center">
+            <div id="qrCodeContainer" style="background:#fff;border:2px solid var(--border);border-radius:12px;padding:12px;display:inline-block;margin:8px auto"></div>
+            <p style="font-size:.8rem;color:var(--text-secondary);margin-top:4px">Scan at checkout for loyalty credits</p>
+          </div>
+          <div class="stat-label">Loyalty QR</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 const API = '/api/v1';
 
@@ -334,6 +384,9 @@ async function loadDashboard() {
     // Badges
     renderBadges(data.badges || []);
 
+    // Load loyalty data (optional — may fail if visitor has no IS account)
+    loadVisitorLoyalty();
+
     hide('loadingState');
     show('dashboardContent');
   } catch(e) {
@@ -375,6 +428,57 @@ function renderBadges(badges) {
   }
   html += '</div>';
   $('badgesList').innerHTML = html;
+}
+
+// ── Visitor Loyalty ──
+function loadVisitorLoyalty() {
+  var tok = localStorage.getItem('visitorToken');
+  if (!tok) return;
+  var h = { 'Authorization': 'Bearer ' + tok };
+  fetch('/api/v1/loyalty/portal/dashboard', { headers: h })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var cEl = document.getElementById('visLoyCredits');
+      var vEl = document.getElementById('visLoyVouchers');
+      var rEl = document.getElementById('visLoyReferrals');
+      var cdEl = document.getElementById('visLoyCode');
+      if (cEl) cEl.textContent = '$' + (d.total_credits || 0);
+      if (vEl) vEl.textContent = d.active_vouchers || 0;
+      if (rEl) rEl.textContent = d.referral_count || 0;
+      if (cdEl) cdEl.textContent = d.referrer_code || 'No code';
+      // Load QR code
+      loadVisitorQR(h);
+    })
+    .catch(function() {
+      // Silent — visitor may not have IS account
+      // Still try QR
+      loadVisitorQR(h);
+    });
+}
+
+function loadVisitorQR(headers) {
+  fetch('/api/v1/loyalty/qr', { headers: headers })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var container = document.getElementById('qrCodeContainer');
+      if (!container) return;
+      container.innerHTML = '';
+      var qrId = d.qr_id || d.qr_data;
+      if (!qrId) return;
+      // Encode as loyalty URI
+      var qrText = 'loyalty://customer/' + qrId;
+      new QRCode(container, {
+        text: qrText,
+        width: 160,
+        height: 160,
+        colorDark: '#0d9488',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    })
+    .catch(function() {
+      // Silent
+    });
 }
 
 // ── Init ──

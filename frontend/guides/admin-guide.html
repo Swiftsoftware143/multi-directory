@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarHub Loyalty — Admin Guide</title>
+<style>
+:root{--teal:#0d9488;--teal-light:#14b8a6;--teal-bg:#f0fdfa;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;margin:0;padding:0}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+.header{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:0}
+.header-inner{max-width:960px;margin:0 auto;padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:1.3rem;font-weight:700}
+.header a{color:#fff;font-size:.85rem;opacity:.9}
+.header a:hover{opacity:1;text-decoration:underline}
+
+.hero{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:48px 32px 56px;text-align:center}
+.hero h2{font-size:2rem;margin-bottom:8px}
+.hero p{font-size:1.1rem;opacity:.9;max-width:600px;margin:0 auto}
+
+.container{max-width:860px;margin:0 auto;padding:0 24px 60px}
+
+.card{background:var(--card);border-radius:12px;padding:28px 32px;margin-bottom:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card h3{font-size:1.15rem;color:var(--teal);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.card h3 .emoji{font-size:1.4rem}
+.card p{color:var(--text-secondary);margin-bottom:12px;line-height:1.7}
+.card p:last-child{margin-bottom:0}
+.card ul,.card ol{margin:8px 0 14px 20px}
+.card li{margin-bottom:6px;color:var(--text-secondary);line-height:1.6}
+
+.step-item{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;padding:12px 16px;background:var(--bg);border-radius:8px;border:1px solid var(--border)}
+.step-item:last-child{margin-bottom:0}
+.step-num{width:30px;height:30px;min-width:30px;background:var(--teal);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
+.step-text{flex:1}
+.step-text p{margin:0;font-size:.9rem}
+.step-text p strong{color:var(--text)}
+
+.tip-box{background:var(--teal-bg);border-left:4px solid var(--teal);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
+.tip-box strong{color:var(--teal)}
+
+.warn-box{background:#fffbeb;border-left:4px solid var(--warning);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
+.warn-box strong{color:#d97706}
+
+.danger-box{background:#fef2f2;border-left:4px solid var(--danger);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
+.danger-box strong{color:#dc2626}
+
+.badge{display:inline-block;background:var(--teal-bg);color:var(--teal);font-size:.75rem;padding:2px 10px;border-radius:20px;font-weight:600}
+
+.back-link{display:inline-block;margin-top:32px;color:var(--teal);font-size:.9rem}
+
+@media(max-width:640px){
+  .header-inner{padding:12px 16px}
+  .hero{padding:32px 16px 48px}
+  .hero h2{font-size:1.5rem}
+  .container{padding:0 16px 40px}
+  .card{padding:20px 18px}
+  .step-item{padding:10px 12px}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <h1>🏪 ZaarHub</h1>
+    <a href="/">← Back to Portal</a>
+  </div>
+</div>
+
+<div class="hero">
+  <h2>🛡️ Admin Guide — Managing the Loyalty Platform</h2>
+  <p>For SwiftSoftware and ZaarHub administrators managing the Program backend.</p>
+</div>
+
+<div class="container">
+
+<!-- 1. Business Claim & Verification -->
+<div class="card">
+  <h3><span class="emoji">🏪</span> 1. Business Claim &amp; Verification Flow</h3>
+  <p>When a business owner claims a listing on ZaarHub, the system follows this flow:</p>
+
+  <h4 style="margin:16px 0 8px;font-size:.95rem">Step 1 — Owner Submits Claim</h4>
+  <ul>
+    <li>Owner goes to <strong>/claim-business/</strong> and searches for their business in the directory</li>
+    <li>They must <strong>find their business</strong> in search results before proceeding — no duplicate listings can be created</li>
+    <li>Step 2: they provide their name, email, phone, and <strong>website URL</strong> (required, validated format)</li>
+  </ul>
+
+  <h4 style="margin:16px 0 8px;font-size:.95rem">Step 2 — Auto-Approval (Instant)</h4>
+  <p>The system checks two things for automatic approval:</p>
+  <ul>
+    <li><strong>Email-to-website match</strong> — The domain in the owner's email (e.g. <code>@mybusiness.com</code>) is checked against the submitted website domain (e.g. <code>mybusiness.com</code>). If they match → <strong>auto-approved</strong></li>
+    <li><strong>Direct email match</strong> — If the owner's email exactly matches the business's <code>email</code> field in the directory → <strong>auto-approved</strong></li>
+    <li><strong>Submitted website is saved</strong> — If the business listing had no website before, the one the claimant submits is saved to the directory automatically</li>
+  </ul>
+  <p>When auto-approved:</p>
+  <ul>
+    <li>A <strong>visitor account</strong> is created with <code>business_type = 'merchant'</code> and a random temp password</li>
+    <li>A <strong>business verification record</strong> is created with <code>method = 'auto_domain'</code></li>
+    <li>The claimant sees their temp password on screen and can log in immediately at <strong>/portal</strong></li>
+    <li>Their JWT role is set to <code>company_admin</code> — they see the business dashboard</li>
+  </ul>
+
+  <div class="tip-box">
+    <strong>✅ Auto-approval example:</strong> Owner with email <code>john@bobsauto.com</code> claims a business and submits website <code>https://bobsauto.com</code>. The domain <code>bobsauto.com</code> matches → instant approval.
+  </div>
+
+  <h4 style="margin:16px 0 8px;font-size:.95rem">Step 3 — Manual Review (Admin Panel)</h4>
+  <p>If auto-approval fails (email domain doesn't match the website), the claim goes to the admin panel for manual review:</p>
+  <ol>
+    <li>Go to <strong>https://zaarhub.com/admin/requests.html</strong></li>
+    <li>Unlock with the <strong>admin key</strong></li>
+    <li>Click the <strong>Claims</strong> tab → review pending claims</li>
+    <li>Verify the claimant's identity by checking email, phone, or website</li>
+    <li>Click <strong>Approve</strong> or <strong>Reject</strong></li>
+  </ol>
+  <p>When manually approved via admin panel:</p>
+  <ul>
+    <li>The Node.js API creates a <code>visitor_accounts</code> row with <code>business_type = 'merchant'</code></li>
+    <li>A temp password is generated and sent via email (requires Mailgun configured)</li>
+    <li>The approval syncs to CoreSwift CRM</li>
+  </ul>
+
+  <div class="warn-box">
+    <strong>⚠️ No website = cannot claim:</strong> If a claimant submits without a website URL, the frontend blocks the submission. If a business listing has no website on file and no website is submitted, the claim goes to manual review with a &quot;no website&quot; flag.
+  </div>
+
+  <h4 style="margin:16px 0 8px;font-size:.95rem">What Business Owners See After Approval</h4>
+  <ul>
+    <li>Login at <strong>https://zaarhub.com/portal</strong> with their email and temp password</li>
+    <li><strong>Business portal</strong> at <strong>/business-portal.html</strong> with credit rate config, purchase PIN, offers management, scanner, guides</li>
+    <li>They can change their password, manage their listing, create loyalty offers, and track performance</li>
+  </ul>
+</div>
+
+<!-- 2. Admin Dashboard -->
+<div class="card">
+  <h3><span class="emoji">📊</span> 2. Admin Dashboard</h3>
+  <p>The admin panel is your central hub for monitoring and managing the entire ZaarHub Loyalty Program.</p>
+  <ul>
+    <li><strong>All tenants</strong> — View every merchant, supplier, and participant across the platform</li>
+    <li><strong>All transactions</strong> — Monitor credit earnings, redemptions, and referral activity in real-time</li>
+    <li><strong>Flagged activity</strong> — Review transactions that triggered automated fraud detection rules</li>
+    <li><strong>System health</strong> — Check API status, queue lengths, and service availability</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Pin the dashboard to your browser. It auto-refreshes every 60 seconds so you can spot issues quickly.
+  </div>
+</div>
+
+<!-- 3. Tenant Management -->
+<div class="card">
+  <h3><span class="emoji">👥</span> 3. Tenant Management</h3>
+  <p>As an admin, you have oversight of all tenant accounts. Your responsibilities include:</p>
+  <ul>
+    <li><strong>View accounts</strong> — Access merchant, supplier, and participant profiles when needed for support</li>
+    <li><strong>Manage configurations</strong> — Adjust tenant settings when authorized (credit rates, offer limits, account status)</li>
+    <li><strong>Account recovery</strong> — Help merchants and participants regain access to locked accounts</li>
+    <li><strong>Account lifecycle</strong> — Activate, suspend, or deactivate accounts according to Program rules</li>
+  </ul>
+  <div class="warn-box">
+    <strong>⚠️ Important:</strong> Never make configuration changes without documented authorization. All changes should be logged with the requesting party, reason, and approval.
+  </div>
+</div>
+
+<!-- 4. Fraud Monitoring -->
+<div class="card">
+  <h3><span class="emoji">🔍</span> 4. Fraud Monitoring</h3>
+  <p>Fraud detection is one of the most critical admin functions. The system flags suspicious transactions automatically, but you need to investigate.</p>
+  <p><strong>What to look for:</strong></p>
+  <ul>
+    <li><strong>Unusual patterns</strong> — A single customer earning credits at many different businesses in a short period, or a business seeing unusual redemption spikes</li>
+    <li><strong>PIN misuse</strong> — Multiple verification failures with the same PIN, or verifications occurring at odd hours with no customers present</li>
+    <li><strong>Self-referral loops</strong> — Multiple accounts referring themselves using different emails or phone numbers</li>
+    <li><strong>Inflated purchase amounts</strong> — A business consistently reporting purchases much higher than their average ticket, especially when the customer is a frequent visitor</li>
+    <li><strong>Collusion indicators</strong> — The same customer and business transacting many times in a day with identical amounts</li>
+  </ul>
+  <div class="step-item">
+    <div class="step-num">🔎</div>
+    <div class="step-text"><p><strong>Review process:</strong> Open the flagged transaction → review the customer history and business history → check for matching IPs or account creation dates → make a determination: dismiss flag, warn the party, or escalate for suspension.</p></div>
+  </div>
+  <div class="danger-box">
+    <strong>🚨 Escalation:</strong> If you confirm fraud, immediately suspend the involved accounts and document everything. Notify your supervisor and the security team within 24 hours.
+  </div>
+</div>
+
+<!-- 5. Support & Escalation -->
+<div class="card">
+  <h3><span class="emoji">🎧</span> 5. Support & Escalation</h3>
+  <p>Admins handle a variety of support requests from tenants. Common scenarios:</p>
+  <ul>
+    <li><strong>Account recovery</strong> — Verify identity using email, phone, or security questions, then reset access</li>
+    <li><strong>PIN resets</strong> — Generate a new Purchase PIN for merchants who've lost access or suspect compromise</li>
+    <li><strong>Credit corrections</strong> — Manually adjust credit balances when system errors occur. <strong>Every manual adjustment must include an audit trail:</strong> reason, authorization, timestamp</li>
+    <li><strong>Dispute resolution</strong> — Mediate between participants and merchants when a transaction is disputed. Review system logs to determine the correct outcome</li>
+    <li><strong>Technical support</strong> — Help tenants with portal access, scanner issues, or offer configuration</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> For credit corrections, follow the policy: under 1,000 credits = admin-level approval; 1,000+ credits = supervisor authorization required.
+  </div>
+</div>
+
+<!-- 6. Audit & Logging -->
+<div class="card">
+  <h3><span class="emoji">📋</span> 6. Audit & Logging</h3>
+  <p>The ZaarHub Platform maintains a comprehensive audit trail. All admin actions are logged and subject to review.</p>
+  <ul>
+    <li><strong>All actions logged</strong> — Every verification, credit adjustment, account modification, and offer change is recorded with the admin who performed it</li>
+    <li><strong>Manual adjustments documented</strong> — When you make a manual credit correction or account change, the system records the before/after state, reason, and your admin ID</li>
+    <li><strong>Regular audit reviews</strong> — Audit logs are reviewed on a recurring schedule to ensure compliance with policies</li>
+    <li><strong>Retention</strong> — Logs are retained for a minimum of 3 years per regulatory requirements</li>
+  </ul>
+  <div class="warn-box">
+    <strong>⚠️ Important:</strong> Assume everything you do as an admin is auditable and visible. Never perform actions outside official channels or for personal benefit.
+  </div>
+</div>
+
+<!-- 7. Security Best Practices -->
+<div class="card">
+  <h3><span class="emoji">🔒</span> 7. Security Best Practices</h3>
+  <p>Admin accounts have elevated privileges. Follow these practices to keep the platform secure:</p>
+  <ul>
+    <li><strong>MFA is required</strong> — Multi-factor authentication must be enabled on your admin account. No exceptions</li>
+    <li><strong>No personal account access</strong> — Never use admin tools to access your own personal account or accounts of friends/family. If you need customer support, submit a ticket like anyone else</li>
+    <li><strong>Report breaches immediately</strong> — If you suspect any security incident (compromised credentials, data exposure, unauthorized access), report it to the security team immediately. Do not investigate on your own</li>
+    <li><strong>Least privilege</strong> — Only access the minimum data needed for your current task. Don't browse accounts or transactions out of curiosity</li>
+    <li><strong>Secure your session</strong> — Always log out when leaving your workstation. Don't share your admin session with anyone</li>
+  </ul>
+  <div class="danger-box">
+    <strong>🚨 Non-compliance:</strong> Violations of security policies are grounds for immediate revocation of admin access, termination of employment or contract, and possible legal action.
+  </div>
+</div>
+
+<a href="/guides/" class="back-link">← Back to All Guides</a>
+
+</div>
+
+</body>
+</html>
