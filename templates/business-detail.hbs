@@ -181,10 +181,25 @@
     {{#if business.phone}}<a href="tel:{{business.phone}}" class="cta-button">📞 {{business.phone}}</a>{{/if}}
     {{#if business.website}}<a href="{{business.website}}" class="cta-button" style="margin-left:12px;background:#334155">🌐 Website</a>{{/if}}
     <p style="margin-top:16px;font-size:.85rem;color:#64748b">{{business.address}}, {{directory.city}}, {{directory.state}} {{business.zip}}</p>
-    <!-- Book Appointment Button -->
-    <div style="margin-top:20px">
-      <button onclick="document.getElementById('bookingModal').style.display='flex'" class="cta-button" style="cursor:pointer;border:none;font-size:1rem">📅 Book Appointment</button>
+    
+    <!-- Integration CTA Slots: only render if enabled in feature_config -->
+    {{#if business.feature_config.integration_booking_enabled}}
+    <div style="margin-top:16px">
+      <button onclick="document.getElementById('bookingModal').style.display='flex'" class="cta-button" style="cursor:pointer;border:none;font-size:1rem">{{business.feature_config.integration_booking_cta}}</button>
     </div>
+    {{/if}}
+    
+    {{#if business.feature_config.integration_campaign_enabled}}
+    <div style="margin-top:12px">
+      <button onclick="openCampaignModal()" class="cta-button" style="cursor:pointer;border:none;font-size:1rem;background:#10b981">{{business.feature_config.integration_campaign_cta}}</button>
+    </div>
+    {{/if}}
+    
+    {{#if business.feature_config.integration_sms_enabled}}
+    <div style="margin-top:12px">
+      <a href="sms:{{business.phone}}?body=Hi%20{{business.name}}%2C%20I%27d%20like%20to%20learn%20more" class="cta-button" style="font-size:1rem;background:#6366f1">{{business.feature_config.integration_sms_cta}}</a>
+    </div>
+    {{/if}}
   </div>
 
   <!-- Book Appointment Section -->

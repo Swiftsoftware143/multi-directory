@@ -481,10 +481,98 @@ function loadVisitorQR(headers) {
     });
 }
 
+/* === Referral Section === */
+function showReferralSection(){
+  var main=document.querySelector('.main-content')||document.getElementById('app');
+  if(!main)return;
+  main.innerHTML='<div style="padding:24px"><div class="card" style="background:var(--bg-card, #1e293b);border:1px solid var(--border, #334155);border-radius:12px;padding:24px"><h2 style="margin-bottom:16px;font-size:1.4rem">\ud83d\udc65 Refer & Earn Zaarcash</h2><p style="color:#94a3b8;font-size:.9rem;margin-bottom:20px">Share ZaarHub with friends and earn Zaarcash when they sign up!</p><div id="refPortalSection"><div style="text-align:center;padding:20px"><span class="spinner-teal" style="display:inline-block;width:32px;height:32px;border:3px solid #334155;border-top-color:var(--primary, #14b8a6);border-radius:50%;animation:spin 1s linear infinite"></span></div></div></div></div>';
+  loadReferralPortalData();
+}
+
+async function loadReferralPortalData(){
+  try{
+    var codeR=await g('/api/v1/referrals/my-code');
+    var code=codeR.referral_code||'';
+    var link='zaarhub.com/join?ref='+code;
+    var balanceR=await g('/api/v1/referrals/balance');
+    var balance=balanceR.zaarcash_balance||0;
+    var el=document.getElementById('refPortalSection');
+    var hasCode=!!code;
+    el.innerHTML='';
+    if(!hasCode){
+      el.innerHTML='<div style="text-align:center;padding:20px"><button class="btn btn-primary" onclick="generatePortalRefCode()" style="background:var(--primary, #14b8a6);color:white;padding:12px 32px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">\ud83d\udd17 Generate Your Referral Link</button></div>';
+      return;
+    }
+    el.innerHTML='<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:20px;margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px"><span style="font-size:1rem">\ud83d\udcb0 Balance: <strong style="color:var(--primary, #14b8a6);font-size:1.3rem">'+balance+'</strong> Zaarcash</span><span style="font-size:.85rem;color:#94a3b8">Refer a friend \u2192 they sign up \u2192 admin verifies \u2192 you earn!</span></div></div><div style="margin-bottom:16px"><label style="display:block;font-size:.9rem;color:#cbd5e1;margin-bottom:6px">Your Referral Link</label><div style="display:flex;gap:8px"><input type="text" id="portalRefLink" value="'+esc(link)+'" readonly style="flex:1;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.9rem;font-family:monospace"><button onclick="copyPortalRefLink()" style="background:var(--primary, #14b8a6);color:white;padding:8px 20px;border:none;border-radius:6px;cursor:pointer;font-size:.85rem">\ud83d\udccb Copy</button></div></div><div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:16px"><h4 style="color:#cbd5e1;font-size:.9rem;margin-bottom:8px">How it works</h4><ol style="color:#94a3b8;font-size:.85rem;line-height:1.8;padding-left:20px"><li>Share your referral link with friends</li><li>They sign up on ZaarHub using your link</li><li>An admin verifies their account</li><li>You earn 50 Zaarcash per referral!</li></ol></div>';
+  }catch(e){
+    var el=document.getElementById('refPortalSection');
+    if(el)el.innerHTML='<div style="text-align:center;padding:20px;color:#94a3b8">Login to see referral info.</div>';
+  }
+}
+
+async function generatePortalRefCode(){
+  try{
+    var r=await po('/api/v1/referrals/generate',{});
+    toast('Referral link created!','success');
+    loadReferralPortalData();
+  }catch(e){
+    toast('Error: '+e.message,'error');
+  }
+}
+
+function copyPortalRefLink(){
+  var inp=document.getElementById('portalRefLink');
+  if(!inp)return;
+  inp.select();
+  navigator.clipboard.writeText(inp.value).then(function(){toast('Link copied!','success');}).catch(function(){toast('Press Ctrl+C','info');});
+}
+
+/* === Role Switcher in Visitor Portal === */
+async function checkLinkedAdminAccount(){
+  try{
+    var resp=await g('/auth/linked-accounts');
+    if(resp&&resp.linked_accounts&&resp.linked_accounts.length>0){
+      var hasAdmin=resp.linked_accounts.some(function(a){return a.role==='admin';});
+      var hasBusiness=resp.linked_accounts.some(function(a){return a.role==='admin'||a.role==='business';});
+      if(hasAdmin||hasBusiness){
+        var nav=document.querySelector('nav');
+        if(nav){
+          var div=document.createElement('div');
+          div.style.cssText='padding:8px 16px;border-top:1px solid #334155;margin-top:8px';
+          div.innerHTML='<select onchange="switchVisitorRole(this.value)" style="width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.85rem"><option value="visitor">\ud83d\udc64 Visitor</option>'+(hasAdmin?'<option value="admin">\u2699\ufe0f Admin Dashboard</option>':'')+(hasBusiness?'<option value="business">\ud83c\udfed Business Dashboard</option>':'')+'</select>';
+          nav.appendChild(div);
+        }
+      }
+    }
+  }catch(e){}
+}
+
+async function switchVisitorRole(targetRole){
+  if(targetRole==='visitor')return;
+  try{
+    var resp=await po('/auth/switch-role',{target_role:targetRole});
+    if(resp.access_token){
+      localStorage.setItem('visitorBackupToken',localStorage.getItem('visitorToken'));
+      localStorage.setItem('adminToken',resp.access_token);
+      if(resp.switch_back_token){
+        localStorage.setItem('switch_back_token',resp.switch_back_token);
+      }
+      window.location.href='/admin';
+    }
+  }catch(e){
+    toast('Switch failed: '+e.message,'error');
+  }
+}
+
+
 // ── Init ──
 (function init() {
   if (localStorage.getItem('visitorToken')) {
     loadDashboard();
+    // Check for linked admin/business accounts and add role switcher
+    if (typeof checkLinkedAdminAccount === 'function') {
+      checkLinkedAdminAccount();
+    }
   }
 })();
 </script>
