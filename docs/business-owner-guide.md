@@ -5,6 +5,9 @@ Sign into your dashboard through your city's directory page.
 ## Your Dashboard
 Manage your listing, run deals, publish articles, engage with your community.
 
+## Bookmarks (Saves)
+Visitors can bookmark your business by clicking the heart icon on your listing. Each bookmark is a saved lead — visitors who bookmark and return later are more likely to claim a deal or contact you. Check your bookmark count on your listing page.
+
 ## Running Deals
 Create deals with templates — percentage off, fixed price, BOGO, free gift. Set colors, CTA text, countdown timer, gallery images. **Feature a deal on your listing** with a custom button text ("Deal of the Week 🔥", "Today's Special").
 
@@ -25,6 +28,9 @@ Share updates with your local community. Posts appear on your city's community p
 
 ## B2B Suppliers
 Browse the Suppliers tab in your city to find distributors, farms, and wholesalers. Search by type or product category.
+
+## Community Polls
+Participate in local polls created by your directory admin. Polls appear on your city page — vote on community topics and see live results.
 
 ## Analytics
 Track listing views, deal claims, and engagement.

@@ -16,7 +16,7 @@
 
 Controls what features a directory has:
 ```json
-{"deals": true, "blogging": true, "community_posts": true, "b2b_marketplace": false, "visitor_accounts": true}
+{"deals": true, "blogging": true, "community_posts": true, "b2b_marketplace": false, "visitor_accounts": true, "onboarding_survey": true}
 ```
 
 ## API Keys
@@ -30,6 +30,77 @@ Required for data import and AI features:
 ## Data Import
 
 Single tool at Settings → API Keys. Select source, type (Businesses or Suppliers), location, keyword. Results deduplicate and merge automatically.
+
+## City Requests
+
+**Location:** Admin Sidebar → City Requests (🏗️ icon)
+
+Visitors can submit city name + email to request their city be added. The admin panel shows all requests ranked by vote count:
+- **Pending** — gray badge, has "Mark Added" action button
+- **Added** — green badge, shows processed date
+- Click "Mark Added" on any pending request to mark the city as launched
+- Useful for prioritizing which new markets to open
+
+API endpoints:
+- `GET /api/v1/admin/directories/:id/city-requests` — list all requests for a directory
+- `POST /api/v1/admin/directories/:id/city-requests/:request_id/mark-added` — mark as added
+
+## Visitor Bookmarks / Saved Places
+
+Visitors can bookmark businesses (heart icon on listing pages).
+- Bookmark count displayed on each business listing (`GET /api/v1/bookmarks/count/:business_id`)
+- Visitors view/manage bookmarks at `/saved-places`
+- Bookmarks require a visitor account (free signup)
+- No admin action needed — fully visitor-driven
+
+## Micro-Polls
+
+**Location:** Admin Sidebar → Polls
+
+Create one-question polls for your directory. Visitors vote and see live results.
+
+### Creating a Poll
+1. Click **Add Poll** from the Polls page
+2. Enter the question (e.g. "What type of event should we host this month?")
+3. Add options (click + to add rows, ✕ to remove)
+4. Set an optional end date — polls auto-close
+5. Choose the directory — poll appears as a sidebar widget on that directory's listing pages
+
+### Management
+- **Active** polls show with vote counts and percentage bars
+- **Close Poll** button to end voting early
+- **Closed** polls are read-only — results visible but no new votes
+- Each visitor votes once per poll; they can change their vote anytime
+
+### API Reference
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `POST /api/v1/polls` | Admin JWT | Create poll |
+| `GET /api/v1/polls?directory_id=X&status=active` | Public | List polls |
+| `GET /api/v1/polls/:id` | Public | Get poll with results |
+| `POST /api/v1/polls/:id/vote` | Visitor JWT | Cast/change vote |
+| `POST /api/v1/polls/:id/close` | Admin JWT | Close poll |
+
+Polls are visible to all visitors — no login required to see the question and results. Voting requires a free visitor account.
+
+## Neighborhood Feed
+
+**URL:** `zaarhub.com/feed` (visitor JWT required)
+
+A personalized homepage for visitors that aggregates:
+- Their bookmarked businesses
+- Upcoming events they've RSVP'd to
+- Active polls in their directory
+- Business suggestions based on bookmarked categories + survey answers
+
+The feed is fully automated — no admin setup needed. Visitors see it when logged in.
+
+API: `GET /api/v1/feed` returns full JSON structure for custom frontends.
+
+## Deal Management
+
+Deals have visual templates (classic, modern, bold, minimal), countdown timers, customizable CTA buttons and colors, gallery images, and rotation scheduling. Deal pages at `zaarhub.com/deals/{id}`.
 
 ## Deal Management
 

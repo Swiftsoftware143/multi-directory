@@ -1,8 +1,8 @@
 //! PublicPage CRUD handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Extension, Path, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -11,6 +11,8 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 
+use crate::auth::models::Claims;
+use crate::auth::middleware::verify_token;
 use crate::AppState;
 use crate::error::{AppError, ApiResult};
 
@@ -497,5 +499,207 @@ pub async fn business_data(
     .map_err(|e| AppError::Internal(e))?;
 
     Ok(axum::response::Html(html))
+}
+
+/// GET /api/v1/saved-places — render saved places page for a visitor
+/// Requires visitor JWT auth. Shows bookmarked businesses.
+/// GET /api/v1/saved-places — render saved places page for a visitor
+/// Requires visitor JWT auth. Shows bookmarked businesses.
+pub async fn saved_places_page(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    // Manually verify visitor JWT from Authorization header
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok());
+    
+    let visitor_id = match auth_header {
+        Some(header) if header.starts_with("Bearer ") => {
+            let token = header.strip_prefix("Bearer ").unwrap_or("");
+            match verify_token(token, &s.config.jwt_secret) {
+                Ok(claims) => {
+                    match Uuid::parse_str(&claims.sub) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            // Invalid sub, redirect to visitor portal
+                            return Ok(axum::response::Redirect::to("/visitor").into_response());
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Invalid token, redirect to visitor portal
+                    return Ok(axum::response::Redirect::to("/visitor").into_response());
+                }
+            }
+        }
+        _ => {
+            // No auth, redirect to visitor portal
+            return Ok(axum::response::Redirect::to("/visitor").into_response());
+        }
+    };
+
+    // Fetch visitor's favorites
+    let favorites = sqlx::query_as::<_, super::visitors::FavoriteBusinessRow>(
+        r#"SELECT
+            vf.id,
+            vf.created_at as saved_at,
+            b.id as business_id,
+            b.name as business_name,
+            b.slug as business_slug,
+            b.city,
+            b.state,
+            dc.name as category_name,
+            b.images,
+            b.rating,
+            b.review_count,
+            b.phone,
+            d.slug as directory_slug
+        FROM visitor_favorites vf
+        JOIN businesses b ON b.id = vf.business_id
+        LEFT JOIN directory_categories dc ON dc.id = b.category_id
+        JOIN directories d ON d.id = vf.directory_id
+        WHERE vf.visitor_account_id = $1
+        ORDER BY vf.created_at DESC"#
+    )
+    .bind(visitor_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    // Enhance with image_url from images JSON array
+    let saved_places: Vec<serde_json::Value> = favorites.into_iter().map(|f| {
+        let image_url = f.images.as_ref()
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = None::<String>; // Could fetch from business.description if needed
+        json!({
+            "id": f.id,
+            "saved_at": f.saved_at,
+            "business_id": f.business_id,
+            "business_name": f.business_name,
+            "business_slug": f.business_slug,
+            "city": f.city,
+            "state": f.state,
+            "category_name": f.category_name,
+            "image_url": image_url,
+            "rating": f.rating,
+            "review_count": f.review_count,
+            "phone": f.phone,
+            "directory_slug": f.directory_slug,
+            "description": description,
+        })
+    }).collect();
+
+    // Build context — use a default directory for nav
+    let dir_val = json!({
+        "name": "Multi-Directory",
+        "slug": "",
+        "description": ""
+    });
+    let colors = crate::template_engine::normalize_color_scheme(None);
+
+    let context = json!({
+        "directory": dir_val,
+        "colors": colors,
+        "saved_places": saved_places,
+    });
+
+    let engine = s.template_engine.lock().unwrap();
+    let html = engine.render_directory_page(
+        crate::template_engine::TEMPLATE_SAVED_PLACES,
+        &context,
+    )
+    .map_err(|e| AppError::Internal(e))?;
+
+    Ok(axum::response::Html(html).into_response())
+}
+
+/// GET /api/v1/my-bookings — server-rendered My Bookings page (Stage 5)
+pub async fn my_bookings_page(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    // Manually verify visitor JWT from Authorization header
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok());
+    
+    let visitor_id = match auth_header {
+        Some(header) if header.starts_with("Bearer ") => {
+            let token = header.strip_prefix("Bearer ").unwrap_or("");
+            match verify_token(token, &s.config.jwt_secret) {
+                Ok(claims) => {
+                    match Uuid::parse_str(&claims.sub) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            return Ok(axum::response::Redirect::to("/visitor").into_response());
+                        }
+                    }
+                }
+                Err(_) => {
+                    return Ok(axum::response::Redirect::to("/visitor").into_response());
+                }
+            }
+        }
+        _ => {
+            return Ok(axum::response::Redirect::to("/visitor").into_response());
+        }
+    };
+
+    // Fetch visitor's bookings
+    let rows = sqlx::query_as::<_, (Uuid, Uuid, Uuid, Option<String>, Option<String>,
+        Option<chrono::DateTime<chrono::Utc>>, Option<String>,
+        String, Option<String>, chrono::DateTime<chrono::Utc>, String)>(
+        r#"SELECT sb.id, sb.directory_id, sb.business_id, sb.service_name, sb.description,
+                  sb.preferred_date, sb.preferred_time, sb.status, sb.notes, sb.created_at,
+                  b.name as business_name
+           FROM service_bookings sb
+           JOIN businesses b ON b.id = sb.business_id
+           WHERE sb.visitor_account_id = $1
+           ORDER BY sb.created_at DESC"#
+    )
+    .bind(visitor_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let bookings: Vec<Value> = rows.into_iter().map(|(id, dir_id, biz_id, svc_name, desc,
+        pref_date, pref_time, status, notes, created_at, biz_name)| {
+        json!({
+            "id": id,
+            "business_name": biz_name,
+            "service_name": svc_name,
+            "description": desc,
+            "preferred_date": pref_date,
+            "preferred_time": pref_time,
+            "status": status,
+            "notes": notes,
+            "created_at": created_at,
+        })
+    }).collect();
+
+    // Build context
+    let dir_val = json!({
+        "name": "Multi-Directory",
+        "slug": "",
+        "description": ""
+    });
+    let colors = crate::template_engine::normalize_color_scheme(None);
+
+    let context = json!({
+        "directory": dir_val,
+        "colors": colors,
+        "bookings": bookings,
+    });
+
+    let engine = s.template_engine.lock().unwrap();
+    let html = engine.render_directory_page(
+        crate::template_engine::TEMPLATE_MY_BOOKINGS,
+        &context,
+    )
+    .map_err(|e| AppError::Internal(e))?;
+
+    Ok(axum::response::Html(html).into_response())
 }
 

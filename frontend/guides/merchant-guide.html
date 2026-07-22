@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarHub Loyalty — Merchant Guide</title>
+<style>
+:root{--teal:#0d9488;--teal-light:#14b8a6;--teal-bg:#f0fdfa;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;margin:0;padding:0}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+.header{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:0}
+.header-inner{max-width:960px;margin:0 auto;padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:1.3rem;font-weight:700}
+.header a{color:#fff;font-size:.85rem;opacity:.9}
+.header a:hover{opacity:1;text-decoration:underline}
+
+.hero{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:48px 32px 56px;text-align:center}
+.hero h2{font-size:2rem;margin-bottom:8px}
+.hero p{font-size:1.1rem;opacity:.9;max-width:600px;margin:0 auto}
+
+.container{max-width:860px;margin:0 auto;padding:0 24px 60px}
+
+.card{background:var(--card);border-radius:12px;padding:28px 32px;margin-bottom:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card h3{font-size:1.15rem;color:var(--teal);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.card h3 .emoji{font-size:1.4rem}
+.card p{color:var(--text-secondary);margin-bottom:12px;line-height:1.7}
+.card p:last-child{margin-bottom:0}
+.card ul,.card ol{margin:8px 0 14px 20px}
+.card li{margin-bottom:6px;color:var(--text-secondary);line-height:1.6}
+
+.step-item{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;padding:12px 16px;background:var(--bg);border-radius:8px;border:1px solid var(--border)}
+.step-item:last-child{margin-bottom:0}
+.step-num{width:30px;height:30px;min-width:30px;background:var(--teal);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
+.step-text{flex:1}
+.step-text p{margin:0;font-size:.9rem}
+.step-text p strong{color:var(--text)}
+
+.tip-box{background:var(--teal-bg);border-left:4px solid var(--teal);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
+.tip-box strong{color:var(--teal)}
+
+.warn-box{background:#fffbeb;border-left:4px solid var(--warning);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
+.warn-box strong{color:#d97706}
+
+.badge{display:inline-block;background:var(--teal-bg);color:var(--teal);font-size:.75rem;padding:2px 10px;border-radius:20px;font-weight:600}
+
+.back-link{display:inline-block;margin-top:32px;color:var(--teal);font-size:.9rem}
+
+@media(max-width:640px){
+  .header-inner{padding:12px 16px}
+  .hero{padding:32px 16px 48px}
+  .hero h2{font-size:1.5rem}
+  .container{padding:0 16px 40px}
+  .card{padding:20px 18px}
+  .step-item{padding:10px 12px}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <h1>🏪 ZaarHub</h1>
+    <a href="/">← Back to Portal</a>
+  </div>
+</div>
+
+<div class="hero">
+  <h2>🏬 Setting Up Your Loyalty Program</h2>
+  <p>Everything you need to start rewarding loyal customers and growing your business with ZaarHub.</p>
+</div>
+
+<div class="container">
+
+<!-- 1. Your Dashboard -->
+<div class="card">
+  <h3><span class="emoji">📊</span> 1. Your Dashboard</h3>
+  <p>Log into your <strong>Business Portal</strong> to access everything you need. The loyalty tab is your command center:</p>
+  <ul>
+    <li><strong>Offers</strong> — Create and manage promotions that customers redeem with credits</li>
+    <li><strong>Credits</strong> — View credit earning activity and redemption history</li>
+    <li><strong>Referrals</strong> — Track which customers are bringing in new participants</li>
+    <li><strong>Settings</strong> — Configure your credit rate, purchase PIN, and profile</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Bookmark the Business Portal URL for quick access. Your session stays active for several hours.
+  </div>
+</div>
+
+<!-- 2. Setting Your Credit Rate -->
+<div class="card">
+  <h3><span class="emoji">⚙️</span> 2. Setting Your Credit Rate</h3>
+  <p>Go to <strong>Settings</strong> in your loyalty dashboard to set how many credits customers earn per $1 spent.</p>
+  <ul>
+    <li><strong>Range:</strong> 1 to 1,000 credits per $1</li>
+    <li><strong>Default:</strong> 10 credits per $1</li>
+    <li><strong>Example:</strong> At 10 credits/$1, a $20 purchase earns 200 credits</li>
+  </ul>
+  <p><strong>Strategy tip:</strong> Higher rates attract more customers and encourage repeat visits, but cost you more when credits are redeemed against your offers. Start with the default and adjust based on your margins and goals.</p>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> If you run a high-margin business (cafe, salon, services), a higher rate like 20-50 credits/$1 can be very effective. For smaller margins, 5-10 is a safe starting point.
+  </div>
+</div>
+
+<!-- 3. Creating Offers -->
+<div class="card">
+  <h3><span class="emoji">🏷️</span> 3. Creating Offers</h3>
+  <p>Offers are how customers redeem their credits at your business. Navigate to the <strong>Offers tab</strong> to create them.</p>
+  <p><strong>Each offer needs:</strong></p>
+  <ul>
+    <li><strong>Name</strong> — A clear, attractive title (e.g., "25% Off Your Purchase")</li>
+    <li><strong>Discount %</strong> — The percentage off the customer's purchase total</li>
+    <li><strong>Cap $</strong> — The maximum dollar value of the discount. Example: "25% off up to $6" means the discount is 25% but never more than $6 in savings</li>
+  </ul>
+  <p><strong>How it works:</strong> When a customer redeems, the system calculates the percentage off their purchase total. If the discount exceeds the cap, it's capped. Credits equal to the cap value (100 credits = $1) are deducted from the customer's balance.</p>
+  <div class="step-item">
+    <div class="step-num">📝</div>
+    <div class="step-text"><p><strong>Example:</strong> Offer "25% Off Up to $6" on a $40 purchase. 25% of $40 = $10, but capped at $6. Customer pays $34, saves $6, and 600 credits are deducted from their balance.</p></div>
+  </div>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Start with 1-2 simple offers. "10% off up to $5" and "20% off up to $10" cover most customer segments. Add seasonal offers later.
+  </div>
+</div>
+
+<!-- 4. Your Purchase PIN -->
+<div class="card">
+  <h3><span class="emoji">🔑</span> 4. Your Purchase PIN</h3>
+  <p>Every merchant account gets an auto-generated Purchase PIN when you sign up for the loyalty program. Format: <strong>Z100, Z101, Z102</strong>, etc.</p>
+  <ul>
+    <li><strong>Where to find it:</strong> Go to <strong>Settings</strong> in the loyalty section</li>
+    <li><strong>What it's for:</strong> You enter this PIN to verify customer purchases</li>
+    <li><strong>Keep it confidential:</strong> Only share with authorized staff who process verifications</li>
+    <li><strong>Cannot be changed:</strong> The PIN is permanent. If compromised, contact support for a reset</li>
+  </ul>
+  <div class="warn-box">
+    <strong>⚠️ Important:</strong> Never share your PIN with customers or outside parties. Only trained staff should have access to it.
+  </div>
+</div>
+
+<!-- 5. Verifying Purchases -->
+<div class="card">
+  <h3><span class="emoji">✅</span> 5. Verifying Purchases</h3>
+  <p>When a customer wants to earn or redeem credits, use the <strong>Scanner tab</strong> in your loyalty dashboard.</p>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Customer shows their QR code on their phone</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Scan the QR code with your device's camera — the customer's ID is captured automatically</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Enter the <strong>purchase amount</strong> and your <strong>Purchase PIN</strong></p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Click <strong>Verify</strong> — credits are awarded automatically (or the offer is applied if redeeming)</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p><strong>Optional:</strong> If the customer wants to redeem an offer, select the offer from the dropdown before clicking Verify</p></div>
+  </div>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Make sure your camera can clearly read the QR code. Good lighting and a steady hand help. If scanning fails, you can manually type the customer's ID.
+  </div>
+</div>
+
+<!-- 6. Understanding Payouts -->
+<div class="card">
+  <h3><span class="emoji">💵</span> 6. Understanding Payouts</h3>
+  <p>The ZaarHub Loyalty Program is designed to be simple and cost-effective for merchants:</p>
+  <ul>
+    <li><strong>No per-transaction fees</strong> — You don't pay anything each time a customer earns or redeems credits</li>
+    <li><strong>Merchant pricing</strong> — Your subscription covers Program participation as detailed in your agreement</li>
+    <li><strong>Control costs with caps</strong> — By setting offer caps (e.g., max $6 discount), you control your maximum liability per redemption</li>
+    <li><strong>No minimums</strong> — No minimum transaction size to earn or redeem</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Review your analytics monthly to see how much discounts are costing vs. the additional revenue from repeat customers. Most merchants find the ROI strongly positive.
+  </div>
+</div>
+
+<!-- 7. Best Practices -->
+<div class="card">
+  <h3><span class="emoji">⭐</span> 7. Best Practices</h3>
+  <p>Get the most out of your ZaarHub Loyalty Program:</p>
+  <ul>
+    <li><strong>Display the ZaarHub badge</strong> — Put it on your door, counter, and website. It tells customers you participate</li>
+    <li><strong>Train your staff</strong> — Make sure every cashier knows how to scan QR codes, enter amounts, and verify purchases. A 30-second training saves confusion later</li>
+    <li><strong>Update offers seasonally</strong> — Change your offers every quarter to keep things fresh. Seasonal offers (summer sale, holiday special) drive engagement</li>
+    <li><strong>Monitor analytics</strong> — Check which offers are most popular, what times of day customers redeem, and which customers are your biggest advocates</li>
+    <li><strong>Promote the program</strong> — Mention it at checkout, on receipts, and on social media. "Earn rewards every time you shop with us!"</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> The businesses that succeed most with loyalty programs are the ones that actively talk about it. Mention it every time a customer pays — within weeks, repeat customers will be asking for it.
+  </div>
+</div>
+
+<a href="/guides/" class="back-link">← Back to All Guides</a>
+<a href="supplier-guide.html" class="back-link" style="float:right;">Supplier Guide →</a>
+
+</div>
+
+</body>
+</html>

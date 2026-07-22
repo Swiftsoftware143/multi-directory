@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Feed - {{directory.name}}</title>
+  <meta name="description" content="Your personalized neighborhood feed in {{directory.name}}">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; line-height:1.6; }
+    a { color:{{colors.primary}}; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+
+    /* Nav */
+    .nav-bar { display:flex; gap:20px; padding:14px 20px; border-bottom:1px solid #334155; align-items:center; max-width:1100px; margin:0 auto; }
+    .nav-bar .logo { font-weight:700; color:#f1f5f9; font-size:1.1rem; margin-right:auto; }
+    .nav-bar a { color:#94a3b8; font-size:.9rem; }
+    .nav-bar a:hover { color:{{colors.primary}}; }
+    .nav-bar .feed-link { color:{{colors.primary}}; font-weight:600; }
+
+    .container { max-width:960px; margin:0 auto; padding:0 20px 40px; }
+
+    /* Greeting bar */
+    .greeting-bar { padding:28px 0 4px; }
+    .greeting-bar h1 { font-size:1.8rem; color:#f1f5f9; }
+    .greeting-bar .dir-name { color:#94a3b8; font-size:1rem; margin-top:2px; }
+
+    /* Section */
+    .section { margin-top:28px; }
+    .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .section-header h2 { font-size:1.15rem; color:#f1f5f9; font-weight:600; }
+    .section-header a { font-size:.85rem; color:{{colors.primary}}; }
+
+    /* Horizontal scroll */
+    .scroll-container { overflow-x:auto; padding-bottom:8px; }
+    .scroll-row { display:flex; gap:14px; min-width:min-content; }
+    .scroll-row .card { flex:0 0 auto; width:240px; }
+
+    /* Card (business, event, suggestion) */
+    .card { background:#1e293b; border:1px solid #334155; border-radius:10px; overflow:hidden; transition:border-color 0.2s, transform 0.15s; }
+    .card:hover { border-color:{{colors.primary}}40; transform:translateY(-2px); }
+    .card-img { width:100%; height:120px; background:#334155; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:.75rem; overflow:hidden; }
+    .card-img img { width:100%; height:100%; object-fit:cover; }
+    .card-body { padding:10px 12px; }
+    .card-body h3 { font-size:.92rem; color:#f1f5f9; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .card-body .meta { font-size:.78rem; color:#94a3b8; margin-bottom:4px; }
+    .card-body .category-tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:.7rem; font-weight:600; background:{{colors.primary}}22; color:{{colors.primary}}; }
+    .card-footer { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-top:1px solid #334155; }
+    .card-footer .label { font-size:.72rem; color:#64748b; }
+    .card-footer .action-btn { background:{{colors.primary}}; color:#fff; border:none; padding:4px 12px; border-radius:5px; font-size:.78rem; cursor:pointer; transition:opacity 0.15s; }
+    .card-footer .action-btn:hover { opacity:0.85; }
+    .card-footer .rsvp-badge { font-size:.7rem; padding:2px 8px; border-radius:8px; font-weight:600; }
+    .rsvp-badge.going { background:#16a34a22; color:#4ade80; }
+    .rsvp-badge.maybe { background:#ca8a0422; color:#fbbf24; }
+
+    /* Poll widget */
+    .poll-card { background:#1e293b; border:1px solid #334155; border-radius:10px; padding:16px; margin-top:10px; }
+    .poll-card h3 { font-size:1rem; color:#f1f5f9; margin-bottom:12px; }
+    .poll-option { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; cursor:pointer; transition:background 0.15s; margin-bottom:6px; }
+    .poll-option:hover { background:#33415566; }
+    .poll-option .bar-track { flex:1; height:22px; background:#334155; border-radius:4px; overflow:hidden; position:relative; }
+    .poll-option .bar-fill { height:100%; background:{{colors.primary}}66; border-radius:4px; transition:width 0.3s; }
+    .poll-option .bar-label { position:absolute; top:0; left:8px; line-height:22px; font-size:.78rem; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:calc(100% - 60px); }
+    .poll-option .pct { font-size:.78rem; color:#94a3b8; min-width:36px; text-align:right; }
+    .poll-option.voted { border:1px solid {{colors.primary}}66; background:{{colors.primary}}11; }
+    .poll-total { font-size:.75rem; color:#64748b; margin-top:6px; text-align:right; }
+
+    /* Empty state */
+    .empty-state { background:#1e293b; border:1px solid #334155; border-radius:10px; padding:30px 20px; text-align:center; }
+    .empty-state .empty-icon { font-size:2rem; margin-bottom:8px; }
+    .empty-state h3 { color:#94a3b8; font-size:1rem; font-weight:400; margin-bottom:4px; }
+    .empty-state p { color:#64748b; font-size:.85rem; }
+    .empty-state .cta { display:inline-block; margin-top:12px; background:{{colors.primary}}; color:white; padding:8px 20px; border-radius:6px; font-weight:600; font-size:.85rem; }
+
+    /* Grid fallback (for suggested) */
+    .suggest-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; }
+
+    /* Responsive */
+    @media (max-width:640px) {
+      .greeting-bar h1 { font-size:1.4rem; }
+      .scroll-row .card { width:200px; }
+      .suggest-grid { grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); }
+    }
+
+    /* Toast */
+    .toast { position:fixed; bottom:20px; right:20px; background:#1e293b; border:1px solid #334155; color:#e2e8f0; padding:12px 20px; border-radius:8px; font-size:.9rem; box-shadow:0 4px 12px rgba(0,0,0,0.3); opacity:0; transition:opacity 0.3s; z-index:100; }
+    .toast.show { opacity:1; }
+  </style>
+</head>
+<body>
+
+<div class="nav-bar">
+  <span class="logo">{{directory.name}}</span>
+  <a href="/feed" class="feed-link">Feed</a>
+  <a href="/saved-places">Saved Places</a>
+  <a href="/events">Events</a>
+  <a href="/visitor">My Account</a>
+</div>
+
+<div class="container">
+
+  <!-- Greeting -->
+  <div class="greeting-bar">
+    <h1>{{greeting}}</h1>
+    <div class="dir-name">{{directory.name}}</div>
+  </div>
+
+  <!-- Saved Places -->
+  <div class="section">
+    <div class="section-header">
+      <h2>⭐ Your Saved Places</h2>
+      <a href="/saved-places">View All Saved →</a>
+    </div>
+
+    {{#if has_saved_places}}
+    <div class="scroll-container">
+      <div class="scroll-row">
+        {{#each saved_places}}
+        <div class="card">
+          <div class="card-img">
+            {{#if image_url}}<img src="{{image_url}}" alt="{{name}}">{{else}}📍 {{name}}{{/if}}
+          </div>
+          <div class="card-body">
+            <h3>{{name}}</h3>
+            {{#if category_name}}<span class="category-tag">{{category_name}}</span>{{/if}}
+          </div>
+          <div class="card-footer">
+            <span class="label">Saved</span>
+            <a href="/d/{{../directory.slug}}/{{id}}" class="action-btn">View</a>
+          </div>
+        </div>
+        {{/each}}
+      </div>
+    </div>
+    {{else}}
+    <div class="empty-state">
+      <div class="empty-icon">📌</div>
+      <h3>You haven't saved any businesses yet</h3>
+      <p>Browse the directory and bookmark places you like</p>
+      <a href="/" class="cta">Browse Businesses</a>
+    </div>
+    {{/if}}
+  </div>
+
+  <!-- Upcoming Events -->
+  <div class="section">
+    <div class="section-header">
+      <h2>📅 Upcoming Events</h2>
+      <a href="/events">View All Events →</a>
+    </div>
+
+    {{#if has_upcoming_events}}
+    <div class="scroll-container">
+      <div class="scroll-row">
+        {{#each upcoming_events}}
+        <div class="card">
+          <div class="card-img">
+            {{#if image_url}}<img src="{{image_url}}" alt="{{title}}">{{else}}📅 {{title}}{{/if}}
+          </div>
+          <div class="card-body">
+            <h3>{{title}}</h3>
+            <div class="meta">{{format_date event_date}} {{#if location}}· {{location}}{{/if}}</div>
+            <span class="rsvp-badge {{rsvp_status}}">{{rsvp_status}}</span>
+            <span class="meta" style="margin-left:6px;">{{attendee_count}} attending</span>
+          </div>
+          <div class="card-footer">
+            <span class="label">{{format_date event_date}}</span>
+            <a href="/events/{{id}}" class="action-btn">Details</a>
+          </div>
+        </div>
+        {{/each}}
+      </div>
+    </div>
+    {{else}}
+    <div class="empty-state">
+      <div class="empty-icon">🎉</div>
+      <h3>No upcoming events</h3>
+      <p>RSVP to events in your community</p>
+      <a href="/events" class="cta">Browse Events</a>
+    </div>
+    {{/if}}
+  </div>
+
+  <!-- Active Polls -->
+  <div class="section">
+    <div class="section-header">
+      <h2>🗳️ Active Polls</h2>
+    </div>
+
+    {{#if has_active_polls}}
+    {{#each active_polls}}
+    <div class="poll-card" data-poll-id="{{id}}">
+      <h3>{{question}}</h3>
+      {{#each options}}
+      <div class="poll-option {{#if (is_voted ../user_vote @index)}}voted{{/if}}" data-option-index="{{@index}}" onclick="votePoll('{{../id}}', {{@index}})">
+        <div class="bar-track">
+          <div class="bar-fill" style="width:{{percentage (lookup ../option_votes @index) ../total_votes}}%"></div>
+          <span class="bar-label">{{this}}</span>
+        </div>
+        <span class="pct">{{percentage (lookup ../option_votes @index) ../total_votes}}%</span>
+      </div>
+      {{/each}}
+      <div class="poll-total">{{total_votes}} votes</div>
+    </div>
+    {{/each}}
+    {{else}}
+    <div class="empty-state">
+      <div class="empty-icon">📊</div>
+      <h3>No active polls right now</h3>
+      <p>Check back for community polls</p>
+    </div>
+    {{/if}}
+  </div>
+
+  <!-- Suggested for You -->
+  <div class="section">
+    <div class="section-header">
+      <h2>💡 Suggested for You</h2>
+    </div>
+
+    {{#if has_suggestions}}
+    <div class="suggest-grid">
+      {{#each suggested_businesses}}
+      <div class="card">
+        <div class="card-img">
+          {{#if image_url}}<img src="{{image_url}}" alt="{{name}}">{{else}}💼 {{name}}{{/if}}
+        </div>
+        <div class="card-body">
+          <h3>{{name}}</h3>
+          {{#if category}}<span class="category-tag">{{category}}</span>{{/if}}
+          <div class="meta">{{city}}{{#if state}}, {{state}}{{/if}}</div>
+        </div>
+        <div class="card-footer">
+          <a href="/d/{{../directory.slug}}/{{id}}" class="action-btn">View Business</a>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+    {{else}}
+    <div class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <h3>No suggestions yet</h3>
+      <p>Save some businesses or take our survey to get personalized recommendations</p>
+      <a href="/" class="cta">Browse Directory</a>
+    </div>
+    {{/if}}
+  </div>
+
+  <!-- Refer a Friend -->
+  <div class="section">
+    <div class="section-header">
+      <h2>🎯 Refer a Friend</h2>
+    </div>
+
+    {{#if referral.has_referral_code}}
+    <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;border-radius:12px;padding:20px;">
+      <p style="color:#cbd5e1;font-size:.9rem;margin-bottom:12px">Share your referral link and earn <strong style="color:{{colors.primary}}">Zaarcash</strong> when friends join!</p>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <input type="text" readonly value="{{referral.link}}" id="refLink"
+               style="flex:1;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.9rem;">
+        <button onclick="copyReferralLink()" style="background:{{colors.primary}};color:white;padding:10px 16px;border:none;border-radius:8px;font-weight:600;cursor:pointer;white-space:nowrap;font-size:.85rem">📋 Copy</button>
+      </div>
+
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:100px;text-align:center;background:#1e293b;border-radius:8px;padding:12px;">
+          <div style="font-size:1.3rem;font-weight:700;color:{{colors.primary}};">{{referral.total_referrals}}</div>
+          <div style="font-size:.78rem;color:#64748b;">Total Referrals</div>
+        </div>
+        <div style="flex:1;min-width:100px;text-align:center;background:#1e293b;border-radius:8px;padding:12px;">
+          <div style="font-size:1.3rem;font-weight:700;color:#22c55e;">{{referral.confirmed_referrals}}</div>
+          <div style="font-size:.78rem;color:#64748b;">Confirmed</div>
+        </div>
+        <div style="flex:1;min-width:100px;text-align:center;background:#1e293b;border-radius:8px;padding:12px;">
+          <div style="font-size:1.3rem;font-weight:700;color:#f59e0b;">{{referral.zaarcash_earned}}</div>
+          <div style="font-size:.78rem;color:#64748b;">Zaarcash Earned</div>
+        </div>
+      </div>
+    </div>
+    {{else}}
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;text-align:center;">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:12px">Invite friends to {{directory.name}} and earn rewards!</p>
+      <button onclick="generateReferral()" id="refGenerateBtn"
+              style="background:{{colors.primary}};color:white;padding:10px 24px;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.9rem">
+        🎁 Get Your Referral Link
+      </button>
+    </div>
+    {{/if}}
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+// Poll voting
+function votePoll(pollId, optionIndex) {
+  fetch('/api/v1/polls/' + pollId + '/vote', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getJWT()
+    },
+    body: JSON.stringify({ option_index: optionIndex })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      showToast('Error: ' + data.error);
+    } else {
+      showToast('Vote recorded! Refreshing...');
+      setTimeout(() => window.location.reload(), 1000);
+    }
+  })
+  .catch(e => showToast('Error: ' + e.message));
+}
+
+// Get JWT from cookie or localStorage
+function getJWT() {
+  // Try localStorage first
+  const ls = localStorage.getItem('visitor_token');
+  if (ls) return ls;
+  // Try cookie
+  const match = document.cookie.match(/(?:^|;\s*)visitor_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// Format dates on load
+document.querySelectorAll('.meta').forEach(el => {
+  const txt = el.textContent;
+  if (txt.match(/^\d{4}-\d{2}-\d{2}/)) {
+    const d = new Date(txt);
+    el.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+});
+
+// Referral link copy
+function copyReferralLink() {
+  const input = document.getElementById('refLink');
+  if (!input) return;
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => {
+    showToast('✅ Referral link copied!');
+  }).catch(() => {
+    showToast('✅ Copied!');
+  });
+}
+
+// Generate referral link
+function generateReferral() {
+  const btn = document.getElementById('refGenerateBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+  }
+  fetch('/api/v1/referrals/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getJWT()
+    },
+    body: JSON.stringify({})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.referral_code) {
+      showToast('🎉 Referral code created! Refreshing...');
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      showToast('Error generating code: ' + (data.error || 'Unknown error'));
+      if (btn) { btn.disabled = false; btn.textContent = '🎁 Get Your Referral Link'; }
+    }
+  })
+  .catch(e => {
+    showToast('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🎁 Get Your Referral Link'; }
+  });
+}
+</script>
+
+</body>
+</html>

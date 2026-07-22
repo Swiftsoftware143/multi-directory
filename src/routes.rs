@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post, put, delete},
+    routing::{get, post, put, delete, patch},
     Router,
     middleware::{self, Next},
     response::Response,
@@ -20,6 +20,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/auth/register", post(auth_handler::register))
         .route("/auth/forgot-password", post(auth_handler::forgot_password))
         .route("/auth/reset-password", post(auth_handler::reset_password))
+        // ? SSO Role Switcher (Stage 5)
+        .route("/auth/switch-role", post(sso::switch_role))
+        .route("/auth/linked-accounts", get(sso::get_linked_accounts))
         .route("/directories", get(directories::list_directories).post(directories::create_directory))
         .route("/directories/:slug", get(directories::get_directory).put(directories::update_directory).delete(directories::delete_directory))
         .route("/directories/:slug/render", get(directories::render_directory))
@@ -222,9 +225,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/enrich/logs", get(data_company::list_enrichment_logs))
         .route("/export/bulk", get(data_company::bulk_export))
         // ??? Phase 4: Automation — directory events, n8n bridge
-        .route("/events", get(automation::list_events).post(automation::create_event))
-        .route("/events/unprocessed", get(automation::unprocessed_events))
-        .route("/events/:id/process", post(automation::mark_event_processed))
+        .route("/directory-events", get(automation::list_events).post(automation::create_event))
+        .route("/directory-events/unprocessed", get(automation::unprocessed_events))
+        .route("/directory-events/:id/process", post(automation::mark_event_processed))
         .route("/n8n/webhook", post(automation::n8n_webhook_receiver))
         .route("/n8n/health", get(automation::n8n_health))
         .route("/available-providers", get(provider_keys_handler::list_available_providers))
@@ -285,30 +288,103 @@ pub fn create_router(s: AppState) -> Router {
         .route("/provider-keys/:provider/test", get(provider_keys_handler::test_provider_key))
         // ??? Payment provider management
         .route("/payment-providers", get(checkout_handler::list_payment_providers).post(checkout_handler::upsert_payment_provider))
-        .route("/payment-providers/{provider_type}", delete(checkout_handler::delete_payment_provider))
+        .route("/payment-providers/:provider_type", delete(checkout_handler::delete_payment_provider))
         .route("/checkout/create", post(checkout_handler::create_checkout_session))
         .route("/checkout/sessions", get(checkout_handler::list_checkout_sessions))
         // ??? Industry dashboard routes
         .route("/industries", get(industries::list_user_industries).post(industries::set_user_industry))
         .route("/industries/:slug", delete(industries::remove_user_industry))
         .route("/industries/limit", get(industries::get_industry_limit))
-        // ? Portal routes (business_owner auth)
-        .route("/portal/business/profile", get(portal::business_profile))
-        .route("/portal/business/dashboard", get(business_dashboard::business_dashboard))
-        // ? Visitor account routes
+        // ? Visitor account routes (no auth — self-contained)
         .route("/visitor/register", post(portal::visitor_register))
         .route("/visitor/login", post(portal::visitor_login))
         .route("/visitor/profile", get(portal::visitor_profile))
+        .route("/visitor/favorites", get(visitors::list_favorites))
+        .route("/visitor/favorites/check/:business_id", get(visitors::check_favorite))
+        .route("/visitor/favorites/:business_id", post(visitors::toggle_favorite))
+        // ? Visitor bookmarks / saved places — alternate scoped routes
+        .route("/bookmarks", get(visitors::list_favorites))
+        .route("/bookmarks/toggle", post(visitors::toggle_bookmark))
+        .route("/bookmarks/count/:business_id", get(visitors::get_bookmark_count))
+        // ? Micro-Polls (v2: public GET, visitor/require auth for vote/create/close)
+        .route("/polls", get(polls::list_polls).post(polls::create_poll))
+        .route("/polls/:id", get(polls::get_poll))
+        .route("/polls/:id/vote", post(polls::cast_vote))
+        .route("/polls/:id/close", post(polls::close_poll))
+        // ? Community Events with RSVP (Stage 3)
+        .route("/events", get(events::list_events).post(events::create_event))
+        .route("/events/:id", get(events::get_event))
+        .route("/events/:id/rsvp", post(events::rsvp_event))
+        .route("/events/:id/attendees", get(events::list_attendees))
+        .route("/events/:id/cancel", post(events::cancel_event))
+        .route("/events/:id/edit", post(events::edit_event))
+        .route("/events-page", get(events::events_page))
+        // Neighborhood Feed routes (Stage 4)
+        .route("/feed", get(feed::get_feed))
+        .route("/feed-page", get(feed::feed_page))
+        // Server-rendered saved places page (auth via auth_guard)
+        .route("/saved-places", get(public::saved_places_page))
+        // ? Portal + Loyalty routes (authenticated — JWT required)
+        .route("/portal/business/profile", get(portal::business_profile))
+        .route("/portal/business/dashboard", get(business_dashboard::business_dashboard))
+        .route("/loyalty/pin/status", get(loyalty_proxy::pin_status))
+        .route("/loyalty/pin/generate", post(loyalty_proxy::pin_generate))
+        .route("/loyalty/pin/verify", post(loyalty_proxy::pin_verify))
+        .route("/loyalty/credits/balance", get(loyalty_proxy::credits_balance))
+        .route("/loyalty/credits/history", get(loyalty_proxy::credits_history))
+        .route("/loyalty/vouchers", get(loyalty_proxy::vouchers_list))
+        .route("/loyalty/vouchers/redeem", post(loyalty_proxy::voucher_redeem))
+        .route("/loyalty/referrals", get(loyalty_proxy::referrals_list))
+        .route("/loyalty/referrals/create", post(loyalty_proxy::referral_create))
+        .route("/loyalty/rewards", get(loyalty_proxy::rewards_list))
+        .route("/loyalty/rewards/claim", post(loyalty_proxy::reward_claim))
+        .route("/loyalty/pledges", get(loyalty_proxy::pledges_list))
+        .route("/loyalty/pledges/create", post(loyalty_proxy::pledge_create))
+        .route("/loyalty/portal/dashboard", get(loyalty_proxy::portal_dashboard))
+        .route("/loyalty/qr", get(loyalty_proxy::get_loyalty_qr))
+        .route("/loyalty/purchase/verify", post(loyalty_proxy::purchase_verify_proxy))
+        .route("/loyalty/admin/credit-rate", get(loyalty_proxy::get_credit_rate).patch(loyalty_proxy::update_credit_rate))
+        .route("/loyalty/admin/purchase-pin", get(loyalty_proxy::get_purchase_pin))
+        .route("/loyalty/admin/offers", get(loyalty_proxy::offers_list).post(loyalty_proxy::offers_create))
+        .route("/loyalty/admin/offers/:id", get(loyalty_proxy::offers_get).put(loyalty_proxy::offers_update).delete(loyalty_proxy::offers_delete))
+        .layer(middleware::from_fn_with_state(
+            s.clone(),
+            auth_guard,
+        ))
         // ? Directory feature config (public GET, admin PUT)
         .route("/directories/:id/features", get(portal::get_directory_features).put(portal::update_directory_features))
         // ? Public endpoints (no auth required)
         .route("/businesses/:id/claim", post(visitors::claim_business))
         .route("/businesses/:id/images", post(businesses::upload_business_images))
+        .route("/city-requests", get(visitors::get_city_requests).post(visitors::request_city))
         // ? Booking routes (no auth required)
         .route("/directories/:slug/businesses/:business_id/available-slots", get(bookings::get_available_slots))
         .route("/directories/:slug/businesses/:business_id/book", post(bookings::create_booking))
         // ? Public booking page (no auth required, also outside the auth middleware)
         .route("/book/:slug/:business_id", get(booking_page::booking_page))
+        // ? Stage 5: Service Booking system (visitor booking flow)
+        .route("/bookings", post(bookings::create_service_booking).get(bookings::list_visitor_bookings))
+        .route("/bookings/:id", get(bookings::get_booking))
+        .route("/bookings/:id/status", post(bookings::update_booking_status))
+        .route("/bookings/:id/cancel", post(bookings::cancel_booking))
+        .route("/business/:business_id/bookings", get(bookings::list_business_bookings))
+        // ? Stage 5: Service Catalog (business services/products)
+        .route("/services", get(service_catalog::list_services).post(service_catalog::create_service))
+        .route("/services/:id", get(service_catalog::get_service).put(service_catalog::update_service).delete(service_catalog::delete_service))
+        .route("/businesses/:business_id/services", get(service_catalog::list_services_for_business))
+        // ? My Bookings server-rendered page
+        .route("/my-bookings", get(public::my_bookings_page))
+        // ? Stage 5: Referral System
+        .route("/referrals/generate", post(referrals::generate_referral))
+        .route("/referrals/claim", post(referrals::claim_referral))
+        .route("/referrals/balance", get(referrals::get_referral_balance))
+        .route("/referrals/my-code", get(referrals::get_my_referral_code))
+        .route("/referrals/code/:code", get(referrals::get_referral_code_info))
+        // ? Stage 5: Admin Referral endpoints
+        .route("/admin/referrals", get(referrals::admin_list_referrals))
+        .route("/admin/referrals/:id/verify", post(referrals::admin_verify_referral))
+        .route("/admin/referrals/:id/reject", post(referrals::admin_reject_referral))
+        .route("/admin/referrals/:id/retry-payment", post(referrals::admin_retry_referral_payment))
         // ? BL29: Pricing engine — admin routes
         .route("/pricing/services", get(pricing::list_services))
         .route("/pricing/services/:service_key", put(pricing::update_service_price))
@@ -338,6 +414,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/admin/directories/:id/survey/toggle", post(onboarding_survey::toggle_survey))
         // ??? Cross-platform tag sync
         .route("/admin/tag-sync", post(tag_sync::sync_tag_across_platforms))
+        // ??? City Requests admin endpoints
+        .route("/admin/directories/:id/city-requests", get(visitors::admin_get_city_requests))
+        .route("/admin/directories/:id/city-requests/:request_id/mark-added", post(visitors::admin_mark_city_added))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
@@ -547,6 +626,25 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // ??? Serve public legal terms page
+                    if path == "/legal-terms" || path == "/legal-terms/" {
+                        let legal_path = std::path::Path::new(&frontend).join("legal-terms.html");
+                        if legal_path.exists() {
+                            match tokio::fs::read(&legal_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     // ??? Serve distributor/B2B supplier portal
                     if path == "/distributor" || path == "/distributor/" || path.starts_with("/distributor/dashboard") {
                         let portal_path = std::path::Path::new(&frontend).join("distributor-portal.html");
@@ -599,6 +697,40 @@ pub fn create_router(s: AppState) -> Router {
                             }
                             Err(_) => {}
                         }
+                    }
+
+                    // Redirect /saved-places to /api/v1/saved-places (server-rendered page)
+                    if path == "/saved-places" {
+                        return Ok::<_, std::convert::Infallible>(
+                            axum::response::Response::builder()
+                                .status(axum::http::StatusCode::FOUND)
+                                .header("Location", "/api/v1/saved-places")
+                                .body(axum::body::Body::empty())
+                                .unwrap()
+                        );
+                    }
+
+                    // Redirect /feed to /api/v1/feed-page (server-rendered neighborhood feed)
+                    if path == "/feed" || path == "/feed/" {
+                        return Ok::<_, std::convert::Infallible>(
+                            axum::response::Response::builder()
+                                .status(axum::http::StatusCode::FOUND)
+                                .header("Location", "/api/v1/feed-page")
+                                .body(axum::body::Body::empty())
+                                .unwrap()
+                        );
+                    }
+
+                    // Redirect /events to /api/v1/events-page (server-rendered events calendar)
+                    if path == "/events" || path.starts_with("/events?") {
+                        let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
+                        return Ok::<_, std::convert::Infallible>(
+                            axum::response::Response::builder()
+                                .status(axum::http::StatusCode::FOUND)
+                                .header("Location", format!("/api/v1/events-page{}", query))
+                                .body(axum::body::Body::empty())
+                                .unwrap()
+                        );
                     }
 
                     // SPA fallback: serve full index.html for all unmatched routes
@@ -676,16 +808,52 @@ async fn auth_guard(
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
         || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
+        // Visitor favorites/bookmarks (handlers handle their own auth extraction)
+        || (path == "/visitor/favorites" && req.method() == "GET")
+        || (path.starts_with("/visitor/favorites/") && req.method() == "POST")
+        || (path.starts_with("/visitor/favorites/check/") && req.method() == "GET")
+        // Public bookmark endpoints
+        || (path == "/bookmarks" && req.method() == "GET")
+        || (path == "/bookmarks/toggle" && req.method() == "POST")
+        || (path.starts_with("/bookmarks/count/") && req.method() == "GET")
+        // Server-rendered saved places page (handlers handle auth extraction)
+        || path == "/saved-places"
         // Cron endpoints (triggered by cron daemon with optional API key)
         || (path == "/cron/contact-intelligence" && req.method() == "POST")
         || (path == "/cron/content-queue-worker" && req.method() == "POST")
         // Public business image upload
         || (path.starts_with("/businesses/") && path.ends_with("/images") && req.method() == "POST")
+        // Public city requests
+        || path == "/city-requests"
+        // Public poll endpoints (handlers handle their own auth extraction)
+        || (path == "/polls" && req.method() == "GET")
+        || (path.starts_with("/polls/") && req.method() == "GET")
+        || (path.starts_with("/polls/") && path.ends_with("/vote") && req.method() == "POST")
+        || (path.starts_with("/polls/") && path.ends_with("/close") && req.method() == "POST")
+        // Public community events (list and get are public, POST requires auth)
+        || (path == "/events" && req.method() == "GET")
+        || (path.starts_with("/events/") && req.method() == "GET" && !path.ends_with("/rsvp") && !path.ends_with("/cancel") && !path.ends_with("/edit") && !path.contains("/attendees"))
+        // Public events-page (server-rendered, handles auth internally)
+        || (path.starts_with("/events-page") && req.method() == "GET")
+        // Feed routes (handlers handle their own auth extraction)
+        || path == "/feed"
+        || (path.starts_with("/feed-page") && req.method() == "GET")
         // Public booking endpoints
         || (path.contains("/available-slots") && req.method() == "GET")
         || (path.contains("/book") && req.method() == "POST" && !path.contains("blog"))
         // Public booking page (GET)
-        || (path.starts_with("/book/") && req.method() == "GET");
+        || (path.starts_with("/book/") && req.method() == "GET")
+        // Public bookmark count (no auth)
+        || (path.starts_with("/bookmarks/count/") && req.method() == "GET")
+        // Stage 5: Public referral claim (no auth needed)
+        || (path == "/referrals/claim" && req.method() == "POST")
+        // Public referral code info (no auth)
+        || path.starts_with("/referrals/code/")
+        // Stage 5: Server-rendered my-bookings page (handles auth internally)
+        || path == "/my-bookings"
+        // Stage 5: SSO (handlers authenticate internally)
+        || path == "/auth/switch-role"
+        || path == "/auth/linked-accounts";
     
     if is_public {
         return Ok(next.run(req).await);

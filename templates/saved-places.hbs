@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Saved Places - {{directory.name}}</title>
+  <meta name="description" content="Your saved businesses in {{directory.name}}">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; line-height:1.6; }
+    .container { max-width:960px; margin:0 auto; padding:20px; }
+    a { color:{{colors.primary}}; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    h1 { font-size:1.8rem; margin-bottom:8px; color:#f1f5f9; }
+    .subtitle { color:#94a3b8; margin-bottom:24px; font-size:.95rem; }
+    .nav-bar { display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #334155; margin-bottom:24px; align-items:center; }
+    .nav-bar a { color:#94a3b8; font-size:.9rem; }
+    .nav-bar a:hover { color:{{colors.primary}}; }
+    .nav-bar .logo { font-weight:700; color:#f1f5f9; font-size:1.1rem; margin-right:auto; }
+    .nav-bar .saved-link { color:{{colors.primary}}; font-weight:600; }
+
+    .empty-state { text-align:center; padding:60px 20px; background:#1e293b; border:1px solid #334155; border-radius:12px; margin:40px 0; }
+    .empty-state .icon { font-size:3rem; margin-bottom:16px; }
+    .empty-state h2 { color:#94a3b8; font-size:1.2rem; margin-bottom:8px; font-weight:400; }
+    .empty-state p { color:#64748b; font-size:.9rem; }
+    .empty-state .cta { display:inline-block; margin-top:20px; background:{{colors.primary}}; color:white; padding:10px 24px; border-radius:8px; font-weight:600; }
+
+    .saved-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+    .saved-card { background:#1e293b; border:1px solid #334155; border-radius:10px; overflow:hidden; transition:border-color 0.2s; }
+    .saved-card:hover { border-color:{{colors.primary}}40; }
+    .saved-card .card-img { width:100%; height:140px; background:#334155; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:.8rem; overflow:hidden; }
+    .saved-card .card-img img { width:100%; height:100%; object-fit:cover; }
+    .saved-card .card-body { padding:14px 16px; }
+    .saved-card .card-body h3 { font-size:1rem; color:#f1f5f9; margin-bottom:4px; }
+    .saved-card .card-body .category { font-size:.8rem; color:{{colors.primary}}; margin-bottom:6px; }
+    .saved-card .card-body .description { font-size:.82rem; color:#94a3b8; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .saved-card .card-footer { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-top:1px solid #334155; }
+    .saved-card .card-footer .saved-at { font-size:.75rem; color:#64748b; }
+    .saved-card .card-footer .remove-btn { background:none; border:none; color:#ef4444; cursor:pointer; font-size:.8rem; padding:4px 8px; border-radius:4px; }
+    .saved-card .card-footer .remove-btn:hover { background:#ef444422; }
+    .saved-card .card-footer .view-btn { color:{{colors.primary}}; font-size:.8rem; font-weight:600; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Nav bar -->
+  <div class="nav-bar">
+    <span class="logo">{{directory.name}}</span>
+    <a href="/">Home</a>
+    <a href="/d/{{directory.slug}}">Browse</a>
+    <a href="/saved-places" class="saved-link">Saved Places</a>
+    <a href="/visitor">My Account</a>
+  </div>
+
+  <h1>⭐ My Saved Places</h1>
+  <p class="subtitle">Businesses you've bookmarked in {{directory.name}}</p>
+
+  {{#if saved_places}}
+  <div class="saved-grid">
+    {{#each saved_places}}
+    <div class="saved-card" data-biz-id="{{business_id}}">
+      <div class="card-img">
+        {{#if image_url}}
+        <img src="{{image_url}}" alt="{{business_name}}">
+        {{else}}
+        📍 {{business_name}}
+        {{/if}}
+      </div>
+      <div class="card-body">
+        <h3>{{business_name}}</h3>
+        {{#if category_name}}<div class="category">{{category_name}}</div>{{/if}}
+        {{#if description}}<div class="description">{{description}}</div>{{/if}}
+      </div>
+      <div class="card-footer">
+        <span class="saved-at">Saved</span>
+        <div>
+          <a href="/d/{{../directory.slug}}/{{business_id}}" class="view-btn">View →</a>
+          <button class="remove-btn" onclick="removeBookmark('{{business_id}}', this)">Remove</button>
+        </div>
+      </div>
+    </div>
+    {{/each}}
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <div class="icon">📌</div>
+    <h2>You haven't saved any businesses yet</h2>
+    <p>Browse the directory to find businesses you like and save them for later.</p>
+    <a href="/d/{{directory.slug}}" class="cta">Browse {{directory.name}}</a>
+  </div>
+  {{/if}}
+
+</div>
+
+<script>
+async function removeBookmark(businessId, btn) {
+  const token = localStorage.getItem('visitorToken');
+  if (!token) {
+    alert('Please sign in to manage your saved places.');
+    window.location.href = '/visitor';
+    return;
+  }
+  if (!confirm('Remove this business from your saved places?')) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Removing...';
+  try {
+    const r = await fetch('/api/v1/visitor/favorites/' + businessId, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (r.ok) {
+      const card = btn.closest('.saved-card');
+      if (card) {
+        card.style.display = 'none';
+        card.style.opacity = '0';
+        card.style.transition = 'opacity 0.3s';
+      }
+      // Check if all gone
+      setTimeout(function() {
+        const remaining = document.querySelectorAll('.saved-card:not([style*=\"display: none\"])');
+        if (remaining.length === 0) {
+          window.location.reload();
+        }
+      }, 400);
+    } else {
+      btn.textContent = 'Remove';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    btn.textContent = 'Remove';
+    btn.disabled = false;
+    alert('Error removing. Try again.');
+  }
+}
+</script>
+
+<div class="footer" style="text-align:center;padding:30px;color:#64748b;font-size:.85rem;border-top:1px solid #334155;margin-top:40px;">
+  <p>&copy; {{directory.name}} — Part of the Multi-Directory Platform by SwiftSoftware</p>
+</div>
+</body>
+</html>

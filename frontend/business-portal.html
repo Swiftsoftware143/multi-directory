@@ -54,6 +54,9 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 .coming-soon-card h4{font-size:.9rem;margin-bottom:4px}
 .coming-soon-card p{font-size:.8rem;color:var(--text-secondary)}
 
+/* Scanner styles */
+#scannerVideo{transform:scaleX(-1)}
+
 /* Loading */
 .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite;margin:40px auto}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -80,7 +83,30 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
   .dashboard{padding:16px}
   .card-grid{grid-template-columns:1fr}
   .coming-soon-grid{grid-template-columns:repeat(2,1fr)}
+  .loyalty-tabs{flex-wrap:wrap}.loyalty-tabs .tab{flex:0 0 auto;padding:8px 14px;font-size:.8rem}
+  .loy-stats-grid{grid-template-columns:repeat(2,1fr)}
 }
+/* Loyalty */
+.loyalty-panel{animation:fadeIn .3s}
+.loy-stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s;text-align:center}
+.stat-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.stat-card .stat-icon{font-size:2rem;margin-bottom:6px}
+.stat-card .stat-value{font-size:1.6rem;font-weight:700;color:var(--teal)}
+.stat-card .stat-label{font-size:.82rem;color:var(--text-secondary)}
+.code-display{background:#f1f5f9;padding:10px 16px;border-radius:8px;font-family:monospace;font-size:1.1rem;font-weight:700;letter-spacing:2px;color:var(--teal);display:inline-block;margin:8px 0;cursor:pointer}
+.code-display:hover{background:#e2e8f0}
+.tx-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.tx-row:last-child{border-bottom:none}
+.tx-amount{font-weight:700}.tx-amount.positive{color:var(--success)}.tx-amount.negative{color:var(--danger)}
+.voucher-card{border-left:4px solid var(--teal);margin-bottom:8px}
+.voucher-card h4{font-size:.9rem}.voucher-card .v-meta{font-size:.78rem;color:var(--text-secondary);display:flex;gap:8px;flex-wrap:wrap}
+.legal-section{max-width:800px;margin:0 auto;background:var(--card);border-radius:12px;padding:32px 40px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.legal-section h2{font-size:1.3rem;color:var(--text);margin-bottom:4px}
+.legal-clause{margin-top:20px}
+.legal-clause h4{font-size:.95rem;color:var(--text);margin-bottom:4px}
+.legal-clause p{font-size:.85rem;color:var(--text-secondary);line-height:1.6}
+#legalRoleTabs .tab{font-size:.85rem;padding:8px 12px}
 </style>
 </head>
 <body>
@@ -147,7 +173,10 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
       <h1>🏪 My Business Portal</h1>
       <div class="user-info" id="userInfo">Loading...</div>
     </div>
-    <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/guides/index.html" target="_blank" style="color:var(--teal);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="Help &amp; Guides">❓</a>
+      <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    </div>
   </div>
 
   <!-- Loading -->
@@ -169,38 +198,272 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
       <div id="plansGrid" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))"></div>
     </div>
 
-    <!-- Quick Actions Nav -->
-    <div class="section-title" style="margin-top:32px">⚡ Quick Actions</div>
-    <div class="coming-soon-grid">
-      <div class="coming-soon-card" onclick="showComingSoon('Deals Manager')">
-        <div class="icon">🎟️</div>
-        <h4>Deals & Coupons</h4>
-        <p>Create and manage promotions</p>
+    <!-- Loyalty Dashboard -->
+    <div class="section-title" style="margin-top:32px">🎯 Loyalty Program</div>
+    <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Credits, vouchers, referrals & rewards powered by IncentiveSwift</div>
+    
+    <!-- Loyalty Tab Navigation -->
+    <div class="tab-bar loyalty-tabs">
+      <div class="tab active" onclick="switchLoyaltyTab('dashboard')" id="loyDashTab">📊 Dashboard</div>
+      <div class="tab" onclick="switchLoyaltyTab('credits')" id="loyCreditsTab">💰 Credits</div>
+      <div class="tab" onclick="switchLoyaltyTab('vouchers')" id="loyVouchersTab">🎟️ Vouchers</div>
+      <div class="tab" onclick="switchLoyaltyTab('referrals')" id="loyReferralsTab">👥 Referrals</div>
+      <div class="tab" onclick="switchLoyaltyTab('rewards')" id="loyRewardsTab">🏆 Rewards</div>
+      <div class="tab" onclick="switchLoyaltyTab('pin')" id="loyPinTab">🔐 PIN</div>
+      <div class="tab" onclick="switchLoyaltyTab('scanner')" id="loyScannerTab">📷 Scanner</div>
+      <div class="tab" onclick="switchLoyaltyTab('pledges')" id="loyPledgesTab">🤝 Pledges</div>
+      <div class="tab" onclick="switchLoyaltyTab('offers')" id="loyOffersTab">🏷️ Offers</div>
+      <div class="tab" onclick="switchLoyaltyTab('legal')" id="loyLegalTab">⚖️ Legal</div>
+      <div class="tab" onclick="switchLoyaltyTab('settings')" id="loySettingsTab">⚙️ Settings</div>
+    </div>
+    
+    <!-- Loading -->
+    <div id="loyaltyLoading" style="text-align:center;padding:20px">
+      <div class="spinner" style="width:24px;height:24px"></div>
+    </div>
+    
+    <!-- Loyalty Tab Panels -->
+    <div id="loyaltyContent" style="display:none">
+      
+      <!-- Dashboard Panel -->
+      <div id="loyDashPanel" class="loyalty-panel">
+        <div id="loyDashboardCards" class="card-grid">
+          <div class="stat-card">
+            <div class="stat-icon">💰</div>
+            <div class="stat-value" id="loyTotalCredits">-</div>
+            <div class="stat-label">Total Credits</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🎟️</div>
+            <div class="stat-value" id="loyActiveVouchers">-</div>
+            <div class="stat-label">Active Vouchers</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-value" id="loyReferralCount">-</div>
+            <div class="stat-label">Referrals</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-value" id="loyRewardsAvail">-</div>
+            <div class="stat-label">Available Rewards</div>
+          </div>
+        </div>
+        <div id="loyDashboardDetail"></div>
       </div>
-      <div class="coming-soon-card" onclick="showComingSoon('Blogging')">
-        <div class="icon">📝</div>
-        <h4>Articles & Blog</h4>
-        <p>Write SEO blog posts</p>
+      
+      <!-- Credits Panel -->
+      <div id="loyCreditsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">💰 Credits Overview</div>
+        <div id="creditsOverview" class="card-grid"></div>
+        <div class="section-title" style="margin-top:16px">📋 Credit History</div>
+        <div id="creditsHistory">
+          <div class="empty-state"><p>No credit history available.</p></div>
+        </div>
       </div>
-      <div class="coming-soon-card" onclick="showComingSoon('Community')">
-        <div class="icon">💬</div>
-        <h4>Community Posts</h4>
-        <p>Engage with your audience</p>
+      
+      <!-- Vouchers Panel -->
+      <div id="loyVouchersPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🎟️ My Vouchers</div>
+        <div id="vouchersList">
+          <div class="empty-state"><p>No vouchers yet.</p></div>
+        </div>
       </div>
-      <div class="coming-soon-card" onclick="showComingSoon('Analytics')">
-        <div class="icon">📊</div>
-        <h4>Analytics</h4>
-        <p>Track views and engagement</p>
+      
+      <!-- Referrals Panel -->
+      <div id="loyReferralsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">👥 Referral Program</div>
+        <div id="referralCodeDisplay" class="card" style="text-align:center;padding:24px"></div>
+        <div class="section-title" style="margin-top:16px">Referral History</div>
+        <div id="referralsList">
+          <div class="empty-state"><p>No referrals yet. Share your code to earn credits!</p></div>
+        </div>
       </div>
-      <div class="coming-soon-card" onclick="showComingSoon('B2B Marketplace')">
-        <div class="icon">🤝</div>
-        <h4>B2B Marketplace</h4>
-        <p>Connect with other businesses</p>
+      
+      <!-- Rewards Panel -->
+      <div id="loyRewardsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🏆 Available Rewards</div>
+        <div id="rewardsList">
+          <div class="empty-state"><p>No rewards available.</p></div>
+        </div>
       </div>
+      
+      <!-- PIN Panel -->
+      <div id="loyPinPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🔐 Purchase Verification PIN</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Generate PIN</h3>
+            <p>Create a new PIN for purchase verification.</p>
+            <div id="pinGenerateResult" style="margin:12px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="generatePin()">🔐 Generate New PIN</button>
+          </div>
+          <div class="card">
+            <h3>Verify Purchase</h3>
+            <p>Enter a PIN to verify a customer purchase.</p>
+            <div class="form-group" style="margin-top:8px">
+              <label>PIN Code</label>
+              <input type="text" id="verifyPinInput" placeholder="Enter PIN">
+            </div>
+            <div class="form-group">
+              <label>Amount ($)</label>
+              <input type="number" id="verifyPinAmount" placeholder="0.00" step="0.01">
+            </div>
+            <div id="pinVerifyResult" style="margin:12px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="verifyPurchase()">✓ Verify Purchase</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Scanner Panel -->
+      <div id="loyScannerPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">📷 Customer QR Scanner <a href="/guides/merchant-guide.html#scanning" target="_blank" style="font-size:.75rem;color:var(--teal);text-decoration:none;margin-left:8px">❓ Help</a></div>
+        <div class="section-subtitle">Scan a customer's loyalty QR code at checkout to verify their purchase and auto-credit their account.</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>📸 Camera Scanner</h3>
+            <div id="scannerViewport" style="position:relative;width:100%;max-width:400px;margin:12px auto;border-radius:12px;overflow:hidden;background:#000">
+              <video id="scannerVideo" style="width:100%;height:auto;display:block" autoplay playsinline muted></video>
+              <canvas id="scannerCanvas" style="display:none"></canvas>
+              <div id="scannerOverlay" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.5);border-radius:16px;width:200px;height:200px;pointer-events:none"></div>
+            </div>
+            <div style="text-align:center;margin:8px 0">
+              <button class="btn btn-primary" onclick="startScanner()">📷 Start Scanner</button>
+              <button class="btn btn-secondary" onclick="stopScanner()" style="margin-left:8px">⏹ Stop</button>
+            </div>
+            <div id="scanResult" style="display:none;margin-top:12px"></div>
+          </div>
+          <div class="card">
+            <h3>🔐 Verify & Credit</h3>
+            <div id="scanCustomerInfo" style="margin-bottom:12px">
+              <p style="font-size:.85rem;color:var(--text-secondary)">Scan a QR code to start.</p>
+            </div>
+            <div class="form-group">
+              <label>Customer ID</label>
+              <input type="text" id="scannerContactId" placeholder="Scanned ID will appear here" readonly>
+            </div>
+            <div class="form-group">
+              <label>Purchase Amount ($)</label>
+              <input type="number" id="scannerAmount" placeholder="0.00" step="0.01">
+            </div>
+            <div class="form-group">
+              <label>Business PIN</label>
+              <input type="password" id="scannerPin" placeholder="Enter your PIN" value="0000">
+            </div>
+            <div class="form-group">
+              <label>Apply Offer (optional)</label>
+              <select id="scannerOffer">
+                <option value="">No offer — just earn credits</option>
+              </select>
+            </div>
+            <div id="scannerVerifyResult" style="margin:12px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="scannerVerifyPurchase()">✅ Verify & Credit</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pledges Panel -->
+      <div id="loyPledgesPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🤝 Business Pledges</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Create Pledge</h3>
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" id="pledgeTitle" placeholder="Pledge title">
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input type="text" id="pledgeDesc" placeholder="What you're pledging">
+            </div>
+            <div class="form-group">
+              <label>Value ($)</label>
+              <input type="number" id="pledgeValue" placeholder="0.00" step="0.01">
+            </div>
+            <div id="pledgeCreateResult" style="margin:8px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="createPledge()">🤝 Create Pledge</button>
+          </div>
+          <div class="card">
+            <h3>My Pledges</h3>
+            <div id="pledgesList"><div class="empty-state"><p>No pledges yet.</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Offers Panel -->
+      <div id="loyOffersPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🏷️ Redemption Offers <a href="/guides/merchant-guide.html#create-offers" target="_blank" style="font-size:.75rem;color:var(--teal);text-decoration:none;margin-left:8px">❓ Help</a></div>
+        <div class="section-subtitle">Create offers that control how customers can redeem their credits at your business.</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Create Offer</h3>
+            <div class="form-group">
+              <label>Offer Name</label>
+              <input type="text" id="offerName" placeholder="e.g. 25% off up to $6">
+            </div>
+            <div class="form-group">
+              <label>Discount %</label>
+              <input type="number" id="offerDiscount" placeholder="25" min="1" max="100">
+            </div>
+            <div class="form-group">
+              <label>Max Discount ($)</label>
+              <input type="number" id="offerCap" placeholder="6.00" min="1" step="0.01">
+            </div>
+            <div id="offerCreateResult" style="margin:8px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="createOffer()">🏷️ Create Offer</button>
+          </div>
+          <div class="card">
+            <h3>Your Offers</h3>
+            <div id="offersList"><div class="empty-state"><p>No offers yet. Create one to let customers redeem credits!</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legal Panel -->
+      <div id="loyLegalPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">⚖️ Program Legal Terms</div>
+        <div class="section-subtitle">Legal terms governing use of the loyalty and rewards program. Your role determines which terms apply to you.</div>
+        <div id="legalRoleTabs" class="tab-bar" style="margin:16px 0">
+          <div class="tab active" onclick="switchLegalTab('participant')" id="legalTabParticipant">👤 Participant</div>
+          <div class="tab" onclick="switchLegalTab('merchant')" id="legalTabMerchant">🏪 Merchant</div>
+          <div class="tab" onclick="switchLegalTab('supplier')" id="legalTabSupplier">📦 Supplier</div>
+          <div class="tab" onclick="switchLegalTab('admin')" id="legalTabAdmin">🛡️ Admin</div>
+        </div>
+        <div id="legalContent"><!-- legal content rendered here --></div>
+      </div>
+
+      <!-- Settings Panel -->
+      <div id="loySettingsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">⚙️ Loyalty Settings <a href="/guides/merchant-guide.html#credit-rate" target="_blank" style="font-size:.75rem;color:var(--teal);text-decoration:none;margin-left:8px">❓ Help</a></div>
+        <div class="section-subtitle">Configure your credit rate and purchase PIN for the loyalty program.</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>💰 Credit Rate</h3>
+            <p style="font-size:.85rem;color:var(--text-secondary);margin:8px 0">How many credits customers earn per $1 spent.</p>
+            <div class="form-group">
+              <label>Credits per Dollar</label>
+              <input type="number" id="loyCreditRate" min="1" max="1000" placeholder="10">
+            </div>
+            <div id="creditRateStatus" style="margin:8px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="saveCreditRate()">💾 Save Credit Rate</button>
+          </div>
+          <div class="card">
+            <h3>🔐 Purchase PIN</h3>
+            <p style="font-size:.85rem;color:var(--text-secondary);margin:8px 0">The PIN businesses must enter to verify purchases. Auto-generated for each tenant on signup.</p>
+            <div class="form-group">
+              <label>Current PIN</label>
+              <input type="text" id="loyPurchasePin" readonly style="background:var(--bg);font-family:monospace;font-size:1.1rem;text-align:center;letter-spacing:4px">
+            </div>
+            <div id="purchasePinStatus" style="margin:8px 0"></div>
+          </div>
+        </div>
+      </div>
+      
     </div>
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
 const API = '/api/v1';
 
@@ -396,8 +659,8 @@ function renderBusinesses(businesses) {
     html += '</div>';
     
     html += '<div class="card-actions">';
-    html += '<button class="btn btn-sm btn-secondary" onclick="showComingSoon(\'Analytics for ' + esc(biz.name) + '\')">📊 Analytics</button>';
-    html += '<button class="btn btn-sm btn-secondary" onclick="showComingSoon(\'Manage ' + esc(biz.name) + '\')">⚙️ Manage</button>';
+    html += '<button class="btn btn-sm btn-secondary" onclick="switchLoyaltyTab(\'dashboard\')">🎯 Loyalty</button>';
+    html += '<button class="btn btn-sm btn-secondary" onclick="switchLoyaltyTab(\'credits\')">💰 Credits</button>';
     html += '</div>';
     
     html += '</div>';
@@ -512,6 +775,855 @@ function showSubscribe(planIdx) {
   // For now show the subscribe interaction as coming soon
   showComingSoon('Subscription upgrade — plan: ' + (plans[planIdx] ? plans[planIdx].name : 'Plan #' + (planIdx+1)));
 }
+
+// ════════════════════════════════════════════
+// ── Loyalty / IncentiveSwift Integration ──
+// ════════════════════════════════════════════
+
+var _loyData = {};
+
+function loyalty(path) {
+  var token = localStorage.getItem('bizToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  return fetch('/api/v1/loyalty' + path, { headers: h }).then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || e.message || 'Request failed'); });
+    return r.json();
+  });
+}
+
+function switchLoyaltyTab(tab) {
+  var tabs = ['dash','credits','vouchers','referrals','rewards','pin','scanner','pledges','offers','settings'];
+  for (var i = 0; i < tabs.length; i++) {
+    var t = tabs[i];
+    var tabEl = document.getElementById('loy' + t.charAt(0).toUpperCase() + t.slice(1) + 'Tab');
+    var panel = document.getElementById('loy' + t.charAt(0).toUpperCase() + t.slice(1) + 'Panel');
+    if (t === tab) {
+      if (tabEl) tabEl.classList.add('active');
+      if (panel) panel.style.display = '';
+    } else {
+      if (tabEl) tabEl.classList.remove('active');
+      if (panel) panel.style.display = 'none';
+    }
+  }
+  // Load data on first visit to a tab
+  if (tab === 'credits') loadCreditsTab();
+  else if (tab === 'vouchers') loadVouchersTab();
+  else if (tab === 'referrals') loadReferralsTab();
+  else if (tab === 'rewards') loadRewardsTab();
+  else if (tab === 'pledges') loadPledgesTab();
+  else if (tab === 'offers') loadOffersTab();
+  else if (tab === 'legal') loadLegalTab();
+  else if (tab === 'settings') loadSettingsTab();
+}
+
+// ── Load Loyalty Dashboard ──
+function loadLoyaltyData() {
+  var loading = document.getElementById('loyaltyLoading');
+  var content = document.getElementById('loyaltyContent');
+  if (!loading || !content) return;
+  loading.style.display = '';
+  content.style.display = 'none';
+  
+  loyalty('/portal/dashboard')
+    .then(function(d) {
+      _loyData = d;
+      renderLoyaltyDashboard(d);
+      loading.style.display = 'none';
+      content.style.display = '';
+    })
+    .catch(function(e) {
+      loading.innerHTML = '<p style="color:var(--text-secondary);padding:20px">⚠️ Could not load loyalty data: ' + esc(e.message) + '</p>';
+    });
+}
+
+function renderLoyaltyDashboard(d) {
+  document.getElementById('loyTotalCredits').textContent = '$' + (d.total_credits || 0).toLocaleString();
+  document.getElementById('loyActiveVouchers').textContent = d.active_vouchers || 0;
+  document.getElementById('loyReferralCount').textContent = d.referral_count || 0;
+  document.getElementById('loyRewardsAvail').textContent = d.available_rewards || 0;
+  
+  var detail = document.getElementById('loyDashboardDetail');
+  if (d.referrer_code) {
+    detail.innerHTML = '<div class="card" style="margin-top:12px">' +
+      '<h3>Your Referral Code</h3>' +
+      '<div class="code-display" onclick="copyCode(\'' + esc(d.referrer_code) + '\')" title="Click to copy">' + esc(d.referrer_code) + '</div>' +
+      '<p style="font-size:.8rem;color:var(--text-secondary)">Click to copy — share with other businesses!</p>' +
+      '</div>';
+  }
+  if (d.subscription_tier) {
+    detail.innerHTML += '<div class="card" style="margin-top:12px">' +
+      '<h3>Subscription</h3>' +
+      '<p><strong>' + esc(d.subscription_tier) + '</strong>' +
+      (d.subscription_status ? ' &middot; <span class="badge ' + (d.subscription_status === 'active' ? 'active' : 'warning') + '">' + esc(d.subscription_status) + '</span>' : '') +
+      '</p></div>';
+  }
+}
+
+// ── Credits Tab ──
+function loadCreditsTab() {
+  var overview = document.getElementById('creditsOverview');
+  var history = document.getElementById('creditsHistory');
+  if (!overview) return;
+  overview.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  Promise.all([
+    loyalty('/credits/balance'),
+    loyalty('/credits/history')
+  ]).then(function(results) {
+    var bal = results[0] || {};
+    var hist = results[1] || { transactions: [] };
+    
+    overview.innerHTML = '' +
+      '<div class="stat-card"><div class="stat-icon">💰</div><div class="stat-value">' + (bal.balance || 0).toLocaleString() + '</div><div class="stat-label">Available Credits</div></div>' +
+      '<div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value">' + (bal.credits_monthly || 0).toLocaleString() + '</div><div class="stat-label">Monthly Limit</div></div>' +
+      '<div class="stat-card"><div class="stat-icon">🔄</div><div class="stat-value">' + (bal.credits_overdraft || 0).toLocaleString() + '</div><div class="stat-label">Overdraft Protection</div></div>' +
+      '<div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">' + (bal.lifetime_used || 0).toLocaleString() + '</div><div class="stat-label">Lifetime Used</div></div>';
+    
+    var tx = hist.transactions || [];
+    if (tx.length === 0) {
+      history.innerHTML = '<div class="empty-state"><p>No transactions yet.</p></div>';
+    } else {
+      var h = '<div class="card">';
+      for (var i = 0; i < tx.length; i++) {
+        var t = tx[i];
+        var amt = parseFloat(t.amount || 0);
+        var cls = amt >= 0 ? 'positive' : 'negative';
+        h += '<div class="tx-row">' +
+          '<span>' + esc(t.description || 'Transaction') + '<br><small style="color:var(--text-secondary)">' + (t.created_at ? new Date(t.created_at).toLocaleString() : '') + '</small></span>' +
+          '<span class="tx-amount ' + cls + '">' + (amt >= 0 ? '+' : '') + amt.toFixed(2) + '</span>' +
+          '</div>';
+      }
+      h += '</div>';
+      history.innerHTML = h;
+    }
+  }).catch(function(e) {
+    overview.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+  });
+}
+
+// ── Vouchers Tab ──
+function loadVouchersTab() {
+  var el = document.getElementById('vouchersList');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  loyalty('/vouchers')
+    .then(function(d) {
+      var vouchers = d.vouchers || [];
+      if (vouchers.length === 0) {
+        el.innerHTML = '<div class="empty-state"><p>No vouchers yet.</p></div>';
+        return;
+      }
+      var h = '';
+      for (var i = 0; i < vouchers.length; i++) {
+        var v = vouchers[i];
+        var statusClass = v.status === 'active' ? 'active' : (v.status === 'redeemed' ? 'inactive' : 'warning');
+        h += '<div class="card voucher-card">' +
+          '<h4>' + esc(v.title || 'Voucher') + '</h4>' +
+          '<p>' + esc(v.description || '') + '</p>' +
+          '<div class="v-meta">' +
+          '<span class="badge ' + statusClass + '">' + esc(v.status || 'active') + '</span>' +
+          (v.value ? '<span><strong>$' + parseFloat(v.value).toFixed(2) + '</strong></span>' : '') +
+          (v.expires_at ? '<span>Expires: ' + new Date(v.expires_at).toLocaleDateString() + '</span>' : '') +
+          '</div>' +
+          (v.status === 'active' ? '<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="redeemVoucher(\'' + esc(v.id) + '\')">🎟️ Redeem</button>' : '') +
+          '</div>';
+      }
+      el.innerHTML = h;
+    })
+    .catch(function(e) {
+      el.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function redeemVoucher(id) {
+  loyalty('/vouchers/redeem', { method: 'POST', body: JSON.stringify({ voucher_id: id }) })
+    .then(function(r) {
+      toast('✅ Voucher redeemed!', 'success');
+      loadVouchersTab();
+    })
+    .catch(function(e) {
+      toast('❌ ' + e.message, 'error');
+    });
+}
+
+// ── Referrals Tab ──
+function loadReferralsTab() {
+  var codeEl = document.getElementById('referralCodeDisplay');
+  var listEl = document.getElementById('referralsList');
+  if (!codeEl) return;
+  codeEl.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:10px auto"></div>';
+  listEl.innerHTML = '';
+  
+  loyalty('/referrals')
+    .then(function(d) {
+      var code = d.code || '';
+      var referrals = d.referrals || [];
+      
+      if (code) {
+        codeEl.innerHTML = '<h3>Your Referral Code</h3>' +
+          '<div class="code-display" onclick="copyCode(\'' + esc(code) + '\')" title="Click to copy">' + esc(code) + '</div>' +
+          '<p style="font-size:.8rem;color:var(--text-secondary)">Click to copy — share this code to earn credits for every new signup!</p>';
+      } else {
+        codeEl.innerHTML = '<h3>No Referral Code Yet</h3>' +
+          '<p style="margin:8px 0">Generate a referral code to start earning.</p>' +
+          '<button class="btn btn-primary" onclick="createReferralCode()">🔗 Generate Referral Code</button>';
+      }
+      
+      if (referrals.length > 0) {
+        var h = '<div class="card">';
+        for (var i = 0; i < referrals.length; i++) {
+          var r = referrals[i];
+          h += '<div class="tx-row">' +
+            '<span>' + esc(r.email || 'Referred user') + '</span>' +
+            '<span class="badge ' + (r.status === 'active' ? 'active' : 'inactive') + '">' + esc(r.status || 'pending') + '</span>' +
+            '</div>';
+        }
+        h += '</div>';
+        listEl.innerHTML = h;
+      }
+    })
+    .catch(function(e) {
+      codeEl.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function createReferralCode() {
+  var btn = document.querySelector('#referralCodeDisplay .btn');
+  if (btn) btn.disabled = true;
+  loyalty('/referrals/create', { method: 'POST', body: '{}' })
+    .then(function(d) {
+      toast('✅ Referral code created!', 'success');
+      loadReferralsTab();
+    })
+    .catch(function(e) {
+      toast('❌ ' + e.message, 'error');
+      if (btn) btn.disabled = false;
+    });
+}
+
+function copyCode(code) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(code).then(function() {
+      toast('📋 Copied referral code!', 'success');
+    }).catch(function() {
+      fallbackCopy(code);
+    });
+  } else {
+    fallbackCopy(code);
+  }
+}
+function fallbackCopy(code) {
+  var ta = document.createElement('textarea');
+  ta.value = code;
+  ta.style.position = 'fixed'; ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  toast('📋 Copied!', 'success');
+}
+
+// ── Rewards Tab ──
+function loadRewardsTab() {
+  var el = document.getElementById('rewardsList');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  loyalty('/rewards')
+    .then(function(d) {
+      var rewards = d.rewards || [];
+      if (rewards.length === 0) {
+        el.innerHTML = '<div class="empty-state"><p>No rewards available yet.</p></div>';
+        return;
+      }
+      var h = '<div class="loy-stats-grid">';
+      for (var i = 0; i < rewards.length; i++) {
+        var r = rewards[i];
+        h += '<div class="card" style="text-align:center">' +
+          '<div style="font-size:2rem;margin-bottom:6px">🏆</div>' +
+          '<h4>' + esc(r.name || r.title || 'Reward') + '</h4>' +
+          (r.description ? '<p>' + esc(r.description) + '</p>' : '') +
+          (r.cost ? '<p style="margin:8px 0"><strong>' + r.cost + ' credits</strong></p>' : '') +
+          '<button class="btn btn-sm btn-primary" onclick="claimReward(\'' + esc(r.id) + '\')">Claim</button>' +
+          '</div>';
+      }
+      h += '</div>';
+      el.innerHTML = h;
+    })
+    .catch(function(e) {
+      el.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function claimReward(id) {
+  loyalty('/rewards/claim', { method: 'POST', body: JSON.stringify({ reward_id: id }) })
+    .then(function(r) {
+      toast('✅ Reward claimed!', 'success');
+      loadRewardsTab();
+    })
+    .catch(function(e) {
+      toast('❌ ' + e.message, 'error');
+    });
+}
+
+// ── PIN Tab ──
+function generatePin() {
+  var result = document.getElementById('pinGenerateResult');
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  var btn = result.parentElement.querySelector('.btn');
+  if (btn) btn.disabled = true;
+  
+  loyalty('/pin/generate', { method: 'POST', body: '{}' })
+    .then(function(d) {
+      result.innerHTML = '<div style="background:#f0fdf4;padding:10px;border-radius:8px;text-align:center">' +
+        '<strong>PIN generated!</strong><br>' +
+        '<span style="font-family:monospace;font-size:1.2rem;letter-spacing:3px">' + esc(d.pin || '') + '</span></div>';
+      if (btn) btn.disabled = false;
+    })
+    .catch(function(e) {
+      result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+      if (btn) btn.disabled = false;
+    });
+}
+
+function verifyPurchase() {
+  var pin = document.getElementById('verifyPinInput').value.trim();
+  var amount = document.getElementById('verifyPinAmount').value;
+  var result = document.getElementById('pinVerifyResult');
+  if (!pin) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">Please enter a PIN</p>'; return; }
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  
+  loyalty('/pin/verify', { method: 'POST', body: JSON.stringify({ pin: pin, amount: amount }) })
+    .then(function(d) {
+      result.innerHTML = '<div style="background:#f0fdf4;padding:10px;border-radius:8px;text-align:center;color:var(--success);font-weight:600">✅ Purchase verified!</div>';
+    })
+    .catch(function(e) {
+      result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+    });
+}
+
+// ── Pledges Tab ──
+function loadPledgesTab() {
+  var el = document.getElementById('pledgesList');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  loyalty('/pledges')
+    .then(function(d) {
+      var pledges = d.pledges || [];
+      if (pledges.length === 0) {
+        el.innerHTML = '<div class="empty-state"><p>No pledges yet. Create one above!</p></div>';
+        return;
+      }
+      var h = '';
+      for (var i = 0; i < pledges.length; i++) {
+        var p = pledges[i];
+        h += '<div class="tx-row">' +
+          '<span><strong>' + esc(p.title || 'Pledge') + '</strong><br><small>' + esc(p.description || '') + '</small></span>' +
+          '<span style="font-weight:700;color:var(--teal)">$' + parseFloat(p.value || 0).toFixed(2) + '</span>' +
+          '</div>';
+      }
+      el.innerHTML = h;
+    })
+    .catch(function(e) {
+      el.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function createPledge() {
+  var title = document.getElementById('pledgeTitle').value.trim();
+  var desc = document.getElementById('pledgeDesc').value.trim();
+  var val = document.getElementById('pledgeValue').value;
+  var result = document.getElementById('pledgeCreateResult');
+  if (!title || !val) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">Title and value required</p>'; return; }
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  
+  loyalty('/pledges/create', { method: 'POST', body: JSON.stringify({ title: title, description: desc, value: val }) })
+    .then(function(d) {
+      result.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Pledge created!</p>';
+      document.getElementById('pledgeTitle').value = '';
+      document.getElementById('pledgeDesc').value = '';
+      document.getElementById('pledgeValue').value = '';
+      loadPledgesTab();
+    })
+    .catch(function(e) {
+      result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+    });
+}
+
+// ── Offers Tab ──
+function loadOffersTab() {
+  var listEl = document.getElementById('offersList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+
+  loyalty('/admin/offers')
+    .then(function(d) {
+      var offers = d.offers || [];
+      if (offers.length === 0) {
+        listEl.innerHTML = '<div class="empty-state"><p>No offers yet. Create one above!</p></div>';
+        return;
+      }
+      var h = '';
+      for (var i = 0; i < offers.length; i++) {
+        var o = offers[i];
+        var statusClass = o.active ? 'active' : 'inactive';
+        var statusLabel = o.active ? 'Active' : 'Inactive';
+        h += '<div class="card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:start">' +
+          '<div>' +
+          '<h3>' + esc(o.name) + '</h3>' +
+          '<p><strong>' + o.discount_percent + '% off</strong> &middot; up to $' + parseFloat(o.cap_dollars).toFixed(2) + '</p>' +
+          '</div>' +
+          '<span class="badge ' + statusClass + '">' + statusLabel + '</span>' +
+          '</div>' +
+          '<div class="meta">Created ' + (o.created_at ? new Date(o.created_at).toLocaleDateString() : '') + '</div>' +
+          '<div class="card-actions">' +
+          '<button class="btn btn-sm btn-secondary" onclick="toggleOffer(\'' + esc(o.id) + '\', ' + (!o.active) + ')">' +
+          (o.active ? '🔴 Deactivate' : '🟢 Activate') + '</button>' +
+          '</div>' +
+          '</div>';
+      }
+      listEl.innerHTML = h;
+    })
+    .catch(function(e) {
+      listEl.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+
+  // Also load offers for scanner dropdown
+  loadScannerOffers();
+}
+
+function createOffer() {
+  var name = document.getElementById('offerName').value.trim();
+  var discount = parseInt(document.getElementById('offerDiscount').value, 10);
+  var cap = parseFloat(document.getElementById('offerCap').value);
+  var result = document.getElementById('offerCreateResult');
+
+  if (!name) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Offer name required</p>'; return; }
+  if (isNaN(discount) || discount < 1 || discount > 100) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Discount must be 1-100%</p>'; return; }
+  if (isNaN(cap) || cap <= 0) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Cap must be > $0</p>'; return; }
+
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/v1/loyalty/admin/offers', {
+    method: 'POST',
+    headers: h,
+    body: JSON.stringify({
+      name: name,
+      discount_percent: discount,
+      cap_dollars: Math.round(cap)
+    })
+  })
+  .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || d.message || 'Failed'); return d; }); })
+  .then(function(d) {
+    result.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Offer created!</p>';
+    document.getElementById('offerName').value = '';
+    document.getElementById('offerDiscount').value = '';
+    document.getElementById('offerCap').value = '';
+    toast('✅ Offer created!', 'success');
+    loadOffersTab();
+  })
+  .catch(function(e) {
+    result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+  });
+}
+
+function toggleOffer(id, newState) {
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/v1/loyalty/admin/offers/' + id, {
+    method: 'PUT',
+    headers: h,
+    body: JSON.stringify({ active: newState })
+  })
+  .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || d.message || 'Failed'); return d; }); })
+  .then(function(d) {
+    toast(newState ? '🟢 Offer activated!' : '🔴 Offer deactivated', 'success');
+    loadOffersTab();
+  })
+  .catch(function(e) {
+    toast('❌ ' + e.message, 'error');
+  });
+}
+
+// Load offers into the scanner dropdown
+function loadScannerOffers() {
+  var select = document.getElementById('scannerOffer');
+  if (!select) return;
+  select.innerHTML = '<option value="">No offer — just earn credits</option>';
+
+  var token = localStorage.getItem('bizToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/v1/loyalty/admin/offers', { headers: h })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var offers = d.offers || [];
+      var activeOffers = offers.filter(function(o) { return o.active; });
+      for (var i = 0; i < activeOffers.length; i++) {
+        var o = activeOffers[i];
+        var opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.name + ' (' + o.discount_percent + '% off, up to $' + parseFloat(o.cap_dollars).toFixed(2) + ')';
+        select.appendChild(opt);
+      }
+    })
+    .catch(function(e) {
+      console.error('Failed to load offers for scanner:', e);
+    });
+}
+
+// ── Settings Tab ──
+function loadSettingsTab() {
+  var creditInput = document.getElementById('loyCreditRate');
+  var pinInput = document.getElementById('loyPurchasePin');
+  if (!creditInput || !pinInput) return;
+
+  // Fetch current credit rate
+  g('/loyalty/admin/credit-rate')
+    .then(function(r) {
+      if (r && r.credit_rate !== undefined) {
+        creditInput.value = r.credit_rate;
+      }
+    })
+    .catch(function(e) {
+      console.error('Failed to load credit rate:', e);
+    });
+
+  // Fetch current purchase PIN
+  g('/loyalty/admin/purchase-pin')
+    .then(function(r) {
+      if (r && r.pin !== undefined) {
+        pinInput.value = r.pin;
+      }
+    })
+    .catch(function(e) {
+      console.error('Failed to load purchase PIN:', e);
+    });
+}
+
+function saveCreditRate() {
+  var input = document.getElementById('loyCreditRate');
+  var status = document.getElementById('creditRateStatus');
+  if (!input || !status) return;
+  var val = parseInt(input.value, 10);
+  if (isNaN(val) || val < 0) {
+    status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Please enter a valid number (0 or more).</p>';
+    return;
+  }
+  status.innerHTML = '<p style="color:var(--text-secondary);font-size:.85rem">⏳ Saving...</p>';
+  pu('/loyalty/admin/credit-rate', { credit_rate: val })
+    .then(function(r) {
+      if (r && r.credit_rate !== undefined) {
+        status.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Credit rate saved: 1 credit per $' + (1 / r.credit_rate).toFixed(2) + '</p>';
+        toast('Credit rate updated to ' + r.credit_rate, 'success');
+      }
+    })
+    .catch(function(e) {
+      status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message || 'Failed to save') + '</p>';
+    });
+}
+
+// ── Legal Tab ──
+function switchLegalTab(tab) {
+  var tabs = ['participant','merchant','supplier','admin'];
+  tabs.forEach(function(t) {
+    document.getElementById('legalTab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.remove('active');
+  });
+  document.getElementById('legalTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  renderLegalContent(tab);
+}
+
+function loadLegalTab() {
+  var roleMap = {
+    'company_admin': 'merchant',
+    'admin': 'admin',
+    'super_admin': 'admin',
+    'portfolio_company': 'supplier',
+    'supplier': 'supplier'
+  };
+  var userRole = 'participant';
+  if (typeof _loyData !== 'undefined' && _loyData && _loyData.role) {
+    userRole = roleMap[_loyData.role] || 'participant';
+  }
+  switchLegalTab(userRole);
+}
+
+function renderLegalContent(tab) {
+  var content = document.getElementById('legalContent');
+  if (!content) return;
+  var html = '';
+  
+  if (tab === 'participant') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; PARTICIPANT TERMS OF USE</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Acceptance</h4><p>By participating in the ZaarHub Loyalty Program ("Program"), you agree to these Participant Terms. If you do not agree, do not participate.</p></div>' +
+      '<div class="legal-clause"><h4>2. Eligibility</h4><p>Open to individuals 18+ with a valid account. One account per person. Employees of SwiftSoftware and its affiliates may participate but are subject to additional restrictions.</p></div>' +
+      '<div class="legal-clause"><h4>3. Earning Credits</h4><p>Participants earn credits by: (a) scanning the QR code at participating merchants and verifying a purchase, (b) referring new participants who join the Program, (c) participating in promotional campaigns. Credits are awarded at the rate set by each merchant. No cash value. Credits never expire as long as the account remains active.</p></div>' +
+      '<div class="legal-clause"><h4>4. Redeeming Credits</h4><p>Credits can be redeemed for rewards, vouchers, or discounts offered by participating merchants. Redemption is subject to offer terms (minimum credits, expiration, caps). All redemptions are final &mdash; no returns, exchanges, or cash refunds for redeemed credits.</p></div>' +
+      '<div class="legal-clause"><h4>5. Purchase Verification</h4><p>When a merchant scans your QR code and you verify a purchase amount, you authorize that merchant to view your name and participant ID for verification purposes. You must present your QR code or account identifier at time of purchase. Credits are awarded after successful verification.</p></div>' +
+      '<div class="legal-clause"><h4>6. Referrals</h4><p>You may share your referral code. You earn credits when a new participant signs up through your code and completes their first purchase verification. Fraudulent or self-referral activity will result in forfeiture of credits and account termination.</p></div>' +
+      '<div class="legal-clause"><h4>7. Prohibited Conduct</h4><p>You may not: manipulate or abuse the Program mechanics, create multiple accounts, use bots or automated scripts, resell credits or rewards, engage in fraudulent purchase verification, or violate any applicable law.</p></div>' +
+      '<div class="legal-clause"><h4>8. Account Security</h4><p>You are responsible for maintaining the confidentiality of your login credentials. Notify us immediately of unauthorized use. We are not liable for losses from unauthorized account access.</p></div>' +
+      '<div class="legal-clause"><h4>9. Privacy</h4><p>Personal data collected through the Program is governed by the ZaarHub Privacy Policy. Purchase verification data is shared with the merchant only for Program purposes.</p></div>' +
+      '<div class="legal-clause"><h4>10. Modification &amp; Termination</h4><p>We reserve the right to modify, suspend, or terminate the Program or these terms at any time with 30 days\' notice. We may terminate or suspend your participation immediately for violations. Upon termination, unused credits are forfeited unless prohibited by law.</p></div>' +
+      '<div class="legal-clause"><h4>11. Limitation of Liability</h4><p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, SwiftSoftware, ZaarHub, and participating merchants are not liable for indirect, incidental, or consequential damages arising from your participation in the Program. Total liability is limited to the value of unredeemed credits in your account at the time of the claim.</p></div>' +
+      '<div class="legal-clause"><h4>12. Governing Law</h4><p>These terms are governed by the laws of the State of Delaware, USA, without regard to conflict of law principles. Any disputes shall be resolved in the state or federal courts located in Delaware.</p></div>' +
+    '</div>';
+  } else if (tab === 'merchant') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; MERCHANT TERMS OF SERVICE</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Acceptance</h4><p>By enrolling as a Merchant in the ZaarHub Loyalty Program, you agree to these Merchant Terms. "Merchant" means the business entity that owns the enrolled account.</p></div>' +
+      '<div class="legal-clause"><h4>2. Enrollment &amp; Account</h4><p>You must have a valid ZaarHub Business account. You are responsible for all activity under your account. You may set your credit rate (credits earned per $1 spent, minimum 1, maximum 1,000), which applies to all purchase verifications at your business.</p></div>' +
+      '<div class="legal-clause"><h4>3. Purchase Verification</h4><p>When a Participant presents their QR code, you must: (a) scan or enter the participant\'s ID, (b) verify the purchase amount in good faith, (c) accept the Program\'s automated credit award. You may not verify false purchases, inflate amounts, or collude with participants. Fraudulent verification is grounds for immediate termination and forfeiture of all fees.</p></div>' +
+      '<div class="legal-clause"><h4>4. Offers &amp; Redemptions</h4><p>You may create offers (time-limited or standing) that participants can redeem credits against. Offers must: represent genuine value, not exceed the discount cap you set, be honored when presented. You may deactivate offers at any time, but must honor redemptions initiated before deactivation.</p></div>' +
+      '<div class="legal-clause"><h4>5. Fees &amp; Payouts</h4><p>Merchant pricing is governed by your separate Subscription Agreement. No per-transaction fees for purchase verifications. Redemption payouts (if any) are governed by your specific offer terms. We reserve the right to adjust Program economics with 30 days\' notice.</p></div>' +
+      '<div class="legal-clause"><h4>6. Participant Data</h4><p>You may access participant names and verification records solely for Program operations. You may not use this data for marketing, resale, or any purpose beyond the Program. You must comply with all applicable data protection laws.</p></div>' +
+      '<div class="legal-clause"><h4>7. Brand &amp; Marketing</h4><p>You may display the "ZaarHub Loyalty" badge at your location and in your marketing. You may not imply endorsement or partnership beyond the Program. We may use your business name and logo in Program materials.</p></div>' +
+      '<div class="legal-clause"><h4>8. Prohibited Conduct</h4><p>You may not: discriminate against participants based on their Program participation, impose surcharges on Program transactions, manipulate credit rates or offers to evade Program rules, engage in any activity that harms Program integrity.</p></div>' +
+      '<div class="legal-clause"><h4>9. Indemnification</h4><p>You agree to indemnify and hold harmless SwiftSoftware, its affiliates, officers, and employees from claims arising from: your breach of these terms, your violation of law, your fraudulent verification, or your misuse of participant data.</p></div>' +
+      '<div class="legal-clause"><h4>10. Suspension &amp; Termination</h4><p>We may suspend or terminate your participation immediately for breach, fraud, or illegal activity. Either party may terminate with 30 days\' written notice. Upon termination, outstanding offers are deactivated. Accrued participant credits earned at your business remain valid for 90 days post-termination.</p></div>' +
+      '<div class="legal-clause"><h4>11. Limitation of Liability</h4><p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, SwiftSoftware\'s total liability under these terms is limited to the fees paid by you in the 12 months preceding the claim. No liability for indirect, consequential, or incidental damages.</p></div>' +
+      '<div class="legal-clause"><h4>12. Governing Law</h4><p>Same as Participant Terms &mdash; Delaware law, Delaware courts.</p></div>' +
+    '</div>';
+  } else if (tab === 'supplier') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; SUPPLIER TERMS OF SERVICE</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Acceptance</h4><p>By enrolling as a Supplier ("you") in the ZaarHub Loyalty Program, you agree to these Supplier Terms. "Supplier" means an entity that provides rewards, vouchers, products, or services that participants can redeem using their credits.</p></div>' +
+      '<div class="legal-clause"><h4>2. Enrollment</h4><p>Suppliers must have a valid ZaarHub Supplier account. You represent that you have the legal authority to offer the rewards, products, or services you list in the Program.</p></div>' +
+      '<div class="legal-clause"><h4>3. Reward Listings</h4><p>You may list rewards that participants can redeem. Each listing must include: name, description, credit cost, terms (expiration, quantity limits, geographic restrictions). You must honor redemptions at the listed credit cost until you deactivate or update the listing. You may not list illegal, counterfeit, or misrepresented items.</p></div>' +
+      '<div class="legal-clause"><h4>4. Fulfillment</h4><p>Upon a participant\'s redemption: you must fulfill within the timeframe stated in your listing (default: 14 business days). Failure to fulfill is grounds for removal from the Program. Participants may contact support if fulfillment is not completed.</p></div>' +
+      '<div class="legal-clause"><h4>5. Fees &amp; Settlement</h4><p>Supplier pricing is governed by your separate Subscription Agreement. Settlement of credit values is handled per your agreement. We may deduct platform fees from settlements as specified.</p></div>' +
+      '<div class="legal-clause"><h4>6. Quality Standards</h4><p>You must maintain reasonable quality standards for all rewards, products, and services. Participants are entitled to remedies consistent with standard return/exchange policies in your industry. We may remove listings that generate excessive complaints.</p></div>' +
+      '<div class="legal-clause"><h4>7. Prohibited Conduct</h4><p>You may not: list rewards that you cannot or will not fulfill, misrepresent the value or nature of rewards, discriminate against participants, use the Program to collect participant data for unrelated purposes.</p></div>' +
+      '<div class="legal-clause"><h4>8. Modification &amp; Termination</h4><p>We may modify these terms with 30 days\' notice. We may suspend or terminate your participation immediately for breach. You may terminate with 30 days\' notice. Upon termination, outstanding unfulfilled redemptions must still be fulfilled.</p></div>' +
+      '<div class="legal-clause"><h4>9. Indemnification &amp; Liability</h4><p>Same structure as Merchant Terms &mdash; indemnification for breach/misrepresentation. Liability limited to fees paid in preceding 12 months. No consequential damages.</p></div>' +
+      '<div class="legal-clause"><h4>10. Governing Law</h4><p>Delaware.</p></div>' +
+    '</div>';
+  } else if (tab === 'admin') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; ADMINISTRATOR TERMS</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Scope</h4><p>These Administrator Terms apply to SwiftSoftware administrators, ZaarHub administrators, and any individual granted admin-level access to the Program backend ("Admin").</p></div>' +
+      '<div class="legal-clause"><h4>2. Access &amp; Authority</h4><p>Admin accounts are granted at the discretion of SwiftSoftware. You may only access systems and data necessary for your admin function. You must maintain confidentiality of admin credentials. Multi-factor authentication is required.</p></div>' +
+      '<div class="legal-clause"><h4>3. Tenant Management</h4><p>As an Admin, you may: view and manage tenant accounts (merchants, suppliers, participants), adjust tenant configurations when authorized, assist with account recovery and support, monitor Program activity for fraud and abuse.</p></div>' +
+      '<div class="legal-clause"><h4>4. Data Access</h4><p>You may access all Program data necessary for your role, including: participant personal information (email, name, account history), merchant transaction records, credit balances and redemption history, referral network data. You must comply with all applicable data protection laws and internal data handling policies.</p></div>' +
+      '<div class="legal-clause"><h4>5. Privacy &amp; Confidentiality</h4><p>You must: access only the minimum data needed, never share or export data except for authorized Program operations, never access your own personal account through admin tools for personal benefit, report any data breach or security incident immediately.</p></div>' +
+      '<div class="legal-clause"><h4>6. Oversight Responsibilities</h4><p>You are responsible for: reviewing flagged transactions for fraud, responding to support tickets within SLAs, maintaining system integrity, escalating security issues. You must document any manual adjustments (credit corrections, account modifications) with a clear audit trail.</p></div>' +
+      '<div class="legal-clause"><h4>7. Prohibited Conduct</h4><p>You may not: use admin access for personal financial gain, grant yourself or others unauthorized credits, modify transaction records without proper authorization, access accounts of known individuals for personal reasons, bypass Program rules for favored accounts.</p></div>' +
+      '<div class="legal-clause"><h4>8. Conflicts of Interest</h4><p>You must disclose any relationship with a tenant (merchant or supplier) that could create a conflict. You may not administer your own account or accounts of immediate family members.</p></div>' +
+      '<div class="legal-clause"><h4>9. Audit &amp; Monitoring</h4><p>All admin actions are logged and subject to audit. We may review any admin action without notice. Violations of these terms are grounds for immediate revocation of admin access, termination of employment/contract, and legal action.</p></div>' +
+      '<div class="legal-clause"><h4>10. Accountability &amp; Liability</h4><p>You are personally accountable for your actions under these terms. SwiftSoftware reserves the right to pursue recovery of losses caused by intentional misconduct or gross negligence. Admin access is a privilege, not a right &mdash; revocable at any time for any reason.</p></div>' +
+      '<div class="legal-clause"><h4>11. Governing Law</h4><p>Delaware.</p></div>' +
+    '</div>';
+  }
+  
+  content.innerHTML = html;
+}
+
+function toast(msg, type) {
+  type = type || 'info';
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-size:.9rem;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,.2);color:#fff;transition:opacity .3s;' +
+    (type === 'success' ? 'background:#22c55e' : type === 'error' ? 'background:#ef4444' : 'background:#1e293b');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+}
+
+// Modify loadDashboard to also load loyalty data
+var _origLoadDashboard = loadDashboard;
+loadDashboard = function() {
+  _origLoadDashboard.call(this);
+  // Also load loyalty data when dashboard is ready
+  var check = setInterval(function() {
+    if (document.getElementById('dashboardContent').style.display !== 'none') {
+      clearInterval(check);
+      loadLoyaltyData();
+    }
+  }, 200);
+};
+
+// ── Override po to support JSON body string ──
+var _origPo = po;
+po = function(path, opts) {
+  if (opts && opts.body) {
+    var token = localStorage.getItem('bizToken');
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    return fetch('/api/v1/loyalty' + path, { method: opts.method || 'POST', headers: h, body: opts.body }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || e.message || 'Request failed'); });
+      return r.json();
+    });
+  }
+  return _origPo(path, opts);
+};
+
+// ════════════════════════════════════════════
+// ── Scanner (jsQR) ──
+// ════════════════════════════════════════════
+
+var _scannerStream = null;
+var _scannerInterval = null;
+
+function startScanner() {
+  var video = document.getElementById('scannerVideo');
+  var result = document.getElementById('scanResult');
+  if (!video) return;
+  
+  result.style.display = 'none';
+  result.innerHTML = '';
+  
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(function(stream) {
+        _scannerStream = stream;
+        video.srcObject = stream;
+        video.play();
+        scanFrame();
+        toast('📷 Scanner started', 'success');
+      })
+      .catch(function(err) {
+        result.style.display = '';
+        result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Camera access denied: ' + esc(err.message) + '</p>';
+      });
+  } else {
+    result.style.display = '';
+    result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Camera not supported on this device</p>';
+  }
+}
+
+function stopScanner() {
+  if (_scannerStream) {
+    _scannerStream.getTracks().forEach(function(t) { t.stop(); });
+    _scannerStream = null;
+  }
+  if (_scannerInterval) {
+    clearInterval(_scannerInterval);
+    _scannerInterval = null;
+  }
+  var video = document.getElementById('scannerVideo');
+  if (video) video.srcObject = null;
+}
+
+function scanFrame() {
+  if (_scannerInterval) return;
+  _scannerInterval = setInterval(function() {
+    var video = document.getElementById('scannerVideo');
+    var canvas = document.getElementById('scannerCanvas');
+    if (!video || !canvas || !video.videoWidth) return;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert'
+    });
+    
+    if (code && code.data) {
+      // QR detected!
+      var qrData = code.data;
+      var customerId = null;
+      
+      // Parse loyalty URI or raw UUID
+      if (qrData.indexOf('loyalty://customer/') === 0) {
+        customerId = qrData.substring('loyalty://customer/'.length);
+      } else {
+        // Assume it's a raw UUID
+        customerId = qrData;
+      }
+      
+      // Validate UUID format
+      if (customerId && customerId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+        document.getElementById('scannerContactId').value = customerId;
+        document.getElementById('scanCustomerInfo').innerHTML = '<p style="color:var(--success);font-weight:600">✅ Customer scanned: ' + customerId.substring(0,8) + '...</p>';
+        toast('✅ QR scanned! Enter amount and PIN to credit.', 'success');
+        
+        // Auto-focus amount field
+        document.getElementById('scannerAmount').focus();
+        
+        // Pause scanning briefly to prevent re-scans
+        stopScanner();
+        
+        // Show result
+        document.getElementById('scanResult').style.display = '';
+        document.getElementById('scanResult').innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Scanned! Enter purchase amount and click Verify.</p>';
+      }
+    }
+  }, 500);
+}
+
+function scannerVerifyPurchase() {
+  var contactId = document.getElementById('scannerContactId').value.trim();
+  var amount = document.getElementById('scannerAmount').value;
+  var pin = document.getElementById('scannerPin').value.trim();
+  var offerId = document.getElementById('scannerOffer').value;
+  var result = document.getElementById('scannerVerifyResult');
+  
+  if (!contactId) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ No customer scanned</p>'; return; }
+  if (!amount || parseFloat(amount) <= 0) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Enter a valid purchase amount</p>'; return; }
+  if (!pin) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Enter your PIN</p>'; return; }
+  
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  
+  var body = { contact_id: contactId, amount: parseFloat(amount), pin: pin };
+  if (offerId) {
+    body.offer_id = offerId;
+  }
+  
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  
+  fetch('/api/v1/loyalty/purchase/verify', {
+    method: 'POST',
+    headers: h,
+    body: JSON.stringify(body)
+  })
+  .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || d.message || 'Request failed'); return d; }); })
+  .then(function(d) {
+    var offerHtml = '';
+    if (d.offer_applied) {
+      offerHtml = '<p style="font-size:.85rem;color:var(--text-secondary)">🏷️ Offer used: <strong>' + esc(d.offer_applied) + '</strong> &middot; Credits redeemed: <strong>' + (d.credits_redeemed || 0) + '</strong></p>';
+    }
+    result.innerHTML = '<div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center">' +
+      '<p style="color:var(--success);font-weight:700;margin-bottom:4px">✅ Verified & Credited!</p>' +
+      '<p style="font-size:.85rem;color:var(--text-secondary)">' + esc(d.message || 'Purchase verified successfully') + '</p>' +
+      '<p style="font-size:.85rem;color:var(--text-secondary)">📦 Credits earned: <strong>' + (d.credits_earned || 0) + '</strong></p>' +
+      offerHtml +
+      '</div>';
+    
+    // Clear for next scan
+    document.getElementById('scannerContactId').value = '';
+    document.getElementById('scannerAmount').value = '';
+    document.getElementById('scannerOffer').value = '';
+    document.getElementById('scanCustomerInfo').innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Ready to scan next customer.</p>';
+  })
+  .catch(function(e) {
+    result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+  });
+}
+
+// Cleanup scanner on page unload
+window.addEventListener('beforeunload', function() {
+  stopScanner();
+});
 
 // Inject fade-in animation
 var style = document.createElement('style');

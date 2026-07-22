@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Events - {{directory.name}} - {{directory.region}}</title>
+  <meta name="description" content="Upcoming events in {{directory.name}}. Find community events, workshops, music, food, sports and more.">
+
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; line-height:1.6; }
+    a { color:{{colors.primary}}; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+
+    .container { max-width:1100px; margin:0 auto; padding:20px; }
+
+    /* Header */
+    .header { background:#1e293b; border-bottom:1px solid #334155; padding:0 20px; }
+    .header-inner { max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:15px 0; flex-wrap:wrap; gap:10px; }
+    .header h1 { font-size:1.4rem; color:#f1f5f9; }
+    .header h1 a { color:#f1f5f9; }
+    .header nav { display:flex; gap:15px; align-items:center; }
+    .header nav a { color:#94a3b8; font-size:0.9rem; }
+    .header nav a:hover { color:{{colors.primary}}; }
+
+    /* Page title */
+    .page-title { padding:30px 0 10px; }
+    .page-title h2 { font-size:1.8rem; color:#f1f5f9; margin-bottom:5px; }
+    .page-title p { color:#94a3b8; font-size:0.95rem; }
+
+    /* Filter bar */
+    .filter-bar { display:flex; gap:12px; padding:15px 0; flex-wrap:wrap; align-items:center; }
+    .filter-bar select, .filter-bar input { background:#1e293b; border:1px solid #334155; color:#e2e8f0; padding:8px 12px; border-radius:6px; font-size:0.9rem; }
+    .filter-bar select:focus, .filter-bar input:focus { outline:none; border-color:{{colors.primary}}; }
+
+    /* Event grid */
+    .event-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:20px; padding:20px 0; }
+
+    .event-card { background:#1e293b; border:1px solid #334155; border-radius:12px; overflow:hidden; transition:transform 0.15s,box-shadow 0.15s; }
+    .event-card:hover { transform:translateY(-2px); box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+
+    .event-img { width:100%; height:160px; object-fit:cover; background:#334155; display:block; }
+    .no-img { width:100%; height:160px; background:linear-gradient(135deg,#334155,#1e293b); display:flex; align-items:center; justify-content:center; color:#64748b; font-size:2rem; }
+
+    .event-body { padding:16px; }
+
+    .event-category { display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+    .event-category.community { background:#1e3a5f; color:#93c5fd; }
+    .event-category.food { background:#5f1e1e; color:#fca5a5; }
+    .event-category.music { background:#3b1e5f; color:#c4a5fc; }
+    .event-category.sports { background:#1e5f3b; color:#a5fcc4; }
+    .event-category.business { background:#3b5f1e; color:#c4fca5; }
+    .event-category.workshop { background:#5f5a1e; color:#fce4a5; }
+    .event-category.other { background:#334155; color:#cbd5e1; }
+
+    .event-title { font-size:1.15rem; font-weight:600; color:#f1f5f9; margin-bottom:6px; }
+    .event-date { color:#94a3b8; font-size:0.85rem; display:flex; align-items:center; gap:5px; margin-bottom:6px; }
+    .event-location { color:#94a3b8; font-size:0.85rem; display:flex; align-items:center; gap:5px; margin-bottom:10px; }
+    .event-description { color:#cbd5e1; font-size:0.9rem; margin-bottom:12px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+    .event-footer { display:flex; align-items:center; justify-content:space-between; padding-top:10px; border-top:1px solid #334155; }
+    .rsvp-count { color:#94a3b8; font-size:0.85rem; }
+    .rsvp-btn { background:{{colors.primary}}; color:#fff; border:none; padding:6px 16px; border-radius:6px; font-size:0.85rem; cursor:pointer; transition:opacity 0.15s; }
+    .rsvp-btn:hover { opacity:0.85; }
+    .rsvp-btn.rsvped { background:#16a34a; }
+    .rsvp-btn.maybe-rsvped { background:#ca8a04; }
+
+    /* Empty state */
+    .empty-state { text-align:center; padding:60px 20px; color:#64748b; }
+    .empty-state h3 { font-size:1.3rem; margin-bottom:10px; color:#94a3b8; }
+    .empty-state p { font-size:0.95rem; }
+
+    /* Footer */
+    .footer { border-top:1px solid #334155; padding:30px 20px; text-align:center; color:#64748b; font-size:0.85rem; margin-top:40px; }
+    .footer a { color:{{colors.primary}}; }
+
+    /* Toast */
+    .toast { position:fixed; bottom:20px; right:20px; background:#1e293b; border:1px solid #334155; color:#e2e8f0; padding:12px 20px; border-radius:8px; font-size:0.9rem; box-shadow:0 4px 12px rgba(0,0,0,0.3); opacity:0; transition:opacity 0.3s; z-index:100; }
+    .toast.show { opacity:1; }
+
+    @media (max-width:600px) {
+      .event-grid { grid-template-columns:1fr; }
+      .header-inner { flex-direction:column; text-align:center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-inner">
+      <h1><a href="/d/{{directory.slug}}">{{directory.name}}</a></h1>
+      <nav>
+        <a href="/d/{{directory.slug}}">Directory</a>
+        <a href="/d/{{directory.slug}}/events" style="color:{{colors.primary}}">Events</a>
+        <a href="#" id="loginLink">Sign In</a>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="container">
+
+    <div class="page-title">
+      <h2>📅 Upcoming Events</h2>
+      <p>Community events, workshops, music, food, and more in {{directory.region}}</p>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <select id="categoryFilter" onchange="applyFilter()">
+        <option value="">All Categories</option>
+        <option value="community">Community</option>
+        <option value="food">Food</option>
+        <option value="music">Music</option>
+        <option value="sports">Sports</option>
+        <option value="business">Business</option>
+        <option value="workshop">Workshop</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+
+    {{#if has_events}}
+    <div class="event-grid" id="eventGrid">
+      {{#each events}}
+      <div class="event-card" data-category="{{this.category}}">
+        {{#if this.image_url}}
+        <img class="event-img" src="{{this.image_url}}" alt="{{this.title}}" loading="lazy">
+        {{else}}
+        <div class="no-img">📅</div>
+        {{/if}}
+        <div class="event-body">
+          <span class="event-category {{this.category}}">{{this.category}}</span>
+          <div class="event-title">{{this.title}}</div>
+          <div class="event-date">📅 {{format_date this.event_date}}{{#if this.end_date}} — {{format_date this.end_date}}{{/if}}</div>
+          {{#if this.location}}
+          <div class="event-location">📍 {{this.location}}</div>
+          {{/if}}
+          {{#if this.description}}
+          <div class="event-description">{{this.description}}</div>
+          {{/if}}
+          <div class="event-footer">
+            <span class="rsvp-count">{{this.rsvp_count}} going</span>
+            <button class="rsvp-btn {{#if this.user_rsvp_status}}{{#if_eq this.user_rsvp_status "going"}}rsvped{{/if_eq}}{{#if_eq this.user_rsvp_status "maybe"}}maybe-rsvped{{/if_eq}}{{/if}}" data-event-id="{{this.id}}" data-status="{{this.user_rsvp_status}}" onclick="toggleRsvp(this)">{{#if this.user_rsvp_status}}{{#if_eq this.user_rsvp_status "going"}}Going ✓{{/if_eq}}{{#if_eq this.user_rsvp_status "maybe"}}Maybe{{/if_eq}}{{#if_eq this.user_rsvp_status "not-going"}}RSVP{{/if_eq}}{{else}}RSVP{{/if}}</button>
+          </div>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+    {{else}}
+    <div class="empty-state">
+      <h3>🎉 No upcoming events in your area</h3>
+      <p>Check back soon for community events, workshops, and gatherings.</p>
+    </div>
+    {{/if}}
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>{{directory.name}} — Powered by MultiDirectory</p>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // Helper: format date nicely
+    function formatEventDate(dateStr) {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+      });
+    }
+
+    // Format dates in rendered HTML (handlebars can't do rich formatting)
+    document.querySelectorAll('.event-date').forEach(el => {
+      const text = el.textContent.trim();
+      // Replace ISO dates inline — assume text contains ISO date strings
+      el.textContent = '📅 ' + text.replace(/\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[^\\s]*/g, function(m) {
+        return formatEventDate(m);
+      });
+    });
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    async function toggleRsvp(btn) {
+      const token = localStorage.getItem('visitorToken');
+      if (!token) {
+        showToast('Please sign in to RSVP');
+        window.location.href = '/visitor?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+        return;
+      }
+
+      const eventId = btn.dataset.eventId;
+      const currentStatus = btn.dataset.status || '';
+
+      // Cycle: going → maybe → not-going → going
+      let newStatus;
+      if (currentStatus === 'going') newStatus = 'maybe';
+      else if (currentStatus === 'maybe') newStatus = 'not-going';
+      else if (currentStatus === 'not-going') newStatus = 'going';
+      else newStatus = 'going';
+
+      try {
+        const r = await fetch('/api/v1/events/' + eventId + '/rsvp', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: newStatus })
+        });
+
+        if (r.ok) {
+          btn.dataset.status = newStatus;
+          // Update text
+          if (newStatus === 'going') { btn.textContent = 'Going ✓'; btn.className = 'rsvp-btn rsvped'; }
+          else if (newStatus === 'maybe') { btn.textContent = 'Maybe'; btn.className = 'rsvp-btn maybe-rsvped'; }
+          else { btn.textContent = 'RSVP'; btn.className = 'rsvp-btn'; }
+
+          // Update count in parent footer
+          const footer = btn.closest('.event-footer');
+          const countEl = footer.querySelector('.rsvp-count');
+          if (countEl) {
+            const countMatch = countEl.textContent.match(/(\\d+)/);
+            let count = countMatch ? parseInt(countMatch[0]) : 0;
+            if (currentStatus === 'going' || currentStatus === 'maybe') {
+              if (newStatus === 'not-going') count = Math.max(0, count - 1);
+            } else if (newStatus === 'going' || newStatus === 'maybe') {
+              count += 1;
+            }
+            countEl.textContent = count + ' going';
+          }
+
+          showToast('RSVP updated: ' + newStatus);
+        } else {
+          const data = await r.json();
+          showToast(data.error || 'Failed to RSVP');
+        }
+      } catch(e) {
+        showToast('Network error');
+      }
+    }
+
+    function applyFilter() {
+      const cat = document.getElementById('categoryFilter').value.toLowerCase();
+      document.querySelectorAll('.event-card').forEach(card => {
+        const cardCat = (card.dataset.category || '').toLowerCase();
+        if (!cat || cardCat === cat) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    // Check if visitor is logged in (for nav)
+    (function checkLogin() {
+      const token = localStorage.getItem('visitorToken');
+      const loginLink = document.getElementById('loginLink');
+      if (token) {
+        loginLink.textContent = 'My Profile';
+        loginLink.href = '/visitor';
+      } else {
+        loginLink.textContent = 'Sign In';
+        loginLink.href = '/visitor';
+      }
+    })();
+  </script>
+
+</body>
+</html>

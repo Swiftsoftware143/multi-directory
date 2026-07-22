@@ -115,6 +115,16 @@
     <div class="stat"><span class="num">{{business.response_time}}</span><span class="label">Response Time</span></div>
   </div>
 
+  <!-- Bookmark / Save Button -->
+  <div style="display:flex;align-items:center;gap:12px;margin:16px 0;padding:12px 20px;background:#1e293b;border-radius:8px;border:1px solid #334155;">
+    <button id="saveBtn" onclick="toggleSaveBusiness()" style="background:none;border:none;cursor:pointer;font-size:1.5rem;padding:4px;line-height:1;transition:transform 0.2s;display:flex;align-items:center;gap:8px;color:#94a3b8;">
+      <span id="saveIcon" style="font-size:1.6rem">♡</span>
+      <span id="saveLabel" style="font-size:.9rem">Save</span>
+    </button>
+    <span id="bookmarkCountDisplay" style="color:#94a3b8;font-size:.85rem;border-left:1px solid #334155;padding-left:12px;">0 saves</span>
+    <span id="saveStatusMsg" style="font-size:.8rem;color:#64748b;margin-left:auto;"></span>
+  </div>
+
   <!-- 2. Comparison: How Top Options Stack Up -->
   {{#if business.competitors}}
   <h2>How {{business.name}} Compares to Other {{business.category}}s in {{directory.city}}</h2>
@@ -357,5 +367,96 @@
   <p>&copy; {{directory.name}} — {{directory.city}}, {{directory.state}}</p>
   <p style="font-size:.75rem;color:#475569">Part of the Multi-Directory Platform by SwiftSoftware</p>
 </div>
+<!-- Bookmark / Save JS -->
+<script>
+(function() {
+  const bizId = '{{business.id}}';
+  if (!bizId) return;
+
+  const saveBtn = document.getElementById('saveBtn');
+  const saveIcon = document.getElementById('saveIcon');
+  const saveLabel = document.getElementById('saveLabel');
+  const countDisplay = document.getElementById('bookmarkCountDisplay');
+  const statusMsg = document.getElementById('saveStatusMsg');
+
+  let isSaved = false;
+
+  // Fetch bookmark count (public endpoint)
+  async function loadCount() {
+    try {
+      const r = await fetch('/api/v1/bookmarks/count/' + bizId);
+      const data = await r.json();
+      if (countDisplay) {
+        countDisplay.textContent = data.count + ' ' + (data.count === 1 ? 'save' : 'saves');
+      }
+    } catch(e) {
+      // silently fail
+    }
+  }
+
+  // Check if visitor is logged in and has saved this biz
+  async function checkSaved() {
+    const token = localStorage.getItem('visitorToken');
+    if (!token) return;
+    try {
+      const r = await fetch('/api/v1/visitor/favorites/check/' + bizId, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await r.json();
+      if (data.saved) {
+        isSaved = true;
+        updateUI(true);
+      }
+    } catch(e) {}
+  }
+
+  function updateUI(saved) {
+    if (saved) {
+      saveIcon.textContent = '❤️';
+      saveLabel.textContent = 'Saved';
+      saveBtn.style.color = '#ef4444';
+      statusMsg.textContent = 'Saved to your places';
+    } else {
+      saveIcon.textContent = '♡';
+      saveLabel.textContent = 'Save';
+      saveBtn.style.color = '#94a3b8';
+      statusMsg.textContent = '';
+    }
+  }
+
+  window.toggleSaveBusiness = async function() {
+    const token = localStorage.getItem('visitorToken');
+    if (!token) {
+      // Prompt to log in
+      if (confirm('Sign in to save businesses to your places. Go to visitor portal?')) {
+        window.location.href = '/visitor';
+      }
+      return;
+    }
+
+    saveBtn.disabled = true;
+    try {
+      const r = await fetch('/api/v1/visitor/favorites/' + bizId, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await r.json();
+      if (r.ok) {
+        isSaved = data.saved;
+        updateUI(data.saved);
+        // Refresh count
+        await loadCount();
+      }
+    } catch(e) {
+      statusMsg.textContent = 'Error saving. Try again.';
+    }
+    saveBtn.disabled = false;
+  };
+
+  // Init
+  loadCount();
+  checkSaved();
+})();
+</script>
 </body>
 </html>

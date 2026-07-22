@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IncentiveSwift Guides — Knowledge Base</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0fdfa; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px; }
+  .container { max-width: 800px; width: 100%; }
+  h1 { font-size: 2.2rem; color: #0f172a; text-align: center; margin-bottom: 8px; }
+  .subtitle { color: #64748b; text-align: center; font-size: 1rem; margin-bottom: 40px; }
+
+  .guide-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+
+  .guide-card { display: flex; align-items: flex-start; gap: 20px; background: #ffffff; border-radius: 14px; padding: 28px; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: all 0.2s; }
+  .guide-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-color: #0d9488; }
+  .guide-card .icon { width: 56px; height: 56px; min-width: 56px; background: #f0fdfa; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; border: 1px solid #ccfbf1; }
+  .guide-card .content { flex: 1; }
+  .guide-card .content h2 { font-size: 1.2rem; color: #0f172a; margin-bottom: 6px; }
+  .guide-card .content p { font-size: 0.9rem; color: #64748b; line-height: 1.6; margin-bottom: 12px; }
+  .guide-card .content .audience { display: inline-block; font-size: 0.75rem; font-weight: 600; color: #0d9488; background: #ccfbf1; padding: 3px 10px; border-radius: 20px; }
+  .guide-card .content .audience.admin { color: #7c3aed; background: #f5f3ff; }
+  .guide-card .content .audience.merchant { color: #d97706; background: #fef3c7; }
+  .guide-card .content a { color: #0d9488; font-weight: 600; font-size: 0.9rem; text-decoration: none; }
+  .guide-card .content a:hover { text-decoration: underline; }
+
+  .back-link { display: block; text-align: center; margin-top: 32px; color: #64748b; font-size: 0.85rem; }
+  .back-link:hover { color: #0d9488; }
+
+  @media (max-width: 600px) {
+    body { padding: 20px; }
+    .guide-card { flex-direction: column; }
+    .guide-card .icon { width: 48px; height: 48px; min-width: 48px; font-size: 1.3rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📚 IncentiveSwift Knowledge Base</h1>
+  <p class="subtitle">Everything you need to know about the loyalty rewards program</p>
+
+  <div class="guide-grid">
+
+    <a href="participant-guide.html" style="text-decoration:none;color:inherit;">
+      <div class="guide-card">
+        <div class="icon">🎁</div>
+        <div class="content">
+          <span class="audience">Customer</span>
+          <h2>Customer Guide</h2>
+          <p>How to earn and redeem loyalty credits. Find your QR code, understand the golden rule, and get the most out of the program as a shopper.</p>
+          <span>Read the Customer Guide →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="merchant-guide.html" style="text-decoration:none;color:inherit;">
+      <div class="guide-card">
+        <div class="icon">🏪</div>
+        <div class="content">
+          <span class="audience merchant">Merchant</span>
+          <h2>Merchant Guide</h2>
+          <p>Set your credit rate, create and manage offers, scan customer QR codes, and understand the earn vs redeem flow. Complete setup walkthrough.</p>
+          <span>Read the Merchant Guide →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="admin-guide.html" style="text-decoration:none;color:inherit;">
+      <div class="guide-card">
+        <div class="icon">🏢</div>
+        <div class="content">
+          <span class="audience admin">ZaarHub Admin</span>
+          <h2>Admin Guide</h2>
+          <p>Tenant management, legal terms oversight, network monitoring, community velocity, and handling disputes across the entire platform.</p>
+          <span>Read the Admin Guide →</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="supplier-guide.html" style="text-decoration:none;color:inherit;">
+      <div class="guide-card">
+        <div class="icon">📦</div>
+        <div class="content">
+          <span class="audience" style="color:#059669;background:#d1fae5;">Supplier</span>
+          <h2>Supplier Guide</h2>
+          <p>List rewards, manage fulfillment, quality standards, fee structures, and best practices for reward partners.</p>
+          <span>Read the Supplier Guide →</span>
+        </div>
+      </div>
+    </a>
+
+  </div>
+
+  <div style="text-align:center;margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
+    <p style="font-size:0.85rem;color:#94a3b8;">Legal</p>
+    <a href="/legal-terms" style="color:#0d9488;font-size:0.9rem;">📜 ZaarHub Program Legal Terms</a>
+    <p style="font-size:0.8rem;color:#94a3b8;margin-top:4px;">Last updated: July 21, 2026</p>
+  </div>
+
+  <a href="javascript:history.back()" class="back-link">← Back to Portal</a>
+</div>
+</body>
+</html>

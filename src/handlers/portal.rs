@@ -3,7 +3,7 @@
 
 use axum::{
     extract::{Extension, Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::auth::models::Claims;
-use crate::auth::middleware::{create_token, is_admin};
+use crate::auth::middleware::{create_token, is_admin, verify_token};
 use crate::error::{AppError, ApiResult};
 
 // ── Data Types ──
@@ -142,13 +142,24 @@ pub async fn business_profile(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Find claimed businesses for this user_id OR owner_email
+    // We need the user's email from the claims (or from visitor_accounts lookup)
+    let visitor_email: Option<String> = sqlx::query_scalar(
+        "SELECT email FROM visitor_accounts WHERE id = $1"
+    )
+    .bind(user_id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
     let claims_rows = sqlx::query_as::<_, ClaimedBusinessRow>(
         r#"SELECT id, business_id, owner_email, owner_name, owner_phone, user_id, is_active, created_at
            FROM claimed_businesses
            WHERE user_id = $1
+              OR ($2 IS NOT NULL AND owner_email = $2)
            ORDER BY created_at DESC"#
     )
     .bind(user_id)
+    .bind(&visitor_email)
     .fetch_all(&s.db)
     .await?;
 
@@ -434,8 +445,21 @@ pub async fn visitor_login(
 /// Returns visitor profile with saved deals, favorites, badges
 pub async fn visitor_profile(
     State(s): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
+    // Manually verify visitor JWT from Authorization header (route is before auth_guard)
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| AppError::Unauthorized)?;
+    
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| AppError::Unauthorized)?;
+    
+    let claims = verify_token(token, &s.config.jwt_secret)
+        .map_err(|_| AppError::Unauthorized)?;
+    
     let visitor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     let visitor = sqlx::query_as::<_, VisitorAccount>(

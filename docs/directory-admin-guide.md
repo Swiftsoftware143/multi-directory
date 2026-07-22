@@ -20,6 +20,23 @@ Write blog posts. Generate AI-optimized articles for businesses. Community posts
 ## Data Import
 Add your API keys in Settings → API Keys, then run imports from the Data Import panel. Choose Businesses or Suppliers — results go to the right directory automatically.
 
+## City Requests
+Visitors can request cities that aren't listed yet. Manage them under **City Requests** in the sidebar:
+- View all requested cities ranked by vote count
+- Green badge = already added, gray = pending
+- Click "Mark Added" when you launch a requested city
+- This helps prioritize which cities to add next
+
+## Visitor Bookmarks
+Visitors can save businesses they like. Bookmark counts appear on each business listing — useful for gauging popularity.
+
+## Community Polls
+Create one-question polls from the admin panel → **Polls** in sidebar:
+- Question + up to 8 options + optional end date
+- Set directory, status management (active/closed), live results with percentage bars
+- Visitors vote once per poll, see live results after voting
+- Active polls show as a sidebar widget on directory pages
+
 ## Branding
 Custom colors, logos, favicon per directory.
 

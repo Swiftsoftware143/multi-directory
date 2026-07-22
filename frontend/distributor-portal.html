@@ -177,7 +177,10 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
       <h1 id="dashboardTitle">🏪 Supplier Dashboard</h1>
       <div class="user-info" id="userInfo">Connected to ZaarHub Network</div>
     </div>
-    <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/guides/supplier-guide.html" target="_blank" style="color:var(--teal);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="Supplier Guide">❓</a>
+      <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    </div>
   </div>
 
   <!-- Loading -->
@@ -234,6 +237,33 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
         <div class="link-card" id="profileLink" style="opacity:0.7">
           <h4>📋 Supplier Profile</h4>
           <p>Manage your business profile and delivery settings. (Coming with linked accounts)</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- B2B Loyalty / Credits -->
+    <div class="section">
+      <div class="section-title">💰 B2B Credits & Rewards</div>
+      <div class="section-subtitle">IncentiveSwift-powered loyalty for your distributor network</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value" id="distCredits">-</div>
+          <div class="stat-label">Available Credits</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🎟️</div>
+          <div class="stat-value" id="distVouchers">-</div>
+          <div class="stat-label">Active Vouchers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">👥</div>
+          <div class="stat-value" id="distReferrals">-</div>
+          <div class="stat-label">Referrals</div>
+        </div>
+        <div class="stat-card" style="grid-column:1/-1">
+          <div class="stat-label" id="distCode" style="font-family:monospace;font-size:1.1rem;letter-spacing:2px;color:var(--teal);font-weight:700">-</div>
+          <div class="stat-label">Referral Code (click to copy)</div>
         </div>
       </div>
     </div>
@@ -430,10 +460,47 @@ async function loadDashboard() {
 
     $('loadingState').style.display = 'none';
     $('dashboardContent').style.display = '';
+    
+    // Load loyalty data
+    loadDistributorLoyalty();
   } catch(e) {
     // Token expired or invalid
     doLogout();
   }
+}
+
+// ── Distributor Loyalty ──
+function loadDistributorLoyalty() {
+  var tok = localStorage.getItem('distributorToken');
+  if (!tok) return;
+  var h = { 'Authorization': 'Bearer ' + tok };
+  fetch('/api/v1/loyalty/portal/dashboard', { headers: h })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var cEl = document.getElementById('distCredits');
+      var vEl = document.getElementById('distVouchers');
+      var rEl = document.getElementById('distReferrals');
+      var cdEl = document.getElementById('distCode');
+      if (cEl) cEl.textContent = '$' + (d.total_credits || 0);
+      if (vEl) vEl.textContent = d.active_vouchers || 0;
+      if (rEl) rEl.textContent = d.referral_count || 0;
+      if (cdEl) {
+        cdEl.textContent = d.referrer_code || 'No code';
+        cdEl.style.cursor = 'pointer';
+        cdEl.onclick = function() {
+          if (d.referrer_code) {
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(d.referrer_code).then(function() {
+                toast('📋 Copied referral code!', 'success');
+              }).catch(function() { /* ignore */ });
+            }
+          }
+        };
+      }
+    })
+    .catch(function() {
+      // Silent
+    });
 }
 
 // ── Init ──
