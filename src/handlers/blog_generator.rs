@@ -734,3 +734,118 @@ async fn fetch_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<String>
     .ok()
     .flatten()
 }
+
+// ── Shared public helpers used by blog_qa ──
+
+/// Call LLM and return parsed JSON array. Used by blog_qa for keyword generation.
+pub async fn call_llm_json(
+    db: &sqlx::PgPool,
+    _config: &crate::config::AppConfig,
+    prompt: &str,
+    provider_config: Option<&serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let (api_key, model) = if let Some(pc) = provider_config {
+        let key = pc.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
+        let mdl = pc.get("model").and_then(|v| v.as_str()).unwrap_or("gpt-4o-mini");
+        (key.to_string(), mdl.to_string())
+    } else {
+        let mut key = fetch_provider_key(db, "openai").await;
+        if key.is_none() {
+            key = fetch_provider_key(db, "deepseek").await;
+        }
+        let k = key.unwrap_or_default();
+        let mdl = "deepseek-chat".to_string();
+        (k, mdl)
+    };
+
+    let client = reqwest::Client::new();
+    let url = if model.contains("deepseek") {
+        "https://api.deepseek.com/chat/completions"
+    } else if model.contains("gemini") {
+        "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
+    } else {
+        "https://api.openai.com/v1/chat/completions"
+    };
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 4096
+    });
+
+    let resp = client.post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("AI request failed: {}", e))?;
+
+    let json: serde_json::Value = resp.json().await
+        .map_err(|e| format!("Failed to parse AI response: {}", e))?;
+
+    // Extract content from response
+    let content = json.pointer("/choices/0/message/content")
+        .or_else(|| json.pointer("/candidates/0/content/parts/0/text"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("[]");
+
+    // Try to parse as JSON array, stripping markdown fences if needed
+    let cleaned = content.trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    serde_json::from_str::<Vec<serde_json::Value>>(cleaned)
+        .map_err(|e| format!("Failed to parse AI JSON output: {} — content: {}", e, cleaned.chars().take(200).collect::<String>()))
+}
+
+/// Generate blog content from a prompt. Used by blog_qa for post generation.
+pub async fn generate_blog_content(
+    db: &sqlx::PgPool,
+    _config: &crate::config::AppConfig,
+    prompt: &str,
+) -> Result<String, String> {
+    let mut api_key = fetch_provider_key(db, "openai").await;
+    if api_key.is_none() {
+        api_key = fetch_provider_key(db, "deepseek").await;
+    }
+    let api_key = api_key.unwrap_or_default();
+    let model = "deepseek-chat".to_string();
+
+    let client = reqwest::Client::new();
+    let url = if model.contains("deepseek") {
+        "https://api.deepseek.com/chat/completions"
+    } else if model.contains("gemini") {
+        "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
+    } else {
+        "https://api.openai.com/v1/chat/completions"
+    };
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 4096
+    });
+
+    let resp = client.post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Blog content request failed: {}", e))?;
+
+    let json: serde_json::Value = resp.json().await
+        .map_err(|e| format!("Failed to parse blog content response: {}", e))?;
+
+    let content = json.pointer("/choices/0/message/content")
+        .or_else(|| json.pointer("/candidates/0/content/parts/0/text"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    Ok(content.to_string())
+}

@@ -126,3 +126,7 @@ pub use sso::*;
 pub mod referrals;
 pub use referrals::*;
 pub mod service_catalog;
+pub mod blog_seo;
+pub use blog_seo::*;
+pub mod blog_qa;
+pub use blog_qa::*;

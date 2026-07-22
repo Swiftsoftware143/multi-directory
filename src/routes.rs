@@ -109,10 +109,20 @@ pub fn create_router(s: AppState) -> Router {
         .route("/search/config/:directory_id", get(search::get_search_config).put(search::update_search_config))
         .route("/search", get(search::search_businesses))
         .route("/search/suppliers", get(search::search_suppliers))
+        .route("/api/v1/search", get(blog_qa::search_all))
         .route("/categories", get(categories::list_all_categories))
         // Community posts (BL27)
         .route("/community/posts", get(blog::list_community_posts).post(blog::create_community_post))
         .route("/community/posts/:id", get(blog::get_blog_post).put(blog::update_community_post).delete(blog::delete_blog_post))
+        // Q&A Automation
+        .route("/api/v1/blog-qa/fetch-keywords", post(blog_qa::fetch_keywords))
+        .route("/api/v1/blog-qa/generate-posts", post(blog_qa::generate_posts))
+        .route("/api/v1/blog-qa/keywords", get(blog_qa::list_keywords))
+        .route("/api/v1/blog-qa/generate-digest", post(blog_qa::generate_digest))
+        .route("/api/v1/blog-qa/send-digest", post(blog_qa::send_digest))
+        .route("/api/v1/blog-qa/schedule-weekly", post(blog_qa::schedule_weekly))
+        .route("/api/v1/integration-configs", get(blog_qa::list_configs).post(blog_qa::save_config))
+        .route("/api/v1/integration-configs/:provider", get(blog_qa::get_config).delete(blog_qa::delete_config))
         // B2B Marketplace (Phase 4 — BL23)
         .route("/b2b/register", post(b2b::b2b_register))
         .route("/b2b/products", get(b2b::search_products).post(b2b::create_product))
@@ -142,6 +152,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/email/campaigns/:id", get(email::get_campaign).put(email::update_campaign).delete(email::delete_campaign))
         .route("/email/campaigns/:id/send", post(email::send_campaign))
         // ??? Public / landing page routes
+        .route("/d/:slug/blog", get(blog_pages::render_blog_list))
+        .route("/d/:slug/blog/:post_slug", get(blog_pages::render_blog_post))
         .route("/public/homepage", get(public::homepage_data))
         // Dynamic OG image SVG generation (MUST come before :slug routes)
         .route("/public/og/:page_type/:page_id", get(dynamic_og::dynamic_og_image))
@@ -150,6 +162,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/public/directories/:slug/survey", get(onboarding_survey::public_get_survey))
         // ? Public articles XML feed (RSS) (MUST come before :slug routes)
         .route("/public/directories/:slug/articles.xml", get(articles_feed::articles_xml_feed))
+        .route("/public/directories/:slug/news-sitemap.xml", get(blog_seo::news_sitemap))
+        .route("/public/directories/:slug/blog/feed.xml", get(blog_seo::blog_rss_feed))
         .route("/public/:slug", get(public::directory_data))
         .route("/public/:slug/:business_id", get(public::business_data))
         .route("/landing-pages", get(public_pages::list_landing_pages).post(public_pages::create_landing_page))
@@ -772,6 +786,7 @@ async fn auth_guard(
         || path == "/categories"
         || path == "/search"
         || path == "/listings"
+        || path.starts_with("/d/")
         || path.starts_with("/reviews/stats/")
         // Public newsletter signup — no auth needed
         || (path.contains("/subscribers") && req.method() == "POST")
