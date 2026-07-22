@@ -153,20 +153,44 @@ pub async fn fetch_keywords(
     .await?
     .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
-    let ai_prompt = format!(
-        "You are a local SEO expert for {dir}. Generate 50 common questions people search for \
-         related to: {keywords}. Return ONLY a valid JSON array of objects, no other text. \
-         Each object: {{ \"question\": \"...\", \"keyword\": \"...\", \"intent\": \"how|what|why|where|when|which\" }}. \
-         Make questions specific to {dir} and local searches.",
-        dir = directory_name,
-        keywords = req.seed_keywords.join(", ")
-    );
+    let keywords_json: Vec<Value> = match req.source.as_str() {
+        "answer_the_public" => {
+            fetch_atp_keywords(&s, &req.seed_keywords).await?
+        }
+        "dataforseo" => {
+            fetch_dataforseo_keywords(&s, &req.seed_keywords, &directory_name).await?
+        }
+        _ => {
+            // "ai_generated" — default
+            let ai_prompt = format!(
+                "You are a local SEO expert for {dir}. Generate 50 common questions people search for \
+                 related to: {keywords}. Return ONLY a valid JSON array of objects, no other text. \
+                 Each object: {{ \"question\": \"...\", \"keyword\": \"...\", \"intent\": \"how|what|why|where|when|which\" }}. \
+                 Make questions specific to {dir} and local searches.",
+                dir = directory_name,
+                keywords = req.seed_keywords.join(", ")
+            );
+            let config = sqlx::query_as::<_, (Option<String>,)>(
+                "SELECT config::text FROM integration_configs WHERE provider = 'ai_provider' AND enabled = true"
+            )
+            .fetch_optional(&s.db)
+            .await?
+            .and_then(|(c,)| c)
+            .and_then(|c| serde_json::from_str::<Value>(&c).ok());
 
-    // Call the existing AI blog generator provider
-    let ai_result = call_ai_for_keywords(&s, &ai_prompt).await?;
+            crate::handlers::blog_generator::call_llm_json(
+                &s.db,
+                &s.config,
+                &ai_prompt,
+                config.as_ref(),
+            )
+            .await
+            .map_err(|e| AppError::Internal(format!("AI keyword generation failed: {}", e)))?
+        }
+    };
 
     let mut count = 0i32;
-    for item in &ai_result {
+    for item in &keywords_json {
         let intent = item.get("intent").and_then(|v| v.as_str()).unwrap_or("how");
         let keyword = item.get("keyword").and_then(|v| v.as_str()).unwrap_or("");
         let question = item.get("question").and_then(|v| v.as_str()).unwrap_or("");
@@ -189,32 +213,184 @@ pub async fn fetch_keywords(
 
     Ok(Json(serde_json::json!({
         "count": count,
-        "keywords": ai_result
+        "keywords": keywords_json
     })))
 }
 
-async fn call_ai_for_keywords(state: &AppState, prompt: &str) -> Result<Vec<Value>, AppError> {
-    // Try to read AI provider config, fall back to blog_generator defaults
-    let config = sqlx::query_as::<_, (Option<String>,)>(
-        "SELECT config::text FROM integration_configs WHERE provider = 'ai_provider' AND enabled = true"
+// ── AnswerThePublic Integration ──
+async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Value>, AppError> {
+    // Get configured API key from integration_configs or provider_keys
+    let api_key = sqlx::query_scalar::<_, String>(
+        r#"SELECT decrypt_provider_key(api_key_encrypted) 
+         FROM provider_keys WHERE provider = 'answer_the_public' AND is_active = true
+         UNION
+         SELECT config->>'api_key' FROM integration_configs WHERE provider = 'answer_the_public' AND enabled = true
+         LIMIT 1"#
     )
     .fetch_optional(&state.db)
     .await?
-    .and_then(|(c,)| c)
-    .and_then(|c| serde_json::from_str::<Value>(&c).ok());
+    .ok_or_else(|| AppError::NotFound("AnswerThePublic API key not configured. Set it in Integrations page.".into()))?;
 
-    // Pass to the existing blog_generator's AI call mechanism
-    // For now, generate via the same pipeline the blog_generator uses
-    let result = crate::handlers::blog_generator::call_llm_json(
-        &state.db,
-        &state.config,
-        prompt,
-        config.as_ref(),
+    let query = seeds.join(" ");
+    let url = format!(
+        "https://api.answerthepublic.com/v1/keywords?q={}&api_key={}&limit=50",
+        urlencoding(query.as_str()),
+        api_key
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client.get(&url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("AnswerThePublic request failed: {}", e)))?;
+
+    let atp_json: Value = resp.json().await
+        .map_err(|e| AppError::Internal(format!("AnswerThePublic response parse failed: {}", e)))?;
+
+    // ATP response has { keyword: "...", questions: [ { question: "...", type: "question" }, ... ] }
+    // Normalize to our format
+    let mut results = Vec::new();
+    if let Some(questions) = atp_json.get("results").or_else(|| atp_json.get("data")) {
+        if let Some(arr) = questions.as_array() {
+            for item in arr {
+                let question = item.get("question")
+                    .or_else(|| item.get("query"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if !question.is_empty() {
+                    // Infer a keyword from the seed or the question
+                    let kw = seeds.get(0).cloned().unwrap_or_default();
+                    let intent = if question.starts_with("how") { "how" }
+                        else if question.starts_with("what") { "what" }
+                        else if question.starts_with("why") { "why" }
+                        else if question.starts_with("where") { "where" }
+                        else if question.starts_with("when") { "when" }
+                        else if question.starts_with("which") { "which" }
+                        else { "what" };
+                    results.push(serde_json::json!({
+                        "question": question,
+                        "keyword": kw,
+                        "intent": intent
+                    }));
+                }
+            }
+        }
+    }
+
+    if results.is_empty() {
+        return Err(AppError::NotFound("No questions returned from AnswerThePublic. Try broader seed keywords.".into()));
+    }
+
+    Ok(results)
+}
+
+// ── DataForSEO Integration ──
+// Uses DataForSEO API v3 for keyword ideas: https://docs.dataforseo.com/v3/keywords_data/google_ads/keywords_for_site/live/
+async fn fetch_dataforseo_keywords(state: &AppState, seeds: &[String], _directory: &str) -> Result<Vec<Value>, AppError> {
+    let config_row = sqlx::query_as::<_, (String, Option<String>)>(
+        r#"SELECT decrypt_provider_key(api_key_encrypted) as api_key, 
+                decrypt_provider_key(base_url_encrypted) as login
+         FROM provider_keys WHERE provider = 'dataforseo' AND is_active = true
+         LIMIT 1"#
     )
-    .await
-    .map_err(|e| AppError::Internal(format!("AI keyword generation failed: {}", e)))?;
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound(
+        "DataForSEO API key not configured. Set login + key in Integrations page.".into()
+    ))?;
 
-    Ok(result)
+    let (api_key, login_opt) = config_row;
+    let login = login_opt.unwrap_or_default();
+
+    // DataForSEO uses Basic auth: login:api_key
+    let auth = base64_encode(format!("{}:{}", login, api_key));
+
+    let keywords = seeds.join(", ");
+    let url = "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live";
+    let payload = serde_json::json!([{
+        "keywords": seeds,
+        "location_name": "United States",
+        "language_name": "English",
+        "include_serp_info": false,
+        "clicks": true
+    }]);
+
+    let client = reqwest::Client::new();
+    let resp = client.post(url)
+        .header("Authorization", format!("Basic {}", auth))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("DataForSEO request failed: {}", e)))?;
+
+    let dfs_json: Value = resp.json().await
+        .map_err(|e| AppError::Internal(format!("DataForSEO response parse failed: {}", e)))?;
+
+    let mut results = Vec::new();
+    if let Some(tasks) = dfs_json.get("tasks").and_then(|v| v.as_array()) {
+        for task in tasks {
+            if let Some(result) = task.get("result").and_then(|v| v.as_array()) {
+                for item in result {
+                    if let Some(keyword) = item.get("keyword").and_then(|v| v.as_str()) {
+                        let competition = item.get("competition").and_then(|v| v.as_f64()).unwrap_or(0.5);
+                        let search_volume = item.get("search_volume").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let intent = if competition > 0.7 { "how" }
+                            else if search_volume > 1000.0 { "what" }
+                            else { "question" };
+                        let question = format!("What about {}?", keyword);
+                        results.push(serde_json::json!({
+                            "question": question,
+                            "keyword": keyword,
+                            "intent": intent
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    if results.is_empty() {
+        return Err(AppError::NotFound(
+            "No keywords returned from DataForSEO. Check API key validity.".into()
+        ));
+    }
+
+    Ok(results)
+}
+
+fn urlencoding(s: &str) -> String {
+    s.split_whitespace()
+        .map(|w| w.to_string())
+        .collect::<Vec<_>>()
+        .join("%20")
+}
+
+fn base64_encode(s: String) -> String {
+    use std::fmt::Write;
+    let bytes = s.as_bytes();
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    let mut result = String::new();
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let tri = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[((tri >> 18) & 0x3F) as usize] as char);
+        result.push(CHARS[((tri >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(CHARS[((tri >> 6) & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARS[(tri & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
 }
 
 /// POST /api/v1/blog-qa/generate-posts
