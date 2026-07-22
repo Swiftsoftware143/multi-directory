@@ -136,6 +136,34 @@ async function removeBookmark(businessId, btn) {
 }
 </script>
 
+/* ===== INLINE WALKTHROUGH ===== */
+(function(){
+  var WT = {
+    'saved-places':{i:'⭐',t:'Saved Places',x:'Your bookmarked businesses appear here. Save places you love to revisit later. Quickly access their profiles, deals, and contact info.'}
+  };
+  function showWalkthrough(key){
+    var w = WT[key];
+    if(!w) return;
+    var k = 'ws_md_visit_' + key;
+    if(localStorage.getItem(k)) return;
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    ov.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px 28px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:fadeIn .3s ease">'
+      + '<div style="font-size:2.5rem;margin-bottom:12px">' + w.i + '</div>'
+      + '<h3 style="color:{{colors.primary}};font-size:1.2rem;margin-bottom:10px">' + w.t + '</h3>'
+      + '<p style="color:#94a3b8;font-size:.9rem;line-height:1.6;margin-bottom:24px">' + w.x + '</p>'
+      + '<button style="background:{{colors.primary}};color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:.9rem;font-weight:600;cursor:pointer" onclick="(function(){var p=this.parentElement.parentElement;p.parentElement.removeChild(p);localStorage.setItem(\'' + k + '\',\'1\')}).call(this)">Got it</button>'
+      + '</div>';
+    ov.addEventListener('click',function(e){if(e.target===ov){document.body.removeChild(ov);localStorage.setItem(k,'1')}});
+    document.body.appendChild(ov);
+    var style = document.createElement('style');
+    style.textContent = '@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}';
+    document.head.appendChild(style);
+  }
+  if(document.readyState==='complete'||document.readyState==='interactive'){setTimeout(function(){showWalkthrough('saved-places')},800)}
+  else{document.addEventListener('DOMContentLoaded',function(){setTimeout(function(){showWalkthrough('saved-places')},800)})}
+})();
+
 <div class="footer" style="text-align:center;padding:30px;color:#64748b;font-size:.85rem;border-top:1px solid #334155;margin-top:40px;">
   <p>&copy; {{directory.name}} — Part of the Multi-Directory Platform by SwiftSoftware</p>
 </div>

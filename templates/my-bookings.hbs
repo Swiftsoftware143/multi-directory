@@ -164,6 +164,34 @@
       const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
       return match ? match[2] : null;
     }
+
+/* ===== INLINE WALKTHROUGH ===== */
+(function(){
+  var WT = {
+    'my-bookings':{i:'📋',t:'My Bookings',x:'Track your service booking requests. View status, date, and details of appointments you have requested. Cancel bookings that are no longer needed.'}
+  };
+  function showWalkthrough(key){
+    var w = WT[key];
+    if(!w) return;
+    var k = 'ws_md_visit_' + key;
+    if(localStorage.getItem(k)) return;
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:32px 28px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:fadeIn .3s ease;color:#1e293b">'
+      + '<div style="font-size:2.5rem;margin-bottom:12px">' + w.i + '</div>'
+      + '<h3 style="color:#0d9488;font-size:1.2rem;margin-bottom:10px">' + w.t + '</h3>'
+      + '<p style="color:#64748b;font-size:.9rem;line-height:1.6;margin-bottom:24px">' + w.x + '</p>'
+      + '<button style="background:#0d9488;color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:.9rem;font-weight:600;cursor:pointer" onclick="(function(){var p=this.parentElement.parentElement;p.parentElement.removeChild(p);localStorage.setItem(\'' + k + '\',\'1\')}).call(this)">Got it</button>'
+      + '</div>';
+    ov.addEventListener('click',function(e){if(e.target===ov){document.body.removeChild(ov);localStorage.setItem(k,'1')}});
+    document.body.appendChild(ov);
+    var style = document.createElement('style');
+    style.textContent = '@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}';
+    document.head.appendChild(style);
+  }
+  if(document.readyState==='complete'||document.readyState==='interactive'){setTimeout(function(){showWalkthrough('my-bookings')},800)}
+  else{document.addEventListener('DOMContentLoaded',function(){setTimeout(function(){showWalkthrough('my-bookings')},800)})}
+})();
   </script>
 </body>
 </html>
