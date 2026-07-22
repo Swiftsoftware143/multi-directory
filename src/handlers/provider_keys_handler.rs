@@ -91,11 +91,16 @@ pub async fn list_provider_keys(
         .map_err(|_| AppError::Unauthorized)?;
 
     let rows = sqlx::query(
-        "SELECT id, tenant_id, provider, api_key, base_url, metadata, is_active, scope, \
-                created_at::text, updated_at::text \
-         FROM provider_keys \
-         WHERE tenant_id = $1 \
-         ORDER BY provider ASC"
+        r#"SELECT id, tenant_id, provider, 
+                decrypt_provider_key(api_key_encrypted) as api_key,
+                CASE WHEN base_url_encrypted IS NOT NULL 
+                    THEN decrypt_provider_key(base_url_encrypted) 
+                    ELSE NULL END as base_url,
+                metadata, is_active, scope, 
+                created_at::text, updated_at::text
+         FROM provider_keys 
+         WHERE tenant_id = $1 
+         ORDER BY provider ASC"#
     )
     .bind(tenant_id)
     .fetch_all(&s.db)
@@ -138,6 +143,7 @@ pub async fn upsert_provider_key(
     let is_active = req.is_active.unwrap_or(true);
     let scope = req.scope.unwrap_or_else(|| "tenant".to_string());
 
+    // Store plaintext api_key in api_key column — trigger auto-encrypts to api_key_encrypted
     let row = sqlx::query(
         "INSERT INTO provider_keys (tenant_id, provider, api_key, base_url, metadata, is_active, scope) \
          VALUES ($1, $2, $3, $4, $5, $6, $7) \
@@ -148,12 +154,17 @@ pub async fn upsert_provider_key(
                        is_active = EXCLUDED.is_active, \
                        scope = EXCLUDED.scope, \
                        updated_at = NOW() \
-         RETURNING id, tenant_id, provider, api_key, base_url, metadata, is_active, scope, \
+         RETURNING id, tenant_id, provider, \
+                   decrypt_provider_key(api_key_encrypted) as api_key, \
+                   CASE WHEN base_url_encrypted IS NOT NULL \
+                       THEN decrypt_provider_key(base_url_encrypted) \
+                       ELSE NULL END as base_url, \
+                   metadata, is_active, scope, \
                    created_at::text, updated_at::text"
     )
     .bind(tenant_id)
     .bind(&req.provider)
-    .bind(&req.api_key)
+    .bind(&req.api_key)  // plaintext — trigger encrypts
     .bind(&req.base_url)
     .bind(&metadata)
     .bind(is_active)
@@ -245,17 +256,24 @@ pub async fn test_provider_key(
     Path(provider): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let key = sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = $1 AND is_active = true LIMIT 1"
+        r#"SELECT decrypt_provider_key(api_key_encrypted) FROM provider_keys 
+         WHERE provider = $1 AND is_active = true LIMIT 1"#
     )
     .bind(&provider)
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound(format!("No API key found for provider '{}'", provider)))?;
 
+    let preview = if key.len() > 8 {
+        format!("{}...{}", &key[..4], &key[key.len()-4..])
+    } else {
+        "****".to_string()
+    };
+
     Ok(Json(json!({
         "provider": provider,
         "configured": true,
-        "key_preview": format!("{}...", &key[..8.min(key.len())]),
+        "key_preview": preview,
         "message": format!("{} API key is configured", provider)
     })))
 }
