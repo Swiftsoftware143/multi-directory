@@ -191,6 +191,8 @@
   }
   if(document.readyState==='complete'||document.readyState==='interactive'){setTimeout(function(){showWalkthrough('my-bookings')},800)}
   else{document.addEventListener('DOMContentLoaded',function(){setTimeout(function(){showWalkthrough('my-bookings')},800)})}
+  const token=localStorage.getItem('visitorToken');
+  if(!token||token==='undefined'||token==='null'){window.location.href='/visitor?redirect='+encodeURIComponent(window.location.pathname+window.location.search);return;}
 })();
   </script>
 </body>
