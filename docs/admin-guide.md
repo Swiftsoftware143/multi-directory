@@ -53,6 +53,54 @@ Visitors can bookmark businesses (heart icon on listing pages).
 - Bookmarks require a visitor account (free signup)
 - No admin action needed — fully visitor-driven
 
+## Blogging System
+
+**Location:** Admin Sidebar → Blogging (📝 icon)
+
+The blogging system now has a tabbed accordion with four sections:
+
+### Posts Tab (📝)
+- Create, edit, delete blog posts
+- Each post can target a directory/network
+- Published posts appear on directory landing pages and in RSS/sitemap feeds
+
+### Q&A Automation Tab (❓)
+
+Automatically generate SEO-optimized Q&A content from seed keywords.
+
+**Fetch Keywords:** Enter seed keywords (comma-separated), select source (AI Generated, AnswerThePublic, or DataForSEO), and a Directory ID. The system generates 50+ common questions people search for related to those keywords using your configured AI provider.
+
+**Keyword Pool:** Filter by Directory ID, Status (unused/drafted), and Source. Shows the accumulated keyword bank.
+
+**Generate Posts:** Pick N unused keywords (max 20), specify the target Directory ID. The system writes full 800-word blog posts using AI, stores them as drafts, and marks the keywords as "drafted".
+
+**Newsletter Digest:** Creates a weekly roundup HTML newsletter from the latest published Q&A posts. Option to send immediately or schedule weekly (configures day/time per directory).
+
+### Trapdoors Tab (🔲)
+For configuring trapdoor keywords and landing pages for SEO capture. (Feature in development — placeholder shown.)
+
+### SEO Tab (🔍)
+Quick links to:
+- **Google News Sitemap** — auto-populated from last 48 hours of published posts. One per directory in the network. Zero admin touch.
+- **RSS Feed** — last 50 published posts. One per directory.
+- **Articles Sitemap** — all published articles via lastmod.
+- **Related Articles** — auto-displayed at bottom of blog posts within the same directory.
+
+### Search Source Dropdown
+
+The Search page now includes a source dropdown (All, Web, Blog, Q&A, News) at the top. Results include source badges and route through the output engine. 
+
+### Integration Center (🔑)
+
+The Integrations page now has two sections:
+1. **CTA Button Config** — per-business action buttons (Booking, Campaign, SMS) — existing behavior unchanged
+2. **API Integrations** — configure API keys for:
+   - **AnswerThePublic** — API key for keyword discovery
+   - **DataForSEO** — Login + API key for competitor keyword data
+   - **AI Provider** — API key + model selection (gpt-4o-mini, deepseek-chat, etc.) for content generation
+
+API keys are stored encrypted in the `integration_configs` table and masked in the UI (showing only last 4 chars).
+
 ## Micro-Polls
 
 **Location:** Admin Sidebar → Polls
