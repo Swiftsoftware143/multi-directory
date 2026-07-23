@@ -685,6 +685,25 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // &#10052;&#65039; ZaarHub public community frontend
+                    if path == "/zaarhub" || path == "/zaarhub/" || path.starts_with("/zaarhub/") || path == "/z" || path == "/z/" || path.starts_with("/z/") {
+                        let zh_path = std::path::Path::new(&frontend).join("zaarhub.html");
+                        if zh_path.exists() {
+                            match tokio::fs::read(&zh_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     let clean_path = path.trim_start_matches('/');
                     let file_path = if clean_path.is_empty() {
                         std::path::Path::new(&frontend).join("index.html")

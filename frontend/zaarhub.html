@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarHub — Discover Your Local Community</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#faf9f6;--card:#fff;--text:#1c1917;--text-light:#78716c;--text-muted:#a8a29e;
+  --border:#e7e5e4;--border-light:#f0efed;
+  --teal:#0d9488;--teal-dark:#0f766e;--teal-light:#14b8a6;--bg-teal:#f0fdfa;
+  --warm:#d97706;--warm-light:#fef3c7;
+  --terracotta:#bd5a41;
+  --accent:#7c3aed;--accent-light:#ede9fe;
+  --green:#16a34a;--green-light:#dcfce7;
+  --orange:#ea580c;--orange-light:#fff7ed;
+  --pink:#db2777;--pink-light:#fdf2f8;
+  --blue:#2563eb;--blue-light:#eff6ff;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05);--shadow:0 4px 12px rgba(0,0,0,.08);--shadow-lg:0 12px 32px rgba(0,0,0,.12);
+  --radius:12px;--radius-lg:16px;--radius-xl:24px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── Header / Nav ── */
+.zh-header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.zh-header-inner{max-width:1280px;margin:0 auto;padding:0 24px;display:flex;align-items:center;height:68px;gap:16px}
+.zh-logo{font-size:1.25rem;font-weight:800;color:var(--teal);letter-spacing:-.5px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.zh-logo span{font-size:1.3rem}
+.zh-logo small{font-size:.75rem;font-weight:400;color:var(--text-light);margin-left:2px}
+.zh-city-select{position:relative;flex-shrink:0}
+.zh-city-select select{appearance:none;background:var(--bg-teal);border:1px solid var(--teal);border-radius:var(--radius);padding:8px 32px 8px 12px;font-size:.85rem;font-weight:600;color:var(--teal-dark);cursor:pointer;outline:none;min-width:160px}
+.zh-city-select::after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.7rem;color:var(--teal);pointer-events:none}
+.zh-search-bar{flex:1;max-width:480px;position:relative}
+.zh-search-bar input{width:100%;padding:10px 16px 10px 40px;border:1px solid var(--border);border-radius:100px;font-size:.9rem;outline:none;background:var(--bg);transition:all .2s}
+.zh-search-bar input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+.zh-search-bar .icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:.9rem;color:var(--text-light)}
+.zh-nav-links{display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0}
+.zh-nav-links a{padding:8px 14px;border-radius:var(--radius);font-size:.85rem;font-weight:500;color:var(--text);transition:all .2s;white-space:nowrap}
+.zh-nav-links a:hover{background:var(--bg-teal);color:var(--teal);text-decoration:none}
+.zh-btn-primary{background:var(--teal);color:#fff !important;padding:8px 18px;border-radius:100px;font-weight:600}
+.zh-btn-primary:hover{background:var(--teal-dark) !important}
+.zh-hamburger{display:none;background:none;border:none;font-size:1.5rem;cursor:pointer;padding:4px;color:var(--text)}
+
+/* ── Hero ── */
+.zh-hero{background:linear-gradient(135deg,#0f172a 0%,#134e4a 50%,#0d9488 100%);padding:60px 24px 48px;text-align:center;position:relative;overflow:hidden}
+.zh-hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 30% 40%,rgba(13,148,136,.15) 0%,transparent 60%),radial-gradient(circle at 70% 60%,rgba(20,184,166,.1) 0%,transparent 50%);pointer-events:none}
+.zh-hero-inner{position:relative;max-width:720px;margin:0 auto}
+.zh-hero h1{font-size:2.5rem;font-weight:800;color:#fff;line-height:1.15;margin-bottom:12px;letter-spacing:-.5px}
+.zh-hero h1 span{background:linear-gradient(135deg,#5eead4,#2dd4bf);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.zh-hero p{font-size:1.1rem;color:#94a3b8;margin-bottom:28px;line-height:1.6}
+.zh-hero-categories{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-bottom:20px}
+.zh-hero-cat{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:100px;color:#e2e8f0;font-size:.82rem;cursor:pointer;transition:all .2s}
+.zh-hero-cat:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);color:#fff;text-decoration:none}
+.zh-hero-stats{display:flex;justify-content:center;gap:40px;margin-top:32px}
+.zh-hero-stat{text-align:center}
+.zh-hero-stat .num{font-size:1.5rem;font-weight:800;color:#5eead4;display:block}
+.zh-hero-stat .label{font-size:.78rem;color:#94a3b8;margin-top:2px}
+
+/* ── Sections ── */
+.zh-section{padding:48px 24px}
+.zh-section-inner{max-width:1280px;margin:0 auto}
+.zh-section-title{font-size:1.35rem;font-weight:700;margin-bottom:4px}
+.zh-section-sub{font-size:.9rem;color:var(--text-light);margin-bottom:24px}
+.zh-section-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:8px}
+.zh-section-header h2{font-size:1.25rem;font-weight:700}
+
+/* ── City Cards Grid ── */
+.zh-city-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.zh-city-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.zh-city-card:hover{box-shadow:var(--shadow);border-color:var(--teal);transform:translateY(-2px)}
+.zh-city-card .emoji{font-size:2rem;margin-bottom:8px}
+.zh-city-card h3{font-size:1.05rem;font-weight:700;margin-bottom:4px}
+.zh-city-card p{font-size:.82rem;color:var(--text-light);margin-bottom:8px}
+.zh-city-card .count{font-size:.8rem;color:var(--teal);font-weight:600}
+.zh-city-card .zh-featured-badge{position:absolute;top:12px;right:12px;background:var(--warm-light);color:var(--warm);font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:100px}
+
+/* ── Deals Carousel ── */
+.zh-deals-scroll{display:flex;gap:16px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.zh-deals-scroll::-webkit-scrollbar{height:4px}
+.zh-deals-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.zh-deal-card{flex:0 0 300px;scroll-snap-align:start;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:all .2s}
+.zh-deal-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.zh-deal-img{height:140px;background:var(--bg-teal);display:flex;align-items:center;justify-content:center;font-size:2.5rem;color:var(--teal)}
+.zh-deal-body{padding:16px}
+.zh-deal-body h4{font-size:.95rem;font-weight:700;margin-bottom:4px}
+.zh-deal-body .price{font-size:1.1rem;font-weight:800;color:var(--teal);margin-bottom:4px}
+.zh-deal-body .price s{font-size:.85rem;color:var(--text-light);font-weight:400;margin-left:6px}
+.zh-deal-body .biz{font-size:.78rem;color:var(--text-light)}
+.zh-deal-body .deal-badge{display:inline-block;background:var(--warm-light);color:var(--warm);font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px;margin-top:6px}
+
+/* ── Activity Feed ── */
+.zh-activity-list{display:flex;flex-direction:column;gap:10px}
+.zh-activity-item{display:flex;align-items:flex-start;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;transition:all .2s}
+.zh-activity-item:hover{background:var(--bg-teal);border-color:var(--teal-light)}
+.zh-activity-avatar{width:36px;height:36px;border-radius:50%;background:var(--bg-teal);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+.zh-activity-body{flex:1;min-width:0}
+.zh-activity-body .msg{font-size:.85rem;line-height:1.4}
+.zh-activity-body .time{font-size:.75rem;color:var(--text-muted);margin-top:2px}
+.zh-activity-body .stars{color:var(--warm);font-size:.8rem}
+
+/* ── Events Grid ── */
+.zh-event-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.zh-event-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:all .2s}
+.zh-event-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.zh-event-date{display:flex;align-items:center;justify-content:center;gap:4px;padding:10px;background:var(--accent-light);color:var(--accent);font-size:.75rem;font-weight:700}
+.zh-event-body{padding:16px}
+.zh-event-body h4{font-size:.95rem;font-weight:700;margin-bottom:4px}
+.zh-event-body p{font-size:.82rem;color:var(--text-light);margin-bottom:6px}
+.zh-event-body .meta{font-size:.78rem;color:var(--text-muted)}
+.zh-event-body .rsvp{display:inline-block;margin-top:8px;background:var(--accent);color:#fff;padding:5px 14px;border-radius:100px;font-size:.78rem;font-weight:600}
+
+/* ── CTA Banner ── */
+.zh-cta{background:linear-gradient(135deg,#0f172a 0%,#134e4a 50%,#0d9488 100%);padding:56px 24px;text-align:center}
+.zh-cta h2{font-size:1.75rem;font-weight:800;color:#fff;margin-bottom:8px}
+.zh-cta p{font-size:1rem;color:#94a3b8;margin-bottom:24px;max-width:500px;margin-left:auto;margin-right:auto}
+.zh-cta .zh-btn{display:inline-flex;align-items:center;gap:8px;padding:12px 28px;border-radius:100px;font-size:.95rem;font-weight:700;transition:all .2s;cursor:pointer;border:none}
+.zh-cta .zh-btn-primary{background:#fff;color:var(--teal-dark)}
+.zh-cta .zh-btn-primary:hover{background:var(--bg-teal);transform:translateY(-1px)}
+.zh-cta .zh-btn-outline{background:transparent;border:2px solid rgba(255,255,255,.3);color:#fff;margin-left:12px}
+.zh-cta .zh-btn-outline:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.5)}
+
+/* ── Footer ── */
+.zh-footer{background:#0f172a;padding:40px 24px;color:#94a3b8}
+.zh-footer-inner{max-width:1280px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:32px}
+.zh-footer h4{color:#e2e8f0;font-size:.85rem;font-weight:700;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+.zh-footer a{display:block;padding:4px 0;font-size:.82rem;color:#94a3b8}
+.zh-footer a:hover{color:#fff;text-decoration:none}
+.zh-footer-bottom{border-top:1px solid #1e293b;margin-top:32px;padding-top:20px;max-width:1280px;margin-left:auto;margin-right:auto;font-size:.78rem;text-align:center}
+
+/* ── Loading ── */
+.zh-loading{text-align:center;padding:80px 24px;color:var(--text-light)}
+.zh-spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── City Page ── */
+.zh-city-hero{padding:48px 24px 32px;background:linear-gradient(135deg,#0f172a 0%,#134e4a 70%,#0d9488 100%);color:#fff;position:relative;overflow:hidden}
+.zh-city-hero-inner{max-width:1280px;margin:0 auto;position:relative}
+.zh-city-hero h1{font-size:2rem;font-weight:800;margin-bottom:6px}
+.zh-city-hero .sub{color:#94a3b8;font-size:.95rem;margin-bottom:20px}
+.zh-filter-bar{display:flex;flex-wrap:wrap;gap:8px}
+.zh-filter-pill{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:100px;color:#e2e8f0;font-size:.8rem;cursor:pointer;transition:all .2s}
+.zh-filter-pill:hover,.zh-filter-pill.active{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);color:#fff}
+.zh-filter-pill.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.zh-city-content{max-width:1280px;margin:0 auto;padding:24px;display:grid;grid-template-columns:1fr;gap:24px}
+
+/* ── Search Results ── */
+.zh-search-hero{padding:40px 24px;background:linear-gradient(135deg,#0f172a 0%,#134e4a 50%,#0d9488 100%)}
+.zh-search-hero-inner{max-width:720px;margin:0 auto}
+.zh-search-hero h1{font-size:1.5rem;color:#fff;margin-bottom:16px}
+.zh-search-hero .zh-search-bar{max-width:100%}
+
+/* ── Responsive ── */
+@media(max-width:768px){
+  .zh-header-inner{padding:0 16px;gap:10px}
+  .zh-logo small{display:none}
+  .zh-nav-links{display:none}
+  .zh-hamburger{display:block}
+  .zh-nav-links.open{display:flex;flex-direction:column;position:absolute;top:68px;left:0;right:0;background:#fff;border-bottom:1px solid var(--border);padding:12px 16px;box-shadow:var(--shadow-lg)}
+  .zh-hero h1{font-size:1.6rem}
+  .zh-hero-stats{gap:20px}
+  .zh-hero-stat .num{font-size:1.2rem}
+  .zh-section{padding:32px 16px}
+  .zh-city-grid{grid-template-columns:1fr}
+  .zh-deal-card{flex:0 0 260px}
+  .zh-city-select select{min-width:120px;font-size:.8rem}
+  .zh-search-bar{max-width:200px}
+}
+
+/* ── City Page Biz Cards ── */
+.zh-biz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.zh-biz-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:all .2s}
+.zh-biz-card:hover{box-shadow:var(--shadow);transform:translateY(-2px);border-color:var(--teal-light)}
+.zh-biz-img{height:120px;display:flex;align-items:center;justify-content:center;font-size:2.5rem;color:var(--teal);overflow:hidden}
+.zh-biz-img img{width:100%;height:100%;object-fit:cover}
+.zh-biz-body{padding:14px}
+.zh-biz-body h4{font-size:1rem;font-weight:700;margin-bottom:4px}
+.zh-biz-body .stars{font-size:.82rem;color:var(--warm);margin-bottom:4px}
+.zh-biz-body .addr{font-size:.8rem;color:var(--text-light);margin-bottom:4px}
+.zh-biz-body .badges{display:flex;gap:4px;margin-bottom:4px}
+.zh-biz-body .badge-owner,.zh-biz-body .badge-perk{display:inline-block;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px}
+.badge-owner{background:var(--blue-light);color:var(--blue)}
+.badge-perk{background:var(--warm-light);color:var(--warm)}
+.zh-biz-actions{display:flex;gap:8px;margin-top:8px}
+.zh-biz-actions .action{padding:6px 12px;border:1px solid var(--border);border-radius:100px;font-size:.78rem;font-weight:600;color:var(--text);transition:all .2s}
+.zh-biz-actions .action:hover{border-color:var(--teal);color:var(--teal);background:var(--bg-teal);text-decoration:none}
+
+/* ── Deal/Event cards (city page) ── */
+.zh-deal-sm-grid,.zh-event-sm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.zh-deal-card-sm,.zh-event-card-sm{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:all .2s;cursor:pointer}
+.zh-deal-card-sm:hover,.zh-event-card-sm:hover{box-shadow:var(--shadow);transform:translateY(-1px)}
+.zh-deal-sm-body{padding:14px}
+.zh-deal-sm-body h4{font-size:.9rem;font-weight:700;margin-bottom:4px}
+.zh-deal-sm-body .price{font-size:1rem;font-weight:800;color:var(--teal)}
+.zh-deal-sm-body .biz{font-size:.78rem;color:var(--text-light)}
+.zh-deal-sm-body .deal-badge{display:inline-block;background:var(--warm-light);color:var(--warm);font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px;margin-top:4px}
+
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="zh-loading">
+    <div class="zh-spinner"></div>
+    <p style="margin-top:12px;font-size:.9rem">Loading ZaarHub...</p>
+  </div>
+</div>
+
+<nav id="mobile-nav" class="zh-nav-links" style="display:none"></nav>
+
+<script>
+// ── Helpers ──
+async function g(url){let r=await fetch('/api/v1'+url);if(!r.ok){let e=await r.json().catch(()=>({}));throw new Error(e.message||e.error||'Request failed')}return r.json()}
+function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function $$(s){return document.querySelector(s)}
+function qa(s){return document.querySelectorAll(s)}
+function ac(el,ev,fn){el.addEventListener(ev,fn)}
+function ago(d){if(!d)return '';var s=Math.floor((Date.now()-new Date(d).getTime())/1000);if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
+function toTitle(s){return s.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
+
+// ── State ──
+let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',loading:true,user:null}
+
+// ── Router ──
+function route(){
+  let hash=location.hash.slice(1)||'/';
+  if(hash.startsWith('/city/')){
+    state.page='city';state.slug=hash.split('/')[2];state.filterCategory=''
+  }else if(hash.startsWith('/search/')){
+    state.page='search';state.searchQuery=decodeURIComponent(hash.slice(8))
+  }else if(hash==='/'||hash.startsWith('/?')){
+    state.page='home'
+  }else if(hash.startsWith('/deals')){
+    state.page='deals'
+  }else if(hash.startsWith('/events')){
+    state.page='events'
+  }else{state.page='home'}
+  load()
+}
+
+window.addEventListener('hashchange',route)
+window.addEventListener('load',route)
+
+// ── City Selector ──
+async function onCitySelect(e){
+  var slug=e.value;if(slug)location.hash='#/city/'+slug
+}
+
+// ── Search ──
+function onSearchInput(e){
+  if(e.key==='Enter'){
+    var q=e.target.value.trim();if(q)location.hash='#/search/'+encodeURIComponent(q)
+  }
+}
+
+// ── Load ──
+async function load(){
+  state.loading=true;renderShell()
+  try{
+    if(!state.cities.length){
+      var c=await g('/zaarhub/cities');state.cities=c.cities||c||[]
+    }
+    if(state.page==='home')await loadHomepage()
+    else if(state.page==='city')await loadCityPage()
+    else if(state.page==='search')await loadSearchResults()
+    else if(state.page==='deals')await loadDealsPage()
+    else if(state.page==='events')await loadEventsPage()
+  }catch(e){
+    renderError(e.message)
+  }
+}
+
+// ── Render Shell (Header) ──
+function renderShell(){
+  var cityOpts='<option value="">All Cities</option>'
+  for(var i=0;i<state.cities.length;i++){
+    var c=state.cities[i];var sel=c.slug===state.slug?'selected':''
+    cityOpts+='<option value="'+c.slug+'" '+sel+'>'+esc(c.name)+' ('+c.business_count+' spots)</option>'
+  }
+
+  $$('#app').innerHTML=`
+<div class="zh-header">
+  <div class="zh-header-inner">
+    <a class="zh-logo" href="#/" onclick="location.hash='#/'">
+      <span>🌐</span>ZaarHub <small>Community</small>
+    </a>
+    <div class="zh-city-select">
+      <select onchange="onCitySelect(this)">${cityOpts}</select>
+    </div>
+    <div class="zh-search-bar">
+      <span class="icon">🔍</span>
+      <input type="text" placeholder="Search businesses, categories..." onkeydown="onSearchInput(event)" value="${esc(state.searchQuery)}">
+    </div>
+    <div class="zh-nav-links" id="zh-desktop-nav">
+      <a href="#/deals">🎁 Deals</a>
+      <a href="#/events">📅 Events</a>
+      <a href="#/about">ℹ️ About</a>
+      <a href="/portal" class="zh-btn-primary">+ Add Business</a>
+    </div>
+    <button class="zh-hamburger" onclick="toggleMobile()">☰</button>
+  </div>
+  <div id="zh-mobile-nav" class="zh-nav-links" style="display:none">
+    <a href="#/deals" onclick="closeMobile()">🎁 Deals & Perks</a>
+    <a href="#/events" onclick="closeMobile()">📅 Community Events</a>
+    <a href="#/about" onclick="closeMobile()">ℹ️ About ZaarHub</a>
+    <a href="/portal" onclick="closeMobile()">💼 Business Owner</a>
+    <a href="/visitor" onclick="closeMobile()">👤 My Account</a>
+  </div>
+</div>
+<div id="zh-content" class="zh-loading"><div class="zh-spinner"></div><p style="margin-top:12px">Loading...</p></div>
+<div class="zh-footer">
+  <div class="zh-footer-inner">
+    <div><h4>🌐 ZaarHub</h4>
+      <a href="#/">Discover</a>
+      <a href="#/deals">Local Deals</a>
+      <a href="#/events">Community Events</a>
+    </div>
+    <div><h4>For Business</h4>
+      <a href="/portal">Add Your Business</a>
+      <a href="/login">Owner Login</a>
+    </div>
+    <div><h4>Community</h4>
+      <a href="#/about">About Us</a>
+      <a href="mailto:support@zaarhub.com">Contact</a>
+    </div>
+  </div>
+  <div class="zh-footer-bottom">© ${new Date().getFullYear()} ZaarHub — Discover & Support Your Local Community</div>
+</div>`
+}
+
+function toggleMobile(){
+  var m=document.getElementById('zh-mobile-nav')
+  m.style.display=m.style.display==='flex'?'none':'flex'
+}
+function closeMobile(){document.getElementById('zh-mobile-nav').style.display='none'}
+
+function renderError(msg){
+  var el=document.getElementById('zh-content')||$$('#app')
+  el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🙁</div><h3 style="margin-bottom:8px">Something went wrong</h3><p style="color:var(--text-light);margin-bottom:16px">'+esc(msg)+'</p><button class="zh-btn-primary" onclick="location.reload()" style="background:var(--teal);color:#fff;border:none;padding:10px 24px;border-radius:100px;cursor:pointer">Try Again</button></div>'
+}
+
+// ── Homepage ──
+async function loadHomepage(){
+  try{
+    var d=await g('/zaarhub/homepage');state.homepageData=d
+  }catch(e){
+    // fallback: build empty
+    d={cities:state.cities,featured_deals:[],upcoming_events:[],recent_activity:[],stats:{total_businesses:0,total_cities:0,total_reviews:0},category_pills:[]}
+    state.homepageData=d
+  }
+  renderHomepageContent(d)
+}
+
+function renderHomepageContent(d){
+  var cities=d.cities||state.cities||[]
+  var deals=d.featured_deals||[]
+  var events=d.upcoming_events||[]
+  var activity=d.recent_activity||[]
+  var stats=d.stats||{total_businesses:0,total_cities:0,total_reviews:0}
+  var cats=d.category_pills||[]
+  var totalBiz=stats.total_businesses||cities.reduce((s,c)=>s+(c.business_count||0),0)
+  var totalCities=stats.total_cities||cities.length
+  var totalReviews=stats.total_reviews||0
+
+  // Hero
+  var catPills=''
+  for(var i=0;i<Math.min(cats.length,8);i++){
+    var ct=cats[i]
+    catPills+='<a class="zh-hero-cat" href="#/search/'+encodeURIComponent(ct.name)+'">';
+    if(ct.icon)catPills+=esc(ct.icon)+' '
+    catPills+=esc(ct.name)+'</a>'
+  }
+
+  var heroHtml=`
+<div class="zh-hero">
+  <div class="zh-hero-inner">
+    <h1>Discover & Support <span>Your Local Community</span></h1>
+    <p>Find the best local businesses, deals, and events in your neighborhood. ZaarHub connects you with the spots that make your community thrive.</p>
+    <div class="zh-hero-categories">${catPills||'<a class="zh-hero-cat" href="#/search">🔍 Browse All</a>'}</div>
+    <div class="zh-hero-stats">
+      <div class="zh-hero-stat"><span class="num">${totalBiz.toLocaleString()}+</span><span class="label">Local Businesses</span></div>
+      <div class="zh-hero-stat"><span class="num">${totalCities}+</span><span class="label">Communities</span></div>
+      <div class="zh-hero-stat"><span class="num">${totalReviews.toLocaleString()}</span><span class="label">Reviews</span></div>
+    </div>
+  </div>
+</div>`
+
+  // City cards
+  var cityCards=''
+  var emojis=['🌴','☀️','🏖️','🌆','🌲','🏙️','🌳','🏘️','⛰️','🌺']
+  for(var i=0;i<cities.length;i++){
+    var ct=cities[i];var em=emojis[i%emojis.length]
+    cityCards+='<div class="zh-city-card" onclick="location.hash=\'#/city/'+ct.slug+'\'">'+
+      '<div class="emoji">'+em+'</div>'+
+      '<h3>'+esc(ct.name)+'</h3>'+
+      '<p>'+esc(ct.description||ct.name+' business directory')+'</p>'+
+      '<span class="count">'+(ct.business_count||0)+' local spots</span>'+
+      (ct.featured_image?'<div class="zh-featured-badge">⭐ Featured</div>':'')+
+    '</div>'
+  }
+
+  // Deals
+  var dealsHtml=''
+  for(var i=0;i<deals.length;i++){
+    var dl=deals[i]
+    var priceHtml=dl.deal_price?'<div class="price">$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
+    var endHtml=dl.end_date?'<span style="font-size:.75rem;color:var(--text-muted)">Valid until '+new Date(dl.end_date).toLocaleDateString()+'</span>':''
+    dealsHtml+='<div class="zh-deal-card" onclick="location.hash=\'#/city/'+dl.directory_slug+'\'">'+
+      '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'🎉')+'</div>'+
+      '<div class="zh-deal-body">'+
+      '<h4>'+esc(dl.title)+'</h4>'+
+      priceHtml+
+      '<div class="biz">'+esc(dl.business_name||'')+'</div>'+
+      (dl.discount_percent?'<span class="deal-badge">-'+dl.discount_percent+'%</span>':'')+
+      endHtml+
+    '</div></div>'
+  }
+
+  // Activity
+  var activityHtml=''
+  for(var i=0;i<activity.length;i++){
+    var a=activity[i]
+    var stars='★'.repeat(a.rating)+'☆'.repeat(5-a.rating)
+    var msg='<span class="stars">'+stars+'</span> <strong>'+esc(a.reviewer_name||'Someone')+'</strong> reviewed <strong>'+esc(a.business_name||'')+'</strong>'
+    activityHtml+='<div class="zh-activity-item" onclick="location.hash=\'#/city/'+a.directory_slug+'\'">'+
+      '<div class="zh-activity-avatar">'+(a.reviewer_name?esc(a.reviewer_name[0]):'👤')+'</div>'+
+      '<div class="zh-activity-body">'+
+      '<div class="msg">'+msg+'</div>'+
+      '<div class="time">'+ago(a.timestamp)+'</div>'+
+    '</div></div>'
+  }
+
+  // Events
+  var eventsHtml=''
+  for(var i=0;i<events.length;i++){
+    var ev=events[i];var d=new Date(ev.event_date)
+    var dateStr=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric'})
+    eventsHtml+='<div class="zh-event-card" onclick="location.hash=\'#/city/'+ev.directory_slug+'\'">'+
+      '<div class="zh-event-date">📅 '+dateStr+'</div>'+
+      '<div class="zh-event-body">'+
+      '<h4>'+esc(ev.title)+'</h4>'+
+      (ev.location?'<p>📍 '+esc(ev.location)+'</p>':'')+
+      (ev.description?'<p>'+esc(ev.description).slice(0,120)+(ev.description.length>120?'...':'')+'</p>':'')+
+      '<div class="meta">'+(ev.rsvp_count||0)+' attending</div>'+
+      '<span class="rsvp">RSVP →</span></div></div>'
+  }
+
+  var content=document.getElementById('zh-content')
+  content.innerHTML=heroHtml+`
+<div class="zh-section">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">🏙️ Explore Communities</h2><p class="zh-section-sub">Find your local directory and discover what's around you</p></div>
+    </div>
+    <div class="zh-city-grid">${cityCards||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No communities available yet</div>'}</div>
+  </div>
+</div>`+
+(deals.length?`
+<div class="zh-section" style="background:var(--bg-teal)">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">🎁 Hot Local Deals</h2><p class="zh-section-sub">Exclusive perks and discounts from your community</p></div>
+      <a href="#/deals" style="font-size:.85rem;font-weight:600;color:var(--teal)">View All →</a>
+    </div>
+    <div class="zh-deals-scroll">${dealsHtml||'<div style="flex:1;text-align:center;padding:40px;color:var(--text-light)">No deals available</div>'}</div>
+  </div>
+</div>`:'')+
+(activity.length?`
+<div class="zh-section">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">💬 Community Buzz</h2><p class="zh-section-sub">See what your neighbors are saying</p></div>
+    </div>
+    <div class="zh-activity-list">${activityHtml}</div>
+  </div>
+</div>`:'')+
+(events.length?`
+<div class="zh-section" style="background:var(--bg-teal)">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">📅 Upcoming Events</h2><p class="zh-section-sub">Weekend markets, workshops, and community meetups</p></div>
+      <a href="#/events" style="font-size:.85rem;font-weight:600;color:var(--teal)">View All →</a>
+    </div>
+    <div class="zh-event-grid">${eventsHtml}</div>
+  </div>
+</div>`:'')+
+`
+<div class="zh-cta">
+  <h2>Are you a local business owner?</h2>
+  <p>Get discovered by your community. Claim your free listing and start connecting with customers today.</p>
+  <div>
+    <a href="/portal" class="zh-btn zh-btn-primary">+ Claim Your Listing</a>
+    <a href="/login" class="zh-btn zh-btn-outline">Owner Login</a>
+  </div>
+</div>`
+}
+
+// ── City Page ──
+async function loadCityPage(){
+  var slug=state.slug
+  if(!slug){renderError('No city selected');return}
+  try{
+    var d=await g('/zaarhub/cities/'+slug)
+    renderCityPage(d)
+  }catch(e){
+    renderError('Could not load '+toTitle(slug)+': '+e.message)
+  }
+}
+
+function renderCityPage(d){
+  var el=document.getElementById('zh-content')
+  var biz=d.featured_businesses||[]
+  var deals=d.active_deals||[]
+  var events=d.upcoming_events||[]
+  var cats=d.categories||[]
+  var dirInfo=d.directory||{}
+  var cityName=esc(dirInfo.name||toTitle(state.slug))
+  var bizCount=d.stats?.business_count||biz.length
+  var desc=esc(dirInfo.description||'Explore '+cityName)
+
+  // Category filter pills
+  var catPills='<span class="zh-filter-pill active" data-cat="">All</span>'
+  for(var i=0;i<cats.length;i++){
+    var ct=cats[i]
+    catPills+='<span class="zh-filter-pill" data-cat="'+esc(ct.slug)+'" onclick="filterCity(\''+esc(ct.slug)+'\',this)">'
+    if(ct.icon)catPills+=esc(ct.icon)+' '
+    catPills+=esc(ct.name)+'</span>'
+  }
+
+  // Business cards
+  var bizHtml=''
+  for(var i=0;i<biz.length;i++){
+    var b=biz[i]
+    var badges=''
+    if(b.is_claimed)badges+='<span class="badge-owner">👑 Verified</span>'
+    if(b.has_deal)badges+='<span class="badge-perk">🎁 Perk</span>'
+    var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
+    bizHtml+=`
+<div class="zh-biz-card" onclick="location.hash='#/city/${state.slug}/biz/${b.id}'">
+  <div class="zh-biz-img" style="background:${i%2===0?'var(--bg-teal)':'var(--accent-light)'}">
+    ${b.image_url?'<img src="'+esc(b.image_url)+'">':b.name[0]||'🏪'}
+  </div>
+  <div class="zh-biz-body">
+    <h4>${esc(b.name)}</h4>
+    <div class="badges">${badges}</div>
+    <div class="stars">${stars} <span style="color:var(--text-light);font-size:.78rem">${b.review_count||0} reviews</span></div>
+    ${b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':''}
+    <div class="zh-biz-actions">
+      ${b.phone?'<a href="tel:'+esc(b.phone)+'" class="action">📞 Call</a>':''}
+      ${b.website?'<a href="'+esc(b.website)+'" target="_blank" class="action">🌐 Website</a>':''}
+    </div>
+  </div>
+</div>`
+  }
+
+  // Deals section
+  var dealsHtml=''
+  for(var i=0;i<deals.length;i++){
+    var dl=deals[i]
+    dealsHtml+=`
+<div class="zh-deal-card-sm">
+  <div class="zh-deal-sm-body">
+    <h4>${esc(dl.title)}</h4>
+    ${dl.deal_price?'<div class="price">$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''}
+    <div class="biz">${esc(dl.business_name||'')}</div>
+    ${dl.discount_percent?'<span class="deal-badge">-'+dl.discount_percent+'%</span>':''}
+  </div>
+</div>`
+  }
+
+  // Events section
+  var eventsHtml=''
+  for(var i=0;i<events.length;i++){
+    var ev=events[i];var dd=new Date(ev.event_date)
+    eventsHtml+=`
+<div class="zh-event-card-sm">
+  <div class="zh-event-date">📅 ${dd.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric'})}</div>
+  <div class="zh-event-body">
+    <h4>${esc(ev.title)}</h4>
+    ${ev.location?'<p>📍 '+esc(ev.location)+'</p>':''}
+    <span class="rsvp">RSVP →</span>
+  </div>
+</div>`
+  }
+
+  el.innerHTML=`
+<div class="zh-city-hero">
+  <div class="zh-city-hero-inner">
+    <h1>${cityName}</h1>
+    <p class="sub">${desc} — <strong>${bizCount} local spots</strong></p>
+    <div class="zh-filter-bar">${catPills}</div>
+  </div>
+</div>
+<div class="zh-city-content">
+  <div style="display:grid;grid-template-columns:1fr;gap:16px">
+    <div class="zh-section-header" style="margin-bottom:0">
+      <h2>🏪 Businesses</h2>
+      <span style="font-size:.85rem;color:var(--text-light)">${bizCount} found</span>
+    </div>
+    <div class="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
+    ${deals.length?`
+    <div style="margin-top:24px">
+      <h3 style="margin-bottom:12px">🎁 Local Deals</h3>
+      <div class="zh-deal-sm-grid">${dealsHtml}</div>
+    </div>`:''}
+    ${events.length?`
+    <div style="margin-top:24px">
+      <h3 style="margin-bottom:12px">📅 Events</h3>
+      <div class="zh-event-sm-grid">${eventsHtml}</div>
+    </div>`:''}
+    ${!biz.length&&!deals.length&&!events.length?`
+    <div class="zh-cta" style="margin-top:24px;border-radius:var(--radius-lg)">
+      <h2 style="font-size:1.3rem">Be the first in ${cityName}</h2>
+      <p>This community is growing. Claim your business listing today!</p>
+      <a href="/portal" class="zh-btn zh-btn-primary">+ Add Your Business</a>
+    </div>`:''}
+  </div>
+</div>`
+}
+
+function filterCity(slug,el){
+  state.filterCategory=slug
+  qa('.zh-filter-pill').forEach(function(p){p.classList.remove('active')})
+  if(el)el.classList.add('active')
+  // Reload with filter
+  loadCityPage()
+}
+
+// ── Search Page ──
+async function loadSearchResults(){
+  var q=state.searchQuery
+  var el=document.getElementById('zh-content')
+  el.innerHTML=`
+<div class="zh-search-hero">
+  <div class="zh-search-hero-inner">
+    <h1>🔍 Searching: "${esc(q)}"</h1>
+    <div class="zh-search-bar" style="max-width:100%">
+      <span class="icon">🔍</span>
+      <input type="text" value="${esc(q)}" onkeydown="onSearchInput(event)" placeholder="Search..." style="width:100%;padding:12px 16px 12px 44px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.95rem;outline:none;background:rgba(255,255,255,.1);color:#fff">
+    </div>
+  </div>
+</div>
+<div class="zh-section">
+  <div class="zh-section-inner">
+    <div class="zh-loading"><div class="zh-spinner"></div></div>
+  </div>
+</div>`
+
+  try{
+    var r=await g('/zaarhub/search?q='+encodeURIComponent(q)+'&cat='+encodeURIComponent(state.filterCategory))
+    renderSearchResults(r)
+  }catch(e){
+    var sec=el.querySelector('.zh-section .zh-section-inner')
+    if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">Search failed: '+esc(e.message)+'</div>'
+  }
+}
+
+function renderSearchResults(r){
+  var biz=r.businesses||[]
+  var deals=r.deals||[]
+  var total=r.total_count||biz.length
+  var el=document.querySelector('#zh-content .zh-section .zh-section-inner')
+  if(!el)return
+
+  if(!biz.length&&!deals.length){
+    el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🔍</div><h3 style="margin-bottom:6px">No results found</h3><p style="color:var(--text-light)">Try a different search or browse by category</p></div>'
+    return
+  }
+
+  var h='<div style="margin-bottom:16px"><strong>'+total+'</strong> results found</div>'
+  if(biz.length){
+    h+='<h3 style="margin-bottom:12px">🏪 Businesses</h3><div class="zh-biz-grid">'
+    for(var i=0;i<biz.length;i++){
+      var b=biz[i]
+      var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
+      h+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\">'+
+        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'">':b.name[0])+'</div>'+
+        '<div class="zh-biz-body"><h4>'+esc(b.name)+'</h4>'+
+        '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div>'+
+        (b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':'')+
+        (b.city?'<div class="addr">🏙️ '+esc(b.city)+'</div>':'')+
+        '<div class="zh-biz-actions">'+(b.phone?'<a href="tel:'+esc(b.phone)+'" class="action">📞 Call</a>':'')+
+        '</div></div></div>'
+    }
+    h+='</div>'
+  }
+
+  if(deals.length){
+    h+='<h3 style="margin:20px 0 12px">🎁 Deals</h3><div class="zh-deal-sm-grid">'
+    for(var i=0;i<deals.length;i++){
+      var dl=deals[i]
+      h+='<div class="zh-deal-card-sm"><div class="zh-deal-sm-body"><h4>'+esc(dl.title)+'</h4>'+
+        (dl.deal_price?'<div class="price">$'+esc(dl.deal_price)+'</div>':'')+
+        '<div class="biz">'+esc(dl.business_name||'')+'</div></div></div>'
+    }
+    h+='</div>'
+  }
+
+  el.innerHTML=h
+}
+
+// ── Deals Page ──
+async function loadDealsPage(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML=`
+<div class="zh-search-hero">
+  <div class="zh-search-hero-inner">
+    <h1>🎁 Local Deals & Perks</h1>
+    <p style="color:#94a3b8">Exclusive discounts from community businesses</p>
+  </div>
+</div>
+<div class="zh-section">
+  <div class="zh-section-inner">
+    <div class="zh-loading"><div class="zh-spinner"></div></div>
+  </div>
+</div>`
+
+  try{
+    var d=await g('/zaarhub/homepage')
+    var deals=d.featured_deals||[]
+    var sec=el.querySelector('.zh-section .zh-section-inner')
+    if(!deals.length){
+      sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🎁</div><h3 style="margin-bottom:6px">No deals available</h3><p style="color:var(--text-light)">Check back soon for local perks</p></div>'
+      return
+    }
+    var h='<div class="zh-deals-scroll" style="flex-wrap:wrap">'
+    for(var i=0;i<deals.length;i++){
+      var dl=deals[i];var priceHtml=dl.deal_price?'$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
+      h+='<div class="zh-deal-card" style="flex:0 0 280px" onclick="location.hash=\'#/city/'+dl.directory_slug+'\">'+
+        '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'🎉')+'</div>'+
+        '<div class="zh-deal-body"><h4>'+esc(dl.title)+'</h4>'+
+        '<div class="price">'+priceHtml+'</div>'+
+        '<div class="biz">'+esc(dl.business_name||'')+'</div>'+
+        (dl.discount_percent?'<span class="deal-badge">-'+dl.discount_percent+'%</span>':'')+
+        (dl.end_date?'<div style="font-size:.74rem;color:var(--text-muted);margin-top:4px">Until '+new Date(dl.end_date).toLocaleDateString()+'</div>':'')+
+      '</div></div>'
+    }
+    sec.innerHTML=h
+  }catch(e){
+    var sec=el.querySelector('.zh-section .zh-section-inner')
+    if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
+  }
+}
+
+// ── Events Page ──
+async function loadEventsPage(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML=`
+<div class="zh-search-hero">
+  <div class="zh-search-hero-inner">
+    <h1>📅 Community Events</h1>
+    <p style="color:#94a3b8">Weekend markets, workshops, and local meetups</p>
+  </div>
+</div>
+<div class="zh-section">
+  <div class="zh-section-inner">
+    <div class="zh-loading"><div class="zh-spinner"></div></div>
+  </div>
+</div>`
+
+  try{
+    var d=await g('/zaarhub/homepage')
+    var events=d.upcoming_events||[]
+    var sec=el.querySelector('.zh-section .zh-section-inner')
+    if(!events.length){
+      sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">📅</div><h3 style="margin-bottom:6px">No upcoming events</h3><p style="color:var(--text-light)">Check back later for community events near you</p></div>'
+      return
+    }
+    var h='<div class="zh-event-grid">'
+    for(var i=0;i<events.length;i++){
+      var ev=events[i];var dd=new Date(ev.event_date)
+      h+='<div class="zh-event-card" onclick="location.hash=\'#/city/'+ev.directory_slug+'\">'+
+        '<div class="zh-event-date">📅 '+dd.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric'})+'</div>'+
+        '<div class="zh-event-body"><h4>'+esc(ev.title)+'</h4>'+
+        (ev.location?'<p>📍 '+esc(ev.location)+'</p>':'')+
+        (ev.description?'<p>'+esc(ev.description).slice(0,120)+(ev.description.length>120?'...':'')+'</p>':'')+
+        '<div class="meta">'+(ev.rsvp_count||0)+' attending</div>'+
+        '<span class="rsvp">RSVP →</span></div></div>'
+    }
+    sec.innerHTML=h
+  }catch(e){
+    var sec=el.querySelector('.zh-section .zh-section-inner')
+    if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
+  }
+}
+
+// ── Init ──
+route()
+</script>
+</body>
+</html>
