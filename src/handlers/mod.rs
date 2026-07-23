@@ -130,3 +130,5 @@ pub mod blog_seo;
 pub use blog_seo::*;
 pub mod blog_qa;
 pub use blog_qa::*;
+pub mod zaarhub;
+pub use zaarhub::*;

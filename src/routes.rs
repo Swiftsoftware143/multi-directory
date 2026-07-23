@@ -371,6 +371,13 @@ pub fn create_router(s: AppState) -> Router {
         .route("/businesses/:id/claim", post(visitors::claim_business))
         .route("/businesses/:id/images", post(businesses::upload_business_images))
         .route("/city-requests", get(visitors::get_city_requests).post(visitors::request_city))
+        // ??? ZaarHub community frontend API
+        .route("/zaarhub/cities", get(zaarhub::list_cities))
+        .route("/zaarhub/cities/:slug", get(zaarhub::get_city_page))
+        .route("/zaarhub/activity", get(zaarhub::get_activity))
+        .route("/zaarhub/homepage", get(zaarhub::get_homepage))
+        .route("/zaarhub/search", get(zaarhub::search_businesses))
+        .route("/zaarhub/config/:dir_id", get(zaarhub::get_zaarhub_config).put(zaarhub::update_zaarhub_config))
         // ? Booking routes (no auth required)
         .route("/directories/:slug/businesses/:business_id/available-slots", get(bookings::get_available_slots))
         .route("/directories/:slug/businesses/:business_id/book", post(bookings::create_booking))
@@ -864,6 +871,8 @@ async fn auth_guard(
         || (path == "/referrals/claim" && req.method() == "POST")
         // Public referral code info (no auth)
         || path.starts_with("/referrals/code/")
+        // ZaarHub community frontend API (public)
+        || path.starts_with("/zaarhub/")
         // Stage 5: Server-rendered my-bookings page (handles auth internally)
         || path == "/my-bookings"
         // Stage 5: SSO (handlers authenticate internally)
