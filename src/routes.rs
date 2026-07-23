@@ -377,7 +377,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/zaarhub/activity", get(zaarhub::get_activity))
         .route("/zaarhub/homepage", get(zaarhub::get_homepage))
         .route("/zaarhub/search", get(zaarhub::search_businesses))
-        .route("/zaarhub/config/:dir_id", get(zaarhub::get_zaarhub_config).put(zaarhub::update_zaarhub_config))
+        // ZaarHub config is managed via PUT /directories/:id/features
         // ? Booking routes (no auth required)
         .route("/directories/:slug/businesses/:business_id/available-slots", get(bookings::get_available_slots))
         .route("/directories/:slug/businesses/:business_id/book", post(bookings::create_booking))

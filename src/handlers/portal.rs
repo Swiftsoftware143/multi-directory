@@ -129,6 +129,19 @@ pub struct FeatureConfigUpdate {
     pub visitor_accounts: Option<bool>,
     #[serde(default)]
     pub gamification: Option<bool>,
+    // ZaarHub network visibility per-directory
+    #[serde(default)]
+    pub network_visible: Option<bool>,
+    #[serde(default)]
+    pub homepage_featured: Option<bool>,
+    #[serde(default)]
+    pub show_deals: Option<bool>,
+    #[serde(default)]
+    pub show_events: Option<bool>,
+    #[serde(default)]
+    pub show_reviews: Option<bool>,
+    #[serde(default)]
+    pub show_activity: Option<bool>,
 }
 
 // ── Portal: Business Profile ──
@@ -525,10 +538,19 @@ pub async fn get_directory_features(
     .await?
     .flatten();
 
+    let zaarhub_config: Value = sqlx::query_scalar(
+        r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#
+    )
+    .bind(id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(json!({}));
+
     match feature_config {
         Some(config) => Ok(Json(json!({
             "directory_id": id,
             "feature_config": config,
+            "zaarhub_config": zaarhub_config,
         }))),
         None => Err(AppError::NotFound("Directory not found".to_string())),
     }
@@ -586,8 +608,46 @@ pub async fn update_directory_features(
     .execute(&s.db)
     .await?;
 
+    // Also handle ZaarHub-specific config in zaarhub_config column
+    let any_zh = [
+        req.network_visible.is_some(), req.homepage_featured.is_some(),
+        req.show_deals.is_some(), req.show_events.is_some(),
+        req.show_reviews.is_some(), req.show_activity.is_some(),
+    ].iter().any(|&x| x);
+
+    if any_zh {
+        let mut zh_patches = Vec::new();
+        if let Some(v) = req.network_visible { zh_patches.push(format!("\"network_visible\": {}", v)); }
+        if let Some(v) = req.homepage_featured { zh_patches.push(format!("\"homepage_featured\": {}", v)); }
+        if let Some(v) = req.show_deals { zh_patches.push(format!("\"show_deals\": {}", v)); }
+        if let Some(v) = req.show_events { zh_patches.push(format!("\"show_events\": {}", v)); }
+        if let Some(v) = req.show_reviews { zh_patches.push(format!("\"show_reviews\": {}", v)); }
+        if let Some(v) = req.show_activity { zh_patches.push(format!("\"show_activity\": {}", v)); }
+
+        if !zh_patches.is_empty() {
+            let zh_sql = format!(
+                "UPDATE directories SET zaarhub_config = zaarhub_config || '{{}}'::jsonb || '{{{}}}'::jsonb, updated_at = NOW() WHERE id = $1",
+                zh_patches.join(", ")
+            );
+            sqlx::query(&zh_sql)
+                .bind(id)
+                .execute(&s.db)
+                .await?;
+        }
+    }
+
+    // Fetch the full updated zaarhub_config to return
+    let zaarhub_config: Value = sqlx::query_scalar(
+        r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#
+    )
+    .bind(id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(json!({}));
+
     Ok(Json(json!({
         "directory_id": id,
         "feature_config": new_config,
+        "zaarhub_config": zaarhub_config,
     })))
 }

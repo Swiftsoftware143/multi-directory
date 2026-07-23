@@ -3,8 +3,6 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    response::IntoResponse,
     Json,
 };
 use chrono::{DateTime, Utc};
@@ -628,115 +626,6 @@ pub async fn get_city_page(
         upcoming_events: event_cards,
         categories: category_pills,
     }))
-}
-
-/// PUT /api/v1/zaarhub/config/:dir_id — update zaarhub_config for a directory (admin only)
-#[derive(Debug, Deserialize)]
-pub struct ZaarhubConfigUpdate {
-    pub network_visible: Option<bool>,
-    pub show_deals: Option<bool>,
-    pub show_events: Option<bool>,
-    pub show_reviews: Option<bool>,
-    pub show_activity: Option<bool>,
-    pub homepage_featured: Option<bool>,
-    pub homepage_hero_title: Option<String>,
-    pub homepage_hero_subtitle: Option<String>,
-    pub featured_image_url: Option<String>,
-}
-
-pub async fn update_zaarhub_config(
-    State(s): State<AppState>,
-    Path(dir_id): Path<Uuid>,
-    headers: HeaderMap,
-    Json(body): Json<ZaarhubConfigUpdate>,
-) -> ApiResult<Json<Value>> {
-    // Require admin auth via JWT from Authorization header
-    let auth_header = headers.get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(AppError::Unauthorized)?;
-    let token = auth_header.strip_prefix("Bearer ")
-        .ok_or(AppError::Unauthorized)?;
-    let claims = crate::auth::middleware::verify_token(token, &s.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
-    // Only admin or super_admin can update config
-    if claims.role != "admin" && claims.role != "super_admin" {
-        return Err(AppError::Unauthorized);
-    }
-
-    // Verify directory exists
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM directories WHERE id = $1)"
-    )
-    .bind(dir_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(false);
-
-    if !exists {
-        return Err(AppError::NotFound(format!("Directory {} not found", dir_id)));
-    }
-
-    // Build the merge JSON dynamically
-    let mut updates = Vec::new();
-    if let Some(v) = body.network_visible { updates.push(format!("\"network_visible\": {}", v)); }
-    if let Some(v) = body.show_deals { updates.push(format!("\"show_deals\": {}", v)); }
-    if let Some(v) = body.show_events { updates.push(format!("\"show_events\": {}", v)); }
-    if let Some(v) = body.show_reviews { updates.push(format!("\"show_reviews\": {}", v)); }
-    if let Some(v) = body.show_activity { updates.push(format!("\"show_activity\": {}", v)); }
-    if let Some(v) = body.homepage_featured { updates.push(format!("\"homepage_featured\": {}", v)); }
-    if let Some(ref v) = body.homepage_hero_title { updates.push(format!("\"homepage_hero_title\": {}", serde_json::to_string(v).unwrap_or_default())); }
-    if let Some(ref v) = body.homepage_hero_subtitle { updates.push(format!("\"homepage_hero_subtitle\": {}", serde_json::to_string(v).unwrap_or_default())); }
-    if let Some(ref v) = body.featured_image_url { updates.push(format!("\"featured_image_url\": {}", serde_json::to_string(v).unwrap_or_default())); }
-
-    if updates.is_empty() {
-        return Ok(Json(json!({ "ok": true, "message": "No changes requested" })));
-    }
-
-    let patch = format!(
-        "zaarhub_config = zaarhub_config::jsonb || '{{}}'::jsonb || '{{{}}}'::jsonb",
-        updates.join(", ")
-    );
-    let sql = format!("UPDATE directories SET {} WHERE id = $1", patch);
-
-    sqlx::query(&sql)
-        .bind(dir_id)
-        .execute(&s.db)
-        .await?;
-
-    // Fetch updated config
-    let updated: Option<serde_json::Value> = sqlx::query_scalar(
-        "SELECT zaarhub_config FROM directories WHERE id = $1"
-    )
-    .bind(dir_id)
-    .fetch_one(&s.db)
-    .await?;
-
-    Ok(Json(json!({
-        "ok": true,
-        "zaarhub_config": updated.unwrap_or(json!({})),
-    })))
-}
-
-/// GET /api/v1/zaarhub/config/:dir_id — get current zaarhub_config for a directory
-pub async fn get_zaarhub_config(
-    State(s): State<AppState>,
-    Path(dir_id): Path<Uuid>,
-) -> ApiResult<Json<Value>> {
-    let config: Option<serde_json::Value> = sqlx::query_scalar(
-        r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#
-    )
-    .bind(dir_id)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
-
-    match config {
-        Some(cfg) => Ok(Json(json!({
-            "ok": true,
-            "zaarhub_config": cfg,
-        }))),
-        None => Err(AppError::NotFound(format!("Directory {} not found", dir_id))),
-    }
 }
 
 /// GET /api/v1/zaarhub/search — search businesses across the network
