@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MultiDirectory Admin</title>
+<style>
+  :root{--bg:#f1f5f9;--bg-card:#fff;--text:#1e293b;--text-secondary:#64748b;--primary:#2563eb;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  body{background:var(--bg);color:var(--text);min-height:100vh}
+  
+  .sidebar{width:240px;background:var(--bg-card);border-right:1px solid var(--border);position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:100}
+  .sidebar .logo{padding:20px;font-weight:700;font-size:1.1rem;border-bottom:1px solid var(--border);color:var(--primary);display:flex;align-items:center;gap:8px}
+  .sidebar .logo img{width:28px;height:28px}
+  .sidebar .nav-item{padding:12px 20px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:.9rem;color:var(--text-secondary);transition:all .15s;border-left:3px solid transparent}
+  .sidebar .nav-item:hover{background:#f8fafc;color:var(--text)}
+  .sidebar .nav-item.active{background:#eff6ff;color:var(--primary);border-left-color:var(--primary);font-weight:600}
+  .sidebar .nav-item .icon{font-size:1.1rem;width:24px;text-align:center}
+  
+  .main{margin-left:240px;padding:24px}
+  .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+  .header h1{font-size:1.3rem;font-weight:700}
+  .header .user-info{font-size:.85rem;color:var(--text-secondary);display:flex;align-items:center;gap:12px}
+  .header .user-info .email{max-width:250px;overflow:hidden;text-overflow:ellipsis}
+  .header .logout-btn{padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:.8rem;color:var(--text-secondary)}
+  .header .logout-btn:hover{background:#fef2f2;color:var(--danger);border-color:var(--danger)}
+  
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+  .stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px}
+  .stat-card .stat-icon{font-size:1.5rem;margin-bottom:8px}
+  .stat-card .stat-num{font-size:1.8rem;font-weight:700;margin-bottom:4px}
+  .stat-card .stat-label{font-size:.8rem;color:var(--text-secondary)}
+  
+  .card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+  .card h3{font-size:.95rem;margin-bottom:12px;font-weight:600}
+  
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  
+  .loading{display:flex;justify-content:center;align-items:center;padding:60px;color:var(--text-secondary);font-size:.9rem}
+  .spinner{width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;display:inline-block;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  
+  .empty-state{text-align:center;padding:40px;color:var(--text-secondary)}
+  .empty-state .icon{font-size:2rem;margin-bottom:12px}
+  
+  .toast-container{position:fixed;bottom:20px;right:20px;z-index:1000;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:12px 20px;border-radius:8px;font-size:.85rem;color:#fff;animation:slideIn .3s ease;max-width:350px}
+  .toast.success{background:var(--success)}
+  .toast.error{background:var(--danger);color:#fff}
+  .toast.info{background:var(--primary)}
+  @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+  
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{text-align:left;padding:10px 12px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600}
+  td{padding:10px 12px;border-bottom:1px solid var(--border)}
+  tr:hover{background:#f8fafc}
+  
+  .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:500}
+  .badge.active{background:#dcfce7;color:#166534}
+  .badge.inactive{background:#fef9c3;color:#854d0e}
+  .badge.pending{background:#fef9c3;color:#854d0e}
+  
+  @media(max-width:768px){.sidebar{width:0;overflow:hidden}.main{margin-left:0;padding:16px}.grid-2{grid-template-columns:1fr}}
+  
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:1px solid var(--border);font-size:.85rem;cursor:pointer;transition:all .15s;background:var(--bg-card);color:var(--text);text-decoration:none}
+  .btn:hover{background:#f1f5f9}
+  .btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .btn-primary:hover{background:#1d4ed8}
+  .btn-sm{padding:4px 10px;font-size:.8rem}
+  .btn-danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+  .btn-danger:hover{background:#dc2626}
+  
+  .flex{display:flex;align-items:center;gap:8px}
+  .mt-2{margin-top:8px}
+  .mt-4{margin-top:16px}
+  
+  .modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:200}
+  .modal{background:var(--bg-card);border-radius:12px;padding:24px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto}
+  .modal h2{font-size:1.1rem;margin-bottom:16px}
+  .form-group{margin-bottom:12px}
+  .form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+  .form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:.85rem;font-family:inherit;background:var(--bg-card);color:var(--text)}
+  .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+</style>
+</head>
+<body>
+
+<div class="sidebar" id="sidebar">
+  <div class="logo">📂 MultiDirectory</div>
+  <div class="nav-item active" onclick="navigate('dashboard')">
+    <span class="icon">📊</span> Dashboard
+  </div>
+  <div class="nav-item" onclick="navigate('directories')">
+    <span class="icon">📁</span> Directories
+  </div>
+  <div class="nav-item" onclick="navigate('listings')">
+    <span class="icon">📋</span> Listings
+  </div>
+  <div class="nav-item" onclick="navigate('users')">
+    <span class="icon">👥</span> Users
+  </div>
+  <div class="nav-item" onclick="navigate('zaarhub')">
+    <span class="icon">🌐</span> ZaarHub
+  </div>
+  <div class="nav-item" onclick="navigate('settings')">
+    <span class="icon">⚙️</span> Settings
+  </div>
+</div>
+
+<div class="main">
+  <div class="header">
+    <h1 id="pageTitle">Dashboard</h1>
+    <div class="user-info">
+      <span class="email" id="userEmail"></span>
+      <button class="logout-btn" onclick="logout()">Log out</button>
+    </div>
+  </div>
+  
+  <div id="pageContent">
+    <div class="loading"><span class="spinner"></span> Loading...</div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ZaarHub Config Modal -->
+<div class="modal-overlay" id="zh-modal" style="display:none">
+  <div class="modal">
+    <h2>🌐 ZaarHub — <span id="zh-dir-name"></span></h2>
+    <p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px">Control how this directory appears on the ZaarHub network.</p>
+    
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="zh-network-visible" checked>
+        Visible on ZaarHub network
+      </label>
+    </div>
+    
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="zh-homepage-featured">
+        Featured on ZaarHub homepage
+      </label>
+    </div>
+    
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="zh-show-deals" checked>
+        Show deals
+      </label>
+    </div>
+    
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="zh-show-events" checked>
+        Show events
+      </label>
+    </div>
+    
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="zh-show-reviews" checked>
+        Show reviews
+      </label>
+    </div>
+    
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="zh-show-activity" checked>
+        Show in activity feed
+      </label>
+    </div>
+    
+    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+    
+    <div class="form-group">
+      <label>Homepage hero title</label>
+      <input type="text" id="zh-hero-title" placeholder="e.g. Discover Local Businesses">
+    </div>
+    
+    <div class="form-group">
+      <label>Homepage hero subtitle</label>
+      <input type="text" id="zh-hero-subtitle" placeholder="e.g. Find the best services in your area">
+    </div>
+    
+    <div class="form-group">
+      <label>Featured image URL</label>
+      <input type="url" id="zh-featured-image" placeholder="https://...">
+    </div>
+    
+    <div class="modal-actions">
+      <button class="btn" onclick="closeZaarhubConfig()">Cancel</button>
+      <button class="btn btn-primary" id="zh-save-btn" onclick="saveZaarhubConfig()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "https://directory.swiftsoftware.net/api/v1";
+const token = localStorage.getItem("ws_dir_token");
+const user = localStorage.getItem("ws_dir_user");
+
+if (!token) {
+  window.location.href = "/admin-login.html";
+}
+
+document.getElementById("userEmail").textContent = user ? JSON.parse(user).email || "" : "";
+
+async function g(path) {
+  const r = await fetch(API + path, {
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" }
+  });
+  if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+  return r.json();
+}
+
+async function po(path, body) {
+  const r = await fetch(API + path, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+  return r.json();
+}
+
+function toast(msg, type) {
+  type = type || "info";
+  const el = document.createElement("div");
+  el.className = "toast " + type;
+  el.textContent = msg;
+  document.getElementById("toastContainer").appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function logout() {
+  localStorage.removeItem("ws_dir_token");
+  localStorage.removeItem("ws_dir_user");
+  window.location.href = "/admin-login.html";
+}
+
+// Navigation
+function navigate(section) {
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  document.querySelector(`.nav-item[onclick*="'${section}'"]`).classList.add("active");
+  
+  const titles = { dashboard: "Dashboard", directories: "Directories", listings: "Listings", users: "Users", zaarhub: "ZaarHub Network", settings: "Settings" };
+  document.getElementById("pageTitle").textContent = titles[section] || section;
+  
+  switch(section) {
+    case "dashboard": loadDashboard(); break;
+    case "directories": loadDirectories(); break;
+    case "listings": loadListings(); break;
+    case "users": loadUsers(); break;
+    case "zaarhub": loadZaarhub(); break;
+    case "settings": loadSettings(); break;
+  }
+}
+
+async function loadDashboard() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    const s = await g("/dashboard/stats");
+    el.innerHTML = \`
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-icon">📁</div><div class="stat-num">\${s.total_directories || 0}</div><div class="stat-label">Directories</div></div>
+        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">\${s.total_listings || 0}</div><div class="stat-label">Listings</div></div>
+        <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-num">\${s.active_users || 0}</div><div class="stat-label">Active Users</div></div>
+        <div class="stat-card"><div class="stat-icon">🔍</div><div class="stat-num">\${s.searches_today || 0}</div><div class="stat-label">Searches Today</div></div>
+      </div>
+    \`;
+  } catch(e) {
+    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+  }
+}
+
+async function loadDirectories() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    const r = await g("/directories");
+    if (!r.data || !r.data.length) {
+      el.innerHTML = '<div class="empty-state"><div class="icon">📁</div><h3>No Directories</h3><p>Create your first directory to get started.</p></div>';
+      return;
+    }
+    let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:.85rem;color:var(--text-secondary)">' + r.data.length + ' directories</span></div>';
+    h += '<table><thead><tr><th>Name</th><th>Slug</th><th>City</th><th>Status</th></tr></thead><tbody>';
+    r.data.forEach(d => {
+      h += \`<tr><td>\${d.name}</td><td><code>\${d.slug}</code></td><td>\${d.city || "-"}</td><td><span class="badge \${d.status === "active" ? "active" : "inactive"}">\${d.status || "active"}</span></td></tr>\`;
+    });
+    h += '</tbody></table>';
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+  }
+}
+
+async function loadListings() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    const r = await g("/listings");
+    if (!r.data || !r.data.length) {
+      el.innerHTML = '<div class="empty-state"><div class="icon">📋</div><h3>No Listings</h3><p>No business listings yet.</p></div>';
+      return;
+    }
+    let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:.85rem;color:var(--text-secondary)">' + r.data.length + ' listings</span></div>';
+    h += '<table><thead><tr><th>Name</th><th>Category</th><th>Status</th></tr></thead><tbody>';
+    r.data.forEach(l => {
+      h += \`<tr><td>\${l.name}</td><td>\${l.category || "-"}</td><td><span class="badge \${l.status === "active" ? "active" : "inactive"}">\${l.status || "active"}</span></td></tr>\`;
+    });
+    h += '</tbody></table>';
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+  }
+}
+
+async function loadUsers() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    const r = await g("/admin/users");
+    if (!r.data || !r.data.length) {
+      el.innerHTML = '<div class="empty-state"><div class="icon">👥</div><h3>No Users</h3></div>';
+      return;
+    }
+    let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:.85rem;color:var(--text-secondary)">' + r.data.length + ' users</span></div>';
+    h += '<table><thead><tr><th>Email</th><th>Role</th><th>Created</th></tr></thead><tbody>';
+    r.data.forEach(u => {
+      h += \`<tr><td>\${u.email}</td><td><span class="badge active">\${u.role || "user"}</span></td><td style="color:var(--text-secondary)">\${(u.created_at || "").substring(0, 10)}</td></tr>\`;
+    });
+    h += '</tbody></table>';
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+  }
+}
+
+async function loadZaarhub() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading directories...</div>';
+  try {
+    const dirs = await g("/directories");
+    if (!dirs.data || !dirs.data.length) {
+      el.innerHTML = '<div class="empty-state"><div class="icon">🌐</div><h3>No Directories</h3><p>Create directories first to configure ZaarHub.</p></div>';
+      return;
+    }
+    let h = '<div class="card"><h3>🌐 ZaarHub Network Settings</h3><p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px">Configure which directories appear on the ZaarHub network homepage and what content shows.</p></div>';
+    h += '<table><thead><tr><th>Directory</th><th>Visible</th><th>Homepage Featured</th><th>Show Deals</th><th>Show Events</th><th>Show Reviews</th><th>Actions</th></tr></thead><tbody>';
+    for (const d of dirs.data) {
+      let zh = { network_visible: true, show_deals: true, show_events: true, show_reviews: true, show_activity: true, homepage_featured: false };
+      try {
+        const zhRes = await g("/zaarhub/config/" + d.id);
+        if (zhRes.zaarhub_config) zh = { ...zh, ...zhRes.zaarhub_config };
+      } catch(e) { /* defaults */ }
+      const dId = d.id;
+      h += '<tr>';
+      h += '<td><strong>' + (d.name || '') + '</strong><br><code style="font-size:.7rem">' + (d.slug || '') + '</code></td>';
+      h += '<td>' + (zh.network_visible ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
+      h += '<td>' + (zh.homepage_featured ? '<span class="badge active">Featured</span>' : '<span class="badge inactive">No</span>') + '</td>';
+      h += '<td>' + (zh.show_deals ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
+      h += '<td>' + (zh.show_events ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
+      h += '<td>' + (zh.show_reviews ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
+      h += '<td><button class="btn btn-sm btn-primary" onclick="openZaarhubConfig(\'' + dId + '\', \'' + (d.name || '').replace(/'/g, '\u0027') + '\')">Configure</button></td>';
+      h += '</tr>';
+    }
+    h += '</tbody></table>';
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+  }
+}
+
+var currentZaarhubDirId = null;
+
+function openZaarhubConfig(dirId, dirName) {
+  currentZaarhubDirId = dirId;
+  // Fetch current config
+  g("/zaarhub/config/" + dirId).then(function(res) {
+    var zh = res.zaarhub_config || {};
+    document.getElementById("zh-dir-name").textContent = dirName;
+    document.getElementById("zh-network-visible").checked = zh.network_visible !== false;
+    document.getElementById("zh-homepage-featured").checked = zh.homepage_featured === true;
+    document.getElementById("zh-show-deals").checked = zh.show_deals !== false;
+    document.getElementById("zh-show-events").checked = zh.show_events !== false;
+    document.getElementById("zh-show-reviews").checked = zh.show_reviews !== false;
+    document.getElementById("zh-show-activity").checked = zh.show_activity !== false;
+    document.getElementById("zh-hero-title").value = zh.homepage_hero_title || '';
+    document.getElementById("zh-hero-subtitle").value = zh.homepage_hero_subtitle || '';
+    document.getElementById("zh-featured-image").value = zh.featured_image_url || '';
+  }).catch(function(e) {
+    toast("Could not load config: " + e.message, "error");
+  });
+  document.getElementById("zh-modal").style.display = "flex";
+}
+
+function closeZaarhubConfig() {
+  document.getElementById("zh-modal").style.display = "none";
+  currentZaarhubDirId = null;
+}
+
+async function saveZaarhubConfig() {
+  if (!currentZaarhubDirId) return;
+  var btn = document.getElementById("zh-save-btn");
+  btn.disabled = true;
+  btn.textContent = "Saving...";
+  try {
+    await po("/zaarhub/config/" + currentZaarhubDirId, {
+      network_visible: document.getElementById("zh-network-visible").checked,
+      homepage_featured: document.getElementById("zh-homepage-featured").checked,
+      show_deals: document.getElementById("zh-show-deals").checked,
+      show_events: document.getElementById("zh-show-events").checked,
+      show_reviews: document.getElementById("zh-show-reviews").checked,
+      show_activity: document.getElementById("zh-show-activity").checked,
+      homepage_hero_title: document.getElementById("zh-hero-title").value || null,
+      homepage_hero_subtitle: document.getElementById("zh-hero-subtitle").value || null,
+      featured_image_url: document.getElementById("zh-featured-image").value || null,
+    });
+    toast("ZaarHub config saved!", "success");
+    closeZaarhubConfig();
+    loadZaarhub(); // Refresh the table
+  } catch(e) {
+    toast("Error: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save";
+  }
+}
+
+function loadSettings() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = \`
+    <div class="card"><h3>Account</h3>
+      <div class="form-group"><label>Email</label><input value="\${user ? JSON.parse(user).email : ""}" disabled></div>
+    </div>
+  \`;
+}
+
+// Bootstrap
+loadDashboard();
+</script>
+
+</body>
+</html>

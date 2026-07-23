@@ -71,7 +71,7 @@ var data = await res.json();
 if(!res.ok) throw new Error(data.message || data.error || 'Login failed');
 var token = data.access_token || data.token;
 if(token) localStorage.setItem('ws_dir_token', token);
-window.location.href = '/admin/#dashboard';
+window.location.href = '/admin-dashboard.html';
 }catch(ex){
 err.textContent = ex.message;
 err.classList.add('show');
