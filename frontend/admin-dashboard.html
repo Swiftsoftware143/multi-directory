@@ -100,9 +100,6 @@
   <div class="nav-item" onclick="navigate('users')">
     <span class="icon">👥</span> Users
   </div>
-  <div class="nav-item" onclick="navigate('zaarhub')">
-    <span class="icon">🌐</span> ZaarHub
-  </div>
   <div class="nav-item" onclick="navigate('settings')">
     <span class="icon">⚙️</span> Settings
   </div>
@@ -123,78 +120,6 @@
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
-
-<!-- ZaarHub Config Modal -->
-<div class="modal-overlay" id="zh-modal" style="display:none">
-  <div class="modal">
-    <h2>🌐 ZaarHub — <span id="zh-dir-name"></span></h2>
-    <p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px">Control how this directory appears on the ZaarHub network.</p>
-    
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="zh-network-visible" checked>
-        Visible on ZaarHub network
-      </label>
-    </div>
-    
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="zh-homepage-featured">
-        Featured on ZaarHub homepage
-      </label>
-    </div>
-    
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="zh-show-deals" checked>
-        Show deals
-      </label>
-    </div>
-    
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="zh-show-events" checked>
-        Show events
-      </label>
-    </div>
-    
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="zh-show-reviews" checked>
-        Show reviews
-      </label>
-    </div>
-    
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="zh-show-activity" checked>
-        Show in activity feed
-      </label>
-    </div>
-    
-    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-    
-    <div class="form-group">
-      <label>Homepage hero title</label>
-      <input type="text" id="zh-hero-title" placeholder="e.g. Discover Local Businesses">
-    </div>
-    
-    <div class="form-group">
-      <label>Homepage hero subtitle</label>
-      <input type="text" id="zh-hero-subtitle" placeholder="e.g. Find the best services in your area">
-    </div>
-    
-    <div class="form-group">
-      <label>Featured image URL</label>
-      <input type="url" id="zh-featured-image" placeholder="https://...">
-    </div>
-    
-    <div class="modal-actions">
-      <button class="btn" onclick="closeZaarhubConfig()">Cancel</button>
-      <button class="btn btn-primary" id="zh-save-btn" onclick="saveZaarhubConfig()">Save</button>
-    </div>
-  </div>
-</div>
 
 <script>
 const API = "https://directory.swiftsoftware.net/api/v1";
@@ -245,7 +170,7 @@ function navigate(section) {
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
   document.querySelector(`.nav-item[onclick*="'${section}'"]`).classList.add("active");
   
-  const titles = { dashboard: "Dashboard", directories: "Directories", listings: "Listings", users: "Users", zaarhub: "ZaarHub Network", settings: "Settings" };
+  const titles = { dashboard: "Dashboard", directories: "Directories", listings: "Listings", users: "Users", settings: "Settings" };
   document.getElementById("pageTitle").textContent = titles[section] || section;
   
   switch(section) {
@@ -253,7 +178,6 @@ function navigate(section) {
     case "directories": loadDirectories(); break;
     case "listings": loadListings(); break;
     case "users": loadUsers(); break;
-    case "zaarhub": loadZaarhub(); break;
     case "settings": loadSettings(); break;
   }
 }
@@ -336,97 +260,6 @@ async function loadUsers() {
     el.innerHTML = h;
   } catch(e) {
     el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
-  }
-}
-
-async function loadZaarhub() {
-  const el = document.getElementById("pageContent");
-  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading directories...</div>';
-  try {
-    const dirs = await g("/directories");
-    if (!dirs.data || !dirs.data.length) {
-      el.innerHTML = '<div class="empty-state"><div class="icon">🌐</div><h3>No Directories</h3><p>Create directories first to configure ZaarHub.</p></div>';
-      return;
-    }
-    let h = '<div class="card"><h3>🌐 ZaarHub Network Settings</h3><p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px">Configure which directories appear on the ZaarHub network homepage and what content shows.</p></div>';
-    h += '<table><thead><tr><th>Directory</th><th>Visible</th><th>Homepage Featured</th><th>Show Deals</th><th>Show Events</th><th>Show Reviews</th><th>Actions</th></tr></thead><tbody>';
-    for (const d of dirs.data) {
-      let zh = { network_visible: true, show_deals: true, show_events: true, show_reviews: true, show_activity: true, homepage_featured: false };
-      try {
-        const zhRes = await g("/zaarhub/config/" + d.id);
-        if (zhRes.zaarhub_config) zh = { ...zh, ...zhRes.zaarhub_config };
-      } catch(e) { /* defaults */ }
-      const dId = d.id;
-      h += '<tr>';
-      h += '<td><strong>' + (d.name || '') + '</strong><br><code style="font-size:.7rem">' + (d.slug || '') + '</code></td>';
-      h += '<td>' + (zh.network_visible ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
-      h += '<td>' + (zh.homepage_featured ? '<span class="badge active">Featured</span>' : '<span class="badge inactive">No</span>') + '</td>';
-      h += '<td>' + (zh.show_deals ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
-      h += '<td>' + (zh.show_events ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
-      h += '<td>' + (zh.show_reviews ? '<span class="badge active">Yes</span>' : '<span class="badge inactive">No</span>') + '</td>';
-      h += '<td><button class="btn btn-sm btn-primary" onclick="openZaarhubConfig(\'' + dId + '\', \'' + (d.name || '').replace(/'/g, '\u0027') + '\')">Configure</button></td>';
-      h += '</tr>';
-    }
-    h += '</tbody></table>';
-    el.innerHTML = h;
-  } catch(e) {
-    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
-  }
-}
-
-var currentZaarhubDirId = null;
-
-function openZaarhubConfig(dirId, dirName) {
-  currentZaarhubDirId = dirId;
-  // Fetch current config
-  g("/zaarhub/config/" + dirId).then(function(res) {
-    var zh = res.zaarhub_config || {};
-    document.getElementById("zh-dir-name").textContent = dirName;
-    document.getElementById("zh-network-visible").checked = zh.network_visible !== false;
-    document.getElementById("zh-homepage-featured").checked = zh.homepage_featured === true;
-    document.getElementById("zh-show-deals").checked = zh.show_deals !== false;
-    document.getElementById("zh-show-events").checked = zh.show_events !== false;
-    document.getElementById("zh-show-reviews").checked = zh.show_reviews !== false;
-    document.getElementById("zh-show-activity").checked = zh.show_activity !== false;
-    document.getElementById("zh-hero-title").value = zh.homepage_hero_title || '';
-    document.getElementById("zh-hero-subtitle").value = zh.homepage_hero_subtitle || '';
-    document.getElementById("zh-featured-image").value = zh.featured_image_url || '';
-  }).catch(function(e) {
-    toast("Could not load config: " + e.message, "error");
-  });
-  document.getElementById("zh-modal").style.display = "flex";
-}
-
-function closeZaarhubConfig() {
-  document.getElementById("zh-modal").style.display = "none";
-  currentZaarhubDirId = null;
-}
-
-async function saveZaarhubConfig() {
-  if (!currentZaarhubDirId) return;
-  var btn = document.getElementById("zh-save-btn");
-  btn.disabled = true;
-  btn.textContent = "Saving...";
-  try {
-    await po("/zaarhub/config/" + currentZaarhubDirId, {
-      network_visible: document.getElementById("zh-network-visible").checked,
-      homepage_featured: document.getElementById("zh-homepage-featured").checked,
-      show_deals: document.getElementById("zh-show-deals").checked,
-      show_events: document.getElementById("zh-show-events").checked,
-      show_reviews: document.getElementById("zh-show-reviews").checked,
-      show_activity: document.getElementById("zh-show-activity").checked,
-      homepage_hero_title: document.getElementById("zh-hero-title").value || null,
-      homepage_hero_subtitle: document.getElementById("zh-hero-subtitle").value || null,
-      featured_image_url: document.getElementById("zh-featured-image").value || null,
-    });
-    toast("ZaarHub config saved!", "success");
-    closeZaarhubConfig();
-    loadZaarhub(); // Refresh the table
-  } catch(e) {
-    toast("Error: " + e.message, "error");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Save";
   }
 }
 
