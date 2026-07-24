@@ -746,3 +746,150 @@ pub async fn search_businesses(
         "limit": limit,
     })))
 }
+
+/// GET /api/v1/zaarhub/business/:slug/:id — business detail page
+pub async fn get_business_detail(
+    State(s): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+) -> ApiResult<Json<Value>> {
+    let dir_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM directories WHERE slug = $1"
+    )
+    .bind(&slug)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+
+    // Try UUID lookup first, then slug
+    let business = if let Ok(bid) = Uuid::parse_str(&id) {
+        sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
+            r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.rating, b.review_count,
+                      b.website, b.address, b.city, b.state, b.latitude, b.longitude, b.category_id
+               FROM businesses b
+               WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#
+        )
+        .bind(bid)
+        .bind(dir_id)
+        .fetch_optional(&s.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
+            r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.rating, b.review_count,
+                      b.website, b.address, b.city, b.state, b.latitude, b.longitude, b.category_id
+               FROM businesses b
+               WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#
+        )
+        .bind(&id)
+        .bind(dir_id)
+        .fetch_optional(&s.db)
+        .await?
+    };
+
+    let (biz_id, biz_name, biz_slug, biz_desc, biz_phone, biz_rating, biz_review_count,
+         biz_website, biz_address, biz_city, biz_state, biz_lat, biz_lng, biz_cat_id) = business
+        .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    // Get category name
+    let category_name: Option<String> = if let Some(cat_id) = biz_cat_id {
+        sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
+            .bind(cat_id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten()
+    } else {
+        None
+    };
+
+    // Get directory name
+    let dir_name: String = sqlx::query_scalar("SELECT name FROM directories WHERE id = $1")
+        .bind(dir_id)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or_default();
+
+    // Get recent reviews for this business
+    let reviews = sqlx::query_as::<_, (Uuid, Option<String>, i32, Option<String>, Option<DateTime<Utc>>)>(
+        r#"SELECT id, reviewer_name, rating, content, created_at
+           FROM reviews
+           WHERE business_id = $1 AND status = 'approved'
+           ORDER BY created_at DESC
+           LIMIT 10"#
+    )
+    .bind(biz_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let review_list: Vec<Value> = reviews.into_iter().map(|(id, reviewer, rating, content, ts)| {
+        json!({
+            "id": id,
+            "reviewer_name": reviewer,
+            "rating": rating,
+            "content": content,
+            "created_at": ts,
+        })
+    }).collect();
+
+    // Get active deals for this business
+    let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<DateTime<Utc>>)>(
+        r#"SELECT id, title, description, deal_price, original_price, discount_percent, end_date
+           FROM deals
+           WHERE business_id = $1 AND status = 'active'
+           ORDER BY created_at DESC"#
+    )
+    .bind(biz_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let deal_list: Vec<Value> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, end_date)| {
+        json!({
+            "id": id, "title": title, "description": desc,
+            "deal_price": deal_price, "original_price": orig_price,
+            "discount_percent": discount, "end_date": end_date,
+        })
+    }).collect();
+
+    // Check if business is verified/claimed
+    let is_claimed: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM claimed_businesses WHERE business_id = $1)"
+    )
+    .bind(biz_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(false);
+
+    // Hours
+    let hours: Option<Value> = sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT hours FROM business_meta WHERE business_id = $1 AND hours IS NOT NULL LIMIT 1"
+    )
+    .bind(biz_id)
+    .fetch_optional(&s.db)
+    .await
+    .ok()
+    .flatten();
+
+    Ok(Json(json!({
+        "business": {
+            "id": biz_id,
+            "name": biz_name,
+            "slug": biz_slug,
+            "description": biz_desc,
+            "phone": biz_phone,
+            "website": biz_website,
+            "address": biz_address,
+            "city": biz_city,
+            "state": biz_state,
+            "latitude": biz_lat,
+            "longitude": biz_lng,
+            "category": category_name,
+            "rating": biz_rating,
+            "review_count": biz_review_count,
+            "is_claimed": is_claimed,
+            "image_url": null,
+        },
+        "directory_name": dir_name,
+        "directory_slug": slug,
+        "reviews": review_list,
+        "deals": deal_list,
+        "hours": hours,
+    })))
+}

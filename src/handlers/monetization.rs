@@ -1217,3 +1217,733 @@ pub async fn list_business_categories(
 
     Ok(Json(result))
 }
+
+
+// ── Sponsors ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Sponsor {
+    pub id: Uuid,
+    pub directory_id: Uuid,
+    pub business_id: Uuid,
+    pub status: String,
+    pub commission_rate: Option<rust_decimal::Decimal>,
+    pub notes: Option<String>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSponsorRequest {
+    pub business_id: Uuid,
+    pub status: Option<String>,
+    pub commission_rate: Option<rust_decimal::Decimal>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSponsorRequest {
+    pub status: Option<String>,
+    pub commission_rate: Option<rust_decimal::Decimal>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct SponsorWithBusiness {
+    pub id: Uuid,
+    pub directory_id: Uuid,
+    pub business_id: Uuid,
+    pub business_name: String,
+    pub status: String,
+    pub commission_rate: Option<rust_decimal::Decimal>,
+    pub notes: Option<String>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// GET /api/v1/monetization/sponsors — list sponsors for a directory
+pub async fn list_sponsors(
+    State(s): State<AppState>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let dir_id = q.get("directory_id")
+        .ok_or_else(|| AppError::Validation("directory_id is required".to_string()))?;
+    let dir_id = q.get("directory_id")
+        .ok_or_else(|| AppError::Validation("directory_id is required".to_string()))?;
+    let dir_uuid = Uuid::parse_str(dir_id)
+        .map_err(|_| AppError::Validation("invalid directory_id".to_string()))?;
+
+    let sponsors = sqlx::query_as::<_, SponsorWithBusiness>(
+        r#"SELECT sp.id, sp.directory_id, sp.business_id, b.name as business_name,
+                  sp.status, sp.commission_rate, sp.notes, sp.created_at
+           FROM sponsors sp
+           LEFT JOIN businesses b ON b.id = sp.business_id
+           WHERE sp.directory_id = $1
+           ORDER BY sp.created_at DESC"#
+    )
+    .bind(dir_uuid)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(sponsors))
+}
+
+/// POST /api/v1/monetization/sponsors — create a sponsor
+pub async fn create_sponsor(
+    State(s): State<AppState>,
+    Json(req): Json<CreateSponsorRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // Get directory_id from the business
+    let dir_id: Uuid = sqlx::query_scalar(
+        "SELECT directory_id FROM businesses WHERE id = $1"
+    )
+    .bind(req.business_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    let sponsor = sqlx::query_as::<_, Sponsor>(
+        r#"INSERT INTO sponsors (directory_id, business_id, status, commission_rate, notes)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (directory_id, business_id)
+           DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+           RETURNING id, directory_id, business_id, status, commission_rate, notes, created_at, updated_at"#
+    )
+    .bind(dir_id)
+    .bind(req.business_id)
+    .bind(req.status.unwrap_or_else(|| "pending".to_string()))
+    .bind(req.commission_rate)
+    .bind(req.notes)
+    .fetch_one(&s.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(json!(sponsor))))
+}
+
+/// PUT /api/v1/monetization/sponsors/:id — update a sponsor
+pub async fn update_sponsor(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateSponsorRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let sponsor = sqlx::query_as::<_, Sponsor>(
+        r#"UPDATE sponsors SET
+            status = COALESCE($1, status),
+            commission_rate = COALESCE($2, commission_rate),
+            notes = COALESCE($3, notes),
+            updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, directory_id, business_id, status, commission_rate, notes, created_at, updated_at"#
+    )
+    .bind(&req.status)
+    .bind(req.commission_rate)
+    .bind(&req.notes)
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Sponsor not found".to_string()))?;
+
+    Ok(Json(json!(sponsor)))
+}
+
+/// DELETE /api/v1/monetization/sponsors/:id — delete a sponsor
+pub async fn delete_sponsor(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let result = sqlx::query("DELETE FROM sponsors WHERE id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Sponsor not found".to_string()));
+    }
+    Ok(Json(json!({"status": "deleted"})))
+}
+
+// ── Ad Creatives ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AdCreative {
+    pub id: Uuid,
+    pub sponsor_id: Uuid,
+    pub name: String,
+    pub image_url: String,
+    pub target_url: Option<String>,
+    pub width: i32,
+    pub height: i32,
+    pub mime_type: Option<String>,
+    pub file_size_bytes: Option<i32>,
+    pub status: String,
+    pub rejection_reason: Option<String>,
+    pub is_active: Option<bool>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCreativeRequest {
+    pub name: String,
+    pub image_url: String,
+    pub target_url: Option<String>,
+    pub width: i32,
+    pub height: i32,
+    pub mime_type: Option<String>,
+    pub file_size_bytes: Option<i32>,
+}
+
+/// GET /api/v1/monetization/sponsors/:id/creatives — list creatives for a sponsor
+pub async fn list_creatives(
+    State(s): State<AppState>,
+    Path(sponsor_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let creatives = sqlx::query_as::<_, AdCreative>(
+        r#"SELECT id, sponsor_id, name, image_url, target_url, width, height,
+                  mime_type, file_size_bytes, status, rejection_reason, is_active, created_at
+           FROM ad_creatives
+           WHERE sponsor_id = $1
+           ORDER BY created_at DESC"#
+    )
+    .bind(sponsor_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(creatives))
+}
+
+/// POST /api/v1/monetization/sponsors/:id/creatives — create a creative
+/// Validates dimensions against available ad zone slots for the directory
+pub async fn create_creative(
+    State(s): State<AppState>,
+    Path(sponsor_id): Path<Uuid>,
+    Json(req): Json<CreateCreativeRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // Validate dimensions match an existing ad zone
+    let sponsor_dir: Uuid = sqlx::query_scalar(
+        "SELECT directory_id FROM sponsors WHERE id = $1"
+    )
+    .bind(sponsor_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Sponsor not found".to_string()))?;
+
+    // Check that a zone slot exists with these dimensions
+    let zone_exists: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS(
+            SELECT 1 FROM ad_zones
+            WHERE (directory_id = $1 OR directory_id IS NULL)
+            AND width = $2 AND height = $3
+            AND status = 'active' OR status IS NULL
+        )"#
+    )
+    .bind(sponsor_dir)
+    .bind(req.width)
+    .bind(req.height)
+    .fetch_one(&s.db)
+    .await?;
+
+    if !zone_exists {
+        return Err(AppError::Validation(
+            format!("Dimensions {}x{} do not match any available ad slot. Available slots: use GET /api/v1/ad-zones to see sizes", req.width, req.height)
+        ));
+    }
+
+    let creative = sqlx::query_as::<_, AdCreative>(
+        r#"INSERT INTO ad_creatives (sponsor_id, name, image_url, target_url, width, height, mime_type, file_size_bytes, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+           RETURNING id, sponsor_id, name, image_url, target_url, width, height,
+                     mime_type, file_size_bytes, status, rejection_reason, is_active, created_at"#
+    )
+    .bind(sponsor_id)
+    .bind(&req.name)
+    .bind(&req.image_url)
+    .bind(&req.target_url)
+    .bind(req.width)
+    .bind(req.height)
+    .bind(&req.mime_type)
+    .bind(req.file_size_bytes)
+    .fetch_one(&s.db)
+    .await?;
+
+    // Auto-add to approval queue
+    sqlx::query(
+        r#"INSERT INTO approval_queue (directory_id, item_type, item_id, status)
+           VALUES ($1, 'ad_creative', $2, 'pending')
+           ON CONFLICT (item_type, item_id) DO NOTHING"#
+    )
+    .bind(sponsor_dir)
+    .bind(creative.id)
+    .execute(&s.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(json!(creative))))
+}
+
+/// PUT /api/v1/monetization/creatives/:id — update a creative
+pub async fn update_creative(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<serde_json::Value>,
+) -> ApiResult<impl IntoResponse> {
+    let name = req.get("name").and_then(|v| v.as_str());
+    let target_url = req.get("target_url").and_then(|v| v.as_str());
+    let status = req.get("status").and_then(|v| v.as_str());
+    let rejection_reason = req.get("rejection_reason").and_then(|v| v.as_str());
+    let is_active = req.get("is_active").and_then(|v| v.as_bool());
+
+    let creative = sqlx::query_as::<_, AdCreative>(
+        r#"UPDATE ad_creatives SET
+            name = COALESCE($1, name),
+            target_url = COALESCE($2, target_url),
+            status = COALESCE($3, status),
+            rejection_reason = COALESCE($4, rejection_reason),
+            is_active = COALESCE($5, is_active)
+           WHERE id = $6
+           RETURNING id, sponsor_id, name, image_url, target_url, width, height,
+                     mime_type, file_size_bytes, status, rejection_reason, is_active, created_at"#
+    )
+    .bind(name)
+    .bind(target_url)
+    .bind(status)
+    .bind(rejection_reason)
+    .bind(is_active)
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Creative not found".to_string()))?;
+
+    Ok(Json(json!(creative)))
+}
+
+/// DELETE /api/v1/monetization/creatives/:id — delete a creative
+pub async fn delete_creative(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let result = sqlx::query("DELETE FROM ad_creatives WHERE id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Creative not found".to_string()));
+    }
+    Ok(Json(json!({"status": "deleted"})))
+}
+
+// ── Ad Schedules ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AdSchedule {
+    pub id: Uuid,
+    pub directory_id: Uuid,
+    pub ad_zone_id: Uuid,
+    pub sponsor_id: Uuid,
+    pub creative_id: Uuid,
+    pub start_date: chrono::DateTime<chrono::Utc>,
+    pub end_date: chrono::DateTime<chrono::Utc>,
+    pub price_monthly: rust_decimal::Decimal,
+    pub total_price: rust_decimal::Decimal,
+    pub status: String,
+    pub auto_renew: Option<bool>,
+    pub created_by: Option<Uuid>,
+    pub approved_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub approved_by: Option<Uuid>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdScheduleWithDetails {
+    pub id: Uuid,
+    pub directory_id: Uuid,
+    pub ad_zone_id: Uuid,
+    pub ad_zone_name: String,
+    pub sponsor_id: Uuid,
+    pub sponsor_name: String,
+    pub creative_id: Uuid,
+    pub creative_name: String,
+    pub creative_image_url: String,
+    pub width: i32,
+    pub height: i32,
+    pub start_date: String,
+    pub end_date: String,
+    pub price_monthly: String,
+    pub total_price: String,
+    pub status: String,
+    pub auto_renew: bool,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateScheduleRequest {
+    pub ad_zone_id: Uuid,
+    pub sponsor_id: Uuid,
+    pub creative_id: Uuid,
+    pub start_date: chrono::DateTime<chrono::Utc>,
+    pub end_date: chrono::DateTime<chrono::Utc>,
+    pub auto_renew: Option<bool>,
+}
+
+/// GET /api/v1/monetization/schedules — list ad schedules
+pub async fn list_schedules(
+    State(s): State<AppState>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let dir_id = q.get("directory_id")
+        .ok_or_else(|| AppError::Validation("directory_id is required".to_string()))?;
+    let dir_id = q.get("directory_id")
+        .ok_or_else(|| AppError::Validation("directory_id is required".to_string()))?;
+    let dir_uuid = Uuid::parse_str(dir_id)
+        .map_err(|_| AppError::Validation("invalid directory_id".to_string()))?;
+
+    let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
+            r#"SELECT jsonb_build_object(
+                'id', s.id, 'directory_id', s.directory_id,
+                'ad_zone_id', s.ad_zone_id, 'ad_zone_name', z.name,
+                'sponsor_id', s.sponsor_id, 'sponsor_name', b.name,
+                'creative_id', s.creative_id, 'creative_name', c.name,
+                'creative_image_url', c.image_url, 'width', c.width, 'height', c.height,
+                'start_date', s.start_date::text, 'end_date', s.end_date::text,
+                'price_monthly', s.price_monthly::text, 'total_price', s.total_price::text,
+                'status', s.status, 'auto_renew', COALESCE(s.auto_renew, false),
+                'created_at', s.created_at
+            ) as data
+           FROM ad_schedules s
+           LEFT JOIN ad_zones z ON z.id = s.ad_zone_id
+           LEFT JOIN sponsors sp ON sp.id = s.sponsor_id
+           LEFT JOIN businesses b ON b.id = sp.business_id
+           LEFT JOIN ad_creatives c ON c.id = s.creative_id
+           WHERE s.directory_id = $1
+           ORDER BY s.created_at DESC
+           LIMIT 100"#
+    )
+    .bind(dir_uuid)
+    .fetch_all(&s.db)
+    .await?;
+
+    let schedules: Vec<AdScheduleWithDetails> = rows.into_iter().map(|r| {
+        let d = &r.0.get("data").unwrap_or(&r.0);
+        AdScheduleWithDetails {
+            id: d.get("id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).unwrap_or_default(),
+            directory_id: d.get("directory_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).unwrap_or_default(),
+            ad_zone_id: d.get("ad_zone_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).unwrap_or_default(),
+            ad_zone_name: d.get("ad_zone_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            sponsor_id: d.get("sponsor_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).unwrap_or_default(),
+            sponsor_name: d.get("sponsor_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            creative_id: d.get("creative_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).unwrap_or_default(),
+            creative_name: d.get("creative_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            creative_image_url: d.get("creative_image_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            width: d.get("width").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+            height: d.get("height").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+            start_date: d.get("start_date").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            end_date: d.get("end_date").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            price_monthly: d.get("price_monthly").and_then(|v| v.as_str()).unwrap_or("0").to_string(),
+            total_price: d.get("total_price").and_then(|v| v.as_str()).unwrap_or("0").to_string(),
+            status: d.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string(),
+            auto_renew: d.get("auto_renew").and_then(|v| v.as_bool()).unwrap_or(false),
+            created_at: d.get("created_at").and_then(|v| v.as_str()).and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
+            }),
+        }
+    }).collect();
+
+    Ok(Json(schedules))
+}
+
+/// POST /api/v1/monetization/schedules — create an ad schedule
+pub async fn create_schedule(
+    State(s): State<AppState>,
+    Json(req): Json<CreateScheduleRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // Validate dates
+    if req.end_date <= req.start_date {
+        return Err(AppError::Validation("end_date must be after start_date".to_string()));
+    }
+
+    // Get directory and price info
+    let (dir_id, price_monthly): (Uuid, rust_decimal::Decimal) = sqlx::query_as(
+        r#"SELECT sp.directory_id, COALESCE(z.price_monthly, 0)
+           FROM sponsors sp
+           CROSS JOIN ad_zones z
+           WHERE sp.id = $1 AND z.id = $2"#
+    )
+    .bind(req.sponsor_id)
+    .bind(req.ad_zone_id)
+    .fetch_one(&s.db)
+    .await?;
+
+    // Calculate total price (months * monthly)
+    let days = (req.end_date - req.start_date).num_days().max(1) as f64;
+    let months = (days / 30.0).ceil();
+    let total = price_monthly * rust_decimal::Decimal::try_from(months).unwrap_or(rust_decimal::Decimal::ZERO);
+
+    let schedule = sqlx::query_as::<_, AdSchedule>(
+        r#"INSERT INTO ad_schedules (directory_id, ad_zone_id, sponsor_id, creative_id,
+              start_date, end_date, price_monthly, total_price, status, auto_renew)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+           RETURNING id, directory_id, ad_zone_id, sponsor_id, creative_id,
+                     start_date, end_date, price_monthly, total_price, status,
+                     auto_renew, created_by, approved_at, approved_by, created_at"#
+    )
+    .bind(dir_id)
+    .bind(req.ad_zone_id)
+    .bind(req.sponsor_id)
+    .bind(req.creative_id)
+    .bind(req.start_date)
+    .bind(req.end_date)
+    .bind(price_monthly)
+    .bind(total)
+    .bind(req.auto_renew.unwrap_or(false))
+    .fetch_one(&s.db)
+    .await?;
+
+    // Auto-add to approval queue
+    sqlx::query(
+        r#"INSERT INTO approval_queue (directory_id, item_type, item_id, status)
+           VALUES ($1, 'ad_schedule', $2, 'pending')
+           ON CONFLICT (item_type, item_id) DO NOTHING"#
+    )
+    .bind(dir_id)
+    .bind(schedule.id)
+    .execute(&s.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(json!(schedule))))
+}
+
+/// PUT /api/v1/monetization/schedules/:id — update a schedule
+pub async fn update_schedule(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<serde_json::Value>,
+) -> ApiResult<impl IntoResponse> {
+    let status = req.get("status").and_then(|v| v.as_str());
+    let creative_id = req.get("creative_id").and_then(|v| {
+        if let Some(s) = v.as_str() { Uuid::parse_str(s).ok() }
+        else { v.as_str().and_then(|s| Uuid::parse_str(s).ok()) }
+    });
+
+    let schedule = sqlx::query_as::<_, AdSchedule>(
+        r#"UPDATE ad_schedules SET
+            status = COALESCE($1, status),
+            creative_id = COALESCE($2, creative_id),
+            approved_at = CASE WHEN $1 = 'active' THEN NOW() ELSE approved_at END,
+            updated_at = NOW()
+           WHERE id = $3
+           RETURNING id, directory_id, ad_zone_id, sponsor_id, creative_id,
+                     start_date, end_date, price_monthly, total_price, status,
+                     auto_renew, created_by, approved_at, approved_by, created_at"#
+    )
+    .bind(status)
+    .bind(creative_id)
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Schedule not found".to_string()))?;
+
+    Ok(Json(json!(schedule)))
+}
+
+/// DELETE /api/v1/monetization/schedules/:id — delete a schedule
+pub async fn delete_schedule(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let result = sqlx::query("DELETE FROM ad_schedules WHERE id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Schedule not found".to_string()));
+    }
+    Ok(Json(json!({"status": "deleted"})))
+}
+
+// ── Active Ads (for public rendering) ────────────────────────────────────────
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ActiveAd {
+    pub zone_key: String,
+    pub width: i32,
+    pub height: i32,
+    pub image_url: String,
+    pub target_url: Option<String>,
+    pub sponsor_name: String,
+}
+
+/// GET /api/v1/monetization/ads/active/:directory_id — get active ads for public rendering
+pub async fn get_active_ads(
+    State(s): State<AppState>,
+    Path(dir_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let ads = sqlx::query_as::<_, ActiveAd>(
+        r#"SELECT z.zone_key, z.width, z.height,
+                  c.image_url, c.target_url,
+                  b.name as sponsor_name
+           FROM ad_schedules s
+           JOIN ad_zones z ON z.id = s.ad_zone_id
+           JOIN ad_creatives c ON c.id = s.creative_id
+           JOIN sponsors sp ON sp.id = s.sponsor_id
+           JOIN businesses b ON b.id = sp.business_id
+           WHERE s.directory_id = $1
+             AND s.status = 'active'
+             AND s.start_date <= NOW()
+             AND s.end_date >= NOW()
+             AND c.status = 'approved'
+             AND c.is_active = true
+           ORDER BY s.created_at DESC"#
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(ads))
+}
+
+// ── Earnings ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdEarningSummary {
+    pub zone_id: Uuid,
+    pub zone_name: String,
+    pub total_earned: String,
+    pub active_schedules: i64,
+    pub pending_amount: String,
+}
+
+/// GET /api/v1/monetization/earnings/:directory_id — earnings summary
+pub async fn get_earnings_summary(
+    State(s): State<AppState>,
+    Path(dir_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let summary = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, i64, rust_decimal::Decimal)>(
+        r#"SELECT z.id, z.name,
+                  COALESCE(SUM(s.total_price) FILTER (WHERE s.status = 'active' OR s.status = 'completed'), 0) as total,
+                  COUNT(s.id) FILTER (WHERE s.status = 'active') as active,
+                  COALESCE(SUM(s.total_price) FILTER (WHERE s.status = 'pending'), 0) as pending
+           FROM ad_zones z
+           LEFT JOIN ad_schedules s ON s.ad_zone_id = z.id
+           WHERE z.directory_id = $1 OR z.directory_id IS NULL
+           GROUP BY z.id, z.name
+           ORDER BY total DESC"#
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let result: Vec<AdEarningSummary> = summary.into_iter().map(|(id, name, total, active, pending)| {
+        AdEarningSummary {
+            zone_id: id,
+            zone_name: name,
+            total_earned: total.to_string(),
+            active_schedules: active,
+            pending_amount: pending.to_string(),
+        }
+    }).collect();
+
+    Ok(Json(result))
+}
+
+// ── Approval Queue ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApprovalItem {
+    pub id: Uuid,
+    pub item_type: String,
+    pub item_id: Uuid,
+    pub submitted_at: chrono::DateTime<chrono::Utc>,
+    pub details: serde_json::Value,
+}
+
+/// GET /api/v1/monetization/approvals/:directory_id — list pending approvals
+pub async fn list_approvals(
+    State(s): State<AppState>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let dir_id = q.get("directory_id")
+        .ok_or_else(|| AppError::Validation("directory_id is required".to_string()))?;
+    let dir_uuid = Uuid::parse_str(dir_id)
+        .map_err(|_| AppError::Validation("invalid directory_id".to_string()))?;
+    let status_filter = q.get("status").map(|s| s.as_str()).unwrap_or("pending");
+    let item_type = q.get("type");
+
+    let mut sql = String::from(
+        r#"SELECT aq.id, aq.item_type, aq.item_id, aq.submitted_at, '{}'::jsonb as details
+           FROM approval_queue aq
+           WHERE aq.directory_id = $1 AND aq.status = $2"#
+    );
+    if let Some(itype) = item_type {
+        sql.push_str(&format!(" AND aq.item_type = '{}'", itype));
+    }
+    sql.push_str(" ORDER BY aq.submitted_at DESC LIMIT 50");
+
+    let approvals: Vec<(Uuid, String, Uuid, chrono::DateTime<chrono::Utc>, serde_json::Value)> = sqlx::query_as(&sql)
+        .bind(dir_uuid)
+        .bind(status_filter)
+        .fetch_all(&s.db)
+        .await?;
+
+    let result: Vec<ApprovalItem> = approvals.into_iter().map(|(id, itype, iid, submitted, details)| {
+        ApprovalItem { id, item_type: itype, item_id: iid, submitted_at: submitted, details }
+    }).collect();
+
+    Ok(Json(result))
+}
+
+/// PUT /api/v1/monetization/approvals/:id — approve or reject an approval
+pub async fn update_approval(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<serde_json::Value>,
+) -> ApiResult<impl IntoResponse> {
+    let status = req.get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::Validation("status required (approved/rejected)".to_string()))?;
+
+    if status != "approved" && status != "rejected" {
+        return Err(AppError::Validation("status must be 'approved' or 'rejected'".to_string()));
+    }
+
+    // Get the approval item to find what to update
+    let item: (String, Uuid) = sqlx::query_as(
+        r#"SELECT item_type, item_id FROM approval_queue WHERE id = $1"#
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Approval not found".to_string()))?;
+
+    // Update approval queue status
+    sqlx::query(
+        "UPDATE approval_queue SET status = $1, reviewed_at = NOW() WHERE id = $2"
+    )
+    .bind(status)
+    .bind(id)
+    .execute(&s.db)
+    .await?;
+
+    // Cascade update to the referenced item
+    match item.0.as_str() {
+        "sponsor" => {
+            sqlx::query("UPDATE sponsors SET status = $1 WHERE id = $2")
+                .bind(if status == "approved" { "active" } else { "inactive" })
+                .bind(item.1)
+                .execute(&s.db).await?;
+        }
+        "ad_creative" => {
+            sqlx::query("UPDATE ad_creatives SET status = $1 WHERE id = $2")
+                .bind(if status == "approved" { "approved" } else { "rejected" })
+                .bind(item.1)
+                .execute(&s.db).await?;
+        }
+        "ad_schedule" => {
+            sqlx::query("UPDATE ad_schedules SET status = $1, approved_at = CASE WHEN $1 = 'active' THEN NOW() ELSE NULL END WHERE id = $2")
+                .bind(if status == "approved" { "active" } else { "cancelled" })
+                .bind(item.1)
+                .execute(&s.db).await?;
+        }
+        _ => {}
+    }
+
+    Ok(Json(json!({"status": "updated", "item_status": status})))
+}
