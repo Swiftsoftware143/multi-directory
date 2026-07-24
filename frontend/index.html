@@ -591,6 +591,7 @@ async function load(){
     else if(state.page==='search')await loadSearchResults()
     else if(state.page==='deals')await loadDealsPage()
     else if(state.page==='events')await loadEventsPage()
+    else if(state.page==='biz')await loadBizPage()
   }catch(e){
     renderError(e.message)
   }
@@ -1657,6 +1658,171 @@ function renderAdSlot(zoneKey, containerId, ads){
   container.style.display='';
   container.classList.add('active');
 }
+
+
+// ── Business Detail Page ──
+async function loadBizPage(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML='<div class="zh-loading"><div class="zh-spinner"></div><p style="margin-top:12px">Loading business...</p></div>'
+  try{
+    var d=await g('/zaarhub/business/'+state.slug+'/'+state.bizId)
+    renderBizPage(d)
+  }catch(e){
+    renderError(e.message)
+  }
+}
+
+function renderBizPage(d){
+  var b=d.business
+  var el=document.getElementById('zh-content')
+  var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
+  var phoneHref=b.phone?'tel:'+b.phone.replace(/[^\d+]/g,''):''
+
+  el.innerHTML='<div class="zh-biz-hero" style="background:linear-gradient(135deg,#0f172a 0%,#134e4a 70%,#0d9488 100%);color:#fff;padding:48px 24px"><div class="zh-section-inner" style="max-width:1280px;margin:0 auto"><a href="#/city/'+state.slug+'" style="color:#94a3b8;font-size:.85rem;margin-bottom:12px;display:inline-block">← Back to '+toTitle(state.slug)+'</a><h1 style="font-size:2rem;font-weight:800;margin-bottom:4px">'+esc(b.name)+'</h1><div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:.9rem;color:#94a3b8">'+
+  (b.rating?'<span>'+stars+' ('+b.review_count+' reviews)</span>':'')+
+  (b.category?'<span>📁 '+esc(b.category)+'</span>':'')+
+  (b.is_claimed?'<span>👑 Verified</span>':'')+
+  '</div><div style="display:flex;gap:12px;flex-wrap:wrap">'+
+  (phoneHref?'<a href="'+phoneHref+'" class="zh-btn-primary" style="padding:10px 20px;border-radius:8px;background:var(--teal);color:#fff;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px">📞 Call</a>':'')+
+  (b.website?'<a href="'+esc(b.website)+'" target="_blank" class="zh-btn-secondary" style="padding:10px 20px;border-radius:8px;border:1px solid rgba(255,255,255,.3);color:#fff;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px">🌐 Website</a>':'')+
+  (b.address?'<a href="https://maps.google.com/?q='+encodeURIComponent(b.address+' '+b.city)+'" target="_blank" class="zh-btn-secondary" style="padding:10px 20px;border-radius:8px;border:1px solid rgba(255,255,255,.3);color:#fff;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px">🗺️ Directions</a>':'')+
+  '</div></div></div>'+
+  '<div class="zh-section"><div class="zh-section-inner"><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px"><div>'+
+  (b.description?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">About</h3><p style="color:var(--text-light);line-height:1.7">'+esc(b.description)+'</p></div>':'')+
+  (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(b.address)+'<br>'+esc(b.city)+', '+esc(b.state)+'</p></div>':'')+
+  (b.hours?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🕐 Hours</h3><p style="color:var(--text-light);white-space:pre-wrap;font-size:.85rem">'+esc(JSON.stringify(b.hours,null,2))+'</p></div>':'')+
+  '</div><div>'+
+  (d.deals&&d.deals.length?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🎁 Current Deals</h3>'+d.deals.map(function(dl){return '<div style="background:var(--bg-teal);padding:14px;border-radius:8px;margin-bottom:8px"><strong>'+esc(dl.title)+'</strong>'+(dl.deal_price?'<div style="color:var(--teal);font-weight:700;margin-top:4px">$'+esc(dl.deal_price)+(dl.original_price?' <span style="text-decoration:line-through;color:var(--text-muted)">$'+esc(dl.original_price)+'</span>':'')+'</div>':'')+(dl.description?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(dl.description)+'</div>':'')+'</div>'}).join('')+'</div>':'')+
+  '<!-- Reviews Section --><div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">⭐ Reviews '+(d.reviews?'('+d.reviews.length+')':'')+'</h3>'+
+  (d.reviews&&d.reviews.length?d.reviews.map(function(rv){var s='★'.repeat(rv.rating)+'☆'.repeat(5-rv.rating);return '<div style="padding:10px 0;border-bottom:1px solid var(--border-light)"><div style="font-size:.9rem">'+s+'</div><div style="font-weight:600;font-size:.85rem;margin-top:2px">'+esc(rv.reviewer_name||'Anonymous')+'</div>'+(rv.content?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(rv.content)+'</div>':'')+'</div>'}).join(''):'<p style="color:var(--text-light);font-size:.85rem">No reviews yet — be the first!</p>')+
+  '</div><!-- Write Review --><div id="zhReviewForm" style="background:var(--bg-teal);padding:16px;border-radius:12px;margin-bottom:16px"><h4 style="font-size:.95rem;margin-bottom:8px;font-weight:600">✍️ Write a Review</h4><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Rating</label><div id="zhStarPicker" style="font-size:1.5rem;cursor:pointer"><span data-star="1" onclick="pickStar(1)" style="color:var(--border)">★</span><span data-star="2" onclick="pickStar(2)" style="color:var(--border)">★</span><span data-star="3" onclick="pickStar(3)" style="color:var(--border)">★</span><span data-star="4" onclick="pickStar(4)" style="color:var(--border)">★</span><span data-star="5" onclick="pickStar(5)" style="color:var(--border)">★</span></div></div><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Your thoughts</label><textarea id="zhReviewContent" placeholder="Share your experience..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;resize:vertical;min-height:60px;font-family:inherit"></textarea></div><button onclick="handleSubmitReview('+bizId+')" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem">⭐ Post Review</button></div>'+
+  '</div></div></div>'
+}
+
+// ── Review Star Picker ──
+var selectedRating=0
+function pickStar(n){
+  selectedRating=n
+  var stars=document.getElementById('zhStarPicker')
+  if(!stars)return
+  var spans=stars.querySelectorAll('span')
+  for(var i=0;i<spans.length;i++){
+    spans[i].style.color=i<n?'var(--warm,#f59e0b)':'var(--border)'
+  }
+}
+
+// ── Review Submission ──
+async function handleSubmitReview(bizId){
+  var content=document.getElementById('zhReviewContent')
+  if(!content||!selectedRating){alert('Please select a rating');return}
+  var ok=await submitReview(bizId,selectedRating,content.value.trim(),null)
+  if(ok){
+    content.value=''
+    selectedRating=0
+    var stars=document.getElementById('zhStarPicker')
+    if(stars)stars.querySelectorAll('span').forEach(function(s){s.style.color='var(--border)'})
+    alert('Review submitted! Refreshing...')
+    loadBizPage()
+  }
+}
+
+// ── Claim Business ──
+function showClaimForm(bizId){
+  var overlay=document.createElement('div')
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px'
+  overlay.innerHTML="<div style='background:var(--card,#fff);border-radius:16px;padding:28px;width:380px;max-width:100%'><h3 style='margin-bottom:12px'>👑 Claim This Business</h3><p style='font-size:.85rem;color:var(--text-light);margin-bottom:16px'>Enter your phone number to verify ownership</p><input id='zhClaimPhone' type='tel' placeholder='(727) 555-0100' style='width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;margin-bottom:12px'><button onclick=\"handleClaimBiz('+bizId+')\" style='width:100%;padding:12px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer'>Submit Claim</button><button onclick=\"var m=document.querySelector('[style*=z-index:10000]');if(m)m.remove()\" style='width:100%;padding:10px;background:none;border:none;color:var(--text-light);font-size:.82rem;cursor:pointer;margin-top:8px'>Cancel</button></div>"
+  document.body.appendChild(overlay)
+}
+
+async function handleClaimBiz(bizId){
+  var phone=document.getElementById('zhClaimPhone').value.trim()
+  if(!phone){alert('Please enter a phone number');return}
+  try{
+    var ok=await claimBusiness(bizId,phone)
+    if(ok){alert('Claim submitted! We will verify and contact you.');var m=document.querySelector('[style*="z-index:10000"]');if(m)m.remove()}
+  }catch(e){alert(e.message)}
+}
+
+// ── Saved Places / Favorites ──
+async function loadSavedPlaces(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML='<div class="zh-search-hero"><div class="zh-search-hero-inner"><h1>❤️ Saved Places</h1><p style="color:#94a3b8">Your favorited businesses and saved spots</p></div></div><div class="zh-section"><div class="zh-section-inner"><div class="zh-loading"><div class="zh-spinner"></div></div></div></div>'
+  try{
+    var r=await g('/visitor/favorites')
+    renderSavedPlaces(r)
+  }catch(e){
+    var sec=el.querySelector('.zh-section .zh-section-inner')
+    if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
+  }
+}
+
+function renderSavedPlaces(items){
+  var el=document.querySelector('#zh-content .zh-section .zh-section-inner')
+  if(!el)return
+  if(!items||!items.length){
+    el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">❤️</div><h3 style="margin-bottom:6px">No saved places yet</h3><p style="color:var(--text-light)">Save businesses you love and find them here</p></div>'
+    return
+  }
+  var html='<div class="zh-biz-grid">'
+  for(var i=0;i<items.length;i++){
+    var b=items[i]
+    var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
+    html+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'"><div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'">':b.name[0])+'</div><div class="zh-biz-body"><h4>'+esc(b.name)+'</h4><div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div><div style="font-size:.78rem;color:var(--text-light)">'+esc(b.address||'')+'</div></div></div>'
+  }
+  html+='</div>'
+  el.innerHTML=html
+}
+
+// ── Auth Check Middleware ──
+async function submitReview(bizId,rating,content,reviewerName){
+  if(!isLoggedIn()){showAuthModal('login');return false}
+  try{
+    var r=await fetch('/api/v1/reviews',{method:'POST',headers:{'Authorization':'Bearer '+authUser.token,'Content-Type':'application/json'},body:JSON.stringify({business_id:bizId,rating,content,reviewer_name:reviewerName||authUser.name})})
+    var d=await r.json()
+    if(!r.ok)throw new Error(d.error||'Submission failed')
+    return true
+  }catch(e){alert(e.message);return false}
+}
+
+async function claimBusiness(bizId,phone){
+  if(!isLoggedIn()){showAuthModal('login');return false}
+  try{
+    var r=await fetch('/api/v1/businesses/'+bizId+'/claim',{method:'POST',headers:{'Authorization':'Bearer '+authUser.token,'Content-Type':'application/json'},body:JSON.stringify({phone:phone})})
+    var d=await r.json()
+    if(!r.ok)throw new Error(d.error||'Claim failed')
+    return true
+  }catch(e){alert(e.message);return false}
+}
+
+async function toggleFavorite(bizId){
+  if(!isLoggedIn()){showAuthModal('login');return}
+  try{
+    var r=await fetch('/api/v1/visitor/favorites/'+bizId,{method:'POST',headers:{'Authorization':'Bearer '+authUser.token,'Content-Type':'application/json'}})
+    var d=await r.json()
+    if(!r.ok)throw new Error(d.error||'Failed')
+    renderBizFavBtn(bizId,d.favorited)
+    return d.favorited
+  }catch(e){alert(e.message)}
+}
+
+async function checkFavorite(bizId){
+  if(!isLoggedIn())return false
+  try{
+    var r=await fetch('/api/v1/visitor/favorites/check/'+bizId,{headers:{'Authorization':'Bearer '+authUser.token}})
+    var d=await r.json()
+    return d.favorited
+  }catch(e){return false}
+}
+
+function renderBizFavBtn(bizId,isFav){
+  var btn=document.getElementById('zhFavBtn')
+  if(btn){
+    btn.innerHTML=isFav?'❤️ Saved':'🤍 Save'
+    btn.dataset.fav=isFav?'true':'false'
+  }
+}
+
+function isLoggedIn(){return authUser&&authUser.token}
 
 // Load and render ads for a given directory
 async function loadAdsForDirectory(dirId, zones){
