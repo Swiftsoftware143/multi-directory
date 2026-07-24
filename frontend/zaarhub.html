@@ -388,6 +388,8 @@ a:hover{text-decoration:underline}
 @media(max-width:480px){
   .zh-biz-actions-row .action{font-size:.72rem;padding:4px 8px}
   .zh-biz-cover{height:100px}
+  .zh-filter-bar button:nth-last-child(1){width:100%!important;justify-content:center}
+  .zh-near-badge{width:100%!important;justify-content:center}
 }
 </style>
 </head>
@@ -412,8 +414,89 @@ function ac(el,ev,fn){el.addEventListener(ev,fn)}
 function ago(d){if(!d)return '';var s=Math.floor((Date.now()-new Date(d).getTime())/1000);if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
 function toTitle(s){return s.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
 
+// ── Haversine distance (km) ──
+function haversineKm(lat1,lng1,lat2,lng2){
+  var R=6371; // km
+  var dLat=(lat2-lat1)*Math.PI/180;
+  var dLng=(lng2-lng1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+
+        Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+        Math.sin(dLng/2)*Math.sin(dLng/2);
+  var c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  return R*c;
+}
+function haversineMi(lat1,lng1,lat2,lng2){return haversineKm(lat1,lng1,lat2,lng2)*0.621371}
+
+// ── Near Me (Geolocation) ──
+function requestNearMe(){
+  if(!navigator.geolocation){
+    showNearToast('Geolocation not supported in your browser');
+    return;
+  }
+  showNearToast('📍 Finding businesses near you...');
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      state.userLat=pos.coords.latitude;
+      state.userLng=pos.coords.longitude;
+      state.isNearActive=true;
+      state.nearRadius=state.nearRadius||5000;
+      showNearToast('📍 Location acquired! Updating results...',2000);
+      // Re-fetch search results if on search page, or reload city page
+      if(state.page==='search'){loadSearchResults()}
+      else if(state.page==='city'){loadCityPage()}
+      else{location.hash='#/search/'}
+    },
+    function(err){
+      var msgs={1:'Permission denied. Enable location access in your browser settings to find businesses near you.',2:'Position unavailable. Try again later.',3:'Location request timed out.'};
+      showNearToast('📍 '+ (msgs[err.code]||'Could not get location. Please enable location access.'));
+      state.isNearActive=false;
+    },
+    {enableHighAccuracy:true,timeout:10000,maximumAge:300000}
+  );
+}
+
+function clearNearMe(){
+  state.isNearActive=false;
+  state.userLat=null;
+  state.userLng=null;
+  state.nearRadius=5000;
+  if(state.page==='search'){loadSearchResults()}
+  else if(state.page==='city'){loadCityPage()}
+}
+
+function changeNearMeLocation(){
+  state.isNearActive=false;
+  requestNearMe();
+}
+
+function setNearRadius(meters){
+  state.nearRadius=meters;
+  if(state.isNearActive&&state.userLat&&state.userLng){
+    if(state.page==='search'){loadSearchResults()}
+    else if(state.page==='city'){loadCityPage()}
+  }
+}
+
+// Toasts for near-me messages
+var _nearToastTimer=null;
+function showNearToast(msg,duration){
+  duration=duration||5000;
+  var existing=document.getElementById('zh-near-toast');
+  if(existing)existing.remove();
+  if(_nearToastTimer)clearTimeout(_nearToastTimer);
+  var toast=document.createElement('div');
+  toast.id='zh-near-toast';
+  toast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;background:#1c1917;color:#fff;padding:12px 24px;border-radius:12px;font-size:.85rem;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw;text-align:center;animation:fadeIn .3s ease';
+  toast.textContent=msg;
+  document.body.appendChild(toast);
+  _nearToastTimer=setTimeout(function(){if(toast.parentNode){toast.style.opacity='0';toast.style.transition='opacity .3s';setTimeout(function(){if(toast.parentNode)toast.remove()},300)}},duration);
+}
+
+// Inject fade-in animation if not present
+(function(){var s=document.createElement('style');s.textContent='@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}.zh-near-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--teal);color:#fff;border-radius:100px;font-size:.78rem;font-weight:600;white-space:nowrap}.zh-near-badge .close{cursor:pointer;opacity:.7;margin-left:4px}.zh-near-badge .close:hover{opacity:1}.zh-dist-badge{font-size:.72rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px;margin-left:6px}';document.head.appendChild(s)})()
+
 // ── State ──
-let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',loading:true,user:null,authUser:null,roleMode:'resident'}
+let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
 
 // ── Collections (localStorage) ──
 function loadCollections(){try{var r=localStorage.getItem('zh_collections');return r?JSON.parse(r):[]}catch(e){return[]}}
@@ -1118,12 +1201,37 @@ function renderCityPage(d){
     catPills+='<span class="zh-filter-pill" data-cat="'+esc(ct.slug)+'" onclick="filterCity(\''+esc(ct.slug)+'\',this)">'+icon+' '+esc(ct.name)+'</span>'
   }
 
+  // Near-me badge for city page
+  var nearBadgeHtml=''
+  if(state.isNearActive&&state.userLat&&state.userLng){
+    var radiusLabels={1000:'1km',5000:'5km',10000:'10km',25000:'25km'}
+    var radiusLabel=radiusLabels[state.nearRadius]||'5km'
+    nearBadgeHtml='<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">\n'+
+      '<span class="zh-near-badge">📍 Near your location <small>('+radiusLabel+')</small>\n'+
+      '<span class="close" onclick="changeNearMeLocation()" title="Refresh location">🔄</span>\n'+
+      '<span class="close" onclick="clearNearMe()" title="Clear">✕</span></span>\n'+
+      '<span style="font-size:.78rem;color:var(--text-light)">Radius: </span>\n'+
+      '<select onchange="setNearRadius(parseInt(this.value))" style="padding:4px 8px;border:1px solid var(--border);border-radius:100px;font-size:.78rem;background:var(--card)">\n'+
+      '<option value="1000"'+(state.nearRadius===1000?' selected':'')+'>Within 1km</option>\n'+
+      '<option value="5000"'+(state.nearRadius===5000?' selected':'')+'>Within 5km</option>\n'+
+      '<option value="10000"'+(state.nearRadius===10000?' selected':'')+'>Within 10km</option>\n'+
+      '<option value="25000"'+(state.nearRadius===25000?' selected':'')+'>Within 25km</option>\n'+
+      '</select></div>'
+  }
+
   // Business cards (enhanced with badges, cover, save)
   var bizHtml=''
   for(var i=0;i<biz.length;i++){
     var b=biz[i]
     var coverBg=i%2===0?'#0d9488':'#7c3aed';var coverGrad=i%3===0?'135deg,#0d9488,#14b8a6':i%3===1?'135deg,#7c3aed,#a78bfa':'135deg,#d97706,#f59e0b'
     var letter=b.name?b.name[0].toUpperCase():'🏪'
+    // Distance badge for near-me
+    var distBadge=''
+    if(state.isNearActive&&state.userLat&&state.userLng&&b.latitude&&b.longitude){
+      var distKm=haversineKm(state.userLat,state.userLng,b.latitude,b.longitude)
+      if(distKm<1){distBadge='<span class="zh-dist-badge">📍 '+(distKm*1000).toFixed(0)+' m</span>'}
+      else{distBadge='<span class="zh-dist-badge">📍 '+distKm.toFixed(1)+' km</span>'}
+    }
     var badges=''
     if(b.is_claimed)badges+='<span class="zh-badge zh-badge-verified">✅ Verified Owner</span>'
     if(b.rating&&b.rating>=4.5)badges+='<span class="zh-badge zh-badge-toprated">⭐ Top Rated</span>'
@@ -1146,7 +1254,7 @@ function renderCityPage(d){
   </div>
   <div class="zh-biz-body">
     <div class="badges">${badges}</div>
-    <h4>${esc(b.name)}</h4>
+    <h4>${esc(b.name)}${distBadge}</h4>
     <div><span class="zh-rating">${stars}</span> <span class="num" style="color:var(--text-light);font-size:.78rem">${reviewCount?reviewCount+' reviews':''}</span></div>
     ${b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':''}
     <div class="zh-biz-actions-row" onclick="event.stopPropagation()">
@@ -1195,11 +1303,14 @@ function renderCityPage(d){
   el.innerHTML=`
 <div class="zh-city-hero zh-city-hero-enhanced">
   <div class="zh-city-hero-inner">
-    <div class="weather">🌤️ ${cityName} — Loading...</div>
+    <div class="weather" id="zh-city-weather">🌤️ ${cityName} — Loading...</div>
     <h1>${cityName}</h1>
     <p class="biz-stat"><strong>${bizCount}</strong> Verified Businesses in ${cityName}</p>
     <p class="sub">${desc}</p>
-    <div class="zh-filter-bar">${catPills}</div>
+    <div class="zh-filter-bar">
+      ${catPills}
+      <button onclick="requestNearMe()" style="display:inline-flex;align-items:center;gap:4px;padding:7px 14px;background:var(--teal);color:#fff;border:none;border-radius:100px;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s;min-height:44px">📍 Near Me</button>
+    </div>
   </div>
 </div>
 <div class="zh-city-content" id="zh-city-content">
@@ -1209,6 +1320,7 @@ function renderCityPage(d){
     <button data-view="map" onclick="setCityView('map')">🗺️ Full Map</button>
   </div>
   <div id="zh-city-map"></div>
+  ${nearBadgeHtml}
   <div class="zh-biz-grid" id="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
   ${deals.length?`
   <div style="margin-top:24px">
@@ -1227,6 +1339,16 @@ function renderCityPage(d){
     <a href="/portal" class="zh-btn-primary">+ Add Your Business</a>
   </div>`:''}
 </div>`
+
+  // Fetch weather for this city
+  setTimeout(function(){
+    var firstBiz = biz && biz.length ? biz[0] : null;
+    var lat = dirInfo.lat || dirInfo.latitude || (firstBiz ? (firstBiz.lat || firstBiz.latitude) : null);
+    var lng = dirInfo.lng || dirInfo.longitude || (firstBiz ? (firstBiz.lng || firstBiz.longitude) : null);
+    if (lat && lng) {
+      fetchWeather(cityName, parseFloat(lat), parseFloat(lng));
+    }
+  }, 100);
 
   // Start ticker for city
   var todayMsgs=buildTodayMessages(d,deals,events,d.spotlights||[])
@@ -1268,7 +1390,11 @@ async function loadSearchResults(){
 </div>`
 
   try{
-    var r=await g('/zaarhub/search?q='+encodeURIComponent(q)+'&cat='+encodeURIComponent(state.filterCategory))
+    var params='q='+encodeURIComponent(q)+'&category='+encodeURIComponent(state.filterCategory);
+    if(state.isNearActive&&state.userLat&&state.userLng){
+      params+='&lat='+state.userLat+'&lng='+state.userLng+'&radius='+state.nearRadius;
+    }
+    var r=await g('/zaarhub/search?'+params)
     renderSearchResults(r)
     setTimeout(loadTicker, 500)
   }catch(e){
@@ -1278,26 +1404,59 @@ async function loadSearchResults(){
 }
 
 function renderSearchResults(r){
-  var biz=r.businesses||[]
+  var biz=r.results||[]
   var deals=r.deals||[]
-  var total=r.total_count||biz.length
+  var total=r.total||biz.length
   var el=document.querySelector('#zh-content .zh-section .zh-section-inner')
   if(!el)return
 
+  // Build near-me badge if active
+  var nearHtml=''
+  if(state.isNearActive&&state.userLat&&state.userLng){
+    var radiusLabel=state.nearRadius>=25000?'25km':state.nearRadius>=10000?'10km':state.nearRadius>=5000?'5km':'1km'
+    nearHtml='<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">\n'+
+      '<span class="zh-near-badge">📍 Near your location <small>('+radiusLabel+')</small>\n'+
+      '<span class="close" onclick="changeNearMeLocation()" title="Refresh location">🔄</span>\n'+
+      '<span class="close" onclick="clearNearMe()" title="Clear">✕</span></span>\n'+
+      '<span style="font-size:.78rem;color:var(--text-light)">Radius: </span>\n'+
+      '<select onchange="setNearRadius(parseInt(this.value))" style="padding:4px 8px;border:1px solid var(--border);border-radius:100px;font-size:.78rem;background:var(--card)">\n'+
+      '<option value="1000"'+(state.nearRadius===1000?' selected':'')+'>Within 1km</option>\n'+
+      '<option value="5000"'+(state.nearRadius===5000?' selected':'')+'>Within 5km</option>\n'+
+      '<option value="10000"'+(state.nearRadius===10000?' selected':'')+'>Within 10km</option>\n'+
+      '<option value="25000"'+(state.nearRadius===25000?' selected':'')+'>Within 25km</option>\n'+
+      '</select></div>'
+    // Show toast confirming results
+    if(biz.length){showNearToast('📍 Found '+biz.length+' businesses near you',2500)}
+  }
+
   if(!biz.length&&!deals.length){
-    el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🔍</div><h3 style="margin-bottom:6px">No results found</h3><p style="color:var(--text-light)">Try a different search or browse by category</p></div>'
+    var msg=state.isNearActive?'<p style="color:var(--text-light);margin-top:8px">Try expanding your search radius or browse by category</p>':''
+    el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🔍</div><h3 style="margin-bottom:6px">No results found</h3>'+msg+'</div>'
     return
   }
 
-  var h='<div style="margin-bottom:16px"><strong>'+total+'</strong> results found</div>'
+  var h='<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">\n'+
+    '<span><strong>'+total+'</strong> results found</span>\n'+
+    (!state.isNearActive?'<button onclick="requestNearMe()" style="padding:6px 14px;border:1px solid var(--teal);border-radius:100px;background:var(--bg-teal);color:var(--teal-dark);font-size:.78rem;font-weight:600;cursor:pointer">📍 Near Me</button>':'')+'</div>'
+  h+=nearHtml
+
   if(biz.length){
     h+='<h3 style="margin-bottom:12px">🏪 Businesses</h3><div class="zh-biz-grid">'
     for(var i=0;i<biz.length;i++){
       var b=biz[i]
       var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
+      var distBadge=''
+      if(state.isNearActive&&state.userLat&&state.userLng&&b.latitude&&b.longitude){
+        var distKm=haversineKm(state.userLat,state.userLng,b.latitude,b.longitude)
+        if(distKm<1){distBadge='<span class="zh-dist-badge">📍 '+(distKm*1000).toFixed(0)+' m away</span>'}
+        else{distBadge='<span class="zh-dist-badge">📍 '+distKm.toFixed(1)+' km away</span>'}
+      }else if(b.distance_km){
+        if(b.distance_km<1){distBadge='<span class="zh-dist-badge">📍 '+(b.distance_km*1000).toFixed(0)+' m away</span>'}
+        else{distBadge='<span class="zh-dist-badge">📍 '+b.distance_km.toFixed(1)+' km away</span>'}
+      }
       h+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\">'+
-        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'">':b.name[0])+'</div>'+
-        '<div class="zh-biz-body"><h4>'+esc(b.name)+'</h4>'+
+        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'">':esc((b.name||'?')[0]))+'</div>'+
+        '<div class="zh-biz-body"><h4>'+esc(b.name)+distBadge+'</h4>'+
         '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div>'+
         (b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':'')+
         (b.city?'<div class="addr">🏙️ '+esc(b.city)+'</div>':'')+
@@ -1479,6 +1638,54 @@ function switchRole(mode,btn){
   // Update sign-in button link based on mode
   var signinBtn=document.getElementById('zh-signin-btn')
   if(signinBtn)signinBtn.href=mode==='owner'?'/portal':'/visitor'
+}
+
+// ── Weather API (Open-Meteo, no key needed) ──
+var weatherCache={}
+
+async function fetchWeather(city, lat, lng) {
+  var key = city + '_' + lat.toFixed(2) + '_' + lng.toFixed(2);
+  if (weatherCache[key]) {
+    updateWeatherDisplay(city, weatherCache[key]);
+    return;
+  }
+  try {
+    var resp = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lng + '&current=temperature_2m,weather_code&temperature_unit=fahrenheit'
+    );
+    var data = await resp.json();
+    var temp = Math.round(data.current.temperature_2m);
+    var code = data.current.weather_code;
+    var emoji = getWeatherEmoji(code);
+    var result = emoji + ' ' + city + ' — ' + temp + '°F';
+    weatherCache[key] = result;
+    updateWeatherDisplay(city, result);
+  } catch(e) {
+    updateWeatherDisplay(city, '🌤️ ' + city);
+  }
+}
+
+function getWeatherEmoji(code) {
+  if (code === 0) return '☀️';
+  if (code <= 3) return '⛅';
+  if (code <= 48) return '☁️';
+  if (code <= 57) return '🌧️';
+  if (code <= 67) return '🌧️';
+  if (code <= 77) return '❄️';
+  if (code <= 82) return '🌦️';
+  if (code <= 86) return '🌧️';
+  return '🌤️';
+}
+
+function updateWeatherDisplay(city, text) {
+  var el = document.getElementById('zh-city-weather');
+  if (!el) return;
+  el.style.opacity = '0';
+  el.style.transition = 'opacity .5s ease';
+  setTimeout(function() {
+    el.textContent = text;
+    el.style.opacity = '1';
+  }, 50);
 }
 
 // ── Init ──
