@@ -905,6 +905,8 @@ async fn auth_guard(
         || path.starts_with("/referrals/code/")
         // ZaarHub community frontend API (public)
         || path.starts_with("/zaarhub/")
+        // Public ad rendering (no auth)
+        || path.starts_with("/ads/")
         // Stage 5: Server-rendered my-bookings page (handles auth internally)
         || path == "/my-bookings"
         // Stage 5: SSO (handlers authenticate internally)
