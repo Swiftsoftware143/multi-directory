@@ -2156,3 +2156,232 @@ pub async fn get_active_notifications(
 
     Ok(Json(notifications))
 }
+
+// ── Business Self-Serve Ad Submission ────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct BusinessAdSubmitRequest {
+    pub image_url: String,
+    pub target_url: Option<String>,
+    pub name: String,
+    pub zone_id: Uuid,  // ad_zone_id to match dimensions
+}
+
+#[derive(Debug, Serialize)]
+pub struct BusinessAdSubmitResponse {
+    pub creative: AdCreative,
+    pub sponsor: Sponsor,
+    pub is_new_sponsor: bool,
+}
+
+/// POST /api/v1/businesses/:business_id/ads/submit
+/// Self-serve ad submission for business owners.
+/// Auto-creates sponsor profile if none exists.
+pub async fn submit_business_ad(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+    Json(req): Json<BusinessAdSubmitRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // Get business info (needed for directory_id and name)
+    let biz = sqlx::query_as::<_, (Uuid, String,)>(
+        "SELECT directory_id, name FROM businesses WHERE id = $1"
+    )
+    .bind(business_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    let (directory_id, biz_name) = biz;
+
+    // Validate zone exists and belongs to this directory
+    let zone = sqlx::query_as::<_, (i32, i32, Option<String>,)>(
+        "SELECT width, height, name FROM ad_zones WHERE id = $1 AND (directory_id = $2 OR directory_id IS NULL) AND (status = 'active' OR status IS NULL)"
+    )
+    .bind(req.zone_id)
+    .bind(directory_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Ad zone not found or not available for this directory".to_string()))?;
+
+    let (zone_w, zone_h, zone_name) = zone;
+
+    // Auto-create or find existing sponsor
+    let existing_sponsor = sqlx::query_as::<_, Sponsor>(
+        "SELECT id, directory_id, business_id, status, commission_rate, notes, created_at, updated_at FROM sponsors WHERE directory_id = $1 AND business_id = $2"
+    )
+    .bind(directory_id)
+    .bind(business_id)
+    .fetch_optional(&s.db)
+    .await?;
+
+    let (sponsor, is_new) = if let Some(sp) = existing_sponsor {
+        (sp, false)
+    } else {
+        let new_sp = sqlx::query_as::<_, Sponsor>(
+            r#"INSERT INTO sponsors (directory_id, business_id, status, notes)
+               VALUES ($1, $2, 'pending', $3)
+               RETURNING id, directory_id, business_id, status, commission_rate, notes, created_at, updated_at"#
+        )
+        .bind(directory_id)
+        .bind(business_id)
+        .bind(Some(format!("Auto-created from business: {}", biz_name)))
+        .fetch_one(&s.db)
+        .await?;
+
+        // Add sponsor to approval queue
+        sqlx::query(
+            r#"INSERT INTO approval_queue (directory_id, item_type, item_id, status)
+               VALUES ($1, 'sponsor', $2, 'pending')
+               ON CONFLICT (item_type, item_id) DO NOTHING"#
+        )
+        .bind(directory_id)
+        .bind(new_sp.id)
+        .execute(&s.db)
+        .await?;
+
+        (new_sp, true)
+    };
+
+    // Create the ad creative with dimensions matching the zone
+    let creative = sqlx::query_as::<_, AdCreative>(
+        r#"INSERT INTO ad_creatives (sponsor_id, name, image_url, target_url, width, height, mime_type, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'image/png', 'pending')
+           RETURNING id, sponsor_id, name, image_url, target_url, width, height,
+                     mime_type, file_size_bytes, status, rejection_reason, is_active, created_at"#
+    )
+    .bind(sponsor.id)
+    .bind(&req.name)
+    .bind(&req.image_url)
+    .bind(&req.target_url)
+    .bind(zone_w)
+    .bind(zone_h)
+    .fetch_one(&s.db)
+    .await?;
+
+    // Add creative to approval queue
+    sqlx::query(
+        r#"INSERT INTO approval_queue (directory_id, item_type, item_id, status)
+           VALUES ($1, 'ad_creative', $2, 'pending')
+           ON CONFLICT (item_type, item_id) DO NOTHING"#
+    )
+    .bind(directory_id)
+    .bind(creative.id)
+    .execute(&s.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(json!(BusinessAdSubmitResponse {
+        creative,
+        sponsor,
+        is_new_sponsor: is_new,
+    }))))
+}
+
+/// GET /api/v1/businesses/:business_id/ads
+/// List all ads submitted by this business with their status
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct BusinessAdListItem {
+    pub id: Uuid,
+    pub name: String,
+    pub image_url: String,
+    pub target_url: Option<String>,
+    pub width: i32,
+    pub height: i32,
+    pub status: String,
+    pub rejection_reason: Option<String>,
+    pub is_active: Option<bool>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub zone_name: Option<String>,
+    pub zone_key: Option<String>,
+    pub sponsor_id: Uuid,
+    pub sponsor_status: String,
+}
+
+pub async fn list_business_ads(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let ads = sqlx::query_as::<_, BusinessAdListItem>(
+        r#"SELECT c.id, c.name, c.image_url, c.target_url, c.width, c.height,
+                  c.status, c.rejection_reason, c.is_active, c.created_at,
+                  z.name as zone_name, z.zone_key,
+                  sp.id as sponsor_id, sp.status as sponsor_status
+           FROM ad_creatives c
+           JOIN sponsors sp ON sp.id = c.sponsor_id
+           LEFT JOIN ad_schedules sch ON sch.creative_id = c.id
+           LEFT JOIN ad_zones z ON z.id = sch.ad_zone_id OR (z.width = c.width AND z.height = c.height AND (z.directory_id = sp.directory_id OR z.directory_id IS NULL))
+           WHERE sp.business_id = $1
+           ORDER BY c.created_at DESC"#
+    )
+    .bind(business_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(ads))
+}
+
+/// GET /api/v1/businesses/:business_id/ads/earnings
+/// Shows total earned from ads for this business
+pub async fn get_business_ad_earnings(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let sponsor_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM sponsors WHERE business_id = $1 LIMIT 1"
+    )
+    .bind(business_id)
+    .fetch_optional(&s.db)
+    .await?;
+
+    if sponsor_id.is_none() {
+        return Ok(Json(json!({
+            "total_earned": "0",
+            "by_schedule": [],
+            "total_schedules": 0
+        })));
+    }
+
+    let sid = sponsor_id.unwrap();
+
+    let total: String = sqlx::query_scalar::<_, Option<rust_decimal::Decimal>>(
+        r#"SELECT COALESCE(SUM(amount), 0) FROM ad_earnings WHERE sponsor_id = $1 AND status = 'paid'"#
+    )
+    .bind(sid)
+    .fetch_one(&s.db)
+    .await?
+    .map(|d| d.to_string())
+    .unwrap_or_else(|| "0".to_string());
+
+    let by_schedule: Vec<serde_json::Value> = sqlx::query_as::<_, (Uuid, String, String, String, String)>(
+        r#"SELECT e.id, e.amount::text, e.status, e.period_start::text, e.period_end::text
+           FROM ad_earnings e
+           WHERE e.sponsor_id = $1
+           ORDER BY e.period_start DESC"#
+    )
+    .bind(sid)
+    .fetch_all(&s.db)
+    .await?
+    .into_iter()
+    .map(|(id, amount, status, pstart, pend)| {
+        json!({
+            "id": id,
+            "amount": amount,
+            "status": status,
+            "period_start": pstart,
+            "period_end": pend
+        })
+    })
+    .collect();
+
+    let total_schedules: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM ad_schedules WHERE sponsor_id = $1"#
+    )
+    .bind(sid)
+    .fetch_one(&s.db)
+    .await?;
+
+    Ok(Json(json!({
+        "total_earned": total,
+        "by_schedule": by_schedule,
+        "total_schedules": total_schedules
+    })))
+}

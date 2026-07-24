@@ -72,6 +72,22 @@ a:hover{text-decoration:underline}
 .zh-spotlight-card .cat{margin-top:8px;display:inline-block;background:var(--bg-teal);color:var(--teal-dark);font-size:.72rem;font-weight:600;padding:2px 10px;border-radius:100px}
 .zh-spotlight-card .stars{color:var(--warm);font-size:.8rem;margin-top:4px}
 
+/* ── Ad Slots ── */
+.zh-ad-slot{display:none;max-width:100%;overflow:hidden}
+.zh-ad-slot.active{display:block}
+.zh-ad-slot .ad-label{font-size:.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:500}
+.zh-ad-slot img{max-width:100%;height:auto;border-radius:var(--radius);display:block}
+.zh-ad-hero{margin:8px auto 24px;text-align:center;max-width:728px}
+.zh-ad-hero img{border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.zh-ad-sidebar{margin:16px 0;text-align:center}
+.zh-ad-sidebar img{border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.zh-ad-footer{margin:32px auto 8px;text-align:center;max-width:728px}
+.zh-ad-footer img{border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.zh-ad-card{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border-light);border-radius:var(--radius);padding:12px;transition:box-shadow .2s}
+.zh-ad-card:hover{box-shadow:var(--shadow)}
+.zh-ad-card a{display:block;width:100%}
+.zh-ad-card .sponsor-name{font-size:.72rem;color:var(--text-muted);margin-top:2px}
+
 /* ── Fix mobile touch targets min 44px ── */
 .zh-hero-cat,.zh-filter-pill,.zh-biz-actions .action,.zh-event-card .rsvp,.zh-city-card,.zh-deal-card{cursor:pointer;min-height:44px;display:inline-flex;align-items:center}
 .zh-biz-card,.zh-deal-card-sm,.zh-event-card-sm{cursor:pointer}
@@ -362,6 +378,10 @@ function renderShell(){
     <a href="#/search/" onclick="return navTo(event,'#/search/')"><span class="nav-icon">🔍</span>Search</a>
   </div>
 </div>
+<!-- &#128176; Ad Slots -->
+<div id="ad-hero" class="zh-ad-slot zh-ad-hero"></div>
+<div id="ad-sidebar" class="zh-ad-slot zh-ad-sidebar"></div>
+<div id="ad-footer" class="zh-ad-slot zh-ad-footer"></div>
 <div class="zh-footer">
   <div class="zh-footer-inner">
     <div><h4>🌐 ZaarHub</h4>
@@ -459,7 +479,14 @@ async function loadHomepage(){
     state.homepageData=d
   }
   renderHomepageContent(d)
-  // Load ticker after homepage renders
+  // Load ads + ticker after homepage renders
+  var firstCity=d.cities&&d.cities.length?d.cities[0]:null;
+  if(firstCity&&firstCity.id){
+    setTimeout(function(){loadAdsForDirectory(firstCity.id, [
+      {zoneKey:'hero',containerId:'ad-hero'},
+      {zoneKey:'footer',containerId:'ad-footer'}
+    ])}, 200);
+  }
   setTimeout(loadTicker, 500)
 }
 
@@ -647,6 +674,14 @@ async function loadCityPage(){
   try{
     var d=await g('/zaarhub/cities/'+slug)
     renderCityPage(d)
+    // Load ads for this city
+    var dirId=d.directory&&d.directory.id;
+    if(dirId){
+      setTimeout(function(){loadAdsForDirectory(dirId, [
+        {zoneKey:'sidebar',containerId:'ad-sidebar'},
+        {zoneKey:'footer',containerId:'ad-footer'}
+      ])}, 200);
+    }
     // Load ticker for this city
     setTimeout(loadTicker, 500)
   }catch(e){
@@ -930,6 +965,63 @@ async function loadEventsPage(){
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
   }
+}
+
+// ── Ad Slot Rendering ──
+// Fetch active ads for a directory and return grouped by zone_key
+async function fetchActiveAds(dirId){
+  if(!dirId)return {};
+  try{
+    var resp=await fetch('/api/v1/ads/active/'+dirId);
+    var ads=await resp.json();
+    if(!Array.isArray(ads))return {};
+    var grouped={};
+    for(var i=0;i<ads.length;i++){
+      var a=ads[i];
+      if(!grouped[a.zone_key])grouped[a.zone_key]=[];
+      grouped[a.zone_key].push(a);
+    }
+    return grouped;
+  }catch(e){
+    console.warn('Ad fetch failed:',e);
+    return {};
+  }
+}
+
+// Render a single ad slot at the given container
+function renderAdSlot(zoneKey, containerId, ads){
+  var container=document.getElementById(containerId);
+  if(!container)return;
+  var group=ads[zoneKey];
+  if(!group||!group.length){
+    container.classList.remove('active');
+    container.style.display='none';
+    container.innerHTML='';
+    return;
+  }
+  var ad=group[0]; // Pick first ad for the zone
+  var w=ad.width||728;
+  var h=ad.height||90;
+  var imgStyle='max-width:100%;height:auto;border-radius:var(--radius);display:block;width:'+w+'px';
+  container.innerHTML='<div class="ad-label">Sponsored</div>'+
+    '<a href="'+esc(ad.target_url||'#')+'" target="_blank" rel="sponsored noopener">'+
+      '<img src="'+esc(ad.image_url)+'" width="'+w+'" height="'+h+'" alt="'+esc(ad.sponsor_name)+' ad" style="'+imgStyle+'">'+
+    '</a>'+
+    '<div class="sponsor-name">'+esc(ad.sponsor_name)+'</div>';
+  container.style.display='';
+  container.classList.add('active');
+}
+
+// Load and render ads for a given directory
+async function loadAdsForDirectory(dirId, zones){
+  var ads=await fetchActiveAds(dirId);
+  var hasAny=false;
+  for(var i=0;i<zones.length;i++){
+    var z=zones[i];
+    renderAdSlot(z.zoneKey, z.containerId, ads);
+    if(ads[z.zoneKey]&&ads[z.zoneKey].length)hasAny=true;
+  }
+  return hasAny;
 }
 
 // ── Init ──

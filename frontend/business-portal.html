@@ -106,6 +106,13 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 .legal-clause{margin-top:20px}
 .legal-clause h4{font-size:.95rem;color:var(--text);margin-bottom:4px}
 .legal-clause p{font-size:.85rem;color:var(--text-secondary);line-height:1.6}
+
+/* Advertising */
+#adSubmissionForm .form-group{margin-bottom:12px}
+#adSubmissionForm .form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+#adSubmissionForm .form-group input,#adSubmissionForm .form-group select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;transition:border-color .2s}
+#adSubmissionForm .form-group input:focus,#adSubmissionForm .form-group select:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.1)}
+
 #legalRoleTabs .tab{font-size:.85rem;padding:8px 12px}
 </style>
 </head>
@@ -196,6 +203,54 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
       <div class="section-title">⬆️ Upgrade Plan</div>
       <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Choose a plan to boost your listing visibility and access premium features.</div>
       <div id="plansGrid" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))"></div>
+    </div>
+
+    <!-- Advertising Section -->
+    <div class="section-title" style="margin-top:32px">📢 Promote Your Business</div>
+    <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Submit and manage ads to get more visibility in your community directory.</div>
+    
+    <!-- Ad Submission Form (shown when a business is selected) -->
+    <div id="adSubmissionForm" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+      <h3 style="font-size:1rem;margin-bottom:12px">📤 Submit a New Ad</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>Ad Name</label>
+          <input type="text" id="adName" placeholder="e.g. Summer Special" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+        </div>
+        <div class="form-group">
+          <label>Slot Size (Ad Zone)</label>
+          <select id="adZoneSelect" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            <option value="">Select a slot...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Image URL</label>
+          <input type="url" id="adImageUrl" placeholder="https://example.com/ad.png" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+        </div>
+        <div class="form-group">
+          <label>Target URL (click link)</label>
+          <input type="url" id="adTargetUrl" placeholder="https://example.com/offer" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="submitBusinessAd()" style="margin-top:12px">Submit Ad for Review</button>
+      <div id="adSubmitResult" style="margin-top:8px;font-size:.8rem"></div>
+    </div>
+    
+    <!-- My Ads List -->
+    <div id="myAdsSection" style="margin-bottom:16px">
+      <div id="adListHeader" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="font-size:.95rem">My Ads</h3>
+        <button class="btn btn-sm" onclick="showAdForm()" style="background:var(--teal);color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.8rem">+ New Ad</button>
+      </div>
+      <div id="myAdsList">
+        <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:.85rem">Select a business to see your ads</div>
+      </div>
+    </div>
+    
+    <!-- Ad Earnings -->
+    <div id="adEarningsSection" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
+      <h3 style="font-size:.95rem;margin-bottom:8px">💰 Ad Earnings</h3>
+      <div id="adEarningsContent" style="font-size:.85rem;color:var(--text-secondary)"></div>
     </div>
 
     <!-- Loyalty Dashboard -->
@@ -1629,6 +1684,157 @@ window.addEventListener('beforeunload', function() {
 var style = document.createElement('style');
 style.textContent = '@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
 document.head.appendChild(style);
+
+// ── Advertising Functions ──
+
+var _selectedBizId = null;
+var _adZones = [];
+
+function showAdForm() {
+  var form = document.getElementById('adSubmissionForm');
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+  if (form.style.display !== 'none') {
+    loadAdZones();
+  }
+}
+
+async function loadAdZones() {
+  if (_adZones.length) return populateAdZoneSelect();
+  try {
+    var resp = await fetch('/api/v1/ad-zones');
+    var data = await resp.json();
+    _adZones = Array.isArray(data) ? data : [];
+    populateAdZoneSelect();
+  } catch(e) {
+    console.warn('Failed to load ad zones:', e);
+  }
+}
+
+function populateAdZoneSelect() {
+  var sel = document.getElementById('adZoneSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Select a slot...</option>';
+  for (var i = 0; i < _adZones.length; i++) {
+    var z = _adZones[i];
+    sel.innerHTML += '<option value="' + z.id + '">' + esc(z.name) + ' (' + z.width + 'x' + z.height + ') $' + (z.price_monthly || 0) + '/mo</option>';
+  }
+}
+
+async function submitBusinessAd() {
+  if (!_selectedBizId) {
+    document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Please select a business first</span>';
+    return;
+  }
+  var name = document.getElementById('adName').value.trim();
+  var zoneId = document.getElementById('adZoneSelect').value;
+  var imageUrl = document.getElementById('adImageUrl').value.trim();
+  var targetUrl = document.getElementById('adTargetUrl').value.trim();
+  
+  if (!name) { document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Ad name required</span>'; return; }
+  if (!zoneId) { document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Please select a slot size</span>'; return; }
+  if (!imageUrl) { document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Image URL required</span>'; return; }
+  
+  document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--text-secondary)">⏳ Submitting...</span>';
+  
+  try {
+    var result = await po('/businesses/' + _selectedBizId + '/ads/submit', {
+      name: name,
+      zone_id: zoneId,
+      image_url: imageUrl,
+      target_url: targetUrl
+    });
+    document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--success)">✅ Ad submitted for review!</span>';
+    // Clear form
+    document.getElementById('adName').value = '';
+    document.getElementById('adImageUrl').value = '';
+    document.getElementById('adTargetUrl').value = '';
+    document.getElementById('adZoneSelect').value = '';
+    // Refresh ads list
+    loadMyAds();
+  } catch(e) {
+    document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ ' + esc(e.message) + '</span>';
+  }
+}
+
+async function loadMyAds() {
+  if (!_selectedBizId) return;
+  var listEl = document.getElementById('myAdsList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-secondary)">⏳ Loading...</div>';
+  
+  try {
+    var resp = await fetch('/api/v1/businesses/' + _selectedBizId + '/ads', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('bizToken') }
+    });
+    if (!resp.ok) {
+      listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-secondary)">Auth required</div>';
+      return;
+    }
+    var ads = await resp.json();
+    if (!ads || !ads.length) {
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:.85rem">No ads yet. Click "+ New Ad" to create your first one.</div>';
+      return;
+    }
+    var h = '';
+    for (var i = 0; i < ads.length; i++) {
+      var a = ads[i];
+      var statusClass = a.status === 'approved' ? 'success' : a.status === 'rejected' ? 'danger' : 'warning';
+      var statusLabel = a.status === 'approved' ? '✅ Approved' : a.status === 'rejected' ? '❌ '+esc(a.rejection_reason||'Rejected') : '⏳ Pending Review';
+      var zoneInfo = a.zone_name ? esc(a.zone_name) : (a.width+'x'+a.height);
+      h += '<div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--card)">' +
+        '<img src="'+esc(a.image_url)+'" style="width:60px;height:auto;border-radius:6px;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">' +
+        '<div style="flex:1">' +
+          '<div style="font-weight:600;font-size:.85rem">'+esc(a.name)+'</div>' +
+          '<div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">'+zoneInfo+' | <span style="color:var(--'+statusClass+')">'+statusLabel+'</span></div>' +
+          '<div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">Created '+new Date(a.created_at).toLocaleDateString()+'</div>' +
+        '</div></div>';
+    }
+    listEl.innerHTML = h;
+  } catch(e) {
+    listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--danger)">❌ '+esc(e.message)+'</div>';
+  }
+}
+
+async function loadAdEarnings() {
+  if (!_selectedBizId) return;
+  var section = document.getElementById('adEarningsSection');
+  var content = document.getElementById('adEarningsContent');
+  if (!section || !content) return;
+  
+  try {
+    var resp = await fetch('/api/v1/businesses/' + _selectedBizId + '/ads/earnings', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('bizToken') }
+    });
+    if (!resp.ok) { section.style.display = 'none'; return; }
+    var data = await resp.json();
+    if (data.total_schedules === 0 && data.total_earned === '0') {
+      section.style.display = 'none';
+      return;
+    }
+    content.innerHTML = '<div style="display:flex;gap:16px;align-items:center">' +
+      '<div><strong>Total Earned:</strong> $' + data.total_earned + '</div>' +
+      '<div><strong>Active Schedules:</strong> ' + data.total_schedules + '</div>' +
+    '</div>';
+    section.style.display = '';
+  } catch(e) {
+    section.style.display = 'none';
+  }
+}
+
+// Wire into business selection
+// Patch renderBusinesses to set selected biz ID
+var _origRenderBusinesses = renderBusinesses;
+renderBusinesses = function(biz) {
+  _origRenderBusinesses(biz);
+  // Select first business for ads
+  if (Array.isArray(biz) && biz.length) {
+    _selectedBizId = biz[0].id;
+    document.getElementById('adSubmissionForm').style.display = 'none';
+    loadMyAds();
+    loadAdEarnings();
+  }
+};
 
 // ── Init ──
 (function init() {
