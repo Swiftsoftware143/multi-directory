@@ -37,8 +37,8 @@ a:hover{text-decoration:underline}
 /* ── Header / Nav ── */
 .zh-header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
 .zh-header-inner{max-width:1280px;margin:0 auto;padding:0 24px;display:flex;align-items:center;height:68px;gap:16px}
-.zh-logo{display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0}
-.zh-logo img{height:28px;width:auto;display:block}
+.zh-logo{display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
+.zh-logo .logo-emoji{font-size:1.3rem;display:inline-block;line-height:1}
 .zh-logo span{font-size:1.2rem;font-weight:800;color:var(--dark);letter-spacing:-.5px}
 .zh-logo small{font-size:.7rem;font-weight:400;color:var(--text-muted);margin-left:2px}
 .zh-city-select{position:relative;flex-shrink:0}
@@ -197,7 +197,8 @@ a:hover{text-decoration:underline}
 .zh-loading{text-align:center;padding:80px 24px;color:var(--text-light)}
 .zh-loading-full{position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,#2b3255 0%,#1a3a6b 50%,#f27f2f 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s ease}
 .zh-loading-full.hide{opacity:0;pointer-events:none}
-.zh-loading-full .zh-logo-load{font-size:2.2rem;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.zh-loading-full .zh-logo-load{font-size:2.2rem;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.zh-loading-full .zh-logo-load .logo-emoji-splash{font-size:2rem}
 .zh-loading-full .zh-logo-load span{color:var(--secondary)}
 .zh-loading-full .zh-tagline{color:#a8a29e;font-size:.9rem;margin-bottom:32px}
 .zh-loader-bar{width:120px;height:3px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
@@ -413,8 +414,7 @@ a:hover{text-decoration:underline}
 <body>
 
 <div class="zh-loading-full" id="splash-load">
-  <img src="/logo.png" alt="ZaarHub" style="height:48px;width:auto;margin-bottom:4px;filter:brightness(0) invert(1)" />
-  <div class="zh-logo-load" style="margin-bottom:4px">Zaar<span>Hub</span></div>
+  <div class="zh-logo-load" style="margin-bottom:4px"><span class="logo-emoji-splash">🌐</span> Zaar<span>Hub</span></div>
   <div class="zh-tagline">Discover your community</div>
   <div class="zh-loader-bar"><div class="zh-loader-bar-inner"></div></div>
 </div>
@@ -608,8 +608,7 @@ function renderShell(){
 <div class="zh-header">
   <div class="zh-header-inner">
     <a class="zh-logo" href="#/" onclick="location.hash='#/'">
-      <img src="/logo.png" alt="ZaarHub" />
-      <span>Zaar<span style="color:var(--primary)">Hub</span></span>
+      <span class="logo-emoji">🌐</span><span>Zaar<span style="color:var(--primary)">Hub</span></span>
     </a>
     <div class="zh-city-select">
       <select onchange="onCitySelect(this)">${cityOpts}</select>
