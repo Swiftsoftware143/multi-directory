@@ -114,6 +114,19 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 #adSubmissionForm .form-group input:focus,#adSubmissionForm .form-group select:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.1)}
 
 #legalRoleTabs .tab{font-size:.85rem;padding:8px 12px}
+
+/* Walkthrough Overlay */
+.walkthrough-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.walkthrough-card{background:#fff;border-radius:16px;padding:32px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .3s}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.walkthrough-card .icon{font-size:3rem;margin-bottom:12px}
+.walkthrough-card h3{font-size:1.2rem;color:#0f172a;margin-bottom:8px}
+.walkthrough-card p{font-size:.9rem;color:#475569;line-height:1.6;margin-bottom:20px}
+.walkthrough-card .btn{background:#0d9488;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+.walkthrough-card .btn:hover{background:#0f766e}
+.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#0d9488;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
+.walkthrough-help-icon:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(13,148,136,.4)}
 </style>
 </head>
 <body>
@@ -1836,10 +1849,45 @@ renderBusinesses = function(biz) {
   }
 };
 
+// ── Walkthrough System (Business Portal) ──
+var BWT={
+  dashboard:{i:"📊",t:"Dashboard",x:"Your business dashboard. See profile views, review counts, subscription status, and recent activity at a glance."},
+  businesses:{i:"🏪",t:"My Businesses",x:"All the businesses you've claimed. Switch between them or add a new listing."},
+  plans:{i:"💎",t:"Plans & Billing",x:"Choose a plan that fits your needs. Upgrade to unlock more features like advertising, analytics, and priority support."},
+  reviews:{i:"⭐",t:"Reviews",x:"See what customers are saying. Respond to reviews publicly to show you care about feedback."},
+  advertising:{i:"📢",t:"Advertising",x:"Promote your business with paid ads. Choose a slot size, upload your creative, and submit for admin approval. Track earnings from approved ads."},
+  referrals:{i:"👥",t:"Refer & Earn",x:"Refer other businesses to earn Zaarcash credits. Share your referral link and earn when they sign up."},
+  settings:{i:"⚙️",t:"Settings",x:"Update your business profile, contact info, and account preferences."}
+};
+function showBWalkthrough(p){
+  var w=BWT[p];if(!w)return;
+  var k="bwt_"+p+"_dismissed";
+  if(localStorage.getItem(k))return;
+  var ov=document.createElement("div");ov.className="walkthrough-overlay";ov.id="bwtOverlay";
+  ov.innerHTML='<div class="walkthrough-card"><div class="icon">'+w.i+'</div><h3>'+w.t+'</h3><p>'+w.x+'</p><button class="btn" onclick="document.getElementById(\'bwtOverlay\').remove();localStorage.setItem(\'bwt_'+p+'\',\'true\')">Got it</button></div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){if(e.target===ov){ov.remove();localStorage.setItem("bwt_"+p,"true");}};
+}
+
+// ── Help icon ──
+(function(){
+  var helpIcon=document.createElement("button");helpIcon.className="walkthrough-help-icon";helpIcon.innerHTML="❓";
+  helpIcon.title="Page guide";
+  helpIcon.onclick=function(){
+    localStorage.removeItem("bwt_dashboard");
+    showBWalkthrough("dashboard");
+  };
+  document.body.appendChild(helpIcon);
+})();
+
 // ── Init ──
 (function init() {
   if (localStorage.getItem('bizToken')) {
     loadDashboard();
+    // Auto-show walkthrough on first visit
+    setTimeout(function(){
+      showBWalkthrough("dashboard");
+    },800);
   }
 })();
 </script>

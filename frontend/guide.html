@@ -98,24 +98,29 @@
     <a href="#networks">24. Networks</a>
     <a href="#legal-pages">25. Legal Pages</a>
     <a href="#branding">26. Branding</a>
-    <a href="#api-keys">27. API Keys</a>
-    <a href="#webhooks">28. Webhooks</a>
-    <a href="#provider-keys">29. Provider Keys</a>
-    <a href="#visitor-tracking">30. Visitor Tracking</a>
-    <a href="#landing-pages">31. Landing Pages</a>
-    <a href="#domains">32. Domains</a>
-    <a href="#automation">33. Automation / n8n</a>
-    <a href="#industries">34. Industries</a>
-    <a href="#settings">35. Settings</a>
-    <a href="#api">36. API Reference</a>
-    <a href="#faq">37. FAQ</a>
+    <a href="#zaarhub">27. ZaarHub Network</a>
+    <a href="#sponsors-ads">28. Sponsors &amp; Advertising</a>
+    <a href="#spotlight">29. Spotlight Listings</a>
+    <a href="#notifications">30. Directory Notifications</a>
+    <a href="#mobile">31. Mobile Experience</a>
+    <a href="#api-keys">32. API Keys</a>
+    <a href="#webhooks">33. Webhooks</a>
+    <a href="#provider-keys">34. Provider Keys</a>
+    <a href="#visitor-tracking">35. Visitor Tracking</a>
+    <a href="#landing-pages">36. Landing Pages</a>
+    <a href="#domains">37. Domains</a>
+    <a href="#automation">38. Automation / n8n</a>
+    <a href="#industries">39. Industries</a>
+    <a href="#settings">40. Settings</a>
+    <a href="#api">41. API Reference</a>
+    <a href="#faq">49. FAQ</a>
     <div class="section-label">UPDATED FEATURES</div>
-    <a href="#admin-vs-directory">38. Admin vs Directory Dashboard</a>
-    <a href="#ai-article-writer">39. AI Article Writer (Answer-First)</a>
-    <a href="#core-swift">40. Core Swift Native Integration</a>
-    <a href="#integrations">41. Integrations Panel</a>
-    <a href="#trap-doors">42. Trap Door Pages</a>
-    <a href="#sponsored-articles">43. Sponsored Articles</a>
+    <a href="#admin-vs-directory">43. Admin vs Directory Dashboard</a>
+    <a href="#ai-article-writer">44. AI Article Writer (Answer-First)</a>
+    <a href="#core-swift">45. Core Swift Native Integration</a>
+    <a href="#integrations">46. Integrations Panel</a>
+    <a href="#trap-doors">47. Trap Door Pages</a>
+    <a href="#sponsored-articles">48. Sponsored Articles</a>
   </nav>
 </div>
 
@@ -157,7 +162,7 @@
 </div>
 
 <!-- 2. Getting Started -->
-<h2 id="admin-vs-directory">38. Admin Panel vs Directory Dashboard</h2>
+<h2 id="admin-vs-directory">43. Admin Panel vs Directory Dashboard</h2>
 
 <p>This platform has <strong>two layers</strong> of navigation. Think of it like a mall:</p>
 
@@ -1046,8 +1051,350 @@
   <p><span class="badge post">POST</span> <code>/api/v1/admin/brand-sync</code> &mdash; Sync branding</p>
 </div>
 
-<!-- 27. API Keys -->
-<h2 id="api-keys">27. API Keys</h2>
+<!-- 27. ZaarHub Network -->
+<h2 id="zaarhub">27. ZaarHub Network</h2>
+
+<p><strong>ZaarHub</strong> is the community aggregation engine that connects multiple directories into a unified discovery experience. Each directory can opt in to share its businesses, deals, and events across the entire platform.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>🌐 Multi-Directory Aggregation</h3>
+    <p>Search businesses across all participating directories from a single search bar. Results include city labels so visitors know where each business is located.</p>
+  </div>
+  <div class="card">
+    <h3>📂 Category Pills</h3>
+    <p>Browse categories across all directories via clickable pill filters. Quickly narrow down by industry or service type regardless of city.</p>
+  </div>
+  <div class="card">
+    <h3>📡 Community Activity Feed</h3>
+    <p>Real-time feed showing new businesses, recent deals, and upcoming events from all opt-in directories. Drives cross-directory discovery.</p>
+  </div>
+  <div class="card">
+    <h3>⭐ Featured Deals &amp; Events</h3>
+    <p>Flag deals and events as "Featured" to highlight them across ZaarHub. Featured items appear in the ZaarHub spotlight carousel.</p>
+  </div>
+</div>
+
+<h3>How ZaarHub Works</h3>
+<ol>
+  <li>Each directory has a <code>zaarhub_config</code> in its settings that controls ZaarHub participation.</li>
+  <li>Toggle <strong>Enable ZaarHub</strong> on for each directory you want to include.</li>
+  <li>Toggle <strong>Show Featured Deals/Events</strong> to push promoted content to the ZaarHub front page.</li>
+  <li>ZaarHub aggregates at <code>/zaarhub/</code> or <code>/z/</code> — a single-page application that loads data from all enabled directories.</li>
+</ol>
+
+<h3>Enabling ZaarHub</h3>
+<div class="card">
+  <ol>
+    <li>Navigate to the directory's <strong>Settings</strong> page.</li>
+    <li>Find the <strong>ZaarHub Configuration</strong> section.</li>
+    <li>Toggle <strong>Enable ZaarHub Network</strong> to ON.</li>
+    <li>Optionally toggle <strong>Featured Deals</strong> and <strong>Featured Events</strong> to promote specific content.</li>
+    <li>Save settings. The directory will appear in ZaarHub search results immediately.</li>
+  </ol>
+</div>
+
+<h3>ZaarHub Frontend Features</h3>
+<div class="card">
+  <ul>
+    <li><strong>City selector</strong> — Dropdown to filter by city/directory.</li>
+    <li><strong>Global search</strong> — Search across all directories with auto-suggest.</li>
+    <li><strong>Category pills</strong> — Filter by category across all cities.</li>
+    <li><strong>Deals &amp; Events carousel</strong> — Rotating featured content.</li>
+    <li><strong>Community activity feed</strong> — Latest additions across the network.</li>
+    <li><strong>Ticker bar</strong> — Scrollable announcements from admin (see Section 30).</li>
+  </ul>
+</div>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/zaarhub/search?q=...</code> &mdash; Search across all ZaarHub directories</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/zaarhub/categories</code> &mdash; List aggregated categories</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/zaarhub/deals</code> &mdash; Featured deals across directories</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/zaarhub/events</code> &mdash; Featured events across directories</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 28. Sponsors & Advertising -->
+<h2 id="sponsors-ads">28. Sponsors &amp; Advertising</h2>
+
+<p>The advertising system enables directory operators to sell ad placements to businesses. It uses a <strong>three-tier structure</strong>: Sponsor Profiles → Ad Creatives → Ad Schedules, all managed through an approval queue.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>👤 Sponsor Profiles</h3>
+    <p>Sponsors are businesses that have opted to advertise. Sponsor profiles are auto-created from existing business data when an ad is submitted.</p>
+  </div>
+  <div class="card">
+    <h3>🖼️ Ad Creatives</h3>
+    <p>Image-based advertisements with enforced dimensions that must match the selected ad zone. Each creative includes a name, image URL, and optional target URL.</p>
+  </div>
+  <div class="card">
+    <h3>📅 Ad Schedules</h3>
+    <p>Schedules define when an ad runs — with start date, end date, and status (active/paused/ended). Multiple schedules can run concurrently for the same creative.</p>
+  </div>
+  <div class="card">
+    <h3>📋 Approval Queue</h3>
+    <p>All submissions pass through a cascading approval flow: sponsor → creative → schedule. Each level must be approved before the ad goes live.</p>
+  </div>
+</div>
+
+<h3>Ad Zones</h3>
+<p>Ad zones define the available placement slots in the directory interface. Three zone types are supported:</p>
+
+<div class="card">
+  <table>
+    <tr><th>Zone Type</th><th>Size</th><th>Location</th><th>Max Price</th></tr>
+    <tr><td>Hero Banner</td><td>728×90</td><td>Top of directory pages</td><td>Configurable</td></tr>
+    <tr><td>Sidebar</td><td>300×250</td><td>Side panel on search results</td><td>Configurable</td></tr>
+    <tr><td>Footer</td><td>468×60</td><td>Bottom of directory pages</td><td>Configurable</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/ad-zones</code> &mdash; List available ad zones</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-zones</code> &mdash; Create ad zone</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/ad-zones/:id</code> &mdash; Update ad zone</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/ad-zones/:id</code> &mdash; Delete ad zone</p>
+</div>
+
+<h3>Sponsor Profiles</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/sponsors</code> &mdash; List sponsors</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/sponsors</code> &mdash; Create sponsor profile</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/sponsors/:id</code> &mdash; Get sponsor</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/sponsors/:id</code> &mdash; Update sponsor</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/sponsors/:id</code> &mdash; Delete sponsor</p>
+</div>
+
+<h3>Ad Creatives &amp; Schedules</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/ad-creatives</code> &mdash; List ad creatives</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-creatives</code> &mdash; Create ad creative</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/ad-creatives/:id</code> &mdash; Update creative</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/ad-creatives/:id</code> &mdash; Delete creative</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/ad-schedules</code> &mdash; List schedules</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-schedules</code> &mdash; Create schedule</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/ad-schedules/:id</code> &mdash; Update schedule</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/ad-schedules/:id</code> &mdash; Delete schedule</p>
+</div>
+
+<h3>Approval Workflow</h3>
+<p>Each ad submission goes through a three-stage approval process:</p>
+<div class="card">
+  <ol>
+    <li><strong>Sponsor Approval</strong> — Admin reviews the business submitting the ad. Verify the sponsor profile is complete and the business is legitimate.</li>
+    <li><strong>Creative Approval</strong> — Admin reviews the ad creative (image, copy, target URL). Verify dimensions match the zone and content is appropriate.</li>
+    <li><strong>Schedule Approval</strong> — Admin reviews the proposed schedule dates and slot availability. Approve or adjust the date range.</li>
+  </ol>
+  <p style="margin-top:12px;color:#94a3b8;">Each level has its own approval endpoint. All three must show "Approved" status before the ad renders publicly.</p>
+</div>
+
+<div class="card">
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-sponsors/:id/approve</code> &mdash; Approve sponsor</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-sponsors/:id/reject</code> &mdash; Reject sponsor</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-creatives/:id/approve</code> &mdash; Approve creative</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-creatives/:id/reject</code> &mdash; Reject creative</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-schedules/:id/approve</code> &mdash; Approve schedule</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ad-schedules/:id/reject</code> &mdash; Reject schedule</p>
+</div>
+
+<h3>Self-Serve Business Submissions</h3>
+<p>Business owners can submit ads directly from their Business Portal (<code>/portal</code>):</p>
+<ol>
+  <li>Log in to the Business Portal and select your business.</li>
+  <li>Click <strong>+ New Ad</strong> in the Promotions section.</li>
+  <li>Fill in: Ad Name, Slot Size (from available zones), Image URL, and optional Target URL.</li>
+  <li>Submit for admin review. The ad appears as "Pending" until all approvals clear.</li>
+  <li>Track status from the My Ads list — Pending, Approved, or Rejected with reason.</li>
+</ol>
+
+<h3>Earnings Tracking</h3>
+<div class="card">
+  <p>The system tracks earnings at multiple levels:</p>
+  <ul>
+    <li><strong>Per slot</strong> — Revenue earned from each scheduled ad placement.</li>
+    <li><strong>Per sponsor</strong> — Aggregate earnings per business across all their ads.</li>
+    <li><strong>Dashboard</strong> — Total earnings overview across all ad zones and sponsors.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/ad-earnings</code> &mdash; Aggregate earnings dashboard</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/businesses/:id/ads/earnings</code> &mdash; Per-business ad earnings</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/businesses/:id/ads</code> &mdash; List business's ads</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/businesses/:id/ads/submit</code> &mdash; Submit ad from business portal</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 29. Spotlight Listings -->
+<h2 id="spotlight">29. Spotlight Listings</h2>
+
+<p>Spotlight listings are premium placements that give businesses enhanced visibility both in their local directory and across the ZaarHub network. They appear in a dedicated spotlight carousel section with a configurable badge.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>✨ Premium Placement</h3>
+    <p>Spotlight listings render at the top of directory pages and in the ZaarHub spotlight carousel. They stand out from regular listings with a visual badge.</p>
+  </div>
+  <div class="card">
+    <h3>🏷️ Configurable Badge</h3>
+    <p>Each spotlight listing has a custom badge text (e.g., "Featured", "Top Pick", "Best of [City]"). Badges are displayed inline with the listing.</p>
+  </div>
+  <div class="card">
+    <h3>📅 Scheduled Placement</h3>
+    <p>Set a start date and end date for each spotlight. Listings auto-activate and auto-expire based on the schedule.</p>
+  </div>
+  <div class="card">
+    <h3>🌍 ZaarHub Exposure</h3>
+    <p>Toggle the ZaarHub featured flag to expose a spotlight listing across the entire ZaarHub network, not just its local directory.</p>
+  </div>
+</div>
+
+<h3>Managing Spotlight Listings</h3>
+<div class="card">
+  <ol>
+    <li>Go to the <strong>Monetization</strong> section in the directory dashboard.</li>
+    <li>Select <strong>Spotlight Listings</strong> tab.</li>
+    <li>Click <strong>Add Spotlight</strong> to create a new premium placement.</li>
+    <li>Select the business, enter badge text, and choose a slot position (1-based ordering).</li>
+    <li>Set the start and end date for the placement period.</li>
+    <li>Toggle <strong>Featured on ZaarHub</strong> to enable cross-network visibility.</li>
+    <li>Save. The listing appears in the spotlight carousel immediately (if within date range).</li>
+  </ol>
+</div>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/spotlight</code> &mdash; List all spotlight listings</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/spotlight</code> &mdash; Directory spotlight listings</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/spotlight</code> &mdash; Create spotlight listing</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/spotlight/:id</code> &mdash; Update spotlight</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/spotlight/:id</code> &mdash; Remove spotlight</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/spotlight/:id/feature</code> &mdash; Toggle ZaarHub featured flag</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 30. Directory Notifications -->
+<h2 id="notifications">30. Directory Notifications</h2>
+
+<p>The notification system powers the <strong>ticker bar</strong> at the top of the ZaarHub and directory frontends. Create scrolling announcements that inform visitors about events, promotions, or important updates.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>📢 Ticker Bar</h3>
+    <p>The ticker bar is a horizontally scrolling strip at the top of the page. Notifications cycle through in a smooth auto-scroll animation.</p>
+  </div>
+  <div class="card">
+    <h3>🔖 Notification Types</h3>
+    <p>Four types: <strong>Info</strong> (blue), <strong>Warning</strong> (amber), <strong>Announcement</strong> (green), and <strong>Event</strong> (purple). Each type has a distinct visual style.</p>
+  </div>
+  <div class="card">
+    <h3>🔄 Auto-Expiry</h3>
+    <p>Notifications automatically expire based on their date range. Past-due notifications are not displayed and can be purged.</p>
+  </div>
+  <div class="card">
+    <h3>🔗 Link Support</h3>
+    <p>Each notification can include an optional link. Clicking the ticker item navigates the visitor to the specified URL.</p>
+  </div>
+</div>
+
+<h3>Creating a Notification</h3>
+<div class="card">
+  <ol>
+    <li>Navigate to the directory <strong>Settings</strong> and find the <strong>Notifications</strong> tab.</li>
+    <li>Click <strong>+ New Notification</strong>.</li>
+    <li>Enter the message text (plain text, rendered in the ticker bar).</li>
+    <li>Select the type: Info, Warning, Announcement, or Event.</li>
+    <li>Optionally enter a link URL for clickable notifications.</li>
+    <li>Set the display start and end dates.</li>
+    <li>Save. The notification appears in the ticker bar immediately (if within date range).</li>
+  </ol>
+</div>
+
+<h3>Managing Notifications</h3>
+<div class="card">
+  <p>Active notifications are shown in the ticker bar, rotating through all currently valid entries. Multiple notifications can be active simultaneously — they cycle in order. Notifications respect their date range; expired ones automatically stop displaying. The ticker bar can be dismissed by visitors, but reappears on the next page load if active notifications exist.</p>
+</div>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/notifications</code> &mdash; List all notifications</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/notifications</code> &mdash; Directory notifications (active)</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/notifications</code> &mdash; Create notification</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/notifications/:id</code> &mdash; Get notification</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/notifications/:id</code> &mdash; Update notification</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/notifications/:id</code> &mdash; Delete notification</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 31. Mobile Experience -->
+<h2 id="mobile">31. Mobile Experience</h2>
+
+<p>All front-end pages are fully responsive and optimized for mobile browsing. The ZaarHub frontend and directory pages include mobile-specific navigation and touch-optimized interactions.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>📱 Bottom Navigation Bar</h3>
+    <p>On mobile, the primary navigation switches to a fixed bottom bar with five icons: <strong>Home</strong>, <strong>Cities</strong>, <strong>Deals</strong>, <strong>Events</strong>, <strong>Search</strong>. This replaces the desktop top navigation.</p>
+  </div>
+  <div class="card">
+    <h3>👆 Touch-Optimized Targets</h3>
+    <p>All interactive elements have a minimum touch target of 44×44px as recommended by Apple's HIG and Material Design guidelines.</p>
+  </div>
+  <div class="card">
+    <h3>🍔 Hamburger Menu</h3>
+    <p>On screens narrower than 768px, the desktop nav links collapse into a hamburger menu. The menu slides in from the side with a clean overlay.</p>
+  </div>
+  <div class="card">
+    <h3>📐 Responsive Layout</h3>
+    <p>All grid layouts, cards, and content sections fluidly adjust from desktop (1280px+) to tablet (768px) to mobile (320px+). No horizontal scrolling required.</p>
+  </div>
+</div>
+
+<h3>Bottom Nav Details</h3>
+<div class="card">
+  <table>
+    <tr><th>Icon</th><th>Label</th><th>Destination</th></tr>
+    <tr><td>🏠</td><td>Home</td><td>ZaarHub homepage with city grid and featured content</td></tr>
+    <tr><td>🏙️</td><td>Cities</td><td>Directory/city browser showing all available cities</td></tr>
+    <tr><td>🏷️</td><td>Deals</td><td>Featured deals and coupons from all directories</td></tr>
+    <tr><td>📅</td><td>Events</td><td>Upcoming community events across directories</td></tr>
+    <tr><td>🔍</td><td>Search</td><td>Global search across all directories and listings</td></tr>
+  </table>
+  <p style="margin-top:12px;color:#94a3b8;font-size:0.85rem;">The bottom nav includes safe-area-inset padding for devices with a home indicator (iPhone X+). It is only visible on screens narrower than 768px.</p>
+</div>
+
+<h3>Mobile Best Practices</h3>
+<div class="card">
+  <ul>
+    <li><strong>Cards</strong> — Stack vertically on mobile; use full-width cards with clear visual hierarchy.</li>
+    <li><strong>Forms</strong> — Full-width inputs with large tap targets. Labels remain visible above inputs.</li>
+    <li><strong>Images</strong> — Use responsive images with <code>max-width: 100%</code> and WebP format.</li>
+    <li><strong>Modals</strong> — Full-screen modals on mobile with a close button in the top-right corner.</li>
+    <li><strong>Loading states</strong> — Skeleton loaders for content-heavy sections; spinner for small requests.</li>
+    <li><strong>Touch feedback</strong> — Buttons and links have <code>:active</code> states for tactile response.</li>
+  </ul>
+</div>
+
+<h3>Tested Viewports</h3>
+<div class="card">
+  <table>
+    <tr><th>Device</th><th>Width</th><th>Behavior</th></tr>
+    <tr><td>Desktop</td><td>1280px+</td><td>Full sidebar, top nav, multi-column grids</td></tr>
+    <tr><td>Tablet</td><td>768-1279px</td><td>Condensed sidebar, 2-column grids, hamburger menu</td></tr>
+    <tr><td>Mobile</td><td>320-767px</td><td>Single column, bottom nav, full-width cards</td></tr>
+  </table>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 32. API Keys -->
+<h2 id="api-keys">32. API Keys</h2>
 <p>Manage API keys for external integrations. Create scoped keys with usage tracking and rate limiting.</p>
 
 <div class="feature-grid">
@@ -1076,7 +1423,7 @@
 </div>
 
 <!-- 28. Webhooks -->
-<h2 id="webhooks">28. Webhooks</h2>
+<h2 id="webhooks">33. Webhooks</h2>
 <p>Send real-time notifications to external services when events occur. Integrate with n8n and other automation platforms.</p>
 
 <div class="feature-grid">
@@ -1100,7 +1447,7 @@
 </div>
 
 <!-- 29. Provider Keys -->
-<h2 id="provider-keys">29. Provider Keys</h2>
+<h2 id="provider-keys">34. Provider Keys</h2>
 <p>Manage third-party API provider keys. Store and rotate keys for external services used by the platform.</p>
 
 <div class="card">
@@ -1110,7 +1457,7 @@
 </div>
 
 <!-- 30. Visitor Tracking -->
-<h2 id="visitor-tracking">30. Visitor Tracking</h2>
+<h2 id="visitor-tracking">35. Visitor Tracking</h2>
 <p>Track visitor sessions, page views, and events across directories. Understand how users interact with your listings.</p>
 
 <div class="feature-grid">
@@ -1150,7 +1497,7 @@
 </div>
 
 <!-- 31. Landing Pages -->
-<h2 id="landing-pages">31. Landing Pages</h2>
+<h2 id="landing-pages">36. Landing Pages</h2>
 <p>Create and manage public landing pages per directory. Customizable themes, publish controls, and SEO-friendly URLs.</p>
 
 <div class="feature-grid">
@@ -1200,7 +1547,7 @@
 </div>
 
 <!-- 32. Domains -->
-<h2 id="domains">32. Domains</h2>
+<h2 id="domains">37. Domains</h2>
 <p>Register custom domains for directories. Map your own domain names to individual directories with automatic SSL.</p>
 
 <div class="feature-grid">
@@ -1227,7 +1574,7 @@
 </div>
 
 <!-- 33. Automation / n8n -->
-<h2 id="automation">33. Automation / n8n</h2>
+<h2 id="automation">38. Automation / n8n</h2>
 <p>The platform integrates with n8n for workflow automation. Webhooks, CRON triggers, and event-driven actions enable automated content generation, lead sync, review moderation, and more.</p>
 
 <h3>Key Automation Use Cases</h3>
@@ -1260,7 +1607,7 @@
 </div>
 
 <!-- 34. Industries -->
-<h2 id="industries">34. Industries</h2>
+<h2 id="industries">39. Industries</h2>
 <p>Manage industry categories for your directories. Filter available industries and assign specific industries to your account.</p>
 
 <div class="card">
@@ -1272,7 +1619,7 @@
 </div>
 
 <!-- 35. Settings -->
-<h2 id="settings">35. Settings</h2>
+<h2 id="settings">40. Settings</h2>
 <p>User profile settings, password management, and account configuration.</p>
 
 <div class="feature-grid">
@@ -1296,7 +1643,7 @@
 </div>
 
 <!-- 36. API Reference -->
-<h2 id="api">36. API Reference</h2>
+<h2 id="api">41. API Reference</h2>
 <p>General API usage guidelines for the Multi-Directory Platform.</p>
 
 <h3>Authentication</h3>
@@ -1352,7 +1699,7 @@
 
 <!-- 37. FAQ -->
 <!-- 38. AI Article Writer -->
-<h2 id="ai-article-writer">39. AI Article Writer (Answer-First)</h2>
+<h2 id="ai-article-writer">44. AI Article Writer (Answer-First)</h2>
 
 <p>The <strong>AI Article Writer</strong> generates SEO-optimized content in the Answer-First format. Access it via <strong>SEO Articles</strong> in the directory dashboard sidebar.</p>
 
@@ -1384,7 +1731,7 @@
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
 
 <!-- 39. Core Swift Native Integration -->
-<h2 id="core-swift">40. Core Swift Native Integration</h2>
+<h2 id="core-swift">45. Core Swift Native Integration</h2>
 
 <p><strong>Core Swift</strong> is the sister company engine that handles all CRM, communication campaigns, automation, and tagging. Directories are <strong>capture points</strong> that feed contacts and trigger campaigns. Every directory network gets its own Core Swift tenant account (not the admin account).</p>
 
@@ -1432,7 +1779,7 @@
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
 
 <!-- 40. Integrations Panel -->
-<h2 id="integrations">41. Integrations Panel</h2>
+<h2 id="integrations">46. Integrations Panel</h2>
 
 <p>Each directory has its own Integrations panel (Dashboard &rarr; Integrations). The system is designed around Core Swift as the built-in engine.</p>
 
@@ -1463,7 +1810,7 @@
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
 
 <!-- 41. Trap Door Pages -->
-<h2 id="trap-doors">42. Trap Door Pages</h2>
+<h2 id="trap-doors">47. Trap Door Pages</h2>
 
 <p>Hyper-niche landing pages targeting long-tail SEO queries. Generated from combinations of services, cities, days of the week, and time slots.</p>
 
@@ -1501,7 +1848,7 @@
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
 
 <!-- 42. Sponsored Articles -->
-<h2 id="sponsored-articles">43. Sponsored Articles</h2>
+<h2 id="sponsored-articles">48. Sponsored Articles</h2>
 
 <p>Monetize directory content by selling article sponsorships to businesses. One of 4 monetization methods alongside Plan Tiers, Subscriptions, and Ad Zones.</p>
 
@@ -1524,7 +1871,7 @@
 <p><strong>Two-tier model:</strong> Owner articles (directory SEO) are free. Business-sponsored articles are paid, with weekly renewal.</p>
 
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
-<h2 id="faq">37. FAQ</h2>
+<h2 id="faq">49. FAQ</h2>
 
 <details>
   <summary>How do I create a new directory?</summary>

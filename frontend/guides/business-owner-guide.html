@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Owner Guide — Multi-Directory Platform</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; z-index: 10; }
+  .sidebar h2 { color: #10b981; font-size: 1.1rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sidebar nav a { display: block; padding: 8px 20px; color: #94a3b8; font-size: 0.85rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+  .sidebar .section-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 4px; }
+
+  .main { margin-left: 280px; flex: 1; padding: 40px 48px; max-width: 960px; }
+  .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
+  .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main h4 { font-size: 1rem; color: #cbd5e1; margin-top: 16px; margin-bottom: 6px; }
+  .main p, .main li { line-height: 1.7; color: #cbd5e1; }
+  .main p { margin-bottom: 12px; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; }
+  .main li { margin-bottom: 6px; }
+
+  .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .card h3 { margin-top: 0; color: #10b981; }
+  .card p { color: #cbd5e1; }
+  .card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .card td { padding: 6px 12px; border-bottom: 1px solid #334155; }
+  .card td:first-child { color: #94a3b8; white-space: nowrap; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #10b981; }
+  pre { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #e2e8f0; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }
+  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; text-align: center; }
+  .stat .num { font-size: 2rem; font-weight: 700; color: #10b981; display: block; }
+  .stat .label { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
+
+  details { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+  details summary { cursor: pointer; font-weight: 600; color: #10b981; }
+  details[open] summary { margin-bottom: 10px; }
+  details p { margin: 0; color: #cbd5e1; padding-top: 8px; }
+
+  .badge { display: inline-block; background: #065f46; color: #a7f3d0; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-right: 4px; }
+  .badge.info { background: #1e3a5f; color: #93c5fd; }
+  .badge.warn { background: #713f12; color: #fde68a; }
+  .badge.success { background: #14532d; color: #86efac; }
+  .badge.pending { background: #713f12; color: #fde68a; }
+  .badge.approved { background: #14532d; color: #86efac; }
+  .badge.rejected { background: #7f1d1d; color: #fca5a5; }
+
+  .step-item { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; padding: 12px 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
+  .step-item:last-child { margin-bottom: 0; }
+  .step-num { width: 30px; height: 30px; min-width: 30px; background: #10b981; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
+  .step-text { flex: 1; }
+  .step-text p { margin: 0; color: #cbd5e1; line-height: 1.6; }
+  .step-text p strong { color: #e2e8f0; }
+
+  .tip-box { background: #064e3b; border-left: 4px solid #10b981; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .tip-box p { margin: 0; color: #a7f3d0; font-size: 0.9rem; }
+  .tip-box strong { color: #6ee7b7; }
+
+  .warn-box { background: #451a03; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .warn-box p { margin: 0; color: #fde68a; font-size: 0.9rem; }
+  .warn-box strong { color: #fbbf24; }
+
+  .top-link { display: inline-block; margin-top: 20px; font-size: 0.85rem; }
+  hr { border: none; border-top: 1px solid #334155; margin: 24px 0; }
+
+  .back-link { display: inline-block; margin-top: 32px; font-size: 0.85rem; padding: 8px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; transition: all 0.2s; }
+  .back-link:hover { border-color: #10b981; text-decoration: none; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>🏪 Biz Owner Guide</h2>
+  <nav>
+    <a href="#introduction" class="active">1. Introduction</a>
+    <a href="#claiming">2. Claiming Your Business</a>
+    <a href="#signing-in">3. Signing In</a>
+    <a href="#dashboard">4. Dashboard Overview</a>
+    <a href="#subscription">5. Managing Your Plan</a>
+    <a href="#advertising">6. Submitting Advertisements</a>
+    <a href="#ad-status">7. Ad Status &amp; Earnings</a>
+    <a href="#reviews">8. Managing Reviews</a>
+    <a href="#profile">9. Updating Business Profile</a>
+  </nav>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+<h1>🏪 Business Owner Guide</h1>
+<p style="color:#64748b;margin-bottom:32px;">Everything you need to manage your business listing, ads, and subscriptions through the Business Portal.</p>
+
+<!-- 1. Introduction -->
+<h2 id="introduction">1. Introduction</h2>
+<p>The <strong>Business Portal</strong> at <code>/portal</code> is your command center for managing your business listing. From here you can update your profile, track performance, manage your subscription, submit ads, and respond to customer reviews.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>📊 Dashboard</h3>
+    <p>See visits, reviews, and subscription status at a glance.</p>
+  </div>
+  <div class="card">
+    <h3>📢 Advertising</h3>
+    <p>Submit ads for admin approval and track earnings.</p>
+  </div>
+  <div class="card">
+    <h3>⭐ Reviews</h3>
+    <p>Respond to customer reviews and manage your reputation.</p>
+  </div>
+  <div class="card">
+    <h3>⬆️ Subscriptions</h3>
+    <p>Upgrade your plan for premium features and visibility.</p>
+  </div>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 2. Claiming Your Business -->
+<h2 id="claiming">2. Claiming Your Business</h2>
+
+<p>If your business is already listed in the directory, you need to claim it before you can access the Business Portal. If your business isn't listed yet, contact the directory admin or submit a new listing through the directory's submission form.</p>
+
+<h3>How to Claim</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Visit your business's detail page on the public directory.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Click the <strong>Claim This Business</strong> button.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Fill in the claim form with your contact information and submit.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Wait for admin approval. You'll receive an email once approved.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Set up your Business Portal password and log in at <code>/portal</code>.</p></div>
+  </div>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 3. Signing In -->
+<h2 id="signing-in">3. Signing In</h2>
+
+<div class="card">
+  <ol>
+    <li>Open your browser and navigate to <code>https://your-platform.com/portal</code>.</li>
+    <li>The login screen shows tabs for <strong>Login</strong> and <strong>Register</strong>.</li>
+    <li>If you've already claimed your business, click the <strong>Login</strong> tab.</li>
+    <li>Enter your email and password.</li>
+    <li>Click <strong>Sign In</strong>. Your dashboard loads automatically.</li>
+  </ol>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> If you manage multiple businesses, you'll see a business selector after logging in. Select the business you want to manage from the dropdown.</p>
+</div>
+
+<h3>First-Time Registration</h3>
+<div class="card">
+  <p>If you haven't claimed your business yet but want to pre-register:</p>
+  <ol>
+    <li>Go to <code>/portal</code> and click the <strong>Register</strong> tab.</li>
+    <li>Create your account with name, email, and password.</li>
+    <li>After registration, you'll be prompted to link an existing business (search by name) or request a new listing.</li>
+  </ol>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 4. Dashboard Overview -->
+<h2 id="dashboard">4. Dashboard Overview</h2>
+
+<p>Once logged in, the dashboard shows key metrics for your selected business.</p>
+
+<div class="stat-grid">
+  <div class="stat"><span class="num">--</span><span class="label">Profile Visits</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Total Reviews</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Avg Rating</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Active Ads</span></div>
+</div>
+
+<h3>Dashboard Sections</h3>
+<div class="feature-grid">
+  <div class="card">
+    <h3>📈 Profile Visits</h3>
+    <p>See how many times your business profile has been viewed over time. Updated daily.</p>
+  </div>
+  <div class="card">
+    <h3>⭐ Reviews Summary</h3>
+    <p>Total review count, average star rating, and the latest 5 reviews.</p>
+  </div>
+  <div class="card">
+    <h3>⬆️ Your Plan</h3>
+    <p>Current subscription tier and feature limits. Quick link to upgrade.</p>
+  </div>
+  <div class="card">
+    <h3>📢 Active Ads</h3>
+    <p>Number of approved ads currently running and their earnings.</p>
+  </div>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 5. Managing Your Plan -->
+<h2 id="subscription">5. Managing Your Plan / Subscription</h2>
+
+<p>Your business subscription determines the features available to you. The directory admin defines available tiers.</p>
+
+<h3>Viewing Your Current Plan</h3>
+<div class="card">
+  <p>Your current plan is displayed in the dashboard header. It shows:</p>
+  <ul>
+    <li><strong>Plan name</strong> — e.g., Free, Basic, Premium, Enterprise</li>
+    <li><strong>Status</strong> — Active, Expired, or Trial</li>
+    <li><strong>Feature limits</strong> — Number of listings, photos, deals, etc.</li>
+    <li><strong>Badge</strong> — Some plans include a premium badge on your listing</li>
+  </ul>
+</div>
+
+<h3>Upgrading Your Plan</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Click <strong>Upgrade Plan</strong> from the dashboard or the subscriptions section.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Browse available tiers and compare their features and pricing.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Select a plan and choose monthly or annual billing.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Complete payment. Your plan upgrades immediately.</p></div>
+  </div>
+</div>
+
+<div class="card">
+  <p><strong>Available features that may require a paid plan:</strong></p>
+  <table>
+    <tr><td>Unlimited Listings</td><td>Premium plan+</td></tr>
+    <tr><td>Unlimited Photos</td><td>Premium plan+</td></tr>
+    <tr><td>Deals &amp; Coupons</td><td>Basic plan+</td></tr>
+    <tr><td>Spotlight Eligible</td><td>Premium plan+</td></tr>
+    <tr><td>Advanced Analytics</td><td>Premium plan+</td></tr>
+    <tr><td>Ad Submissions</td><td>All plans</td></tr>
+    <tr><td>Review Responses</td><td>All plans</td></tr>
+  </table>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 6. Submitting Advertisements -->
+<h2 id="advertising">6. Submitting Advertisements</h2>
+
+<p>As a business owner, you can submit advertisements to promote your business. Ads go through an admin approval process before being displayed.</p>
+
+<h3>How to Submit an Ad</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Log into the Business Portal at <code>/portal</code>.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Select your business from the dropdown (if you have multiple businesses).</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Scroll to the <strong>📢 Promote Your Business</strong> section.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Click <strong>+ New Ad</strong> to open the ad submission form.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Fill in the following fields:</p>
+      <table style="margin-top:4px;">
+        <tr><td><strong>Ad Name</strong></td><td>A short, descriptive name for your ad (e.g., "Summer Special")</td></tr>
+        <tr><td><strong>Slot Size</strong></td><td>Select from available ad zones (Hero Banner 728×90, Sidebar 300×250, Footer 468×60)</td></tr>
+        <tr><td><strong>Image URL</strong></td><td>URL to your ad image. Must match the zone's dimensions.</td></tr>
+        <tr><td><strong>Target URL</strong></td><td>Where visitors go when they click your ad (optional).</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-text"><p>Click <strong>Submit Ad for Review</strong>. Your ad enters the approval queue.</p></div>
+  </div>
+</div>
+
+<div class="warn-box">
+  <p><strong>⚠️ Image Requirements:</strong> Your ad image must match the selected zone's exact dimensions. A 728×90 image is required for the Hero Banner zone, 300×250 for Sidebar, and 468×60 for Footer. Images that don't match will be rejected.</p>
+</div>
+
+<h3>Available Ad Zones</h3>
+<div class="card">
+  <table>
+    <tr><th>Zone Name</th><th>Dimensions</th><th>Location</th><th>Price</th></tr>
+    <tr><td>Hero Banner</td><td>728 × 90 px</td><td>Top of directory pages</td><td>Per admin pricing</td></tr>
+    <tr><td>Sidebar</td><td>300 × 250 px</td><td>Side panel on search results</td><td>Per admin pricing</td></tr>
+    <tr><td>Footer</td><td>468 × 60 px</td><td>Bottom of directory pages</td><td>Per admin pricing</td></tr>
+  </table>
+  <p style="margin-top:8px;color:#94a3b8;font-size:0.85rem;">Available zones and pricing are displayed in the slot size dropdown when you create an ad.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 7. Ad Status & Earnings -->
+<h2 id="ad-status">7. Ad Status &amp; Earnings</h2>
+
+<h3>Viewing Submitted Ads</h3>
+<div class="card">
+  <p>After submitting ads, they appear in the <strong>My Ads</strong> list section. Each ad shows:</p>
+  <ul>
+    <li><strong>Ad Name</strong> — The name you gave the ad.</li>
+    <li><strong>Zone Info</strong> — Which slot size and location.</li>
+    <li><strong>Status</strong> — One of three statuses:</li>
+  </ul>
+  <table>
+    <tr><td><span class="badge pending">⏳ Pending Review</span></td><td>Your ad is in the approval queue. The admin needs to review it.</td></tr>
+    <tr><td><span class="badge approved">✅ Approved</span></td><td>Your ad is approved and live on the directory. 🎉</td></tr>
+    <tr><td><span class="badge rejected">❌ Rejected</span></td><td>Your ad was rejected. The rejection reason is shown next to the status.</td></tr>
+  </table>
+  <p style="margin-top:8px;">If rejected, review the reason, fix the issue, and submit a new ad.</p>
+</div>
+
+<h3>Viewing Ad Earnings</h3>
+<div class="card">
+  <p>Once your ads are approved and running, you can track earnings:</p>
+  <ol>
+    <li>Navigate to the <strong>📢 Promote Your Business</strong> section in the portal.</li>
+    <li>Locate the <strong>💰 Ad Earnings</strong> box (it appears automatically when you have active schedules with earnings).</li>
+    <li>The earnings box shows:</li>
+    <ul>
+      <li><strong>Total Earned</strong> — Cumulative earnings from all your approved ads.</li>
+      <li><strong>Active Schedules</strong> — Number of ad schedules currently running.</li>
+    </ul>
+  </ol>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Earnings update periodically. Check back regularly to see how your ads are performing. Create multiple ads for different zones to maximize visibility.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 8. Managing Reviews -->
+<h2 id="reviews">8. Managing Reviews</h2>
+
+<p>Customer reviews build trust and help your business stand out. You can view all reviews and respond to them from the portal.</p>
+
+<h3>Viewing Reviews</h3>
+<div class="card">
+  <p>Your reviews are displayed in the <strong>Reviews</strong> section of the portal.</p>
+  <ul>
+    <li>Each review shows the reviewer's name, star rating, text, and date.</li>
+    <li>Reviews are sorted by date, newest first.</li>
+    <li>The dashboard header shows your total review count and average rating.</li>
+  </ul>
+</div>
+
+<h3>Responding to a Review</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Go to the <strong>Reviews</strong> section in the portal.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Find the review you want to respond to.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Click <strong>Reply</strong> below the review.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Type your response and click <strong>Submit Reply</strong>.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Your reply appears publicly below the review on the business detail page.</p></div>
+  </div>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Always respond professionally to both positive and negative reviews. Thank customers for positive feedback and address concerns in negative ones. A thoughtful response shows you care about customer experience.</p>
+</div>
+
+<h3>Review Best Practices</h3>
+<div class="card">
+  <ul>
+    <li><strong>Respond quickly</strong> — Aim to respond within 24-48 hours.</li>
+    <li><strong>Be professional</strong> — Keep responses courteous and helpful.</li>
+    <li><strong>Address specifics</strong> — Reference what the reviewer mentioned.</li>
+    <li><strong>Take it offline</strong> — For complaints, offer to discuss further via phone or email.</li>
+    <li><strong>Don't argue</strong> — If a review is unfair, respond professionally without being defensive.</li>
+    <li><strong>Encourage reviews</strong> — Ask satisfied customers to leave a review to build your rating.</li>
+  </ul>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 9. Updating Business Profile -->
+<h2 id="profile">9. Updating Business Profile</h2>
+
+<p>Keep your business listing accurate and up to date. A complete profile attracts more customers.</p>
+
+<h3>What You Can Edit</h3>
+<div class="card">
+  <table>
+    <tr><td>Business Name</td><td>Your official business name</td></tr>
+    <tr><td>Address</td><td>Street, city, state, zip code</td></tr>
+    <tr><td>Phone</td><td>Primary contact number</td></tr>
+    <tr><td>Website</td><td>Your business website URL</td></tr>
+    <tr><td>Hours</td><td>Days and hours of operation</td></tr>
+    <tr><td>Description</td><td>Rich text description of your business</td></tr>
+    <tr><td>Photos</td><td>Upload up to 10 images</td></tr>
+    <tr><td>Categories</td><td>Select or change your business category</td></tr>
+  </table>
+</div>
+
+<h3>Editing Your Profile</h3>
+<div class="card">
+  <ol>
+    <li>From the portal dashboard, locate the <strong>Business Info</strong> or <strong>Profile</strong> section.</li>
+    <li>Click the <strong>Edit</strong> button next to the field you want to update.</li>
+    <li>Make your changes in the form that appears.</li>
+    <li>Click <strong>Save</strong> to apply changes. They appear on the public listing immediately.</li>
+  </ol>
+</div>
+
+<h3>Uploading Photos</h3>
+<div class="card">
+  <p>Photos can be uploaded from the profile editing section:</p>
+  <ul>
+    <li>Click <strong>Add Photo</strong> and select an image from your device.</li>
+    <li>Supported formats: JPG, PNG, WebP (max 5MB each).</li>
+    <li>You can reorder photos by dragging them.</li>
+    <li>Click the delete icon to remove a photo.</li>
+  </ul>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> A complete profile with photos, updated hours, and a detailed description gets up to 3× more views than a basic listing.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<div style="text-align:center;">
+  <a href="index.html" class="back-link">📚 Back to Guides Hub</a>
+  <a href="../guide.html" class="back-link" style="margin-left:8px;">📖 Back to Admin Guide</a>
+</div>
+
+</div>
+
+</body>
+</html>
