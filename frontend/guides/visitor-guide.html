@@ -180,10 +180,14 @@
 <div class="card">
   <ol>
     <li>Browse or search for a business in any directory.</li>
-    <li>Open the business detail page by clicking on the listing.</li>
+    <li>Open the business detail page by clicking on the listing (opens at <code>/biz/:slug/:id</code>).</li>
     <li>Click the <strong>🔖 Save</strong> or <strong>❤️</strong> button on the business detail page.</li>
     <li>The button changes to <strong>Saved</strong> to confirm it's bookmarked.</li>
   </ol>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> The business detail page (<code>/biz/:slug/:id</code>) includes a full gallery, hours of operation, a Leaflet map with OSM tiles, all reviews, and a direct message form. You can also toggle between List, Map, and Split views on search results.</p>
 </div>
 
 <h3>How to Remove a Saved Business</h3>
@@ -255,14 +259,15 @@
 <!-- 5. Viewing Saved Places -->
 <h2 id="saved-places">5. Viewing Saved Places</h2>
 
-<p>All businesses you've bookmarked are accessible from your saved places list in the visitor portal.</p>
+<p>All businesses you've bookmarked are accessible from your saved places list — either in the visitor portal or the dedicated dashboard at <code>/user/saved</code>.</p>
 
 <h3>Accessing Saved Places</h3>
 <div class="card">
   <ol>
-    <li>Go to the <strong>Visitor Portal</strong> at <code>/visitor</code> or click your profile icon in the top navigation.</li>
+    <li>Go to <strong><code>/user/saved</code></strong> — your personal dashboard with saved spots, reviews, and redeemed perks.</li>
+    <li>Alternatively, go to the <strong>Visitor Portal</strong> at <code>/visitor</code> or click your profile icon in the top navigation.</li>
     <li>If not logged in, sign in with your email and password.</li>
-    <li>The dashboard loads, and you'll see a <strong>Saved Places</strong> section.</li>
+    <li>The dashboard loads with a <strong>Saved Places</strong> section showing all bookmarked businesses.</li>
     <li>Each saved business shows its name, category, city, and a thumbnail image.</li>
   </ol>
 </div>
@@ -289,30 +294,33 @@
 <p>If you own a business that's already listed in the directory, you can claim it to become its verified owner. This gives you access to the Business Portal where you can manage your listing, respond to reviews, and subscribe to premium features.</p>
 
 <h3>How to Claim</h3>
+
+<p>You can claim a business two ways:</p>
+
+<h4>Option A: Inline Claim (from business detail)</h4>
+<div class="card">
+  <ol>
+    <li>Navigate to the business detail page (<code>/biz/:slug/:id</code>) for the business you own.</li>
+    <li>Look for the <strong>Claim This Business</strong> button near the top of the page.</li>
+    <li>Click the button. A claim request form appears inline.</li>
+    <li>Fill in your contact details and optionally provide proof of ownership.</li>
+    <li>Submit the claim request. It goes to the directory admin for review.</li>
+  </ol>
+</div>
+
+<h4>Option B: 3-Step Claim Flow (<code>/claim</code>)</h4>
 <div class="card">
   <div class="step-item">
     <div class="step-num">1</div>
-    <div class="step-text"><p>Navigate to the business detail page for the business you own.</p></div>
+    <div class="step-text"><p><strong>Search</strong> — Go to <code>/claim</code> and search for your business by name or URL. The system looks up matching listings across all directories.</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">2</div>
-    <div class="step-text"><p>Look for the <strong>Claim This Business</strong> button. It's usually near the top of the page or in the contact section.</p></div>
+    <div class="step-text"><p><strong>Verify</strong> — Select your business from the results and provide verification details (email domain matching the business website, phone number on file, or other proof).</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">3</div>
-    <div class="step-text"><p>Click the button. A claim request form appears.</p></div>
-  </div>
-  <div class="step-item">
-    <div class="step-num">4</div>
-    <div class="step-text"><p>Fill in your contact details and optionally provide proof of ownership (phone number on file, business email, or other verification).</p></div>
-  </div>
-  <div class="step-item">
-    <div class="step-num">5</div>
-    <div class="step-text"><p>Submit the claim request. It goes to the directory admin for review.</p></div>
-  </div>
-  <div class="step-item">
-    <div class="step-num">6</div>
-    <div class="step-text"><p>Once approved, you'll receive an email with instructions to set up your Business Portal password and access your business dashboard.</p></div>
+    <div class="step-text"><p><strong>Confirm</strong> — Review the claim summary, agree to the terms, and submit. You'll receive a confirmation email and can track the status from your portal.</p></div>
   </div>
 </div>
 

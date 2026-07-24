@@ -386,6 +386,7 @@ pub fn create_router(s: AppState) -> Router {
         // ? Directory feature config (public GET, admin PUT)
         .route("/directories/:id/features", get(portal::get_directory_features).put(portal::update_directory_features))
         // ? Public endpoints (no auth required)
+        .route("/messages/:business_id", post(messaging::send_message))
         .route("/businesses/:id/claim", post(visitors::claim_business))
         .route("/businesses/:id/images", post(businesses::upload_business_images))
         .route("/city-requests", get(visitors::get_city_requests).post(visitors::request_city))
@@ -461,6 +462,10 @@ pub fn create_router(s: AppState) -> Router {
         // ??? City Requests admin endpoints
         .route("/admin/directories/:id/city-requests", get(visitors::admin_get_city_requests))
         .route("/admin/directories/:id/city-requests/:request_id/mark-added", post(visitors::admin_mark_city_added))
+        // ? Business messaging - owner routes (auth required)
+        .route("/messages/:business_id", get(messaging::list_messages))
+        .route("/messages/:business_id/unread", get(messaging::unread_count))
+        .route("/messages/:id/read", patch(messaging::mark_read))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
@@ -924,6 +929,8 @@ async fn auth_guard(
         || (path == "/b2b/register" && req.method() == "POST")
         // Public pricing endpoint
         || path == "/pricing/public"
+        // Public business message sending (guests can send messages)
+        || (path.starts_with("/messages/") && req.method() == "POST")
         // Public data pipeline ingest (external sources push here)
         || path == "/pipeline/ingest"
         // Public community posts (GET only, POST/PUT/DELETE need auth)

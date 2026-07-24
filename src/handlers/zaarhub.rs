@@ -707,6 +707,12 @@ pub struct SearchQuery {
     pub category: Option<String>,
     pub page: Option<i32>,
     pub limit: Option<i32>,
+    /// Latitude for "near me" proximity search
+    pub lat: Option<f64>,
+    /// Longitude for "near me" proximity search
+    pub lng: Option<f64>,
+    /// Radius in meters for proximity search (default 5000 when lat/lng provided)
+    pub radius: Option<f64>,
 }
 
 pub async fn search_businesses(
@@ -730,6 +736,14 @@ pub async fn search_businesses(
     // with sqlx::query_as bound parameters rather than format! injection.
     // We use a CTE pattern: always include the search term for parameter consistency.
     
+    // Capture proximity params before the block so they're in scope for the results builder
+    let proximity = if let (Some(lat), Some(lng)) = (query.lat, query.lng) {
+        let radius = query.radius.unwrap_or(5000.0); // default 5km
+        Some((lat, lng, radius))
+    } else {
+        None
+    };
+    
     let rows: Vec<(Uuid, String, String, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, String, String)> = {
         let (city_param, category_param) = (query.city.clone(), query.category.clone());
         
@@ -743,49 +757,62 @@ pub async fn search_businesses(
                WHERE b.is_active = true"#
         );
 
-        // We need to dynamically build the WHERE clause with bound params.
-        // Use sqlx::query_as with a string query and bind values.
-        // To avoid injection, we construct the query skeleton and use bind() for all user values.
-        
-        let mut has_search = false;
+        let mut param_count: i32 = 0;
+
         if !search_term.is_empty() && !search_pattern.is_empty() {
-            sql.push_str(
-                " AND (b.name ILIKE $1 OR b.description ILIKE $1 OR b.city ILIKE $1 OR b.category_id IN (
-                    SELECT id FROM directory_categories WHERE name ILIKE $1
-                ))"
-            );
-            has_search = true;
+            param_count += 1;
+            sql.push_str(&format!(
+                " AND (b.name ILIKE ${0} OR b.description ILIKE ${0} OR b.city ILIKE ${0} OR b.category_id IN (
+                    SELECT id FROM directory_categories WHERE name ILIKE ${0}
+                ))",
+                param_count
+            ));
         }
 
         if let Some(ref _city) = city_param {
-            let param_idx = if has_search { "$2" } else { "$1" };
-            sql.push_str(&format!(" AND d.slug = {}", param_idx));
+            param_count += 1;
+            sql.push_str(&format!(" AND d.slug = ${}", param_count));
         }
 
         if let Some(ref _category) = category_param {
-            let param_idx = if has_search && city_param.is_some() {
-                "$3"
-            } else if has_search || city_param.is_some() {
-                "$2"
-            } else {
-                "$1"
-            };
-            sql.push_str(&format!(" AND b.category_id IN (SELECT id FROM directory_categories WHERE slug = {})", param_idx));
+            param_count += 1;
+            sql.push_str(&format!(" AND b.category_id IN (SELECT id FROM directory_categories WHERE slug = ${})", param_count));
         }
 
-        sql.push_str(" ORDER BY b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST");
+        // Add proximity clause if lat/lng provided — inlined as numeric literals (safe for f64)
+        if let Some((lat, lng, radius)) = proximity {
+            sql.push_str(&format!(
+                " AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL
+                  AND (6371000 * acos(cos(radians({lat})) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians({lng})) + sin(radians({lat})) * sin(radians(b.latitude)))) < {radius}",
+                lat = lat, lng = lng, radius = radius
+            ));
+        }
+
+        sql.push_str(" ORDER BY ");
+        if let Some((lat, lng, _radius)) = proximity {
+            // Sort by distance ascending when proximity is active
+            sql.push_str(&format!(
+                "(6371000 * acos(cos(radians({lat})) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians({lng})) + sin(radians({lat})) * sin(radians(b.latitude)))) ASC,",
+                lat = lat, lng = lng
+            ));
+        }
+        sql.push_str(" b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST");
         sql.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
 
-        // Build query with proper binds
+        // Build query with proper binds (only string params use binds — lat/lng inlined as numeric literals)
         let mut q = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, String, String)>(&sql);
 
-        if has_search {
+        param_count = 0;
+        if !search_term.is_empty() && !search_pattern.is_empty() {
+            param_count += 1;
             q = q.bind(&search_pattern);
         }
         if let Some(ref city) = city_param {
+            param_count += 1;
             q = q.bind(city);
         }
         if let Some(ref category) = category_param {
+            param_count += 1;
             q = q.bind(category);
         }
 
@@ -793,6 +820,23 @@ pub async fn search_businesses(
     };
 
     let results: Vec<Value> = rows.into_iter().map(|(id, name, slug, desc, rating, review_count, phone, website, address, city, lat, lng, dir_name, dir_slug)| {
+        // Calculate distance from search center if proximity is active
+        let distance: Option<f64> = if let Some((slat, slng, _)) = proximity {
+            if let (Some(blat), Some(blng)) = (lat, lng) {
+                // Haversine in JS-compatible form; compute server-side as well
+                let dlat = (blat - slat).to_radians();
+                let dlng = (blng - slng).to_radians();
+                let a = (dlat / 2.0).sin().powi(2)
+                    + slat.to_radians().cos() * blat.to_radians().cos() * (dlng / 2.0).sin().powi(2);
+                let c = 2.0 * a.sqrt().asin();
+                Some((6371000.0 * c).round() / 1000.0) // distance in km, rounded to 3 decimals
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         json!({
             "id": id, "name": name, "slug": slug,
             "description": desc, "rating": rating,
@@ -800,6 +844,7 @@ pub async fn search_businesses(
             "website": website, "address": address,
             "city": city, "latitude": lat, "longitude": lng,
             "directory_name": dir_name, "directory_slug": dir_slug,
+            "distance_km": distance,
         })
     }).collect();
 

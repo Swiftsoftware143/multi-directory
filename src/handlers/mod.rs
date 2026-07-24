@@ -132,3 +132,5 @@ pub mod blog_qa;
 pub use blog_qa::*;
 pub mod zaarhub;
 pub use zaarhub::*;
+pub mod messaging;
+pub use messaging::*;
