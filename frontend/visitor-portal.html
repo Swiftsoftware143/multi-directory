@@ -67,7 +67,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 /* Buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px}
 .btn-primary{background:var(--primary);color:#fff}
-.btn-primary:hover{background:#0f766e}
+.btn-primary:hover{background:#e06e1a}
 .btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
 .btn-secondary:hover{background:#cbd5e1}
 .btn-block{width:100%}
@@ -99,9 +99,9 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 .walkthrough-card .icon{font-size:3rem;margin-bottom:12px}
 .walkthrough-card h3{font-size:1.2rem;color:#0f172a;margin-bottom:8px}
 .walkthrough-card p{font-size:.9rem;color:#475569;line-height:1.6;margin-bottom:20px}
-.walkthrough-card .btn{background:#0d9488;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
-.walkthrough-card .btn:hover{background:#0f766e}
-.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#0d9488;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
+.walkthrough-card .btn{background:#f27f2f;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+.walkthrough-card .btn:hover{background:#e06e1a}
+.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#f27f2f;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
 .walkthrough-help-icon:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(13,148,136,.4)}
 </style>
 </head>
@@ -484,7 +484,7 @@ function loadVisitorQR(headers) {
         text: qrText,
         width: 160,
         height: 160,
-        colorDark: '#0d9488',
+        colorDark: '#f27f2f',
         colorLight: '#ffffff',
         correctLevel: QRCode.CorrectLevel.H
       });
@@ -498,7 +498,7 @@ function loadVisitorQR(headers) {
 function showReferralSection(){
   var main=document.querySelector('.main-content')||document.getElementById('app');
   if(!main)return;
-  main.innerHTML='<div style="padding:24px"><div class="card" style="background:var(--bg-card, #1e293b);border:1px solid var(--border, #334155);border-radius:12px;padding:24px"><h2 style="margin-bottom:16px;font-size:1.4rem">\ud83d\udc65 Refer & Earn Zaarcash</h2><p style="color:#94a3b8;font-size:.9rem;margin-bottom:20px">Share ZaarHub with friends and earn Zaarcash when they sign up!</p><div id="refPortalSection"><div style="text-align:center;padding:20px"><span class="spinner-teal" style="display:inline-block;width:32px;height:32px;border:3px solid #334155;border-top-color:var(--primary, #14b8a6);border-radius:50%;animation:spin 1s linear infinite"></span></div></div></div></div>';
+  main.innerHTML='<div style="padding:24px"><div class="card" style="background:var(--bg-card, #1e293b);border:1px solid var(--border, #334155);border-radius:12px;padding:24px"><h2 style="margin-bottom:16px;font-size:1.4rem">\ud83d\udc65 Refer & Earn Zaarcash</h2><p style="color:#94a3b8;font-size:.9rem;margin-bottom:20px">Share ZaarHub with friends and earn Zaarcash when they sign up!</p><div id="refPortalSection"><div style="text-align:center;padding:20px"><span class="spinner-teal" style="display:inline-block;width:32px;height:32px;border:3px solid #334155;border-top-color:var(--primary, #f27f2f);border-radius:50%;animation:spin 1s linear infinite"></span></div></div></div></div>';
   loadReferralPortalData();
 }
 
@@ -513,10 +513,10 @@ async function loadReferralPortalData(){
     var hasCode=!!code;
     el.innerHTML='';
     if(!hasCode){
-      el.innerHTML='<div style="text-align:center;padding:20px"><button class="btn btn-primary" onclick="generatePortalRefCode()" style="background:var(--primary, #14b8a6);color:white;padding:12px 32px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">\ud83d\udd17 Generate Your Referral Link</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:20px"><button class="btn btn-primary" onclick="generatePortalRefCode()" style="background:var(--primary, #f27f2f);color:white;padding:12px 32px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">\ud83d\udd17 Generate Your Referral Link</button></div>';
       return;
     }
-    el.innerHTML='<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:20px;margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px"><span style="font-size:1rem">\ud83d\udcb0 Balance: <strong style="color:var(--primary, #14b8a6);font-size:1.3rem">'+balance+'</strong> Zaarcash</span><span style="font-size:.85rem;color:#94a3b8">Refer a friend \u2192 they sign up \u2192 admin verifies \u2192 you earn!</span></div></div><div style="margin-bottom:16px"><label style="display:block;font-size:.9rem;color:#cbd5e1;margin-bottom:6px">Your Referral Link</label><div style="display:flex;gap:8px"><input type="text" id="portalRefLink" value="'+esc(link)+'" readonly style="flex:1;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.9rem;font-family:monospace"><button onclick="copyPortalRefLink()" style="background:var(--primary, #14b8a6);color:white;padding:8px 20px;border:none;border-radius:6px;cursor:pointer;font-size:.85rem">\ud83d\udccb Copy</button></div></div><div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:16px"><h4 style="color:#cbd5e1;font-size:.9rem;margin-bottom:8px">How it works</h4><ol style="color:#94a3b8;font-size:.85rem;line-height:1.8;padding-left:20px"><li>Share your referral link with friends</li><li>They sign up on ZaarHub using your link</li><li>An admin verifies their account</li><li>You earn 50 Zaarcash per referral!</li></ol></div>';
+    el.innerHTML='<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:20px;margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px"><span style="font-size:1rem">\ud83d\udcb0 Balance: <strong style="color:var(--primary, #f27f2f);font-size:1.3rem">'+balance+'</strong> Zaarcash</span><span style="font-size:.85rem;color:#94a3b8">Refer a friend \u2192 they sign up \u2192 admin verifies \u2192 you earn!</span></div></div><div style="margin-bottom:16px"><label style="display:block;font-size:.9rem;color:#cbd5e1;margin-bottom:6px">Your Referral Link</label><div style="display:flex;gap:8px"><input type="text" id="portalRefLink" value="'+esc(link)+'" readonly style="flex:1;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.9rem;font-family:monospace"><button onclick="copyPortalRefLink()" style="background:var(--primary, #f27f2f);color:white;padding:8px 20px;border:none;border-radius:6px;cursor:pointer;font-size:.85rem">\ud83d\udccb Copy</button></div></div><div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:16px"><h4 style="color:#cbd5e1;font-size:.9rem;margin-bottom:8px">How it works</h4><ol style="color:#94a3b8;font-size:.85rem;line-height:1.8;padding-left:20px"><li>Share your referral link with friends</li><li>They sign up on ZaarHub using your link</li><li>An admin verifies their account</li><li>You earn 50 Zaarcash per referral!</li></ol></div>';
   }catch(e){
     var el=document.getElementById('refPortalSection');
     if(el)el.innerHTML='<div style="text-align:center;padding:20px;color:#94a3b8">Login to see referral info.</div>';

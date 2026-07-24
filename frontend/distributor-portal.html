@@ -30,7 +30,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 /* Buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px}
 .btn-primary{background:var(--primary);color:#fff}
-.btn-primary:hover{background:#0f766e}
+.btn-primary:hover{background:#e06e1a}
 .btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
 .btn-secondary:hover{background:#cbd5e1}
 .btn-block{width:100%;margin-top:8px}
@@ -90,7 +90,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 /* Badge */
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
 .badge.accent{background:#f3e8ff;color:#7c3aed}
-.badge.teal{background:#f0fdfa;color:#0d9488}
+.badge.primary{background:#fef3e7;color:#f27f2f}
 
 /* Walkthrough Overlay */
 .walkthrough-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
@@ -100,9 +100,9 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 .walkthrough-card .icon{font-size:3rem;margin-bottom:12px}
 .walkthrough-card h3{font-size:1.2rem;color:#0f172a;margin-bottom:8px}
 .walkthrough-card p{font-size:.9rem;color:#475569;line-height:1.6;margin-bottom:20px}
-.walkthrough-card .btn{background:#0d9488;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
-.walkthrough-card .btn:hover{background:#0f766e}
-.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#0d9488;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
+.walkthrough-card .btn{background:#f27f2f;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+.walkthrough-card .btn:hover{background:#e06e1a}
+.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#f27f2f;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
 .walkthrough-help-icon:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(13,148,136,.4)}
 
 /* Responsive */
@@ -211,7 +211,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div class="profile-info">
         <h2 id="profileName">Supplier</h2>
         <p class="email" id="profileEmail">email@example.com</p>
-        <p id="profileMeta"><span id="profileType" class="badge teal">Distributor</span> &middot; Member since today</p>
+        <p id="profileMeta"><span id="profileType" class="badge.primary">Distributor</span> &middot; Member since today</p>
       </div>
     </div>
 
@@ -455,7 +455,7 @@ async function loadDashboard() {
     $('profileEmail').textContent = v.email;
     var bt = v.business_type || 'supplier';
     $('profileType').textContent = businessTypeLabel(bt);
-    $('profileMeta').innerHTML = '<span class="badge teal">' + esc(businessTypeLabel(bt)) + '</span> &middot; Member since ' + (v.created_at ? new Date(v.created_at).toLocaleDateString() : 'today');
+    $('profileMeta').innerHTML = '<span class="badge.primary">' + esc(businessTypeLabel(bt)) + '</span> &middot; Member since ' + (v.created_at ? new Date(v.created_at).toLocaleDateString() : 'today');
     if (v.name) {
       $('profileAvatar').textContent = v.name.charAt(0).toUpperCase();
     }
