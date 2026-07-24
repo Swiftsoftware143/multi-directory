@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visitor Guide — Multi-Directory Platform</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; z-index: 10; }
+  .sidebar h2 { color: #10b981; font-size: 1.1rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sidebar nav a { display: block; padding: 8px 20px; color: #94a3b8; font-size: 0.85rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+  .sidebar .section-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 4px; }
+
+  .main { margin-left: 280px; flex: 1; padding: 40px 48px; max-width: 960px; }
+  .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
+  .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main h4 { font-size: 1rem; color: #cbd5e1; margin-top: 16px; margin-bottom: 6px; }
+  .main p, .main li { line-height: 1.7; color: #cbd5e1; }
+  .main p { margin-bottom: 12px; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; }
+  .main li { margin-bottom: 6px; }
+
+  .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .card h3 { margin-top: 0; color: #10b981; }
+  .card p { color: #cbd5e1; }
+  .card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .card td { padding: 6px 12px; border-bottom: 1px solid #334155; }
+  .card td:first-child { color: #94a3b8; white-space: nowrap; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #10b981; }
+  pre { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #e2e8f0; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }
+  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; text-align: center; }
+  .stat .num { font-size: 2rem; font-weight: 700; color: #10b981; display: block; }
+  .stat .label { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
+
+  details { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+  details summary { cursor: pointer; font-weight: 600; color: #10b981; }
+  details[open] summary { margin-bottom: 10px; }
+  details p { margin: 0; color: #cbd5e1; padding-top: 8px; }
+
+  .badge { display: inline-block; background: #065f46; color: #a7f3d0; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-right: 4px; }
+  .badge.info { background: #1e3a5f; color: #93c5fd; }
+  .badge.warn { background: #713f12; color: #fde68a; }
+  .badge.success { background: #14532d; color: #86efac; }
+
+  .step-item { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; padding: 12px 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
+  .step-item:last-child { margin-bottom: 0; }
+  .step-num { width: 30px; height: 30px; min-width: 30px; background: #10b981; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
+  .step-text { flex: 1; }
+  .step-text p { margin: 0; color: #cbd5e1; line-height: 1.6; }
+  .step-text p strong { color: #e2e8f0; }
+
+  .tip-box { background: #064e3b; border-left: 4px solid #10b981; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .tip-box p { margin: 0; color: #a7f3d0; font-size: 0.9rem; }
+  .tip-box strong { color: #6ee7b7; }
+
+  .warn-box { background: #451a03; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .warn-box p { margin: 0; color: #fde68a; font-size: 0.9rem; }
+  .warn-box strong { color: #fbbf24; }
+
+  .top-link { display: inline-block; margin-top: 20px; font-size: 0.85rem; }
+  hr { border: none; border-top: 1px solid #334155; margin: 24px 0; }
+
+  .back-link { display: inline-block; margin-top: 32px; font-size: 0.85rem; padding: 8px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; transition: all 0.2s; }
+  .back-link:hover { border-color: #10b981; text-decoration: none; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>👤 Visitor Guide</h2>
+  <nav>
+    <a href="#introduction" class="active">1. Introduction</a>
+    <a href="#creating-account">2. Creating an Account</a>
+    <a href="#saving-bookmarking">3. Saving / Bookmarking Businesses</a>
+    <a href="#writing-reviews">4. Writing Reviews</a>
+    <a href="#saved-places">5. Viewing Saved Places</a>
+    <a href="#claiming-business">6. Claiming a Business</a>
+    <a href="#visitor-portal">7. Visitor Portal</a>
+  </nav>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+<h1>👤 Visitor Back-Office Guide</h1>
+<p style="color:#64748b;margin-bottom:32px;">Everything you need to know about your visitor account on the platform.</p>
+
+<!-- 1. Introduction -->
+<h2 id="introduction">1. Introduction</h2>
+<p>As a visitor you can create an account to interact with directory businesses. Your account lets you:</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>🔖 Save Businesses</h3>
+    <p>Bookmark businesses you like to quickly find them later.</p>
+  </div>
+  <div class="card">
+    <h3>⭐ Write Reviews</h3>
+    <p>Share your experience with star ratings and text reviews.</p>
+  </div>
+  <div class="card">
+    <h3>🏪 Claim a Business</h3>
+    <p>If you own a business listed in the directory, you can claim it as the owner.</p>
+  </div>
+  <div class="card">
+    <h3>👤 Manage Your Profile</h3>
+    <p>Update your name, email, and preferences from the visitor portal.</p>
+  </div>
+</div>
+
+<p>Your visitor account is separate from the business owner portal. Use the same email to unify your experience across both.</p>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 2. Creating an Account -->
+<h2 id="creating-account">2. Creating an Account</h2>
+
+<p>You can create a visitor account from the ZaarHub or any directory page. The login/register modal handles both sign-in and sign-up.</p>
+
+<h3>Step-by-Step</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Click <strong>Sign In</strong> in the top navigation bar of any directory or ZaarHub page.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>A modal appears with two tabs: <strong>Login</strong> and <strong>Register</strong>. Click the <strong>Register</strong> tab.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Fill in your details:</p>
+      <ul style="margin-top:4px;">
+        <li><strong>Name</strong> — Your display name</li>
+        <li><strong>Email</strong> — Used for login and notifications</li>
+        <li><strong>Password</strong> — Choose a strong password (min 8 characters)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Click <strong>Create Account</strong>. You'll be logged in automatically and can start using all features.</p></div>
+  </div>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Use the same email as your business owner account if you have one. This links your visitor and business profiles together.</p>
+</div>
+
+<h3>Login</h3>
+<p>Once registered, simply click <strong>Sign In</strong> and use your email and password on the <strong>Login</strong> tab. Your session persists until you explicitly log out.</p>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 3. Saving / Bookmarking Businesses -->
+<h2 id="saving-bookmarking">3. Saving / Bookmarking Businesses</h2>
+
+<p>Save businesses you're interested in to quickly find them later without searching again.</p>
+
+<h3>How to Save a Business</h3>
+<div class="card">
+  <ol>
+    <li>Browse or search for a business in any directory.</li>
+    <li>Open the business detail page by clicking on the listing.</li>
+    <li>Click the <strong>🔖 Save</strong> or <strong>❤️</strong> button on the business detail page.</li>
+    <li>The button changes to <strong>Saved</strong> to confirm it's bookmarked.</li>
+  </ol>
+</div>
+
+<h3>How to Remove a Saved Business</h3>
+<div class="card">
+  <p>Click the <strong>Saved</strong> button again on the business detail page to remove it from your bookmarks. You can also remove saved businesses from your <strong>Saved Places</strong> list in the visitor portal.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 4. Writing Reviews -->
+<h2 id="writing-reviews">4. Writing Reviews</h2>
+
+<p>Share your experience with other visitors by leaving a review for any business in the directory.</p>
+
+<h3>Star Rating System</h3>
+<div class="card">
+  <p>Reviews use a <strong>5-star</strong> rating system:</p>
+  <table>
+    <tr><td>⭐</td><td>Poor</td></tr>
+    <tr><td>⭐⭐</td><td>Fair</td></tr>
+    <tr><td>⭐⭐⭐</td><td>Good</td></tr>
+    <tr><td>⭐⭐⭐⭐</td><td>Very Good</td></tr>
+    <tr><td>⭐⭐⭐⭐⭐</td><td>Excellent</td></tr>
+  </table>
+</div>
+
+<h3>How to Leave a Review</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Navigate to the business detail page you want to review.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Scroll to the <strong>Reviews</strong> section on the page.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Click <strong>Write a Review</strong> button.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Select your star rating by clicking on the stars (1-5).</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Write your review text describing your experience (optional but recommended).</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-text"><p>Click <strong>Submit Review</strong>. Your review will appear after admin approval.</p></div>
+  </div>
+</div>
+
+<div class="warn-box">
+  <p><strong>⚠️ Note:</strong> Reviews may require admin approval before they appear publicly. You can only submit one review per business. To update your review, edit it from the business detail page.</p>
+</div>
+
+<h3>Editing or Deleting a Review</h3>
+<div class="card">
+  <ul>
+    <li><strong>Edit</strong> — Go to the business detail page, find your review, and click the edit (✏️) icon.</li>
+    <li><strong>Delete</strong> — Click the delete (🗑️) icon on your review to remove it entirely.</li>
+  </ul>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 5. Viewing Saved Places -->
+<h2 id="saved-places">5. Viewing Saved Places</h2>
+
+<p>All businesses you've bookmarked are accessible from your saved places list in the visitor portal.</p>
+
+<h3>Accessing Saved Places</h3>
+<div class="card">
+  <ol>
+    <li>Go to the <strong>Visitor Portal</strong> at <code>/visitor</code> or click your profile icon in the top navigation.</li>
+    <li>If not logged in, sign in with your email and password.</li>
+    <li>The dashboard loads, and you'll see a <strong>Saved Places</strong> section.</li>
+    <li>Each saved business shows its name, category, city, and a thumbnail image.</li>
+  </ol>
+</div>
+
+<h3>Saved Places Features</h3>
+<div class="card">
+  <ul>
+    <li><strong>View details</strong> — Click on any saved business to jump to its full profile.</li>
+    <li><strong>Remove bookmark</strong> — Click the bookmark icon to remove it from your list.</li>
+    <li><strong>Write a review</strong> — Click the review button to quickly leave a rating.</li>
+    <li><strong>Search</strong> — Filter your saved places by name or category.</li>
+  </ul>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Saved places sync across your sessions. Bookmark a business on your phone and find it later on your desktop.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 6. Claiming a Business -->
+<h2 id="claiming-business">6. Claiming a Business</h2>
+
+<p>If you own a business that's already listed in the directory, you can claim it to become its verified owner. This gives you access to the Business Portal where you can manage your listing, respond to reviews, and subscribe to premium features.</p>
+
+<h3>How to Claim</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Navigate to the business detail page for the business you own.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Look for the <strong>Claim This Business</strong> button. It's usually near the top of the page or in the contact section.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Click the button. A claim request form appears.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Fill in your contact details and optionally provide proof of ownership (phone number on file, business email, or other verification).</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Submit the claim request. It goes to the directory admin for review.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-text"><p>Once approved, you'll receive an email with instructions to set up your Business Portal password and access your business dashboard.</p></div>
+  </div>
+</div>
+
+<div class="warn-box">
+  <p><strong>⚠️ Note:</strong> Claim approval is at the discretion of the directory admin. You may be asked to verify business ownership via phone, email domain, or business documents.</p>
+</div>
+
+<h3>After Claiming</h3>
+<div class="card">
+  <p>Once your claim is approved and you've set up your Business Portal credentials, you can:</p>
+  <ul>
+    <li>Update your business name, address, phone, hours, and description.</li>
+    <li>Upload photos and manage your listing's appearance.</li>
+    <li>Respond to customer reviews publicly.</li>
+    <li>Subscribe to premium plans for enhanced visibility.</li>
+    <li>Submit advertisements for admin approval.</li>
+  </ul>
+  <p>Access the Business Portal at <code>/portal</code>.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 7. Visitor Portal -->
+<h2 id="visitor-portal">7. Visitor Portal</h2>
+
+<p>The visitor portal at <code>/visitor</code> is your central dashboard for managing your account, saved places, reviews, and profile settings.</p>
+
+<h3>Portal Sections</h3>
+<div class="feature-grid">
+  <div class="card">
+    <h3>👤 Profile</h3>
+    <p>View and edit your name, email, and avatar. Your profile is shown on reviews you leave.</p>
+  </div>
+  <div class="card">
+    <h3>🔖 Saved Places</h3>
+    <p>See all businesses you've bookmarked. Click to visit their detail pages or remove bookmarks.</p>
+  </div>
+  <div class="card">
+    <h3>⭐ My Reviews</h3>
+    <p>View all reviews you've written. Edit or delete them from one place.</p>
+  </div>
+  <div class="card">
+    <h3>🏪 My Claims</h3>
+    <p>Track your business claim requests. See pending, approved, and rejected claims.</p>
+  </div>
+  <div class="card">
+    <h3>🔐 Security</h3>
+    <p>Change your password and manage active sessions.</p>
+  </div>
+  <div class="card">
+    <h3>📧 Notifications</h3>
+    <p>Configure email notifications for review replies, claim updates, and platform announcements.</p>
+  </div>
+</div>
+
+<h3>Accessing the Portal</h3>
+<div class="card">
+  <ol>
+    <li>Open your browser and navigate to <code>https://your-platform.com/visitor</code>.</li>
+    <li>If not logged in, the login/register screen appears.</li>
+    <li>Enter your email and password and click <strong>Sign In</strong>.</li>
+    <li>Your dashboard loads with your profile card at the top.</li>
+  </ol>
+</div>
+
+<h3>Editing Your Profile</h3>
+<div class="card">
+  <ol>
+    <li>From the dashboard, locate the <strong>Profile</strong> card or section.</li>
+    <li>Click the <strong>Edit</strong> button next to your profile info.</li>
+    <li>Update your name or other personal details.</li>
+    <li>Click <strong>Save Changes</strong> to update your profile.</li>
+  </ol>
+  <p>Your changes are reflected immediately, including on any reviews you've written.</p>
+</div>
+
+<h3>Changing Your Password</h3>
+<div class="card">
+  <ol>
+    <li>Navigate to the <strong>Security</strong> section in the portal.</li>
+    <li>Enter your current password and your new password.</li>
+    <li>Confirm the new password and click <strong>Update Password</strong>.</li>
+  </ol>
+  <div class="warn-box" style="margin-top:12px;">
+    <p><strong>⚠️ Note:</strong> If you change your password, you'll need to log in again on other devices.</p>
+  </div>
+</div>
+
+<h3>Logging Out</h3>
+<div class="card">
+  <p>Click the <strong>Logout</strong> button in the portal header to end your session. This logs you out of all pages, not just the portal.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<div style="text-align:center;">
+  <a href="index.html" class="back-link">📚 Back to Guides Hub</a>
+  <a href="../guide.html" class="back-link" style="margin-left:8px;">📖 Back to Admin Guide</a>
+</div>
+
+</div>
+
+</body>
+</html>

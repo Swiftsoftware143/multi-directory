@@ -3,183 +3,393 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZaarHub Loyalty — Supplier Guide</title>
+<title>Supplier Guide — Multi-Directory Platform</title>
 <style>
-:root{--teal:#0d9488;--teal-light:#14b8a6;--teal-bg:#f0fdfa;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;margin:0;padding:0}
-a{color:var(--teal);text-decoration:none}
-a:hover{text-decoration:underline}
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
 
-.header{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:0}
-.header-inner{max-width:960px;margin:0 auto;padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
-.header h1{font-size:1.3rem;font-weight:700}
-.header a{color:#fff;font-size:.85rem;opacity:.9}
-.header a:hover{opacity:1;text-decoration:underline}
+  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; z-index: 10; }
+  .sidebar h2 { color: #10b981; font-size: 1.1rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sidebar nav a { display: block; padding: 8px 20px; color: #94a3b8; font-size: 0.85rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+  .sidebar .section-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 4px; }
 
-.hero{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:48px 32px 56px;text-align:center}
-.hero h2{font-size:2rem;margin-bottom:8px}
-.hero p{font-size:1.1rem;opacity:.9;max-width:600px;margin:0 auto}
+  .main { margin-left: 280px; flex: 1; padding: 40px 48px; max-width: 960px; }
+  .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
+  .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main h4 { font-size: 1rem; color: #cbd5e1; margin-top: 16px; margin-bottom: 6px; }
+  .main p, .main li { line-height: 1.7; color: #cbd5e1; }
+  .main p { margin-bottom: 12px; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; }
+  .main li { margin-bottom: 6px; }
 
-.container{max-width:860px;margin:0 auto;padding:0 24px 60px}
+  .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .card h3 { margin-top: 0; color: #10b981; }
+  .card p { color: #cbd5e1; }
+  .card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .card td { padding: 6px 12px; border-bottom: 1px solid #334155; }
+  .card td:first-child { color: #94a3b8; white-space: nowrap; }
 
-.card{background:var(--card);border-radius:12px;padding:28px 32px;margin-bottom:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.card h3{font-size:1.15rem;color:var(--teal);margin-bottom:12px;display:flex;align-items:center;gap:10px}
-.card h3 .emoji{font-size:1.4rem}
-.card p{color:var(--text-secondary);margin-bottom:12px;line-height:1.7}
-.card p:last-child{margin-bottom:0}
-.card ul,.card ol{margin:8px 0 14px 20px}
-.card li{margin-bottom:6px;color:var(--text-secondary);line-height:1.6}
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
 
-.step-item{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;padding:12px 16px;background:var(--bg);border-radius:8px;border:1px solid var(--border)}
-.step-item:last-child{margin-bottom:0}
-.step-num{width:30px;height:30px;min-width:30px;background:var(--teal);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
-.step-text{flex:1}
-.step-text p{margin:0;font-size:.9rem}
-.step-text p strong{color:var(--text)}
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #10b981; }
+  pre { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #e2e8f0; }
 
-.tip-box{background:var(--teal-bg);border-left:4px solid var(--teal);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
-.tip-box strong{color:var(--teal)}
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }
+  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; text-align: center; }
+  .stat .num { font-size: 2rem; font-weight: 700; color: #10b981; display: block; }
+  .stat .label { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
 
-.warn-box{background:#fffbeb;border-left:4px solid var(--warning);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
-.warn-box strong{color:#d97706}
+  details { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+  details summary { cursor: pointer; font-weight: 600; color: #10b981; }
+  details[open] summary { margin-bottom: 10px; }
+  details p { margin: 0; color: #cbd5e1; padding-top: 8px; }
 
-.badge{display:inline-block;background:var(--teal-bg);color:var(--teal);font-size:.75rem;padding:2px 10px;border-radius:20px;font-weight:600}
+  .badge { display: inline-block; background: #065f46; color: #a7f3d0; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-right: 4px; }
+  .badge.info { background: #1e3a5f; color: #93c5fd; }
+  .badge.warn { background: #713f12; color: #fde68a; }
+  .badge.success { background: #14532d; color: #86efac; }
 
-.back-link{display:inline-block;margin-top:32px;color:var(--teal);font-size:.9rem}
+  .step-item { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; padding: 12px 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
+  .step-item:last-child { margin-bottom: 0; }
+  .step-num { width: 30px; height: 30px; min-width: 30px; background: #10b981; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
+  .step-text { flex: 1; }
+  .step-text p { margin: 0; color: #cbd5e1; line-height: 1.6; }
+  .step-text p strong { color: #e2e8f0; }
 
-@media(max-width:640px){
-  .header-inner{padding:12px 16px}
-  .hero{padding:32px 16px 48px}
-  .hero h2{font-size:1.5rem}
-  .container{padding:0 16px 40px}
-  .card{padding:20px 18px}
-  .step-item{padding:10px 12px}
-}
+  .tip-box { background: #064e3b; border-left: 4px solid #10b981; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .tip-box p { margin: 0; color: #a7f3d0; font-size: 0.9rem; }
+  .tip-box strong { color: #6ee7b7; }
+
+  .warn-box { background: #451a03; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .warn-box p { margin: 0; color: #fde68a; font-size: 0.9rem; }
+  .warn-box strong { color: #fbbf24; }
+
+  .top-link { display: inline-block; margin-top: 20px; font-size: 0.85rem; }
+  hr { border: none; border-top: 1px solid #334155; margin: 24px 0; }
+
+  .back-link { display: inline-block; margin-top: 32px; font-size: 0.85rem; padding: 8px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; transition: all 0.2s; }
+  .back-link:hover { border-color: #10b981; text-decoration: none; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-inner">
-    <h1>🏪 ZaarHub</h1>
-    <a href="/">← Back to Portal</a>
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>📦 Supplier Guide</h2>
+  <nav>
+    <a href="#introduction" class="active">1. Introduction</a>
+    <a href="#signing-up">2. Signing Up as a Supplier</a>
+    <a href="#portal-overview">3. Supplier Portal Overview</a>
+    <a href="#catalog">4. Managing Product/Catalog</a>
+    <a href="#orders">5. Receiving &amp; Fulfilling Orders</a>
+    <a href="#connecting">6. Connecting with Businesses</a>
+  </nav>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+<h1>📦 Supplier Guide</h1>
+<p style="color:#64748b;margin-bottom:32px;">Everything you need to know about registering as a supplier, managing your catalog, and fulfilling orders.</p>
+
+<!-- 1. Introduction -->
+<h2 id="introduction">1. Introduction</h2>
+<p>The <strong>Supplier Portal</strong> connects service providers and product vendors with directory businesses. As a supplier, you can offer products and services that businesses in the directory ecosystem need — from printed menus and marketing materials to IT services and office supplies.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>📋 Product Catalog</h3>
+    <p>List your products and services with descriptions, pricing, and images.</p>
+  </div>
+  <div class="card">
+    <h3>📦 Order Management</h3>
+    <p>Receive, review, and fulfill orders from business customers.</p>
+  </div>
+  <div class="card">
+    <h3>🤝 Network</h3>
+    <p>Connect with businesses that need your products or services.</p>
+  </div>
+  <div class="card">
+    <h3>📊 Analytics</h3>
+    <p>Track orders, revenue, and customer engagement over time.</p>
   </div>
 </div>
 
-<div class="hero">
-  <h2>📦 Supplying Rewards on the Platform</h2>
-  <p>How to list, fulfill, and manage rewards as a ZaarHub Supplier partner.</p>
-</div>
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
 
-<div class="container">
+<!-- 2. Signing Up -->
+<h2 id="signing-up">2. Signing Up as a Supplier</h2>
 
-<!-- 1. Your Role -->
+<p>Anyone can register as a supplier from the platform homepage or directory pages.</p>
+
+<h3>Step-by-Step</h3>
 <div class="card">
-  <h3><span class="emoji">🤝</span> 1. Your Role</h3>
-  <p>As a <strong>Supplier</strong>, you're a vital part of the ZaarHub Loyalty Program ecosystem. You provide the rewards — vouchers, products, or services — that participants redeem using their earned credits.</p>
-  <p>Your rewards give participants real value and keep the program exciting. In return, you get exposure to a motivated audience of engaged shoppers and a streamlined fulfillment system.</p>
-  <div class="tip-box">
-    <strong>💡 Tip:</strong> The best rewards are ones that participants genuinely want. Consider what your target audience values most and price it fairly in credits.
-  </div>
-</div>
-
-<!-- 2. Listing Rewards -->
-<div class="card">
-  <h3><span class="emoji">📋</span> 2. Listing Rewards</h3>
-  <p>Each reward listing in the ZaarHub marketplace needs clear, complete information. Here's what to include:</p>
-  <ul>
-    <li><strong>Name</strong> — A descriptive, attractive title (e.g., "$20 Gift Voucher" or "Premium Coffee Bundle")</li>
-    <li><strong>Description</strong> — What the reward is, what participants receive, and any relevant details</li>
-    <li><strong>Credit Cost</strong> — How many credits a participant must redeem to get this reward. Set a fair price that reflects the value you're providing</li>
-    <li><strong>Terms</strong> — Expiration dates, quantity limits, geographic restrictions, and any other conditions</li>
-  </ul>
-  <p><strong>Fair pricing matters:</strong> If a reward has a retail value of $20, a credit cost of 2,000 ($20 equivalent) is fair. You can also offer a slight discount (e.g., 1,800 credits) to make your reward more attractive.</p>
-  <div class="warn-box">
-    <strong>⚠️ Important:</strong> You must honor redemptions at the listed credit cost until you deactivate or update the listing. Do not list rewards you cannot or will not fulfill.
-  </div>
-</div>
-
-<!-- 3. Fulfilling Redemptions -->
-<div class="card">
-  <h3><span class="emoji">📦</span> 3. Fulfilling Redemptions</h3>
-  <p>When a participant redeems one of your rewards, it's your responsibility to deliver. Here's the process:</p>
   <div class="step-item">
     <div class="step-num">1</div>
-    <div class="step-text"><p>You receive a notification in your dashboard that a participant has redeemed your reward</p></div>
+    <div class="step-text"><p>Go to any directory homepage or the ZaarHub frontend.</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">2</div>
-    <div class="step-text"><p>View the redemption details — participant identification, reward selected, and delivery instructions</p></div>
+    <div class="step-text"><p>Click the <strong>Register as a Supplier</strong> link. It's usually in the footer or the site navigation.</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">3</div>
-    <div class="step-text"><p>Fulfill the reward within the timeframe stated in your listing (<strong>default: 14 business days</strong>)</p></div>
+    <div class="step-text"><p>The supplier registration form appears. Fill in:</p>
+      <ul style="margin-top:4px;">
+        <li><strong>Company Name</strong> — Your business name</li>
+        <li><strong>Contact Name</strong> — Your name or primary contact</li>
+        <li><strong>Email</strong> — Used for login and order notifications</li>
+        <li><strong>Phone</strong> — Contact number for order inquiries</li>
+        <li><strong>Password</strong> — Create a secure password</li>
+        <li><strong>Industry</strong> — Select your industry category</li>
+        <li><strong>Description</strong> — Brief description of what you offer</li>
+      </ul>
+    </div>
   </div>
   <div class="step-item">
     <div class="step-num">4</div>
-    <div class="step-text"><p>Mark the redemption as fulfilled in your dashboard once completed</p></div>
-  </div>
-  <p>You can view all pending redemptions in your dashboard at any time. Participants can contact support if fulfillment is not completed within the stated timeframe.</p>
-  <div class="tip-box">
-    <strong>💡 Tip:</strong> Fulfill quickly — the faster you deliver, the more positive reviews and repeat redemptions you'll get from happy participants.
+    <div class="step-text"><p>Click <strong>Register</strong>. Your account is created and you're redirected to the Supplier Portal.</p></div>
   </div>
 </div>
 
-<!-- 4. Quality & Standards -->
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Complete your company profile and add products immediately after registering. Businesses searching for suppliers will only see suppliers with a complete profile and at least one product listed.</p>
+</div>
+
+<h3>Supplier Account Verification</h3>
 <div class="card">
-  <h3><span class="emoji">✨</span> 4. Quality & Standards</h3>
-  <p>Maintaining high quality is essential for the Program's success. As a Supplier, you agree to:</p>
-  <ul>
-    <li><strong>Reasonable quality standards</strong> — All rewards, products, and services must meet the quality level participants reasonably expect</li>
-    <li><strong>Standard remedies</strong> — Participants are entitled to remedies consistent with standard return/exchange policies in your industry</li>
-    <li><strong>No misrepresentation</strong> — Your listings must accurately represent what participants receive</li>
-    <li><strong>Complaint management</strong> — We may remove listings that generate excessive complaints from participants</li>
-  </ul>
-  <div class="tip-box">
-    <strong>💡 Tip:</strong> Under-promise and over-deliver. If you say "delivery in 10 business days" and deliver in 5, participants will love you.
+  <p>New supplier accounts may require admin verification before they appear in search results. You'll receive an email notification once your account is verified. During verification, you can still log in and set up your catalog — your listings just won't be public yet.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 3. Portal Overview -->
+<h2 id="portal-overview">3. Supplier Portal Overview</h2>
+
+<p>After logging in, the Supplier Portal dashboard gives you an at-a-glance view of your business:</p>
+
+<div class="stat-grid">
+  <div class="stat"><span class="num">--</span><span class="label">Products</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Active Orders</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Total Revenue</span></div>
+  <div class="stat"><span class="num">--</span><span class="label">Business Clients</span></div>
+</div>
+
+<h3>Dashboard Sections</h3>
+<div class="feature-grid">
+  <div class="card">
+    <h3>📋 My Catalog</h3>
+    <p>View and manage all your listed products and services. Add new items, update pricing, and manage availability.</p>
+  </div>
+  <div class="card">
+    <h3>📦 Orders</h3>
+    <p>View incoming orders from business customers. Track status from New → Processing → Shipped → Completed.</p>
+  </div>
+  <div class="card">
+    <h3>🤝 Customers</h3>
+    <p>See which businesses have purchased from you. Build relationships for repeat orders.</p>
+  </div>
+  <div class="card">
+    <h3>⚙️ Settings</h3>
+    <p>Update your company profile, contact info, shipping policies, and payment preferences.</p>
+  </div>
+  <div class="card">
+    <h3>📊 Analytics</h3>
+    <p>View order history, revenue charts, and popular products. Identify trends and adjust your offerings.</p>
+  </div>
+  <div class="card">
+    <h3>💬 Messages</h3>
+    <p>Communicate directly with business customers about orders, custom requests, and quotes.</p>
   </div>
 </div>
 
-<!-- 5. Fees & Settlement -->
-<div class="card">
-  <h3><span class="emoji">💳</span> 5. Fees & Settlement</h3>
-  <p>Your financial relationship with the ZaarHub Loyalty Program is straightforward:</p>
-  <ul>
-    <li><strong>Supplier pricing</strong> — Governed by your separate Subscription Agreement</li>
-    <li><strong>Settlement</strong> — Credit values are settled per your agreement terms</li>
-    <li><strong>Platform fees</strong> — We may deduct platform fees from settlements as specified in your agreement</li>
-  </ul>
-  <p>All fees and settlement terms are clearly outlined in your subscription documentation. Contact your account manager if you have questions about specific terms.</p>
-</div>
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
 
-<!-- 6. Managing Listings -->
+<!-- 4. Catalog Management -->
+<h2 id="catalog">4. Managing Product / Service Catalog</h2>
+
+<p>Your catalog is how businesses find and order from you. A complete, well-organized catalog attracts more customers.</p>
+
+<h3>Adding a Product or Service</h3>
 <div class="card">
-  <h3><span class="emoji">🔄</span> 6. Managing Listings</h3>
-  <p>You have full control over your reward listings:</p>
-  <ul>
-    <li><strong>Deactivate anytime</strong> — You can pause or remove listings from the marketplace whenever you need to</li>
-    <li><strong>Update pricing</strong> — Adjust credit costs as needed (changes apply to future redemptions only)</li>
-    <li><strong>Honor existing redemptions</strong> — You must fulfill any redemptions that were initiated before you deactivated a listing</li>
-    <li><strong>View performance</strong> — Your dashboard shows how many times each reward has been redeemed</li>
-  </ul>
-  <div class="tip-box">
-    <strong>💡 Tip:</strong> Review your listings monthly. If a reward hasn't been redeemed in a while, try adjusting the credit cost or updating the description to make it more appealing.
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>From the dashboard, click <strong>My Catalog</strong> and then <strong>+ Add Product</strong>.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Fill in the following fields:</p>
+      <table style="margin-top:4px;">
+        <tr><td><strong>Product Name</strong></td><td>Clear, descriptive name for your product or service</td></tr>
+        <tr><td><strong>Category</strong></td><td>Select from available supplier categories</td></tr>
+        <tr><td><strong>Description</strong></td><td>Detailed description, features, and use cases</td></tr>
+        <tr><td><strong>Price</strong></td><td>Unit price or service fee</td></tr>
+        <tr><td><strong>Unit</strong></td><td>e.g., per item, per hour, per service</td></tr>
+        <tr><td><strong>Images</strong></td><td>Upload up to 5 product images</td></tr>
+        <tr><td><strong>Availability</strong></td><td>In Stock, Made to Order, or Discontinued</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Click <strong>Save Product</strong>. It appears in your catalog immediately.</p></div>
   </div>
 </div>
 
-<!-- 7. Bookmark Popularity -->
+<h3>Managing Existing Products</h3>
 <div class="card">
-  <h3><span class="emoji">❤️</span> 7. Bookmarks</h3>
-  <p>Buyers can bookmark your supplier profile. Bookmark counts indicate serious interest — businesses comparing suppliers bookmark to revisit later.</p>
   <ul>
-    <li>Keep your product catalog accurate and descriptions detailed</li>
-    <li>High bookmark counts = high interest = more potential orders</li>
+    <li><strong>Edit</strong> — Click the edit icon on any product to update details, price, or images.</li>
+    <li><strong>Duplicate</strong> — Quickly create a similar product by duplicating an existing one.</li>
+    <li><strong>Archive</strong> — Remove a product from active listing without deleting it permanently.</li>
+    <li><strong>Delete</strong> — Permanently remove a product from your catalog.</li>
+    <li><strong>Bulk actions</strong> — Select multiple products to archive or update pricing in bulk.</li>
   </ul>
 </div>
 
-<a href="/guides/" class="back-link">← Back to All Guides</a>
-<a href="admin-guide.html" class="back-link" style="float:right;">Admin Guide →</a>
+<h3>Catalog Best Practices</h3>
+<div class="card">
+  <ul>
+    <li><strong>Clear photos</strong> — Use high-quality images that show the product clearly.</li>
+    <li><strong>Detailed descriptions</strong> — Include dimensions, materials, use cases, and any relevant specs.</li>
+    <li><strong>Competitive pricing</strong> — Research market rates and price competitively.</li>
+    <li><strong>Update regularly</strong> — Keep your catalog fresh. Remove discontinued items promptly.</li>
+    <li><strong>Categorize well</strong> — Accurate categories help businesses find your products faster.</li>
+  </ul>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 5. Orders -->
+<h2 id="orders">5. Receiving &amp; Fulfilling Orders</h2>
+
+<p>When a business places an order, it appears in your Orders section for processing.</p>
+
+<h3>Order Lifecycle</h3>
+<div class="card">
+  <table>
+    <tr><th>Status</th><th>Description</th></tr>
+    <tr><td>🆕 New</td><td>Order has been placed but not yet reviewed</td></tr>
+    <tr><td>🔄 Processing</td><td>You've accepted the order and are preparing to fulfill</td></tr>
+    <tr><td>🚚 Shipped</td><td>Order has been shipped or service has been delivered</td></tr>
+    <tr><td>✅ Completed</td><td>Order has been received and confirmed by the customer</td></tr>
+    <tr><td>❌ Cancelled</td><td>Order was cancelled (by you or the customer)</td></tr>
+  </table>
+</div>
+
+<h3>Processing an Order</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Go to <strong>Orders</strong> in the dashboard. New orders appear at the top.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Click on an order to view details: customer info, items ordered, quantity, and any special instructions.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Click <strong>Accept Order</strong> to start processing. The status changes to Processing.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Fulfill the order — prepare the product or deliver the service.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Click <strong>Mark as Shipped</strong> once the order is on its way. Add tracking info if available.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-text"><p>Order auto-completes when the customer confirms receipt, or you can mark it Complete.</p></div>
+  </div>
+</div>
+
+<h3>Order Communication</h3>
+<div class="card">
+  <p>You can message the customer directly from the order detail page:</p>
+  <ul>
+    <li>Ask clarifying questions about the order.</li>
+    <li>Provide updates on shipping or availability.</li>
+    <li>Send invoices or additional documentation.</li>
+  </ul>
+</div>
+
+<div class="warn-box">
+  <p><strong>⚠️ Note:</strong> If you cannot fulfill an order, click <strong>Cancel Order</strong> and provide a reason. This notifies the customer so they can find an alternative supplier.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 6. Connecting with Businesses -->
+<h2 id="connecting">6. Connecting with Business Customers</h2>
+
+<p>Building relationships with business customers leads to repeat orders and referrals. The platform provides several ways to connect.</p>
+
+<h3>Getting Discovered</h3>
+<div class="card">
+  <ul>
+    <li><strong>Complete your profile</strong> — A full profile with company details and contact info ranks higher in searches.</li>
+    <li><strong>Add products</strong> — Suppliers with more products get more visibility.</li>
+    <li><strong>Respond quickly</strong> — Fast response times improve your supplier rating.</li>
+    <li><strong>Collect reviews</strong> — Encourage business customers to leave feedback after completed orders.</li>
+  </ul>
+</div>
+
+<h3>Customer Profile</h3>
+<div class="card">
+  <p>When a business places an order, their profile becomes visible in your <strong>Customers</strong> section. You can:</p>
+  <ul>
+    <li>View their business name, contact info, and location.</li>
+    <li>See order history and total spend with you.</li>
+    <li>Send direct messages for repeat business opportunities.</li>
+    <li>Create custom quotes for large or recurring orders.</li>
+  </ul>
+</div>
+
+<h3>Best Practices for Suppliers</h3>
+<div class="card">
+  <ul>
+    <li><strong>Respond within 24 hours</strong> — to inquiries and new orders.</li>
+    <li><strong>Set clear expectations</strong> — Display accurate pricing, shipping times, and availability.</li>
+    <li><strong>Quality matters</strong> — Deliver quality products and service to earn repeat business.</li>
+    <li><strong>Stay in stock</strong> — Update availability regularly. Nothing frustrates customers like out-of-stock items.</li>
+    <li><strong>Communicate proactively</strong> — If there's a delay, let the customer know immediately.</li>
+  </ul>
+</div>
+
+<h3>Supplier Ratings</h3>
+<div class="card">
+  <p>Businesses can rate their experience with you after completing an order. Your overall rating is displayed on your supplier profile and influences search ranking. Key rating factors:</p>
+  <ul>
+    <li><strong>Product quality</strong> — Does the product match the description?</li>
+    <li><strong>Shipping speed</strong> — Was the order delivered on time?</li>
+    <li><strong>Communication</strong> — Were responses prompt and helpful?</li>
+    <li><strong>Overall satisfaction</strong> — Would the customer order again?</li>
+  </ul>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> A high supplier rating (4.5+ stars) significantly increases your chances of being selected by businesses. Focus on quality and communication to build a strong reputation.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<div style="text-align:center;">
+  <a href="index.html" class="back-link">📚 Back to Guides Hub</a>
+  <a href="../guide.html" class="back-link" style="margin-left:8px;">📖 Back to Admin Guide</a>
+</div>
 
 </div>
 

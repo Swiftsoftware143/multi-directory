@@ -92,6 +92,19 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 .badge.accent{background:#f3e8ff;color:#7c3aed}
 .badge.teal{background:#f0fdfa;color:#0d9488}
 
+/* Walkthrough Overlay */
+.walkthrough-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.walkthrough-card{background:#fff;border-radius:16px;padding:32px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .3s}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.walkthrough-card .icon{font-size:3rem;margin-bottom:12px}
+.walkthrough-card h3{font-size:1.2rem;color:#0f172a;margin-bottom:8px}
+.walkthrough-card p{font-size:.9rem;color:#475569;line-height:1.6;margin-bottom:20px}
+.walkthrough-card .btn{background:#0d9488;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+.walkthrough-card .btn:hover{background:#0f766e}
+.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#0d9488;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
+.walkthrough-help-icon:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(13,148,136,.4)}
+
 /* Responsive */
 @media(max-width:768px){
   .dashboard{padding:16px}
@@ -503,10 +516,43 @@ function loadDistributorLoyalty() {
     });
 }
 
+// ── Walkthrough System (Supplier Portal) ──
+var SWT={
+  dashboard:{i:"📊",t:"Supplier Dashboard",x:"Overview of your supplier account — pending orders, total earnings, and your product catalog at a glance."},
+  catalog:{i:"📦",t:"Product Catalog",x:"List the products or services you supply. Add descriptions, pricing, and images."},
+  orders:{i:"📋",t:"Orders",x:"Incoming orders from businesses. Mark as fulfilled, track shipping, and manage your order queue."},
+  earnings:{i:"💰",t:"Earnings",x:"Track your revenue from fulfilled orders. View payout history and pending balances."},
+  settings:{i:"⚙️",t:"Settings",x:"Update your supplier profile, contact info, payment details, and account settings."}
+};
+function showSWalkthrough(p){
+  var w=SWT[p];if(!w)return;
+  var k="swt_"+p+"_dismissed";
+  if(localStorage.getItem(k))return;
+  var ov=document.createElement("div");ov.className="walkthrough-overlay";ov.id="swtOverlay";
+  ov.innerHTML='<div class="walkthrough-card"><div class="icon">'+w.i+'</div><h3>'+w.t+'</h3><p>'+w.x+'</p><button class="btn" onclick="document.getElementById(\'swtOverlay\').remove();localStorage.setItem(\'swt_'+p+'\',\'true\')">Got it</button></div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){if(e.target===ov){ov.remove();localStorage.setItem("swt_"+p,"true");}};
+}
+
+// ── Help icon ──
+(function(){
+  var helpIcon=document.createElement("button");helpIcon.className="walkthrough-help-icon";helpIcon.innerHTML="❓";
+  helpIcon.title="Page guide";
+  helpIcon.onclick=function(){
+    localStorage.removeItem("swt_dashboard");
+    showSWalkthrough("dashboard");
+  };
+  document.body.appendChild(helpIcon);
+})();
+
 // ── Init ──
 (function init() {
   if (localStorage.getItem('distributorToken')) {
     loadDashboard();
+    // Auto-show walkthrough on first visit
+    setTimeout(function(){
+      showSWalkthrough("dashboard");
+    },800);
   }
 })();
 </script>
