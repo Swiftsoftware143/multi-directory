@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claim Your Business — ZaarHub</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#faf9f6;--card:#fff;--text:#1c1917;--text-light:#78716c;--text-muted:#a8a29e;
+  --border:#e7e5e4;--border-light:#f0efed;
+  --teal:#0d9488;--teal-dark:#0f766e;--teal-light:#14b8a6;--bg-teal:#f0fdfa;
+  --warm:#d97706;--warm-light:#fef3c7;
+  --green:#16a34a;--green-light:#dcfce7;
+  --orange:#ea580c;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08);--shadow:0 4px 16px rgba(0,0,0,.1);
+  --radius:12px;--radius-lg:16px;--radius-xl:24px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.claim-header{background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.claim-header-inner{max-width:700px;margin:0 auto;padding:0 20px;display:flex;align-items:center;height:60px;gap:12px}
+.claim-header .back-btn{display:flex;align-items:center;gap:6px;color:var(--text-light);font-size:.85rem;font-weight:500;cursor:pointer;padding:6px 12px;border-radius:8px;border:none;background:none;transition:all .2s}
+.claim-header .back-btn:hover{background:var(--bg-teal);color:var(--teal)}
+.claim-header h1{font-size:1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Container */
+.claim-container{max-width:700px;margin:0 auto;padding:32px 20px 60px}
+
+/* Step Indicator */
+.step-bar{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:36px}
+.step-item{display:flex;align-items:center;gap:6px;font-size:.82rem;font-weight:500;color:var(--text-muted);transition:all .3s}
+.step-item.active{color:var(--teal-dark);font-weight:700}
+.step-item.done{color:var(--green)}
+.step-item .step-circle{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;border:2px solid var(--border);transition:all .3s}
+.step-item.active .step-circle{background:var(--teal);color:#fff;border-color:var(--teal)}
+.step-item.done .step-circle{background:var(--green);color:#fff;border-color:var(--green)}
+.step-connector{width:32px;height:2px;background:var(--border);border-radius:2px}
+.step-connector.active{background:var(--teal)}
+
+/* Card */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:20px}
+.card-title{font-size:1.1rem;font-weight:700;margin-bottom:20px;color:var(--text)}
+
+/* Step panels */
+.step-panel{display:none}
+.step-panel.active{display:block}
+
+/* Search */
+.search-box{position:relative;margin-bottom:20px}
+.search-box input{width:100%;padding:12px 16px 12px 44px;border:1px solid var(--border);border-radius:100px;font-size:.95rem;outline:none;transition:all .2s;background:var(--bg)}
+.search-box input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+.search-box .search-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-size:.95rem;color:var(--text-light);pointer-events:none}
+.search-hint{font-size:.82rem;color:var(--text-muted);margin-bottom:16px}
+
+/* Search results */
+.search-results{max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.search-result-card{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border-light);border-radius:var(--radius);cursor:pointer;transition:all .2s}
+.search-result-card:hover{border-color:var(--teal-light);background:var(--bg-teal)}
+.search-result-card.selected{border-color:var(--teal);background:var(--bg-teal);box-shadow:0 0 0 1px var(--teal)}
+.search-result-card .result-icon{font-size:1.3rem;width:36px;height:36px;border-radius:8px;background:var(--bg-teal);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.search-result-card .result-info{flex:1;min-width:0}
+.search-result-card .result-info h4{font-size:.9rem;font-weight:600;margin-bottom:2px;color:var(--text)}
+.search-result-card .result-info p{font-size:.78rem;color:var(--text-light)}
+.search-result-card .result-info .result-cat{display:inline-block;background:var(--bg-teal);color:var(--teal-dark);font-size:.68rem;font-weight:600;padding:1px 8px;border-radius:100px;margin-top:2px}
+.search-result-card .check-mark{margin-left:auto;color:var(--teal);font-size:1.1rem;font-weight:700;display:none}
+.search-result-card.selected .check-mark{display:block}
+.no-results{text-align:center;padding:32px;color:var(--text-muted);font-size:.9rem}
+
+/* Form */
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:.85rem;font-weight:600;color:var(--text);margin-bottom:6px}
+.form-group input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;font-family:inherit;outline:none;transition:border .2s;background:var(--bg)}
+.form-group input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+.form-group .input-hint{font-size:.78rem;color:var(--text-muted);margin-top:4px}
+.form-group .checkbox-wrap{display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--bg);border-radius:8px;cursor:pointer}
+.form-group .checkbox-wrap input[type="checkbox"]{width:18px;height:18px;margin-top:2px;accent-color:var(--teal);cursor:pointer}
+.form-group .checkbox-wrap label{font-size:.85rem;color:var(--text-light);font-weight:400;cursor:pointer;margin:0;line-height:1.4}
+.form-group .checkbox-wrap strong{color:var(--text)}
+.selected-biz-display{background:var(--bg-teal);border:1px solid var(--teal-light);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.selected-biz-display .biz-icon{font-size:1.2rem}
+.selected-biz-display .biz-info{flex:1}
+.selected-biz-display .biz-info h4{font-size:.9rem;font-weight:600}
+.selected-biz-display .biz-info p{font-size:.78rem;color:var(--text-light)}
+.selected-biz-display .change-btn{font-size:.78rem;color:var(--teal);cursor:pointer;font-weight:600;border:none;background:none;padding:4px 8px;border-radius:4px}
+.selected-biz-display .change-btn:hover{background:var(--card)}
+.btn-primary{background:var(--teal);color:#fff;border:none;border-radius:100px;padding:14px 28px;font-size:.95rem;font-weight:600;cursor:pointer;transition:all .2s;width:100%;display:block}
+.btn-primary:hover{background:var(--teal-dark);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-secondary{background:var(--card);color:var(--teal);border:1px solid var(--teal);border-radius:100px;padding:10px 24px;font-size:.88rem;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-secondary:hover{background:var(--bg-teal)}
+
+/* Confirmation */
+.confirm-icon{font-size:3rem;text-align:center;margin-bottom:16px}
+.confirm-title{font-size:1.3rem;font-weight:800;text-align:center;color:var(--text);margin-bottom:8px}
+.confirm-text{text-align:center;color:var(--text-light);font-size:.92rem;line-height:1.7;margin-bottom:24px}
+.confirm-details{background:var(--bg);border-radius:8px;padding:16px;margin-bottom:24px}
+.confirm-details .detail-row{display:flex;justify-content:space-between;padding:6px 0;font-size:.85rem;border-bottom:1px solid var(--border-light)}
+.confirm-details .detail-row:last-child{border-bottom:none}
+.confirm-details .detail-row .label{color:var(--text-muted)}
+.confirm-details .detail-row .value{font-weight:600;color:var(--text)}
+.confirm-actions{display:flex;flex-direction:column;gap:10px;align-items:center}
+
+/* Login prompt */
+.login-prompt{margin-top:24px;padding:24px;border:1px dashed var(--teal);border-radius:var(--radius-lg);text-align:center}
+.login-prompt h3{font-size:1rem;font-weight:700;color:var(--teal-dark);margin-bottom:8px}
+.login-prompt p{font-size:.85rem;color:var(--text-light);margin-bottom:16px}
+.login-prompt .btn-primary{width:auto;display:inline-block;padding:10px 28px}
+
+/* Error */
+.error-msg{color:var(--orange);font-size:.82rem;margin-top:6px;display:none}
+.error-msg.show{display:block}
+
+/* Footer */
+.claim-footer{text-align:center;padding:24px;font-size:.8rem;color:var(--text-muted);border-top:1px solid var(--border-light)}
+.claim-footer a{color:var(--teal)}
+</style>
+</head>
+<body>
+
+<div class="claim-header">
+  <div class="claim-header-inner">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h1>Claim Your Business</h1>
+  </div>
+</div>
+
+<div class="claim-container">
+  <!-- Step Indicator -->
+  <div class="step-bar">
+    <div class="step-item active" id="stepIndicator1">
+      <span class="step-circle" id="stepCircle1">1</span>
+      <span>Find Business</span>
+    </div>
+    <div class="step-connector" id="stepConnector1"></div>
+    <div class="step-item" id="stepIndicator2">
+      <span class="step-circle" id="stepCircle2">2</span>
+      <span>Verify</span>
+    </div>
+    <div class="step-connector" id="stepConnector2"></div>
+    <div class="step-item" id="stepIndicator3">
+      <span class="step-circle" id="stepCircle3">3</span>
+      <span>Done</span>
+    </div>
+  </div>
+
+  <!-- Step 1: Search -->
+  <div class="step-panel active" id="stepPanel1">
+    <div class="card">
+      <div class="card-title">🔍 Find Your Business</div>
+      <p style="font-size:.88rem;color:var(--text-light);margin-bottom:16px">Search for your business in the ZaarHub directory. Type your business name or city below.</p>
+      <div class="search-box">
+        <span class="search-icon">🔎</span>
+        <input type="text" id="searchInput" placeholder="Search for your business..." autocomplete="off">
+      </div>
+      <div class="search-hint">Type at least 2 characters to search</div>
+      <div class="search-results" id="searchResults">
+        <div class="no-results">Start typing to find your business</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Verify -->
+  <div class="step-panel" id="stepPanel2">
+    <div class="card">
+      <div class="card-title">✅ Verify Identity</div>
+      <div class="selected-biz-display" id="selectedBizDisplay">
+        <span class="biz-icon">🏪</span>
+        <div class="biz-info">
+          <h4 id="selectedBizName">Business Name</h4>
+          <p id="selectedBizLocation">City, State</p>
+        </div>
+        <button class="change-btn" onclick="goToStep1()">Change</button>
+      </div>
+
+      <div class="form-group">
+        <label>Your Full Name</label>
+        <input type="text" id="ownerName" placeholder="John Doe">
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="ownerEmail" placeholder="you@example.com">
+        <div class="input-hint">We'll notify you when your claim is verified</div>
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="tel" id="ownerPhone" placeholder="(555) 123-4567">
+      </div>
+      <div class="form-group">
+        <div class="checkbox-wrap">
+          <input type="checkbox" id="ownerCheckbox">
+          <label>I confirm that I am the <strong>owner or authorized representative</strong> of this business and have the authority to manage its listing.</label>
+        </div>
+        <div class="error-msg" id="checkError">Please confirm you are the owner or authorized representative.</div>
+      </div>
+
+      <button class="btn-primary" onclick="submitClaim()" id="claimSubmitBtn">Submit Claim</button>
+      <div id="submitFeedback"></div>
+    </div>
+  </div>
+
+  <!-- Step 3: Confirmation -->
+  <div class="step-panel" id="stepPanel3">
+    <div class="card" style="text-align:center">
+      <div class="confirm-icon">🎉</div>
+      <div class="confirm-title">Claim Submitted!</div>
+      <div class="confirm-text">
+        Thanks for claiming your business listing. We'll review and verify your ownership within <strong>24–48 hours</strong>. You'll receive an email notification when the verification is complete.
+      </div>
+      <div class="confirm-details">
+        <div class="detail-row">
+          <span class="label">Business</span>
+          <span class="value" id="confirmBizName">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Submitted As</span>
+          <span class="value" id="confirmOwnerName">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Email</span>
+          <span class="value" id="confirmEmail">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="label">Status</span>
+          <span class="value" style="color:var(--warm)">Under Review</span>
+        </div>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn-primary" onclick="location.href='/zaarhub'">Browse Directory</button>
+        <button class="btn-secondary" onclick="location.href='/grow'">Learn About ZaarHub for Business</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login Prompt -->
+  <div class="login-prompt" id="loginPrompt">
+    <h3>🔑 Sign In Required</h3>
+    <p>You need to sign in or create a visitor account to claim a business listing.</p>
+    <button class="btn-primary" onclick="location.href='/visitor?redirect=/claim'">Sign In / Register</button>
+  </div>
+</div>
+
+<div class="claim-footer">
+  Powered by <a href="/zaarhub">ZaarHub</a> — Discover Your Local Community
+</div>
+
+<script>
+// ── State ──
+let currentStep = 1;
+let selectedBusiness = null;
+let searchTimer = null;
+let isLoggedIn = false;
+
+// ── Utils ──
+function goBack() {
+  if (currentStep > 1 && currentStep < 3) {
+    goToStep1();
+  } else {
+    window.location.href = '/zaarhub';
+  }
+}
+
+function updateStepBar() {
+  for (let i = 1; i <= 3; i++) {
+    const indicator = document.getElementById(`stepIndicator${i}`);
+    const circle = document.getElementById(`stepCircle${i}`);
+    const connector = document.getElementById(`stepConnector${i}`);
+    
+    indicator.classList.toggle('active', i === currentStep);
+    indicator.classList.toggle('done', i < currentStep);
+    if (connector) connector.classList.toggle('active', i < currentStep);
+  }
+  
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`stepPanel${i}`).classList.toggle('active', i === currentStep);
+  }
+}
+
+function goToStep1() {
+  currentStep = 1;
+  selectedBusiness = null;
+  updateStepBar();
+  document.getElementById('loginPrompt').style.display = isLoggedIn ? 'none' : 'block';
+}
+
+function goToStep2(biz) {
+  if (!isLoggedIn) {
+    document.getElementById('loginPrompt').style.display = 'block';
+    return;
+  }
+  selectedBusiness = biz;
+  currentStep = 2;
+  updateStepBar();
+  
+  document.getElementById('selectedBizName').textContent = biz.name || 'Business';
+  document.getElementById('selectedBizLocation').textContent = [biz.city, biz.state].filter(Boolean).join(', ') || 'Local';
+  document.getElementById('loginPrompt').style.display = 'none';
+}
+
+function goToStep3(bizName, ownerName, email) {
+  currentStep = 3;
+  updateStepBar();
+  document.getElementById('confirmBizName').textContent = bizName;
+  document.getElementById('confirmOwnerName').textContent = ownerName;
+  document.getElementById('confirmEmail').textContent = email;
+}
+
+// ── Auth Check ──
+function checkAuth() {
+  const token = localStorage.getItem('zh_token');
+  isLoggedIn = !!token;
+  document.getElementById('loginPrompt').style.display = isLoggedIn ? 'none' : 'block';
+}
+
+// ── Debounced Search ──
+document.getElementById('searchInput').addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  const q = this.value.trim();
+  if (q.length < 2) {
+    document.getElementById('searchResults').innerHTML = '<div class="no-results">Type at least 2 characters to search</div>';
+    return;
+  }
+  searchTimer = setTimeout(() => performSearch(q), 300);
+});
+
+async function performSearch(q) {
+  const container = document.getElementById('searchResults');
+  container.innerHTML = '<div class="no-results">Searching...</div>';
+  
+  try {
+    const resp = await fetch(`/api/v1/zaarhub/search?q=${encodeURIComponent(q)}`);
+    if (!resp.ok) throw new Error('Search failed');
+    const data = await resp.json();
+    const results = data.results || data || [];
+    
+    if (results.length === 0) {
+      container.innerHTML = '<div class="no-results">No businesses found. Try a different search.</div>';
+      return;
+    }
+    
+    container.innerHTML = results.map(b => `
+      <div class="search-result-card" onclick="selectBusiness(${JSON.stringify(b).replace(/"/g,'&quot;')})">
+        <div class="result-icon">🏪</div>
+        <div class="result-info">
+          <h4>${b.name || 'Unnamed Business'}</h4>
+          <p>${[b.city, b.state].filter(Boolean).join(', ') || 'Location N/A'}</p>
+          ${b.category_name ? `<span class="result-cat">${b.category_name}</span>` : ''}
+        </div>
+        <span class="check-mark">✓</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = '<div class="no-results">Search failed. Please try again.</div>';
+    console.warn('Search error:', err);
+  }
+}
+
+function selectBusiness(biz) {
+  // Deselect all
+  document.querySelectorAll('.search-result-card').forEach(c => c.classList.remove('selected'));
+  
+  // Mark selected
+  const cards = document.querySelectorAll('.search-result-card');
+  // Find the one that was clicked and mark it
+  // Since we can't easily find it, we'll just proceed
+  goToStep2(biz);
+}
+
+// ── Submit Claim ──
+async function submitClaim() {
+  const name = document.getElementById('ownerName').value.trim();
+  const email = document.getElementById('ownerEmail').value.trim();
+  const phone = document.getElementById('ownerPhone').value.trim();
+  const checked = document.getElementById('ownerCheckbox').checked;
+  const errorEl = document.getElementById('checkError');
+  const feedbackEl = document.getElementById('submitFeedback');
+  const btn = document.getElementById('claimSubmitBtn');
+  
+  // Validate
+  errorEl.classList.remove('show');
+  feedbackEl.innerHTML = '';
+  
+  if (!checked) {
+    errorEl.classList.add('show');
+    return;
+  }
+  
+  if (!name || !email) {
+    feedbackEl.innerHTML = '<p style="color:var(--orange);font-size:.82rem;margin-top:8px">Please fill in your name and email.</p>';
+    return;
+  }
+  
+  if (!selectedBusiness || !selectedBusiness.id) {
+    feedbackEl.innerHTML = '<p style="color:var(--orange);font-size:.82rem;margin-top:8px">No business selected. Please go back and search again.</p>';
+    return;
+  }
+  
+  const token = localStorage.getItem('zh_token');
+  if (!token) {
+    window.location.href = '/visitor?redirect=/claim';
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  
+  try {
+    const resp = await fetch(`/api/v1/businesses/${selectedBusiness.id}/claim`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        owner_name: name,
+        email: email,
+        phone: phone
+      })
+    });
+    
+    if (resp.ok) {
+      goToStep3(selectedBusiness.name || 'Business', name, email);
+    } else {
+      let errMsg = 'Failed to submit claim. Please try again.';
+      try {
+        const errData = await resp.json();
+        errMsg = errData.error || errData.message || errMsg;
+      } catch(e) {}
+      feedbackEl.innerHTML = `<p style="color:var(--orange);font-size:.82rem;margin-top:8px">❌ ${errMsg}</p>`;
+    }
+  } catch (err) {
+    feedbackEl.innerHTML = `<p style="color:var(--orange);font-size:.82rem;margin-top:8px">❌ Network error. Please check your connection.</p>`;
+  }
+  
+  btn.disabled = false;
+  btn.textContent = 'Submit Claim';
+}
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', function() {
+  checkAuth();
+  updateStepBar();
+  
+  // Check if search query param exists
+  const q = new URLSearchParams(window.location.search).get('q');
+  if (q) {
+    document.getElementById('searchInput').value = q;
+    performSearch(q);
+  }
+});
+</script>
+</body>
+</html>

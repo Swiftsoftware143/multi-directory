@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grow Your Business — ZaarHub for Business</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#faf9f6;--card:#fff;--text:#1c1917;--text-light:#78716c;--text-muted:#a8a29e;
+  --border:#e7e5e4;--border-light:#f0efed;
+  --teal:#0d9488;--teal-dark:#0f766e;--teal-light:#14b8a6;--bg-teal:#f0fdfa;
+  --warm:#d97706;--warm-light:#fef3c7;--amber:#f59e0b;
+  --green:#16a34a;
+  --accent:#7c3aed;--accent-light:#ede9fe;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08);--shadow:0 4px 16px rgba(0,0,0,.1);--shadow-lg:0 12px 40px rgba(0,0,0,.15);
+  --radius:12px;--radius-lg:16px;--radius-xl:24px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.grow-header{background:rgba(255,255,255,.97);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.grow-header-inner{max-width:1100px;margin:0 auto;padding:0 20px;display:flex;align-items:center;height:68px;gap:16px}
+.grow-logo{font-size:1.2rem;font-weight:800;color:var(--teal);display:flex;align-items:center;gap:6px}
+.grow-logo span{font-size:1.3rem}
+.grow-nav{display:flex;align-items:center;gap:4px;margin-left:auto}
+.grow-nav a{padding:8px 16px;border-radius:var(--radius);font-size:.85rem;font-weight:500;color:var(--text);transition:all .2s}
+.grow-nav a:hover{background:var(--bg-teal);color:var(--teal);text-decoration:none}
+.grow-nav a.active{color:var(--teal);font-weight:600}
+.grow-btn-outline{padding:8px 18px;border-radius:100px;border:1px solid var(--teal);color:var(--teal);font-weight:600;font-size:.85rem;transition:all .2s;background:none;cursor:pointer}
+.grow-btn-outline:hover{background:var(--bg-teal)}
+.grow-btn-primary{padding:10px 24px;border-radius:100px;background:var(--teal);color:#fff;font-weight:600;font-size:.88rem;border:none;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+.grow-btn-primary:hover{background:var(--teal-dark);transform:translateY(-1px);box-shadow:var(--shadow)}
+
+/* Hero */
+.hero-section{background:linear-gradient(135deg,#0f172a 0%,#1e293b 30%,#0d9488 100%);color:#fff;padding:80px 20px 60px;text-align:center;position:relative;overflow:hidden}
+.hero-section::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30% 50%,rgba(13,148,136,.15) 0%,transparent 50%),radial-gradient(ellipse at 70% 50%,rgba(124,58,237,.1) 0%,transparent 50%);pointer-events:none}
+.hero-inner{max-width:800px;margin:0 auto;position:relative;z-index:1}
+.hero-section h1{font-size:clamp(1.8rem,5vw,3rem);font-weight:900;letter-spacing:-1px;margin-bottom:16px;line-height:1.15}
+.hero-section h1 .highlight{background:linear-gradient(90deg,var(--teal-light),var(--amber));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-section p{font-size:1.1rem;color:rgba(255,255,255,.8);margin-bottom:32px;line-height:1.6;max-width:640px;margin-left:auto;margin-right:auto}
+.hero-section .hero-cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.hero-section .hero-cta .grow-btn-primary{font-size:1rem;padding:14px 32px}
+
+/* Stats Bar */
+.stats-bar{background:var(--card);border-bottom:1px solid var(--border);padding:24px 20px}
+.stats-inner{max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:center}
+.stat-item .stat-number{font-size:1.8rem;font-weight:900;color:var(--teal)}
+.stat-item .stat-label{font-size:.82rem;color:var(--text-light);margin-top:2px}
+
+/* Sections */
+.section{padding:64px 20px}
+.section-inner{max-width:1100px;margin:0 auto}
+.section-title{text-align:center;font-size:clamp(1.4rem,3vw,2rem);font-weight:800;margin-bottom:12px;letter-spacing:-.5px}
+.section-subtitle{text-align:center;color:var(--text-light);font-size:.95rem;max-width:600px;margin:0 auto 48px;line-height:1.6}
+
+/* Features Grid */
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+@media(max-width:860px){.features-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:540px){.features-grid{grid-template-columns:1fr}}
+.feature-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px 24px;transition:all .3s;cursor:default}
+.feature-card:hover{box-shadow:var(--shadow);transform:translateY(-3px);border-color:var(--teal-light)}
+.feature-card .feat-icon{font-size:2rem;margin-bottom:12px}
+.feature-card h3{font-size:1.05rem;font-weight:700;margin-bottom:8px}
+.feature-card p{font-size:.88rem;color:var(--text-light);line-height:1.6}
+
+/* Pricing Table */
+.pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:start}
+@media(max-width:860px){.pricing-grid{grid-template-columns:1fr;max-width:400px;margin:0 auto}}
+.pricing-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-xl);padding:32px 24px;text-align:center;transition:all .3s;position:relative}
+.pricing-card.featured{border-color:var(--teal);box-shadow:0 0 0 1px var(--teal),var(--shadow)}
+.pricing-card.featured .popular-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--teal);color:#fff;font-size:.72rem;font-weight:700;padding:4px 16px;border-radius:100px;text-transform:uppercase;letter-spacing:.5px}
+.pricing-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.pricing-card .plan-name{font-size:.85rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.pricing-card .plan-price{font-size:2.5rem;font-weight:900;color:var(--text);margin-bottom:4px}
+.pricing-card .plan-price .currency{font-size:1rem;font-weight:400;color:var(--text-muted)}
+.pricing-card .plan-price .period{font-size:.85rem;font-weight:400;color:var(--text-muted)}
+.pricing-card .plan-desc{font-size:.85rem;color:var(--text-light);margin-bottom:20px}
+.pricing-card ul{list-style:none;text-align:left;margin-bottom:24px}
+.pricing-card ul li{padding:6px 0;font-size:.85rem;color:var(--text);display:flex;align-items:center;gap:8px}
+.pricing-card ul li .check{color:var(--green);font-weight:700}
+.pricing-card ul li .dash{color:var(--text-muted)}
+
+/* How It Works */
+.how-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;text-align:center}
+@media(max-width:640px){.how-grid{grid-template-columns:1fr;gap:24px}}
+.how-step{position:relative}
+.how-step .step-number{width:48px;height:48px;border-radius:50%;background:var(--bg-teal);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:800;margin:0 auto 12px}
+.how-step .step-icon{font-size:2rem;margin-bottom:8px}
+.how-step h3{font-size:1.05rem;font-weight:700;margin-bottom:6px}
+.how-step p{font-size:.85rem;color:var(--text-light);line-height:1.6;max-width:280px;margin:0 auto}
+
+/* Testimonials */
+.testimonial-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+@media(max-width:860px){.testimonial-grid{grid-template-columns:1fr;max-width:480px;margin:0 auto}}
+.testimonial-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px 24px;position:relative}
+.testimonial-card::before{content:'"';position:absolute;top:12px;left:20px;font-size:4rem;color:var(--bg-teal);font-family:serif;line-height:1;opacity:.5}
+.testimonial-card .quote{font-size:.9rem;color:var(--text-light);line-height:1.7;margin-bottom:16px;font-style:italic}
+.testimonial-card .attribution{display:flex;align-items:center;gap:10px}
+.testimonial-card .attribution .avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--teal-light));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.85rem;flex-shrink:0}
+.testimonial-card .attribution .info .name{font-weight:600;font-size:.88rem}
+.testimonial-card .attribution .info .role{font-size:.78rem;color:var(--text-muted)}
+
+/* CTA Banner */
+.cta-banner{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:64px 20px;text-align:center}
+.cta-banner h2{font-size:clamp(1.4rem,3vw,2rem);font-weight:800;margin-bottom:12px}
+.cta-banner p{font-size:1.05rem;color:rgba(255,255,255,.85);margin-bottom:28px;max-width:600px;margin-left:auto;margin-right:auto}
+.cta-banner .grow-btn-primary{background:#fff;color:var(--teal-dark);font-size:1.05rem;padding:14px 36px}
+.cta-banner .grow-btn-primary:hover{background:var(--bg-teal);color:var(--teal-dark)}
+
+/* Divider */
+.section-divider{border:none;border-top:1px solid var(--border-light);max-width:200px;margin:0 auto}
+
+/* Footer */
+.grow-footer{text-align:center;padding:32px 20px;font-size:.8rem;color:var(--text-muted);border-top:1px solid var(--border-light)}
+.grow-footer a{color:var(--teal)}
+.grow-footer .footer-links{display:flex;justify-content:center;gap:16px;margin-bottom:8px;flex-wrap:wrap}
+.grow-footer .footer-links a{font-size:.85rem;color:var(--text-light)}
+.grow-footer .footer-links a:hover{color:var(--teal)}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="grow-header">
+  <div class="grow-header-inner">
+    <div class="grow-logo"><span>🌐</span> ZaarHub <small style="font-weight:400;font-size:.7rem;color:var(--text-light)">for Business</small></div>
+    <div class="grow-nav">
+      <a class="active" href="/grow">For Businesses</a>
+      <a href="/zaarhub">Discover</a>
+      <button class="grow-btn-outline" onclick="location.href='/visitor'">Sign In</button>
+      <button class="grow-btn-primary" onclick="scrollToClaim()">Get Started</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hero -->
+<div class="hero-section">
+  <div class="hero-inner">
+    <h1>Grow Your Local Presence <br>with <span class="highlight">ZaarHub</span></h1>
+    <p>Connect with customers in your community, manage your reputation, and drive more foot traffic — all from one simple dashboard.</p>
+    <div class="hero-cta">
+      <button class="grow-btn-primary" onclick="scrollToClaim()">🚀 Claim Your Free Listing</button>
+      <button class="grow-btn-outline" style="border-color:rgba(255,255,255,.4);color:#fff" onclick="scrollToFeatures()">See How It Works</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <div class="stat-number">2,847</div>
+      <div class="stat-label">Businesses Listed</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">128K</div>
+      <div class="stat-label">Monthly Visitors</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">15,642</div>
+      <div class="stat-label">Deals Claimed</div>
+    </div>
+  </div>
+</div>
+
+<!-- Features -->
+<div class="section" id="features">
+  <div class="section-inner">
+    <h2 class="section-title">Everything You Need to Succeed</h2>
+    <p class="section-subtitle">From free listings to powerful growth tools — ZaarHub helps local businesses thrive.</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feat-icon">📋</div>
+        <h3>Free Business Listing</h3>
+        <p>Get discovered by local customers searching for services like yours — completely free.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">🏆</div>
+        <h3>Verified Owner Badge</h3>
+        <p>Stand out with trust badges that show customers you're the real deal. Build credibility instantly.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">📢</div>
+        <h3>Promote with Ads</h3>
+        <p>Reach more customers with targeted ad placements — sidebar, hero, and footer spots available.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">📊</div>
+        <h3>Analytics Dashboard</h3>
+        <p>See who's viewing your listing, track impressions, and learn how customers find you.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">⭐</div>
+        <h3>Manage Reviews</h3>
+        <p>Build your reputation by responding to customer reviews and showcasing your best feedback.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">🎁</div>
+        <h3>Offer Deals &amp; Perks</h3>
+        <p>Create exclusive promotions that drive foot traffic and reward loyal customers.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pricing -->
+<div class="section" style="background:var(--card)">
+  <div class="section-inner">
+    <h2 class="section-title">Simple, Transparent Pricing</h2>
+    <p class="section-subtitle">Start free and upgrade as your business grows. No hidden fees, no surprises.</p>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <div class="plan-name">Free</div>
+        <div class="plan-price"><span class="currency">$</span>0<span class="period">/mo</span></div>
+        <div class="plan-desc">Perfect for getting started</div>
+        <ul>
+          <li><span class="check">✓</span> Business Listing</li>
+          <li><span class="check">✓</span> Contact Info</li>
+          <li><span class="check">✓</span> Customer Reviews</li>
+          <li><span class="dash">—</span> Photos &amp; Gallery</li>
+          <li><span class="dash">—</span> Analytics Dashboard</li>
+          <li><span class="dash">—</span> Advertising</li>
+          <li><span class="dash">—</span> Priority Support</li>
+          <li><span class="dash">—</span> Custom Branding</li>
+        </ul>
+        <button class="grow-btn-primary" onclick="scrollToClaim()">Get Started Free</button>
+      </div>
+      <div class="pricing-card featured">
+        <div class="popular-badge">Most Popular</div>
+        <div class="plan-name">Pro</div>
+        <div class="plan-price"><span class="currency">$</span>29<span class="period">/mo</span></div>
+        <div class="plan-desc">For growing businesses</div>
+        <ul>
+          <li><span class="check">✓</span> Business Listing</li>
+          <li><span class="check">✓</span> Contact Info</li>
+          <li><span class="check">✓</span> Customer Reviews</li>
+          <li><span class="check">✓</span> Photos &amp; Gallery</li>
+          <li><span class="check">✓</span> Analytics Dashboard</li>
+          <li><span class="check">✓</span> Advertising</li>
+          <li><span class="dash">—</span> Priority Support</li>
+          <li><span class="dash">—</span> Custom Branding</li>
+        </ul>
+        <button class="grow-btn-primary" onclick="scrollToClaim()">Start Free Trial</button>
+      </div>
+      <div class="pricing-card">
+        <div class="plan-name">Enterprise</div>
+        <div class="plan-price"><span class="currency">$</span>99<span class="period">/mo</span></div>
+        <div class="plan-desc">For multi-location brands</div>
+        <ul>
+          <li><span class="check">✓</span> Business Listing</li>
+          <li><span class="check">✓</span> Contact Info</li>
+          <li><span class="check">✓</span> Customer Reviews</li>
+          <li><span class="check">✓</span> Photos &amp; Gallery</li>
+          <li><span class="check">✓</span> Analytics Dashboard</li>
+          <li><span class="check">✓</span> Advertising</li>
+          <li><span class="check">✓</span> Priority Support</li>
+          <li><span class="check">✓</span> Custom Branding</li>
+        </ul>
+        <button class="grow-btn-primary" onclick="scrollToClaim()">Contact Sales</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- How It Works -->
+<div class="section" id="how-it-works">
+  <div class="section-inner">
+    <h2 class="section-title">Get Started in 3 Easy Steps</h2>
+    <p class="section-subtitle">Claiming your business listing takes just a few minutes.</p>
+    <div class="how-grid">
+      <div class="how-step">
+        <div class="step-icon">🔍</div>
+        <div class="step-number">1</div>
+        <h3>Find Your Business</h3>
+        <p>Search the directory for your business listing. Don't see it? You can add it!</p>
+      </div>
+      <div class="how-step">
+        <div class="step-icon">✅</div>
+        <div class="step-number">2</div>
+        <h3>Claim &amp; Verify</h3>
+        <p>Quick verification via phone or email. We'll confirm you're the authorized owner.</p>
+      </div>
+      <div class="how-step">
+        <div class="step-icon">🚀</div>
+        <div class="step-number">3</div>
+        <h3>Start Growing</h3>
+        <p>Customize your listing, add photos, respond to reviews, and create deals.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Testimonials -->
+<div class="section" style="background:var(--card)">
+  <div class="section-inner">
+    <h2 class="section-title">Trusted by Local Businesses</h2>
+    <p class="section-subtitle">Hear from business owners who've grown their presence with ZaarHub.</p>
+    <div class="testimonial-grid">
+      <div class="testimonial-card">
+        <div class="quote">Since joining ZaarHub, our foot traffic has increased 40%. The free listing alone brought in dozens of new customers who found us through the directory.</div>
+        <div class="attribution">
+          <div class="avatar">MC</div>
+          <div class="info">
+            <div class="name">Maria C.</div>
+            <div class="role">Local Cafe Owner</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card">
+        <div class="quote">The analytics tools helped us understand our customers better. We adjusted our hours based on traffic data and saw an immediate boost in evening visits.</div>
+        <div class="attribution">
+          <div class="avatar">DT</div>
+          <div class="info">
+            <div class="name">David T.</div>
+            <div class="role">Salon Manager</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card">
+        <div class="quote">Claiming our listing was incredibly easy. We were live in minutes. The owner dashboard makes it simple to update our info and respond to reviews.</div>
+        <div class="attribution">
+          <div class="avatar">JL</div>
+          <div class="info">
+            <div class="name">Jessica L.</div>
+            <div class="role">Boutique Owner</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CTA Banner -->
+<div class="cta-banner" id="ctaSection">
+  <h2>Ready to Grow Your Business?</h2>
+  <p>Join 2,847 local businesses on ZaarHub and start connecting with customers in your community today.</p>
+  <button class="grow-btn-primary" onclick="location.href='/claim'">🚀 Claim Your Free Listing</button>
+</div>
+
+<!-- Footer -->
+<div class="grow-footer">
+  <div class="footer-links">
+    <a href="/zaarhub">Discover</a>
+    <a href="/grow">For Businesses</a>
+    <a href="/claim">Claim Listing</a>
+    <a href="/legal-terms">Terms</a>
+    <a href="/zaarhub">Contact</a>
+  </div>
+  Powered by <a href="/zaarhub">ZaarHub</a> — Grow Your Local Presence
+</div>
+
+<script>
+function scrollToClaim() {
+  window.location.href = '/claim';
+}
+
+function scrollToFeatures() {
+  document.getElementById('features').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', function(e) {
+    e.preventDefault();
+    const target = document.querySelector(this.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth' });
+  });
+});
+</script>
+</body>
+</html>

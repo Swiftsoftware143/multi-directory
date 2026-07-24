@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ZaarHub — Discover Your Local Community</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -250,6 +252,143 @@ a:hover{text-decoration:underline}
 .zh-deal-sm-body .biz{font-size:.78rem;color:var(--text-light)}
 .zh-deal-sm-body .deal-badge{display:inline-block;background:var(--warm-light);color:var(--warm);font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px;margin-top:4px}
 
+/* ── ENHANCED: Happening Today Ticker ── */
+.zh-today-ticker{background:linear-gradient(90deg,#fef3c7,#fffbeb);border-bottom:1px solid var(--border);padding:8px 24px;display:flex;align-items:center;gap:10px;font-size:.82rem;overflow:hidden;position:relative;min-height:36px}
+.zh-today-ticker .today-label{font-weight:700;color:var(--warm);white-space:nowrap;flex-shrink:0}
+.zh-today-ticker .today-msg{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;opacity:1;transition:opacity .5s}
+.zh-today-ticker .today-msg.fade-out{opacity:0}
+.zh-today-ticker .today-msg.fade-in{opacity:1}
+
+/* ── ENHANCED: Spot of the Week ── */
+.zh-spot-week{display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#f0fdfa,#e0f2fe);border:1px solid var(--teal-light);border-radius:var(--radius);padding:10px 16px;margin:0 24px;cursor:pointer;transition:all .2s}
+.zh-spot-week:hover{border-color:var(--teal);box-shadow:var(--shadow-sm)}
+.zh-spot-week .spot-icon{font-size:1.2rem}
+.zh-spot-week .spot-info{flex:1}
+.zh-spot-week .spot-info h4{font-size:.85rem;font-weight:700}
+.zh-spot-week .spot-info span{font-size:.75rem;color:var(--text-light)}
+.zh-spot-week .spot-badge{background:var(--warm-light);color:var(--warm);font-size:.68rem;font-weight:800;padding:2px 10px;border-radius:100px;white-space:nowrap}
+.zh-spot-week .spot-link{font-size:.78rem;font-weight:600;color:var(--teal);white-space:nowrap}
+
+/* ── ENHANCED: Founder's Spotlight / Story Cards ── */
+.zh-founders-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.zh-story-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;transition:all .2s;cursor:pointer;position:relative;border-left:4px solid var(--warm)}
+.zh-story-card:hover{box-shadow:var(--shadow);transform:translateY(-2px);border-color:var(--warm)}
+.zh-story-card .zh-story-avatar{width:48px;height:48px;border-radius:50%;background:var(--warm-light);display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:10px}
+.zh-story-card h4{font-size:1rem;font-weight:700;margin-bottom:2px}
+.zh-story-card .owner{font-size:.78rem;color:var(--text-light);margin-bottom:8px}
+.zh-story-card .blurb{font-size:.82rem;color:var(--text);line-height:1.5;margin-bottom:10px}
+.zh-story-card a{font-size:.82rem;font-weight:600;color:var(--teal)}
+.zh-story-card a:hover{color:var(--teal-dark)}
+
+/* ── ENHANCED: View Toggle (List/Map/Split) ── */
+.zh-view-toggle{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap}
+.zh-view-toggle button{display:inline-flex;align-items:center;gap:4px;padding:8px 16px;border:1px solid var(--border);border-radius:100px;background:var(--card);color:var(--text);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;min-height:44px}
+.zh-view-toggle button:hover{background:var(--bg-teal);border-color:var(--teal-light)}
+.zh-view-toggle button.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+#zh-city-map{width:100%;height:400px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);display:none}
+#zh-city-map.active{display:block}
+.zh-city-view-split{display:flex;gap:16px}
+.zh-city-view-split .zh-biz-grid{flex:1;min-width:0}
+.zh-city-view-split #zh-city-map{flex:1;height:600px;display:block}
+.zh-city-view-split .zh-biz-side{flex:1;min-width:0;overflow-y:auto;max-height:600px}
+.zh-city-view-map #zh-city-map{display:block;width:100%;height:500px}
+.zh-city-view-map .zh-biz-grid{display:none}
+
+/* ── ENHANCED: Notification Bell ── */
+.zh-notif-bell{position:relative;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:transparent;border:none;cursor:pointer;font-size:1.2rem;transition:all .2s;min-height:44px;min-width:44px}
+.zh-notif-bell:hover{background:var(--bg-teal)}
+.zh-notif-dot{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#ef4444;border:2px solid #fff}
+
+/* ── ENHANCED: Role Switcher ── */
+.zh-role-switcher{display:inline-flex;align-items:center;gap:4px;background:var(--bg-teal);border:1px solid var(--teal);border-radius:100px;padding:3px;font-size:.75rem;font-weight:600}
+.zh-role-switcher button{padding:4px 12px;border:none;border-radius:100px;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .2s;background:transparent;color:var(--text-light);min-height:32px}
+.zh-role-switcher button.active{background:var(--teal);color:#fff}
+.zh-role-switcher button:hover:not(.active){color:var(--teal-dark)}
+
+/* ── ENHANCED: Sign In Button ── */
+.zh-signin-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--border);border-radius:100px;font-size:.82rem;font-weight:600;color:var(--text);background:var(--card);cursor:pointer;transition:all .2s;min-height:44px}
+.zh-signin-btn:hover{background:var(--bg-teal);border-color:var(--teal);color:var(--teal);text-decoration:none}
+
+/* ── ENHANCED: Business Owner CTA Block ── */
+.zh-owner-cta{background:linear-gradient(135deg,#0f172a 0%,#134e4a 50%,#0d9488 100%);padding:48px 24px;text-align:center;border-radius:var(--radius-xl);margin:24px 0}
+.zh-owner-cta h2{font-size:1.5rem;font-weight:800;color:#fff;margin-bottom:6px}
+.zh-owner-cta p{color:#94a3b8;font-size:.95rem;margin-bottom:20px}
+.zh-owner-cta-features{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+.zh-owner-cta-features span{display:inline-flex;align-items:center;gap:6px;color:#5eead4;font-size:.85rem;font-weight:600}
+.zh-owner-cta .count{color:#94a3b8;font-size:.85rem;margin-bottom:20px}
+.zh-owner-cta .zh-btn-primary{background:#fff;color:var(--teal-dark);padding:14px 32px;border-radius:100px;font-size:1rem;font-weight:700;display:inline-flex;align-items:center;gap:8px;transition:all .2s}
+.zh-owner-cta .zh-btn-primary:hover{background:var(--bg-teal);transform:translateY(-2px)}
+
+/* ── ENHANCED: Verification Badges ── */
+.zh-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;margin-right:4px;white-space:nowrap}
+.zh-badge-verified{background:#065f46;color:#a7f3d0}
+.zh-badge-toprated{background:#fef3c7;color:#92400e}
+.zh-badge-family{background:#ede9fe;color:#5b21b6}
+.zh-badge-perk{background:#fef3c7;color:#92400e}
+
+/* ── ENHANCED: Rating Stars ── */
+.zh-rating{color:var(--warm);font-size:.82rem;display:inline-flex;align-items:center;gap:2px}
+.zh-rating .num{color:var(--text-light);font-size:.78rem;font-weight:400}
+
+/* ── ENHANCED: Biz Card Action Buttons Row ── */
+.zh-biz-actions-row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.zh-biz-actions-row .action{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border:1px solid var(--border);border-radius:100px;font-size:.75rem;font-weight:600;color:var(--text);background:var(--card);cursor:pointer;transition:all .2s;min-height:44px;min-width:44px;justify-content:center}
+.zh-biz-actions-row .action:hover{border-color:var(--teal);color:var(--teal);background:var(--bg-teal);text-decoration:none}
+.zh-biz-actions-row .action.save-active{color:var(--warm);border-color:var(--warm);background:var(--warm-light)}
+
+/* ── ENHANCED: Cover Image Area ── */
+.zh-biz-cover{height:130px;display:flex;align-items:center;justify-content:center;font-size:2.5rem;color:#fff;overflow:hidden;position:relative}
+.zh-biz-cover img{width:100%;height:100%;object-fit:cover}
+.zh-biz-cover .letter{font-size:2.8rem;font-weight:800;opacity:.9;text-shadow:0 2px 8px rgba(0,0,0,.2)}
+.zh-biz-cover .cat-tag{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);color:#fff;font-size:.68rem;font-weight:700;padding:2px 10px;border-radius:100px}
+
+/* ── ENHANCED: City Hero Enhanced ── */
+.zh-city-hero-enhanced{position:relative;overflow:hidden}
+.zh-city-hero-enhanced .weather{font-size:.85rem;color:#94a3b8;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.zh-city-hero-enhanced .biz-stat{font-size:.85rem;color:#94a3b8;margin-bottom:16px}
+
+/* ── ENHANCED: Modal for Collections ── */
+.zh-modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.zh-modal{background:var(--card);border-radius:var(--radius-xl);max-width:480px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:var(--shadow-lg);padding:24px}
+.zh-modal h3{font-size:1.2rem;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.zh-modal-close{float:right;background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text-light);padding:4px;min-height:44px;min-width:44px}
+.zh-modal-close:hover{color:var(--text)}
+.zh-collection-create{display:flex;gap:8px;margin-bottom:16px}
+.zh-collection-create input{flex:1;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:.9rem;outline:none}
+.zh-collection-create input:focus{border-color:var(--teal)}
+.zh-collection-create button{background:var(--teal);color:#fff;border:none;padding:10px 18px;border-radius:var(--radius);font-weight:600;cursor:pointer;font-size:.85rem;min-height:44px}
+.zh-collection-create button:hover{background:var(--teal-dark)}
+.zh-collection-item{border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all .2s}
+.zh-collection-item:hover{background:var(--bg-teal)}
+.zh-collection-item .name{font-size:.88rem;font-weight:600}
+.zh-collection-item .count{font-size:.75rem;color:var(--text-light);margin-top:2px}
+.zh-collection-item .biz-list{padding:8px 0 0 12px;display:none}
+.zh-collection-item .biz-list.open{display:block}
+.zh-collection-item .biz-list div{padding:4px 0;font-size:.82rem;color:var(--text)}
+.zh-collection-empty{text-align:center;padding:24px;color:var(--text-light);font-size:.9rem}
+
+/* ── Responsive additions ── */
+@media(max-width:768px){
+  .zh-city-view-split{flex-direction:column}
+  .zh-city-view-split #zh-city-map{height:300px}
+  .zh-city-view-split .zh-biz-side{max-height:none}
+  .zh-view-toggle{justify-content:center}
+  .zh-view-toggle button{font-size:.78rem;padding:6px 12px}
+  #zh-city-map{height:300px}
+  .zh-today-ticker{padding:6px 12px;font-size:.78rem;flex-wrap:wrap}
+  .zh-owner-cta{padding:32px 16px}
+  .zh-owner-cta h2{font-size:1.25rem}
+  .zh-owner-cta-features{gap:10px;flex-direction:column;align-items:center}
+  .zh-founders-grid{grid-template-columns:1fr}
+  .zh-spot-week{margin:0 12px;flex-wrap:wrap}
+  .zh-modal{margin:12px}
+  .zh-notif-bell,.zh-signin-btn,.zh-role-switcher{display:none}
+}
+
+@media(max-width:480px){
+  .zh-biz-actions-row .action{font-size:.72rem;padding:4px 8px}
+  .zh-biz-cover{height:100px}
+}
 </style>
 </head>
 <body>
@@ -274,7 +413,19 @@ function ago(d){if(!d)return '';var s=Math.floor((Date.now()-new Date(d).getTime
 function toTitle(s){return s.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
 
 // ── State ──
-let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',loading:true,user:null}
+let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',loading:true,user:null,authUser:null,roleMode:'resident'}
+
+// ── Collections (localStorage) ──
+function loadCollections(){try{var r=localStorage.getItem('zh_collections');return r?JSON.parse(r):[]}catch(e){return[]}}
+function saveCollections(c){try{localStorage.setItem('zh_collections',JSON.stringify(c))}catch(e){}}
+function findCollectionForBiz(name){var c=loadCollections();for(var i=0;i<c.length;i++){for(var j=0;j<c[i].businesses.length;j++){if(c[i].businesses[j].name===name)return c[i].name}}return null}
+function removeBizFromCollections(name){var c=loadCollections();for(var i=0;i<c.length;i++){c[i].businesses=c[i].businesses.filter(function(b){return b.name!==name})}c=c.filter(function(col){return col.businesses.length>0});saveCollections(c)}
+
+// ── Role Mode ──
+function getRoleMode(){try{var r=localStorage.getItem('zh_role_mode');return r||'resident'}catch(e){return'resident'}}
+function setRoleMode(m){try{localStorage.setItem('zh_role_mode',m)}catch(e){}}
+// Determine if user has owner accounts (placeholder - will read from authUser later)
+function hasOwnerAccounts(){return false}
 
 // ── Router ──
 function route(){
@@ -354,6 +505,16 @@ function renderShell(){
       <a href="#/about">ℹ️ About</a>
       <a href="/portal" class="zh-btn-primary">+ Add Business</a>
     </div>
+    <button class="zh-notif-bell" onclick="location.hash='#/notifications'" title="Notifications" style="background:none;border:none;cursor:pointer">
+      🔔<span class="zh-notif-dot" id="zh-notif-dot"></span>
+    </button>
+    <a href="/visitor" class="zh-signin-btn" id="zh-signin-btn">
+      👤 Sign In
+    </a>
+    <div class="zh-role-switcher" id="zh-role-switcher" style="display:none">
+      <button class="active" data-role="resident" onclick="switchRole('resident',this)">Resident View</button>
+      <button data-role="owner" onclick="switchRole('owner',this)">Owner Dashboard</button>
+    </div>
     <button class="zh-hamburger" onclick="toggleMobile()">☰</button>
   </div>
   <div id="zh-mobile-nav" class="zh-nav-links" style="display:none">
@@ -362,8 +523,14 @@ function renderShell(){
     <a href="#/about" onclick="closeMobile()">ℹ️ About ZaarHub</a>
     <a href="/portal" onclick="closeMobile()">💼 Business Owner</a>
     <a href="/visitor" onclick="closeMobile()">👤 My Account</a>
+    <a href="#" onclick="closeMobile();openCollectionsModal();return false" style="cursor:pointer">📑 My Collections</a>
   </div>
 </div>
+<div id="zh-today-ticker" class="zh-today-ticker" style="display:none">
+  <span class="today-label">📅 Happening Today:</span>
+  <span class="today-msg" id="zh-today-msg">Loading...</span>
+</div>
+<div id="zh-spot-week" class="zh-spot-week" style="display:none"></div>
 <div id="zh-ticker" class="zh-ticker" style="display:none">
   <div class="zh-ticker-inner" id="zh-ticker-inner"></div>
   <button class="zh-ticker-close" onclick="dismissTicker()">✕</button>
@@ -419,6 +586,64 @@ function navTo(ev,hash){
     if(current)current.classList.add('active');
     closeMobile();
   },50);
+}
+
+// ── Happening Today Ticker ──
+var _todayInterval=null
+var _todayMessages=[]
+var _todayIdx=0
+
+function startTodayTicker(messages){
+  var el=document.getElementById('zh-today-ticker')
+  var msgEl=document.getElementById('zh-today-msg')
+  if(!el||!msgEl)return
+  if(!messages||!messages.length){el.style.display='none';return}
+  _todayMessages=messages
+  _todayIdx=0
+  el.style.display='flex'
+  msgEl.textContent=messages[0]
+  if(_todayInterval)clearInterval(_todayInterval)
+  _todayInterval=setInterval(function(){
+    _todayIdx=(_todayIdx+1)%_todayMessages.length
+    msgEl.classList.add('fade-out')
+    setTimeout(function(){
+      msgEl.textContent=_todayMessages[_todayIdx]
+      msgEl.classList.remove('fade-out')
+      msgEl.classList.add('fade-in')
+    },300)
+    setTimeout(function(){msgEl.classList.remove('fade-in')},600)
+  },8000)
+}
+
+function buildTodayMessages(d,deals,events,spotlights){
+  var msgs=[]
+  if(deals&&deals.length){
+    for(var i=0;i<Math.min(deals.length,3);i++){
+      var dl=deals[i];msgs.push('🎉 Deal: '+esc(dl.title)+' at '+esc(dl.business_name||'')+(dl.deal_price?' - $'+dl.deal_price:''))
+    }
+  }
+  if(events&&events.length){
+    for(var i=0;i<Math.min(events.length,3);i++){
+      var ev=events[i]
+      msgs.push('📅 Event: '+esc(ev.title)+(ev.location?' at '+esc(ev.location):''))
+    }
+  }
+  if(spotlights&&spotlights.length){
+    msgs.push('⭐ Visit '+esc(spotlights[0].name)+' - Featured Local Business!')
+  }
+  if(!msgs.length)msgs.push('☀️ Discover your local community today!')
+  return msgs
+}
+
+// ── Spot of the Week ──
+function renderSpotOfWeek(spotlights){
+  var el=document.getElementById('zh-spot-week')
+  if(!el)return
+  if(!spotlights||!spotlights.length){el.style.display='none';return}
+  var sp=spotlights[0]
+  el.style.display='flex'
+  el.onclick=function(){location.hash='#/city/'+esc(sp.directory_slug)}
+  el.innerHTML='<span class="spot-icon">🌟</span><div class="spot-info"><h4>'+esc(sp.name)+'</h4><span>Local Spot of the Week</span></div><span class="spot-badge">⭐ Featured</span><span class="spot-link">Visit →</span>'
 }
 
 // Ticker state
@@ -601,6 +826,25 @@ function renderHomepageContent(d){
       '<span class="rsvp">RSVP →</span></div></div>'
   }
 
+  // Start today ticker and spot of week
+  var todayMsgs=buildTodayMessages(d,deals,events,spotlights)
+  setTimeout(function(){startTodayTicker(todayMsgs)},400)
+  setTimeout(function(){renderSpotOfWeek(spotlights)},400)
+
+  // Founder's Spotlight — story cards from spotlights
+  var founderHtml=''
+  for(var fs=0;fs<Math.min(spotlights.length,6);fs++){
+    var sp=spotlights[fs];var slug=sp.directory_slug||'';var cityName=sp.directory_name||toTitle(slug)
+    var blurb=sp.description?(sp.description.length>120?sp.description.slice(0,120)+'...':sp.description):'A beloved local business making a difference in '+cityName+'.'
+    founderHtml+='<div class="zh-story-card" onclick="location.hash=\'#/city/'+slug+'\'">'+
+      '<div class="zh-story-avatar">👤</div>'+
+      '<h4>'+esc(sp.name)+'</h4>'+
+      '<p class="owner">Meet the owner of '+esc(sp.name)+' in '+esc(cityName)+'</p>'+
+      '<p class="blurb">'+esc(blurb)+'</p>'+
+      '<a href="#/city/'+slug+'">Read their story →</a>'+
+    '</div>'
+  }
+
   // Combine sections
   var sectionsHtml=''
   
@@ -614,7 +858,15 @@ function renderHomepageContent(d){
     </div>
     <div class="zh-spotlight-grid">${spotlightHtml}</div>
   </div>
-</div>`
+</div>
+${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24px">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">❤️ Founder's Spotlight</h2><p class="zh-section-sub">Meet the people behind your favorite local businesses</p></div>
+    </div>
+    <div class="zh-founders-grid">${founderHtml}</div>
+  </div>
+</div>`:''}`
   }
 
   var content=document.getElementById('zh-content')
@@ -657,14 +909,172 @@ function renderHomepageContent(d){
   </div>
 </div>`:'')+
 `
-<div class="zh-cta">
-  <h2>Are you a local business owner?</h2>
-  <p>Get discovered by your community. Claim your free listing and start connecting with customers today.</p>
-  <div>
-    <a href="/portal" class="zh-btn zh-btn-primary">+ Claim Your Listing</a>
-    <a href="/login" class="zh-btn zh-btn-outline">Owner Login</a>
+<div class="zh-owner-cta">
+  <h2>📈 Grow Your Local Presence with ZaarHub</h2>
+  <div class="zh-owner-cta-features">
+    <span>✅ Free Listing</span>
+    <span>📢 Advertise</span>
+    <span>📊 Analytics</span>
   </div>
+  <p class="count">Join <strong>${totalBiz.toLocaleString()}</strong> businesses already on the network</p>
+  <a href="/portal" class="zh-btn-primary">🚀 Claim Your Free Listing →</a>
 </div>`
+}
+
+// ── City View (List/Map/Split) ──
+var _cityView='list'
+var _cityMap=null
+var _cityMapInitialized=false
+
+function setCityView(view){
+  _cityView=view
+  var content=document.getElementById('zh-city-content')
+  if(!content)return
+  content.classList.remove('zh-city-view-split','zh-city-view-map')
+  if(view==='split')content.classList.add('zh-city-view-split')
+  else if(view==='map')content.classList.add('zh-city-view-map')
+  if(view==='map'||view==='split'){
+    var mapEl=document.getElementById('zh-city-map')
+    if(mapEl)mapEl.classList.add('active')
+    setTimeout(function(){if(!_cityMapInitialized)initCityMap();else{_cityMap.invalidateSize()}},100)
+  }else{
+    var mapEl=document.getElementById('zh-city-map')
+    if(mapEl)mapEl.classList.remove('active')
+  }
+  // Update toggle buttons
+  var btns=document.querySelectorAll('.zh-view-toggle button')
+  btns.forEach(function(b){b.classList.remove('active')})
+  var activeBtn=document.querySelector('.zh-view-toggle button[data-view="'+view+'"]')
+  if(activeBtn)activeBtn.classList.add('active')
+}
+
+function initCityMap(){
+  var mapEl=document.getElementById('zh-city-map')
+  if(!mapEl||_cityMapInitialized)return
+  if(typeof L==='undefined'){console.warn('Leaflet not loaded');return}
+  _cityMap=L.map('zh-city-map').setView([28.5383,-81.3792],10)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    maxZoom:19
+  }).addTo(_cityMap)
+  _cityMapInitialized=true
+  // Get business data and add markers
+  var bizCards=document.querySelectorAll('.zh-biz-card[data-lat][data-lng]')
+  bizCards.forEach(function(card){
+    var lat=parseFloat(card.getAttribute('data-lat'))
+    var lng=parseFloat(card.getAttribute('data-lng'))
+    if(isNaN(lat)||isNaN(lng))return
+    var name=card.getAttribute('data-name')||'Business'
+    var slug=card.getAttribute('data-slug')||''
+    var id=card.getAttribute('data-id')||''
+    var marker=L.marker([lat,lng]).addTo(_cityMap)
+    marker.bindPopup('<strong>'+esc(name)+'</strong><br><a href="#/city/'+slug+'/biz/'+id+'" style="color:var(--teal)">View Business →</a>')
+  })
+}
+
+// ── Collections Modal ──
+function openCollectionsModal(){
+  var overlay=document.createElement('div')
+  overlay.className='zh-modal-overlay'
+  overlay.id='zh-collections-overlay'
+  overlay.onclick=function(e){if(e.target===overlay)closeCollectionsModal()}
+  var cols=loadCollections()
+  var colList=''
+  if(!cols.length){
+    colList='<div class="zh-collection-empty">📁 No collections yet. Create your first one!</div>'
+  }else{
+    for(var i=0;i<cols.length;i++){
+      var col=cols[i]
+      colList+='<div class="zh-collection-item" onclick="toggleCollectionList(this)">'+
+        '<div class="name">📑 '+esc(col.name)+' <span style="font-size:.75rem;color:var(--text-light);font-weight:400">('+col.businesses.length+')</span></div>'+
+        '<div class="count">'+col.businesses.length+' saved business'+(col.businesses.length!==1?'es':'')+'</div>'+
+        '<div class="biz-list">'+col.businesses.map(function(b){return '<div>• '+esc(b.name)+'</div>'}).join('')+'</div>'+
+      '</div>'
+    }
+  }
+  overlay.innerHTML='<div class="zh-modal">'+
+    '<button class="zh-modal-close" onclick="closeCollectionsModal()">✕</button>'+
+    '<h3>📑 My Collections</h3>'+
+    '<div class="zh-collection-create">'+
+      '<input id="zh-new-collection-name" placeholder="Collection name..." onkeydown="if(event.key===\'Enter\')createCollection()">'+
+      '<button onclick="createCollection()">Create</button>'+
+    '</div>'+
+    '<div id="zh-collections-list">'+colList+'</div>'+
+  '</div>'
+  document.body.appendChild(overlay)
+}
+
+function closeCollectionsModal(){
+  var el=document.getElementById('zh-collections-overlay')
+  if(el)el.remove()
+}
+
+function createCollection(){
+  var inp=document.getElementById('zh-new-collection-name')
+  if(!inp||!inp.value.trim())return
+  var cols=loadCollections()
+  cols.push({name:inp.value.trim(),businesses:[]})
+  saveCollections(cols)
+  inp.value=''
+  // Refresh list
+  var list=document.getElementById('zh-collections-list')
+  if(!list)return
+  var col=cols[cols.length-1]
+  var item=document.createElement('div')
+  item.className='zh-collection-item'
+  item.onclick=function(){toggleCollectionList(item)}
+  item.innerHTML='<div class="name">📑 '+esc(col.name)+' <span style="font-size:.75rem;color:var(--text-light);font-weight:400">(0)</span></div><div class="count">0 saved businesses</div><div class="biz-list"></div>'
+  var empty=document.querySelector('.zh-collection-empty')
+  if(empty)empty.remove()
+  list.appendChild(item)
+}
+
+function toggleCollectionList(el){
+  var list=el.querySelector('.biz-list')
+  if(list)list.classList.toggle('open')
+}
+
+// ── Save Business to Collection ──
+function saveBusinessToCollection(name,slug,id,buttonEl){
+  var cols=loadCollections()
+  // Check if already saved
+  var existingCol=findCollectionForBiz(name)
+  if(existingCol){
+    // Remove
+    removeBizFromCollections(name)
+    if(buttonEl){buttonEl.classList.remove('save-active');buttonEl.innerHTML='☆ Save'}
+    return
+  }
+  // If no collections, prompt to create first
+  if(!cols.length){
+    openCollectionsModal()
+    return
+  }
+  // Show quick picker modal
+  var overlay=document.createElement('div')
+  overlay.className='zh-modal-overlay'
+  overlay.style.zIndex='1100'
+  overlay.onclick=function(e){if(e.target===overlay)overlay.remove()}
+  var html='<div class="zh-modal" style="max-width:360px"><button class="zh-modal-close" onclick="this.closest(\'.zh-modal-overlay\').remove()">✕</button><h3>💾 Save to Collection</h3>'
+  for(var i=0;i<cols.length;i++){
+    html+='<div class="zh-collection-item" onclick="addBizToCollection('+i+',\''+esc(name.replace(/'/g,"\\'"))+'\',\''+esc(slug.replace(/'/g,"\\'"))+'\',\''+esc(String(id).replace(/'/g,"\\'"))+'\',this)"><div class="name">📑 '+esc(cols[i].name)+'</div><div class="count">'+cols[i].businesses.length+' saved</div></div>'
+  }
+  html+='</div>'
+  overlay.innerHTML=html
+  document.body.appendChild(overlay)
+}
+
+function addBizToCollection(idx,name,slug,id,el){
+  var cols=loadCollections()
+  if(!cols[idx])return
+  cols[idx].businesses.push({id:id,name:name,slug:slug})
+  saveCollections(cols)
+  // Update button
+  var btn=document.querySelector('.zh-biz-card[data-name="'+esc(name)+'"] .action.save, .zh-biz-card[data-name="'+esc(name)+'"] .zh-biz-actions-row .action:last-child')
+  if(btn){btn.classList.add('save-active');btn.innerHTML='★ Saved'}
+  // Close picker
+  var overlay=el.closest('.zh-modal-overlay')
+  if(overlay)overlay.remove()
 }
 
 // ── City Page ──
@@ -700,42 +1110,56 @@ function renderCityPage(d){
   var bizCount=d.stats?.business_count||biz.length
   var desc=esc(dirInfo.description||'Explore '+cityName)
 
-  // Category filter pills
+  // Enhanced category pills with fallback icons
+  var catIcons={'Morning Coffee':'☕','Lunch Deals':'🍔','Trusted Services':'🔧','Weekend Events':'🎟️','Fitness & Wellness':'💪','Local Shops':'🛍️','Home Improvement':'🏠','Professional Services':'💼'}
   var catPills='<span class="zh-filter-pill active" data-cat="">All</span>'
   for(var i=0;i<cats.length;i++){
-    var ct=cats[i]
-    catPills+='<span class="zh-filter-pill" data-cat="'+esc(ct.slug)+'" onclick="filterCity(\''+esc(ct.slug)+'\',this)">'
-    if(ct.icon)catPills+=esc(ct.icon)+' '
-    catPills+=esc(ct.name)+'</span>'
+    var ct=cats[i];var icon=ct.icon||catIcons[ct.name]||'🔍'
+    catPills+='<span class="zh-filter-pill" data-cat="'+esc(ct.slug)+'" onclick="filterCity(\''+esc(ct.slug)+'\',this)">'+icon+' '+esc(ct.name)+'</span>'
   }
 
-  // Business cards
+  // Business cards (enhanced with badges, cover, save)
   var bizHtml=''
   for(var i=0;i<biz.length;i++){
     var b=biz[i]
+    var coverBg=i%2===0?'#0d9488':'#7c3aed';var coverGrad=i%3===0?'135deg,#0d9488,#14b8a6':i%3===1?'135deg,#7c3aed,#a78bfa':'135deg,#d97706,#f59e0b'
+    var letter=b.name?b.name[0].toUpperCase():'🏪'
     var badges=''
-    if(b.is_claimed)badges+='<span class="badge-owner">👑 Verified</span>'
-    if(b.has_deal)badges+='<span class="badge-perk">🎁 Perk</span>'
-    var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
+    if(b.is_claimed)badges+='<span class="zh-badge zh-badge-verified">✅ Verified Owner</span>'
+    if(b.rating&&b.rating>=4.5)badges+='<span class="zh-badge zh-badge-toprated">⭐ Top Rated</span>'
+    if(b.is_family_owned)badges+='<span class="zh-badge zh-badge-family">👨‍👩‍👧‍👦 Family Owned</span>'
+    if(b.has_deal)badges+='<span class="zh-badge zh-badge-perk">🎁 Exclusive Deal</span>'
+    var stars='';var reviewCount=0
+    if(b.rating){stars='★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating));reviewCount=b.review_count||0}
+    var isSaved=findCollectionForBiz(b.name)!==null
+    // Build lat/lng data attributes
+    var latAttr=b.lat?(' data-lat="'+b.lat+'"'):''
+    var lngAttr=b.lng?(' data-lng="'+b.lng+'"'):''
+    if(!latAttr&&b.latitude)latAttr=' data-lat="'+b.latitude+'"'
+    if(!lngAttr&&b.longitude)lngAttr=' data-lng="'+b.longitude+'"'
+    var dataAttrs=' data-name="'+esc(b.name)+'" data-slug="'+state.slug+'" data-id="'+b.id+'"'+latAttr+lngAttr
     bizHtml+=`
-<div class="zh-biz-card" onclick="location.hash='#/city/${state.slug}/biz/${b.id}'">
-  <div class="zh-biz-img" style="background:${i%2===0?'var(--bg-teal)':'var(--accent-light)'}">
-    ${b.image_url?'<img src="'+esc(b.image_url)+'">':b.name[0]||'🏪'}
+<div class="zh-biz-card" onclick="location.hash='#/city/${state.slug}/biz/${b.id}'"${dataAttrs}>
+  <div class="zh-biz-cover" style="background:linear-gradient(${coverGrad})">
+    ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'">':'<span class="letter">'+letter+'</span>'}
+    ${b.category?'<span class="cat-tag">'+esc(b.category)+'</span>':''}
   </div>
   <div class="zh-biz-body">
-    <h4>${esc(b.name)}</h4>
     <div class="badges">${badges}</div>
-    <div class="stars">${stars} <span style="color:var(--text-light);font-size:.78rem">${b.review_count||0} reviews</span></div>
+    <h4>${esc(b.name)}</h4>
+    <div><span class="zh-rating">${stars}</span> <span class="num" style="color:var(--text-light);font-size:.78rem">${reviewCount?reviewCount+' reviews':''}</span></div>
     ${b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':''}
-    <div class="zh-biz-actions">
+    <div class="zh-biz-actions-row" onclick="event.stopPropagation()">
       ${b.phone?'<a href="tel:'+esc(b.phone)+'" class="action">📞 Call</a>':''}
-      ${b.website?'<a href="'+esc(b.website)+'" target="_blank" class="action">🌐 Website</a>':''}
+      ${b.address?'<a href="https://www.google.com/maps/search/'+encodeURIComponent(b.address)+'" target="_blank" class="action" onclick="event.stopPropagation()">🗺️ Directions</a>':''}
+      <span class="action" style="cursor:pointer" onclick="if(window.innerWidth<=768)return;alert(\'Messaging coming soon!\')">💬 Message</span>
+      <span class="action ${isSaved?'save-active':''}" style="cursor:pointer" onclick="saveBusinessFromCard(this,\'${esc(b.name).replace(/'/g,"\\'")}\',\'${state.slug}\',${b.id})">${isSaved?'★ Saved':'☆ Save'}</span>
     </div>
   </div>
 </div>`
   }
 
-  // Deals section
+  // Deals section (unchanged)
   var dealsHtml=''
   for(var i=0;i<deals.length;i++){
     var dl=deals[i]
@@ -765,39 +1189,54 @@ function renderCityPage(d){
 </div>`
   }
 
+  // Reset map state for new city
+  _cityMapInitialized=false;_cityMap=null
+
   el.innerHTML=`
-<div class="zh-city-hero">
+<div class="zh-city-hero zh-city-hero-enhanced">
   <div class="zh-city-hero-inner">
+    <div class="weather">🌤️ ${cityName} — Loading...</div>
     <h1>${cityName}</h1>
-    <p class="sub">${desc} — <strong>${bizCount} local spots</strong></p>
+    <p class="biz-stat"><strong>${bizCount}</strong> Verified Businesses in ${cityName}</p>
+    <p class="sub">${desc}</p>
     <div class="zh-filter-bar">${catPills}</div>
   </div>
 </div>
-<div class="zh-city-content">
-  <div style="display:grid;grid-template-columns:1fr;gap:16px">
-    <div class="zh-section-header" style="margin-bottom:0">
-      <h2>🏪 Businesses</h2>
-      <span style="font-size:.85rem;color:var(--text-light)">${bizCount} found</span>
-    </div>
-    <div class="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
-    ${deals.length?`
-    <div style="margin-top:24px">
-      <h3 style="margin-bottom:12px">🎁 Local Deals</h3>
-      <div class="zh-deal-sm-grid">${dealsHtml}</div>
-    </div>`:''}
-    ${events.length?`
-    <div style="margin-top:24px">
-      <h3 style="margin-bottom:12px">📅 Events</h3>
-      <div class="zh-event-sm-grid">${eventsHtml}</div>
-    </div>`:''}
-    ${!biz.length&&!deals.length&&!events.length?`
-    <div class="zh-cta" style="margin-top:24px;border-radius:var(--radius-lg)">
-      <h2 style="font-size:1.3rem">Be the first in ${cityName}</h2>
-      <p>This community is growing. Claim your business listing today!</p>
-      <a href="/portal" class="zh-btn zh-btn-primary">+ Add Your Business</a>
-    </div>`:''}
+<div class="zh-city-content" id="zh-city-content">
+  <div class="zh-view-toggle">
+    <button class="active" data-view="list" onclick="setCityView('list')">📋 List</button>
+    <button data-view="split" onclick="setCityView('split')">🗺️ Map</button>
+    <button data-view="map" onclick="setCityView('map')">🗺️ Full Map</button>
   </div>
+  <div id="zh-city-map"></div>
+  <div class="zh-biz-grid" id="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
+  ${deals.length?`
+  <div style="margin-top:24px">
+    <h3 style="margin-bottom:12px">🎁 Local Deals</h3>
+    <div class="zh-deal-sm-grid">${dealsHtml}</div>
+  </div>`:''}
+  ${events.length?`
+  <div style="margin-top:24px">
+    <h3 style="margin-bottom:12px">📅 Events</h3>
+    <div class="zh-event-sm-grid">${eventsHtml}</div>
+  </div>`:''}
+  ${!biz.length&&!deals.length&&!events.length?`
+  <div class="zh-owner-cta" style="margin-top:24px">
+    <h2 style="font-size:1.3rem">Be the first in ${cityName}</h2>
+    <p>This community is growing. Claim your business listing today!</p>
+    <a href="/portal" class="zh-btn-primary">+ Add Your Business</a>
+  </div>`:''}
 </div>`
+
+  // Start ticker for city
+  var todayMsgs=buildTodayMessages(d,deals,events,d.spotlights||[])
+  setTimeout(function(){startTodayTicker(todayMsgs)},400)
+  setTimeout(function(){renderSpotOfWeek(d.spotlights||[])},400)
+}
+
+function saveBusinessFromCard(btn,name,slug,id){
+  event.stopPropagation()
+  saveBusinessToCollection(name,slug,id,btn)
 }
 
 function filterCity(slug,el){
@@ -1024,7 +1463,57 @@ async function loadAdsForDirectory(dirId, zones){
   return hasAny;
 }
 
+// ── Role Switcher ──
+function switchRole(mode,btn){
+  setRoleMode(mode)
+  var switcher=document.getElementById('zh-role-switcher')
+  if(switcher){
+    var btns=switcher.querySelectorAll('button')
+    btns.forEach(function(b){b.classList.remove('active')})
+    if(btn)btn.classList.add('active')
+    else{
+      var match=switcher.querySelector('button[data-role="'+mode+'"]')
+      if(match)match.classList.add('active')
+    }
+  }
+  // Update sign-in button link based on mode
+  var signinBtn=document.getElementById('zh-signin-btn')
+  if(signinBtn)signinBtn.href=mode==='owner'?'/portal':'/visitor'
+}
+
 // ── Init ──
+// Initialize role mode
+state.roleMode=getRoleMode()
+var _authUser=null
+try{var au=localStorage.getItem('authUser');if(au){_authUser=JSON.parse(au);state.authUser=_authUser}}catch(e){}
+// Update header based on auth user
+setTimeout(function(){
+  var signinBtn=document.getElementById('zh-signin-btn')
+  var switcher=document.getElementById('zh-role-switcher')
+  if(signinBtn){
+    if(_authUser){
+      signinBtn.innerHTML='👤 '+esc(_authUser.name||'My Account')
+      signinBtn.href='/visitor'
+    }
+  }
+  // Check if user has owner accounts (placeholder logic)
+  var hasOwner=_authUser&&_authUser.owner_accounts&&_authUser.owner_accounts.length>0
+  if(switcher&&hasOwner){
+    switcher.style.display='inline-flex'
+    var mode=getRoleMode()
+    // Set initial active state
+    var b=switcher.querySelector('button[data-role="'+mode+'"]')
+    if(b)b.classList.add('active');else switcher.querySelector('button[data-role="resident"]').classList.add('active')
+    if(mode==='owner'){signinBtn.href='/portal'}
+  }else if(switcher&&_authUser&&!_authUser.owner_accounts){
+    // Logged in but no owner accounts - show switcher but disabled
+    switcher.style.display='none'
+  }else if(switcher){switcher.style.display='none'}
+  // Notification dot visibility (hardcoded to show always for demo)
+  var dot=document.getElementById('zh-notif-dot')
+  if(dot)dot.style.display='block'
+},300)
+
 route()
 </script>
 </body>
