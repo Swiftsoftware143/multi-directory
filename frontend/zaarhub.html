@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ZaarHub — Discover Your Local Community</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="/leaflet.css" media="print" onload="this.media=\"all\"" />
+<script defer src="/leaflet.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1020,6 +1020,8 @@ function setCityView(view){
     var mapEl=document.getElementById('zh-city-map')
     if(mapEl)mapEl.classList.add('active')
     setTimeout(function(){if(!_cityMapInitialized)initCityMap();else{_cityMap.invalidateSize()}},100)
+    // Retry map init up to 5s (leaflet may not be loaded yet)
+    if(!_cityMapInitialized){setTimeout(function(){initCityMap()},1500);setTimeout(function(){initCityMap()},3000)}
   }else{
     var mapEl=document.getElementById('zh-city-map')
     if(mapEl)mapEl.classList.remove('active')
@@ -1034,7 +1036,7 @@ function setCityView(view){
 function initCityMap(){
   var mapEl=document.getElementById('zh-city-map')
   if(!mapEl||_cityMapInitialized)return
-  if(typeof L==='undefined'){console.warn('Leaflet not loaded');return}
+  if(typeof L==='undefined'){console.warn('Leaflet not loaded yet, will retry');return}
   _cityMap=L.map('zh-city-map').setView([28.5383,-81.3792],10)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
     attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM</a>',
