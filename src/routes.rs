@@ -708,6 +708,82 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // ??? ZaarHub: Business detail page (/biz/:id)
+                    if path.starts_with("/biz/") {
+                        let detail_path = std::path::Path::new(&frontend).join("business-detail.html");
+                        if detail_path.exists() {
+                            match tokio::fs::read(&detail_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // ??? ZaarHub: Business owner landing page
+                    if path == "/grow" || path == "/grow/" {
+                        let grow_path = std::path::Path::new(&frontend).join("grow.html");
+                        if grow_path.exists() {
+                            match tokio::fs::read(&grow_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // ??? ZaarHub: Claim listing page
+                    if path == "/claim" || path == "/claim/" || path.starts_with("/claim?") {
+                        let claim_path = std::path::Path::new(&frontend).join("claim.html");
+                        if claim_path.exists() {
+                            match tokio::fs::read(&claim_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // ??? ZaarHub: User saved/reviews/perks dashboard
+                    if path == "/user/saved" || path == "/user/saved/" {
+                        let user_path = std::path::Path::new(&frontend).join("user-saved.html");
+                        if user_path.exists() {
+                            match tokio::fs::read(&user_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     // &#10052;&#65039; ZaarHub public community frontend
                     if path == "/zaarhub" || path == "/zaarhub/" || path.starts_with("/zaarhub/") || path == "/z" || path == "/z/" || path.starts_with("/z/") {
                         let zh_path = std::path::Path::new(&frontend).join("zaarhub.html");

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Account — ZaarHub</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#faf9f6;--card:#fff;--text:#1c1917;--text-light:#78716c;--text-muted:#a8a29e;
+  --border:#e7e5e4;--border-light:#f0efed;
+  --teal:#0d9488;--teal-dark:#0f766e;--teal-light:#14b8a6;--bg-teal:#f0fdfa;
+  --warm:#d97706;--warm-light:#fef3c7;
+  --green:#16a34a;
+  --orange:#ea580c;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08);--shadow:0 4px 16px rgba(0,0,0,.1);
+  --radius:12px;--radius-lg:16px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.user-header{background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.user-header-inner{max-width:960px;margin:0 auto;padding:0 20px;display:flex;align-items:center;height:64px;gap:12px}
+.user-header .back-btn{display:flex;align-items:center;gap:6px;color:var(--text-light);font-size:.85rem;font-weight:500;cursor:pointer;padding:6px 12px;border-radius:8px;border:none;background:none;transition:all .2s}
+.user-header .back-btn:hover{background:var(--bg-teal);color:var(--teal)}
+.user-header h1{font-size:1rem;font-weight:700}
+
+/* Container */
+.user-container{max-width:960px;margin:0 auto;padding:24px 20px 60px}
+
+/* Profile Card */
+.profile-card{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px}
+.profile-avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--teal-light));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.5rem;font-weight:700;flex-shrink:0}
+.profile-info{flex:1;min-width:0}
+.profile-info h2{font-size:1.15rem;font-weight:700}
+.profile-info .profile-email{font-size:.85rem;color:var(--text-light)}
+.profile-actions{display:flex;gap:8px}
+.profile-actions .logout-btn{background:none;border:1px solid var(--border);border-radius:100px;padding:6px 16px;font-size:.8rem;color:var(--text-light);cursor:pointer;transition:all .2s}
+.profile-actions .logout-btn:hover{border-color:var(--orange);color:var(--orange)}
+
+/* Tabs */
+.tab-bar{display:flex;border-bottom:2px solid var(--border-light);margin-bottom:24px;overflow-x:auto;gap:0}
+.tab-item{padding:12px 20px;font-size:.88rem;font-weight:500;color:var(--text-light);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;white-space:nowrap}
+.tab-item:hover{color:var(--text)}
+.tab-item.active{color:var(--teal-dark);border-bottom-color:var(--teal);font-weight:600}
+
+/* Tab Content */
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* Grids */
+.saved-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.saved-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;transition:all .2s;cursor:pointer;position:relative}
+.saved-card:hover{box-shadow:var(--shadow);transform:translateY(-2px);border-color:var(--teal-light)}
+.saved-card .card-icon{font-size:1.5rem;margin-bottom:8px}
+.saved-card h4{font-size:.95rem;font-weight:700;margin-bottom:4px;color:var(--text)}
+.saved-card .card-sub{font-size:.78rem;color:var(--text-light);margin-bottom:6px}
+.saved-card .card-stars{color:var(--warm);font-size:.8rem;margin-bottom:8px}
+.saved-card .remove-btn{background:none;border:1px solid var(--border);border-radius:100px;padding:4px 12px;font-size:.75rem;color:var(--text-muted);cursor:pointer;transition:all .2s}
+.saved-card .remove-btn:hover{border-color:var(--orange);color:var(--orange)}
+
+/* Review list */
+.review-list{display:flex;flex-direction:column;gap:10px}
+.review-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.review-card .rev-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;flex-wrap:wrap;gap:6px}
+.review-card .rev-biz-name{font-weight:600;font-size:.9rem;color:var(--teal-dark)}
+.review-card .rev-stars{color:var(--warm);font-size:.85rem}
+.review-card .rev-date{font-size:.78rem;color:var(--text-muted)}
+.review-card .rev-content{font-size:.85rem;color:var(--text-light);line-height:1.6;margin:6px 0 10px}
+.review-card .rev-actions{display:flex;gap:8px}
+.review-card .rev-actions button{background:none;border:1px solid var(--border);border-radius:100px;padding:5px 14px;font-size:.75rem;font-weight:500;cursor:pointer;transition:all .2s}
+.review-card .rev-actions .edit-btn{color:var(--teal);border-color:var(--teal-light)}
+.review-card .rev-actions .edit-btn:hover{background:var(--bg-teal)}
+.review-card .rev-actions .del-btn{color:var(--orange);border-color:var(--border)}
+.review-card .rev-actions .del-btn:hover{border-color:var(--orange);background:#fff7ed}
+
+/* Perks */
+.perks-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.perk-card{background:linear-gradient(135deg,#fef3c7,#fff);border:1px solid #fbbf24;border-radius:var(--radius);padding:18px}
+.perk-card h4{font-size:.9rem;font-weight:700;margin-bottom:4px}
+.perk-card p{font-size:.8rem;color:var(--text-light);margin-bottom:6px}
+.perk-card .perk-meta{font-size:.72rem;color:var(--text-muted)}
+.empty-state{text-align:center;padding:48px 20px;color:var(--text-muted)}
+.empty-state .empty-icon{font-size:2.5rem;margin-bottom:12px}
+.empty-state p{font-size:.9rem}
+.empty-state a{color:var(--teal);font-weight:600}
+
+/* Settings */
+.settings-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;margin-bottom:16px}
+.settings-card h3{font-size:1rem;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border-light)}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:.83rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.form-group input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;font-family:inherit;outline:none;transition:border .2s;background:var(--bg);max-width:400px}
+.form-group input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+.toggle-group{margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.toggle-group input[type="checkbox"]{width:18px;height:18px;accent-color:var(--teal);cursor:pointer}
+.toggle-group label{font-size:.85rem;color:var(--text);cursor:pointer;font-weight:400}
+.btn-primary{background:var(--teal);color:#fff;border:none;border-radius:100px;padding:10px 24px;font-size:.85rem;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-primary:hover{background:var(--teal-dark);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.save-feedback{font-size:.8rem;margin-top:6px}
+.save-feedback.success{color:var(--green)}
+.save-feedback.error{color:var(--orange)}
+
+/* Footer */
+.user-footer{text-align:center;padding:24px;font-size:.8rem;color:var(--text-muted);border-top:1px solid var(--border-light)}
+.user-footer a{color:var(--teal)}
+</style>
+</head>
+<body>
+
+<div class="user-header">
+  <div class="user-header-inner">
+    <button class="back-btn" onclick="location.href='/zaarhub'">← Directory</button>
+    <h1>My Account</h1>
+  </div>
+</div>
+
+<div class="user-container">
+  <!-- Profile Card -->
+  <div class="profile-card">
+    <div class="profile-avatar" id="profileAvatar">U</div>
+    <div class="profile-info">
+      <h2 id="profileName">User</h2>
+      <div class="profile-email" id="profileEmail">user@example.com</div>
+    </div>
+    <div class="profile-actions">
+      <button class="logout-btn" onclick="logout()">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <div class="tab-item active" onclick="switchTab('saved')">❤️ Saved Spots</div>
+    <div class="tab-item" onclick="switchTab('reviews')">⭐ My Reviews</div>
+    <div class="tab-item" onclick="switchTab('perks')">🎁 Redeemed Perks</div>
+    <div class="tab-item" onclick="switchTab('settings')">⚙️ Settings</div>
+  </div>
+
+  <!-- Saved Spots -->
+  <div class="tab-content active" id="tabSaved">
+    <div id="savedContent"><div class="saved-grid" id="savedGrid"></div></div>
+  </div>
+
+  <!-- My Reviews -->
+  <div class="tab-content" id="tabReviews">
+    <div id="reviewsContent"><div class="review-list" id="reviewList"></div></div>
+  </div>
+
+  <!-- Redeemed Perks -->
+  <div class="tab-content" id="tabPerks">
+    <div id="perksContent"></div>
+  </div>
+
+  <!-- Settings -->
+  <div class="tab-content" id="tabSettings">
+    <div class="settings-card">
+      <h3>👤 Profile</h3>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="settingsName" placeholder="Your name">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="settingsEmail" placeholder="your@email.com">
+      </div>
+      <button class="btn-primary" onclick="saveProfile()" id="saveProfileBtn">Save Changes</button>
+      <div id="profileSaveFeedback"></div>
+    </div>
+    <div class="settings-card">
+      <h3>🔔 Notifications</h3>
+      <div class="toggle-group">
+        <input type="checkbox" id="notifEmail">
+        <label for="notifEmail">Email notifications about new deals near me</label>
+      </div>
+      <div class="toggle-group">
+        <input type="checkbox" id="notifReview">
+        <label for="notifReview">Email when I receive a review reply</label>
+      </div>
+      <div class="toggle-group">
+        <input type="checkbox" id="notifClaim">
+        <label for="notifClaim">Email about claim status updates</label>
+      </div>
+      <button class="btn-primary" onclick="saveNotifications()" id="saveNotifBtn">Save Preferences</button>
+      <div id="notifSaveFeedback"></div>
+    </div>
+    <div class="settings-card">
+      <h3>📚 Saved Collections</h3>
+      <p style="font-size:.85rem;color:var(--text-light);margin-bottom:12px">Create collections to organize your saved spots.</p>
+      <div id="collectionsList"></div>
+      <button class="btn-primary" onclick="location.href='/zaarhub'" style="font-size:.8rem;padding:8px 18px">Browse &amp; Save More</button>
+    </div>
+  </div>
+</div>
+
+<div class="user-footer">
+  Powered by <a href="/zaarhub">ZaarHub</a> — Discover Your Local Community
+</div>
+
+<script>
+// ── State ──
+let userData = null;
+let favorites = [];
+let reviews = [];
+let currentTab = 'saved';
+
+// ── Auth ──
+function getToken() {
+  return localStorage.getItem('zh_token');
+}
+
+function checkAuth() {
+  const token = getToken();
+  if (!token) {
+    window.location.href = '/visitor?redirect=' + encodeURIComponent(window.location.pathname);
+    return false;
+  }
+  return true;
+}
+
+function logout() {
+  localStorage.removeItem('zh_token');
+  localStorage.removeItem('zh_user');
+  window.location.href = '/zaarhub';
+}
+
+// ── Switch Tabs ──
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-item').forEach((t, i) => {
+    const tabs = ['saved','reviews','perks','settings'];
+    t.classList.toggle('active', tabs[i] === tab);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+}
+
+// ── Render Stars ──
+function renderStars(rating) {
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5;
+  const empty = 5 - full - (half ? 1 : 0);
+  return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(empty);
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// ── Load Favorites ──
+async function loadFavorites() {
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch('/api/v1/visitor/favorites', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      favorites = await resp.json();
+      if (Array.isArray(favorites)) renderFavorites();
+    }
+  } catch(e) { console.warn('Favorites load fail:', e); }
+}
+
+async function renderFavorites() {
+  const grid = document.getElementById('savedGrid');
+  
+  if (!favorites || favorites.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">❤️</div><p>No saved spots yet. <a href="/zaarhub">Browse the directory</a> and start saving!</p></div>';
+    return;
+  }
+  
+  // If favorites are just IDs, fetch actual business data
+  let businesses = favorites;
+  if (favorites.length > 0 && typeof favorites[0] === 'object' && favorites[0].id) {
+    businesses = favorites;
+  }
+  
+  grid.innerHTML = businesses.map(b => {
+    const id = b.id || b.business_id;
+    const name = b.name || b.business_name || 'Business';
+    const city = b.city || '';
+    const state = b.state || '';
+    const category = b.category_name || 'Local';
+    const rating = b.rating || 0;
+    const slug = b.slug || b.directory_slug || '';
+    
+    return `
+      <div class="saved-card" onclick="location.href='/biz/${id}${slug ? '?slug='+slug : ''}'">
+        <div class="card-icon">🏪</div>
+        <h4>${name}</h4>
+        <div class="card-sub">${[city, state].filter(Boolean).join(', ') || 'Local'}</div>
+        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${category}</div>
+        <div class="card-stars">${rating > 0 ? renderStars(rating) + ' ' + rating.toFixed(1) : ''}</div>
+        <button class="remove-btn" onclick="event.stopPropagation();removeFavorite('${id}')">Remove</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function removeFavorite(businessId) {
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch(`/api/v1/visitor/favorites/${businessId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      favorites = favorites.filter(f => {
+        const id = f.id || f.business_id;
+        return String(id) !== String(businessId);
+      });
+      renderFavorites();
+    }
+  } catch(e) { console.warn('Remove favorite fail:', e); }
+}
+
+// ── Load Reviews ──
+async function loadMyReviews() {
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch('/api/v1/reviews/mine', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      reviews = await resp.json();
+      if (Array.isArray(reviews)) renderMyReviews();
+    }
+  } catch(e) { console.warn('Reviews load fail:', e); }
+}
+
+async function renderMyReviews() {
+  const container = document.getElementById('reviewList');
+  
+  if (!reviews || reviews.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">⭐</div><p>You haven't written any reviews yet. <a href="/zaarhub">Find businesses</a> to review!</p></div>';
+    return;
+  }
+  
+  container.innerHTML = reviews.map(r => `
+    <div class="review-card">
+      <div class="rev-header">
+        <div>
+          <div class="rev-biz-name">${r.business_name || r.business_id || 'Business'}</div>
+          <div class="rev-stars">${renderStars(r.rating || 5)}</div>
+        </div>
+        <div class="rev-date">${formatDate(r.created_at)}</div>
+      </div>
+      <div class="rev-content">${r.content || ''}</div>
+      <div class="rev-actions">
+        <button class="edit-btn" onclick="editReview('${r.id}')">✏️ Edit</button>
+        <button class="del-btn" onclick="deleteReview('${r.id}')">🗑️ Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function editReview(id) {
+  alert('Review editing coming soon. Stay tuned!');
+}
+
+async function deleteReview(id) {
+  if (!confirm('Delete this review?')) return;
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch(`/api/v1/reviews/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      reviews = reviews.filter(r => String(r.id) !== String(id));
+      renderMyReviews();
+    } else {
+      alert('Failed to delete review.');
+    }
+  } catch(e) { console.warn('Delete review fail:', e); }
+}
+
+// ── Load Perks ──
+async function loadPerks() {
+  const container = document.getElementById('perksContent');
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch('/api/v1/zaarhub/perks/redeemed', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.length > 0) {
+        container.innerHTML = `<div class="perks-grid">${data.map(p => `
+          <div class="perk-card">
+            <h4>${p.title || 'Perk'}</h4>
+            <p>${p.description || ''}</p>
+            <div class="perk-meta">Redeemed: ${p.redeemed_at ? formatDate(p.redeemed_at) : 'N/A'}</div>
+          </div>
+        `).join('')}</div>`;
+        return;
+      }
+    }
+  } catch(e) { console.warn('Perks load fail:', e); }
+  
+  container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎁</div><p>No perks redeemed yet. Discover deals on the <a href="/zaarhub">directory</a>!</p></div>';
+}
+
+// ── Load User Profile ──
+async function loadProfile() {
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch('/api/v1/visitor/profile', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      userData = await resp.json();
+      document.getElementById('profileName').textContent = userData.name || 'User';
+      document.getElementById('profileEmail').textContent = userData.email || 'user@example.com';
+      document.getElementById('profileAvatar').textContent = (userData.name || 'U').charAt(0).toUpperCase();
+      document.getElementById('settingsName').value = userData.name || '';
+      document.getElementById('settingsEmail').value = userData.email || '';
+    }
+  } catch(e) { console.warn('Profile load fail:', e); }
+}
+
+// ── Settings ──
+async function saveProfile() {
+  const name = document.getElementById('settingsName').value.trim();
+  const email = document.getElementById('settingsEmail').value.trim();
+  const feedback = document.getElementById('profileSaveFeedback');
+  const btn = document.getElementById('saveProfileBtn');
+  
+  if (!name || !email) {
+    feedback.innerHTML = '<span class="save-feedback error">Name and email are required.</span>';
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  feedback.innerHTML = '';
+  
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch('/api/v1/visitor/profile', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ name, email })
+    });
+    
+    if (resp.ok) {
+      feedback.innerHTML = '<span class="save-feedback success">✅ Profile updated!</span>';
+      document.getElementById('profileName').textContent = name;
+      document.getElementById('profileEmail').textContent = email;
+      document.getElementById('profileAvatar').textContent = name.charAt(0).toUpperCase();
+    } else {
+      feedback.innerHTML = '<span class="save-feedback error">❌ Failed to update profile.</span>';
+    }
+  } catch(e) {
+    feedback.innerHTML = '<span class="save-feedback error">❌ Network error.</span>';
+  }
+  
+  btn.disabled = false;
+  btn.textContent = 'Save Changes';
+}
+
+async function saveNotifications() {
+  const emailNotif = document.getElementById('notifEmail').checked;
+  const reviewNotif = document.getElementById('notifReview').checked;
+  const claimNotif = document.getElementById('notifClaim').checked;
+  const feedback = document.getElementById('notifSaveFeedback');
+  const btn = document.getElementById('saveNotifBtn');
+  
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  feedback.innerHTML = '';
+  
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch('/api/v1/visitor/notifications', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        email_deals: emailNotif,
+        email_review_reply: reviewNotif,
+        email_claim_updates: claimNotif
+      })
+    });
+    
+    if (resp.ok) {
+      feedback.innerHTML = '<span class="save-feedback success">✅ Preferences saved!</span>';
+    } else {
+      feedback.innerHTML = '<span class="save-feedback error">❌ Failed to save.</span>';
+    }
+  } catch(e) {
+    feedback.innerHTML = '<span class="save-feedback error">❌ Network error.</span>';
+  }
+  
+  btn.disabled = false;
+  btn.textContent = 'Save Preferences';
+}
+
+// ── Load Collections ──
+async function loadCollections() {
+  const container = document.getElementById('collectionsList');
+  const token = getToken();
+  if (!token) return;
+  
+  try {
+    const resp = await fetch('/api/v1/zaarhub/collections', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        container.innerHTML = data.map(c => `
+          <div style="padding:10px 12px;border:1px solid var(--border-light);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-weight:600;font-size:.88rem">${c.name || 'Collection'}</span>
+            <span style="font-size:.78rem;color:var(--text-muted)">${c.count || 0} spots</span>
+          </div>
+        `).join('');
+        return;
+      }
+    }
+  } catch(e) { console.warn('Collections load fail:', e); }
+  
+  container.innerHTML = '<p style="font-size:.82rem;color:var(--text-muted)">No collections created yet. Save spots from the directory to create collections.</p>';
+}
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', function() {
+  if (!checkAuth()) return;
+  
+  loadProfile();
+  loadFavorites();
+  loadMyReviews();
+  loadPerks();
+  loadCollections();
+});
+</script>
+</body>
+</html>

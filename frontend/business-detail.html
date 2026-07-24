@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business — ZaarHub</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#faf9f6;--card:#fff;--text:#1c1917;--text-light:#78716c;--text-muted:#a8a29e;
+  --border:#e7e5e4;--border-light:#f0efed;
+  --teal:#0d9488;--teal-dark:#0f766e;--teal-light:#14b8a6;--bg-teal:#f0fdfa;
+  --warm:#d97706;--warm-light:#fef3c7;
+  --green:#16a34a;--green-light:#dcfce7;
+  --orange:#ea580c;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08);--shadow:0 4px 16px rgba(0,0,0,.1);
+  --radius:12px;--radius-lg:16px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.detail-header{background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.detail-header-inner{max-width:1100px;margin:0 auto;padding:0 20px;display:flex;align-items:center;height:60px;gap:12px}
+.detail-header .back-btn{display:flex;align-items:center;gap:6px;color:var(--text-light);font-size:.85rem;font-weight:500;cursor:pointer;padding:6px 12px;border-radius:8px;border:none;background:none;transition:all .2s}
+.detail-header .back-btn:hover{background:var(--bg-teal);color:var(--teal)}
+.detail-header h1{font-size:1rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+/* Hero */
+.hero-area{position:relative;height:340px;overflow:hidden;background:linear-gradient(135deg,#0d9488,#0f766e,#7c3aed)}
+.hero-area .hero-overlay{position:absolute;bottom:0;left:0;right:0;padding:40px 24px 24px;background:linear-gradient(transparent,rgba(0,0,0,.7))}
+.hero-area .hero-name{font-size:2rem;font-weight:800;color:#fff;margin-bottom:4px;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.hero-area .hero-sub{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.hero-area .hero-sub span{color:rgba(255,255,255,.9);font-size:.9rem}
+.hero-thumbs{display:flex;gap:6px;padding:8px 20px;overflow-x:auto;background:#fff;border-bottom:1px solid var(--border)}
+.hero-thumbs .thumb{width:72px;height:54px;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid transparent;flex-shrink:0;transition:all .2s}
+.hero-thumbs .thumb.active{border-color:var(--teal)}
+.hero-thumbs .thumb img{width:100%;height:100%;object-fit:cover}
+
+/* Container */
+.container{max-width:1100px;margin:0 auto;padding:24px 20px}
+
+/* Main layout */
+.detail-grid{display:grid;grid-template-columns:1fr 340px;gap:24px}
+@media(max-width:860px){.detail-grid{grid-template-columns:1fr}}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:20px}
+.card-title{font-size:1.05rem;font-weight:700;margin-bottom:16px;color:var(--text);display:flex;align-items:center;gap:8px}
+
+/* Info card */
+.info-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.info-header .name-section h2{font-size:1.5rem;font-weight:800;color:var(--text);margin-bottom:4px}
+.category-tag{display:inline-block;background:var(--bg-teal);color:var(--teal-dark);font-size:.75rem;font-weight:600;padding:3px 12px;border-radius:100px;margin-bottom:8px}
+.stars-row{display:flex;align-items:center;gap:8px;font-size:.9rem;margin-bottom:12px;flex-wrap:wrap}
+.stars-row .star{color:var(--warm);font-size:1rem}
+.stars-row .count{color:var(--text-light);font-size:.82rem}
+.rating-badge{display:inline-flex;align-items:center;gap:4px;background:var(--green-light);color:var(--green);font-size:.8rem;font-weight:700;padding:3px 10px;border-radius:100px}
+.info-details{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+@media(max-width:480px){.info-details{grid-template-columns:1fr}}
+.info-item{display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--text);padding:8px 12px;background:var(--bg);border-radius:8px}
+.info-item .icon{font-size:1rem;width:20px;text-align:center}
+.info-item a{color:var(--teal);font-weight:500}
+.info-item a:hover{text-decoration:underline}
+
+/* Hours table */
+.hours-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.hours-table td{padding:8px 12px;border-bottom:1px solid var(--border-light)}
+.hours-table td:first-child{font-weight:600;color:var(--text);width:100px}
+.hours-table td:last-child{color:var(--text-light)}
+.hours-table tr:last-child td{border-bottom:none}
+.hours-table .today td{color:var(--teal-dark);font-weight:600}
+
+/* Description */
+.description-text{font-size:.95rem;line-height:1.7;color:var(--text-light);white-space:pre-wrap}
+
+/* Map */
+.map-container{width:100%;height:260px;border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.map-container .leaflet-container{width:100%;height:100%}
+
+/* Deals */
+.deal-card{background:linear-gradient(135deg,#fef3c7,#fff);border:1px solid #fbbf24;border-radius:var(--radius);padding:16px;margin-bottom:10px}
+.deal-card .deal-title{font-weight:700;font-size:.95rem;color:var(--text);margin-bottom:4px}
+.deal-card .deal-desc{font-size:.85rem;color:var(--text-light);margin-bottom:6px}
+.deal-card .deal-meta{font-size:.78rem;color:var(--text-muted);display:flex;gap:12px}
+.deal-card .deal-badge{display:inline-block;background:var(--warm-light);color:var(--warm);font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px}
+
+/* Reviews */
+.review-card{padding:16px 0;border-bottom:1px solid var(--border-light)}
+.review-card:last-child{border-bottom:none;padding-bottom:0}
+.review-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px}
+.reviewer-name{font-weight:600;font-size:.9rem;color:var(--text)}
+.review-date{font-size:.78rem;color:var(--text-muted)}
+.review-stars{color:var(--warm);font-size:.85rem}
+.review-content{font-size:.88rem;color:var(--text-light);line-height:1.6}
+.no-reviews{padding:32px 0;text-align:center;color:var(--text-muted);font-size:.9rem}
+
+/* Message form */
+.msg-form{display:flex;flex-direction:column;gap:12px}
+.msg-form input,.msg-form textarea{padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;font-family:inherit;outline:none;transition:border .2s;background:var(--bg)}
+.msg-form input:focus,.msg-form textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+.msg-form textarea{min-height:100px;resize:vertical}
+.msg-form button{background:var(--teal);color:#fff;border:none;border-radius:100px;padding:12px 24px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s;align-self:flex-start}
+.msg-form button:hover{background:var(--teal-dark);transform:translateY(-1px)}
+.msg-form button:disabled{opacity:.5;cursor:not-allowed}
+.msg-success{color:var(--green);font-size:.85rem;font-weight:600;text-align:center;padding:8px}
+.msg-error{color:var(--orange);font-size:.85rem;font-weight:600;text-align:center;padding:8px}
+
+/* Owner bio */
+.owner-card{display:flex;align-items:center;gap:16px}
+.owner-avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--teal-light));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.3rem;font-weight:700;flex-shrink:0}
+.owner-info h4{font-size:.95rem;font-weight:700;margin-bottom:2px}
+.owner-info p{font-size:.85rem;color:var(--text-light);line-height:1.5}
+
+/* Sidebar card */
+.sidebar-sticky{position:sticky;top:84px}
+.claim-card{text-align:center;padding:24px}
+.claim-card h3{font-size:1.1rem;font-weight:700;margin-bottom:8px}
+.claim-card p{font-size:.85rem;color:var(--text-light);margin-bottom:16px}
+.claim-btn{background:var(--teal);color:#fff;border:none;border-radius:100px;padding:12px 28px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s;width:100%}
+.claim-btn:hover{background:var(--teal-dark);transform:translateY(-1px)}
+
+/* Actions row */
+.actions-row{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+.action-btn{display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:100px;border:1px solid var(--border);background:var(--card);font-size:.82rem;font-weight:500;color:var(--text);cursor:pointer;transition:all .2s}
+.action-btn:hover{background:var(--bg-teal);border-color:var(--teal-light);color:var(--teal)}
+.action-btn.saved{background:var(--bg-teal);border-color:var(--teal);color:var(--teal-dark);font-weight:600}
+
+/* Loading / Error */
+.loading-state{text-align:center;padding:80px 20px;font-size:1rem;color:var(--text-light)}
+.loading-spinner{display:inline-block;width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-state{text-align:center;padding:80px 20px}
+.error-state h2{font-size:1.3rem;color:var(--orange);margin-bottom:8px}
+.error-state p{color:var(--text-light);margin-bottom:16px}
+.error-state button{padding:10px 24px;border-radius:100px;border:1px solid var(--teal);background:var(--card);color:var(--teal);font-weight:600;cursor:pointer}
+
+/* Footer */
+.detail-footer{text-align:center;padding:24px;font-size:.8rem;color:var(--text-muted);border-top:1px solid var(--border-light);margin-top:40px}
+.detail-footer a{color:var(--teal)}
+</style>
+</head>
+<body>
+<div class="detail-header">
+  <div class="detail-header-inner">
+    <button class="back-btn" onclick="goBack()">← Back to Directory</button>
+    <h1 id="headerTitle">Business</h1>
+  </div>
+</div>
+
+<div id="loadingState" class="loading-state">
+  <div class="loading-spinner"></div>
+  <p>Loading business details...</p>
+</div>
+
+<div id="errorState" class="error-state" style="display:none">
+  <h2>☹️ Business Not Found</h2>
+  <p id="errorMsg">We couldn't find this business listing.</p>
+  <button onclick="goBack()">← Back to Directory</button>
+</div>
+
+<div id="contentArea" style="display:none">
+  <!-- Hero -->
+  <div class="hero-area" id="heroArea">
+    <div class="hero-overlay">
+      <div class="hero-name" id="heroName"></div>
+      <div class="hero-sub">
+        <span id="heroCategory"></span>
+        <span>•</span>
+        <span id="heroCity"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="detail-grid">
+      <!-- Main column -->
+      <div class="main-col">
+        <!-- Business Info Card -->
+        <div class="card">
+          <div class="info-header">
+            <div class="name-section">
+              <h2 id="bizName"></h2>
+              <span class="category-tag" id="bizCategory"></span>
+              <div class="stars-row">
+                <span class="star" id="starsDisplay"></span>
+                <span class="count" id="reviewCount"></span>
+                <span class="rating-badge" id="ratingBadge"></span>
+              </div>
+            </div>
+            <div id="saveButtonContainer">
+              <button class="action-btn" onclick="toggleSave()" id="saveBtn">❤️ Save</button>
+            </div>
+          </div>
+          <div class="info-details">
+            <div class="info-item"><span class="icon">📍</span> <span id="bizAddress"></span></div>
+            <div class="info-item"><span class="icon">📞</span> <a id="bizPhone" href=""></a></div>
+          </div>
+          <div class="actions-row">
+            <a class="action-btn" id="websiteLink" href="#" target="_blank" rel="noopener">🌐 Website</a>
+            <button class="action-btn" onclick="openDirections()">🗺️ Directions</button>
+          </div>
+        </div>
+
+        <!-- Business Hours -->
+        <div class="card">
+          <div class="card-title">🕐 Business Hours</div>
+          <div id="hoursContent"><p style="color:var(--text-muted);font-size:.85rem">Hours information not yet available.</p></div>
+        </div>
+
+        <!-- About -->
+        <div class="card">
+          <div class="card-title">📖 About</div>
+          <div class="description-text" id="bizDescription">No description available.</div>
+        </div>
+
+        <!-- Map -->
+        <div class="card">
+          <div class="card-title">📍 Location</div>
+          <div class="map-container" id="mapContainer"></div>
+        </div>
+
+        <!-- Deals -->
+        <div class="card">
+          <div class="card-title">🎁 Active Perks &amp; Deals</div>
+          <div id="dealsContent"><p style="color:var(--text-muted);font-size:.85rem">No current deals available.</p></div>
+        </div>
+
+        <!-- Reviews -->
+        <div class="card">
+          <div class="card-title">⭐ Reviews</div>
+          <div id="reviewsContent"></div>
+        </div>
+
+        <!-- Owner Bio -->
+        <div class="card" id="ownerCard" style="display:none">
+          <div class="card-title">🤝 Meet the Owner</div>
+          <div class="owner-card">
+            <div class="owner-avatar" id="ownerAvatar">O</div>
+            <div class="owner-info">
+              <h4 id="ownerName">Owner</h4>
+              <p id="ownerBio">Business owner</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Message Form -->
+        <div class="card">
+          <div class="card-title">✉️ Send a Message</div>
+          <form class="msg-form" id="msgForm" onsubmit="sendMessage(event)">
+            <input type="text" id="msgName" placeholder="Your Name" required>
+            <input type="email" id="msgEmail" placeholder="Your Email" required>
+            <textarea id="msgContent" placeholder="Your message to this business..." required></textarea>
+            <button type="submit" id="msgSubmit">Send Message</button>
+            <div id="msgFeedback"></div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="sidebar-col">
+        <div class="sidebar-sticky">
+          <div class="card claim-card">
+            <h3>🏆 Own This Business?</h3>
+            <p>Claim your listing to manage reviews, add photos, and reach more customers.</p>
+            <button class="claim-btn" onclick="goToClaim()">Claim This Listing</button>
+          </div>
+          <div style="margin-top:12px;text-align:center">
+            <a href="/grow" style="font-size:.82rem;color:var(--text-muted)">Learn about ZaarHub for Business →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="detail-footer">
+  Powered by <a href="/zaarhub">ZaarHub</a> — Discover Your Local Community
+</div>
+
+<script>
+// ── Utility ──
+function getUrlParam(name) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+}
+
+function formatDate(d) {
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatPhone(p) {
+  if (!p || p.length < 10) return p;
+  const cleaned = p.replace(/\D/g,'');
+  if (cleaned.length === 10) return `(${cleaned.slice(0,3)}) ${cleaned.slice(3,6)}-${cleaned.slice(6)}`;
+  if (cleaned.length === 11 && cleaned[0]==='1') return `+1 (${cleaned.slice(1,4)}) ${cleaned.slice(4,7)}-${cleaned.slice(7)}`;
+  return p;
+}
+
+function renderStars(rating) {
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5;
+  const empty = 5 - full - (half ? 1 : 0);
+  return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(empty);
+}
+
+function getBusinessIdFromPath() {
+  // /biz/123 or /biz/123?slug=city-slug
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  if (parts[0] === 'biz' && parts[1]) return parts[1];
+  return null;
+}
+
+function goBack() {
+  window.location.href = '/zaarhub';
+}
+
+function goToClaim() {
+  window.location.href = '/claim';
+}
+
+// ── State ──
+let bizData = null;
+let reviews = [];
+let isSaved = false;
+
+// ── Main Load ──
+async function loadBusiness() {
+  const id = getBusinessIdFromPath() || getUrlParam('id');
+  const slug = getUrlParam('slug');
+
+  if (!id) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'block';
+    document.getElementById('errorMsg').textContent = 'No business ID specified.';
+    return;
+  }
+
+  try {
+    // Fetch business data
+    const bizUrl = slug
+      ? `/api/v1/zaarhub/business/${slug}/${id}`
+      : `/api/v1/zaarhub/business/z/${id}`;
+    
+    const bizResp = await fetch(bizUrl);
+    if (!bizResp.ok) throw new Error('Not found');
+    bizData = await bizResp.json();
+
+    // Fetch reviews
+    try {
+      const revResp = await fetch(`/api/v1/reviews?business_id=${id}`);
+      if (revResp.ok) reviews = await revResp.json();
+    } catch(e) { console.warn('Failed to fetch reviews', e); }
+
+    // Render
+    renderBusiness();
+    
+    // Check save status
+    checkSaveStatus();
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('contentArea').style.display = 'block';
+  } catch (err) {
+    console.error('Load error:', err);
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'block';
+    document.getElementById('errorMsg').textContent = err.message || 'Failed to load business.';
+  }
+}
+
+// ── Render ──
+function renderBusiness() {
+  const b = bizData;
+  const name = b.name || 'Business';
+  
+  // Header
+  document.getElementById('headerTitle').textContent = name;
+  document.title = `${name} — ZaarHub`;
+
+  // Hero
+  document.getElementById('heroName').textContent = name;
+  document.getElementById('heroCategory').textContent = b.category_name || 'Local Business';
+  document.getElementById('heroCity').textContent = [b.city, b.state].filter(Boolean).join(', ') || 'Local';
+
+  // Info
+  document.getElementById('bizName').textContent = name;
+  document.getElementById('bizCategory').textContent = b.category_name || 'Local Business';
+
+  const rating = b.rating || 0;
+  const rc = b.review_count || 0;
+  document.getElementById('starsDisplay').textContent = renderStars(rating) + ' ' + rating.toFixed(1);
+  document.getElementById('reviewCount').textContent = `(${rc} review${rc !== 1 ? 's' : ''})`;
+  document.getElementById('ratingBadge').textContent = rating >= 4 ? '🏆 Great' : rating >= 3 ? '👍 Good' : '📊 Average';
+
+  document.getElementById('bizAddress').textContent = [b.address, b.city, b.state].filter(Boolean).join(', ') || 'Location not listed';
+  
+  const phone = formatPhone(b.phone);
+  const phoneEl = document.getElementById('bizPhone');
+  phoneEl.textContent = phone || 'Not listed';
+  phoneEl.href = phone ? `tel:${b.phone.replace(/\D/g,'')}` : '#';
+
+  const webEl = document.getElementById('websiteLink');
+  if (b.website) {
+    webEl.href = b.website.startsWith('http') ? b.website : `https://${b.website}`;
+  } else {
+    webEl.style.display = 'none';
+  }
+
+  // Description
+  document.getElementById('bizDescription').textContent = b.description || 'No description available.';
+
+  // Map
+  if (b.lat && b.lng) {
+    initMap(b.lat, b.lng, name);
+  } else {
+    document.getElementById('mapContainer').innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-muted);font-size:.85rem">Map location not available.</p>';
+  }
+
+  // Render reviews
+  renderReviews();
+}
+
+// ── Map ──
+let mapInstance = null;
+function initMap(lat, lng, name) {
+  const container = document.getElementById('mapContainer');
+  container.innerHTML = '';
+  
+  const mapEl = document.createElement('div');
+  mapEl.style.width = '100%';
+  mapEl.style.height = '260px';
+  container.appendChild(mapEl);
+  
+  mapInstance = L.map(mapEl).setView([lat, lng], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(mapInstance);
+  
+  L.marker([lat, lng]).addTo(mapInstance)
+    .bindPopup(`<b>${name}</b>`);
+}
+
+function openDirections() {
+  if (bizData && bizData.lat && bizData.lng) {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${bizData.lat},${bizData.lng}`, '_blank');
+  } else if (bizData && bizData.address) {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(bizData.address)}`, '_blank');
+  }
+}
+
+// ── Reviews ──
+function renderReviews() {
+  const container = document.getElementById('reviewsContent');
+  
+  if (!reviews || reviews.length === 0) {
+    container.innerHTML = '<div class="no-reviews">No reviews yet. Be the first to review!</div>';
+    return;
+  }
+  
+  let html = '';
+  reviews.forEach(r => {
+    html += `
+      <div class="review-card">
+        <div class="review-header">
+          <span class="reviewer-name">${r.reviewer_name || 'Anonymous'}</span>
+          <span class="review-date">${r.created_at ? formatDate(r.created_at) : ''}</span>
+        </div>
+        <div class="review-stars">${renderStars(r.rating || 5)}</div>
+        <div class="review-content">${r.content || ''}</div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+// ── Save / Favorite ──
+async function checkSaveStatus() {
+  const token = localStorage.getItem('zh_token');
+  if (!token || !bizData) return;
+  
+  try {
+    const resp = await fetch(`/api/v1/visitor/favorites/${bizData.id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      isSaved = data.saved || data.is_favorited || false;
+      updateSaveButton();
+    }
+  } catch(e) { console.warn('Save check fail', e); }
+}
+
+async function toggleSave() {
+  const token = localStorage.getItem('zh_token');
+  if (!token) {
+    window.location.href = '/visitor?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+    return;
+  }
+  if (!bizData) return;
+  
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  
+  try {
+    if (isSaved) {
+      const resp = await fetch(`/api/v1/visitor/favorites/${bizData.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resp.ok) isSaved = false;
+    } else {
+      const resp = await fetch(`/api/v1/visitor/favorites/${bizData.id}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resp.ok) isSaved = true;
+    }
+    updateSaveButton();
+  } catch(e) { console.warn('Save toggle fail', e); }
+  btn.disabled = false;
+}
+
+function updateSaveButton() {
+  const btn = document.getElementById('saveBtn');
+  if (isSaved) {
+    btn.textContent = '❤️ Saved';
+    btn.classList.add('saved');
+  } else {
+    btn.textContent = '🤍 Save';
+    btn.classList.remove('saved');
+  }
+}
+
+// ── Message Form ──
+async function sendMessage(e) {
+  e.preventDefault();
+  const btn = document.getElementById('msgSubmit');
+  const feedback = document.getElementById('msgFeedback');
+  feedback.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  
+  try {
+    const resp = await fetch('/api/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: bizData ? bizData.id : null,
+        name: document.getElementById('msgName').value,
+        email: document.getElementById('msgEmail').value,
+        message: document.getElementById('msgContent').value
+      })
+    });
+    
+    if (resp.ok) {
+      feedback.innerHTML = '<div class="msg-success">✅ Message sent successfully!</div>';
+      document.getElementById('msgForm').reset();
+    } else {
+      feedback.innerHTML = '<div class="msg-error">❌ Failed to send. Please try again.</div>';
+    }
+  } catch (err) {
+    feedback.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
+  }
+  
+  btn.disabled = false;
+  btn.textContent = 'Send Message';
+}
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', loadBusiness);
+</script>
+</body>
+</html>
