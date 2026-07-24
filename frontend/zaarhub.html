@@ -416,7 +416,7 @@ a:hover{text-decoration:underline}
 
 <script>
 // ── Helpers ──
-async function g(url){let r=await fetch('/api/v1'+url);if(!r.ok){let e=await r.json().catch(()=>({}));throw new Error(e.message||e.error||'Request failed')}return r.json()}
+async function g(url){var ctrl=new AbortController();var timer=setTimeout(function(){ctrl.abort()},15000);try{var r=await fetch('/api/v1'+url,{signal:ctrl.signal});if(!r.ok){let e=await r.json().catch(()=>({}));throw new Error(e.message||e.error||'Request failed')}clearTimeout(timer);return r.json()}catch(e){clearTimeout(timer);throw e}}
 function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function $$(s){return document.querySelector(s)}
 function qa(s){return document.querySelectorAll(s)}
@@ -525,6 +525,8 @@ function route(){
   // Hide splash screen
   var splash=document.getElementById('splash-load');
   if(splash) setTimeout(function(){splash.classList.add('hide')},400);
+  // Safety: force-hide splash after 5s in case of edge case
+  setTimeout(function(){var s=document.getElementById('splash-load');if(s)s.classList.add('hide')},5000);
   
   let hash=location.hash.slice(1)||'/';
   if(hash.startsWith('/city/')){
