@@ -19,7 +19,7 @@
   --primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;
   --secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;
   --dark:#2b3255;--dark-light:#3a4370;
-  --teal:#0d9488;--teal-dark:#0f766e;--teal-light:#14b8a6;--bg-teal:#f0fdfa;
+  --bg-teal:#f0fdfa;
   --warm:#d97706;--warm-light:#fef3c7;
   --terracotta:#bd5a41;
   --accent:#7c3aed;--accent-light:#ede9fe;
@@ -414,8 +414,8 @@ a:hover{text-decoration:underline}
 <body>
 
 <div class="zh-loading-full" id="splash-load">
-  <div class="zh-logo-load" style="margin-bottom:4px"><span class="logo-emoji-splash">🌐</span> Zaar<span>Hub</span></div>
-  <div class="zh-tagline">Discover your community</div>
+  <div class="zh-logo-load" style="margin-bottom:4px"><span class="logo-emoji-splash">🌐</span> Zaar<span>Hub</span> <span style="font-weight:400;font-size:.9rem;color:#94a3b8">Community</span></div>
+  <div class="zh-tagline">Discover your local community</div>
   <div class="zh-loader-bar"><div class="zh-loader-bar-inner"></div></div>
 </div>
 
@@ -550,6 +550,10 @@ function route(){
     state.page='events'
   }else if(hash.startsWith('/cities')){
     state.page='home'
+  }else if(hash.startsWith('/about')){
+    state.page='about'
+  }else if(hash.startsWith('/notifications')){
+    state.page='notifications'
   }else{state.page='home'}
   load()
 }
@@ -591,9 +595,29 @@ async function load(){
     else if(state.page==='search')await loadSearchResults()
     else if(state.page==='deals')await loadDealsPage()
     else if(state.page==='events')await loadEventsPage()
+    else if(state.page==='about')renderAboutPage()
+    else if(state.page==='notifications')renderNotificationsPage()
   }catch(e){
     renderError(e.message)
   }
+}
+
+// ── About Page ──
+function renderAboutPage(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML='<div class="zh-section" style="padding:48px 24px"><div class="zh-section-inner" style="max-width:720px;margin:0 auto"><h1 style="font-size:2rem;font-weight:800;margin-bottom:16px">About ZaarHub</h1>'+
+    '<p style="font-size:1.05rem;color:var(--text-light);line-height:1.7;margin-bottom:20px">ZaarHub connects you with the best local businesses, deals, and events in your community. Discover new spots, save your favorites, write reviews, and support the local economy.</p>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:32px 0"><div style="padding:20px;background:var(--primary-light);border-radius:var(--radius);text-align:center"><div style="font-size:2rem;margin-bottom:8px">🏪</div><h3 style="font-size:1rem;font-weight:700">For Visitors</h3><p style="font-size:.85rem;color:var(--text-light);margin-top:4px">Find, save, and review local businesses. Get exclusive deals.</p></div>'+
+    '<div style="padding:20px;background:var(--secondary-light);border-radius:var(--radius);text-align:center"><div style="font-size:2rem;margin-bottom:8px">💼</div><h3 style="font-size:1rem;font-weight:700">For Business Owners</h3><p style="font-size:.85rem;color:var(--text-light);margin-top:4px">Claim your listing, run deals, and attract customers.</p></div>'+
+    '<div style="padding:20px;background:var(--primary-light);border-radius:var(--radius);text-align:center"><div style="font-size:2rem;margin-bottom:8px">📦</div><h3 style="font-size:1rem;font-weight:700">For Suppliers</h3><p style="font-size:.85rem;color:var(--text-light);margin-top:4px">Connect with local businesses through our B2B supplier network.</p></div>'+
+    '<div style="padding:20px;background:var(--secondary-light);border-radius:var(--radius);text-align:center"><div style="font-size:2rem;margin-bottom:8px">🌐</div><h3 style="font-size:1rem;font-weight:700">Our Mission</h3><p style="font-size:.85rem;color:var(--text-light);margin-top:4px">Helping local communities thrive through connection and discovery.</p></div></div>'+
+    '<p style="font-size:.9rem;color:var(--text-muted);text-align:center">Questions? Email <a href="mailto:support@zaarhub.com" style="color:var(--secondary)">support@zaarhub.com</a></p></div></div>'
+}
+
+// ── Notifications Page ──
+function renderNotificationsPage(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML='<div class="zh-section" style="padding:48px 24px;text-align:center"><div class="zh-section-inner" style="max-width:600px;margin:0 auto"><div style="font-size:3rem;margin-bottom:12px">🔔</div><h2 style="font-size:1.3rem;font-weight:700;margin-bottom:8px">Notifications</h2><p style="color:var(--text-light);font-size:.9rem">No notifications yet. Save businesses and write reviews to get notified about updates and deals from your favorite local spots.</p></div></div>'
 }
 
 // ── Render Shell (Header) ──
@@ -1271,7 +1295,7 @@ function renderCityPage(d){
   var bizHtml=''
   for(var i=0;i<biz.length;i++){
     var b=biz[i]
-    var coverBg=i%2===0?'#0d9488':'#7c3aed';var coverGrad=i%3===0?'135deg,#0d9488,#14b8a6':i%3===1?'135deg,#7c3aed,#a78bfa':'135deg,#d97706,#f59e0b'
+    var coverBg=i%2===0?'#f27f2f':'#7c3aed';var coverGrad=i%3===0?'135deg,#f27f2f,#f97316':i%3===1?'135deg,#7c3aed,#a78bfa':'135deg,#d97706,#f59e0b'
     var letter=b.name?b.name[0].toUpperCase():'🏪'
     // Distance badge for near-me
     var distBadge=''
