@@ -618,6 +618,7 @@ function renderShell(){
       <a href="#/deals">🎁 Deals</a>
       <a href="#/events">📅 Events</a>
       <a href="#/about">ℹ️ About</a>
+      <a href="/distributor" style="font-size:.78rem;padding:6px 10px;background:var(--primary-light);color:var(--primary-hover);border-radius:100px">📦 Supplier Login</a>
       <a href="/portal" class="zh-btn-primary">+ Add Business</a>
     </div>
     <button class="zh-notif-bell" onclick="location.hash='#/notifications'" title="Notifications" style="background:none;border:none;cursor:pointer">
@@ -637,6 +638,7 @@ function renderShell(){
     <a href="#/events" onclick="closeMobile()">📅 Community Events</a>
     <a href="#/about" onclick="closeMobile()">ℹ️ About ZaarHub</a>
     <a href="/portal" onclick="closeMobile()">💼 Business Owner</a>
+    <a href="/distributor" onclick="closeMobile()">📦 Supplier / Distributor</a>
     <a href="/visitor" onclick="closeMobile()">👤 My Account</a>
     <a href="#" onclick="closeMobile();openCollectionsModal();return false" style="cursor:pointer">📑 My Collections</a>
   </div>
@@ -657,6 +659,7 @@ function renderShell(){
     <a href="#/cities" onclick="return navTo(event,'#/cities')"><span class="nav-icon">🏙️</span>Cities</a>
     <a href="#/deals" onclick="return navTo(event,'#/deals')"><span class="nav-icon">🎁</span>Deals</a>
     <a href="#/events" onclick="return navTo(event,'#/events')"><span class="nav-icon">📅</span>Events</a>
+    <a href="/visitor" onclick="return navTo(event,'/visitor')"><span class="nav-icon">👤</span>Account</a>
     <a href="#/search/" onclick="return navTo(event,'#/search/')"><span class="nav-icon">🔍</span>Search</a>
   </div>
 </div>
@@ -674,6 +677,7 @@ function renderShell(){
     <div><h4>For Business</h4>
       <a href="/portal">Add Your Business</a>
       <a href="/login">Owner Login</a>
+      <a href="/distributor">Supplier Portal</a>
     </div>
     <div><h4>Community</h4>
       <a href="#/about">About Us</a>
@@ -901,7 +905,7 @@ function renderHomepageContent(d){
     var dl=deals[i]
     var priceHtml=dl.deal_price?'<div class="price">$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
     var endHtml=dl.end_date?'<span style="font-size:.75rem;color:var(--text-muted)">Valid until '+new Date(dl.end_date).toLocaleDateString()+'</span>':''
-    dealsHtml+='<div class="zh-deal-card" onclick="location.hash=\'#/city/'+dl.directory_slug+'\'">'+
+    dealsHtml+='<div class="zh-deal-card" onclick="location.hash=\'#/city/'+esc(dl&&dl.directory_slug||'')+'\'">'+
       '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'🎉')+'</div>'+
       '<div class="zh-deal-body">'+
       '<h4>'+esc(dl.title)+'</h4>'+
