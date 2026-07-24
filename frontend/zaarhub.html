@@ -623,8 +623,8 @@ function renderShell(){
     <button class="zh-notif-bell" onclick="location.hash='#/notifications'" title="Notifications" style="background:none;border:none;cursor:pointer">
       🔔<span class="zh-notif-dot" id="zh-notif-dot"></span>
     </button>
-    <a href="/visitor" class="zh-signin-btn" id="zh-signin-btn">
-      👤 Sign In
+    <a href="/visitor" class="zh-btn-primary" id="zh-signin-btn" style="padding:8px 18px;font-size:.82rem;background:var(--primary);color:#fff;border-radius:100px">
+      👤 Sign Up / Sign In
     </a>
     <div class="zh-role-switcher" id="zh-role-switcher" style="display:none">
       <button class="active" data-role="resident" onclick="switchRole('resident',this)">Resident View</button>
@@ -1024,6 +1024,13 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
   </div>
 </div>`:'')+
 `
+<div class="zh-owner-cta" style="margin-bottom:16px">
+  <h2>🙋 Join Your Local Community</h2>
+  <p style="color:#94a3b8;font-size:.95rem;max-width:500px;margin:8px auto 20px">Save your favorite spots, write reviews, get deals, and stay connected to what's happening in your neighborhood.</p>
+  <a href="/visitor" class="zh-btn-primary" style="display:inline-block;padding:12px 28px;background:var(--secondary);color:#fff;border-radius:100px;font-weight:700">📝 Create Your Free Account →</a>
+  <p style="margin-top:12px"><a href="/visitor" style="color:rgba(255,255,255,.7);font-size:.85rem">Already have an account? Sign In</a></p>
+</div>
+
 <div class="zh-owner-cta">
   <h2>📈 Grow Your Local Presence with ZaarHub</h2>
   <div class="zh-owner-cta-features">
