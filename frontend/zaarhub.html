@@ -45,6 +45,42 @@ a:hover{text-decoration:underline}
 .zh-btn-primary:hover{background:var(--teal-dark) !important}
 .zh-hamburger{display:none;background:none;border:none;font-size:1.5rem;cursor:pointer;padding:4px;color:var(--text)}
 
+/* ── Ticker / Notification Bar ── */
+.zh-ticker{background:linear-gradient(90deg,#0f766e,#0d9488);color:#fff;overflow:hidden;white-space:nowrap;position:relative;height:40px;line-height:40px;font-size:.82rem;font-weight:500;cursor:pointer}
+.zh-ticker-inner{display:inline-block;padding-left:100%;animation:ticker-scroll 30s linear infinite}
+@keyframes ticker-scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
+.zh-ticker-close{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.2);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center;z-index:2}
+.zh-ticker-close:hover{background:rgba(255,255,255,.4)}
+.zh-ticker-item{margin-right:48px}
+.zh-ticker-item a{color:#fff;text-decoration:underline}
+.zh-ticker-item a:hover{color:#ccfbf1}
+
+/* ── Mobile Bottom Nav ── */
+.zh-bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);z-index:200;padding:6px 0;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+.zh-bottom-nav-inner{display:flex;justify-content:space-around;align-items:center}
+.zh-bottom-nav a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 12px;min-height:48px;min-width:56px;color:var(--text-light);font-size:.7rem;font-weight:500;text-decoration:none;transition:all .15s;border-radius:8px}
+.zh-bottom-nav a .nav-icon{font-size:1.2rem}
+.zh-bottom-nav a.active{color:var(--teal)}
+.zh-bottom-nav a:hover{background:var(--bg-teal);color:var(--teal);text-decoration:none}
+
+/* ── Spotlight Cards ── */
+.zh-spotlight-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.zh-spotlight-card{background:linear-gradient(135deg,#fff,var(--bg-teal));border:1px solid var(--teal-light);border-radius:var(--radius-lg);padding:16px;position:relative;overflow:hidden;transition:all .2s;cursor:pointer}
+.zh-spotlight-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.zh-spotlight-card .spot-badge{position:absolute;top:0;right:0;background:linear-gradient(135deg,var(--warm),#f59e0b);color:#fff;font-size:.65rem;font-weight:800;padding:4px 12px 4px 16px;border-radius:0 0 0 12px;text-transform:uppercase;letter-spacing:.5px}
+.zh-spotlight-card h4{font-size:1rem;font-weight:700;margin-bottom:4px;padding-right:80px}
+.zh-spotlight-card .cat{margin-top:8px;display:inline-block;background:var(--bg-teal);color:var(--teal-dark);font-size:.72rem;font-weight:600;padding:2px 10px;border-radius:100px}
+.zh-spotlight-card .stars{color:var(--warm);font-size:.8rem;margin-top:4px}
+
+/* ── Fix mobile touch targets min 44px ── */
+.zh-hero-cat,.zh-filter-pill,.zh-biz-actions .action,.zh-event-card .rsvp,.zh-city-card,.zh-deal-card{cursor:pointer;min-height:44px;display:inline-flex;align-items:center}
+.zh-biz-card,.zh-deal-card-sm,.zh-event-card-sm{cursor:pointer}
+
+@media(max-width:768px){
+  body{padding-bottom:68px}
+  .zh-bottom-nav{display:block}
+}
+
 /* ── Hero ── */
 .zh-hero{background:linear-gradient(135deg,#0f172a 0%,#134e4a 50%,#0d9488 100%);padding:60px 24px 48px;text-align:center;position:relative;overflow:hidden}
 .zh-hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 30% 40%,rgba(13,148,136,.15) 0%,transparent 60%),radial-gradient(circle at 70% 60%,rgba(20,184,166,.1) 0%,transparent 50%);pointer-events:none}
@@ -237,6 +273,8 @@ function route(){
     state.page='deals'
   }else if(hash.startsWith('/events')){
     state.page='events'
+  }else if(hash.startsWith('/cities')){
+    state.page='home'
   }else{state.page='home'}
   load()
 }
@@ -310,7 +348,20 @@ function renderShell(){
     <a href="/visitor" onclick="closeMobile()">👤 My Account</a>
   </div>
 </div>
+<div id="zh-ticker" class="zh-ticker" style="display:none">
+  <div class="zh-ticker-inner" id="zh-ticker-inner"></div>
+  <button class="zh-ticker-close" onclick="dismissTicker()">✕</button>
+</div>
 <div id="zh-content" class="zh-loading"><div class="zh-spinner"></div><p style="margin-top:12px">Loading...</p></div>
+<div class="zh-bottom-nav">
+  <div class="zh-bottom-nav-inner">
+    <a href="#/" onclick="return navTo(event,'#')" class="active"><span class="nav-icon">🏠</span>Home</a>
+    <a href="#/cities" onclick="return navTo(event,'#/cities')"><span class="nav-icon">🏙️</span>Cities</a>
+    <a href="#/deals" onclick="return navTo(event,'#/deals')"><span class="nav-icon">🎁</span>Deals</a>
+    <a href="#/events" onclick="return navTo(event,'#/events')"><span class="nav-icon">📅</span>Events</a>
+    <a href="#/search/" onclick="return navTo(event,'#/search/')"><span class="nav-icon">🔍</span>Search</a>
+  </div>
+</div>
 <div class="zh-footer">
   <div class="zh-footer-inner">
     <div><h4>🌐 ZaarHub</h4>
@@ -337,6 +388,62 @@ function toggleMobile(){
 }
 function closeMobile(){document.getElementById('zh-mobile-nav').style.display='none'}
 
+function navTo(ev,hash){
+  if(ev)ev.preventDefault();
+  location.hash=hash;
+  // Update bottom nav active state
+  setTimeout(function(){
+    var links=document.querySelectorAll('.zh-bottom-nav a');
+    links.forEach(function(a){a.classList.remove('active')});
+    var current=document.querySelector('.zh-bottom-nav a[href="'+location.hash.slice(1)+'"]')||document.querySelector('.zh-bottom-nav a[href="/home"]');
+    if(current)current.classList.add('active');
+    closeMobile();
+  },50);
+}
+
+// Ticker state
+var _tickerDismissed=false;
+
+function dismissTicker(){
+  _tickerDismissed=true;
+  var el=document.getElementById('zh-ticker');
+  if(el)el.style.display='none';
+}
+
+var _tickerInterval=null;
+
+async function loadTicker(){
+  if(_tickerDismissed)return;
+  // Try to get notifications for first available city
+  if(!state.cities||!state.cities.length)return;
+  var dirSlug=state.slug||state.cities[0].slug;
+  if(!dirSlug)return;
+  try{
+    // Convert slug to id via cities list
+    var city=state.cities.find(function(c){return c.slug===dirSlug});
+    if(!city)city=state.cities[0];
+    if(!city)return;
+    // Try to find directory_id — city response has id
+    if(!city.id)return;
+    var notifs=await g('/notifications/'+city.id);
+    var list=Array.isArray(notifs)?notifs:[];
+    if(!list.length){return}
+    var inner=document.getElementById('zh-ticker-inner');
+    if(!inner)return;
+    var html='';
+    for(var i=0;i<list.length;i++){
+      var n=list[i];
+      var icon=n.notification_type==='warning'?'⚠️':n.notification_type==='promo'?'🎉':n.notification_type==='alert'?'🔴':'💡';
+      html+='<span class="zh-ticker-item">'+icon+' '+esc(n.message);
+      if(n.link_text)html+=' <a href="'+esc(n.link_url||'#')+'" target="_blank">'+esc(n.link_text)+'</a>';
+      html+='</span>';
+    }
+    inner.innerHTML=html;
+    var ticker=document.getElementById('zh-ticker');
+    if(ticker&&html){ticker.style.display='block'}
+  }catch(e){/* silently fail */}
+}
+
 function renderError(msg){
   var el=document.getElementById('zh-content')||$$('#app')
   el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🙁</div><h3 style="margin-bottom:8px">Something went wrong</h3><p style="color:var(--text-light);margin-bottom:16px">'+esc(msg)+'</p><button class="zh-btn-primary" onclick="location.reload()" style="background:var(--teal);color:#fff;border:none;padding:10px 24px;border-radius:100px;cursor:pointer">Try Again</button></div>'
@@ -352,6 +459,8 @@ async function loadHomepage(){
     state.homepageData=d
   }
   renderHomepageContent(d)
+  // Load ticker after homepage renders
+  setTimeout(loadTicker, 500)
 }
 
 function renderHomepageContent(d){
@@ -387,6 +496,23 @@ function renderHomepageContent(d){
     </div>
   </div>
 </div>`
+
+  // Spotlight/sponsored listings
+  var spotlights=d.spotlights||[]
+  var spotlightHtml=''
+  if(spotlights.length){
+    for(var i=0;i<Math.min(spotlights.length,6);i++){
+      var sp=spotlights[i];
+      var stars=sp.rating?'★'.repeat(Math.round(sp.rating))+'☆'.repeat(5-Math.round(sp.rating)):''
+      var badge=sp.badge_text||'⭐ Spotlight'
+      spotlightHtml+='<div class="zh-spotlight-card" onclick="location.hash=\'#/city/'+sp.directory_slug+'\'">'+
+        '<div class="spot-badge">'+esc(badge)+'</div>'+
+        '<h4>'+esc(sp.name)+'</h4>'+
+        (sp.category?'<span class="cat">'+esc(sp.category)+'</span>':'')+
+        '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.74rem">'+(sp.review_count||0)+' reviews</span></div>'+
+      '</div>'
+    }
+  }
 
   // City cards
   var cityCards=''
@@ -448,8 +574,24 @@ function renderHomepageContent(d){
       '<span class="rsvp">RSVP →</span></div></div>'
   }
 
+  // Combine sections
+  var sectionsHtml=''
+  
+  // Spotlight section if there are spotlights
+  if(spotlightHtml){
+    sectionsHtml+=`
+<div class="zh-section" style="background:linear-gradient(135deg,#f0fdfa 0%,#faf9f6 100%);padding-bottom:24px">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">💡 Featured Spotlights</h2><p class="zh-section-sub">Sponsored businesses recommended by your community</p></div>
+    </div>
+    <div class="zh-spotlight-grid">${spotlightHtml}</div>
+  </div>
+</div>`
+  }
+
   var content=document.getElementById('zh-content')
-  content.innerHTML=heroHtml+`
+  content.innerHTML=heroHtml+sectionsHtml+`
 <div class="zh-section">
   <div class="zh-section-inner">
     <div class="zh-section-header">
@@ -505,6 +647,8 @@ async function loadCityPage(){
   try{
     var d=await g('/zaarhub/cities/'+slug)
     renderCityPage(d)
+    // Load ticker for this city
+    setTimeout(loadTicker, 500)
   }catch(e){
     renderError('Could not load '+toTitle(slug)+': '+e.message)
   }
@@ -652,6 +796,7 @@ async function loadSearchResults(){
   try{
     var r=await g('/zaarhub/search?q='+encodeURIComponent(q)+'&cat='+encodeURIComponent(state.filterCategory))
     renderSearchResults(r)
+    setTimeout(loadTicker, 500)
   }catch(e){
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">Search failed: '+esc(e.message)+'</div>'

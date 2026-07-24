@@ -47,6 +47,8 @@ pub struct DirectoryHomepageData {
     pub active_deals: Vec<DealCard>,
     pub upcoming_events: Vec<EventCard>,
     pub categories: Vec<CategoryPill>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spotlights: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -413,12 +415,46 @@ pub async fn get_homepage(
         })
     }).collect();
 
+    // ??? Phase 4: Spotlight/sponsored listings across active directories
+    let spotlights = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, String, Option<String>)>(
+        r#"SELECT sl.id, b.name, b.slug, b.description,
+                  dc.name as category,
+                  b.rating, b.review_count,
+                  sl.badge_text, sl.slot_position::text, d.slug as dir_slug
+           FROM sponsored_listings sl
+           JOIN businesses b ON b.id = sl.business_id
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
+           JOIN directories d ON d.id = sl.directory_id
+           WHERE sl.is_active = true
+             AND sl.start_date <= CURRENT_DATE
+             AND sl.end_date >= CURRENT_DATE
+           ORDER BY sl.slot_position ASC
+           LIMIT 12"#
+    )
+    .fetch_all(&s.db)
+    .await.unwrap_or_default();
+
+    let spotlight_list: Vec<Value> = spotlights.into_iter().map(|(id, name, slug, desc, cat, rating, rv_count, badge, pos, dir_slug)| {
+        json!({
+            "id": id,
+            "name": name,
+            "slug": slug,
+            "description": desc,
+            "category": cat,
+            "rating": rating,
+            "review_count": rv_count,
+            "badge_text": badge,
+            "directory_slug": dir_slug,
+        })
+    }).collect();
+
     Ok(Json(json!({
         "cities": city_list,
         "featured_deals": deal_list,
         "upcoming_events": event_list,
         "recent_activity": activity_feed,
         "category_pills": category_pills,
+        "spotlights": spotlight_list,
         "stats": {
             "total_businesses": total_businesses,
             "total_reviews": total_reviews,
@@ -604,6 +640,40 @@ pub async fn get_city_page(
         CategoryPill { id, name, slug, business_count: count.unwrap_or(0), icon: None }
     }).collect();
 
+    // ??? Phase 4: Spotlights for this directory
+    let spotlights = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, i32, Option<bool>)>(
+        r#"SELECT sl.id, b.name, b.slug, b.description,
+                  dc.name as category,
+                  b.rating, b.review_count,
+                  sl.badge_text, sl.slot_position, sl.featured
+           FROM sponsored_listings sl
+           JOIN businesses b ON b.id = sl.business_id
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
+           WHERE sl.directory_id = $1
+             AND sl.is_active = true
+             AND sl.start_date <= CURRENT_DATE
+             AND sl.end_date >= CURRENT_DATE
+           ORDER BY sl.slot_position ASC, sl.featured DESC"#
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await.unwrap_or_default();
+
+    let spotlight_list: Vec<Value> = spotlights.into_iter().map(|(id, name, slug, desc, cat, rating, rv_count, badge, pos, featured)| {
+        json!({
+            "id": id,
+            "name": name,
+            "slug": slug,
+            "description": desc,
+            "category": cat,
+            "rating": rating,
+            "review_count": rv_count,
+            "badge_text": badge,
+            "slot_position": pos,
+            "featured": featured.unwrap_or(false),
+        })
+    }).collect();
+
     Ok(Json(DirectoryHomepageData {
         directory: DirectorySummary {
             id: dir_id,
@@ -625,6 +695,7 @@ pub async fn get_city_page(
         active_deals: deal_cards,
         upcoming_events: event_cards,
         categories: category_pills,
+        spotlights: Some(spotlight_list),
     }))
 }
 

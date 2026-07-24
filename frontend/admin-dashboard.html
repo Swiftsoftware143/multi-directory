@@ -103,6 +103,12 @@
   <div class="nav-item" onclick="navigate('settings')">
     <span class="icon">⚙️</span> Settings
   </div>
+  <div class="nav-item" onclick="navigate('sponsored')">
+    <span class="icon">💡</span> Sponsored Listings
+  </div>
+  <div class="nav-item" onclick="navigate('notifications')">
+    <span class="icon">🔔</span> Notifications
+  </div>
 </div>
 
 <div class="main">
@@ -170,7 +176,7 @@ function navigate(section) {
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
   document.querySelector(`.nav-item[onclick*="'${section}'"]`).classList.add("active");
   
-  const titles = { dashboard: "Dashboard", directories: "Directories", listings: "Listings", users: "Users", settings: "Settings" };
+  const titles = { dashboard: "Dashboard", directories: "Directories", listings: "Listings", users: "Users", settings: "Settings", sponsored: "Sponsored Listings", notifications: "Notifications" };
   document.getElementById("pageTitle").textContent = titles[section] || section;
   
   switch(section) {
@@ -179,6 +185,8 @@ function navigate(section) {
     case "listings": loadListings(); break;
     case "users": loadUsers(); break;
     case "settings": loadSettings(); break;
+    case "sponsored": loadSponsoredListings(); break;
+    case "notifications": loadNotifications(); break;
   }
 }
 
@@ -270,6 +278,420 @@ function loadSettings() {
       <div class="form-group"><label>Email</label><input value="\${user ? JSON.parse(user).email : ""}" disabled></div>
     </div>
   \`;
+}
+
+// ── Sponsored Listings ──
+let _sponsoredDirId = "";
+
+async function loadSponsoredListings() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    // Fetch directories for the selector
+    const dirs = await g("/directories");
+    const dirList = dirs.data || dirs || [];
+    
+    let h = `<div class="card">
+      <h3>Select Directory</h3>
+      <div class="form-group">
+        <select id="sponsoredDirSelect" onchange="loadSponsoredForDir(this.value)">
+          <option value="">-- Choose a directory --</option>`;
+    dirList.forEach(d => {
+      h += `<option value="${d.id}">${d.name} (${d.slug})</option>`;
+    });
+    h += `</select>
+      </div>
+    </div>
+    <div id="sponsoredListContainer">
+      <div class="empty-state"><div class="icon">💡</div><h3>Select a directory</h3><p>Choose a directory above to manage sponsored listings</p></div>
+    </div>`;
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
+  }
+}
+
+async function loadSponsoredForDir(dirId) {
+  if (!dirId) return;
+  _sponsoredDirId = dirId;
+  const container = document.getElementById("sponsoredListContainer");
+  container.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    // Get directory slug
+    const dirs = await g("/directories");
+    const dirList = dirs.data || dirs || [];
+    const dir = dirList.find(d => d.id === dirId);
+    const slug = dir ? dir.slug : "";
+    
+    // Fetch sponsored listings
+    const listings = await g("/monetization/sponsored-listings?directory_id=" + dirId);
+    const list = Array.isArray(listings) ? listings : (listings.data || []);
+    // Also try directory-specific endpoint
+    const dirListings = slug ? await g("/monetization/directories/" + slug + "/sponsored-listings") : [];
+    const activeList = Array.isArray(dirListings) ? dirListings : (dirListings.data || []);
+    
+    let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    h += `<span style="font-size:.85rem;color:var(--text-secondary)">${list.length + activeList.length} sponsored listings</span>`;
+    h += `<button class="btn btn-primary btn-sm" onclick="showAddSponsoredForm('${dirId}')">+ New Spotlight</button></div>`;
+    
+    const allListings = [...activeList, ...list.filter(l => !activeList.find(a => a.id === l.id))];
+    
+    if (!allListings.length) {
+      h += '<div class="empty-state"><div class="icon">💡</div><h3>No sponsored listings</h3><p>Add a spotlight listing for this directory</p></div>';
+      container.innerHTML = h;
+      return;
+    }
+    
+    h += '<table><thead><tr><th>Business</th><th>Slot</th><th>Badge</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+    for (let i = 0; i < allListings.length; i++) {
+      const l = allListings[i];
+      const active = l.is_active && l.end_date >= new Date().toISOString().split('T')[0];
+      h += `<tr>
+        <td>${l.business_name || l.business_id || "-"}</td>
+        <td>#${l.slot_position || "-"}</td>
+        <td>${l.badge_text || "-"}</td>
+        <td style="color:var(--text-secondary)">${(l.start_date || "").substring(0, 10)}</td>
+        <td style="color:var(--text-secondary)">${(l.end_date || "").substring(0, 10)}</td>
+        <td><span class="badge ${active ? "active" : "inactive"}">${active ? "Active" : "Inactive"}</span></td>
+        <td>
+          <button class="btn btn-sm" onclick="editSponsored('${l.id}')">✏️</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteSponsored('${l.id}')">🗑️</button>
+        </td>
+      </tr>`;
+    }
+    h += '</tbody></table>';
+    
+    container.innerHTML = h;
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
+  }
+}
+
+async function showAddSponsoredForm(dirId) {
+  const overlay = document.getElementById("modalOverlay");
+  if (!overlay) {
+    const div = document.createElement("div");
+    div.id = "modalOverlay";
+    div.className = "modal-overlay";
+    document.body.appendChild(div);
+  }
+  document.getElementById("modalOverlay").innerHTML = `
+    <div class="modal">
+      <h2>New Sponsored Listing</h2>
+      <div class="form-group">
+        <label>Business ID (UUID)</label>
+        <input id="spBizId" type="text" placeholder="Business UUID">
+      </div>
+      <div class="form-group">
+        <label>Badge Text</label>
+        <input id="spBadge" type="text" placeholder="e.g. ★ Featured, 🏆 Top Rated">
+      </div>
+      <div class="form-group">
+        <label>Slot Position</label>
+        <input id="spSlot" type="number" value="1" min="1">
+      </div>
+      <div class="form-group">
+        <label>Start Date (YYYY-MM-DD)</label>
+        <input id="spStart" type="date" value="${new Date().toISOString().split('T')[0]}">
+      </div>
+      <div class="form-group">
+        <label>End Date (YYYY-MM-DD)</label>
+        <input id="spEnd" type="date" value="${new Date(Date.now() + 30*86400000).toISOString().split('T')[0]}">
+      </div>
+      <div class="form-group">
+        <label>Price Paid</label>
+        <input id="spPrice" type="number" step="0.01" value="0">
+      </div>
+      <div class="form-group">
+        <label>Featured</label>
+        <input id="spFeatured" type="checkbox" checked>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSponsored('${dirId}')">Create</button>
+      </div>
+    </div>`;
+  document.getElementById("modalOverlay").style.display = "flex";
+}
+
+async function saveSponsored(dirId) {
+  const bizId = document.getElementById("spBizId").value.trim();
+  if (!bizId) { toast("Business ID is required", "error"); return; }
+  try {
+    await po("/monetization/sponsored-listings", {
+      directory_id: dirId,
+      business_id: bizId,
+      badge_text: document.getElementById("spBadge").value || null,
+      slot_position: parseInt(document.getElementById("spSlot").value) || 1,
+      start_date: document.getElementById("spStart").value,
+      end_date: document.getElementById("spEnd").value,
+      price_paid: parseFloat(document.getElementById("spPrice").value) || 0,
+      featured: document.getElementById("spFeatured").checked,
+      currency: "USD",
+      is_active: true,
+    });
+    toast("Spotlight created!", "success");
+    closeModal();
+    loadSponsoredForDir(dirId);
+  } catch(e) {
+    toast(e.message, "error");
+  }
+}
+
+async function editSponsored(id) {
+  try {
+    const listing = await g("/monetization/sponsored-listings/" + id);
+    const l = listing.listing || listing;
+    const overlay = document.getElementById("modalOverlay") || document.createElement("div");
+    overlay.id = "modalOverlay";
+    overlay.className = "modal-overlay";
+    if (!overlay.parentNode) document.body.appendChild(overlay);
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Edit Sponsored Listing</h2>
+        <div class="form-group">
+          <label>Badge Text</label>
+          <input id="spBadge" type="text" value="${l.badge_text || ""}" placeholder="e.g. ★ Featured">
+        </div>
+        <div class="form-group">
+          <label>Slot Position</label>
+          <input id="spSlot" type="number" value="${l.slot_position || 1}" min="1">
+        </div>
+        <div class="form-group">
+          <label>Start Date</label>
+          <input id="spStart" type="date" value="${(l.start_date || "").substring(0, 10)}">
+        </div>
+        <div class="form-group">
+          <label>End Date</label>
+          <input id="spEnd" type="date" value="${(l.end_date || "").substring(0, 10)}">
+        </div>
+        <div class="form-group">
+          <label>Active</label>
+          <input id="spActive" type="checkbox" ${l.is_active ? "checked" : ""}>
+        </div>
+        <div class="form-group">
+          <label>Featured</label>
+          <input id="spFeatured" type="checkbox" ${l.featured ? "checked" : ""}>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="updateSponsored('${id}')">Update</button>
+        </div>
+      </div>`;
+    overlay.style.display = "flex";
+  } catch(e) {
+    toast(e.message, "error");
+  }
+}
+
+async function updateSponsored(id) {
+  try {
+    await po("/monetization/sponsored-listings/" + id, {
+      badge_text: document.getElementById("spBadge").value || null,
+      slot_position: parseInt(document.getElementById("spSlot").value) || 1,
+      start_date: document.getElementById("spStart").value,
+      end_date: document.getElementById("spEnd").value,
+      is_active: document.getElementById("spActive").checked,
+      featured: document.getElementById("spFeatured").checked,
+    });
+    toast("Spotlight updated!", "success");
+    closeModal();
+    loadSponsoredForDir(_sponsoredDirId);
+  } catch(e) {
+    toast(e.message, "error");
+  }
+}
+
+async function deleteSponsored(id) {
+  if (!confirm("Delete this sponsored listing?")) return;
+  try {
+    const r = await fetch(API + "/monetization/sponsored-listings/" + id, {
+      method: "DELETE",
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    toast("Spotlight deleted", "success");
+    loadSponsoredForDir(_sponsoredDirId);
+  } catch(e) {
+    toast(e.message, "error");
+  }
+}
+
+function closeModal() {
+  const el = document.getElementById("modalOverlay");
+  if (el) el.style.display = "none";
+}
+
+// ── Notifications ──
+let _notifDirId = "";
+
+async function loadNotifications() {
+  const el = document.getElementById("pageContent");
+  el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    const dirs = await g("/directories");
+    const dirList = dirs.data || dirs || [];
+    
+    let h = `<div class="card">
+      <h3>Select Directory</h3>
+      <div class="form-group">
+        <select id="notifDirSelect" onchange="loadNotifsForDir(this.value)">
+          <option value="">-- Choose a directory --</option>`;
+    dirList.forEach(d => {
+      h += `<option value="${d.id}">${d.name} (${d.slug})</option>`;
+    });
+    h += `</select>
+      </div>
+    </div>
+    <div id="notifListContainer">
+      <div class="empty-state"><div class="icon">🔔</div><h3>Select a directory</h3><p>Choose a directory above to manage notifications</p></div>
+    </div>`;
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
+  }
+}
+
+async function loadNotifsForDir(dirId) {
+  if (!dirId) return;
+  _notifDirId = dirId;
+  const container = document.getElementById("notifListContainer");
+  container.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
+  try {
+    const notifs = await g("/monetization/notifications?directory_id=" + dirId);
+    const list = Array.isArray(notifs) ? notifs : [];
+    
+    let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    h += `<span style="font-size:.85rem;color:var(--text-secondary)">${list.length} notifications</span>`;
+    h += `<button class="btn btn-primary btn-sm" onclick="showAddNotifForm('${dirId}')">+ New Notification</button></div>`;
+    
+    if (!list.length) {
+      h += '<div class="empty-state"><div class="icon">🔔</div><h3>No notifications</h3><p>Create announcements that appear as a ticker bar</p></div>';
+      container.innerHTML = h;
+      return;
+    }
+    
+    h += '<table><thead><tr><th>Message</th><th>Type</th><th>Link</th><th>Active</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
+    for (let i = 0; i < list.length; i++) {
+      const n = list[i];
+      const isActive = n.is_active && (!n.expires_at || new Date(n.expires_at) > new Date());
+      h += `<tr>
+        <td>${n.message || "-"}</td>
+        <td><span class="badge ${n.notification_type === "info" ? "active" : n.notification_type === "warning" ? "pending" : "active"}">${n.notification_type || "info"}</span></td>
+        <td>${n.link_text ? `<a href="${n.link_url || "#"}" target="_blank">${n.link_text}</a>` : "-"}</td>
+        <td><span class="badge ${isActive ? "active" : "inactive"}">${isActive ? "Active" : "Inactive"}</span></td>
+        <td style="color:var(--text-secondary)">${n.expires_at ? new Date(n.expires_at).toLocaleDateString() : "Never"}</td>
+        <td>
+          <button class="btn btn-sm" onclick="toggleNotif('${n.id}', ${!n.is_active})">${n.is_active ? "🔴" : "🟢"}</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteNotif('${n.id}')">🗑️</button>
+        </td>
+      </tr>`;
+    }
+    h += '</tbody></table>';
+    container.innerHTML = h;
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
+  }
+}
+
+async function showAddNotifForm(dirId) {
+  let overlay = document.getElementById("notifModal");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "notifModal";
+    overlay.className = "modal-overlay";
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>New Notification</h2>
+      <div class="form-group">
+        <label>Message *</label>
+        <textarea id="notifMsg" rows="2" placeholder="Announcement text for ticker bar"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select id="notifType">
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="promo">Promotion</option>
+          <option value="alert">Alert</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Link Text (optional)</label>
+        <input id="notifLinkText" type="text" placeholder="Learn More">
+      </div>
+      <div class="form-group">
+        <label>Link URL</label>
+        <input id="notifLinkUrl" type="url" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label>Active</label>
+        <input id="notifActive" type="checkbox" checked>
+      </div>
+      <div class="form-group">
+        <label>Expires At (optional)</label>
+        <input id="notifExpires" type="datetime-local">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeNotifModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveNotif('${dirId}')">Create</button>
+      </div>
+    </div>`;
+  overlay.style.display = "flex";
+}
+
+async function saveNotif(dirId) {
+  const msg = document.getElementById("notifMsg").value.trim();
+  if (!msg) { toast("Message is required", "error"); return; }
+  const expires = document.getElementById("notifExpires").value;
+  try {
+    await po("/monetization/notifications", {
+      directory_id: dirId,
+      message: msg,
+      notification_type: document.getElementById("notifType").value,
+      link_text: document.getElementById("notifLinkText").value || null,
+      link_url: document.getElementById("notifLinkUrl").value || null,
+      is_active: document.getElementById("notifActive").checked,
+      expires_at: expires ? new Date(expires).toISOString() : null,
+    });
+    toast("Notification created!", "success");
+    closeNotifModal();
+    loadNotifsForDir(dirId);
+  } catch(e) {
+    toast(e.message, "error");
+  }
+}
+
+async function toggleNotif(id, newState) {
+  try {
+    await po("/monetization/notifications/" + id, { is_active: newState });
+    toast("Notification updated", "success");
+    loadNotifsForDir(_notifDirId);
+  } catch(e) {
+    toast(e.message, "error");
+  }
+}
+
+async function deleteNotif(id) {
+  if (!confirm("Delete this notification?")) return;
+  try {
+    const r = await fetch(API + "/monetization/notifications/" + id, {
+      method: "DELETE",
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    toast("Notification deleted", "success");
+    loadNotifsForDir(_notifDirId);
+  } catch(e) {
+    toast(e.message, "error");
+  }
+}
+
+function closeNotifModal() {
+  const el = document.getElementById("notifModal");
+  if (el) el.style.display = "none";
 }
 
 // Bootstrap

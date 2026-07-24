@@ -1947,3 +1947,212 @@ pub async fn update_approval(
 
     Ok(Json(json!({"status": "updated", "item_status": status})))
 }
+
+
+// ── Directory Notifications ──────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct DirectoryNotification {
+    pub id: Uuid,
+    pub directory_id: Uuid,
+    pub message: String,
+    pub link_text: Option<String>,
+    pub link_url: Option<String>,
+    pub notification_type: String,
+    pub is_active: bool,
+    pub starts_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateNotificationRequest {
+    pub directory_id: Uuid,
+    pub message: String,
+    pub link_text: Option<String>,
+    pub link_url: Option<String>,
+    pub notification_type: Option<String>,
+    pub is_active: Option<bool>,
+    pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// GET /api/v1/monetization/notifications — list all notifications (optional ?directory_id=)
+pub async fn list_notifications(
+    State(s): State<AppState>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let notifications = if let Some(dir_id) = q.get("directory_id") {
+        let uuid = Uuid::parse_str(dir_id)
+            .map_err(|_| AppError::Validation("invalid directory_id".to_string()))?;
+        sqlx::query_as::<_, DirectoryNotification>(
+            "SELECT * FROM directory_notifications WHERE directory_id = $1 ORDER BY created_at DESC"
+        )
+        .bind(uuid)
+        .fetch_all(&s.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, DirectoryNotification>(
+            "SELECT * FROM directory_notifications ORDER BY created_at DESC"
+        )
+        .fetch_all(&s.db)
+        .await?
+    };
+
+    Ok(Json(notifications))
+}
+
+/// POST /api/v1/monetization/notifications — create a notification
+pub async fn create_notification(
+    State(s): State<AppState>,
+    Json(req): Json<CreateNotificationRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let notification = sqlx::query_as::<_, DirectoryNotification>(
+        r#"INSERT INTO directory_notifications (directory_id, message, link_text, link_url, notification_type, is_active, starts_at, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, directory_id, message, link_text, link_url, notification_type, is_active, starts_at, expires_at, created_at, updated_at"#
+    )
+    .bind(req.directory_id)
+    .bind(&req.message)
+    .bind(&req.link_text)
+    .bind(&req.link_url)
+    .bind(req.notification_type.unwrap_or_else(|| "info".to_string()))
+    .bind(req.is_active.unwrap_or(true))
+    .bind(req.starts_at.unwrap_or_else(chrono::Utc::now))
+    .bind(req.expires_at)
+    .fetch_one(&s.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(json!(notification))))
+}
+
+/// PUT /api/v1/monetization/notifications/:id — update notification
+pub async fn update_notification(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<serde_json::Value>,
+) -> ApiResult<impl IntoResponse> {
+    let existing = sqlx::query_as::<_, DirectoryNotification>(
+        "SELECT * FROM directory_notifications WHERE id = $1"
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Notification not found".to_string()))?;
+
+    let notification = sqlx::query_as::<_, DirectoryNotification>(
+        r#"UPDATE directory_notifications SET
+            message = COALESCE($1, message),
+            link_text = COALESCE($2, link_text),
+            link_url = COALESCE($3, link_url),
+            notification_type = COALESCE($4, notification_type),
+            is_active = COALESCE($5, is_active),
+            starts_at = COALESCE($6, starts_at),
+            expires_at = $7,
+            updated_at = NOW()
+        WHERE id = $8
+        RETURNING id, directory_id, message, link_text, link_url, notification_type, is_active, starts_at, expires_at, created_at, updated_at"#
+    )
+    .bind(body.get("message").and_then(|v| v.as_str()).or(Some(&existing.message)))
+    .bind(body.get("link_text").and_then(|v| v.as_str()).or(existing.link_text.as_deref()))
+    .bind(body.get("link_url").and_then(|v| v.as_str()).or(existing.link_url.as_deref()))
+    .bind(body.get("notification_type").and_then(|v| v.as_str()).or(Some(&existing.notification_type)))
+    .bind(body.get("is_active").and_then(|v| v.as_bool()).or(Some(existing.is_active)))
+    .bind(body.get("starts_at").and_then(|v| v.as_str()).and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.with_timezone(&chrono::Utc)).or(Some(existing.starts_at)))
+    .bind(body.get("expires_at").and_then(|v| v.as_str()).and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.with_timezone(&chrono::Utc)).or(existing.expires_at))
+    .bind(id)
+    .fetch_one(&s.db)
+    .await?;
+
+    Ok(Json(json!(notification)))
+}
+
+/// DELETE /api/v1/monetization/notifications/:id — delete notification
+pub async fn delete_notification(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let result = sqlx::query("DELETE FROM directory_notifications WHERE id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Notification not found".to_string()));
+    }
+
+    Ok(Json(json!({"message": "Notification deleted"})))
+}
+
+
+// ── Public Spotlight Endpoint ────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct SpotlightBusiness {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub phone: Option<String>,
+    pub website: Option<String>,
+    pub address: Option<String>,
+    pub city: Option<String>,
+    pub rating: Option<f64>,
+    pub review_count: Option<i32>,
+    pub badge_text: Option<String>,
+    pub slot_position: i32,
+    pub featured: Option<bool>,
+}
+
+/// GET /api/v1/spotlight/:directory_id — public endpoint for active spotlight listings with business details
+pub async fn get_spotlight_businesses(
+    State(s): State<AppState>,
+    Path(dir_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let spotlights = sqlx::query_as::<_, SpotlightBusiness>(
+        r#"SELECT sl.id, b.name, b.slug, b.description,
+                  dc.name as category,
+                  b.phone, b.website, b.address, b.city,
+                  b.rating, b.review_count,
+                  sl.badge_text, sl.slot_position, sl.featured
+           FROM sponsored_listings sl
+           JOIN businesses b ON b.id = sl.business_id
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
+           WHERE sl.directory_id = $1
+             AND sl.is_active = true
+             AND sl.start_date <= CURRENT_DATE
+             AND sl.end_date >= CURRENT_DATE
+           ORDER BY sl.slot_position ASC, sl.featured DESC"#
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(spotlights))
+}
+
+
+// ── Public Notifications Endpoint ────────────────────────────────────────────
+
+/// GET /api/v1/notifications/:directory_id — public endpoint for active notifications
+pub async fn get_active_notifications(
+    State(s): State<AppState>,
+    Path(dir_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let notifications = sqlx::query_as::<_, DirectoryNotification>(
+        r#"SELECT id, directory_id, message, link_text, link_url, notification_type, is_active, starts_at, expires_at, created_at, updated_at
+           FROM directory_notifications
+           WHERE directory_id = $1
+             AND is_active = true
+             AND starts_at <= NOW()
+             AND (expires_at IS NULL OR expires_at >= NOW())
+           ORDER BY created_at DESC"#
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(notifications))
+}
