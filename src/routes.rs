@@ -228,6 +228,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/monetization/sponsored-listings", get(monetization::list_sponsored_listings).post(monetization::create_sponsored_listing))
         .route("/monetization/sponsored-listings/:id", get(monetization::get_sponsored_listing).put(monetization::update_sponsored_listing).delete(monetization::delete_sponsored_listing))
         .route("/monetization/directories/:slug/sponsored-listings", get(monetization::directory_sponsored_listings))
+        // ??? Directory Notification routes (Phase 4)
+        .route("/monetization/notifications", get(monetization::list_notifications).post(monetization::create_notification))
+        .route("/monetization/notifications/:id", put(monetization::update_notification).delete(monetization::delete_notification))
         // ??? Call Tracking routes
         .route("/call-logs", get(call_tracking::list_call_logs).post(call_tracking::create_call_log))
         .route("/call-logs/:id", get(call_tracking::get_call_log))
@@ -390,6 +393,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/zaarhub/search", get(zaarhub::search_businesses))
         .route("/zaarhub/business/:slug/:id", get(zaarhub::get_business_detail))
         .route("/ads/active/:directory_id", get(monetization::get_active_ads))
+        // ??? Public Spotlight & Notifications endpoints (Phase 4)
+        .route("/spotlight/:directory_id", get(monetization::get_spotlight_businesses))
+        .route("/notifications/:directory_id", get(monetization::get_active_notifications))
         // ZaarHub config is managed via PUT /directories/:id/features
         // ? Booking routes (no auth required)
         .route("/directories/:slug/businesses/:business_id/available-slots", get(bookings::get_available_slots))
@@ -907,6 +913,9 @@ async fn auth_guard(
         || path.starts_with("/zaarhub/")
         // Public ad rendering (no auth)
         || path.starts_with("/ads/")
+        // Public spotlight & notifications (Phase 4)
+        || path.starts_with("/spotlight/")
+        || path.starts_with("/notifications/")
         // Stage 5: Server-rendered my-bookings page (handles auth internally)
         || path == "/my-bookings"
         // Stage 5: SSO (handlers authenticate internally)
