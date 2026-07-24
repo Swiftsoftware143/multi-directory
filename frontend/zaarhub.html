@@ -185,9 +185,18 @@ a:hover{text-decoration:underline}
 .zh-footer a:hover{color:#fff;text-decoration:none}
 .zh-footer-bottom{border-top:1px solid #1e293b;margin-top:32px;padding-top:20px;max-width:1280px;margin-left:auto;margin-right:auto;font-size:.78rem;text-align:center}
 
-/* ── Loading ── */
+/* ── Loading Transition ── */
 .zh-loading{text-align:center;padding:80px 24px;color:var(--text-light)}
-.zh-spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear;display:inline-block}
+.zh-loading-full{position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,#0f172a 0%,#1c1917 50%,#431407 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s ease}
+.zh-loading-full.hide{opacity:0;pointer-events:none}
+.zh-loading-full .zh-logo-load{font-size:2.2rem;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.zh-loading-full .zh-logo-load span{color:var(--orange)}
+.zh-loading-full .zh-tagline{color:#a8a29e;font-size:.9rem;margin-bottom:32px}
+.zh-loader-bar{width:120px;height:3px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
+.zh-loader-bar-inner{height:100%;width:0;background:linear-gradient(90deg,var(--orange),#f97316);border-radius:4px;animation:loaderProgress 1.2s ease-in-out infinite}
+@keyframes loaderProgress{0%{width:0;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0;margin-left:100%}}
+
+.zh-spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--orange);border-radius:50%;animation:spin .6s linear;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── City Page ── */
@@ -396,9 +405,10 @@ a:hover{text-decoration:underline}
 <body>
 
 <div id="app">
-  <div class="zh-loading">
-    <div class="zh-spinner"></div>
-    <p style="margin-top:12px;font-size:.9rem">Loading ZaarHub...</p>
+  <div class="zh-loading-full" id="splash-load">
+    <div class="zh-logo-load">🌐 Zaar<span>Hub</span></div>
+    <div class="zh-tagline">Discover your community</div>
+    <div class="zh-loader-bar"><div class="zh-loader-bar-inner"></div></div>
   </div>
 </div>
 
@@ -512,6 +522,10 @@ function hasOwnerAccounts(){return false}
 
 // ── Router ──
 function route(){
+  // Hide splash screen
+  var splash=document.getElementById('splash-load');
+  if(splash) setTimeout(function(){splash.classList.add('hide')},400);
+  
   let hash=location.hash.slice(1)||'/';
   if(hash.startsWith('/city/')){
     state.page='city';state.slug=hash.split('/')[2];state.filterCategory=''
@@ -838,7 +852,7 @@ function renderHomepageContent(d){
   if(spotlights.length){
     for(var i=0;i<Math.min(spotlights.length,6);i++){
       var sp=spotlights[i];
-      var stars=sp.rating?'★'.repeat(Math.round(sp.rating))+'☆'.repeat(5-Math.round(sp.rating)):''
+      var r=Math.round(sp.rating||0);var stars=r>0?'★'.repeat(Math.min(r,5))+'☆'.repeat(5-Math.min(r,5)):''
       var badge=sp.badge_text||'⭐ Spotlight'
       spotlightHtml+='<div class="zh-spotlight-card" onclick="location.hash=\'#/city/'+sp.directory_slug+'\'">'+
         '<div class="spot-badge">'+esc(badge)+'</div>'+
@@ -884,13 +898,13 @@ function renderHomepageContent(d){
   var activityHtml=''
   for(var i=0;i<activity.length;i++){
     var a=activity[i]
-    var stars='★'.repeat(a.rating)+'☆'.repeat(5-a.rating)
-    var msg='<span class="stars">'+stars+'</span> <strong>'+esc(a.reviewer_name||'Someone')+'</strong> reviewed <strong>'+esc(a.business_name||'')+'</strong>'
+    var r=parseInt(a.rating)||0;var stars=r>0?'★'.repeat(Math.min(r,5))+'☆'.repeat(5-Math.min(r,5)):''
+    var msg=stars?'<span class="stars">'+stars+'</span> ':'<span class="stars">💬</span> '+esc(a.message||'')
     activityHtml+='<div class="zh-activity-item" onclick="location.hash=\'#/city/'+a.directory_slug+'\'">'+
-      '<div class="zh-activity-avatar">'+(a.reviewer_name?esc(a.reviewer_name[0]):'👤')+'</div>'+
+      '<div class="zh-activity-avatar">'+(a.reviewer_name?esc(a.reviewer_name[0]):(a.message&&a.message.includes('rated')?a.message.split(' ')[1][0]:'👤'))+'</div>'+  
       '<div class="zh-activity-body">'+
       '<div class="msg">'+msg+'</div>'+
-      '<div class="time">'+ago(a.timestamp)+'</div>'+
+      '<div class="time">'+ago(a.timestamp)+'</div>'+  
     '</div></div>'
   }
 
@@ -1240,7 +1254,7 @@ function renderCityPage(d){
     if(b.is_family_owned)badges+='<span class="zh-badge zh-badge-family">👨‍👩‍👧‍👦 Family Owned</span>'
     if(b.has_deal)badges+='<span class="zh-badge zh-badge-perk">🎁 Exclusive Deal</span>'
     var stars='';var reviewCount=0
-    if(b.rating){stars='★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating));reviewCount=b.review_count||0}
+    if(b.rating){var r=Math.round(b.rating);stars='★'.repeat(Math.min(r,5))+'☆'.repeat(5-Math.min(r,5));reviewCount=b.review_count||0}
     var isSaved=findCollectionForBiz(b.name)!==null
     // Build lat/lng data attributes
     var latAttr=b.lat?(' data-lat="'+b.lat+'"'):''
@@ -1446,7 +1460,7 @@ function renderSearchResults(r){
     h+='<h3 style="margin-bottom:12px">🏪 Businesses</h3><div class="zh-biz-grid">'
     for(var i=0;i<biz.length;i++){
       var b=biz[i]
-      var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
+      var r=Math.round(b.rating||0);var stars=r>0?'★'.repeat(Math.min(r,5))+'☆'.repeat(5-Math.min(r,5)):''
       var distBadge=''
       if(state.isNearActive&&state.userLat&&state.userLng&&b.latitude&&b.longitude){
         var distKm=haversineKm(state.userLat,state.userLng,b.latitude,b.longitude)
