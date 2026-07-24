@@ -134,3 +134,5 @@ pub mod zaarhub;
 pub use zaarhub::*;
 pub mod messaging;
 pub use messaging::*;
+pub mod affiliate_proxy;
+pub use affiliate_proxy::*;
