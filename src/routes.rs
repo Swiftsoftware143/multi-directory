@@ -379,14 +379,6 @@ pub fn create_router(s: AppState) -> Router {
         .route("/loyalty/admin/purchase-pin", get(loyalty_proxy::get_purchase_pin))
         .route("/loyalty/admin/offers", get(loyalty_proxy::offers_list).post(loyalty_proxy::offers_create))
         .route("/loyalty/admin/offers/:id", get(loyalty_proxy::offers_get).put(loyalty_proxy::offers_update).delete(loyalty_proxy::offers_delete))
-        // ? Affiliate dashboard (proxy to FunnelSwift)
-        .route("/affiliate/connect", post(affiliate_proxy::affiliate_signup))
-        .route("/affiliate/login", post(affiliate_proxy::affiliate_login))
-        .route("/affiliate/dashboard", get(affiliate_proxy::affiliate_dashboard))
-        .route("/affiliate/links", get(affiliate_proxy::affiliate_links).post(affiliate_proxy::create_affiliate_link))
-        .route("/affiliate/stats", get(affiliate_proxy::affiliate_stats))
-        .route("/affiliate/products", get(affiliate_proxy::affiliate_products))
-        .route("/affiliate/conversions", get(affiliate_proxy::affiliate_conversions))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
