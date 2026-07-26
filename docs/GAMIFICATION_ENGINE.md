@@ -5,7 +5,73 @@ Dual-sided earning system where **visitors** earn 1% back in ZaarCash on purchas
 and **businesses/suppliers** earn ZaarCash through **engagement activities** —
 keeping profiles sharp, responding to customers, and promoting the directory.
 
+### Business Model: Paid Loyalty Program
+Businesses **pay a monthly subscription** to participate in the loyalty program.
+Their subscription funds the ZaarCash they issue to customers — no out-of-pocket
+loss for the directory, no risk of businesses being drained.
+
+| Plan | Monthly | ZC Monthly Pool | Max Monthly ZC | Annual Cost |
+|------|---------|-----------------|----------------|-------------|
+| **Starter** | $19/mo | 2,000 ZC ($20 value) | 2,000 ZC issued to customers | $228 |
+| **Standard** | $49/mo | 6,000 ZC ($60 value) | 6,000 ZC issued to customers | $588 |
+| **Premium** | $99/mo | 15,000 ZC ($150 value) | 15,000 ZC issued to customers | $1,188 |
+
+**Pool mechanics:**
+- Monthly ZC pool refreshes on the 1st of each month
+- If pool runs dry, 2 options per tenant: (a) earning pauses until next refill, or (b) business pays overage at 1:1 ZC-to-cents
+- Pool can roll over for 1 month max (unused ZC doesn't accumulate forever)
+- The 10% bill cap still applies — how the ZC pool translates to actual cost:
+  - **Starter pool (2,000 ZC)** supports $2,000 in customer spend/month (at 1% cashback)
+  - **Standard pool (6,000 ZC)** supports $6,000 in customer spend/month
+  - **Premium pool (15,000 ZC)** supports $15,000 in customer spend/month
+- Business pays $19 and gets to issue $20 worth of ZaarCash — the math stays slightly positive or break-even for the directory
+
 ---
+
+## Database Migrations (IncentiveSwift)
+
+### 0. loyalty_plans (IS)
+Business subscription tiers for loyalty program access.
+
+```sql
+CREATE TABLE loyalty_plans (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name              TEXT NOT NULL,            -- "Starter", "Standard", "Premium"
+    slug              TEXT NOT NULL UNIQUE,     -- "starter", "standard", "premium"
+    monthly_price     INT NOT NULL,             -- cents (1900 = $19.00)
+    monthly_zc_pool   INT NOT NULL,             -- ZC pool per month
+    overage_rate      INT NOT NULL DEFAULT 1,   -- cents per ZC overage (1 = 100 ZC per $1)
+    features          TEXT[],                   -- ["scanner","offers","referrals","badges"]
+    is_active         BOOLEAN NOT NULL DEFAULT true,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO loyalty_plans (name, slug, monthly_price, monthly_zc_pool, features) VALUES
+  ('Starter',  'starter',  1900, 2000,  ARRAY['scanner','basic_offers']),
+  ('Standard', 'standard', 4900, 6000,  ARRAY['scanner','offers','referrals','badges']),
+  ('Premium',  'premium',  9900, 15000, ARRAY['scanner','offers','referrals','badges','analytics','featured']);
+```
+
+### 0a. accounts loyalty columns (IS)
+```sql
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_customer_id   TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS loyalty_plan         TEXT;  -- 'starter','standard','premium'
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS loyalty_plan_status  TEXT NOT NULL DEFAULT 'inactive';  -- active, past_due, canceled, trial
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS zc_pool_remaining    INT NOT NULL DEFAULT 0;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS zc_pool_total        INT NOT NULL DEFAULT 0;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS pool_reset_date      DATE;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS trial_ends_at         TIMESTAMPTZ;
+```
+
+### 0b. purchase_verify changes (IS)
+On each purchase verify:
+1. Check `loyalty_plan_status = 'active'` — reject if not paid
+2. Check `zc_pool_remaining >= credit_amount` — if not:
+   - Option A (default): reject with "business ZC pool exhausted"
+   - Option B (overage): deduct from pool, log overage for end-of-month billing
+3. Deduct `credit_amount` from `zc_pool_remaining`
+4. Monthly cron to refill `zc_pool_remaining = zc_pool_total` on 1st of month
 
 ## Database Migrations (MultiDirectory)
 
@@ -177,8 +243,52 @@ Badges awarded automatically when thresholds hit:
 
 ---
 
+## Paid Plan Flow (Stripe Integration)
+
+### Enrollment flow
+```
+Business clicks "Join Loyalty" in portal
+  └─ MD checks: is business a paid subscriber?
+       ├─ NO → redirect to Stripe checkout
+       │        └─ Stripe creates subscription (monthly)
+       │        └─ IS webhook: POST /api/v1/webhooks/stripe
+       │             └─ Sets loyalty_plan_status='active', assigns loyalty_plan, sets zc_pool
+       │             └─ Redirects back to portal → enrollment complete
+       └─ YES → enrolls in IS loyalty program immediately
+```
+
+### Stripe Webhook Events
+```
+POST /api/v1/webhooks/stripe (in IS)
+  Events handled:
+  - checkout.session.completed → activate subscription, set pool
+  - invoice.paid → reset monthly pool
+  - invoice.payment_failed → set loyalty_plan_status='past_due', pause earning
+  - customer.subscription.deleted → set loyalty_plan_status='canceled', revoke enrollment
+```
+
+### API Endpoints
+```
+# MD: Check subscription status
+GET  /api/v1/business/loyalty/status
+     → { enrolled: bool, plan: "starter", zc_pool_remaining: 1850, pool_reset_date: "2026-08-01" }
+
+# MD: Start checkout flow
+POST /api/v1/business/loyalty/subscribe
+     → { checkout_url: "https://checkout.stripe.com/..." }
+
+# MD: Cancel subscription
+POST /api/v1/business/loyalty/cancel
+     → { canceled_at: "...", pool_expires: "..." }
+
+# IS: Stripe webhook
+POST /api/v1/webhooks/stripe
+     (Stripe-signed, handles all subscription lifecycle events)
+```
+
 ## Implementation Order
 
+0. **Paid subscription gating** (IS: loyalty_plans table, accounts columns, Stripe webhook, purchase_verify gate)
 1. **Profile completion scoring** (MD migration + endpoint + recalculation trigger)
 2. **Review response tracking** (add columns + response endpoint + ZC award)
 3. **Business referral codes** (table + generate endpoint + public landing + click tracking)
@@ -191,11 +301,33 @@ Badges awarded automatically when thresholds hit:
 
 ## Cost Estimate
 
-At current rates (100 ZC = $1), maximum theoretical cost per business per year:
-- Profile: $5.00 (one-time)
-- Review responses: $1.00 per review answered
-- Referral signups: $2.00 per signup
-- Certs: $0.50 per cert (one-time)
+Business pays monthly subscription — the ZC pool is included.
+Directory has zero out-of-pocket for loyalty rewards. The 10% bill cap
+ensures the pool stretches across actual customer spend:
+- Starter: $19/mo → covers $2,000 in monthly customer spend
+- Standard: $49/mo → covers $6,000 in monthly customer spend  
+- Premium: $99/mo → covers $15,000 in monthly customer spend
 
-**Worst case for a highly engaged business: ~$15-20/year in ZC rewards.**
-At 1000 businesses = ~$15,000-20,000/year — funded by directory subscriptions.
+**Directory revenue at scale:**
+- 100 businesses on Starter = $1,900/mo MRR
+- 100 on Standard = $4,900/mo MRR  
+- Mix: 200 Starter + 50 Standard + 10 Premium = $7,240/mo MRR
+
+**Key win:** The loyalty program becomes a **profit center** for the directory,
+not a cost center. Businesses pay for customer retention tools they'd pay for anyway.
+
+---
+
+## Immediate Next Step: Gate Enrollment Behind Paid Subscription
+
+Before building profile scoring, referrals, or certs — gate the existing
+`POST /loyalty/enroll` behind a subscription check. No paid plan = no enrollment.
+
+Steps:
+1. Create `loyalty_plans` table in IS with 3 tiers
+2. Add Stripe columns to `accounts` table
+3. Wire Stripe checkout → webhook → activation in IS
+4. Update `purchase_verify` to check `loyalty_plan_status = 'active'`
+5. Update `POST /loyalty/enroll` in MD to check subscription status first
+6. Add `GET /business/loyalty/status` + `POST /business/loyalty/subscribe` endpoints
+7. Update portal CTAs: "Enroll Now" → "Start Free Trial" → Stripe checkout
