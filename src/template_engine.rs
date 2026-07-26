@@ -426,7 +426,7 @@ mod tests {
     fn test_template_engine_new() {
         let engine = TemplateEngine::new();
         let templates = engine.available_templates();
-        assert_eq!(templates.len(), 11);
+        assert_eq!(templates.len(), 15);
     }
 
     #[test]
