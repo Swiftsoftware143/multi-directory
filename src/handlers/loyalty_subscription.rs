@@ -28,22 +28,9 @@ pub struct SubscribeRequest {
     pub cancel_url: Option<String>,
 }
 
-/// Full loyalty subscription status returned to the business portal.
-#[derive(Debug, Serialize)]
-pub struct LoyaltyStatusResponse {
-    pub has_account: bool,
-    pub is_subscribed: bool,
-    pub plan: Option<String>,
-    pub plan_status: String,
-    pub zc_pool_remaining: i32,
-    pub zc_pool_total: i32,
-    pub pool_reset_date: Option<String>,
-    pub plans_available: Vec<PlanInfo>,
-}
-
 /// Available loyalty plan info.
 #[derive(Debug, Serialize)]
-pub struct PlanInfo {
+pub(crate) struct PlanInfo {
     pub slug: String,
     pub name: String,
     pub monthly_price: i32,
