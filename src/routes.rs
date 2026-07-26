@@ -685,9 +685,9 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
-                    // ??? Serve distributor/B2B supplier portal
-                    if path == "/distributor" || path == "/distributor/" || path.starts_with("/distributor/dashboard") {
-                        let portal_path = std::path::Path::new(&frontend).join("distributor-portal.html");
+                    // ??? Serve supplier portal (B2B: distributors, wholesalers, farms, associations)
+                    if path == "/supplier" || path == "/supplier/" || path.starts_with("/supplier/dashboard") || path == "/distributor" || path == "/distributor/" || path.starts_with("/distributor/dashboard") {
+                        let portal_path = std::path::Path::new(&frontend).join("supplier-portal.html");
                         if portal_path.exists() {
                             match tokio::fs::read(&portal_path).await {
                                 Ok(content) => {

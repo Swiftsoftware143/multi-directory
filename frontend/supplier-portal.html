@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Supplier &amp; Distributor Portal - ZaarHub</title>
+<title>Supplier Portal - ZaarHub</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;--secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;--dark:#2b3255;--bg:#f8fafc;--card:#fff;--text:#4a5568;--text-secondary:#718096;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b;--accent:#8b5cf6}
@@ -121,7 +121,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 <div id="authScreen" class="auth-container">
   <div class="auth-card">
     <h1>🏪 ZaarHub Network</h1>
-    <p class="tagline">Supplier &amp; Distributor Portal</p>
+    <p class="tagline">Supplier Portal</p>
     <div id="authError" class="error"></div>
     <div id="authSuccess" class="success-msg"></div>
     <div class="tab-bar">
@@ -265,17 +265,19 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
           <div style="background:#f0fdf4;border-radius:8px;padding:14px">
             <h4 style="margin:0 0 8px;font-size:.9rem;color:#166534">📦 How You Earn</h4>
             <ul style="margin:0;padding-left:18px">
-              <li><strong>1 ZaarCash per $1</strong> on wholesale orders processed through the platform</li>
-              <li>$500 order = <strong>500 ZC</strong> (worth $5.00)</li>
-              <li>Earn from every buyer transaction — automatically tracked</li>
+              <li><strong>1% cashback</strong> on products & supplies you buy through the platform</li>
+              <li>Earn ZaarCash when you <strong>source from other suppliers</strong> on the network</li>
+              <li>Complete your profile, respond to inquiries, and keep inventory updated for bonus points</li>
             </ul>
           </div>
           <div style="background:#eff6ff;border-radius:8px;padding:14px">
-            <h4 style="margin:0 0 8px;font-size:.9rem;color:#1e40af">💸 How You Use It</h4>
+            <h4 style="margin:0 0 8px;font-size:.9rem;color:#1e40af">🏆 Business Perks You Unlock</h4>
             <ul style="margin:0;padding-left:18px">
-              <li><strong>100 ZC = $1.00</strong> toward any purchase</li>
-              <li>Redeem up to <strong>10% of any order</strong></li>
-              <li>Use at any participating supplier or business in the directory</li>
+              <li><strong>Featured placement</strong> — top of search results for a week</li>
+              <li><strong>Verified badge</strong> — build trust with buyers</li>
+              <li><strong>Premium tools</strong> — analytics, custom CTAs, lead insights</li>
+              <li><strong>Ad credits</strong> — free banner ad in the directory newsletter</li>
+              <li>Use earned ZC toward your <strong>listing subscription</strong></li>
             </ul>
           </div>
         </div>
@@ -288,9 +290,9 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         <div style="font-size:3rem;flex-shrink:0">🎯</div>
         <div style="flex:1;min-width:200px">
           <h3 style="font-size:1.3rem;margin:0 0 8px 0;color:#fff">Join ZaarHub B2B Loop</h3>
-          <p style="font-size:.9rem;margin:0 0 4px 0;opacity:0.95">✅ Earn <strong>1% cashback</strong> on wholesale orders</p>
-          <p style="font-size:.85rem;margin:0 0 4px 0;opacity:0.85">✅ Redeem anywhere — not locked to one supplier</p>
-          <p style="font-size:.85rem;margin:0;opacity:0.85">✅ Track business relationships with CRM integration</p>
+          <p style="font-size:.9rem;margin:0 0 4px 0;opacity:0.95">✅ Earn <strong>1% cashback</strong> when sourcing from other suppliers</p>
+          <p style="font-size:.85rem;margin:0 0 4px 0;opacity:0.85">✅ Unlock perks — featured placement, badges, ad credits</p>
+          <p style="font-size:.85rem;margin:0;opacity:0.85">✅ Use earned ZC toward your listing subscription fee</p>
         </div>
         <button id="enrollLoyaltyBtn" onclick="enrollInLoyalty()" style="background:#fff;color:#f27f2f;border:none;padding:14px 32px;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .2s">
           🚀 Enroll Now — Free
@@ -392,7 +394,7 @@ function showAuthSuccess(msg) {
 
 // ── API Calls ──
 async function g(path) {
-  var token = localStorage.getItem('distributorToken');
+  var token = localStorage.getItem('supplierToken');
   var h = {};
   if (token) h['Authorization'] = 'Bearer ' + token;
   var r = await fetch(API + path, { headers: h });
@@ -415,7 +417,7 @@ async function doLogin() {
   hideAuthMessages();
   try {
     var r = await po('/visitor/login', { email: email, password: password });
-    localStorage.setItem('distributorToken', r.access_token);
+    localStorage.setItem('supplierToken', r.access_token);
     localStorage.setItem('distributorInfo', JSON.stringify(r.visitor));
     toast('Signed in successfully!', 'success');
     loadDashboard();
@@ -445,7 +447,7 @@ async function doRegister() {
       phone: phone,
       business_type: businessType
     });
-    localStorage.setItem('distributorToken', r.access_token);
+    localStorage.setItem('supplierToken', r.access_token);
     localStorage.setItem('distributorInfo', JSON.stringify(r.visitor));
     showAuthSuccess('Account created! Loading your dashboard...');
     toast('Welcome to the ZaarHub Supplier Network!', 'success');
@@ -456,7 +458,7 @@ async function doRegister() {
 }
 
 function doLogout() {
-  localStorage.removeItem('distributorToken');
+  localStorage.removeItem('supplierToken');
   localStorage.removeItem('distributorInfo');
   $('dashboard').style.display = 'none';
   $('authScreen').style.display = '';
@@ -480,7 +482,7 @@ function businessTypeLabel(bt) {
 }
 
 async function loadDashboard() {
-  var token = localStorage.getItem('distributorToken');
+  var token = localStorage.getItem('supplierToken');
   if (!token) {
     $('authScreen').style.display = '';
     $('dashboard').style.display = 'none';
@@ -529,7 +531,7 @@ async function loadDashboard() {
 
 // ── Distributor Loyalty ──
 function loadDistributorLoyalty() {
-  var tok = localStorage.getItem('distributorToken');
+  var tok = localStorage.getItem('supplierToken');
   if (!tok) return;
   var h = { 'Authorization': 'Bearer ' + tok };
   fetch('/api/v1/loyalty/portal/dashboard', { headers: h })
@@ -567,7 +569,7 @@ function loadDistributorLoyalty() {
 function enrollInLoyalty() {
   var btn = document.getElementById('enrollLoyaltyBtn');
   var status = document.getElementById('enrollStatus');
-  var token = localStorage.getItem('distributorToken');
+  var token = localStorage.getItem('supplierToken');
   if (!token) { status.textContent = '⚠️ Not logged in'; status.style.display = ''; return; }
   btn.disabled = true;
   btn.textContent = '⏳ Enrolling...';
@@ -634,7 +636,7 @@ function showSWalkthrough(p){
 
 // ── Init ──
 (function init() {
-  if (localStorage.getItem('distributorToken')) {
+  if (localStorage.getItem('supplierToken')) {
     loadDashboard();
     // Auto-show walkthrough on first visit
     setTimeout(function(){
