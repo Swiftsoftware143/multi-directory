@@ -230,6 +230,23 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
     </div>
 
+    <!-- Loyalty Enrollment CTA (shown when not yet enrolled) -->
+    <div id="loyaltyEnrollCTA" style="display:none;background:linear-gradient(135deg,#f27f2f,#e0671e);border-radius:16px;padding:28px;margin:24px 0;color:#fff;box-shadow:0 4px 20px rgba(242,127,47,0.3)">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="font-size:3rem;flex-shrink:0">🎯</div>
+        <div style="flex:1;min-width:200px">
+          <h3 style="font-size:1.3rem;margin:0 0 8px 0;color:#fff">Join ZaarCash Rewards</h3>
+          <p style="font-size:.9rem;margin:0 0 4px 0;opacity:0.95">✅ Earn points for every review, booking, and referral you make</p>
+          <p style="font-size:.85rem;margin:0 0 4px 0;opacity:0.85">✅ Redeem points for vouchers, discounts, and exclusive perks</p>
+          <p style="font-size:.85rem;margin:0;opacity:0.85">✅ Get a personal QR code to earn at checkout</p>
+        </div>
+        <button id="enrollLoyaltyBtn" onclick="enrollInLoyalty()" style="background:#fff;color:#f27f2f;border:none;padding:14px 32px;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .2s">
+          🚀 Enroll Now — Free
+        </button>
+      </div>
+      <div id="enrollStatus" style="margin-top:12px;font-size:.85rem;display:none"></div>
+    </div>
+
     <!-- Loyalty Wallet (if available) -->
     <div class="section">
       <div class="section-title">🎯 My Loyalty Wallet</div>
@@ -463,9 +480,49 @@ function loadVisitorLoyalty() {
       loadVisitorQR(h);
     })
     .catch(function() {
-      // Silent — visitor may not have IS account
-      // Still try QR
-      loadVisitorQR(h);
+      // Show enrollment CTA if loyalty dashboard fails (no IS account)
+      var cta = document.getElementById('loyaltyEnrollCTA');
+      if (cta) cta.style.display = '';
+    });
+}
+
+// ── Loyalty Enrollment ──
+function enrollInLoyalty() {
+  var btn = document.getElementById('enrollLoyaltyBtn');
+  var status = document.getElementById('enrollStatus');
+  var token = localStorage.getItem('visitorToken');
+  if (!token) { status.textContent = '⚠️ Not logged in'; status.style.display = ''; return; }
+  btn.disabled = true;
+  btn.textContent = '⏳ Enrolling...';
+  status.style.display = '';
+  status.textContent = 'Getting you set up with ZaarCash Rewards...';
+  status.style.color = '#fff';
+
+  fetch('/api/v1/loyalty/enroll', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: '{}'
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.success) {
+        status.textContent = '✅ ' + d.message + ' — reloading...';
+        var cta = document.getElementById('loyaltyEnrollCTA');
+        if (cta) cta.style.display = 'none';
+        // Reload loyalty data
+        setTimeout(function() { loadVisitorLoyalty(); }, 1500);
+      } else {
+        status.textContent = '❌ ' + (d.message || 'Enrollment failed');
+        status.style.color = '#ffe0e0';
+        btn.disabled = false;
+        btn.textContent = '🚀 Enroll Now';
+      }
+    })
+    .catch(function(e) {
+      status.textContent = '❌ Network error: ' + e.message;
+      status.style.color = '#ffe0e0';
+      btn.disabled = false;
+      btn.textContent = '🚀 Enroll Now — Free';
     });
 }
 
