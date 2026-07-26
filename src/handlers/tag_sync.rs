@@ -256,3 +256,65 @@ pub fn fire_tag_sync(
         perform_tag_sync(event).await;
     });
 }
+
+// ── IncentiveSwift Member Registration ──────────────────────────────────────
+
+/// Called after every member signup in MultiDirectory (visitor, supplier, business owner).
+/// Fire-and-forget to IncentiveSwift to create the contact and enroll in the loyalty program.
+pub async fn register_member_in_is(
+    email: String,
+    first_name: Option<String>,
+    last_name: Option<String>,
+    phone: Option<String>,
+    member_type: &str,
+    business_type: Option<String>,
+    directory_slug: Option<String>,
+    tags: Option<Vec<String>>,
+) {
+    let is_url = "http://localhost:8083/api/v1/loyalty/external/register-member".to_string();
+
+    let payload = serde_json::json!({
+        "email": email,
+        "first_name": first_name,
+        "last_name": last_name,
+        "phone": phone,
+        "member_type": member_type,
+        "business_type": business_type,
+        "directory_slug": directory_slug,
+        "tags": tags,
+    });
+
+    let email_for_log = payload["email"].as_str().unwrap_or("unknown").to_string();
+    let member_type_for_log = member_type.to_string();
+
+    tokio::spawn(async move {
+        match SYNC_CLIENT
+            .post(&is_url)
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    tracing::info!(
+                        "[register-member] IS enrollment OK for {} ({})",
+                        email_for_log, member_type_for_log
+                    );
+                } else {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    tracing::warn!(
+                        "[register-member] IS enrollment FAILED for {} ({}): {} {}",
+                        email_for_log, member_type_for_log, status, body
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[register-member] IS enrollment request failed for {} ({}): {}",
+                    email_for_log, member_type_for_log, e
+                );
+            }
+        }
+    });
+}

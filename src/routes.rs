@@ -419,17 +419,6 @@ pub fn create_router(s: AppState) -> Router {
         .route("/businesses/:business_id/services", get(service_catalog::list_services_for_business))
         // ? My Bookings server-rendered page
         .route("/my-bookings", get(public::my_bookings_page))
-        // ? Stage 5: Referral System
-        .route("/referrals/generate", post(referrals::generate_referral))
-        .route("/referrals/claim", post(referrals::claim_referral))
-        .route("/referrals/balance", get(referrals::get_referral_balance))
-        .route("/referrals/my-code", get(referrals::get_my_referral_code))
-        .route("/referrals/code/:code", get(referrals::get_referral_code_info))
-        // ? Stage 5: Admin Referral endpoints
-        .route("/admin/referrals", get(referrals::admin_list_referrals))
-        .route("/admin/referrals/:id/verify", post(referrals::admin_verify_referral))
-        .route("/admin/referrals/:id/reject", post(referrals::admin_reject_referral))
-        .route("/admin/referrals/:id/retry-payment", post(referrals::admin_retry_referral_payment))
         // ? BL29: Pricing engine — admin routes
         .route("/pricing/services", get(pricing::list_services))
         .route("/pricing/services/:service_key", put(pricing::update_service_price))
@@ -992,10 +981,6 @@ async fn auth_guard(
         || (path.starts_with("/book/") && req.method() == "GET")
         // Public bookmark count (no auth)
         || (path.starts_with("/bookmarks/count/") && req.method() == "GET")
-        // Stage 5: Public referral claim (no auth needed)
-        || (path == "/referrals/claim" && req.method() == "POST")
-        // Public referral code info (no auth)
-        || path.starts_with("/referrals/code/")
         // ZaarHub community frontend API (public)
         || path.starts_with("/zaarhub/")
         // Public ad rendering (no auth)

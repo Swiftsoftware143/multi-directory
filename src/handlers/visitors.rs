@@ -998,7 +998,11 @@ pub async fn claim_business(
         }
     });
 
-        // Create a CRM deal record in the default pipeline
+    // Note: IncentiveSwift loyalty program enrollment is a separate opt-in step.
+    // Business claim only creates the claim record; loyalty is opt-in via the portal.
+    // Loyalty auto-registration was removed per owner directive (July 25, 2026).
+
+    // Create a CRM deal record in the default pipeline
     let _ = create_claim_deal(&s.db, business_id, &req.owner_name, &req.owner_email, &req.owner_phone).await;
 
     // Auto-fetch business images from Google Places (fire-and-forget)

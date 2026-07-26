@@ -178,6 +178,10 @@ pub async fn b2b_register(
         });
     }
 
+    // Note: IncentiveSwift loyalty program enrollment is a separate opt-in step.
+    // Signup only classifies via survey (community member, business, supplier).
+    // Loyalty auto-registration was removed per owner directive (July 25, 2026).
+
     // Generate JWT with role=visitor (same pattern as visitor_register)
     let now_ts = Utc::now().timestamp() as usize;
     let claims = Claims {

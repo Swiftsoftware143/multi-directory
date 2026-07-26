@@ -437,23 +437,9 @@ pub async fn public_submit_survey(
     .fetch_one(&s.db)
     .await?;
 
-    // Apply tags to visitor account if one was provided
-    if let Some(visitor_id) = req.visitor_account_id {
-        if !all_tags.is_empty() {
-            sqlx::query(
-                r#"UPDATE visitor_accounts
-                   SET interest_tags = array_cat(
-                       COALESCE(interest_tags, '{}'::text[]),
-                       $1::text[]
-                   ), updated_at = NOW()
-                   WHERE id = $2"#
-            )
-            .bind(&all_tags)
-            .bind(visitor_id)
-            .execute(&s.db)
-            .await?;
-        }
-    }
+    // Tags are now managed in IncentiveSwift, not MD.
+    // The tag_sync fire below propagates tags to IS (via CoreSwift tag bridge).
+    // No MD-side tag storage — MD is the directory engine only.
 
     // ── Resolve visitor email for IncentiveSwift pipeline ──
     let visitor_email: Option<String> = if let Some(visitor_id) = req.visitor_account_id {
