@@ -266,21 +266,14 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div id="adEarningsContent" style="font-size:.85rem;color:var(--text-secondary)"></div>
     </div>
 
-    <!-- Loyalty Enrollment CTA (shown when not yet enrolled) -->
-    <div id="loyaltyEnrollCTA" style="display:none;background:linear-gradient(135deg,#f27f2f,#e0671e);border-radius:16px;padding:28px;margin:24px 0;color:#fff;box-shadow:0 4px 20px rgba(242,127,47,0.3)">
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        <div style="font-size:3rem;flex-shrink:0">🎯</div>
-        <div style="flex:1;min-width:200px">
-          <h3 style="font-size:1.3rem;margin:0 0 8px 0;color:#fff">Join ZaarCash Rewards</h3>
-          <p style="font-size:.9rem;margin:0 0 4px 0;opacity:0.95">✅ Earn points on every booking, review, and referral</p>
-          <p style="font-size:.85rem;margin:0 0 4px 0;opacity:0.85">✅ Redeem points for vouchers, discounts, and exclusive perks</p>
-          <p style="font-size:.85rem;margin:0;opacity:0.85">✅ Get a QR code for in-store checkout — your customers earn too</p>
-        </div>
-        <button id="enrollLoyaltyBtn" onclick="enrollInLoyalty()" style="background:#fff;color:#f27f2f;border:none;padding:14px 32px;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .2s">
-          🚀 Enroll Now — Free
-        </button>
+    <!-- Loyalty Plan Selector (shown when not yet enrolled) -->
+    <div id="loyaltyPlanSelector" style="display:none;margin:24px 0">
+      <h3 style="font-size:1.2rem;margin:0 0 8px 0">🎯 Join ZaarCash Rewards</h3>
+      <p style="font-size:.85rem;color:var(--text-secondary);margin:0 0 16px 0">Choose a plan to add your business to the loyalty network. Your customers earn 1% back in ZaarCash on every purchase — redeemable at any participating business in the community.</p>
+      <div id="planCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+        <div class="spinner" style="width:30px;height:30px;margin:20px auto"></div>
       </div>
-      <div id="enrollStatus" style="margin-top:12px;font-size:.85rem;display:none"></div>
+      <div id="planStatus" style="margin-top:12px;font-size:.85rem;display:none"></div>
     </div>
 
     <!-- ZaarCash Business Guide -->
@@ -292,12 +285,13 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div style="padding:16px 20px;font-size:.85rem;line-height:1.6">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
           <div style="background:#f0fdf4;border-radius:8px;padding:14px">
-            <h4 style="margin:0 0 8px;font-size:.9rem;color:#166534">📦 For Your Business</h4>
+            <h4 style="margin:0 0 8px;font-size:.9rem;color:#166534">📦 The Loyalty Program</h4>
             <ul style="margin:0;padding-left:18px">
-              <li>Customers earn <strong>1% back in ZaarCash</strong> — 1 ZC per $1 spent (100 ZC = $1 toward purchases)</li>
-              <li>Costs you <strong>nothing extra</strong> — funded by the directory</li>
-              <li>Redeem cap: <strong>10% of bill</strong> — $50 bill → max $5 off</li>
-              <li><strong>Free/deal items earn 0 points</strong> — use the earnable subtotal field</li>
+              <li><strong>Paid subscription</strong> — plans start at $19/mo with a monthly ZC pool</li>
+              <li>Customers earn <strong>1% back in ZaarCash</strong> — drawn from your monthly pool</li>
+              <li>Redeem cap: <strong>10% of bill</strong> — $50 bill → max $5 in ZaarCash off</li>
+              <li><strong>ZC pool refills monthly</strong> — unused ZC rolls over 1 month</li>
+              <li>Your subscription <strong>funds the rewards</strong> — no surprise costs</li>
             </ul>
           </div>
           <div style="background:#eff6ff;border-radius:8px;padding:14px">
@@ -379,6 +373,17 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       
       <!-- Credits Panel -->
       <div id="loyCreditsPanel" class="loyalty-panel" style="display:none">
+        <!-- ZC Pool Status Bar -->
+        <div id="zcPoolStatus" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;display:none">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <span style="font-size:.85rem;font-weight:600">📦 Monthly ZC Pool</span>
+            <span id="zcPoolLabel" style="font-size:.85rem;color:var(--text-secondary)"></span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden">
+            <div id="zcPoolBar" style="background:#f27f2f;height:100%;width:0%;border-radius:4px;transition:width .3s"></div>
+          </div>
+          <div id="zcPoolDetail" style="font-size:.75rem;color:var(--text-secondary);margin-top:4px"></div>
+        </div>
         <div class="section-title">💰 Credits Overview</div>
         <div id="creditsOverview" class="card-grid"></div>
         <div class="section-title" style="margin-top:16px">📋 Credit History</div>
@@ -965,12 +970,13 @@ function loadLoyaltyData() {
       renderLoyaltyDashboard(d);
       loading.style.display = 'none';
       content.style.display = '';
+      // Also load plan status for ZC pool bar
+      loadPlanStatus();
     })
     .catch(function(e) {
       loading.style.display = 'none';
-      // Show enrollment CTA if user has no IS account
-      var cta = document.getElementById('loyaltyEnrollCTA');
-      if (cta) cta.style.display = '';
+      // Show loyalty plan selector if user has no IS account
+      loadLoyaltyPlans();
       content.style.display = 'none';
     });
 }
@@ -996,6 +1002,25 @@ function renderLoyaltyDashboard(d) {
       (d.subscription_status ? ' &middot; <span class="badge ' + (d.subscription_status === 'active' ? 'active' : 'warning') + '">' + esc(d.subscription_status) + '</span>' : '') +
       '</p></div>';
   }
+}
+
+// ── Plan Status (ZC Pool Bar) ──
+function loadPlanStatus() {
+  var token = localStorage.getItem('bizToken');
+  if (!token) return;
+  fetch('/api/v1/business/loyalty/status', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function(r) { return r.json(); })
+    .then(function(s) {
+      if (!s.is_subscribed) return;
+      var bar = document.getElementById('zcPoolStatus');
+      if (!bar) return;
+      bar.style.display = '';
+      var pct = s.zc_pool_total > 0 ? Math.round((s.zc_pool_remaining / s.zc_pool_total) * 100) : 0;
+      document.getElementById('zcPoolBar').style.width = pct + '%';
+      document.getElementById('zcPoolLabel').textContent = s.zc_pool_remaining.toLocaleString() + ' / ' + s.zc_pool_total.toLocaleString() + ' ZC';
+      document.getElementById('zcPoolDetail').textContent = 
+        'Plan: ' + (s.plan || 'N/A') + ' • Resets: ' + (s.pool_reset_date || '1st of month') + ' • ' + pct + '% remaining';
+    });
 }
 
 // ── Credits Tab ──
@@ -1206,43 +1231,85 @@ function claimReward(id) {
     });
 }
 
-// ── Loyalty Enrollment ──
-function enrollInLoyalty() {
-  var btn = document.getElementById('enrollLoyaltyBtn');
-  var status = document.getElementById('enrollStatus');
+// ── Loyalty Plan Selector ──
+function loadLoyaltyPlans() {
+  var selector = document.getElementById('loyaltyPlanSelector');
+  var cards = document.getElementById('planCards');
   var token = localStorage.getItem('bizToken');
-  if (!token) { status.textContent = '⚠️ Not logged in'; status.style.display = ''; return; }
-  btn.disabled = true;
-  btn.textContent = '⏳ Enrolling...';
-  status.style.display = '';
-  status.textContent = 'Getting you set up with ZaarCash Rewards...';
-  status.style.color = '#fff';
+  if (!token || !selector) return;
+  
+  selector.style.display = '';
+  cards.innerHTML = '<div class="spinner" style="width:30px;height:30px;margin:20px auto"></div>';
+  
+  // Load available plans from IS
+  fetch('/api/v1/loyalty/plans?via=md', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(plans) {
+      if (!plans || !plans.length) {
+        cards.innerHTML = '<p style="color:var(--text-secondary);padding:20px;text-align:center">No plans available. Check back soon.</p>';
+        return;
+      }
+      cards.innerHTML = '';
+      plans.forEach(function(p) {
+        var zcDollars = (p.monthly_zc_pool / 100).toFixed(0);
+        var card = document.createElement('div');
+        card.style.cssText = 'background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:24px;text-align:center;transition:border-color .2s';
+        card.innerHTML = 
+          '<h4 style="font-size:1.1rem;margin:0 0 4px">' + esc(p.name) + '</h4>' +
+          '<div style="font-size:2rem;font-weight:800;color:#f27f2f;margin:8px 0">$' + (p.monthly_price / 100).toFixed(0) + '<span style="font-size:.85rem;font-weight:400;color:#64748b">/mo</span></div>' +
+          '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 12px">' + (p.description || '') + '</p>' +
+          '<div style="background:#f8fafc;border-radius:8px;padding:10px;margin:12px 0;font-size:.8rem;color:var(--text-secondary)">' +
+            '<strong>' + p.monthly_zc_pool.toLocaleString() + ' ZC</strong> monthly pool (worth $' + zcDollars + ' in rewards)<br>' +
+            (p.how_it_works || '') +
+          '</div>' +
+          '<button onclick="subscribeToPlan(\'' + escAttr(p.slug) + '\')" style="width:100%;background:#f27f2f;color:#fff;border:none;padding:12px;border-radius:8px;font-size:.95rem;font-weight:700;cursor:pointer">Choose ' + esc(p.name) + '</button>';
+        cards.appendChild(card);
+      });
+      // Hide if already enrolled
+      fetch('/api/v1/business/loyalty/status', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(r) { return r.json(); })
+        .then(function(s) {
+          if (s.is_subscribed) {
+            selector.style.display = 'none';
+            loadLoyaltyData();
+          }
+        });
+    })
+    .catch(function(e) {
+      cards.innerHTML = '<p style="color:var(--danger);padding:20px;text-align:center">Could not load plans: ' + esc(e.message) + '</p>';
+    });
+}
 
-  fetch('/api/v1/loyalty/enroll', {
+function subscribeToPlan(planSlug) {
+  var status = document.getElementById('planStatus');
+  var token = localStorage.getItem('bizToken');
+  if (!token) return;
+  status.style.display = '';
+  status.innerHTML = '<p style="color:var(--text-secondary);font-size:.85rem">⏳ Preparing checkout...</p>';
+  
+  fetch('/api/v1/business/loyalty/subscribe', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: '{}'
+    body: JSON.stringify({ plan_slug: planSlug })
   })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      if (d.success) {
-        status.textContent = '✅ ' + d.message + ' — reloading loyalty dashboard...';
-        var cta = document.getElementById('loyaltyEnrollCTA');
-        if (cta) cta.style.display = 'none';
-        // Reload loyalty data
+      if (d.checkout_url) {
+        // Redirect to Stripe checkout
+        window.location.href = d.checkout_url;
+      } else if (d.status === 'subscribed') {
+        status.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ You\'re enrolled! Reloading loyalty dashboard...</p>';
+        var selector = document.getElementById('loyaltyPlanSelector');
+        if (selector) selector.style.display = 'none';
         setTimeout(function() { loadLoyaltyData(); }, 1500);
       } else {
-        status.textContent = '❌ ' + (d.message || 'Enrollment failed');
-        status.style.color = '#ffe0e0';
-        btn.disabled = false;
-        btn.textContent = '🚀 Enroll Now';
+        status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + (d.error || d.message || 'Subscription failed. Please try again.') + '</p>';
       }
     })
     .catch(function(e) {
-      status.textContent = '❌ Network error: ' + e.message;
-      status.style.color = '#ffe0e0';
-      btn.disabled = false;
-      btn.textContent = '🚀 Enroll Now — Free';
+      status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Network error: ' + esc(e.message) + '</p>';
     });
 }
 

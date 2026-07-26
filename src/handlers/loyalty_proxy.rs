@@ -74,7 +74,7 @@ async fn resolve_is_account(db: &sqlx::PgPool, is_db: &sqlx::PgPool, md_claims: 
 }
 
 /// Proxy a GET to IS
-async fn proxy_get(path: &str, account_id: &str, email: &str, role: &str) -> Result<Value, AppError> {
+pub(crate) async fn proxy_get(path: &str, account_id: &str, email: &str, role: &str) -> Result<Value, AppError> {
     let secret = std::env::var("IS_JWT_SECRET")
         .unwrap_or_else(|_| "rr0NC13QNMpmvuopQjOZFqQKxtq1JosBr/i/mZ+QyrHwryQzaVzWKA1htAEBN9WI".to_string());
     let token = make_is_jwt(account_id, email, role, &secret)?;
@@ -93,7 +93,7 @@ async fn proxy_get(path: &str, account_id: &str, email: &str, role: &str) -> Res
 }
 
 /// Proxy a POST to IS
-async fn proxy_post(path: &str, body: &Value, account_id: &str, email: &str, role: &str) -> Result<Value, AppError> {
+pub(crate) async fn proxy_post(path: &str, body: &Value, account_id: &str, email: &str, role: &str) -> Result<Value, AppError> {
     let secret = std::env::var("IS_JWT_SECRET")
         .unwrap_or_else(|_| "rr0NC13QNMpmvuopQjOZFqQKxtq1JosBr/i/mZ+QyrHwryQzaVzWKA1htAEBN9WI".to_string());
     let token = make_is_jwt(account_id, email, role, &secret)?;

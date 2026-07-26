@@ -132,3 +132,4 @@ pub mod zaarhub;
 pub use zaarhub::*;
 pub mod messaging;
 pub use messaging::*;
+pub mod loyalty_subscription;
