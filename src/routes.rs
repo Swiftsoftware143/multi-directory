@@ -381,6 +381,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/loyalty/admin/purchase-pin", get(loyalty_proxy::get_purchase_pin))
         .route("/loyalty/admin/offers", get(loyalty_proxy::offers_list).post(loyalty_proxy::offers_create))
         .route("/loyalty/admin/offers/:id", get(loyalty_proxy::offers_get).put(loyalty_proxy::offers_update).delete(loyalty_proxy::offers_delete))
+        .route("/business/loyalty/status", get(loyalty_subscription::loyalty_status))
+        .route("/business/loyalty/subscribe", post(loyalty_subscription::loyalty_subscribe))
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
