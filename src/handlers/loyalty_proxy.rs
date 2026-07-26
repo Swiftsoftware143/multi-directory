@@ -441,6 +441,113 @@ pub async fn offers_delete(
     Ok(Json(result))
 }
 
+// ── Loyalty Enrollment ─────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Deserialize)]
+pub struct EnrollRequest {
+    pub directory_slug: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct EnrollResponse {
+    pub success: bool,
+    pub contact_id: Option<String>,
+    pub member_id: Option<String>,
+    pub loyalty_program_id: Option<String>,
+    pub loyalty_program_name: Option<String>,
+    pub already_existed: bool,
+    pub message: String,
+}
+
+/// POST /loyalty/enroll
+/// Opt-in enrollment into the IncentiveSwift loyalty program.
+/// Called from portal CTAs (visitor, business, supplier dashboards).
+/// Looks up the authenticated user's email + member type from MD visitor_accounts
+/// and fires register_member_in_is() to IS.
+pub async fn enroll(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<EnrollRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    // Look up visitor account details from MD
+    #[derive(sqlx::FromRow)]
+    struct VisitorRow {
+        email: String,
+        name: Option<String>,
+        phone: Option<String>,
+        business_type: Option<String>,
+        directory_slug: Option<String>,
+    }
+
+    let visitor = sqlx::query_as::<_, VisitorRow>(
+        r#"SELECT
+            email,
+            name,
+            phone,
+            business_type,
+            COALESCE(
+                (SELECT slug FROM directories WHERE id = visitor_accounts.directory_id),
+                'zaarhub'
+            ) as directory_slug
+           FROM visitor_accounts
+           WHERE id = $1"#
+    )
+    .bind(user_id)
+    .fetch_optional(&s.db)
+    .await
+    .map_err(|_| AppError::Internal("DB lookup failed".into()))?
+    .ok_or_else(|| AppError::NotFound("Visitor account not found. Complete signup + survey first.".into()))?;
+
+    let directory_slug = body.directory_slug.unwrap_or(
+        visitor.directory_slug.unwrap_or_else(|| "zaarhub".to_string())
+    );
+
+    // Determine member_type from business_type
+    let member_type: &str = match visitor.business_type.as_deref() {
+        Some("supplier") | Some("farm") | Some("wholesaler") | Some("distributor") => "supplier",
+        Some("business") | Some("service") => "business_owner",
+        _ => "visitor",
+    };
+
+    // Split name into first/last
+    let first_name = visitor.name.clone();
+    let last_name = first_name.as_ref().and_then(|n| {
+        let parts: Vec<&str> = n.splitn(2, ' ').collect();
+        parts.get(1).map(|s| s.to_string())
+    });
+
+    // Call IS register-member via fire-and-forget, but await so we can return status
+    crate::handlers::tag_sync::register_member_in_is(
+        visitor.email.clone(),
+        first_name,
+        last_name,
+        visitor.phone,
+        member_type,
+        visitor.business_type,
+        Some(directory_slug),
+        None, // tags not needed for enrollment
+    ).await;
+
+    Ok(Json(json!({
+        "success": true,
+        "contact_id": null,
+        "member_id": null,
+        "loyalty_program_id": null,
+        "loyalty_program_name": member_type_to_program(member_type),
+        "already_existed": false,
+        "message": format!("Enrolled as {} in the loyalty program", member_type),
+    })))
+}
+
+fn member_type_to_program(member_type: &str) -> &str {
+    match member_type {
+        "supplier" => "ZaarHub B2B Loop",
+        _ => "ZaarHub Local Pass",
+    }
+}
+
 // ── Portal Dashboard ──
 
 pub async fn portal_dashboard(

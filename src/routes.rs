@@ -303,6 +303,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/domains/:domain_id/verify", post(domains::verify_domain))
         .route("/branding/:directory_id", put(branding::update_branding))
         .route("/branding/:directory_id/extract", post(branding::extract_colors))
+        .route("/members", get(admin::admin_members))
         .route("/portfolio/sync", post(admin::portfolio_sync))
         .route("/plans/:plan_id/domains", get(domains::check_plan_domains))
         // ??? Phase 4: API key management
@@ -372,6 +373,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/loyalty/rewards/claim", post(loyalty_proxy::reward_claim))
         .route("/loyalty/pledges", get(loyalty_proxy::pledges_list))
         .route("/loyalty/pledges/create", post(loyalty_proxy::pledge_create))
+        .route("/loyalty/enroll", post(loyalty_proxy::enroll))
         .route("/loyalty/portal/dashboard", get(loyalty_proxy::portal_dashboard))
         .route("/loyalty/qr", get(loyalty_proxy::get_loyalty_qr))
         .route("/loyalty/purchase/verify", post(loyalty_proxy::purchase_verify_proxy))
