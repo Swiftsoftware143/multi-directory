@@ -428,8 +428,17 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
               <input type="text" id="scannerContactId" placeholder="Scanned ID will appear here" readonly>
             </div>
             <div class="form-group">
-              <label>Purchase Amount ($)</label>
+              <label>Total Receipt ($) <span style="font-size:.75rem;color:var(--text-secondary)">— full amount before deals</span></label>
               <input type="number" id="scannerAmount" placeholder="0.00" step="0.01">
+            </div>
+            <div class="form-group">
+              <label>Earnable Subtotal ($) <span style="font-size:.75rem;color:var(--text-secondary)">— points earned on this portion only</span></label>
+              <input type="number" id="scannerSubtotal" placeholder="Same as total" step="0.01">
+              <small style="color:var(--text-secondary);font-size:.75rem">Leave blank to earn on full receipt. Subtract deal items (free dessert, discounted item) here.</small>
+            </div>
+            <div class="form-group">
+              <label>Deal Note <span style="font-size:.75rem;color:var(--text-secondary)">— what was on the house?</span></label>
+              <input type="text" id="scannerDealDesc" placeholder="e.g. Free dessert — rest of meal earns">
             </div>
             <div class="form-group">
               <label>Business PIN</label>
@@ -1701,20 +1710,22 @@ function scanFrame() {
 function scannerVerifyPurchase() {
   var contactId = document.getElementById('scannerContactId').value.trim();
   var amount = document.getElementById('scannerAmount').value;
+  var subtotal = document.getElementById('scannerSubtotal').value;
   var pin = document.getElementById('scannerPin').value.trim();
   var offerId = document.getElementById('scannerOffer').value;
+  var dealDesc = document.getElementById('scannerDealDesc').value.trim();
   var result = document.getElementById('scannerVerifyResult');
   
   if (!contactId) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ No customer scanned</p>'; return; }
-  if (!amount || parseFloat(amount) <= 0) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Enter a valid purchase amount</p>'; return; }
+  if (!amount || parseFloat(amount) <= 0) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Enter a valid total receipt amount</p>'; return; }
   if (!pin) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Enter your PIN</p>'; return; }
   
   result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
   
   var body = { contact_id: contactId, amount: parseFloat(amount), pin: pin };
-  if (offerId) {
-    body.offer_id = offerId;
-  }
+  if (offerId) { body.offer_id = offerId; }
+  if (subtotal && parseFloat(subtotal) >= 0) { body.subtotal_amount = parseFloat(subtotal); }
+  if (dealDesc) { body.deal_description = dealDesc; }
   
   var token = localStorage.getItem('bizToken');
   var h = { 'Content-Type': 'application/json' };
@@ -1727,6 +1738,10 @@ function scannerVerifyPurchase() {
   })
   .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || d.message || 'Request failed'); return d; }); })
   .then(function(d) {
+    var dealHtml = '';
+    if (d.deal_discount > 0) {
+      dealHtml = '<p style="font-size:.85rem;color:var(--text-secondary)">🎁 Deal discount excluded: <strong>$' + (d.deal_discount || 0).toFixed(2) + '</strong>' + (d.deal_description ? ' (' + esc(d.deal_description) + ')' : '') + '</p>';
+    }
     var offerHtml = '';
     if (d.offer_applied) {
       offerHtml = '<p style="font-size:.85rem;color:var(--text-secondary)">🏷️ Offer used: <strong>' + esc(d.offer_applied) + '</strong> &middot; Credits redeemed: <strong>' + (d.credits_redeemed || 0) + '</strong></p>';
@@ -1734,13 +1749,16 @@ function scannerVerifyPurchase() {
     result.innerHTML = '<div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center">' +
       '<p style="color:var(--success);font-weight:700;margin-bottom:4px">✅ Verified & Credited!</p>' +
       '<p style="font-size:.85rem;color:var(--text-secondary)">' + esc(d.message || 'Purchase verified successfully') + '</p>' +
-      '<p style="font-size:.85rem;color:var(--text-secondary)">📦 Credits earned: <strong>' + (d.credits_earned || 0) + '</strong></p>' +
+      '<p style="font-size:.85rem;color:var(--text-secondary)">📦 Credits earned: <strong>' + (d.credits_earned || 0) + '</strong> on $' + (d.earnable_amount || 0).toFixed(2) + '</p>' +
+      dealHtml +
       offerHtml +
       '</div>';
     
     // Clear for next scan
     document.getElementById('scannerContactId').value = '';
     document.getElementById('scannerAmount').value = '';
+    document.getElementById('scannerSubtotal').value = '';
+    document.getElementById('scannerDealDesc').value = '';
     document.getElementById('scannerOffer').value = '';
     document.getElementById('scanCustomerInfo').innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Ready to scan next customer.</p>';
   })
