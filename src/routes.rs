@@ -522,7 +522,7 @@ pub fn create_router(s: AppState) -> Router {
                         let www_domain = format!("www.{}", app_domain);
                         let is_app = host == &app_domain
                             || host == &www_domain
-                            || host == "localhost"
+                            || host == "localhost" || host == "directory.swiftsoftware.net"
                             || host.starts_with("127.0.0.1")
                             || host.starts_with("192.168.")
                             || host.starts_with("10.");
@@ -582,6 +582,25 @@ pub fn create_router(s: AppState) -> Router {
                         let pricing_path = std::path::Path::new(&frontend).join("pricing-admin.html");
                         if pricing_path.exists() {
                             match tokio::fs::read(&pricing_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // Serve admin panel dashboard
+                    if path == "/admin-panel" || path == "/admin-panel.html" || path == "/admin-panel/" {
+                        let admin_path = std::path::Path::new(&frontend).join("admin-panel.html");
+                        if admin_path.exists() {
+                            match tokio::fs::read(&admin_path).await {
                                 Ok(content) => {
                                     return Ok::<_, std::convert::Infallible>(
                                         axum::response::Response::builder()

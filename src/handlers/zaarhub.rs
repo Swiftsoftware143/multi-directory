@@ -139,6 +139,7 @@ pub struct CategoryPill {
     pub slug: String,
     pub business_count: i64,
     pub icon: Option<String>,
+    pub group_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -399,19 +400,20 @@ pub async fn get_homepage(
     }).collect();
 
     // Categories for filter pills
-    let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>)>(
+    let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>, Option<String>, Option<String>)>(
         r#"SELECT c.id, c.name, c.slug,
-                  (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.is_active = true) as biz_count
+                  (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.is_active = true) as biz_count,
+                  c.icon, c.group_name
            FROM directory_categories c
-           ORDER BY biz_count DESC
-           LIMIT 12"#
+           ORDER BY biz_count DESC"#
     )
     .fetch_all(&s.db)
     .await?;
 
-    let category_pills: Vec<Value> = categories.into_iter().map(|(id, name, slug, count)| {
+    let category_pills: Vec<Value> = categories.into_iter().map(|(id, name, slug, count, icon, group_name)| {
         json!({
             "id": id, "name": name, "slug": slug, "business_count": count.unwrap_or(0),
+            "icon": icon, "group_name": group_name,
         })
     }).collect();
 
@@ -521,23 +523,25 @@ pub async fn get_city_page(
     .await
     .unwrap_or(0);
 
-    // Featured businesses (with rating)
-    let businesses = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
+    // Featured businesses (with rating + category)
+    let businesses = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>, Option<String>, Option<String>)>(
         r#"SELECT b.id, b.name, b.slug, b.description, b.rating, b.review_count,
-                  b.phone, b.website, b.address, b.city, b.latitude, b.longitude, b.category_id
+                  b.phone, b.website, b.address, b.city, b.latitude, b.longitude, b.category_id,
+                  dc.name as category_name, dc.slug as category_slug
            FROM businesses b
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND b.is_active = true
            ORDER BY b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST
-           LIMIT 50"#
+           LIMIT 500"#
     )
     .bind(dir_id)
     .fetch_all(&s.db)
     .await?;
 
-    let featured: Vec<BusinessCard> = businesses.into_iter().map(|(id, name, slug, desc, rating, review_count, phone, website, address, city, lat, lng, cat_id)| {
+    let featured: Vec<BusinessCard> = businesses.into_iter().map(|(id, name, slug, desc, rating, review_count, phone, website, address, city, lat, lng, cat_id, cat_name, cat_slug)| {
         BusinessCard {
             id, name, slug, description: desc,
-            category: None, category_slug: None,
+            category: cat_name, category_slug: cat_slug,
             rating, review_count,
             phone, website, address, city,
             image_url: None,
@@ -624,20 +628,20 @@ pub async fn get_city_page(
     }).collect();
 
     // Categories for filtering
-    let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>)>(
+    let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>, Option<String>, Option<String>)>(
         r#"SELECT c.id, c.name, c.slug,
-                  (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true) as biz_count
+                  (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true) as biz_count,
+                  c.icon, c.group_name
            FROM directory_categories c
-           WHERE EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1)
-           ORDER BY biz_count DESC
-           LIMIT 12"#
+           WHERE EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true)
+           ORDER BY c.group_name, c.name"#
     )
     .bind(dir_id)
     .fetch_all(&s.db)
     .await?;
 
-    let category_pills: Vec<CategoryPill> = categories.into_iter().map(|(id, name, slug, count)| {
-        CategoryPill { id, name, slug, business_count: count.unwrap_or(0), icon: None }
+    let category_pills: Vec<CategoryPill> = categories.into_iter().map(|(id, name, slug, count, icon, group_name)| {
+        CategoryPill { id, name, slug, business_count: count.unwrap_or(0), icon, group_name }
     }).collect();
 
     // ??? Phase 4: Spotlights for this directory

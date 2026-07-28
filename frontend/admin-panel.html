@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Directory Admin — SwiftSoftware</title>
+  <meta name="theme-color" content="#12121a">
+  <meta name="description" content="Central admin panel for Multi-Directory network management">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* === RESET & BASE === */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: #12121a;
+      color: #eef4f8;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* === VARIABLES === */
+    :root {
+      --bg-page: #12121a;
+      --bg-card: #1F1F1F;
+      --bg-input: #16161d;
+      --border: rgba(255,255,255,0.08);
+      --border-hover: rgba(255,255,255,0.20);
+      --text-primary: #eef4f8;
+      --text-secondary: #9fb0bd;
+      --text-tertiary: #6b7d8a;
+      --accent: #8bd3ff;
+      --accent-hover: #66c2ff;
+      --danger: #f87171;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    /* === LAYOUT === */
+    .hidden { display: none !important; }
+
+    /* === HEADER === */
+    .header {
+      background: #0d0d14;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+    .header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .header-brand svg { color: var(--accent); }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-user {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover {
+      color: var(--text-primary);
+      border-color: var(--border-hover);
+    }
+    .btn-accent {
+      background: var(--accent);
+      color: #061019;
+      border-color: var(--accent);
+    }
+    .btn-accent:hover { background: var(--accent-hover); }
+    .btn-sm { padding: 4px 10px; font-size: 0.75rem; height: 28px; }
+
+    /* === LOGIN PAGE === */
+    .login-page {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+      background: var(--bg-page);
+    }
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.36);
+    }
+    .login-card h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .login-card .subtitle {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+      height: 38px;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(139,211,255,0.12);
+    }
+    .form-group input::placeholder { color: var(--text-tertiary); }
+
+    .form-error {
+      background: rgba(248,113,113,0.12);
+      border: 1px solid rgba(248,113,113,0.28);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-size: 0.8125rem;
+      color: var(--danger);
+      margin-bottom: 12px;
+    }
+    .btn-full { width: 100%; justify-content: center; height: 38px; }
+    .btn-full:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(0,0,0,0.2);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* === DASHBOARD PAGE === */
+    .dashboard {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .dashboard-header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    .dashboard-header .subtitle {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+    .stat-card .stat-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-primary);
+    }
+    .stat-card .stat-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 2px;
+    }
+
+    .directory-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .dir-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    .dir-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-1px);
+    }
+    .dir-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .dir-card-name {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      height: 20px;
+    }
+    .badge-active { background: rgba(74,222,136,0.12); color: var(--success); }
+    .badge-inactive { background: rgba(248,113,113,0.12); color: var(--danger); }
+    .badge-pending { background: rgba(251,191,36,0.12); color: var(--warning); }
+
+    .dir-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    .dir-card-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .dir-card-meta svg { width: 14px; height: 14px; opacity: 0.6; }
+
+    .dir-card-slug {
+      font-size: 0.6875rem;
+      color: var(--text-tertiary);
+      margin-top: 6px;
+    }
+
+    .loading-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      gap: 8px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 64px 24px;
+      color: var(--text-secondary);
+    }
+    .empty-state h3 { font-size: 1rem; color: var(--text-primary); margin-top: 16px; }
+    .empty-state p { font-size: 0.8125rem; margin-top: 4px; }
+
+    .section-label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      transform: translateY(120px);
+      opacity: 0;
+      transition: all 0.25s ease;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.error { border-color: rgba(248,113,113,0.3); }
+    .toast.success { border-color: rgba(74,222,136,0.3); }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .login-card { padding: 24px; }
+      .dashboard { padding: 16px; }
+      .directory-grid { grid-template-columns: 1fr; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <!-- ===== LOGIN PAGE ===== -->
+  <div id="login-page" class="login-page">
+    <div class="login-card">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8bd3ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/>
+        <path d="M2 12h20"/>
+      </svg>
+      <h1>Multi-Directory Admin</h1>
+      <p class="subtitle">Central management panel for all directory networks</p>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="admin@example.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <div id="login-error" class="form-error hidden"></div>
+        <button type="submit" class="btn btn-accent btn-full" id="login-submit">
+          <span id="login-spinner" class="spinner hidden" style="border-color:rgba(6,16,25,0.2);border-top-color:#061019;"></span>
+          <span id="login-text">Sign In</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== DASHBOARD PAGE ===== -->
+  <div id="dashboard-page" class="hidden">
+    <header class="header">
+      <div class="header-inner">
+        <a href="#" class="header-brand" onclick="event.preventDefault()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/>
+            <path d="M2 12h20"/>
+          </svg>
+          Multi-Directory Admin
+        </a>
+        <div class="header-actions">
+          <span class="header-user" id="header-user">admin@example.com</span>
+          <button class="btn btn-ghost btn-sm" id="signout-btn">Sign Out</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="dashboard">
+      <div class="dashboard-header">
+        <div>
+          <h1>Directories</h1>
+          <p class="subtitle">Manage all directory networks from one place</p>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-label">Total Directories</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-active">—</div>
+          <div class="stat-label">Active</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-businesses">—</div>
+          <div class="stat-label">Total Businesses</div>
+        </div>
+      </div>
+
+      <!-- Directory Cards -->
+      <div class="section-label">All Directories</div>
+      <div id="directory-grid" class="directory-grid">
+        <div class="loading-state" id="dir-loading">
+          <span class="spinner"></span> Loading directories...
+        </div>
+      </div>
+      <div id="dir-empty" class="empty-state hidden">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-tertiary);">
+          <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+        </svg>
+        <h3>No directories yet</h3>
+        <p>Create your first directory to get started.</p>
+      </div>
+      <div id="dir-error" class="form-error hidden" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast">
+    <span id="toast-msg"></span>
+  </div>
+
+  <script>
+  /* ============================================================
+     Multi-Directory Admin Panel — Inline JavaScript
+     ============================================================ */
+  (function () {
+    var API_BASE = '/api/v1';
+
+    // State
+    var token = localStorage.getItem('md_admin_token') || null;
+    var user = JSON.parse(localStorage.getItem('md_admin_user') || 'null');
+    var directories = [];
+
+    // DOM refs
+    var loginPage = document.getElementById('login-page');
+    var dashPage = document.getElementById('dashboard-page');
+    var loginForm = document.getElementById('login-form');
+    var loginError = document.getElementById('login-error');
+    var loginSubmit = document.getElementById('login-submit');
+    var loginSpinner = document.getElementById('login-spinner');
+    var loginText = document.getElementById('login-text');
+    var headerUser = document.getElementById('header-user');
+    var signoutBtn = document.getElementById('signout-btn');
+    var dirGrid = document.getElementById('directory-grid');
+    var dirLoading = document.getElementById('dir-loading');
+    var dirEmpty = document.getElementById('dir-empty');
+    var dirError = document.getElementById('dir-error');
+    var toast = document.getElementById('toast');
+    var toastMsg = document.getElementById('toast-msg');
+
+    // ===== API =====
+    function apiFetch(method, path, body) {
+      var headers = { 'Content-Type': 'application/json' };
+      var authToken = token || localStorage.getItem('md_admin_token');
+      if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+      var opts = { method: method, headers: headers };
+      if (body) opts.body = JSON.stringify(body);
+      return fetch(API_BASE + path, opts).then(function (res) {
+        if (res.status === 204) return null;
+        return res.json().then(function (data) {
+          if (!res.ok) throw new Error(data.error || data.message || 'Request failed (' + res.status + ')');
+          return data;
+        });
+      });
+    }
+    function apiGet(path) { return apiFetch('GET', path); }
+    function apiPost(path, body) { return apiFetch('POST', path, body); }
+
+    // ===== Toast =====
+    var toastTimer;
+    function showToast(msg, type) {
+      toastMsg.textContent = msg;
+      toast.className = 'toast ' + (type || '') + ' show';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 3000);
+    }
+
+    // ===== Auth =====
+    function setAuth(t, u) {
+      token = t;
+      user = u;
+      localStorage.setItem('md_admin_token', t);
+      localStorage.setItem('md_admin_user', JSON.stringify(u));
+      headerUser.textContent = u.email || u.name || 'User';
+    }
+
+    function clearAuth() {
+      token = null;
+      user = null;
+      localStorage.removeItem('md_admin_token');
+      localStorage.removeItem('md_admin_user');
+    }
+
+    function showLogin() {
+      loginPage.classList.remove('hidden');
+      dashPage.classList.add('hidden');
+    }
+
+    function showDashboard() {
+      loginPage.classList.add('hidden');
+      dashPage.classList.remove('hidden');
+      headerUser.textContent = user ? (user.email || user.name || 'User') : 'User';
+      loadDirectories();
+    }
+
+    // ===== Login Handler =====
+    loginForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      loginError.classList.add('hidden');
+      loginSubmit.disabled = true;
+      loginSpinner.classList.remove('hidden');
+      loginText.textContent = 'Signing in...';
+
+      var email = document.getElementById('login-email').value;
+      var password = document.getElementById('login-password').value;
+
+      apiPost('/auth/login', { email: email, password: password })
+        .then(function (data) {
+          setAuth(data.token || data.access_token, data.user || { email: email });
+          showToast('Signed in successfully', 'success');
+          showDashboard();
+        })
+        .catch(function (err) {
+          loginError.textContent = err.message || 'Invalid credentials. Please try again.';
+          loginError.classList.remove('hidden');
+        })
+        .finally(function () {
+          loginSubmit.disabled = false;
+          loginSpinner.classList.add('hidden');
+          loginText.textContent = 'Sign In';
+        });
+    });
+
+    // ===== Sign Out =====
+    signoutBtn.addEventListener('click', function () {
+      clearAuth();
+      showToast('Signed out', 'success');
+      showLogin();
+    });
+
+    // ===== Load Directories =====
+    function loadDirectories() {
+      dirGrid.innerHTML = '';
+      dirGrid.appendChild(dirLoading);
+      dirLoading.classList.remove('hidden');
+      dirEmpty.classList.add('hidden');
+      dirError.classList.add('hidden');
+
+      apiGet('/directories')
+        .then(function (data) {
+          directories = data.data || data || [];
+          if (!Array.isArray(directories)) directories = [];
+          renderDirectories(directories);
+        })
+        .catch(function (err) {
+          dirLoading.classList.add('hidden');
+          dirError.textContent = 'Failed to load directories: ' + (err.message || 'Unknown error');
+          dirError.classList.remove('hidden');
+        });
+    }
+
+    function renderDirectories(dirs) {
+      dirLoading.classList.add('hidden');
+      dirGrid.innerHTML = '';
+
+      if (dirs.length === 0) {
+        dirEmpty.classList.remove('hidden');
+        updateStats(0, 0, 0);
+        return;
+      }
+
+      var totalBusinesses = 0;
+      var activeCount = 0;
+
+      dirs.forEach(function (dir) {
+        var bc = dir.business_count || dir.businesses_count || 0;
+        totalBusinesses += (typeof bc === 'number' ? bc : 0);
+        var status = dir.status || dir.is_active !== false ? 'active' : 'inactive';
+        if (status === 'active') activeCount++;
+
+        var card = document.createElement('a');
+        card.className = 'dir-card';
+        card.href = '/admin/' + (dir.slug || dir.id || '');
+        card.setAttribute('target', '_self');
+
+        var statusClass = status === 'active' ? 'badge-active' : status === 'pending' ? 'badge-pending' : 'badge-inactive';
+        var statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+
+        card.innerHTML =
+          '<div class="dir-card-header">' +
+            '<span class="dir-card-name">' + escapeHtml(dir.name || 'Unnamed') + '</span>' +
+            '<span class="badge ' + statusClass + '">' + statusLabel + '</span>' +
+          '</div>' +
+          '<div class="dir-card-slug">' + escapeHtml(dir.slug || '') + '</div>' +
+          '<div class="dir-card-meta">' +
+            (dir.city ? '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>' + escapeHtml(dir.city) + '</span>' : '') +
+            '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>' + bc + ' businesses</span>' +
+          '</div>';
+
+        dirGrid.appendChild(card);
+      });
+
+      updateStats(dirs.length, activeCount, totalBusinesses);
+    }
+
+    function updateStats(total, active, businesses) {
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-active').textContent = active;
+      document.getElementById('stat-businesses').textContent = businesses;
+    }
+
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ===== Init =====
+    if (token && user) {
+      showDashboard();
+    } else {
+      showLogin();
+    }
+
+  })();
+  </script>
+</body>
+</html>

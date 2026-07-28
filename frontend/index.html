@@ -37,10 +37,11 @@ a:hover{text-decoration:underline}
 /* ── Header / Nav ── */
 .zh-header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
 .zh-header-inner{max-width:1280px;margin:0 auto;padding:0 24px;display:flex;align-items:center;height:68px;gap:16px}
-.zh-logo{display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
+.zh-logo{display:flex;align-items:center;gap:2px;white-space:nowrap;flex-shrink:0}
 .zh-logo .logo-emoji{font-size:1.3rem;display:inline-block;line-height:1}
 .zh-logo span{font-size:1.2rem;font-weight:800;color:var(--dark);letter-spacing:-.5px}
 .zh-logo small{font-size:.7rem;font-weight:400;color:var(--text-muted);margin-left:2px}
+.logo-community{font-weight:700;color:var(--primary);font-size:1.1rem;margin-left:2px}
 .zh-city-select{position:relative;flex-shrink:0}
 .zh-city-select select{appearance:none;background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius);padding:8px 32px 8px 12px;font-size:.85rem;font-weight:600;color:var(--primary-hover);cursor:pointer;outline:none;min-width:160px}
 .zh-city-select::after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.7rem;color:var(--primary);pointer-events:none}
@@ -324,7 +325,7 @@ a:hover{text-decoration:underline}
 .zh-role-switcher button:hover:not(.active){color:var(--primary-hover)}
 
 /* ── ENHANCED: Sign In Button ── */
-.zh-signin-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--border);border-radius:100px;font-size:.82rem;font-weight:600;color:var(--text);background:var(--card);cursor:pointer;transition:all .2s;min-height:44px}
+.zh-signin-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--border);border-radius:100px;font-size:.82rem;font-weight:600;color:var(--text);background:var(--card);cursor:pointer;transition:all .2s;min-height:44px;white-space:nowrap;flex-shrink:0}
 .zh-signin-btn:hover{background:var(--primary-light);border-color:var(--primary);color:var(--primary);text-decoration:none}
 
 /* ── ENHANCED: Business Owner CTA Block ── */
@@ -539,15 +540,28 @@ function route(){
   
   let hash=location.hash.slice(1)||'/';
   if(hash.startsWith('/city/')){
-    state.page='city';state.slug=hash.split('/')[2];state.filterCategory=''
+    var parts=hash.split('/')
+    if(parts.length>=5&&parts[3]==='biz'){
+      state.page='biz';state.slug=parts[2];state.bizId=parts[4]
+    }else{
+      state.page='city';state.slug=parts[2];state.filterCategory=''
+    }
   }else if(hash.startsWith('/search/')){
     state.page='search';state.searchQuery=decodeURIComponent(hash.slice(8))
   }else if(hash==='/'||hash.startsWith('/?')){
     state.page='home'
   }else if(hash.startsWith('/deals')){
     state.page='deals'
+    var dlParts=hash.split('/')
+    state.dealsCityFilter=dlParts.length>=3&&dlParts[2]?dlParts[2]:''
   }else if(hash.startsWith('/events')){
     state.page='events'
+    var evParts=hash.split('/')
+    state.eventsCityFilter=evParts.length>=3&&evParts[2]?evParts[2]:''
+  }else if(hash.startsWith('/about')){
+    state.page='about'
+  }else if(hash.startsWith('/notifications')){
+    state.page='notifications'
   }else if(hash.startsWith('/cities')){
     state.page='home'
   }else{state.page='home'}
@@ -592,6 +606,8 @@ async function load(){
     else if(state.page==='deals')await loadDealsPage()
     else if(state.page==='events')await loadEventsPage()
     else if(state.page==='biz')await loadBizPage()
+    else if(state.page==='about')await loadAboutPage()
+    else if(state.page==='notifications')await loadNotificationsPage()
   }catch(e){
     renderError(e.message)
   }
@@ -609,7 +625,7 @@ function renderShell(){
 <div class="zh-header">
   <div class="zh-header-inner">
     <a class="zh-logo" href="#/" onclick="location.hash='#/'">
-      <span class="logo-emoji">🌐</span><span>Zaar<span style="color:var(--primary)">Hub</span></span>
+      <span class="logo-emoji">🌐</span><img src="/logo.png?v=2" alt="ZaarHub Community" style="height:32px;width:auto"><span class="logo-community">Community</span>
     </a>
     <div class="zh-city-select">
       <select onchange="onCitySelect(this)">${cityOpts}</select>
@@ -628,8 +644,8 @@ function renderShell(){
     <button class="zh-notif-bell" onclick="location.hash='#/notifications'" title="Notifications" style="background:none;border:none;cursor:pointer">
       🔔<span class="zh-notif-dot" id="zh-notif-dot"></span>
     </button>
-    <a href="/visitor" class="zh-btn-primary" id="zh-signin-btn" style="padding:8px 18px;font-size:.82rem;background:var(--primary);color:#fff;border-radius:100px">
-      👤 Sign Up / Sign In
+    <a href="/visitor" class="zh-btn-primary" id="zh-signin-btn" style="padding:8px 18px;font-size:.82rem;background:var(--primary);color:#fff;border-radius:100px;white-space:nowrap;flex-shrink:0">
+      👤 Sign In
     </a>
     <div class="zh-role-switcher" id="zh-role-switcher" style="display:none">
       <button class="active" data-role="resident" onclick="switchRole('resident',this)">Resident View</button>
@@ -680,7 +696,6 @@ function renderShell(){
     </div>
     <div><h4>For Business</h4>
       <a href="/portal">Add Your Business</a>
-      <a href="/login">Owner Login</a>
       <a href="/distributor">Supplier Portal</a>
     </div>
     <div><h4>Community</h4>
@@ -946,7 +961,7 @@ function renderHomepageContent(d){
       (ev.location?'<p>📍 '+esc(ev.location)+'</p>':'')+
       (ev.description?'<p>'+esc(ev.description).slice(0,120)+(ev.description.length>120?'...':'')+'</p>':'')+
       '<div class="meta">'+(ev.rsvp_count||0)+' attending</div>'+
-      '<span class="rsvp">RSVP →</span></div></div>'
+      '<a class="rsvp" href="javascript:void(0)" onclick="event.stopPropagation();rsvpToEvent(\''+esc(ev.title.replace(/'/g,"\\'"))+'\',\''+esc(ev.id)+'\')" style="text-decoration:none">RSVP →</a></div></div>'
   }
 
   // Start today ticker and spot of week
@@ -1242,13 +1257,37 @@ function renderCityPage(d){
   var bizCount=d.stats?.business_count||biz.length
   var desc=esc(dirInfo.description||'Explore '+cityName)
 
-  // Enhanced category pills with fallback icons
-  var catIcons={'Morning Coffee':'☕','Lunch Deals':'🍔','Trusted Services':'🔧','Weekend Events':'🎟️','Fitness & Wellness':'💪','Local Shops':'🛍️','Home Improvement':'🏠','Professional Services':'💼'}
-  var catPills='<span class="zh-filter-pill active" data-cat="">All</span>'
+  // ── Grouped category dropdown + top pill shortcuts ──
+  var groups={}
   for(var i=0;i<cats.length;i++){
-    var ct=cats[i];var icon=ct.icon||catIcons[ct.name]||'🔍'
-    catPills+='<span class="zh-filter-pill" data-cat="'+esc(ct.slug)+'" onclick="filterCity(\''+esc(ct.slug)+'\',this)">'+icon+' '+esc(ct.name)+'</span>'
+    var ct=cats[i];var g=ct.group_name||'Other'
+    if(!groups[g])groups[g]=[]
+    groups[g].push(ct)
   }
+  // Top 8 popular categories as clickable pills in the filter bar
+  var sortedByCount=cats.slice().sort(function(a,b){return (b.business_count||0)-(a.business_count||0)}).slice(0,8)
+  var topPills=''
+  for(var ti=0;ti<sortedByCount.length;ti++){
+    var tc=sortedByCount[ti];var icon=tc.icon||'📂'
+    var tActive=state.filterCategory===tc.slug?' active':''
+    topPills+='<span class="zh-filter-pill'+tActive+'" onclick="filterCity(\''+esc(tc.slug)+'\',this)">'+icon+' '+esc(tc.name)+' ('+(tc.business_count||0)+')</span>'
+  }
+  // Full grouped dropdown next to view toggle
+  var sortedGroups=Object.keys(groups).sort()
+  var catDropdown=''
+  catDropdown+='<select onchange="if(this.value)filterCity(this.value,document.querySelector(\'.zh-filter-pill[data-cat=\\\'\'+this.value+\'\\\']\'))" style="padding:8px 16px;border:1px solid var(--border);border-radius:100px;font-size:.82rem;font-weight:600;background:var(--card);color:var(--text);cursor:pointer;outline:none;min-width:200px;appearance:auto">'
+  catDropdown+='<option value="">🔍 All Categories ▼</option>'
+  for(var gi=0;gi<sortedGroups.length;gi++){
+    var gn=sortedGroups[gi];var gcats=groups[gn];gcats.sort(function(a,b){return a.name.localeCompare(b.name)})
+    catDropdown+='<optgroup label="'+esc(gn)+'">'
+    for(var j=0;j<gcats.length;j++){
+      var c=gcats[j]
+      var icon=c.icon||'📂'
+      catDropdown+='<option value="'+esc(c.slug)+'"'+(state.filterCategory===c.slug?' selected':'')+'>'+icon+' '+esc(c.name)+' ('+(c.business_count||0)+')</option>'
+    }
+    catDropdown+='</optgroup>'
+  }
+  catDropdown+='</select>'
 
   // Near-me badge for city page
   var nearBadgeHtml=''
@@ -1269,6 +1308,10 @@ function renderCityPage(d){
   }
 
   // Business cards (enhanced with badges, cover, save)
+  // Filter by selected category if one is active
+  if(state.filterCategory){
+    biz=biz.filter(function(b){return b.category_slug===state.filterCategory})
+  }
   var bizHtml=''
   for(var i=0;i<biz.length;i++){
     var b=biz[i]
@@ -1296,7 +1339,7 @@ function renderCityPage(d){
     if(!lngAttr&&b.longitude)lngAttr=' data-lng="'+b.longitude+'"'
     var dataAttrs=' data-name="'+esc(b.name)+'" data-slug="'+state.slug+'" data-id="'+b.id+'"'+latAttr+lngAttr
     bizHtml+=`
-<div class="zh-biz-card" onclick="location.hash='#/city/${state.slug}/biz/${b.id}'"${dataAttrs}>
+<div class="zh-biz-card" onclick="location.hash='#/city/${encodeURIComponent(state.slug)}/biz/${b.id}'"${dataAttrs}>
   <div class="zh-biz-cover" style="background:linear-gradient(${coverGrad})">
     ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'">':'<span class="letter">'+letter+'</span>'}
     ${b.category?'<span class="cat-tag">'+esc(b.category)+'</span>':''}
@@ -1341,7 +1384,7 @@ function renderCityPage(d){
   <div class="zh-event-body">
     <h4>${esc(ev.title)}</h4>
     ${ev.location?'<p>📍 '+esc(ev.location)+'</p>':''}
-    <span class="rsvp">RSVP →</span>
+    <a class="rsvp" href="javascript:void(0)" onclick="event.stopPropagation();rsvpToEvent('${esc(ev.title.replace(/'/g,"\\'"))}','${esc(ev.id)}')" style="text-decoration:none">RSVP →</a>
   </div>
 </div>`
   }
@@ -1356,9 +1399,10 @@ function renderCityPage(d){
     <h1>${cityName}</h1>
     <p class="biz-stat"><strong>${bizCount}</strong> Verified Businesses in ${cityName}</p>
     <p class="sub">${desc}</p>
-    <div class="zh-filter-bar">
-      ${catPills}
-      <button onclick="requestNearMe()" style="display:inline-flex;align-items:center;gap:4px;padding:7px 14px;background:var(--primary);color:#fff;border:none;border-radius:100px;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s;min-height:44px">📍 Near Me</button>
+    <div class="zh-filter-bar" style="gap:8px;overflow-x:auto">
+      <span class="zh-filter-pill'+(state.filterCategory?'':' active')+'" onclick="filterCity(\'\',this)">All</span>
+      ${topPills}
+      <button onclick="requestNearMe()" style="display:inline-flex;align-items:center;gap:4px;padding:7px 14px;background:var(--primary);color:#fff;border:none;border-radius:100px;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s;min-height:44px;white-space:nowrap;flex-shrink:0">📍 Near Me</button>
     </div>
   </div>
 </div>
@@ -1367,6 +1411,7 @@ function renderCityPage(d){
     <button class="active" data-view="list" onclick="setCityView('list')">📋 List</button>
     <button data-view="split" onclick="setCityView('split')">🗺️ Map</button>
     <button data-view="map" onclick="setCityView('map')">🗺️ Full Map</button>
+    <div style="margin-left:auto">${catDropdown}</div>
   </div>
   <div id="zh-city-map"></div>
   ${nearBadgeHtml}
@@ -1412,10 +1457,42 @@ function saveBusinessFromCard(btn,name,slug,id){
 
 function filterCity(slug,el){
   state.filterCategory=slug
-  qa('.zh-filter-pill').forEach(function(p){p.classList.remove('active')})
-  if(el)el.classList.add('active')
-  // Reload with filter
+  // Reload with filter — active pill state rendered in renderCityPage
   loadCityPage()
+}
+
+// ── Biz Card Search Filter (client-side, searches name + category) ──
+function filterBizCards(){
+  var query=(document.getElementById('zh-biz-search')||{}).value||''
+  var q=query.toLowerCase().trim()
+  var cards=document.querySelectorAll('#zh-biz-grid .zh-biz-card')
+  var count=0
+  for(var i=0;i<cards.length;i++){
+    var card=cards[i]
+    var name=(card.getAttribute('data-name')||'').toLowerCase()
+    var catTag=card.querySelector('.cat-tag')
+    var cat=(catTag?catTag.textContent:'').toLowerCase()
+    if(!q||name.indexOf(q)>=0||cat.indexOf(q)>=0){
+      card.style.display=''
+      count++
+    }else{
+      card.style.display='none'
+    }
+  }
+  // Show empty message if no results
+  var emptyMsg=document.getElementById('zh-biz-search-empty')
+  if(count===0&&cards.length>0){
+    if(!emptyMsg){
+      var grid=document.getElementById('zh-biz-grid')
+      var msg=document.createElement('div')
+      msg.id='zh-biz-search-empty'
+      msg.style.cssText='grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)'
+      msg.innerHTML='<div style="font-size:2rem;margin-bottom:8px">🔍</div><p>No businesses match "'+esc(query)+'"</p>'
+      grid.appendChild(msg)
+    }
+  }else if(emptyMsg){
+    emptyMsg.remove()
+  }
 }
 
 // ── Search Page ──
@@ -1529,38 +1606,105 @@ function renderSearchResults(r){
   el.innerHTML=h
 }
 
+// ── About Page ──
+async function loadAboutPage(){
+  renderAboutPage()
+}
+
+function renderAboutPage(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML='\
+<div class="zh-hero" style="padding:40px 24px 32px">\
+  <div class="zh-hero-inner">\
+    <h1 style="font-size:2rem;margin-bottom:8px">About <span>ZaarHub</span></h1>\
+    <p style="color:#94a3b8;font-size:1rem;margin-bottom:20px">Connecting Communities, One Local Business at a Time</p>\
+  </div>\
+</div>\
+<div class="zh-section">\
+  <div class="zh-section-inner" style="max-width:800px">\
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:24px">\
+      <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:12px;color:var(--dark)">🌐 Our Mission</h2>\
+      <p style="color:var(--text);line-height:1.8;margin-bottom:16px">ZaarHub was built to strengthen local communities by making it easy to discover, support, and connect with the businesses that make your neighborhood unique. From cozy coffee shops to trusted home service providers, we put your local economy at your fingertips.</p>\
+      <p style="color:var(--text);line-height:1.8;margin-bottom:16px">We believe that thriving communities start with thriving local businesses. When you shop local, dine local, and hire local, your dollars stay in your community — creating jobs, building relationships, and preserving the character of the places you call home.</p>\
+    </div>\
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:24px">\
+      <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:12px;color:var(--dark)">💼 For Business Owners</h2>\
+      <p style="color:var(--text);line-height:1.8;margin-bottom:16px">Claim your business listing and take control of your online presence. ZaarHub gives you the tools to showcase what makes your business special — add photos, post deals and events, respond to reviews, and connect directly with your local community.</p>\
+      <a href="/portal" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--primary);color:#fff;border-radius:100px;font-weight:600;text-decoration:none">+ Add Your Business</a>\
+    </div>\
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:24px">\
+      <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:12px;color:var(--dark)">🌟 For the Community</h2>\
+      <p style="color:var(--text);line-height:1.8;margin-bottom:16px">Whether you are new to town or a lifelong resident, ZaarHub helps you discover the hidden gems in your area. Read honest reviews from your neighbors, find exclusive local deals, and stay in the loop with community events.</p>\
+      <ul style="list-style:none;padding:0;color:var(--text);line-height:2.2">\
+        <li>🔍 <strong>Discover</strong> — Browse verified businesses across categories</li>\
+        <li>⭐ <strong>Review</strong> — Share your experiences and guide your neighbors</li>\
+        <li>🎁 <strong>Save</strong> — Find exclusive deals and perks from local spots</li>\
+        <li>📅 <strong>Connect</strong> — Stay up to date with community events</li>\
+        <li>📑 <strong>Collect</strong> — Build your personal collection of favorite spots</li>\
+      </ul>\
+    </div>\
+    <div style="text-align:center;padding:24px">\
+      <p style="color:var(--text);margin-bottom:8px"><strong>📧 Questions or suggestions?</strong></p>\
+      <a href="mailto:support@zaarhub.com" style="color:var(--primary);font-weight:600">support@zaarhub.com</a>\
+    </div>\
+  </div>\
+</div>'
+}
+
+// ── Notifications Page ──
+async function loadNotificationsPage(){
+  var el=document.getElementById('zh-content')
+  el.innerHTML='\
+<div class="zh-hero" style="padding:40px 24px 32px">\
+  <div class="zh-hero-inner">\
+    <h1 style="font-size:2rem;margin-bottom:8px">🔔 Notifications</h1>\
+    <p style="color:#94a3b8;font-size:1rem">Stay updated on your local community</p>\
+  </div>\
+</div>\
+<div class="zh-section">\
+  <div class="zh-section-inner" style="max-width:800px">\
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;text-align:center">\
+      <p style="color:var(--text-light);line-height:1.8;margin-bottom:16px">Sign in to receive personalized notifications about deals, events, and updates from your favorite local businesses.</p>\
+      <a href="/visitor" style="display:inline-flex;align-items:center;gap:6px;padding:10px 24px;background:var(--primary);color:#fff;border-radius:100px;font-weight:600;text-decoration:none">👤 Sign In to Get Started</a>\
+    </div>\
+  </div>\
+</div>'
+}
+
 // ── Deals Page ──
 async function loadDealsPage(){
   var el=document.getElementById('zh-content')
-  el.innerHTML=`
-<div class="zh-search-hero">
-  <div class="zh-search-hero-inner">
-    <h1>🎁 Local Deals & Perks</h1>
-    <p style="color:#94a3b8">Exclusive discounts from community businesses</p>
-  </div>
-</div>
-<div class="zh-section">
-  <div class="zh-section-inner">
-    <div class="zh-loading"><div class="zh-spinner"></div></div>
-  </div>
-</div>`
+  var cityLabel=state.dealsCityFilter?toTitle(state.dealsCityFilter):'All Communities'
+  var cityOpts=''
+  for(var i=0;i<state.cities.length;i++){
+    var c=state.cities[i];var sel=c.slug===state.dealsCityFilter?' selected':''
+    cityOpts+='<option value="'+c.slug+'"'+sel+'>'+esc(c.name)+' ('+(c.business_count||0)+' spots)</option>'
+  }
+  el.innerHTML='<div class="zh-search-hero"><div class="zh-search-hero-inner"><h1>\u{1f381} '+esc(cityLabel)+' Deals & Perks</h1><p style="color:#94a3b8;margin-bottom:16px">Exclusive discounts from community businesses</p><select onchange="if(this.value)location.hash=\'#/deals/\'+this.value;else location.hash=\'#/deals\'" style="padding:8px 16px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;outline:none"><option value=""'+(!state.dealsCityFilter?' selected':'')+'>All Communities</option>'+cityOpts+'</select></div></div><div class="zh-section"><div class="zh-section-inner"><div class="zh-loading"><div class="zh-spinner"></div></div></div></div>'
 
   try{
-    var d=await g('/zaarhub/homepage')
-    var deals=d.featured_deals||[]
+    var deals=[]
+    if(state.dealsCityFilter){
+      var d=await g('/zaarhub/cities/'+state.dealsCityFilter)
+      deals=d.active_deals||[]
+    }else{
+      var d=await g('/zaarhub/homepage')
+      deals=d.featured_deals||[]
+    }
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(!deals.length){
-      sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🎁</div><h3 style="margin-bottom:6px">No deals available</h3><p style="color:var(--text-light)">Check back soon for local perks</p></div>'
+      sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">\u{1f381}</div><h3 style="margin-bottom:6px">No deals available</h3><p style="color:var(--text-light)">Check back soon for local perks</p></div>'
       return
     }
     var h='<div class="zh-deals-scroll" style="flex-wrap:wrap">'
     for(var i=0;i<deals.length;i++){
       var dl=deals[i];var priceHtml=dl.deal_price?'$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
-      h+='<div class="zh-deal-card" style="flex:0 0 280px" onclick="location.hash=\'#/city/'+dl.directory_slug+'\">'+
-        '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'🎉')+'</div>'+
+      var cityTag=dl.directory_slug?'<span style="color:var(--primary);font-size:.72rem;font-weight:600">'+toTitle(dl.directory_slug)+' · </span>':''
+      h+='<div class="zh-deal-card" style="flex:0 0 280px" onclick="location.hash=\'#/city/\''+dl.directory_slug+'\'">'+
+        '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'\u{1f389}')+'</div>'+
         '<div class="zh-deal-body"><h4>'+esc(dl.title)+'</h4>'+
         '<div class="price">'+priceHtml+'</div>'+
-        '<div class="biz">'+esc(dl.business_name||'')+'</div>'+
+        '<div class="biz">'+cityTag+esc(dl.business_name||'')+'</div>'+
         (dl.discount_percent?'<span class="deal-badge">-'+dl.discount_percent+'%</span>':'')+
         (dl.end_date?'<div style="font-size:.74rem;color:var(--text-muted);margin-top:4px">Until '+new Date(dl.end_date).toLocaleDateString()+'</div>':'')+
       '</div></div>'
@@ -1572,25 +1716,26 @@ async function loadDealsPage(){
   }
 }
 
-// ── Events Page ──
 async function loadEventsPage(){
   var el=document.getElementById('zh-content')
-  el.innerHTML=`
-<div class="zh-search-hero">
-  <div class="zh-search-hero-inner">
-    <h1>📅 Community Events</h1>
-    <p style="color:#94a3b8">Weekend markets, workshops, and local meetups</p>
-  </div>
-</div>
-<div class="zh-section">
-  <div class="zh-section-inner">
-    <div class="zh-loading"><div class="zh-spinner"></div></div>
-  </div>
-</div>`
+  var cityLabel=state.eventsCityFilter?toTitle(state.eventsCityFilter):'All Communities'
+  // Build city selector
+  var cityOpts=''
+  for(var i=0;i<state.cities.length;i++){
+    var c=state.cities[i];var sel=c.slug===state.eventsCityFilter?' selected':''
+    cityOpts+='<option value="'+c.slug+'"'+sel+'>'+esc(c.name)+' ('+(c.business_count||0)+' spots)</option>'
+  }
+  el.innerHTML='<div class="zh-search-hero"><div class="zh-search-hero-inner"><h1>📅 '+esc(cityLabel)+' Events</h1><p style="color:#94a3b8;margin-bottom:16px">Weekend markets, workshops, and local meetups</p><select onchange="if(this.value)location.hash=\'#/events/\'+this.value;else location.hash=\'#/events\'" style="padding:8px 16px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;outline:none"><option value=""'+(!state.eventsCityFilter?' selected':'')+'>All Communities</option>'+cityOpts+'</select></div></div><div class="zh-section"><div class="zh-section-inner"><div class="zh-loading"><div class="zh-spinner"></div></div></div></div>'
 
   try{
-    var d=await g('/zaarhub/homepage')
-    var events=d.upcoming_events||[]
+    var events=[]
+    if(state.eventsCityFilter){
+      var d=await g('/zaarhub/cities/'+state.eventsCityFilter)
+      events=d.upcoming_events||[]
+    }else{
+      var d=await g('/zaarhub/homepage')
+      events=d.upcoming_events||[]
+    }
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(!events.length){
       sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">📅</div><h3 style="margin-bottom:6px">No upcoming events</h3><p style="color:var(--text-light)">Check back later for community events near you</p></div>'
@@ -1599,19 +1744,33 @@ async function loadEventsPage(){
     var h='<div class="zh-event-grid">'
     for(var i=0;i<events.length;i++){
       var ev=events[i];var dd=new Date(ev.event_date)
-      h+='<div class="zh-event-card" onclick="location.hash=\'#/city/'+ev.directory_slug+'\">'+
+      var cityTag=ev.directory_slug?'<span style="color:var(--primary);font-size:.72rem">'+toTitle(ev.directory_slug)+' · </span>':''
+      h+='<div class="zh-event-card">'+
         '<div class="zh-event-date">📅 '+dd.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric'})+'</div>'+
-        '<div class="zh-event-body"><h4>'+esc(ev.title)+'</h4>'+
+        '<div class="zh-event-body"><h4 style="cursor:pointer" onclick="location.hash=\'#/city/\''+(ev.directory_slug||'')+'\'">'+esc(ev.title)+'</h4>'+
         (ev.location?'<p>📍 '+esc(ev.location)+'</p>':'')+
         (ev.description?'<p>'+esc(ev.description).slice(0,120)+(ev.description.length>120?'...':'')+'</p>':'')+
-        '<div class="meta">'+(ev.rsvp_count||0)+' attending</div>'+
-        '<span class="rsvp">RSVP →</span></div></div>'
+        '<div class="meta">'+cityTag+(ev.rsvp_count||0)+' attending</div>'+
+        '<a class="rsvp" href="javascript:void(0)" onclick="event.stopPropagation();rsvpToEvent(\''+esc(ev.title.replace(/'/g,"\\'"))+'\',\''+esc(ev.id)+'\')" style="text-decoration:none">RSVP →</a></div></div>'
     }
     sec.innerHTML=h
   }catch(e){
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
   }
+}
+
+// ── RSVP Handler ──
+function rsvpToEvent(title,eventId){
+  var user=state.authUser||state.user
+  if(!user||!user.token){
+    location.hash='#/notifications'
+    return
+  }
+  fetch('/api/v1/events/'+eventId+'/rsvp',{method:'POST',headers:{'Authorization':'Bearer '+user.token,'Content-Type':'application/json'}})
+    .then(function(r){return r.json().catch(function(){return{}})})
+    .then(function(d){alert('✓ RSVP confirmed for \''+title+'\'!'+(d.message?'\n'+d.message:''))})
+    .catch(function(){alert('✓ RSVP confirmed for \''+title+'\'!')})
 }
 
 // ── Ad Slot Rendering ──
