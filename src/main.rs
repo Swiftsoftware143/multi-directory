@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+#![allow(unused)]
 mod email;
 mod reminders;
 mod coreswift;
