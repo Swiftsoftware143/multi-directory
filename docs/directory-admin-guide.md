@@ -1,6 +1,31 @@
-# Directory Admin Guide
+# Directory Admin Guide — MultiDirectory Platform
 
-From the admin dashboard, click any directory to manage it. These are the key sections:
+**For:** SwiftSoftware Admin (David) — the directory builder operating this platform.
+
+## Architecture
+
+MultiDirectory is a **single-instance directory platform**, not a SaaS. Each directory (ZaarHub, Bob's Auto Shop, etc.) is a standalone product you build, configure, and sell. When a directory is sold, the purchaser either downloads their codebase or gets admin access while you host it.
+
+### User Roles
+
+| Role | Who | What They Can Do |
+|---|---|---|
+| **super_admin** | David (SwiftSoftware owner) | Full system access, all directories |
+| **directory_admin** | Directory owners/operators | Manage their directory's listings, deals, config |
+| **business** | Business owners on a directory | Manage their listing, deals, messages |
+| **supplier** | Wholesalers, farms, distributors | Manage product catalog, B2B orders |
+| **visitor/customer** | End users browsing directories | Search, bookmark, claim deals, RSVP |
+
+### What "Tenant" Never Means
+
+This is NOT a SaaS. There are no tenants paying rent. A directory IS a standalone product. Within each directory, you have:
+- **Businesses** — companies listed on the directory
+- **Suppliers** — B2B vendors providing goods/services to businesses
+- **Customers/Visitors** — people browsing and interacting with the directory
+
+## Managing Directories
+
+From the admin dashboard, manage any directory you operate. These are the key sections:
 
 ## Listings
 Add, edit, or remove business listings. Set business type (local, supplier, distributor, farm, etc.). Manage claim status.
@@ -39,6 +64,52 @@ Create one-question polls from the admin panel → **Polls** in sidebar:
 
 ## Branding
 Custom colors, logos, favicon per directory.
+
+## Legal Pages — Per-Directory Configuration
+
+Each directory gets its own set of legal pages, fully editable from the admin panel at `/directory-admin.html`.
+
+### Managing Legal Pages
+- Go to **Settings → Legal Pages** in the directory admin panel
+- Create or edit pages: Terms of Service, Privacy Policy, Contact, Disclaimer, Loyalty Terms, or any custom page
+- Each page has: slug (URL path), title, HTML content, publish status, footer visibility toggle
+- Set **Show in Footer** to include a legal page in the site-wide footer
+- Reorder pages with display_order
+
+### Branding Configuration
+- **Site Name** — the name shown in headers, footers, and page titles
+- **Tagline** — directory slogan shown on city landing pages
+- **Primary/Secondary Colors** — brand colors used across the directory
+- **Logo URL** — header logo image
+- **Favicon URL** — browser tab icon
+- **Copyright Year** — shown in the footer (e.g., "2026" or "2024–2026")
+- **Contact Email/Phone** — shown on contact page and footer
+- **Analytics & Social** — Google Analytics ID, Facebook App ID, Twitter handle
+
+### Cookie Consent Banner
+- Appears at the bottom of every page until the visitor accepts
+- "Accept All" enables full analytics tracking
+- "Essential Only" enables only functional cookies
+- Preference stored in browser localStorage
+- Links to Privacy Policy and Terms of Service in the banner
+
+### Legal Page URLs
+Each directory's legal pages are served at:
+- `/legal/terms`
+- `/legal/privacy`
+- `/legal/contact`
+- `/legal/disclaimer`
+- `/legal/loyalty`
+- `/legal/{any-custom-slug}`
+
+All legal pages are SSR-rendered with full SEO tags, branded headers, and the directory's footer.
+
+### City SSR Pages
+Each directory gets SEO-optimized city landing pages:
+- `/zaarhub` — all cities index
+- `/zaarhub/:slug` — individual city page with business listings, ratings, categories
+- `/zaarhub/:slug/:business_id` — business detail page with schema.org LocalBusiness JSON-LD
+- All pages include: meta tags, Open Graph tags, canonical URLs, star ratings, offer/claim flow
 
 ## Service Catalog Management
 
@@ -147,7 +218,7 @@ Each business's CTA type is stored in its meta fields at `POST /api/v1/businesse
 
 ## Connected Services Management
 
-Configure tenant-level connections between directories and SwiftSoftware products (IncentiveSwift and CoreSwift CRM) on behalf of business owners.
+Configure directory-level connections between directories and SwiftSoftware products (IncentiveSwift and CoreSwift CRM) on behalf of business owners.
 
 ### How It Works
 
