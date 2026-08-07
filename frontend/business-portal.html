@@ -761,6 +761,48 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <label>Terms (optional)</label>
             <input type="text" id="dealTerms" placeholder="e.g. One per customer. Not combinable." style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
           </div>
+          <hr style="margin:16px 0;border-color:var(--border)">
+          <div class="section-subtitle" style="margin-bottom:12px">🎨 Deal Page Customization</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:180px">
+              <label>Template Style</label>
+              <select id="dealPageTemplate" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+                <option value="">Default</option>
+                <option value="automotive">🚗 Automotive</option>
+                <option value="education">📚 Education</option>
+                <option value="farm">🌾 Farm</option>
+                <option value="fitness">💪 Fitness</option>
+                <option value="hospitality">🏨 Hospitality</option>
+                <option value="restaurant">🍽️ Restaurant</option>
+                <option value="service">🛠️ Service</option>
+                <option value="medical">🏥 Medical</option>
+                <option value="real-estate">🏠 Real Estate</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:0 0 auto;min-width:100px">
+              <label>Accent Color</label>
+              <input type="color" id="dealAccentColor" value="#f27f2f" style="width:60px;height:38px;border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:2px">
+            </div>
+            <div class="form-group" style="flex:0 0 auto;min-width:100px">
+              <label>CTA Color</label>
+              <input type="color" id="dealCtaColor" value="#f27f2f" style="width:60px;height:38px;border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:2px">
+            </div>
+            <div class="form-group" style="flex:1;min-width:180px">
+              <label>CTA Button Text</label>
+              <input type="text" id="dealCtaText" placeholder="Claim This Deal" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+            <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="dealShowTimer" style="width:18px;height:18px">
+              <span style="font-size:.85rem;font-weight:500">Show Countdown Timer</span>
+            </label>
+            <span style="font-size:.75rem;color:var(--text-muted)">(only shown if end date is set)</span>
+          </div>
+          <div class="form-group">
+            <label>Gallery Images <span style="font-size:.75rem;color:var(--text-muted)">— one URL per line</span></label>
+            <textarea id="dealGalleryImages" rows="3" placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"></textarea>
+          </div>
           <div id="dealFormResult" style="margin:8px 0;font-size:.8rem"></div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-primary" id="dealSubmitBtn" onclick="submitDeal()">💾 Save Deal</button>
@@ -2434,6 +2476,15 @@ function renderDealsList(deals) {
       priceInfo += '</div>';
     }
     var claimed = (d.redemption_count || 0);
+    // Template icon mapping
+    var templateIcons = { 'automotive':'🚗', 'education':'📚', 'farm':'🌾', 'fitness':'💪', 'hospitality':'🏨', 'restaurant':'🍽️', 'service':'🛠️', 'medical':'🏥', 'real-estate':'🏠' };
+    var templateLabel = d.page_template || 'default';
+    var templateIcon = templateIcons[templateLabel] || '🎁';
+    var accentSwatch = d.accent_color ? '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + esc(d.accent_color) + ';border:1px solid var(--border);vertical-align:middle;margin-left:4px" title="' + esc(d.accent_color) + '"></span>' : '';
+    var styleBadges = '';
+    if (templateLabel !== 'default' || d.accent_color) {
+      styleBadges = '<div style="margin-top:4px;font-size:.72rem;color:var(--text-muted)">' + templateIcon + ' ' + esc(templateLabel) + accentSwatch + (d.show_timer ? ' ⏱️ timer' : '') + '</div>';
+    }
     html += '<div class="card" style="position:relative">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">' +
         '<h4 style="font-size:.95rem;font-weight:700;margin:0;padding-right:80px">' + esc(d.title) + '</h4>' +
@@ -2446,6 +2497,7 @@ function renderDealsList(deals) {
         (d.redemption_limit ? '<span>📊 Limit: ' + d.redemption_limit + '</span>' : '') +
         (d.coupon_code ? '<span>🏷️ ' + esc(d.coupon_code) + '</span>' : '') +
       '</div>' +
+      styleBadges +
       (d.end_date ? '<div style="font-size:.72rem;color:var(--text-muted)">Expires: ' + new Date(d.end_date).toLocaleDateString() + '</div>' : '') +
       '<div style="display:flex;gap:6px;margin-top:10px">' +
         '<button class="btn btn-sm btn-secondary" onclick="editDeal(\'' + d.id + '\')">✏️ Edit</button>' +
@@ -2486,12 +2538,29 @@ function showDealForm(deal) {
     document.getElementById('dealTerms').value = deal.terms || '';
     document.getElementById('dealStartDate').value = deal.start_date ? deal.start_date.slice(0,10) : '';
     document.getElementById('dealEndDate').value = deal.end_date ? deal.end_date.slice(0,10) : '';
+    document.getElementById('dealPageTemplate').value = deal.page_template || '';
+    document.getElementById('dealAccentColor').value = deal.accent_color || '#f27f2f';
+    document.getElementById('dealCtaColor').value = deal.cta_color || '#f27f2f';
+    document.getElementById('dealCtaText').value = deal.cta_text || '';
+    document.getElementById('dealShowTimer').checked = deal.show_timer === true;
+    var galImages = deal.gallery_images;
+    if (Array.isArray(galImages)) {
+      document.getElementById('dealGalleryImages').value = galImages.join('\n');
+    } else {
+      document.getElementById('dealGalleryImages').value = '';
+    }
   } else {
     document.getElementById('dealFormTitle').textContent = 'Create New Deal';
     document.getElementById('dealSubmitBtn').textContent = '💾 Save Deal';
     ['dealTitle','dealDesc','dealOrigPrice','dealPrice','dealDiscount','dealCouponCode','dealLimit','dealImage','dealTerms','dealStartDate','dealEndDate'].forEach(function(id) {
       document.getElementById(id).value = '';
     });
+    document.getElementById('dealPageTemplate').value = '';
+    document.getElementById('dealAccentColor').value = '#f27f2f';
+    document.getElementById('dealCtaColor').value = '#f27f2f';
+    document.getElementById('dealCtaText').value = '';
+    document.getElementById('dealShowTimer').checked = false;
+    document.getElementById('dealGalleryImages').value = '';
   }
   form.style.display = '';
   form.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2509,6 +2578,8 @@ async function submitDeal() {
   if (!title) { alert('Deal title is required'); return; }
   
   var token = localStorage.getItem('bizToken');
+  var galleryRaw = document.getElementById('dealGalleryImages').value.trim();
+  var galleryImages = galleryRaw ? galleryRaw.split('\n').map(function(l){ return l.trim() }).filter(function(l){ return l.length > 0 }) : null;
   var body = {
     title: title,
     description: document.getElementById('dealDesc').value.trim() || null,
@@ -2519,7 +2590,13 @@ async function submitDeal() {
     redemption_limit: parseInt(document.getElementById('dealLimit').value) || null,
     image_url: document.getElementById('dealImage').value.trim() || null,
     terms: document.getElementById('dealTerms').value.trim() || null,
-    business_id: _selectedBizId
+    business_id: _selectedBizId,
+    page_template: document.getElementById('dealPageTemplate').value || null,
+    accent_color: document.getElementById('dealAccentColor').value || null,
+    cta_color: document.getElementById('dealCtaColor').value || null,
+    cta_text: document.getElementById('dealCtaText').value.trim() || null,
+    show_timer: document.getElementById('dealShowTimer').checked,
+    gallery_images: galleryImages
   };
   var sd = document.getElementById('dealStartDate').value;
   var ed = document.getElementById('dealEndDate').value;

@@ -85,6 +85,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/deals", get(deals::list_deals).post(deals::create_deal))
         .route("/deals/featured", get(deals::list_featured_deals))
         .route("/deals/:id", get(deals::get_deal).put(deals::update_deal).delete(deals::delete_deal))
+        .route("/deals/:id/page", get(deals::get_deal_page))
         .route("/deals/:id/claim", post(deals::claim_deal))
         .route("/deals/:id/redeem", post(deals::redeem_deal))
         .route("/deals/:id/redemptions", get(deals::list_deal_redemptions))
@@ -1042,6 +1043,8 @@ async fn auth_guard(
         || (path.starts_with("/deals/") && path.ends_with("/claim") && req.method() == "POST")
         // Public deal detail pages (GET /deals/:uuid)
         || (path.starts_with("/deals/") && req.method() == "GET" && path.matches('/').count() == 2)
+        // Public deal detail page data (GET /deals/:uuid/page)
+        || (path.starts_with("/deals/") && path.ends_with("/page") && req.method() == "GET")
         // Public featured deals
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
