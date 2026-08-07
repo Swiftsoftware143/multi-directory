@@ -480,3 +480,89 @@ pub async fn expire_redemptions(
 pub struct ExpireQuery {
     pub days: Option<i64>,
 }
+
+/// GET /api/v1/deals/:id/page — full deal detail page data with business + directory info
+pub async fn get_deal_page(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let row = sqlx::query(
+        r#"SELECT
+            d.id, d.title, d.description, d.original_price, d.deal_price,
+            d.discount_percent, d.currency, d.image_url, d.terms, d.fine_print,
+            d.redemption_limit, d.redemption_count, d.status,
+            d.directory_id, d.business_id,
+            d.start_date, d.end_date, d.featured, d.zaarhub_featured,
+            d.deal_type, d.coupon_code,
+            d.page_template, d.accent_color, d.cta_color, d.cta_text,
+            d.show_timer, d.gallery_images,
+            d.rotation_schedule, d.rotation_order,
+            d.created_at, d.updated_at,
+            b.name AS business_name,
+            b.address AS business_address,
+            b.phone AS business_phone,
+            b.website AS business_website,
+            b.email AS business_email,
+            dc.name AS business_category,
+            dc.slug AS business_category_slug,
+            dir.slug AS directory_slug,
+            dir.name AS directory_name
+        FROM deals d
+        JOIN businesses b ON b.id = d.business_id
+        LEFT JOIN directory_categories dc ON dc.id = b.category_id
+        JOIN directories dir ON dir.id = d.directory_id
+        WHERE d.id = $1"#
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Deal not found".into()))?;
+
+    use sqlx::Row;
+    let gallery: Option<serde_json::Value> = row.try_get("gallery_images").ok();
+
+    let result = json!({
+        "id": row.try_get::<Uuid, _>("id").ok(),
+        "title": row.try_get::<String, _>("title").ok(),
+        "description": row.try_get::<String, _>("description").ok(),
+        "original_price": row.try_get::<String, _>("original_price").ok(),
+        "deal_price": row.try_get::<String, _>("deal_price").ok(),
+        "discount_percent": row.try_get::<i32, _>("discount_percent").ok(),
+        "currency": row.try_get::<String, _>("currency").ok(),
+        "image_url": row.try_get::<String, _>("image_url").ok(),
+        "terms": row.try_get::<String, _>("terms").ok(),
+        "fine_print": row.try_get::<String, _>("fine_print").ok(),
+        "redemption_limit": row.try_get::<i32, _>("redemption_limit").ok(),
+        "redemption_count": row.try_get::<i32, _>("redemption_count").ok(),
+        "status": row.try_get::<String, _>("status").ok(),
+        "directory_id": row.try_get::<Uuid, _>("directory_id").ok(),
+        "business_id": row.try_get::<Uuid, _>("business_id").ok(),
+        "start_date": row.try_get::<DateTime<Utc>, _>("start_date").ok(),
+        "end_date": row.try_get::<DateTime<Utc>, _>("end_date").ok(),
+        "featured": row.try_get::<bool, _>("featured").ok(),
+        "zaarhub_featured": row.try_get::<bool, _>("zaarhub_featured").ok(),
+        "deal_type": row.try_get::<String, _>("deal_type").ok(),
+        "coupon_code": row.try_get::<String, _>("coupon_code").ok(),
+        "page_template": row.try_get::<String, _>("page_template").ok(),
+        "accent_color": row.try_get::<String, _>("accent_color").ok(),
+        "cta_color": row.try_get::<String, _>("cta_color").ok(),
+        "cta_text": row.try_get::<String, _>("cta_text").ok(),
+        "show_timer": row.try_get::<bool, _>("show_timer").ok(),
+        "gallery_images": gallery,
+        "rotation_schedule": row.try_get::<String, _>("rotation_schedule").ok(),
+        "rotation_order": row.try_get::<i32, _>("rotation_order").ok(),
+        "created_at": row.try_get::<DateTime<Utc>, _>("created_at").ok(),
+        "updated_at": row.try_get::<DateTime<Utc>, _>("updated_at").ok(),
+        "business_name": row.try_get::<String, _>("business_name").ok(),
+        "business_address": row.try_get::<String, _>("business_address").ok(),
+        "business_phone": row.try_get::<String, _>("business_phone").ok(),
+        "business_website": row.try_get::<String, _>("business_website").ok(),
+        "business_email": row.try_get::<String, _>("business_email").ok(),
+        "business_category": row.try_get::<String, _>("business_category").ok(),
+        "business_category_slug": row.try_get::<String, _>("business_category_slug").ok(),
+        "directory_slug": row.try_get::<String, _>("directory_slug").ok(),
+        "directory_name": row.try_get::<String, _>("directory_name").ok(),
+    });
+
+    Ok(Json(result))
+}
