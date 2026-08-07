@@ -137,6 +137,7 @@ pub mod blog_qa;
 pub use blog_qa::*;
 pub mod zaarhub;
 pub mod zaarhub_ssr;
+pub mod b2b_ssr;
 pub mod zaarhub_seo;
 pub mod zaarhub_analytics;
 pub mod zaarhub_admin;

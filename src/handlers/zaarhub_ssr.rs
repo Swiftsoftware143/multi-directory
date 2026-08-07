@@ -291,7 +291,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-<header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub-city.html" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:14px;font-weight:500">🔍 Search</a></nav></div></header>
+<header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub-city.html" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:14px;font-weight:500">🔍 Search</a></nav></div></header>
 {hero}
 {city_picks}
 <div class="listing-grid">{listings}</div>
@@ -450,8 +450,8 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-<header><span class="logo">Zaar<span>Hub</span></span></header>
-<div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 9 Florida cities with thousands of listings, reviews, and deals.</p></div>
+<header><span class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></span></header>
+<div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 10 Florida cities with thousands of listings, reviews, and deals.</p></div>
 {picks}
 <div class="city-grid">{cities}</div>
 {footer}
@@ -642,7 +642,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-<header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub/{slug}">← Back to {city_name}</a></nav></div></header>
+<header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub/{slug}">← Back to {city_name}</a></nav></div></header>
 <div class="page">
 <div class="breadcrumb"><a href="/zaarhub">Cities</a> › <a href="/zaarhub/{slug}">{city_name}</a> › {name}</div>
 <div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{verified_html}{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}{freshness_html}</div></div>
@@ -717,7 +717,7 @@ footer a{{color:#f27f2f;text-decoration:none}}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-<header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
+<header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
 <div class="page">{content}</div>
 {footer}
 {cookie_banner}
