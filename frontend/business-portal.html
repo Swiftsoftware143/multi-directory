@@ -752,6 +752,10 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
               <label>Redemption Limit</label>
               <input type="number" id="dealLimit" min="1" placeholder="100" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
             </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Max Claims Per User</label>
+              <input type="number" id="dealPerUserLimit" min="1" placeholder="Unlimited" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
           </div>
           <div class="form-group">
             <label>Image URL (optional)</label>
@@ -798,8 +802,27 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <span style="font-size:.75rem;color:var(--text-muted)">(only shown if end date is set)</span>
           </div>
           <div class="form-group">
-            <label>Gallery Images <span style="font-size:.75rem;color:var(--text-muted)">— one URL per line</span></label>
-            <textarea id="dealGalleryImages" rows="3" placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"></textarea>
+            <label>Gallery Images <span style="font-size:.75rem;color:var(--text-muted)">— click + to add more (max 10)</span></label>
+            <div id="dealGalleryEditor">
+              <div class="gallery-urls" id="galleryUrls">
+                <div class="gallery-row" style="display:flex;gap:8px;margin-bottom:6px">
+                  <input type="url" class="gallery-input" placeholder="https://example.com/image1.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace">
+                  <button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>
+                </div>
+              </div>
+              <button type="button" onclick="addGalleryRow()" style="margin-top:6px;padding:6px 14px;border:1px dashed var(--border);border-radius:8px;background:transparent;cursor:pointer;font-size:.82rem;color:var(--primary);font-weight:600">+ Add Image</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Highlights <span style="font-size:.75rem;color:var(--text-muted)">— bullet points shown on deal page (3-8 items)</span></label>
+            <div id="highlightsEditor">
+              <div class="highlights-list" id="highlightsList">
+                <div class="highlight-row" style="display:flex;gap:8px;margin-bottom:6px">
+                  <input type="text" class="highlight-input" placeholder="e.g. 20% off your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+                </div>
+              </div>
+              <button type="button" onclick="addHighlight()" style="margin-top:6px;padding:6px 14px;border:1px dashed var(--border);border-radius:8px;background:transparent;cursor:pointer;font-size:.82rem;color:var(--primary);font-weight:600">+ Add Highlight</button>
+            </div>
           </div>
           <hr style="margin:16px 0;border-color:var(--border)">
           <div class="section-subtitle" style="margin-bottom:12px">⭐ Premium Features '+(typeof dealPageObj!=="undefined"&&dealPageObj.premium_features?'<span style="font-size:.75rem;color:var(--green);margin-left:6px">Enabled</span>':'<span style="font-size:.75rem;color:var(--text-muted);margin-left:6px">🔒 Upgrade Required</span>')+'</div>
@@ -2558,6 +2581,7 @@ function showDealForm(deal) {
     document.getElementById('dealDiscount').value = deal.discount_percent || '';
     document.getElementById('dealCouponCode').value = deal.coupon_code || '';
     document.getElementById('dealLimit').value = deal.redemption_limit || '';
+    document.getElementById('dealPerUserLimit').value = deal.per_user_limit || '';
     document.getElementById('dealImage').value = deal.image_url || '';
     document.getElementById('dealTerms').value = deal.terms || '';
     document.getElementById('dealStartDate').value = deal.start_date ? deal.start_date.slice(0,10) : '';
@@ -2572,11 +2596,9 @@ function showDealForm(deal) {
     document.getElementById('dealShowQR').checked = deal.show_qr === true;
     document.getElementById('dealPremiumFeatures').checked = deal.premium_features === true;
     var galImages = deal.gallery_images;
-    if (Array.isArray(galImages)) {
-      document.getElementById('dealGalleryImages').value = galImages.join('\n');
-    } else {
-      document.getElementById('dealGalleryImages').value = '';
-    }
+    loadGalleryRows(galImages);
+    var highlights = deal.highlights;
+    loadHighlights(highlights);
   } else {
     document.getElementById('dealFormTitle').textContent = 'Create New Deal';
     document.getElementById('dealSubmitBtn').textContent = '💾 Save Deal';
@@ -2588,7 +2610,9 @@ function showDealForm(deal) {
     document.getElementById('dealCtaColor').value = '#f27f2f';
     document.getElementById('dealCtaText').value = '';
     document.getElementById('dealShowTimer').checked = false;
-    document.getElementById('dealGalleryImages').value = '';
+    document.getElementById('dealPerUserLimit').value = '';
+    resetGalleryRows();
+    resetHighlights();
     document.getElementById('dealRedemptionType').value = 'code';
     document.getElementById('dealBookingUrl').value = '';
     document.getElementById('dealShowQR').checked = false;
@@ -2610,8 +2634,8 @@ async function submitDeal() {
   if (!title) { alert('Deal title is required'); return; }
   
   var token = localStorage.getItem('bizToken');
-  var galleryRaw = document.getElementById('dealGalleryImages').value.trim();
-  var galleryImages = galleryRaw ? galleryRaw.split('\n').map(function(l){ return l.trim() }).filter(function(l){ return l.length > 0 }) : null;
+  var galleryImages = collectGalleryUrls();
+  var highlights = collectHighlights();
   var body = {
     title: title,
     description: document.getElementById('dealDesc').value.trim() || null,
@@ -2620,6 +2644,7 @@ async function submitDeal() {
     discount_percent: parseInt(document.getElementById('dealDiscount').value) || null,
     coupon_code: document.getElementById('dealCouponCode').value.trim() || null,
     redemption_limit: parseInt(document.getElementById('dealLimit').value) || null,
+    per_user_limit: parseInt(document.getElementById('dealPerUserLimit').value) || null,
     image_url: document.getElementById('dealImage').value.trim() || null,
     terms: document.getElementById('dealTerms').value.trim() || null,
     business_id: _selectedBizId,
@@ -2629,6 +2654,7 @@ async function submitDeal() {
     cta_text: document.getElementById('dealCtaText').value.trim() || null,
     show_timer: document.getElementById('dealShowTimer').checked,
     gallery_images: galleryImages,
+    highlights: highlights,
     redemption_type: document.getElementById('dealRedemptionType').value || 'code',
     booking_url: document.getElementById('dealBookingUrl').value.trim() || null,
     show_qr: document.getElementById('dealShowQR').checked,
@@ -2922,6 +2948,94 @@ function renderIqsFunnels() {
       '<button class="btn btn-sm btn-danger" onclick="iqsDeleteFunnel(\'' + f.id + '\')">🗑️</button></div></div>';
   }
   el.innerHTML = html;
+}
+
+// ── Gallery Editor Helpers ──
+function addGalleryRow() {
+  var container = document.getElementById('galleryUrls');
+  var rows = container.querySelectorAll('.gallery-row');
+  if (rows.length >= 10) { alert('Maximum 10 images'); return; }
+  var row = document.createElement('div');
+  row.className = 'gallery-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+  row.innerHTML = '<input type="url" class="gallery-input" placeholder="https://example.com/image'+(rows.length+1)+'.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"><button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+  container.appendChild(row);
+}
+function removeGalleryRow(btn) {
+  var row = btn.parentNode;
+  var container = document.getElementById('galleryUrls');
+  if (container.querySelectorAll('.gallery-row').length <= 1) return;
+  row.remove();
+}
+function collectGalleryUrls() {
+  var inputs = document.querySelectorAll('.gallery-input');
+  var urls = [];
+  for (var i = 0; i < inputs.length; i++) {
+    var v = inputs[i].value.trim();
+    if (v) urls.push(v);
+  }
+  return urls.length > 0 ? urls : null;
+}
+function loadGalleryRows(images) {
+  var container = document.getElementById('galleryUrls');
+  container.innerHTML = '';
+  var list = Array.isArray(images) ? images : [];
+  if (list.length === 0) list = [''];
+  for (var i = 0; i < list.length; i++) {
+    var row = document.createElement('div');
+    row.className = 'gallery-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+    row.innerHTML = '<input type="url" class="gallery-input" value="' + esc(list[i] || '') + '" placeholder="https://example.com/image'+(i+1)+'.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"><button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+    container.appendChild(row);
+  }
+}
+function resetGalleryRows() {
+  var container = document.getElementById('galleryUrls');
+  container.innerHTML = '<div class="gallery-row" style="display:flex;gap:8px;margin-bottom:6px"><input type="url" class="gallery-input" placeholder="https://example.com/image1.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"><button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button></div>';
+}
+
+// ── Highlights Editor Helpers ──
+function addHighlight() {
+  var container = document.getElementById('highlightsList');
+  var rows = container.querySelectorAll('.highlight-row');
+  if (rows.length >= 8) { alert('Maximum 8 highlights'); return; }
+  var row = document.createElement('div');
+  row.className = 'highlight-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+  row.innerHTML = '<input type="text" class="highlight-input" placeholder="e.g. Save 20% on your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"><button type="button" onclick="removeHighlight(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+  container.appendChild(row);
+}
+function removeHighlight(btn) {
+  var row = btn.parentNode;
+  var container = document.getElementById('highlightsList');
+  if (container.querySelectorAll('.highlight-row').length <= 1) return;
+  row.remove();
+}
+function collectHighlights() {
+  var inputs = document.querySelectorAll('.highlight-input');
+  var items = [];
+  for (var i = 0; i < inputs.length; i++) {
+    var v = inputs[i].value.trim();
+    if (v) items.push(v);
+  }
+  return items.length > 0 ? items : null;
+}
+function loadHighlights(highlights) {
+  var container = document.getElementById('highlightsList');
+  container.innerHTML = '';
+  var list = Array.isArray(highlights) ? highlights : [];
+  if (list.length === 0) list = [''];
+  for (var i = 0; i < list.length; i++) {
+    var row = document.createElement('div');
+    row.className = 'highlight-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+    row.innerHTML = '<input type="text" class="highlight-input" value="' + esc(list[i] || '') + '" placeholder="e.g. Save 20% on your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"><button type="button" onclick="removeHighlight(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+    container.appendChild(row);
+  }
+}
+function resetHighlights() {
+  var container = document.getElementById('highlightsList');
+  container.innerHTML = '<div class="highlight-row" style="display:flex;gap:8px;margin-bottom:6px"><input type="text" class="highlight-input" placeholder="e.g. Save 20% on your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>';
 }
 
 function esc(s) {

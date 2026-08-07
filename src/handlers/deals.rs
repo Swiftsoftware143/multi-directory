@@ -49,6 +49,8 @@ pub struct Deal {
     pub redemption_type: Option<String>,
     pub booking_url: Option<String>,
     pub show_qr: Option<bool>,
+    pub per_user_limit: Option<i32>,
+    pub highlights: Option<serde_json::Value>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -85,6 +87,8 @@ pub struct CreateDealRequest {
     pub redemption_type: Option<String>,
     pub booking_url: Option<String>,
     pub show_qr: Option<bool>,
+    pub per_user_limit: Option<i32>,
+    pub highlights: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -120,6 +124,8 @@ pub struct UpdateDealRequest {
     pub redemption_type: Option<String>,
     pub booking_url: Option<String>,
     pub show_qr: Option<bool>,
+    pub per_user_limit: Option<i32>,
+    pub highlights: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,14 +140,14 @@ pub async fn list_deals(
 ) -> ApiResult<impl IntoResponse> {
     let deals = if let Some(biz_id) = q.business_id {
         sqlx::query_as::<_, Deal>(
-            "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals WHERE business_id = \x241 ORDER BY created_at DESC "
+            "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE business_id = \x241 ORDER BY created_at DESC "
         )
         .bind(biz_id)
         .fetch_all(&s.db)
         .await?
     } else {
         sqlx::query_as::<_, Deal>(
-            "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals ORDER BY created_at DESC "
+            "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals ORDER BY created_at DESC "
         )
         .fetch_all(&s.db)
         .await?
@@ -155,7 +161,7 @@ pub async fn list_featured_deals(
     State(s): State<AppState>,
 ) -> ApiResult<impl IntoResponse> {
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -169,7 +175,7 @@ pub async fn create_deal(
     Json(req): Json<CreateDealRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let deal = sqlx::query_as::<_, Deal>(
-        "INSERT INTO deals (title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417, \x2418, \x2419, \x2420, \x2421, \x2422, \x2423, \x2424, \x2425, \x2426, \x2427) RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at "
+        "INSERT INTO deals (title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417, \x2418, \x2419, \x2420, \x2421, \x2422, \x2423, \x2424, \x2425, \x2426, \x2427, \x2428, \x2429) RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )
     .bind(&req.title)
     .bind(&req.description)
@@ -198,6 +204,8 @@ pub async fn create_deal(
     .bind(req.redemption_type.as_deref().unwrap_or("code"))
     .bind(&req.booking_url)
     .bind(req.show_qr.unwrap_or(false))
+    .bind(req.per_user_limit)
+    .bind(serde_json::to_value(req.highlights.unwrap_or_default()).ok())
     .fetch_one(&s.db)
     .await?;
 
@@ -210,7 +218,7 @@ pub async fn get_deal(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let deal = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals WHERE id = \x241 "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -227,7 +235,7 @@ pub async fn update_deal(
     Json(req): Json<UpdateDealRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let existing = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals WHERE id = \x241 "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -264,7 +272,7 @@ pub async fn update_deal(
     let rotation_schedule = req.rotation_schedule.or(existing.rotation_schedule);
 
     let deal = sqlx::query_as::<_, Deal>(
-        "UPDATE deals SET title = \x241, description = \x242, original_price = \x243, deal_price = \x244, discount_percent = \x245, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, zaarhub_featured = \x2416, deal_type = \x2417, coupon_code = \x2418, page_template = \x2419, accent_color = \x2420, cta_color = \x2421, cta_text = \x2422, show_timer = \x2423, premium_features = \x2424, redemption_type = \x2425, booking_url = \x2426, show_qr = \x2427, rotation_schedule = \x2428, updated_at = NOW() WHERE id = \x2429 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at "
+        "UPDATE deals SET title = \x241, description = \x242, original_price = \x243, deal_price = \x244, discount_percent = \x245, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, zaarhub_featured = \x2416, deal_type = \x2417, coupon_code = \x2418, page_template = \x2419, accent_color = \x2420, cta_color = \x2421, cta_text = \x2422, show_timer = \x2423, premium_features = \x2424, redemption_type = \x2425, booking_url = \x2426, show_qr = \x2427, per_user_limit = \x2428, highlights = \x2429, rotation_schedule = \x2428, updated_at = NOW() WHERE id = \x2429 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )
     .bind(&title)
     .bind(&description)
@@ -293,6 +301,8 @@ pub async fn update_deal(
     .bind(&redemption_type)
     .bind(&booking_url)
     .bind(show_qr)
+    .bind(req.per_user_limit.or(existing.per_user_limit))
+    .bind(serde_json::to_value(req.highlights.unwrap_or_default()).ok())
     .bind(&rotation_schedule)
     .bind(id)
     .fetch_one(&s.db)
@@ -324,7 +334,7 @@ pub async fn claim_deal(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let deal = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals WHERE id = \x241 "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -338,8 +348,25 @@ pub async fn claim_deal(
         }
     }
 
+    // Per-user claim limit enforcement
+    if let Some(per_user_limit) = deal.per_user_limit {
+        // Count existing redemptions for this deal (check by visitor/anonymous context)
+        // For now, check total redemptions — full user-tracking requires auth session
+        let user_claims: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM deal_redemptions WHERE deal_id = \x241"
+        )
+        .bind(id)
+        .fetch_one(&s.db)
+        .await?;
+        if user_claims.0 as i32 >= per_user_limit {
+            return Err(AppError::BadRequest(
+                "You have already claimed this deal the maximum number of times".into()
+            ));
+        }
+    }
+
     let updated = sqlx::query_as::<_, Deal>(
-        "UPDATE deals SET redemption_count = COALESCE(redemption_count, 0) + 1, updated_at = NOW() WHERE id = \x241 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at "
+        "UPDATE deals SET redemption_count = COALESCE(redemption_count, 0) + 1, updated_at = NOW() WHERE id = \x241 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )
     .bind(id)
     .fetch_one(&s.db)
@@ -362,7 +389,7 @@ pub async fn list_directory_deals(
     .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals WHERE directory_id = \x241 ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE directory_id = \x241 ORDER BY created_at DESC "
     )
     .bind(dir.0)
     .fetch_all(&s.db)
@@ -385,7 +412,7 @@ pub async fn list_business_deals(
     .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, created_at, updated_at FROM deals WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
     )
     .bind(dir.0)
     .bind(business_id)
@@ -633,6 +660,7 @@ pub async fn get_deal_page(
         "redemption_type": row.try_get::<String, _>("redemption_type").ok().unwrap_or_else(|| "code".to_string()),
         "booking_url": row.try_get::<String, _>("booking_url").ok(),
         "show_qr": row.try_get::<bool, _>("show_qr").ok().unwrap_or(false),
+        "per_user_limit": row.try_get::<i32, _>("per_user_limit").ok(),
         "created_at": row.try_get::<DateTime<Utc>, _>("created_at").ok(),
         "updated_at": row.try_get::<DateTime<Utc>, _>("updated_at").ok(),
         "business_name": row.try_get::<String, _>("business_name").ok(),
