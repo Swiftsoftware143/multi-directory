@@ -62,6 +62,9 @@
     .empty .icon { font-size: 3rem; margin-bottom: 12px; }
     .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: .85rem; border-top: 1px solid #eee; margin-top: 40px; }
     @media (max-width: 640px) { .hero h1 { font-size: 1.8rem; } .grid { grid-template-columns: 1fr; } }
+
+    .btn-cta { display: inline-block; padding: 8px 18px; background: var(--primary, #f27f2f); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: .85rem; transition: all .2s; }
+    .btn-cta:hover { opacity: .9; transform: translateY(-1px); }
   </style>
 </head>
 <body>
@@ -157,9 +160,7 @@
             <div class="meta">${[b.city,b.state].filter(Boolean).join(', ')}${b.address ? ' · '+b.address : ''}</div>
             ${b.meta?.amenities ? `<div class="amenities">${b.meta.amenities.split(',').map(a => `<span class="amenity-badge">✓ ${a.trim()}</span>`).join('')}</div>` : ''}
             <div class="actions">
-              ${b.meta?.book_url ? `<a href="${b.meta.book_url}" target="_blank" class="btn-book">📅 Book Now</a>` : ''}
-              ${b.phone ? `<a href="tel:${b.phone}" class="btn-call">📞 Call</a>` : ''}
-              ${b.website ? `<a href="${b.website}" target="_blank" class="btn-website">🌐 Website</a>` : ''}
+              ${renderCtaButton(b)}
             </div>
           </div>
         </div>

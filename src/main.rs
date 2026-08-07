@@ -12,8 +12,10 @@ mod models;
 mod handlers;
 mod auth;
 mod routes;
+mod providers;
 mod template_engine;
 pub mod tracking_script;
+mod utils;
 
 use axum::Router;
 use std::time::Duration;

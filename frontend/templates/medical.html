@@ -41,6 +41,9 @@
     #map { height: 100%; width: 100%; }
     .footer { text-align: center; padding: 24px; color: var(--text-light); font-size: .85rem; border-top: 1px solid #eee; margin-top: 40px; }
     @media (max-width:640px) { .hero h1 { font-size:1.8rem; } .grid { grid-template-columns:1fr; } }
+
+    .btn-cta { display: inline-block; padding: 8px 18px; background: var(--primary, #f27f2f); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: .85rem; transition: all .2s; }
+    .btn-cta:hover { opacity: .9; transform: translateY(-1px); }
   </style>
 </head>
 <body>
@@ -125,3 +128,50 @@
   </script>
 </body>
 </html>
+// renderCtaButton(business) — returns HTML string for a single CTA button
+// Uses business.meta.cta_type to pick the right button
+function renderCtaButton(b) {
+  var cta = (b.meta && b.meta.cta_type) ? b.meta.cta_type : null;
+  if (!cta || cta === 'none') return '';
+
+  var labels = {
+    book_now: '📅 Book Now', book_call: '📞 Book a Call', claim_deal: '🎁 Claim This Deal',
+    get_quote: '💬 Get a Quote', learn_more: '🔍 Learn More', visit_website: '🌐 Visit Website',
+    call_now: '📱 Call Now', send_message: '✉️ Send a Message', view_menu: '📋 View Menu',
+    view_catalog: '📦 View Catalog', join_rewards: '⭐ Join Rewards', rsvp: '🎟️ RSVP Now'
+  };
+  var label = labels[cta] || cta;
+  var cls = 'btn-cta';
+
+  switch (cta) {
+    case 'book_now':
+      var slug = b.city_slug || (b.city||'').toLowerCase().replace(/\\s+/g,'-');
+      return '<a href=\"/book/' + slug + '/' + b.id + '\" class=\"' + cls + '\">' + label + '</a>';
+    case 'book_call':
+      var slug = b.city_slug || (b.city||'').toLowerCase().replace(/\\s+/g,'-');
+      return '<a href=\"/book/' + slug + '/' + b.id + '\" class=\"' + cls + '\">' + label + '</a>';
+    case 'claim_deal':
+      return '<a href=\"/#/business/' + b.id + '?tab=deals\" class=\"' + cls + '\">' + label + '</a>';
+    case 'get_quote':
+      return '<a href=\"/#/business/' + b.id + '?tab=contact\" class=\"' + cls + '\">' + label + '</a>';
+    case 'learn_more':
+      return '<a href=\"/#/business/' + b.id + '\" class=\"' + cls + '\">' + label + '</a>';
+    case 'visit_website':
+      if (!b.website) return '';
+      return '<a href=\"' + b.website + '\" target=\"_blank\" rel=\"noopener\" class=\"' + cls + '\">' + label + '</a>';
+    case 'call_now':
+      if (!b.phone) return '';
+      return '<a href=\"tel:' + b.phone + '\" class=\"' + cls + '\">' + label + '</a>';
+    case 'send_message':
+      return '<a href=\"/#/business/' + b.id + '?tab=contact\" class=\"' + cls + '\">' + label + '</a>';
+    case 'view_menu':
+      return '<a href=\"/#/business/' + b.id + '?tab=services\" class=\"' + cls + '\">' + label + '</a>';
+    case 'view_catalog':
+      return '<a href=\"/#/business/' + b.id + '?tab=catalog\" class=\"' + cls + '\">' + label + '</a>';
+    case 'join_rewards':
+      return '<a href=\"/#/business/' + b.id + '?tab=loyalty\" class=\"' + cls + '\">' + label + '</a>';
+    case 'rsvp':
+      return '<a href=\"/#/business/' + b.id + '?tab=events\" class=\"' + cls + '\">' + label + '</a>';
+    default: return '';
+  }
+}

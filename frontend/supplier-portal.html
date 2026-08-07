@@ -92,6 +92,35 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 .badge.accent{background:#f3e8ff;color:#7c3aed}
 .badge.primary{background:#fef3e7;color:#f27f2f}
 
+/* Editable forms */
+.edit-form{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:12px;display:none}
+.edit-form.show{display:block}
+.edit-form textarea{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;font-family:inherit;resize:vertical;min-height:60px}
+.edit-form textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(13,148,136,.15)}
+.edit-form .form-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
+
+/* Product cards */
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.product-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;transition:box-shadow .2s;position:relative}
+.product-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.product-card h4{margin-bottom:4px;font-size:1rem}
+.product-card .product-meta{font-size:.82rem;color:var(--text-secondary);margin-bottom:8px}
+.product-card .product-price{font-size:1.2rem;font-weight:700;color:var(--primary);margin-bottom:8px}
+.product-card .product-desc{font-size:.82rem;color:var(--text);margin-bottom:12px}
+.product-card .product-areas{font-size:.78rem;color:var(--text-secondary);margin-bottom:12px}
+.product-card .product-actions{display:flex;gap:8px}
+
+/* Inline edit */
+.inline-edit{display:none;margin-top:12px}
+.inline-edit.show{display:block}
+
+/* Confirm dialog */
+.confirm-dialog{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center}
+.confirm-dialog .dialog-card{background:#fff;border-radius:16px;padding:32px;max-width:380px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.confirm-dialog .dialog-card h3{margin-bottom:8px}
+.confirm-dialog .dialog-card p{font-size:.9rem;color:var(--text-secondary);margin-bottom:20px}
+.confirm-dialog .dialog-actions{display:flex;gap:8px;justify-content:center}
+
 /* Walkthrough Overlay */
 .walkthrough-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -104,6 +133,25 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 .walkthrough-card .btn:hover{background:#e06e1a}
 .walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#f27f2f;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
 .walkthrough-help-icon:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(13,148,136,.4)}
+
+/* Notification Bell */
+.notif-btn{position:relative;background:none;border:none;font-size:1.5rem;cursor:pointer;padding:4px 8px;border-radius:8px;transition:background .2s;display:flex;align-items:center}
+.notif-btn:hover{background:#f1f5f9}
+.notif-badge{position:absolute;top:0;right:0;background:var(--danger);color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1}
+.notif-dropdown{position:absolute;top:100%;right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.15);width:380px;max-width:90vw;max-height:480px;overflow-y:auto;z-index:1000;display:none}
+.notif-dropdown.show{display:block}
+.notif-dropdown-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card)}
+.notif-dropdown-header h3{font-size:.95rem;color:var(--text)}
+.notif-mark-all{font-size:.8rem;color:var(--primary);background:none;border:none;cursor:pointer;font-weight:600}
+.notif-mark-all:hover{text-decoration:underline}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;display:flex;flex-direction:column;gap:4px}
+.notif-item:hover{background:#f8fafc}
+.notif-item.unread{background:#fef3e7;border-left:3px solid var(--primary)}
+.notif-item .notif-title{font-size:.85rem;font-weight:600;color:var(--text)}
+.notif-item .notif-body{font-size:.8rem;color:var(--text-secondary);line-height:1.4}
+.notif-item .notif-time{font-size:.7rem;color:var(--text-secondary)}
+.notif-item .notif-type{font-size:.68rem;text-transform:uppercase;font-weight:700;color:var(--primary);letter-spacing:.5px}
+.notif-empty{padding:24px;text-align:center;color:var(--text-secondary);font-size:.85rem}
 
 /* Responsive */
 @media(max-width:768px){
@@ -191,6 +239,20 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div class="user-info" id="userInfo">Connected to ZaarHub Network</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
+      <div style="position:relative">
+        <button class="notif-btn" onclick="toggleNotifDropdown()" title="Notifications">
+          🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
+        </button>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header">
+            <h3>Notifications</h3>
+            <button class="notif-mark-all" onclick="markAllNotifsRead()">Mark all read</button>
+          </div>
+          <div id="notifList" style="min-height:60px">
+            <div class="notif-empty">Loading...</div>
+          </div>
+        </div>
+      </div>
       <a href="/guides/supplier-guide.html" target="_blank" style="color:var(--primary);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="Supplier Guide">❓</a>
       <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
     </div>
@@ -205,6 +267,16 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
   <!-- Content -->
   <div id="dashboardContent" style="display:none">
 
+    <!-- Dashboard Tabs -->
+    <div class="tab-bar" style="margin-bottom:20px" id="dashTabs">
+      <div class="tab active" onclick="switchDashTab('overview')" id="dtab-overview">📊 Overview</div>
+      <div class="tab" onclick="switchDashTab('orders')" id="dtab-orders">📋 Orders</div>
+      <div class="tab" onclick="switchDashTab('messages')" id="dtab-messages">💬 Messages</div>
+    </div>
+
+    <!-- Overview Tab Content -->
+    <div id="tab-overview">
+
     <!-- Profile -->
     <div class="profile-card" id="profileCard">
       <div class="profile-avatar" id="profileAvatar">🏪</div>
@@ -212,25 +284,187 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         <h2 id="profileName">Supplier</h2>
         <p class="email" id="profileEmail">email@example.com</p>
         <p id="profileMeta"><span id="profileType" class="badge.primary">Distributor</span> &middot; Member since today</p>
+        <p id="profileDelivery" style="font-size:.82rem;color:var(--text-secondary);margin-top:4px"></p>
+      </div>
+      <div style="margin-left:auto"><button class="btn btn-secondary" onclick="toggleProfileEdit()">✏️ Edit Profile</button></div>
+    </div>
+
+    <!-- Edit Profile Form -->
+    <div class="edit-form" id="editProfileForm">
+      <h4 style="margin-bottom:12px">Edit Business Profile</h4>
+      <div class="form-group">
+        <label>Business Name</label>
+        <input type="text" id="epName" placeholder="Business name">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="epEmail" placeholder="contact@business.com">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="tel" id="epPhone" placeholder="+1 (555) 123-4567">
+      </div>
+      <div class="form-group">
+        <label>Website</label>
+        <input type="url" id="epWebsite" placeholder="https://yourbusiness.com">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="epDescription" placeholder="Tell buyers about your business..."></textarea>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-secondary" onclick="toggleProfileEdit()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveProfile()">💾 Save Profile</button>
+      </div>
+    </div>
+
+    <!-- Edit Delivery Settings Form -->
+    <div class="edit-form" id="editDeliveryForm">
+      <h4 style="margin-bottom:12px">Edit Delivery Settings</h4>
+      <div class="form-group">
+        <label>Delivery Areas (comma-separated)</label>
+        <textarea id="edAreas" placeholder="Downtown, West Side, North County"></textarea>
+        <div class="form-hint">Enter areas you deliver to, separated by commas</div>
+      </div>
+      <div class="form-group">
+        <label>Minimum Order ($)</label>
+        <input type="number" id="edMinOrder" placeholder="0.00" step="0.01" min="0">
+        <div class="form-hint">Minimum order amount required for delivery</div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-secondary" onclick="toggleDeliveryEdit()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveDelivery()">💾 Save Settings</button>
+      </div>
+    </div>
+
+    <!-- CTA Button Selector -->
+    <div class="section" style="margin-top:16px">
+      <h3 style="font-size:1rem;margin-bottom:4px">🔘 Call-to-Action Button</h3>
+      <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Choose what buyers see as the primary action button on your supplier listing.</p>
+      <div class="form-group">
+        <label>Button Type</label>
+        <select id="supplierCtaType" onchange="onSupplierCtaChange()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          <option value="none">— No CTA —</option>
+          <optgroup label="──────── 🔒 Requires CoreSwift">
+            <option value="book_now" data-requires="coreswift">📅 Book Now</option>
+            <option value="book_call" data-requires="coreswift">📞 Book a Call</option>
+          </optgroup>
+          <optgroup label="──────── ✅ Always Available">
+            <option value="get_quote">💬 Get a Quote</option>
+            <option value="learn_more">🔍 Learn More</option>
+            <option value="visit_website">🌐 Visit Website</option>
+            <option value="call_now">📱 Call Now</option>
+            <option value="send_message">✉️ Send a Message</option>
+            <option value="view_catalog">📦 View Catalog</option>
+          </optgroup>
+          <optgroup label="──────── 🔒 Requires IncentiveSwift">
+            <option value="claim_deal" data-requires="incentiveswift">🎁 Claim This Deal</option>
+          </optgroup>
+        </select>
+      </div>
+      <div id="supplierCtaPreview" style="margin-top:8px">
+        <span style="font-size:.8rem;color:var(--text-secondary)">Preview: </span>
+        <span id="supplierCtaPreviewBtn" style="display:inline-block;padding:8px 20px;background:var(--primary);color:#fff;border-radius:8px;font-size:.85rem;font-weight:600">— No CTA —</span>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-primary btn-sm" onclick="saveSupplierCta()">💾 Save CTA</button>
+        <span id="supplierCtaSaveResult" style="margin-left:8px;font-size:.8rem"></span>
+      </div>
+    </div>
+
+    <!-- Connected Services -->
+    <div class="section" style="margin-top:16px">
+      <h3 style="font-size:1rem;margin-bottom:12px">🔗 Connected Services</h3>
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:16px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px">
+        <div>
+          <strong>🎯 IncentiveSwift</strong>
+          <p style="font-size:.8rem;color:var(--text-secondary);margin:4px 0 0">Loyalty campaigns &amp; deals for your supplier profile</p>
+        </div>
+        <div id="supplierIsStatus">
+          <span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>
+        </div>
+      </div>
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:16px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px">
+        <div>
+          <strong>📅 CoreSwift CRM</strong>
+          <p style="font-size:.8rem;color:var(--text-secondary);margin:4px 0 0">Booking &amp; CRM for your supplier services</p>
+        </div>
+        <div id="supplierCsStatus">
+          <span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>
+        </div>
+      </div>
+      <!-- IncentiveSwift Connect Form -->
+      <div id="supplierIsConnectForm" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
+        <div class="form-group">
+          <label>IncentiveSwift Tenant ID</label>
+          <input type="text" id="supplierIsTenantId" placeholder="Enter your IncentiveSwift tenant ID">
+        </div>
+        <div class="form-group">
+          <label>IncentiveSwift API Key</label>
+          <input type="password" id="supplierIsApiKey" placeholder="Enter your IncentiveSwift API key">
+        </div>
+        <div style="margin-top:8px">
+          <button class="btn btn-primary btn-sm" onclick="supplierConnectIS()">Connect</button>
+          <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="document.getElementById('supplierIsConnectForm').style.display='none'">Cancel</button>
+        </div>
+        <div id="supplierIsConnectResult" style="margin-top:8px;font-size:.8rem"></div>
       </div>
     </div>
 
     <!-- Quick Stats -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon">🌐</div>
-        <div class="stat-value">✓</div>
-        <div class="stat-label">Connected to ZaarHub Network</div>
-      </div>
+    <!-- Quick Stats (legacy) -->
+    <div class="stats-grid" id="legacyStats">
       <div class="stat-card">
         <div class="stat-icon">📦</div>
         <div class="stat-value" id="productCount">-</div>
         <div class="stat-label">Products Listed</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-icon">🤝</div>
-        <div class="stat-value">-</div>
-        <div class="stat-label">B2B Connections</div>
+    </div>
+
+    <!-- Supplier Order Stats (loaded via API) -->
+    <div class="section" id="supplierOrderStatsSection" style="display:none">
+      <div class="section-title">📊 Order Analytics</div>
+      <div class="stats-grid" id="supplierOrderStats">
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-value" id="statTotalOrders">0</div>
+          <div class="stat-label">Total Orders</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⏳</div>
+          <div class="stat-value" id="statPendingOrders" style="color:var(--warning)">0</div>
+          <div class="stat-label">Pending</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">✅</div>
+          <div class="stat-value" id="statConfirmedOrders" style="color:var(--secondary)">0</div>
+          <div class="stat-label">Confirmed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🚚</div>
+          <div class="stat-value" id="statShippedOrders" style="color:var(--accent)">0</div>
+          <div class="stat-label">Shipped</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📦</div>
+          <div class="stat-value" id="statDeliveredOrders" style="color:var(--success)">0</div>
+          <div class="stat-label">Delivered</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">❌</div>
+          <div class="stat-value" id="statCancelledOrders" style="color:var(--danger)">0</div>
+          <div class="stat-label">Cancelled</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value" id="statTotalRevenue">$0.00</div>
+          <div class="stat-label">Total Revenue</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⭐</div>
+          <div class="stat-value" id="statAvgRating">-</div>
+          <div class="stat-label">Avg Rating</div>
+        </div>
       </div>
     </div>
 
@@ -247,9 +481,74 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
           <h4>🤝 <a href="/api/v1/b2b/suppliers" target="_blank">Supplier Directory</a></h4>
           <p>View all registered suppliers, farms, wholesalers, and distributors on the network.</p>
         </div>
-        <div class="link-card" id="profileLink" style="opacity:0.7">
-          <h4>📋 Supplier Profile</h4>
-          <p>Manage your business profile and delivery settings. (Coming with linked accounts)</p>
+        <div class="link-card" onclick="toggleDeliveryEdit()">
+          <h4>🚚 Delivery Settings</h4>
+          <p>Set your delivery areas and minimum order requirements.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- My Products Section -->
+    <div class="section">
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span>📦 My Products</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary" onclick="exportProductsCSV()">📥 Export CSV</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('importFileInput').click()">📤 Import CSV</button>
+          <input type="file" id="importFileInput" accept=".csv" style="display:none" onchange="importProductsCSV(this)">
+          <button class="btn btn-primary" onclick="toggleAddProduct()">➕ Add Product</button>
+        </div>
+      </div>
+      <div class="section-subtitle">Manage your product catalog for the B2B marketplace</div>
+
+      <!-- Import Results -->
+      <div id="importResults" style="display:none;margin:12px 0;padding:12px;border-radius:8px;background:var(--surface)"></div>
+
+      <!-- Add/Edit Product Form -->
+      <div class="edit-form" id="addProductForm">
+        <h4 style="margin-bottom:12px">Add New Product</h4>
+        <div class="form-group">
+          <label>Product Name *</label>
+          <input type="text" id="apName" placeholder="Organic Tomatoes">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="apDescription" placeholder="Describe your product..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <input type="text" id="apCategory" placeholder="Produce, Dairy, Equipment...">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>Price ($)</label>
+            <input type="number" id="apPrice" placeholder="0.00" step="0.01" min="0">
+          </div>
+          <div class="form-group">
+            <label>Unit</label>
+            <input type="text" id="apUnit" placeholder="each, lb, case...">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Min Order Qty</label>
+          <input type="number" id="apMinOrder" placeholder="1" min="1" value="1">
+        </div>
+        <div class="form-group">
+          <label>Delivery Areas (comma-separated)</label>
+          <textarea id="apDeliveryAreas" placeholder="Downtown, West Side"></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-secondary" onclick="toggleAddProduct()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveNewProduct()">💾 Save Product</button>
+        </div>
+      </div>
+
+      <!-- Product list -->
+      <div id="productList" style="margin-top:12px">
+        <div class="empty-state">
+          <div class="icon">📦</div>
+          <h3>No products yet</h3>
+          <p>Add your first product to start selling on the B2B marketplace.</p>
         </div>
       </div>
     </div>
@@ -343,6 +642,148 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         </p>
       </div>
     </div>
+  </div> <!-- end tab-overview -->
+
+    <!-- Orders Tab Content -->
+    <div id="tab-orders" style="display:none">
+      <div class="section">
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>📋 Orders</span>
+          <div style="display:flex;gap:8px">
+            <select id="orderStatusFilter" onchange="loadOrders()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:.8rem">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="shipped">Shipped</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-secondary" onclick="loadOrders()">🔄 Refresh</button>
+          </div>
+        </div>
+        <div id="ordersList">
+          <div class="empty-state">
+            <div class="icon">📋</div>
+            <h3>Loading orders...</h3>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fulfill Order Modal -->
+      <div id="fulfillModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:16px;padding:32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+            <h3 style="margin:0">📝 Fulfill Order</h3>
+            <button onclick="document.getElementById('fulfillModal').style.display='none'" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-secondary)">&times;</button>
+          </div>
+          <div class="form-group">
+            <label>Tracking Number</label>
+            <input type="text" id="fulfillTrackingNumber" placeholder="e.g. 1Z999AA10123456784">
+          </div>
+          <div class="form-group">
+            <label>Carrier</label>
+            <input type="text" id="fulfillCarrier" placeholder="e.g. UPS, FedEx, USPS">
+          </div>
+          <div class="form-group">
+            <label>Estimated Delivery Date</label>
+            <input type="date" id="fulfillEstDelivery">
+          </div>
+          <div class="form-actions" style="margin-top:16px">
+            <button class="btn btn-secondary" onclick="document.getElementById('fulfillModal').style.display='none'">Cancel</button>
+            <button class="btn btn-primary" onclick="submitFulfill()">💾 Save & Fulfill</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review Buyer Modal -->
+      <div id="reviewModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:16px;padding:32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+            <h3 style="margin:0">⭐ Review Buyer</h3>
+            <button onclick="document.getElementById('reviewModal').style.display='none'" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-secondary)">&times;</button>
+          </div>
+          <div class="form-group">
+            <label>Rating</label>
+            <div id="starRating" style="display:flex;gap:4px;font-size:1.8rem;cursor:pointer;margin-bottom:4px">
+              <span onclick="setStarRating(1)" id="star1">☆</span>
+              <span onclick="setStarRating(2)" id="star2">☆</span>
+              <span onclick="setStarRating(3)" id="star3">☆</span>
+              <span onclick="setStarRating(4)" id="star4">☆</span>
+              <span onclick="setStarRating(5)" id="star5">☆</span>
+            </div>
+            <div class="form-hint">Click a star to rate the buyer (1-5)</div>
+          </div>
+          <div class="form-group">
+            <label>Review (optional)</label>
+            <textarea id="reviewText" placeholder="Share your experience with this buyer..." rows="3"></textarea>
+          </div>
+          <div class="form-actions" style="margin-top:16px">
+            <button class="btn btn-secondary" onclick="document.getElementById('reviewModal').style.display='none'">Cancel</button>
+            <button class="btn btn-primary" onclick="submitReview()">⭐ Submit Review</button>
+          </div>
+        </div>
+      </div>
+    </div> <!-- end tab-orders -->
+
+    <!-- Messages Tab Content -->
+    <div id="tab-messages" style="display:none">
+      <div class="section">
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>💬 Messages</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="toggleComposeMessage()">✉️ Compose</button>
+            <button class="btn btn-secondary" onclick="loadMessages()">🔄 Refresh</button>
+          </div>
+        </div>
+
+        <!-- Compose Message Form -->
+        <div class="edit-form" id="composeMsgForm">
+          <h4 style="margin-bottom:12px">Send Message</h4>
+          <div class="form-group">
+            <label>To Business ID</label>
+            <input type="text" id="msgToBusinessId" placeholder="Enter business UUID">
+            <div class="form-hint">You can find business IDs in the supplier directory or B2B marketplace</div>
+          </div>
+          <div class="form-group">
+            <label>Subject</label>
+            <input type="text" id="msgSubject" placeholder="Message subject">
+          </div>
+          <div class="form-group">
+            <label>Message</label>
+            <textarea id="msgBody" placeholder="Write your message..." rows="4"></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-secondary" onclick="toggleComposeMessage()">Cancel</button>
+            <button class="btn btn-primary" onclick="sendMessage()">✉️ Send</button>
+          </div>
+        </div>
+
+        <!-- Message List -->
+        <div id="messagesList" style="margin-top:12px">
+          <div class="empty-state">
+            <div class="icon">💬</div>
+            <h3>Loading messages...</h3>
+          </div>
+        </div>
+      </div>
+
+      <!-- Message Detail Modal -->
+      <div id="msgDetailModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:16px;padding:32px;max-width:560px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 id="msgDetailSubject" style="margin:0"></h3>
+            <button onclick="document.getElementById('msgDetailModal').style.display='none'" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-secondary)">&times;</button>
+          </div>
+          <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">
+            From: <strong id="msgDetailSender"></strong> &middot; <span id="msgDetailDate"></span>
+            <span id="msgDetailStatus" class="badge" style="margin-left:8px"></span>
+          </div>
+          <div id="msgDetailBody" style="font-size:.9rem;line-height:1.6;margin-bottom:16px;white-space:pre-wrap"></div>
+          <button id="msgDetailMarkRead" class="btn btn-secondary" onclick="markMsgReadFromDetail()">📖 Mark as Read</button>
+        </div>
+      </div>
+    </div> <!-- end tab-messages -->
+
   </div>
 </div>
 
@@ -405,10 +846,133 @@ async function g(path) {
 }
 
 async function po(path, body) {
+  var token = localStorage.getItem('supplierToken');
   var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
   var r = await fetch(API + path, { method: 'POST', headers: h, body: JSON.stringify(body) });
   if (!r.ok) { var e = await r.json().catch(function(){ return {}; }); throw new Error(e.message || 'Request failed'); }
   return r.json();
+}
+
+async function pu(path, body) {
+  var token = localStorage.getItem('supplierToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { method: 'PUT', headers: h, body: JSON.stringify(body) });
+  if (!r.ok) { var e = await r.json().catch(function(){ return {}; }); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+async function del(path) {
+  var token = localStorage.getItem('supplierToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { method: 'DELETE', headers: h });
+  if (!r.ok) { var e = await r.json().catch(function(){ return {}; }); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+// ── Notifications ──
+
+function toggleNotifDropdown() {
+  var dd = $('notifDropdown');
+  if (dd.classList.contains('show')) {
+    dd.classList.remove('show');
+  } else {
+    dd.classList.add('show');
+    loadNotifs();
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  var dd = $('notifDropdown');
+  var btn = document.querySelector('.notif-btn');
+  if (dd && btn && !btn.contains(e.target) && !dd.contains(e.target)) {
+    dd.classList.remove('show');
+  }
+});
+
+async function loadNotifs() {
+  var token = localStorage.getItem('supplierToken');
+  if (!token) return;
+  try {
+    var data = await fetch(API + '/b2b/notifications?per_page=20', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(function(r) { return r.json(); });
+    var list = $('notifList');
+    var notifs = data.notifications || [];
+    if (notifs.length === 0) {
+      list.innerHTML = '<div class="notif-empty">No notifications yet 🎉</div>';
+    } else {
+      list.innerHTML = notifs.map(function(n) {
+        var time = new Date(n.created_at).toLocaleString();
+        var cls = n.is_read ? '' : 'unread';
+        return '<div class="notif-item ' + cls + '" onclick="markNotifRead(\'' + n.id + '\')">' +
+          '<div class="notif-type">' + esc(n.type || '') + '</div>' +
+          '<div class="notif-title">' + esc(n.title || '') + '</div>' +
+          (n.body ? '<div class="notif-body">' + esc(n.body) + '</div>' : '') +
+          '<div class="notif-time">' + time + '</div>' +
+        '</div>';
+      }).join('');
+    }
+    // Update badge
+    updateNotifBadge(data.unread_count || 0);
+  } catch(e) {
+    console.error('loadNotifs error:', e);
+  }
+}
+
+async function loadNotifBadge() {
+  var token = localStorage.getItem('supplierToken');
+  if (!token) return;
+  try {
+    var data = await fetch(API + '/b2b/notifications?per_page=1&is_read=false', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(function(r) { return r.json(); });
+    updateNotifBadge(data.unread_count || 0);
+  } catch(e) { /* silent */ }
+}
+
+function updateNotifBadge(count) {
+  var badge = $('notifBadge');
+  if (count > 0) {
+    badge.style.display = 'flex';
+    badge.textContent = count > 99 ? '99+' : count;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function markNotifRead(id) {
+  var token = localStorage.getItem('supplierToken');
+  if (!token) return;
+  try {
+    await fetch(API + '/b2b/notifications/' + id + '/read', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    loadNotifs();
+    loadNotifBadge();
+  } catch(e) {
+    console.error('markNotifRead error:', e);
+  }
+}
+
+async function markAllNotifsRead() {
+  var token = localStorage.getItem('supplierToken');
+  if (!token) return;
+  try {
+    await fetch(API + '/b2b/notifications/read-all', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    loadNotifs();
+    loadNotifBadge();
+    toast('All notifications marked as read', 'success');
+  } catch(e) {
+    console.error('markAllNotifsRead error:', e);
+  }
 }
 
 // ── Auth ──
@@ -442,7 +1006,7 @@ async function doRegister() {
   if (password.length < 6) { showAuthError('Password must be at least 6 characters'); return; }
   hideAuthMessages();
   try {
-    var r = await po('/b2b/register', {
+    var r = await po('/api/v1/b2b/register', {
       email: email,
       password: password,
       name: name,
@@ -496,8 +1060,11 @@ async function loadDashboard() {
   $('loadingState').style.display = '';
   $('dashboardContent').style.display = 'none';
 
+  // Load notification badge count
+  loadNotifBadge();
+
   try {
-    // Try to load profile
+    // Try to load visitor profile
     var data = await g('/visitor/profile');
     var v = data.visitor || {};
     $('profileName').textContent = v.name || 'Supplier';
@@ -512,6 +1079,34 @@ async function loadDashboard() {
     // Update dashboard title
     $('dashboardTitle').textContent = '🏪 ' + businessTypeLabel(bt) + ' Dashboard';
 
+    // Load supplier profile (delivery areas, min order, etc.)
+    try {
+      var sp = await g('/supplier/profile');
+      window._supplierProfile = sp;
+      // Pre-populate edit forms
+      $('epName').value = sp.name || '';
+      $('epEmail').value = sp.email || '';
+      $('epPhone').value = sp.phone || '';
+      $('epWebsite').value = sp.website || '';
+      $('epDescription').value = sp.description || '';
+      $('edAreas').value = (sp.delivery_areas || []).join(', ');
+      $('edMinOrder').value = sp.min_order || 0;
+      // Show delivery info in profile card
+      var delInfo = [];
+      if (sp.delivery_areas && sp.delivery_areas.length > 0) delInfo.push('🚚 ' + sp.delivery_areas.join(', '));
+      if (sp.min_order > 0) delInfo.push('Min. Order: $' + sp.min_order);
+      $('profileDelivery').textContent = delInfo.join(' · ');
+    } catch(e) {
+      // Supplier profile may not be linked yet - that's ok
+      console.log('Supplier profile not yet available:', e.message);
+    }
+
+    // Load my products
+    loadMyProducts();
+
+    // Load connected services status
+    loadSupplierConnectedServices();
+
     // Try to fetch product count (public endpoint)
     try {
       var prodData = await g('/b2b/products?per_page=1');
@@ -525,6 +1120,9 @@ async function loadDashboard() {
     
     // Load loyalty data
     loadDistributorLoyalty();
+
+    // Load order stats
+    loadSupplierStats();
   } catch(e) {
     // Token expired or invalid
     doLogout();
@@ -623,6 +1221,732 @@ function showSWalkthrough(p){
   ov.innerHTML='<div class="walkthrough-card"><div class="icon">'+w.i+'</div><h3>'+w.t+'</h3><p>'+w.x+'</p><button class="btn" onclick="document.getElementById(\'swtOverlay\').remove();localStorage.setItem(\'swt_'+p+'\',\'true\')">Got it</button></div>';
   document.body.appendChild(ov);
   ov.onclick=function(e){if(e.target===ov){ov.remove();localStorage.setItem("swt_"+p,"true");}};
+}
+
+// ── Profile Editing ──
+function toggleProfileEdit() {
+  var form = $('editProfileForm');
+  form.classList.toggle('show');
+  // Always ensure fields are populated from latest data
+  var sp = window._supplierProfile || {};
+  $('epName').value = sp.name || $('profileName').textContent || '';
+  $('epEmail').value = sp.email || $('profileEmail').textContent || '';
+  $('epPhone').value = sp.phone || '';
+  $('epWebsite').value = sp.website || '';
+  $('epDescription').value = sp.description || '';
+}
+
+async function saveProfile() {
+  var body = {
+    name: $('epName').value.trim() || undefined,
+    email: $('epEmail').value.trim() || undefined,
+    phone: $('epPhone').value.trim() || undefined,
+    website: $('epWebsite').value.trim() || undefined,
+    description: $('epDescription').value.trim() || undefined
+  };
+  try {
+    await pu('/supplier/profile', body);
+    toast('Profile updated!', 'success');
+    $('editProfileForm').classList.remove('show');
+    // Refresh dashboard display
+    $('profileName').textContent = body.name || $('profileName').textContent;
+    $('profileEmail').textContent = body.email || $('profileEmail').textContent;
+    // Update cached profile
+    if (window._supplierProfile) {
+      if (body.name) window._supplierProfile.name = body.name;
+      if (body.email) window._supplierProfile.email = body.email;
+      if (body.phone) window._supplierProfile.phone = body.phone;
+      if (body.website) window._supplierProfile.website = body.website;
+      if (body.description) window._supplierProfile.description = body.description;
+    }
+  } catch(e) {
+    toast('Failed to save: ' + e.message, 'error');
+  }
+}
+
+// ── CTA Button (Supplier) ──
+var SUPPLIER_CTA_LABELS = {
+  book_now: '📅 Book Now', book_call: '📞 Book a Call', claim_deal: '🎁 Claim This Deal',
+  get_quote: '💬 Get a Quote', learn_more: '🔍 Learn More', visit_website: '🌐 Visit Website',
+  call_now: '📱 Call Now', send_message: '✉️ Send a Message', view_catalog: '📦 View Catalog',
+  none: '— No CTA —'
+};
+
+function onSupplierCtaChange() {
+  var sel = document.getElementById('supplierCtaType');
+  var val = sel.value;
+  var preview = document.getElementById('supplierCtaPreviewBtn');
+  preview.textContent = SUPPLIER_CTA_LABELS[val] || val;
+  preview.style.display = val === 'none' ? 'none' : 'inline-block';
+}
+
+async function saveSupplierCta() {
+  var val = document.getElementById('supplierCtaType').value;
+  try {
+    await pu('/supplier/profile', { cta_type: val === 'none' ? null : val });
+    document.getElementById('supplierCtaSaveResult').textContent = '✅ Saved';
+    setTimeout(function(){ document.getElementById('supplierCtaSaveResult').textContent = ''; }, 2000);
+  } catch(e) {
+    document.getElementById('supplierCtaSaveResult').textContent = '❌ ' + e.message;
+  }
+}
+
+// ── Connected Services (Supplier) ──
+async function loadSupplierConnectedServices() {
+  try {
+    var r = await fetch('/api/v1/connected-services', { headers: authHeaders() });
+    if (!r.ok) return;
+    var data = await r.json();
+    renderSupplierConnectedStatus(data);
+  } catch(e) { console.error('Connected services:', e); }
+}
+
+function renderSupplierConnectedStatus(data) {
+  var isEl = document.getElementById('supplierIsStatus');
+  var csEl = document.getElementById('supplierCsStatus');
+  
+  if (isEl && data.incentiveswift) {
+    if (data.incentiveswift.connected) {
+      isEl.innerHTML = '<span style="font-size:.82rem;color:var(--success);font-weight:600">✅ Connected</span>' +
+        ' <button class="btn btn-sm btn-danger" onclick="disconnectSupplierService(\'incentiveswift\')" style="font-size:.75rem;padding:4px 10px">Disconnect</button>';
+    } else {
+      isEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="showSupplierConnectForm(\'incentiveswift\')">Connect</button>';
+    }
+  }
+  
+  if (csEl && data.coreswift) {
+    if (data.coreswift.connected) {
+      csEl.innerHTML = '<span style="font-size:.82rem;color:var(--success);font-weight:600">✅ Connected</span>' +
+        ' <button class="btn btn-sm btn-danger" onclick="disconnectSupplierService(\'coreswift\')" style="font-size:.75rem;padding:4px 10px">Disconnect</button>';
+    } else {
+      csEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="supplierConnectCoreSwift()">Connect</button>';
+    }
+  }
+}
+
+function showSupplierConnectForm(service) {
+  if (service === 'incentiveswift') {
+    document.getElementById('supplierIsConnectForm').style.display = '';
+  }
+}
+
+async function supplierConnectIS() {
+  var tenantId = document.getElementById('supplierIsTenantId').value.trim();
+  var apiKey = document.getElementById('supplierIsApiKey').value.trim();
+  if (!tenantId || !apiKey) {
+    document.getElementById('supplierIsConnectResult').textContent = '❌ Tenant ID and API key required';
+    return;
+  }
+  try {
+    var r = await fetch('/api/v1/connected-services/incentiveswift', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ tenant_id: tenantId, api_key: apiKey })
+    });
+    if (!r.ok) throw new Error((await r.json()).message || 'Connection failed');
+    document.getElementById('supplierIsConnectForm').style.display = 'none';
+    loadSupplierConnectedServices();
+  } catch(e) {
+    document.getElementById('supplierIsConnectResult').textContent = '❌ ' + e.message;
+  }
+}
+
+async function supplierConnectCoreSwift() {
+  try {
+    var r = await fetch('/api/v1/connected-services/coreswift', {
+      method: 'POST',
+      headers: authHeaders()
+    });
+    if (!r.ok) throw new Error((await r.json()).message || 'Connection failed');
+    loadSupplierConnectedServices();
+  } catch(e) {
+    toast('❌ ' + e.message, 'error');
+  }
+}
+
+async function disconnectSupplierService(service) {
+  if (!confirm('Disconnect ' + service + '? Your listing features will be affected.')) return;
+  try {
+    var r = await fetch('/api/v1/connected-services/' + service, { method: 'DELETE', headers: authHeaders() });
+    if (!r.ok) throw new Error('Failed to disconnect');
+    loadSupplierConnectedServices();
+  } catch(e) {
+    toast('❌ ' + e.message, 'error');
+  }
+}
+
+function authHeaders() {
+  var token = getAuthToken();
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+
+// ── Delivery Settings ──
+function toggleDeliveryEdit() {
+  var form = $('editDeliveryForm');
+  form.classList.toggle('show');
+  var sp = window._supplierProfile || {};
+  $('edAreas').value = (sp.delivery_areas || []).join(', ');
+  $('edMinOrder').value = sp.min_order || 0;
+}
+
+async function saveDelivery() {
+  var areasRaw = $('edAreas').value.trim();
+  var areas = areasRaw ? areasRaw.split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; }) : [];
+  var body = {
+    delivery_areas: areas.length > 0 ? areas : undefined,
+    min_order: parseFloat($('edMinOrder').value) || 0
+  };
+  try {
+    await pu('/supplier/delivery', body);
+    toast('Delivery settings updated!', 'success');
+    $('editDeliveryForm').classList.remove('show');
+    // Update cached profile
+    if (window._supplierProfile) {
+      window._supplierProfile.delivery_areas = areas;
+      window._supplierProfile.min_order = body.min_order;
+    }
+    // Refresh delivery info in profile card
+    var delInfo = [];
+    if (areas.length > 0) delInfo.push('🚚 ' + areas.join(', '));
+    if (body.min_order > 0) delInfo.push('Min. Order: $' + body.min_order);
+    $('profileDelivery').textContent = delInfo.join(' · ');
+  } catch(e) {
+    toast('Failed to save: ' + e.message, 'error');
+  }
+}
+
+// ── Product Management ──
+function toggleAddProduct() {
+  var form = $('addProductForm');
+  form.classList.toggle('show');
+  // Reset form
+  if (form.classList.contains('show')) {
+    $('apName').value = '';
+    $('apDescription').value = '';
+    $('apCategory').value = '';
+    $('apPrice').value = '';
+    $('apUnit').value = '';
+    $('apMinOrder').value = '1';
+    $('apDeliveryAreas').value = '';
+  }
+}
+
+async function loadMyProducts() {
+  try {
+    var data = await g('/b2b/products/my');
+    var products = data.products || [];
+    $('productCount').textContent = products.length;
+    renderProductList(products);
+  } catch(e) {
+    // Could be not yet linked — show empty state
+    $('productCount').textContent = '-';
+    $('productList').innerHTML = '<div class="empty-state"><div class="icon">📦</div><h3>No products yet</h3><p>Add your first product to start selling on the B2B marketplace.</p></div>';
+  }
+}
+
+function renderProductList(products) {
+  var container = $('productList');
+  if (!products || products.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📦</div><h3>No products yet</h3><p>Add your first product to start selling on the B2B marketplace.</p></div>';
+    return;
+  }
+  var html = '<div class="product-grid">';
+  for (var i = 0; i < products.length; i++) {
+    var p = products[i];
+    var areas = (p.delivery_areas || []).join(', ') || 'All areas';
+    var price = (p.price != null) ? '$' + parseFloat(p.price).toFixed(2) : 'Contact for price';
+      html += '<div class="product-card" id="pc-' + p.id + '">' +
+        '<h4>' + esc(p.name) + '</h4>' +
+        '<div class="product-meta">' + esc(p.category || 'Uncategorized') + ' &middot; ' + esc(p.unit || 'each') + ' &middot; Min: ' + (p.min_order || 1) + '</div>' +
+        '<div class="product-price">' + price + '</div>' +
+        (p.description ? '<div class="product-desc">' + esc(p.description) + '</div>' : '') +
+        '<div class="product-areas">🚚 ' + esc(areas) + '</div>' +
+        '<div class="product-actions">' +
+          '<button class="btn btn-secondary" onclick="toggleEditProduct(\'' + p.id + '\')">✏️ Edit</button>' +
+          '<button class="btn btn-secondary" style="color:var(--danger);border-color:var(--danger)" onclick="confirmDeleteProduct(\'' + p.id + '\',\'' + esc(p.name).replace(/'/g, "\\'") + '\')">🗑️ Delete</button>' +
+        '</div>' +
+        '<div class="inline-edit" id="ie-' + p.id + '">' +
+          '<div class="form-group"><label>Name</label><input type="text" id="iename-' + p.id + '" value="' + esc(p.name).replace(/"/g, '&quot;') + '"></div>' +
+          '<div class="form-group"><label>Description</label><textarea id="iedesc-' + p.id + '">' + esc(p.description || '') + '</textarea></div>' +
+          '<div class="form-group"><label>Category</label><input type="text" id="iecat-' + p.id + '" value="' + esc(p.category || '') + '"></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+            '<div class="form-group"><label>Price</label><input type="number" id="ieprice-' + p.id + '" value="' + (p.price || '') + '" step="0.01"></div>' +
+            '<div class="form-group"><label>Unit</label><input type="text" id="ieunit-' + p.id + '" value="' + esc(p.unit || '') + '"></div>' +
+          '</div>' +
+          '<div class="form-group"><label>Min Order</label><input type="number" id="iemin-' + p.id + '" value="' + (p.min_order || 1) + '" min="1"></div>' +
+          '<div class="form-group"><label>Delivery Areas</label><textarea id="ieareas-' + p.id + '">' + esc((p.delivery_areas || []).join(', ')) + '</textarea></div>' +
+          '<div class="form-actions">' +
+            '<button class="btn btn-secondary" onclick="toggleEditProduct(\'' + p.id + '\')">Cancel</button>' +
+            '<button class="btn btn-primary" onclick="saveEditProduct(\'' + p.id + '\')">💾 Save</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function toggleEditProduct(id) {
+  var ie = document.getElementById('ie-' + id);
+  if (!ie) return;
+  var showing = ie.classList.contains('show');
+  // Close all open inline edits first
+  var all = document.querySelectorAll('.inline-edit.show');
+  for (var i = 0; i < all.length; i++) { all[i].classList.remove('show'); }
+  if (!showing) { ie.classList.add('show'); }
+}
+
+async function saveNewProduct() {
+  var name = $('apName').value.trim();
+  if (!name) { toast('Product name is required', 'error'); return; }
+  var areasRaw = $('apDeliveryAreas').value.trim();
+  var areas = areasRaw ? areasRaw.split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; }) : [];
+  var body = {
+    name: name,
+    description: $('apDescription').value.trim() || undefined,
+    category: $('apCategory').value.trim() || undefined,
+    price: $('apPrice').value ? parseFloat($('apPrice').value) : undefined,
+    unit: $('apUnit').value.trim() || undefined,
+    min_order: parseInt($('apMinOrder').value) || 1,
+    delivery_areas: areas.length > 0 ? areas : undefined
+  };
+  try {
+    await po('/b2b/products', body);
+    toast('Product added!', 'success');
+    $('addProductForm').classList.remove('show');
+    loadMyProducts();
+  } catch(e) {
+    toast('Failed to add product: ' + e.message, 'error');
+  }
+}
+
+async function saveEditProduct(id) {
+  var areasRaw = document.getElementById('ieareas-' + id).value.trim();
+  var areas = areasRaw ? areasRaw.split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; }) : [];
+  var body = {
+    name: document.getElementById('iename-' + id).value.trim() || undefined,
+    description: document.getElementById('iedesc-' + id).value.trim() || undefined,
+    category: document.getElementById('iecat-' + id).value.trim() || undefined,
+    price: document.getElementById('ieprice-' + id).value ? parseFloat(document.getElementById('ieprice-' + id).value) : undefined,
+    unit: document.getElementById('ieunit-' + id).value.trim() || undefined,
+    min_order: parseInt(document.getElementById('iemin-' + id).value) || 1,
+    delivery_areas: areas.length > 0 ? areas : undefined
+  };
+  try {
+    await pu('/b2b/products/' + id, body);
+    toast('Product updated!', 'success');
+    document.getElementById('ie-' + id).classList.remove('show');
+    loadMyProducts();
+  } catch(e) {
+    toast('Failed to update: ' + e.message, 'error');
+  }
+}
+
+function confirmDeleteProduct(id, name) {
+  var dialog = document.createElement('div');
+  dialog.className = 'confirm-dialog';
+  dialog.id = 'deleteDialog';
+  dialog.innerHTML = '<div class="dialog-card"><h3>🗑️ Delete Product</h3><p>Are you sure you want to delete <strong>' + esc(name) + '</strong>? This cannot be undone.</p><div class="dialog-actions"><button class="btn btn-secondary" onclick="document.getElementById(\'deleteDialog\').remove()">Cancel</button><button class="btn btn-primary" style="background:var(--danger)" onclick="deleteProduct(\'' + id + '\')">Delete</button></div></div>';
+  document.body.appendChild(dialog);
+  dialog.onclick = function(e) { if (e.target === dialog) dialog.remove(); };
+}
+
+async function deleteProduct(id) {
+  try {
+    await del('/b2b/products/' + id);
+    toast('Product deleted', 'success');
+    var dialog = document.getElementById('deleteDialog');
+    if (dialog) dialog.remove();
+    loadMyProducts();
+  } catch(e) {
+    toast('Failed to delete: ' + e.message, 'error');
+  }
+}
+
+// ── CSV Import/Export ──
+
+async function exportProductsCSV() {
+  try {
+    var resp = await fetch('/api/v1/b2b/products/export', {
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('supplierToken') || '') }
+    });
+    if (!resp.ok) {
+      var err = await resp.json().catch(function(){ return {message:'Export failed'}; });
+      toast('Export failed: ' + (err.message || 'HTTP ' + resp.status), 'error');
+      return;
+    }
+    var blob = await resp.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'products.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Products exported successfully!', 'success');
+  } catch(e) {
+    toast('Export failed: ' + e.message, 'error');
+  }
+}
+
+function importProductsCSV(input) {
+  var file = input.files[0];
+  if (!file) return;
+  
+  var results = document.getElementById('importResults');
+  results.style.display = 'block';
+  results.innerHTML = '<p>⏳ Importing <strong>' + esc(file.name) + '</strong>...</p>';
+
+  var formData = new FormData();
+  formData.append('file', file);
+
+  fetch('/api/v1/b2b/products/import', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('supplierToken') || '') },
+    body: formData
+  })
+  .then(function(resp) { return resp.json(); })
+  .then(function(data) {
+    var html = '<h4>' + (data.error ? '❌ Import Failed' : '✅ Import Complete') + '</h4>';
+    html += '<p>📦 Imported: <strong>' + (data.imported || 0) + '</strong> | ⏭️ Skipped: <strong>' + (data.skipped || 0) + '</strong></p>';
+    if (data.errors && data.errors.length > 0) {
+      html += '<div style="margin-top:8px;max-height:200px;overflow-y:auto;background:var(--bg);padding:8px;border-radius:4px;font-size:13px">';
+      html += '<strong style="color:var(--danger)">Errors (' + data.errors.length + '):</strong><ul style="margin:4px 0 0 16px">';
+      for (var i = 0; i < data.errors.length; i++) {
+        html += '<li>' + esc(data.errors[i]) + '</li>';
+      }
+      html += '</ul></div>';
+    }
+    results.innerHTML = html;
+    loadMyProducts();
+  })
+  .catch(function(e) {
+    results.innerHTML = '<p style="color:var(--danger)">❌ Import failed: ' + esc(e.message) + '</p>';
+  })
+  .finally(function() {
+    // Reset file input so the same file can be re-uploaded
+    input.value = '';
+  });
+}
+
+// ── Dashboard Tab Switching ──
+function switchDashTab(tab) {
+  document.querySelectorAll('#dashTabs .tab').forEach(function(t){ t.classList.remove('active'); });
+  document.getElementById('dtab-'+tab).classList.add('active');
+  ['overview','orders','messages'].forEach(function(t){
+    var el = document.getElementById('tab-'+t);
+    if (el) el.style.display = (t === tab) ? '' : 'none';
+  });
+  if (tab === 'orders') { loadOrders(); }
+  if (tab === 'messages') { loadMessages(); }
+}
+
+// ── Orders ──
+function statusBadge(s) {
+  var colors = { pending:'#f59e0b', confirmed:'#3b82f6', shipped:'#8b5cf6', delivered:'#22c55e', cancelled:'#ef4444' };
+  var c = colors[s] || '#6b7280';
+  var bg = ({
+    pending:'#fef3c7', confirmed:'#dbeafe', shipped:'#ede9fe', delivered:'#dcfce7', cancelled:'#fee2e2'
+  })[s] || '#f3f4f6';
+  return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;color:'+c+';background:'+bg+'">'+esc(s)+'</span>';
+}
+
+
+// Detect order role from business_type
+function detectOrderRole(){
+  var infoStr = localStorage.getItem('distributorInfo');
+  var info = infoStr ? JSON.parse(infoStr) : null;
+  var bt = (info && info.business_type) ? info.business_type : '';
+  var isSupplier = ['supplier','distributor','wholesaler','manufacturer'].indexOf(bt) >= 0;
+  var isBuyer = ['buyer','retailer','business','customer'].indexOf(bt) >= 0;
+  if(info && info.business_type === undefined && info.account_type === 'business') isBuyer = true;
+  return isSupplier ? 'supplier' : (isBuyer ? 'buyer' : 'both');
+}
+
+// Current toggle for the order view (overrides auto-detection)
+var _orderViewOverride = null;
+
+async function loadOrders() {
+  var container = document.getElementById('ordersList');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner"></div></div>';
+  try {
+    var status = document.getElementById('orderStatusFilter');
+    var role = _orderViewOverride || detectOrderRole();
+    var qs = '?role=' + role;
+    if (status && status.value) qs += '&status=' + encodeURIComponent(status.value);
+    var data = await g('/b2b/orders' + qs);
+    var orders = data.orders || [];
+    
+    // Build toggle bar
+    var detected = detectOrderRole();
+    var toggleHtml = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">';
+    toggleHtml += '<span style="font-size:.8rem;color:var(--text-secondary);margin-right:4px">View:</span>';
+    var views = [
+      {label:'📤 Selling', role:'supplier'},
+      {label:'📥 Buying', role:'buyer'},
+      {label:'🔄 All', role:'both'}
+    ];
+    views.forEach(function(v){
+      var active = (role === v.role);
+      toggleHtml += '<button class="btn '+(active?'btn-primary':'btn-secondary')+'" style="font-size:.75rem;padding:4px 10px" onclick="_orderViewOverride=\''+v.role+'\';loadOrders()">'+v.label+(v.role===detected&&!_orderViewOverride?' (default)':'')+'</button>';
+    });
+    if(_orderViewOverride){
+      toggleHtml += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px" onclick="_orderViewOverride=null;loadOrders()">Reset to default</button>';
+    }
+    toggleHtml += '</div>';
+    
+    if (orders.length === 0) {
+      var viewLabel = role==='supplier'?'selling':'buying';
+      container.innerHTML = toggleHtml + '<div class="empty-state"><div class="icon">📋</div><h3>No '+viewLabel+' orders yet</h3><p>Orders will appear here when you '+viewLabel+' products on the marketplace.</p></div>';
+      return;
+    }
+    var html = toggleHtml;
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85rem">';
+    html += '<thead><tr style="border-bottom:2px solid var(--border);text-align:left">';
+    ['Order','Product','Buyer','Qty','Total','Status','Date','Actions'].forEach(function(h){
+      html += '<th style="padding:8px;color:var(--text-secondary);font-weight:600">'+h+'</th>';
+    });
+    html += '</tr></thead><tbody>';
+    orders.forEach(function(o){
+      var shortId = (o.id || '').substring(0,8);
+      var date = o.created_at ? new Date(o.created_at).toLocaleDateString() : '-';
+      var price = o.total_amount ? '$'+parseFloat(o.total_amount).toFixed(2) : '-';
+      var acts = '';
+      if (o.status === 'pending') {
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px" onclick="updateOrderStatus(\''+o.id+'\',\'confirmed\')">\u2705 Confirm</button> ';
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px;color:var(--danger)" onclick="updateOrderStatus(\''+o.id+'\',\'cancelled\')">\u274c Cancel</button>';
+      } else if (o.status === 'confirmed') {
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px" onclick="showFulfillModal(\''+o.id+'\')">📝 Fulfill</button> ';
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px" onclick="updateOrderStatus(\''+o.id+'\',\'shipped\')">🚚 Ship</button> ';
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px;color:var(--danger)" onclick="updateOrderStatus(\''+o.id+'\',\'cancelled\')">\u274c Cancel</button>';
+      } else if (o.status === 'shipped') {
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px" onclick="showFulfillModal(\''+o.id+'\')">📝 Fulfill</button> ';
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px" onclick="updateOrderStatus(\''+o.id+'\',\'delivered\')">📦 Delivered</button>';
+      } else if (o.status === 'delivered') {
+        acts += '<button class="btn btn-secondary" style="font-size:.75rem;padding:4px 8px" onclick="showReviewModal(\''+o.id+'\')">⭐ Review</button>';
+      }
+      html += '<tr style="border-bottom:1px solid var(--border)">';
+      html += '<td style="padding:8px;font-family:monospace;font-size:.75rem">#'+esc(shortId)+'</td>';
+      html += '<td style="padding:8px">'+esc(o.product_name || 'Product')+'</td>';
+      html += '<td style="padding:8px">'+esc(o.buyer_name || 'Buyer')+'</td>';
+      html += '<td style="padding:8px">'+(o.quantity || 1)+'</td>';
+      html += '<td style="padding:8px;font-weight:600">'+price+'</td>';
+      html += '<td style="padding:8px">'+statusBadge(o.status)+'</td>';
+      html += '<td style="padding:8px;font-size:.8rem;color:var(--text-secondary)">'+date+'</td>';
+      html += '<td style="padding:8px">'+acts+'</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    html += '<p style="margin-top:8px;font-size:.8rem;color:var(--text-secondary)">'+orders.length+' / '+data.total+' orders</p>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>'+esc(e.message)+'</p></div>';
+  }
+}
+
+async function updateOrderStatus(id, status) {
+  try {
+    await pu('/b2b/orders/'+id+'/status', { status: status });
+    toast('Order ' + status + '!', 'success');
+    loadOrders();
+    loadSupplierStats();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── Supplier Stats ──
+async function loadSupplierStats() {
+  try {
+    var data = await g('/supplier/stats');
+    $('statTotalOrders').textContent = data.total_orders || 0;
+    $('statPendingOrders').textContent = data.pending_orders || 0;
+    $('statConfirmedOrders').textContent = data.confirmed_orders || 0;
+    $('statShippedOrders').textContent = data.shipped_orders || 0;
+    $('statDeliveredOrders').textContent = data.delivered_orders || 0;
+    $('statCancelledOrders').textContent = data.cancelled_orders || 0;
+    var rev = parseFloat(data.total_revenue) || 0;
+    $('statTotalRevenue').textContent = '$' + rev.toFixed(2);
+    var avg = parseFloat(data.avg_rating) || 0;
+    $('statAvgRating').textContent = avg > 0 ? avg.toFixed(1) + ' ⭐' : '-';
+    var section = $('supplierOrderStatsSection');
+    if (section) section.style.display = '';
+  } catch(e) {
+    // Stats not available — keep section hidden
+    console.log('Stats not available:', e.message);
+  }
+}
+
+// ── Fulfill Order ──
+var _fulfillOrderId = null;
+function showFulfillModal(orderId) {
+  _fulfillOrderId = orderId;
+  $('fulfillTrackingNumber').value = '';
+  $('fulfillCarrier').value = '';
+  $('fulfillEstDelivery').value = '';
+  $('fulfillModal').style.display = 'flex';
+}
+
+async function submitFulfill() {
+  var id = _fulfillOrderId;
+  if (!id) return;
+  var body = {};
+  var tn = $('fulfillTrackingNumber').value.trim();
+  if (tn) body.tracking_number = tn;
+  var carrier = $('fulfillCarrier').value.trim();
+  if (carrier) body.carrier = carrier;
+  var est = $('fulfillEstDelivery').value;
+  if (est) body.estimated_delivery = est;
+  try {
+    await pu('/b2b/orders/' + id + '/fulfill', body);
+    toast('Order fulfilled!', 'success');
+    $('fulfillModal').style.display = 'none';
+    loadOrders();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── Review Buyer ──
+var _reviewOrderId = null;
+var _reviewRating = 0;
+
+function setStarRating(r) {
+  _reviewRating = r;
+  for (var i = 1; i <= 5; i++) {
+    var el = $('star' + i);
+    if (el) el.textContent = i <= r ? '★' : '☆';
+  }
+}
+
+function showReviewModal(orderId) {
+  _reviewOrderId = orderId;
+  _reviewRating = 0;
+  $('reviewText').value = '';
+  // Reset stars
+  for (var i = 1; i <= 5; i++) {
+    var el = $('star' + i);
+    if (el) el.textContent = '☆';
+  }
+  $('reviewModal').style.display = 'flex';
+}
+
+async function submitReview() {
+  var id = _reviewOrderId;
+  if (!id) return;
+  if (_reviewRating < 1 || _reviewRating > 5) {
+    toast('Please select a rating (1-5 stars)', 'error');
+    return;
+  }
+  var body = { rating: _reviewRating };
+  var txt = $('reviewText').value.trim();
+  if (txt) body.review = txt;
+  try {
+    await po('/b2b/orders/' + id + '/review', body);
+    toast('Review submitted!', 'success');
+    $('reviewModal').style.display = 'none';
+    loadOrders();
+    loadSupplierStats();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ── Messages ──
+function toggleComposeMessage() {
+  var form = document.getElementById('composeMsgForm');
+  form.classList.toggle('show');
+  if (form.classList.contains('show')) {
+    document.getElementById('msgToBusinessId').value = '';
+    document.getElementById('msgSubject').value = '';
+    document.getElementById('msgBody').value = '';
+  }
+}
+
+async function sendMessage() {
+  var toId = document.getElementById('msgToBusinessId').value.trim();
+  var subject = document.getElementById('msgSubject').value.trim();
+  var body = document.getElementById('msgBody').value.trim();
+  if (!toId || !subject || !body) { toast('All fields required', 'error'); return; }
+  try {
+    await po('/b2b/messages', { to_business_id: toId, subject: subject, message: body });
+    toast('Message sent!', 'success');
+    document.getElementById('composeMsgForm').classList.remove('show');
+    loadMessages();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+async function loadMessages() {
+  var container = document.getElementById('messagesList');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner"></div></div>';
+  try {
+    var data = await g('/b2b/messages');
+    var msgs = data.messages || [];
+    if (msgs.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>No messages</h3><p>When businesses message you, they will appear here.</p></div>';
+      return;
+    }
+    var html = '';
+    msgs.forEach(function(m){
+      var date = m.created_at ? new Date(m.created_at).toLocaleDateString() : '-';
+      var unreadClass = m.is_read ? '' : ' style="font-weight:700;background:#fef3e7"';
+      html += '<div'+unreadClass+' class="link-card" onclick="viewMessage(\''+m.id+'\')" style="cursor:pointer">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<h4 style="margin:0">'+esc(m.subject || '(no subject)')+'</h4>';
+      html += (m.is_read ? '<span class="badge" style="background:#f1f5f9;color:#64748b">Read</span>' : '<span class="badge" style="background:#fef3c7;color:#f59e0b">New</span>');
+      html += '</div>';
+      html += '<p style="margin:4px 0 0;font-size:.8rem;color:var(--text-secondary)">From: '+esc(m.sender_name || m.sender_email || 'Unknown')+' &middot; '+date+'</p>';
+      html += '</div>';
+    });
+    html += '<p style="margin-top:8px;font-size:.8rem;color:var(--text-secondary)">'+msgs.length+' / '+data.total+' messages</p>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>'+esc(e.message)+'</p></div>';
+  }
+}
+
+var _currentMsgId = null;
+
+async function viewMessage(id) {
+  // Fetch individual message isn't a direct API, but we can mark it read and show detail from the list
+  // For simplicity, use the list data to show detail
+  try {
+    var data = await g('/b2b/messages');
+    var msgs = data.messages || [];
+    var m = null;
+    for (var i = 0; i < msgs.length; i++) { if (msgs[i].id === id) { m = msgs[i]; break; } }
+    if (!m) { toast('Message not found', 'error'); return; }
+    _currentMsgId = id;
+    document.getElementById('msgDetailSubject').textContent = m.subject || '(no subject)';
+    document.getElementById('msgDetailSender').textContent = m.sender_name || m.sender_email || 'Unknown';
+    document.getElementById('msgDetailDate').textContent = m.created_at ? new Date(m.created_at).toLocaleString() : '-';
+    document.getElementById('msgDetailBody').textContent = m.message || '';
+    var st = document.getElementById('msgDetailStatus');
+    if (m.is_read) { st.textContent = 'Read'; st.className = 'badge'; st.style.background = '#f1f5f9'; st.style.color = '#64748b'; }
+    else { st.textContent = 'New'; st.className = 'badge'; st.style.background = '#fef3c7'; st.style.color = '#f59e0b'; }
+    var mb = document.getElementById('msgDetailMarkRead');
+    mb.style.display = m.is_read ? 'none' : '';
+    document.getElementById('msgDetailModal').style.display = 'flex';
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function markMsgReadFromDetail() {
+  if (!_currentMsgId) return;
+  try {
+    await pu('/b2b/messages/' + _currentMsgId + '/read', {});
+    toast('Marked as read', 'success');
+    document.getElementById('msgDetailModal').style.display = 'none';
+    loadMessages();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+  }
 }
 
 // ── Help icon ──

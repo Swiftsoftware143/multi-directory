@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B2B Marketplace - ZaarHub</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;--secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;--dark:#2b3255;--bg:#f8fafc;--card:#fff;--text:#4a5568;--text-secondary:#718096;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b;--accent:#8b5cf6}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* Header */
+.header{background:linear-gradient(135deg,var(--dark) 0%,#1a3a6b 100%);color:#fff;padding:16px 24px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.header-inner{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.header h1{font-size:1.3rem;display:flex;align-items:center;gap:8px}
+.header nav{display:flex;gap:16px;align-items:center}
+.header nav a{color:#cbd5e1;text-decoration:none;font-size:.85rem;transition:color .2s}
+.header nav a:hover{color:#fff;text-decoration:none}
+
+/* Tab nav */
+.tab-nav{display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border);max-width:1200px;margin-left:auto;margin-right:auto;padding:24px 24px 0 24px}
+.tab-btn{padding:12px 24px;border:none;background:none;font-size:.9rem;font-weight:600;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;font-family:inherit;display:flex;align-items:center;gap:6px}
+.tab-btn:hover{color:var(--primary)}
+.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* Page wrapper */
+.page{max-width:1200px;margin:0 auto;padding:0 24px 24px}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* Search & Filter bar */
+.search-bar{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.search-bar input[type="text"]{flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;font-family:inherit}
+.search-bar input[type="text"]:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.15)}
+.search-bar select,.search-bar input[type="number"]{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;background:var(--card);font-family:inherit}
+.search-bar select:focus,.search-bar input[type="number"]:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.15)}
+.search-bar input[type="number"]{width:100px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px;font-family:inherit}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-hover)}
+.btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#cbd5e1}
+.btn-block{width:100%}
+
+/* Product grid */
+.product-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.product-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:box-shadow .2s,transform .2s;cursor:pointer}
+.product-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1);transform:translateY(-2px)}
+.product-image{height:140px;display:flex;align-items:center;justify-content:center;font-size:3rem;color:rgba(255,255,255,.9)}
+.product-body{padding:16px}
+.product-body h3{font-size:.95rem;margin-bottom:4px;color:var(--dark);line-height:1.3}
+.product-category{font-size:.75rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.product-price-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.product-price{font-size:1.2rem;font-weight:700;color:var(--primary)}
+.product-unit{font-size:.8rem;color:var(--text-secondary)}
+.product-min-order{font-size:.75rem;color:var(--text-secondary);margin-bottom:8px}
+.product-supplier{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:8px}
+.product-supplier .supplier-name{color:var(--secondary);cursor:pointer;font-weight:500}
+.product-supplier .supplier-name:hover{text-decoration:underline}
+.stars{color:var(--warning);font-size:.8rem;letter-spacing:1px}
+
+/* Supplier cards for discover tab */
+.supplier-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.supplier-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s,transform .2s;cursor:pointer}
+.supplier-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1);transform:translateY(-2px)}
+.supplier-card .supplier-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.supplier-card h3{font-size:1rem;color:var(--dark);margin-bottom:4px}
+.supplier-card .type-badge{padding:3px 8px;border-radius:12px;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.type-badge.supplier{background:#fef3e7;color:#f27f2f}
+.type-badge.distributor{background:#e8f0fe;color:#116dc0}
+.type-badge.wholesaler{background:#f3e8ff;color:#8b5cf6}
+.type-badge.farm{background:#dcfce7;color:#22c55e}
+.type-badge.association{background:#fef3c7;color:#d97706}
+.type-badge.manufacturer{background:#fce7f3;color:#ec4899}
+.supplier-card .supplier-desc{font-size:.85rem;color:var(--text-secondary);line-height:1.5;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.supplier-card .supplier-stats{display:flex;flex-wrap:wrap;gap:12px;font-size:.8rem;color:var(--text-secondary);margin-bottom:10px}
+.supplier-card .supplier-stats span{display:flex;align-items:center;gap:4px}
+.supplier-card .area-tags{display:flex;flex-wrap:wrap;gap:4px}
+.supplier-card .area-tag{background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:2px 8px;font-size:.7rem;color:var(--text-secondary)}
+
+/* Pagination */
+.pagination{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px}
+.pagination button{padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--card);cursor:pointer;font-size:.85rem;transition:all .2s;font-family:inherit}
+.pagination button:hover:not(:disabled){background:var(--primary-light);border-color:var(--primary)}
+.pagination button:disabled{opacity:.5;cursor:not-allowed}
+.pagination .page-info{font-size:.85rem;color:var(--text-secondary)}
+
+/* Supplier detail overlay */
+.overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:center;justify-content:center}
+.overlay.show{display:flex}
+.overlay-card{background:var(--card);border-radius:16px;max-width:700px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .3s}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.overlay-header{position:sticky;top:0;background:linear-gradient(135deg,var(--dark),#1a3a6b);color:#fff;padding:20px 24px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center}
+.overlay-header h2{font-size:1.2rem}
+.overlay-close{background:none;border:none;color:#fff;font-size:1.5rem;cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:background .2s}
+.overlay-close:hover{background:rgba(255,255,255,.15)}
+.overlay-body{padding:24px}
+.overlay-body .supplier-meta{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.overlay-body .meta-badge{background:var(--primary-light);color:var(--primary);padding:4px 10px;border-radius:20px;font-size:.8rem;font-weight:500}
+.overlay-body .supplier-desc{font-size:.9rem;color:var(--text);line-height:1.6;margin-bottom:16px}
+.overlay-body .featured-box{background:var(--secondary-light);border:1px solid var(--secondary);border-radius:10px;padding:14px;margin-bottom:16px}
+.overlay-body .featured-box h4{font-size:.85rem;color:var(--secondary);margin-bottom:6px}
+.overlay-body h3{font-size:1rem;color:var(--text);margin-bottom:12px}
+
+/* Mini product cards in overlay */
+.mini-product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.mini-product-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px}
+.mini-product-card h4{font-size:.85rem;margin-bottom:4px}
+.mini-product-card .mp-price{font-weight:700;color:var(--primary);font-size:.95rem}
+.mini-product-card .mp-unit{font-size:.75rem;color:var(--text-secondary)}
+.mini-product-card .mp-meta{font-size:.75rem;color:var(--text-secondary);margin-top:4px}
+
+/* Loading & Empty */
+.loading{text-align:center;padding:40px;color:var(--text-secondary)}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;margin:20px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{text-align:center;padding:60px 20px}
+.empty-state .icon{font-size:3rem;margin-bottom:12px}
+.empty-state h3{font-size:1.1rem;margin-bottom:8px}
+.empty-state p{font-size:.85rem;color:var(--text-secondary)}
+
+/* Toast */
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:10px;color:#fff;font-size:.85rem;font-weight:500;z-index:9999;opacity:0;transform:translateY(-10px);transition:all .3s;max-width:360px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.error{background:var(--danger)}
+
+/* Auth modal */
+.auth-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:300;display:none;align-items:center;justify-content:center}
+.auth-overlay.show{display:flex}
+.auth-card{background:var(--card);border-radius:16px;width:90%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:slideUp .3s}
+.auth-tabs{display:flex;border-bottom:1px solid var(--border)}
+.auth-tab{flex:1;padding:14px;text-align:center;font-size:.85rem;font-weight:600;cursor:pointer;background:var(--bg);border:none;color:var(--text-secondary);font-family:inherit;transition:all .2s}
+.auth-tab.active{background:var(--card);color:var(--primary);border-bottom:2px solid var(--primary)}
+.auth-body{padding:24px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;margin-bottom:4px;color:var(--text)}
+.form-group input,.form-group select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;outline:none}
+.form-group input:focus,.form-group select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.15)}
+.form-error{color:var(--danger);font-size:.8rem;margin-bottom:10px;display:none}
+
+/* Order modal */
+.order-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:300;display:none;align-items:center;justify-content:center}
+.order-modal.show{display:flex}
+.order-card{background:var(--card);border-radius:16px;width:90%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:slideUp .3s}
+.order-header{background:linear-gradient(135deg,var(--dark),#1a3a6b);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
+.order-header h3{font-size:1rem}
+.order-body{padding:20px}
+.order-confirm{background:var(--primary-light);border:1px solid var(--primary);border-radius:8px;padding:12px;margin-bottom:14px;font-size:.85rem}
+
+/* Action buttons on product cards */
+.product-actions{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.product-actions .btn{flex:1;font-size:.75rem;padding:6px 10px}
+
+/* User menu dropdown */
+.user-menu-dropdown{position:absolute;top:100%;right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.15);min-width:180px;z-index:350;overflow:hidden;animation:slideUp .2s}
+.user-menu-dropdown a{display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:.85rem;color:var(--text);text-decoration:none;transition:background .15s;border-bottom:1px solid var(--border)}
+.user-menu-dropdown a:last-child{border-bottom:none}
+.user-menu-dropdown a:hover{background:var(--primary-light);color:var(--primary);text-decoration:none}
+
+/* My Orders overlay table */
+.orders-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:300;display:none;align-items:center;justify-content:center}
+.orders-overlay.show{display:flex}
+.orders-card{background:var(--card);border-radius:16px;width:90%;max-width:900px;max-height:85vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .3s;display:flex;flex-direction:column}
+.orders-card .orders-header{background:linear-gradient(135deg,var(--dark),#1a3a6b);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.orders-card .orders-scroll{flex:1;overflow-y:auto;padding:20px}
+.orders-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.orders-table th{text-align:left;padding:8px 10px;color:var(--text-secondary);font-weight:600;border-bottom:2px solid var(--border);white-space:nowrap}
+.orders-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.orders-table tr:hover{background:#f8fafc}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600}
+.status-pending{color:#d97706;background:#fef3c7}
+.status-confirmed{color:#2563eb;background:#dbeafe}
+.status-shipped{color:#7c3aed;background:#ede9fe}
+.status-delivered{color:#16a34a;background:#dcfce7}
+.status-cancelled{color:#dc2626;background:#fee2e2}
+
+/* Messages list in overlay */
+.msgs-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:300;display:none;align-items:center;justify-content:center}
+.msgs-overlay.show{display:flex}
+.msgs-card{background:var(--card);border-radius:16px;width:90%;max-width:700px;max-height:85vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .3s;display:flex;flex-direction:column}
+.msgs-card .msgs-header{background:linear-gradient(135deg,var(--dark),#1a3a6b);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.msgs-card .msgs-scroll{flex:1;overflow-y:auto;padding:16px}
+.msg-conversation{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.msg-conversation:hover{background:#f8fafc}
+.msg-conversation.unread{background:#fef3e7}
+.msg-conversation .msg-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:#fff;flex-shrink:0}
+.msg-conversation .msg-info{flex:1;min-width:0}
+.msg-conversation .msg-info .msg-sender{font-weight:600;font-size:.85rem;color:var(--text)}
+.msg-conversation .msg-info .msg-subject{font-size:.8rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-conversation .msg-info .msg-preview{font-size:.78rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-conversation .msg-meta{text-align:right;flex-shrink:0}
+.msg-conversation .msg-meta .msg-date{font-size:.72rem;color:var(--text-secondary)}
+.msg-conversation .msg-meta .msg-badge{display:inline-block;margin-top:4px;padding:1px 6px;border-radius:4px;font-size:.68rem;font-weight:700}
+
+/* Responsive */
+@media(max-width:1024px){.product-grid,.supplier-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.product-grid,.supplier-grid{grid-template-columns:1fr}.header-inner{flex-direction:column;text-align:center}.search-bar{flex-direction:column}}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-inner">
+    <h1>🏪 B2B Marketplace</h1>
+    <nav>
+      <span id="userGreeting" style="display:none;font-size:.85rem;color:#cbd5e1;margin-right:12px"></span>
+      <button id="btnLogin" class="btn btn-primary" style="padding:6px 14px;font-size:.8rem" onclick="showAuthModal()">🔑 Login / Register</button>
+      <div id="userMenu" style="display:none;position:relative">
+        <button id="userMenuBtn" class="btn btn-secondary" style="padding:6px 14px;font-size:.8rem;gap:6px" onclick="toggleUserMenu()">
+          <span id="userMenuAvatar"></span><span id="userMenuName"></span> ▾
+        </button>
+        <div id="userMenuDropdown" class="user-menu-dropdown" style="display:none">
+          <a href="#" onclick="showMyOrders();return false">📋 My Orders</a>
+          <a href="#" onclick="showMyMessages();return false">💬 My Messages</a>
+          <a href="#" onclick="logout()">🚪 Logout</a>
+        </div>
+      </div>
+      <a href="/supplier-portal.html">Supplier Portal</a>
+      <a href="/">Home</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Tab Navigation -->
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('marketplace')">🛒 Marketplace</button>
+  <button class="tab-btn" onclick="switchTab('discover')">📋 Discover Suppliers</button>
+</div>
+
+<!-- ====== TAB: Marketplace ====== -->
+<div id="tab-marketplace" class="tab-content active">
+  <div class="page">
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="Search products or suppliers..." onkeyup="debounceSearch()">
+      <input type="text" id="categoryInput" placeholder="Category (e.g. produce, dairy)" oninput="debounceSearch()">
+      <input type="text" id="areaInput" placeholder="Delivery area" oninput="debounceSearch()">
+      <input type="number" id="ratingInput" placeholder="Min ★" min="0" max="5" step="0.5" oninput="debounceSearch()">
+      <select id="sortSelect" onchange="fetchProducts()">
+        <option value="price_asc">Price: Low to High</option>
+        <option value="price_desc">Price: High to Low</option>
+        <option value="rating">Top Rated</option>
+        <option value="newest">Newest</option>
+      </select>
+      <button class="btn btn-secondary" onclick="resetMarketplaceFilters()">Clear</button>
+    </div>
+    <div id="productGrid" class="product-grid">
+      <div class="loading"><div class="spinner"></div><p>Loading marketplace...</p></div>
+    </div>
+    <div id="pagination" class="pagination" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ====== TAB: Discover Suppliers ====== -->
+<div id="tab-discover" class="tab-content">
+  <div class="page">
+    <div class="search-bar">
+      <input type="text" id="discoverSearch" placeholder="Search suppliers..." onkeyup="debounceDiscoverSearch()">
+      <input type="text" id="discoverArea" placeholder="Delivery area" oninput="debounceDiscoverSearch()">
+      <select id="discoverType" onchange="debounceDiscoverSearch()">
+        <option value="">All Types</option>
+        <option value="supplier">Supplier</option>
+        <option value="distributor">Distributor</option>
+        <option value="wholesaler">Wholesaler</option>
+        <option value="farm">Farm</option>
+        <option value="association">Association</option>
+        <option value="manufacturer">Manufacturer</option>
+      </select>
+      <input type="number" id="discoverMinProducts" placeholder="Min products" min="1" oninput="debounceDiscoverSearch()">
+      <button class="btn btn-secondary" onclick="resetDiscoverFilters()">Clear</button>
+    </div>
+    <div id="supplierGrid" class="supplier-grid">
+      <div class="loading"><div class="spinner"></div><p>Discovering suppliers...</p></div>
+    </div>
+    <div id="discoverPagination" class="pagination" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Supplier detail overlay -->
+<div id="supplierOverlay" class="overlay" onclick="if(event.target===this)closeOverlay()">
+  <div class="overlay-card">
+    <div class="overlay-header">
+      <h2 id="supplierOverlayTitle">Supplier Details</h2>
+      <button class="overlay-close" onclick="closeOverlay()">✕</button>
+    </div>
+    <div class="overlay-body" id="supplierOverlayBody">
+      <div class="loading"><div class="spinner"></div><p>Loading supplier details...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toastContainer"></div>
+
+<!-- Auth Modal (Login / Register) -->
+<div id="authOverlay" class="auth-overlay" onclick="if(event.target===this)closeAuthModal()">
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+    </div>
+    <div class="auth-body">
+      <div id="authError" class="form-error"></div>
+      <!-- Login form -->
+      <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="form-group"><label>Email</label><input type="email" id="loginEmail" required></div>
+        <div class="form-group"><label>Password</label><input type="password" id="loginPassword" required minlength="6"></div>
+        <button type="submit" class="btn btn-primary btn-block">🔓 Login</button>
+      </form>
+      <!-- Register form (hidden by default) -->
+      <form id="registerForm" style="display:none" onsubmit="handleRegister(event)">
+        <div class="form-group"><label>Business Name</label><input type="text" id="regName" required></div>
+        <div class="form-group"><label>Email</label><input type="email" id="regEmail" required></div>
+        <div class="form-group"><label>Password</label><input type="password" id="regPassword" required minlength="6"></div>
+        <div class="form-group"><label>Business Type</label>
+          <select id="regType" required>
+            <option value="">Select type...</option>
+            <option value="farm">Farm</option>
+            <option value="supplier">Supplier</option>
+            <option value="distributor">Distributor</option>
+            <option value="wholesaler">Wholesaler</option>
+            <option value="manufacturer">Manufacturer</option>
+            <option value="association">Association</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">✨ Register & Start Buying</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Order Modal -->
+<div id="orderOverlay" class="order-modal" onclick="if(event.target===this)closeOrderModal()">
+  <div class="order-card">
+    <div class="order-header">
+      <h3>📦 Place Order</h3>
+      <button class="overlay-close" onclick="closeOrderModal()">✕</button>
+    </div>
+    <div class="order-body" id="orderBody"></div>
+  </div>
+</div>
+
+<!-- Message Modal -->
+<div id="msgOverlay" class="order-modal" onclick="if(event.target===this)closeMsgModal()">
+  <div class="order-card">
+    <div class="order-header">
+      <h3>💬 Contact Supplier</h3>
+      <button class="overlay-close" onclick="closeMsgModal()">✕</button>
+    </div>
+    <div class="order-body">
+      <div class="form-group"><label>Subject</label><input type="text" id="msgSubject" required></div>
+      <div class="form-group"><label>Message</label><textarea id="msgBody" rows="4" required style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;resize:vertical"></textarea></div>
+      <button class="btn btn-primary btn-block" onclick="handleSendMessage()">Send Message</button>
+    </div>
+  </div>
+</div>
+
+<!-- My Orders Overlay -->
+<div id="myOrdersOverlay" class="orders-overlay" onclick="if(event.target===this)closeMyOrders()">
+  <div class="orders-card">
+    <div class="orders-header">
+      <h3>📋 My Orders</h3>
+      <button class="overlay-close" onclick="closeMyOrders()">✕</button>
+    </div>
+    <div class="orders-scroll" id="myOrdersBody">
+      <div class="loading"><div class="spinner"></div><p>Loading your orders...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- My Messages Overlay -->
+<div id="myMessagesOverlay" class="msgs-overlay" onclick="if(event.target===this)closeMyMessages()">
+  <div class="msgs-card">
+    <div class="msgs-header">
+      <h3>💬 My Messages</h3>
+      <button class="overlay-close" onclick="closeMyMessages()">✕</button>
+    </div>
+    <div class="msgs-scroll" id="myMessagesBody">
+      <div class="loading"><div class="spinner"></div><p>Loading your messages...</p></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Shared Utilities ───
+const COLORS = ['#f27f2f','#116dc0','#8b5cf6','#22c55e','#ef4444','#f59e0b','#06b6d4','#ec4899'];
+const EMOJIS = ['📦','🥬','🍅','🍞','🧀','🥩','🐟','🌾','☕','🍫','🧴','⚙️','🔧','🧪','💡','📋'];
+
+function colorFor(s,i){return COLORS[((s||'').length+(i||0))%COLORS.length]}
+function emojiFor(s,i){return EMOJIS[((s||'').length+(i||0))%EMOJIS.length]}
+
+let currentTab = 'marketplace';
+
+function switchTab(tab){
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  // Activate the matching tab button
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    if(b.textContent.toLowerCase().includes(tab)) b.classList.add('active');
+  });
+
+  if(tab==='marketplace') fetchProducts();
+  else if(tab==='discover') fetchSuppliers();
+}
+
+function showToast(msg,type){
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast '+type; t.textContent = msg; c.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},3000);
+}
+
+function renderStars(rating){
+  const full = Math.floor(rating);
+  const half = rating-full>=0.5?1:0;
+  const empty = 5-full-half;
+  return '★'.repeat(full)+('½'.repeat(half))+'☆'.repeat(empty)+' '+Number(rating).toFixed(1);
+}
+
+function esc(s){
+  if(!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Marketplace Tab ───
+let mpPage = 1;
+let mpSearchTimer = null;
+
+function debounceSearch(){
+  clearTimeout(mpSearchTimer);
+  mpSearchTimer = setTimeout(()=>{mpPage=1;fetchProducts()},400);
+}
+
+function resetMarketplaceFilters(){
+  document.getElementById('searchInput').value = '';
+  document.getElementById('categoryInput').value = '';
+  document.getElementById('areaInput').value = '';
+  document.getElementById('ratingInput').value = '';
+  document.getElementById('sortSelect').value = 'price_asc';
+  mpPage = 1;
+  fetchProducts();
+}
+
+async function fetchProducts(){
+  const grid = document.getElementById('productGrid');
+  const pag = document.getElementById('pagination');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div><p>Searching products...</p></div>';
+  pag.style.display = 'none';
+
+  const params = new URLSearchParams();
+  const search = document.getElementById('searchInput').value.trim();
+  const category = document.getElementById('categoryInput').value.trim();
+  const area = document.getElementById('areaInput').value.trim();
+  const rating = document.getElementById('ratingInput').value.trim();
+  const sort = document.getElementById('sortSelect').value;
+
+  if(search) params.set('search',search);
+  if(category) params.set('category',category);
+  if(area) params.set('delivery_area',area);
+  if(rating&&parseFloat(rating)>0) params.set('min_rating',rating);
+  if(sort) params.set('sort_by',sort);
+  params.set('page',mpPage);
+  params.set('per_page','21');
+
+  try {
+    const resp = await fetch('/api/v1/b2b/marketplace?'+params.toString());
+    if(!resp.ok) throw new Error('Failed to load marketplace');
+    const data = await resp.json();
+
+    if(!data.products||data.products.length===0){
+      grid.innerHTML = '<div class="empty-state"><div class="icon">📭</div><h3>No products found</h3><p>Try adjusting your search or filters.</p></div>';
+      pag.style.display = 'none';
+      return;
+    }
+
+    grid.innerHTML = data.products.map((p,i)=>{
+      const c = colorFor(p.name,i);
+      const e = emojiFor(p.name,i);
+      const price = p.price ? '$'+Number(p.price).toFixed(2) : 'Contact';
+      const unit = p.unit ? ' / '+p.unit : '';
+      const minOrder = p.min_order ? 'Min. order: '+p.min_order : '';
+      const stars = p.supplier_rating ? renderStars(p.supplier_rating) : '';
+      return `<div class="product-card">
+        <div class="product-image" style="background:${c}">${e}</div>
+        <div class="product-body">
+          <div class="product-category">${esc(p.category||'Uncategorized')}</div>
+          <h3>${esc(p.name)}</h3>
+          <div class="product-price-row">
+            <span class="product-price">${esc(price)}</span>
+            <span class="product-unit">${esc(unit)}</span>
+          </div>
+          <div class="product-min-order">${esc(minOrder)}</div>
+          <div class="product-supplier">
+            <span class="supplier-name" onclick="event.stopPropagation();showSupplier('${p.supplier_business_id}')">${esc(p.supplier_name||'Unknown')}</span>
+            <span class="stars">${stars}</span>
+          </div>
+          <div class="product-actions">
+            <button class="btn btn-primary" onclick="event.stopPropagation();handleProductAction('order',{id:'${p.id}',name:'${esc(p.name).replace(/'/g,"\\'")}',price:'${p.price||0}',unit:'${esc(p.unit||'')}',min_order:${p.min_order||1},supplier_business_id:'${p.supplier_business_id}',supplier_name:'${esc(p.supplier_name||'Unknown')}'})">🛒 Order</button>
+            <button class="btn btn-secondary" onclick="event.stopPropagation();handleProductAction('message',{supplier_business_id:'${p.supplier_business_id}',supplier_name:'${esc(p.supplier_name||'Unknown')}'})">💬 Contact</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const totalPages = Math.ceil(data.total/data.per_page);
+    if(totalPages>1){
+      pag.style.display = 'flex';
+      pag.innerHTML = `
+        <button onclick="goPage(${mpPage-1})" ${mpPage<=1?'disabled':''}>← Prev</button>
+        <span class="page-info">Page ${data.page} of ${totalPages} (${data.total} products)</span>
+        <button onclick="goPage(${mpPage+1})" ${mpPage>=totalPages?'disabled':''}>Next →</button>`;
+    } else {
+      pag.style.display = 'none';
+    }
+  } catch(e){
+    grid.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Failed to load</h3><p>'+esc(e.message)+'</p></div>';
+  }
+}
+
+function goPage(p){mpPage=p;fetchProducts();window.scrollTo({top:0,behavior:'smooth'})}
+
+// ─── Discover Suppliers Tab ───
+let discPage = 1;
+let discSearchTimer = null;
+
+function debounceDiscoverSearch(){
+  clearTimeout(discSearchTimer);
+  discSearchTimer = setTimeout(()=>{discPage=1;fetchSuppliers()},400);
+}
+
+function resetDiscoverFilters(){
+  document.getElementById('discoverSearch').value = '';
+  document.getElementById('discoverArea').value = '';
+  document.getElementById('discoverType').value = '';
+  document.getElementById('discoverMinProducts').value = '';
+  discPage = 1;
+  fetchSuppliers();
+}
+
+async function fetchSuppliers(){
+  const grid = document.getElementById('supplierGrid');
+  const pag = document.getElementById('discoverPagination');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div><p>Discovering suppliers...</p></div>';
+  pag.style.display = 'none';
+
+  const params = new URLSearchParams();
+  const search = document.getElementById('discoverSearch').value.trim();
+  const area = document.getElementById('discoverArea').value.trim();
+  const type = document.getElementById('discoverType').value;
+  const minProducts = document.getElementById('discoverMinProducts').value.trim();
+
+  if(search) params.set('search',search);
+  if(area) params.set('delivery_area',area);
+  if(type) params.set('business_type',type);
+  if(minProducts) params.set('min_products',minProducts);
+  params.set('page',discPage);
+  params.set('per_page','21');
+
+  try {
+    const resp = await fetch('/api/v1/b2b/discover?'+params.toString());
+    if(!resp.ok) throw new Error('Failed to load suppliers');
+    const data = await resp.json();
+
+    if(!data.suppliers||data.suppliers.length===0){
+      grid.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><h3>No suppliers found</h3><p>Try adjusting your search or filters.</p></div>';
+      pag.style.display = 'none';
+      return;
+    }
+
+    grid.innerHTML = data.suppliers.map((s,i)=>{
+      const c = colorFor(s.name,i);
+      const e = emojiFor(s.name,i);
+      const desc = s.description || 'No description';
+      const avg = Number(s.avg_rating||0);
+      const stars = avg > 0 ? renderStars(avg) : 'No ratings yet';
+      const areas = s.delivery_areas || [];
+      const areaTags = areas.length > 0
+        ? areas.slice(0,4).map(a=>`<span class="area-tag">${esc(a)}</span>`).join('')
+        : '<span class="area-tag">N/A</span>';
+
+      return `<div class="supplier-card" onclick="showSupplier('${s.business_id}')">
+        <div class="supplier-header">
+          <h3>${esc(s.name)}</h3>
+          <span class="type-badge ${esc(s.business_type)}">${esc(s.business_type)}</span>
+        </div>
+        <div class="supplier-desc">${esc(desc)}</div>
+        <div class="supplier-stats">
+          <span>⭐ ${avg.toFixed(1)}</span>
+          <span>📦 ${s.product_count} products</span>
+          <span>📝 ${s.review_count} reviews</span>
+        </div>
+        <div class="area-tags">${areaTags}</div>
+      </div>`;
+    }).join('');
+
+    const totalPages = Math.ceil(data.total/data.per_page);
+    if(totalPages>1){
+      pag.style.display = 'flex';
+      pag.innerHTML = `
+        <button onclick="goDiscPage(${discPage-1})" ${discPage<=1?'disabled':''}>← Prev</button>
+        <span class="page-info">Page ${data.page} of ${totalPages} (${data.total} suppliers)</span>
+        <button onclick="goDiscPage(${discPage+1})" ${discPage>=totalPages?'disabled':''}>Next →</button>`;
+    } else {
+      pag.style.display = 'none';
+    }
+  } catch(e){
+    grid.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Failed to load</h3><p>'+esc(e.message)+'</p></div>';
+  }
+}
+
+function goDiscPage(p){discPage=p;fetchSuppliers();window.scrollTo({top:0,behavior:'smooth'})}
+
+// ─── Supplier Detail Overlay (shared) ───
+async function showSupplier(supplierId){
+  const overlay = document.getElementById('supplierOverlay');
+  const body = document.getElementById('supplierOverlayBody');
+  const title = document.getElementById('supplierOverlayTitle');
+  overlay.classList.add('show');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading supplier details...</p></div>';
+
+  try {
+    const resp = await fetch('/api/v1/b2b/suppliers/'+supplierId+'/detail');
+    if(!resp.ok) throw new Error('Supplier not found');
+    const data = await resp.json();
+    const s = data.supplier;
+
+    title.textContent = esc(s.name||'Supplier');
+
+    let html = '';
+    html += '<div class="supplier-meta">';
+    html += '<span class="meta-badge">'+esc(s.business_type||'Supplier')+'</span>';
+    html += '<span class="meta-badge">⭐ '+Number(data.avg_rating||0).toFixed(1)+' Rating</span>';
+    html += '<span class="meta-badge">📦 '+data.product_count+' Products</span>';
+    html += '</div>';
+
+    if(s.description) html += '<p class="supplier-desc">'+esc(s.description)+'</p>';
+
+    if(s.delivery_areas&&s.delivery_areas.length>0){
+      html += '<p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">🚚 Delivers to: '+s.delivery_areas.map(esc).join(', ')+'</p>';
+    }
+
+    if(s.featured_product){
+      const fp = s.featured_product;
+      html += '<div class="featured-box"><h4>⭐ '+esc(fp.cta_text||'Featured Product')+'</h4>';
+      html += '<strong>'+esc(fp.name)+'</strong> — '+(fp.price?'$'+Number(fp.price).toFixed(2):'Contact');
+      if(fp.unit) html += ' / '+esc(fp.unit);
+      html += '</div>';
+    }
+
+    if(data.products&&data.products.length>0){
+      html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+      html += '<button class="btn btn-primary" onclick="showMsgModal(\''+supplierId+'\',\''+esc(s.name||'Supplier').replace(/'/g,"\\'")+'\')">💬 Contact '+esc(s.name||'Supplier')+'</button>';
+      html += '</div>';
+      html += '<h3>🛒 Products ('+data.products.length+' shown)</h3>';
+      html += '<div class="mini-product-grid">';
+      data.products.forEach(p=>{
+        html += '<div class="mini-product-card">';
+        html += '<h4>'+esc(p.name)+'</h4>';
+        html += '<div class="mp-price">'+(p.price?'$'+Number(p.price).toFixed(2):'Contact');
+        if(p.unit) html += '<span class="mp-unit"> / '+esc(p.unit)+'</span>';
+        html += '</div>';
+        if(p.min_order) html += '<div class="mp-meta">Min: '+p.min_order+'</div>';
+        if(p.category) html += '<div class="mp-meta">'+esc(p.category)+'</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    body.innerHTML = html;
+  } catch(e){
+    body.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Failed to load</h3><p>'+esc(e.message)+'</p></div>';
+  }
+}
+
+function closeOverlay(){
+  document.getElementById('supplierOverlay').classList.remove('show');
+}
+
+// ─── Product Action Helper ───
+function handleProductAction(action, product){
+  if(!authToken) { showToast('Please login to '+action,''); showAuthModal(); return; }
+  if(action==='order') showOrderModal(product);
+  else if(action==='message') showMsgModal(product.supplier_business_id, product.supplier_name);
+}
+
+// ─── Auth State ───
+let authToken = localStorage.getItem('b2b_token') || '';
+let authUser = JSON.parse(localStorage.getItem('b2b_user')||'null');
+let selectedProduct = null;
+let selectedSupplier = null;
+
+function updateAuthUI(){
+  const btnLogin = document.getElementById('btnLogin');
+  const userMenu = document.getElementById('userMenu');
+  const greeting = document.getElementById('userGreeting');
+  if(authToken && authUser){
+    btnLogin.style.display = 'none';
+    userMenu.style.display = '';
+    greeting.style.display = '';
+    greeting.textContent = '👤 '+esc(authUser.name||authUser.email);
+    document.getElementById('userMenuName').textContent = esc(authUser.name||authUser.email);
+    document.getElementById('userMenuAvatar').textContent = (authUser.name||authUser.email||'U').charAt(0).toUpperCase();
+  } else {
+    btnLogin.style.display = '';
+    userMenu.style.display = 'none';
+    greeting.style.display = 'none';
+  }
+}
+
+function logout(){
+  localStorage.removeItem('b2b_token');
+  localStorage.removeItem('b2b_user');
+  authToken = '';
+  authUser = null;
+  updateAuthUI();
+  showToast('Logged out','');
+}
+
+// ─── Auth Modal ───
+let authTab = 'login';
+
+function showAuthModal(){
+  authTab = 'login';
+  document.getElementById('authOverlay').classList.add('show');
+  updateAuthTabUI();
+  document.getElementById('authError').style.display = 'none';
+}
+
+function closeAuthModal(){
+  document.getElementById('authOverlay').classList.remove('show');
+}
+
+function switchAuthTab(tab){
+  authTab = tab;
+  updateAuthTabUI();
+  document.getElementById('authError').style.display = 'none';
+}
+
+function updateAuthTabUI(){
+  document.querySelectorAll('.auth-tab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.auth-tab').forEach(b=>{
+    if(b.textContent.toLowerCase().includes(authTab)) b.classList.add('active');
+  });
+  document.getElementById('loginForm').style.display = authTab==='login'?'':'none';
+  document.getElementById('registerForm').style.display = authTab==='register'?'':'none';
+}
+
+async function handleLogin(e){
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  try {
+    const resp = await fetch('/api/v1/auth/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,password})
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.message||'Login failed');
+    authToken = data.access_token || data.token || '';
+    authUser = data.user || data.visitor || {email};
+    localStorage.setItem('b2b_token', authToken);
+    localStorage.setItem('b2b_user', JSON.stringify(authUser));
+    updateAuthUI();
+    closeAuthModal();
+    showToast('Welcome back, '+esc(authUser.name||email),'');
+  } catch(err){
+    const el = document.getElementById('authError');
+    el.textContent = err.message;
+    el.style.display = 'block';
+  }
+}
+
+async function handleRegister(e){
+  e.preventDefault();
+  const name = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const business_type = document.getElementById('regType').value;
+  try {
+    const resp = await fetch('/api/v1/b2b/register', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,email,password,business_type})
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.message||'Registration failed');
+    authToken = data.access_token || '';
+    authUser = data.visitor || {name,email};
+    localStorage.setItem('b2b_token', authToken);
+    localStorage.setItem('b2b_user', JSON.stringify(authUser));
+    updateAuthUI();
+    closeAuthModal();
+    showToast('Account created! You can now place orders.','');
+  } catch(err){
+    const el = document.getElementById('authError');
+    el.textContent = err.message;
+    el.style.display = 'block';
+  }
+}
+
+// ─── Order Modal ───
+function showOrderModal(product){
+  selectedProduct = product;
+  const body = document.getElementById('orderBody');
+  const unit = product.unit ? ' / '+product.unit : '';
+  const price = product.price ? '$'+Number(product.price).toFixed(2) : 'Contact';
+  body.innerHTML = `
+    <div class="order-confirm">
+      <strong>${esc(product.name)}</strong><br>
+      ${esc(price)}${esc(unit)} · ${esc(product.supplier_name||'Unknown')}<br>
+      Min. order: ${product.min_order||1} ${product.unit||'units'}
+    </div>
+    <div class="form-group"><label>Quantity (${product.unit||'units'})</label><input type="number" id="orderQty" value="${product.min_order||1}" min="${product.min_order||1}" required></div>
+    <div class="form-group"><label>Notes (optional)</label><textarea id="orderNotes" rows="2" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;resize:vertical"></textarea></div>
+    <button class="btn btn-primary btn-block" onclick="handlePlaceOrder()">🛒 Place Order</button>
+  `;
+  document.getElementById('orderOverlay').classList.add('show');
+}
+
+function closeOrderModal(){
+  document.getElementById('orderOverlay').classList.remove('show');
+  selectedProduct = null;
+}
+
+async function handlePlaceOrder(){
+  if(!authToken) { showToast('Please login first','error'); closeOrderModal(); showAuthModal(); return; }
+  const qty = parseInt(document.getElementById('orderQty').value)||1;
+  const notes = document.getElementById('orderNotes').value.trim();
+  try {
+    const resp = await fetch('/api/v1/b2b/orders', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
+      body:JSON.stringify({product_id:selectedProduct.id, quantity:qty, notes})
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.message||'Order failed');
+    closeOrderModal();
+    showToast('✅ Order placed! Total: $'+Number(data.total_amount||0).toFixed(2),'');
+  } catch(err){
+    showToast('❌ '+err.message,'error');
+  }
+}
+
+// ─── Message Modal ───
+function showMsgModal(supplierId, supplierName){
+  selectedSupplier = {id:supplierId, name:supplierName};
+  document.getElementById('msgSubject').value = '';
+  document.getElementById('msgBody').value = '';
+  document.getElementById('msgOverlay').classList.add('show');
+}
+
+function closeMsgModal(){
+  document.getElementById('msgOverlay').classList.remove('show');
+  selectedSupplier = null;
+}
+
+async function handleSendMessage(){
+  if(!authToken) { showToast('Please login first','error'); closeMsgModal(); showAuthModal(); return; }
+  const subject = document.getElementById('msgSubject').value.trim();
+  const message = document.getElementById('msgBody').value.trim();
+  if(!subject||!message) { showToast('Subject and message required','error'); return; }
+  try {
+    const resp = await fetch('/api/v1/b2b/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
+      body:JSON.stringify({to_business_id:selectedSupplier.id, subject, message})
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.message||'Failed to send');
+    closeMsgModal();
+    showToast('✅ Message sent to '+esc(selectedSupplier.name),'');
+  } catch(err){
+    showToast('❌ '+err.message,'error');
+  }
+}
+
+// ─── User Menu Dropdown ───
+function toggleUserMenu(){
+  var dd = document.getElementById('userMenuDropdown');
+  dd.style.display = dd.style.display==='none'?'':'none';
+}
+
+// Close user menu when clicking outside
+document.addEventListener('click',function(e){
+  var m = document.getElementById('userMenu');
+  var dd = document.getElementById('userMenuDropdown');
+  if(m && dd && !m.contains(e.target)) dd.style.display='none';
+});
+
+// ─── My Orders Overlay ───
+async function showMyOrders(){
+  document.getElementById('userMenuDropdown').style.display='none';
+  if(!authToken){showToast('Please login first','');showAuthModal();return;}
+  var ov = document.getElementById('myOrdersOverlay');
+  ov.classList.add('show');
+  var body = document.getElementById('myOrdersBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading your orders...</p></div>';
+  try {
+    var data = await fetch(API+'/b2b/orders?role=buyer',{
+      headers:{'Authorization':'Bearer '+authToken}
+    }).then(function(r){return r.json();});
+    var orders = data.orders || [];
+    if(orders.length===0){
+      body.innerHTML = '<div class="empty-state"><div class="icon">📋</div><h3>No orders yet</h3><p>You haven\'t placed any orders yet. Browse the marketplace to find products!</p></div>';
+      return;
+    }
+    var html = '<table class="orders-table"><thead><tr>';
+    ['Order #','Product','Supplier','Qty','Total','Status','Date'].forEach(function(h){
+      html += '<th>'+h+'</th>';
+    });
+    html += '</tr></thead><tbody>';
+    orders.forEach(function(o){
+      var shortId = (o.id||'').substring(0,8);
+      var date = o.created_at ? new Date(o.created_at).toLocaleDateString() : '-';
+      var price = o.total_amount ? '$'+parseFloat(o.total_amount).toFixed(2) : '-';
+      var sc = 'status-'+esc(o.status||'');
+      html += '<tr>';
+      html += '<td style="font-family:monospace;font-size:.75rem">#'+esc(shortId)+'</td>';
+      html += '<td>'+esc(o.product_name||'Product')+'</td>';
+      html += '<td>'+esc(o.supplier_name||'Unknown')+'</td>';
+      html += '<td>'+(o.quantity||1)+'</td>';
+      html += '<td style="font-weight:600">'+price+'</td>';
+      html += '<td><span class="status-badge '+sc+'">'+esc(o.status)+'</span></td>';
+      html += '<td style="font-size:.8rem;color:var(--text-secondary)">'+date+'</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<p style="margin-top:10px;font-size:.8rem;color:var(--text-secondary)">'+orders.length+' / '+data.total+' orders</p>';
+    body.innerHTML = html;
+  }catch(e){
+    body.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Failed to load orders</h3><p>'+esc(e.message)+'</p></div>';
+  }
+}
+
+function closeMyOrders(){
+  document.getElementById('myOrdersOverlay').classList.remove('show');
+}
+
+// ─── My Messages Overlay ───
+async function showMyMessages(){
+  document.getElementById('userMenuDropdown').style.display='none';
+  if(!authToken){showToast('Please login first','');showAuthModal();return;}
+  var ov = document.getElementById('myMessagesOverlay');
+  ov.classList.add('show');
+  var body = document.getElementById('myMessagesBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading your messages...</p></div>';
+  try {
+    var data = await fetch(API+'/b2b/messages',{
+      headers:{'Authorization':'Bearer '+authToken}
+    }).then(function(r){return r.json();});
+    var msgs = data.messages || [];
+    if(msgs.length===0){
+      body.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>No messages yet</h3><p>When you contact suppliers or they reach out to you, conversations will appear here.</p></div>';
+      return;
+    }
+    var html = '';
+    msgs.forEach(function(m){
+      var date = m.created_at ? new Date(m.created_at).toLocaleDateString() : '-';
+      var senderName = m.sender_name || m.sender_email || 'Unknown';
+      var avatarColor = colorFor(senderName,0);
+      var avatar = emojiFor(senderName,0);
+      var unreadCls = m.is_read ? '' : 'unread';
+      html += '<div class="msg-conversation '+unreadCls+'" onclick="viewMarketMsg(\''+esc(m.id).replace(/'/g,"\\'")+'\',\''+esc(m.subject||'').replace(/'/g,"\\'")+'\',\''+esc(senderName).replace(/'/g,"\\'")+'\',\''+date+'\',\''+esc(m.message||'').replace(/'/g,"\\'")+'\',\''+esc(m.is_read?'1':'0')+'\',\''+esc(m.id||'').replace(/'/g,"\\'")+'\')">';
+      html += '<div class="msg-avatar" style="background:'+avatarColor+'">'+avatar+'</div>';
+      html += '<div class="msg-info">';
+      html += '<div class="msg-sender">'+esc(senderName)+'</div>';
+      html += '<div class="msg-subject">'+esc(m.subject||'(no subject)')+'</div>';
+      html += '<div class="msg-preview">'+esc(m.message||'').substring(0,80)+'</div>';
+      html += '</div>';
+      html += '<div class="msg-meta"><div class="msg-date">'+date+'</div>';
+      html += m.is_read ? '' : '<div class="msg-badge status-pending">New</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '<p style="margin-top:10px;font-size:.8rem;color:var(--text-secondary)">'+msgs.length+' / '+data.total+' conversations</p>';
+    body.innerHTML = html;
+  }catch(e){
+    body.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Failed to load messages</h3><p>'+esc(e.message)+'</p></div>';
+  }
+}
+
+function closeMyMessages(){
+  document.getElementById('myMessagesOverlay').classList.remove('show');
+}
+
+var API = '/api/v1';
+
+// ─── Init ───
+updateAuthUI();
+fetchProducts();
+</script>
+</body>
+</html>

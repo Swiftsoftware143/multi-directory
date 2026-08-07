@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::error::{AppError, ApiResult, validate_pagination};
 use crate::models::*;
+use crate::utils;
 
 /// GET /api/v1/directories/:slug/businesses
 pub async fn list_businesses(
@@ -255,6 +256,17 @@ pub async fn update_business(
     .await?
     .ok_or(AppError::NotFound("Business not found".to_string()))?;
 
+    // Validate cta_type if provided
+    if let Some(ref cta) = req.cta_type {
+        if !utils::is_valid_cta_type(cta) {
+            return Err(AppError::BadRequest(format!(
+                "Invalid CTA type '{}'. Must be one of: {}",
+                cta,
+                utils::VALID_CTA_TYPES.join(", ")
+            )));
+        }
+    }
+
     let business = sqlx::query_as::<_, Business>(
         r#"UPDATE businesses SET
            name = COALESCE(\x241, name),
@@ -295,6 +307,24 @@ pub async fn update_business(
     .bind(business_id)
     .fetch_one(&s.db)
     .await?;
+
+    // Upsert cta_type into business_meta.meta_data
+    if req.cta_type.is_some() {
+        let cta_value = req.cta_type.as_deref().unwrap_or("none");
+        let meta_patch = serde_json::json!({"cta_type": cta_value});
+        sqlx::query(
+            r#"INSERT INTO business_meta (business_id, template, meta_data)
+               VALUES ($1, $2, $3::jsonb)
+               ON CONFLICT (business_id, template)
+               DO UPDATE SET meta_data = business_meta.meta_data || $3::jsonb,
+                             updated_at = NOW()"#
+        )
+        .bind(business_id)
+        .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
+        .bind(&meta_patch)
+        .execute(&s.db)
+        .await?;
+    }
 
     Ok(Json(json!(business)))
 }

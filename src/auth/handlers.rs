@@ -84,6 +84,24 @@ pub async fn register(
     .execute(&s.db)
     .await?;
 
+    // Auto-provision IncentiveSwift account for loyalty/IQS access
+    {
+        let is_email = req.email.clone();
+        let is_name = req.name.clone();
+        tokio::spawn(async move {
+            crate::handlers::tag_sync::register_member_in_is(
+                is_email,
+                Some(is_name.clone()),
+                None,
+                None,
+                "business_owner",
+                None,
+                Some("zaarhub".to_string()),
+                Some(vec!["zaarhub_business".to_string()]),
+            ).await;
+        });
+    }
+
     // Create JWT
     let now_ts = Utc::now().timestamp() as usize;
     let claims = Claims {
