@@ -60,7 +60,7 @@ pub fn resolve_cta_url(
             if website.is_empty() {
                 "#".to_string()
             } else {
-                website.to_string()
+                crate::utils::url_cleaner::strip_tracking_params(website)
             }
         }
         "call_now" => {

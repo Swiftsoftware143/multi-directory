@@ -58,6 +58,28 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> impl axum::response::
         ));
     }
 
+    // B2B SSR pages
+    xml.push_str(&format!(
+        "  <url><loc>{host}/rfq-marketplace</loc><changefreq>daily</changefreq><priority>0.7</priority></url>\n"
+    ));
+    xml.push_str(&format!(
+        "  <url><loc>{host}/coop-hub</loc><changefreq>daily</changefreq><priority>0.7</priority></url>\n"
+    ));
+    xml.push_str(&format!(
+        "  <url><loc>{host}/lead-exchange</loc><changefreq>daily</changefreq><priority>0.7</priority></url>\n"
+    ));
+
+    // Legal pages
+    let legal = sqlx::query(
+        "SELECT slug FROM zaarhub_legal_pages WHERE is_published = true ORDER BY display_order"
+    ).fetch_all(&state.db).await.unwrap_or_default();
+    for page in &legal {
+        let slug: String = page.try_get("slug").unwrap_or_default();
+        xml.push_str(&format!(
+            "  <url><loc>{host}/legal/{slug}</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>\n"
+        ));
+    }
+
     xml.push_str("</urlset>\n");
 
     axum::response::Response::builder()
@@ -69,23 +91,7 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> impl axum::response::
 
 /// Serve robots.txt
 pub async fn robots_txt() -> impl axum::response::IntoResponse {
-    let body = "User-agent: *
-Allow: /
-Allow: /zaarhub/
-Allow: /zaarhub-city.html
-Allow: /zaarhub-offer.html
-
-# Sitemaps
-Sitemap: https://zaarhub.com/sitemap.xml
-
-# Crawl delay — be nice to our server
-Crawl-delay: 2
-
-# Disallow API endpoints from indexing
-Disallow: /api/
-Disallow: /auth/
-Disallow: /admin/
-";
+    let body = "User-agent: *\nAllow: /\nAllow: /zaarhub/\nAllow: /zaarhub-city.html\nAllow: /zaarhub-offer.html\nAllow: /rfq-marketplace\nAllow: /coop-hub\nAllow: /lead-exchange\nAllow: /b2b-marketplace.html\nAllow: /supplier-portal.html\nAllow: /legal/\n\n# Sitemaps\nSitemap: https://zaarhub.com/zaarhub-sitemap.xml\n\n# Crawl delay — be nice to our server\nCrawl-delay: 2\n\n# Disallow API endpoints from indexing\nDisallow: /api/\nDisallow: /auth/\nDisallow: /admin/\n";
 
     axum::response::Response::builder()
         .header("Content-Type", "text/plain; charset=utf-8")

@@ -99,7 +99,9 @@ async fn import_business_row(
     let zip = row.get("zip").and_then(|v| v.as_str()).unwrap_or("");
     let phone = row.get("phone").and_then(|v| v.as_str()).unwrap_or("");
     let email = row.get("email").and_then(|v| v.as_str()).unwrap_or("");
-    let website = row.get("website").and_then(|v| v.as_str()).unwrap_or("");
+    let website = crate::utils::url_cleaner::strip_tracking_params(
+        row.get("website").and_then(|v| v.as_str()).unwrap_or("")
+    );
     let description = row.get("description").and_then(|v| v.as_str()).unwrap_or("");
     let latitude = row.get("latitude").and_then(|v| v.as_f64());
     let longitude = row.get("longitude").and_then(|v| v.as_f64());
@@ -369,7 +371,9 @@ async fn enrich_from_google(state: &AppState, req: &EnrichRequest) -> Result<Opt
                 "name": d.get("name").and_then(|v| v.as_str()).unwrap_or(""),
                 "address": d.get("formatted_address").and_then(|v| v.as_str()).unwrap_or(""),
                 "phone": d.get("formatted_phone_number").and_then(|v| v.as_str()).unwrap_or(""),
-                "website": d.get("website").and_then(|v| v.as_str()).unwrap_or(""),
+                "website": crate::utils::url_cleaner::strip_tracking_params(
+                    d.get("website").and_then(|v| v.as_str()).unwrap_or("")
+                ),
                 "description": d.get("editorial_summary")
                     .and_then(|e| e.get("overview").and_then(|v| v.as_str())).unwrap_or(""),
                 "latitude": lat,
@@ -440,7 +444,9 @@ async fn enrich_from_yelp(state: &AppState, req: &EnrichRequest) -> Result<Optio
                 "name": biz.get("name").and_then(|v| v.as_str()).unwrap_or(""),
                 "address": &address_str,
                 "phone": biz.get("display_phone").and_then(|v| v.as_str()).unwrap_or(""),
-                "website": biz.get("url").and_then(|v| v.as_str()).unwrap_or(""),
+                "website": crate::utils::url_cleaner::strip_tracking_params(
+                    biz.get("url").and_then(|v| v.as_str()).unwrap_or("")
+                ),
                 "description": categories.join(", "),
                 "latitude": coords.and_then(|c| c.get("latitude").and_then(|v| v.as_f64())),
                 "longitude": coords.and_then(|c| c.get("longitude").and_then(|v| v.as_f64())),

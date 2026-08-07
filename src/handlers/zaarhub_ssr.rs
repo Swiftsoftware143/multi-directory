@@ -513,7 +513,10 @@ pub async fn render_listing_page(
     let desc_html = desc.as_ref().map(|d| format!("<p class=\"desc\">{}</p>", h(d))).unwrap_or_default();
     let addr_html = addr.as_ref().map(|a| format!("<div class='meta-row'><span class='icon'>📍</span><span>{}</span></div>", h(a))).unwrap_or_default();
     let phone_html = phone.as_ref().map(|p| format!("<div class='meta-row'><span class='icon'>📞</span><a href='tel:{}'>{}</a></div>", h(p), h(p))).unwrap_or_default();
-    let web_html = web.as_ref().map(|w| format!("<div class='meta-row'><span class='icon'>🌐</span><a href='{}' target='_blank' rel='noopener'>{}</a></div>", h(w), h(w))).unwrap_or_default();
+    let web_html = web.as_ref().map(|w| {
+        let (clean_url, display_label) = crate::utils::url_cleaner::clean_url_pair(w);
+        format!("<div class='meta-row'><span class='icon'>🌐</span><a href='{}' target='_blank' rel='noopener'>{}</a></div>", h(&clean_url), h(&display_label))
+    }).unwrap_or_default();
     let maps_html = match (coordinates_lat, coordinates_lng) {
         (Some(lat), Some(lng)) => format!("<div class='meta-row'><span class='icon'>🗺️</span><a href='https://maps.google.com/?q={},{}' target='_blank'>View on Google Maps</a></div>", lat, lng),
         _ => String::new(),
@@ -556,7 +559,7 @@ pub async fn render_listing_page(
 
     let freshness_html = match (&freshness, is_claimed) {
         (Some(date), _) => format!("<div class=\"freshness\">\u{1f4c5} Data last verified: {}</div>", h(date)),
-        (None, false) => "<div class=\"freshness freshness-cta\">\u{1f4cc} <a href=\"/zaarhub-claim.html\">Claim this listing</a> to keep data fresh</div>".to_string(),
+        (None, false) => "<div class=\"freshness freshness-cta\">\u{1f4cc} <a href=\"/claim.html\">Claim this listing</a> to keep data fresh</div>".to_string(),
         (None, true) => String::new(),
     };
 

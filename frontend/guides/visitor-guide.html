@@ -95,6 +95,11 @@
     <a href="#saved-places">5. Viewing Saved Places</a>
     <a href="#claiming-business">6. Claiming a Business</a>
     <a href="#visitor-portal">7. Visitor Portal</a>
+    <a href="#near-me">8. Finding Businesses Near You</a>
+    <a href="#editors-picks">9. Editor's Picks &amp; Featured Businesses</a>
+    <a href="#data-freshness">10. Understanding Data Freshness</a>
+    <a href="#url-cleanliness">11. URL Cleanliness</a>
+    <a href="#notifications-ticker">12. Notifications Ticker</a>
   </nav>
 </div>
 
@@ -412,6 +417,140 @@
 <h3>Logging Out</h3>
 <div class="card">
   <p>Click the <strong>Logout</strong> button in the portal header to end your session. This logs you out of all pages, not just the portal.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 8. Near-Me Geolocation -->
+<h2 id="near-me">8. Finding Businesses Near You</h2>
+
+<p>The <strong>Near-Me Geolocation</strong> feature lets you find businesses close to your current location. It's built into the directory search experience on both the ZaarHub frontend and individual directory pages.</p>
+
+<h3>How to Use Near-Me</h3>
+<div class="card">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Look for the <strong>📍 Near Me</strong> button on the directory or ZaarHub search page.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Click the button. Your browser will ask for permission to access your location. Click <strong>Allow</strong>.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>The directory loads businesses sorted by distance from you — closest first. Each listing shows approximately how far away it is.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Use the <strong>Map View</strong> toggle to see pins on an interactive map powered by Leaflet.js and OpenStreetMap.</p></div>
+  </div>
+</div>
+
+<h3>Privacy</h3>
+<div class="card">
+  <ul>
+    <li>Your location is only used to sort search results — it is not stored, shared, or tracked.</li>
+    <li>You can deny location access and still use the directory normally. The near-me feature becomes available only when you grant permission.</li>
+    <li>Location permission can be revoked at any time through your browser settings.</li>
+  </ul>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Near-Me is especially useful when traveling or exploring a new area. Use it to find the closest restaurants, shops, or services without needing to know the neighborhood.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 9. Editor's Picks & Featured Businesses -->
+<h2 id="editors-picks">9. Editor's Picks &amp; Featured Businesses</h2>
+
+<p>Each directory features an <strong>Editor's Picks</strong> section — hand-selected businesses that the directory admin has chosen to highlight. These are often exceptional local businesses, hidden gems, or community favorites.</p>
+
+<h3>Where to Find Editor's Picks</h3>
+<div class="card">
+  <ul>
+    <li><strong>Directory homepage</strong> — Editor's Picks appear in a dedicated section, often as a carousel or grid near the top of the page.</li>
+    <li><strong>ZaarHub frontend</strong> — Editor's Picks from all participating directories appear in the ZaarHub carousel alongside featured deals and spotlights.</li>
+    <li><strong>Badge on listings</strong> — Editor's Pick businesses display a 🏆 <strong>Editor's Pick</strong> badge on their listing card and detail page, so you can spot curated businesses while browsing search results.</li>
+  </ul>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Editor's Picks are a great place to discover quality local businesses you might not find through regular search. These businesses have been vetted and recommended by people who know the local community.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 10. Data Freshness -->
+<h2 id="data-freshness">10. Understanding Data Freshness</h2>
+
+<p>Business listings show a <strong>Data Freshness Timestamp</strong> that tells you when the information was last verified. This helps you know whether the business details you're viewing are current or may be outdated.</p>
+
+<div class="card">
+  <ul>
+    <li><strong>What you'll see:</strong> A small note on business listings like "Data last updated: August 2026 from Google Places" or "Verified 2 weeks ago."</li>
+    <li><strong>Sources:</strong> Data can come from Google Places, Yelp, the business owner's own updates, or the directory admin.</li>
+    <li><strong>Why it matters:</strong> A recently updated listing means the hours, phone number, and address are likely accurate. Older timestamps might mean the info hasn't been checked in a while — use the contact info with this in mind.</li>
+    <li><strong>No timestamp?</strong> Some listings may not show a freshness timestamp if they haven't been enriched from a third-party source or recently updated by the owner.</li>
+  </ul>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> When comparing businesses, give preference to those with recent data freshness timestamps. A business that actively maintains its listing is more likely to be open, responsive, and reliable.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 11. URL Cleanliness -->
+<h2 id="url-cleanliness">11. URL Cleanliness</h2>
+
+<p>When you click through to a business's website from a listing, you'll see a clean, readable URL — not a mess of tracking codes.</p>
+
+<div class="card">
+  <ul>
+    <li><strong>Clean display:</strong> Business website links show as clean domain names (e.g., "joescoffee.com") on listing pages. This makes it easier to recognize the business and builds trust.</li>
+    <li><strong>Automatic cleaning:</strong> The platform removes over 30 tracking parameters (<code>utm_*</code>, <code>fbclid</code>, <code>ref</code>, <code>gclid</code>, etc.) from business URLs before displaying them.</li>
+    <li><strong>What this means for you:</strong> The URLs you see are the real business websites — without marketing tracking codes or campaign tags that clutter the display. They're cleaner, shorter, and easier to remember.</li>
+    <li><strong>Clicking through:</strong> When you click a business website link, you're taken to the actual business website. The cleaned URL is just for display — the link still works exactly as intended.</li>
+  </ul>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 12. Notifications Ticker -->
+<h2 id="notifications-ticker">12. Understanding the Notifications Ticker</h2>
+
+<p>While browsing a directory or the ZaarHub frontend, you may notice a horizontally scrolling bar at the top of the page showing recent activity. This is the <strong>Notifications Ticker</strong> — an automated feed of what's happening on the platform.</p>
+
+<h3>📡 What the Ticker Shows</h3>
+<div class="feature-grid">
+  <div class="card">
+    <h3>🏪 New Businesses</h3>
+    <p>Just-added or newly verified businesses in the directory.</p>
+  </div>
+  <div class="card">
+    <h3>🏷️ New Deals</h3>
+    <p>Promotions and special offers recently posted by businesses.</p>
+  </div>
+  <div class="card">
+    <h3>⭐ Recent Reviews</h3>
+    <p>High-rated reviews from other visitors and customers.</p>
+  </div>
+  <div class="card">
+    <h3>✅ Verified Claims</h3>
+    <p>Businesses that recently verified their ownership — a trust signal.</p>
+  </div>
+</div>
+
+<h3>🖱️ How to Interact</h3>
+<ul>
+  <li><strong>Click any ticker item</strong> to go directly to the business listing, deal page, or review it references.</li>
+  <li><strong>Hover</strong> over the ticker to pause the scroll animation if you want to read a specific item.</li>
+  <li><strong>Ticker items</strong> are purely informational — they're system-generated from real platform activity, not ads or sponsored content.</li>
+</ul>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> The ticker is a great way to discover new businesses and time-sensitive deals you might otherwise miss. If you see something interesting, click through — deals often have limited availability.</p>
 </div>
 
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
