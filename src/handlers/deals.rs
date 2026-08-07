@@ -4,7 +4,9 @@ use axum::{
     extract::{Path, State, Query},
     http::StatusCode,
     response::IntoResponse,
+    routing::{get, post, put, delete},
     Json,
+    Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -464,4 +466,25 @@ pub async fn expire_redemptions(
 #[derive(Debug, Deserialize)]
 pub struct ExpireQuery {
     pub days: Option<i64>,
+}
+
+/// Build the deals router with all deal and redemption routes.
+/// Routes are merged into /api/v1/* so paths here are relative to that.
+pub fn router() -> Router<AppState> {
+    Router::new()
+        // Public deal browsing
+        .route("/deals", get(list_directory_deals))
+        .route("/deals/featured", get(list_featured_deals))
+        .route("/deals/{id}", get(get_deal))
+        .route("/deals/{id}/claim", post(claim_deal))
+        // Business-scoped deal CRUD
+        .route("/businesses/{business_id}/deals", get(list_business_deals).post(create_deal))
+        .route("/businesses/{business_id}/deals/{id}", put(update_deal).delete(delete_deal))
+        .route("/businesses/{business_id}/deals/{id}/claims", get(list_deal_redemptions))
+        // Redemption endpoints
+        .route("/deals/redeem", post(redeem_deal))
+        .route("/deals/redeem/lookup", get(lookup_redemption))
+        .route("/deals/redeem/{id}", post(use_redemption))
+        .route("/deals/redemptions", get(list_deal_redemptions))
+        .route("/deals/redemptions/expire", post(expire_redemptions))
 }
