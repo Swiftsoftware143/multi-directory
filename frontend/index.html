@@ -155,6 +155,48 @@ a:hover{text-decoration:underline}
 .zh-deal-body .biz{font-size:.78rem;color:var(--text-light)}
 .zh-deal-body .deal-badge{display:inline-block;background:var(--warm-light);color:var(--warm);font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px;margin-top:6px}
 
+/* ── Deal Detail Page ── */
+.zh-deal-detail{max-width:860px;margin:0 auto;padding:0 16px 40px}
+.zh-deal-hero{position:relative;border-radius:var(--radius-xl);overflow:hidden;padding:48px 32px 32px;color:#fff;text-align:center;margin-bottom:24px}
+.zh-deal-hero::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,0,0,.35),rgba(0,0,0,.55));z-index:1}
+.zh-deal-hero>*{position:relative;z-index:2}
+.zh-deal-hero .dl-logo{width:64px;height:64px;border-radius:16px;background:rgba(255,255,255,.2);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 12px;border:2px solid rgba(255,255,255,.3)}
+.zh-deal-hero .dl-logo img{width:100%;height:100%;object-fit:cover;border-radius:14px}
+.zh-deal-hero h1{font-size:1.8rem;font-weight:800;margin-bottom:6px;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.zh-deal-hero .dl-biz-name{font-size:.95rem;opacity:.9;margin-bottom:16px}
+.zh-deal-hero .dl-prices{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+.zh-deal-hero .dl-original{font-size:1.4rem;opacity:.7;text-decoration:line-through}
+.zh-deal-hero .dl-price{font-size:2.5rem;font-weight:900;text-shadow:0 2px 4px rgba(0,0,0,.15)}
+.zh-deal-hero .dl-discount-badge{display:inline-block;background:#fff;color:var(--primary);font-size:.85rem;font-weight:800;padding:4px 14px;border-radius:100px;margin-top:12px}
+.zh-deal-timer{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;padding:16px 24px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;text-align:center}
+.zh-deal-timer .timer-block{text-align:center;min-width:60px}
+.zh-deal-timer .timer-block .num{font-size:1.8rem;font-weight:800;color:var(--primary);line-height:1.1}
+.zh-deal-timer .timer-block .lbl{font-size:.7rem;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px}
+.zh-deal-timer-sep{font-size:1.5rem;color:var(--text-light);font-weight:300}
+.zh-deal-info-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:16px}
+.zh-deal-info-card h3{font-size:1.1rem;font-weight:700;margin-bottom:12px;color:var(--dark)}
+.zh-deal-info-card p,.zh-deal-info-card ul{font-size:.9rem;line-height:1.6;color:var(--text);margin-bottom:8px}
+.zh-deal-info-card .fine-print{font-size:.78rem;color:var(--text-muted);font-style:italic;margin-top:8px;padding-top:12px;border-top:1px solid var(--border)}
+.zh-deal-gallery{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;margin-bottom:16px;-webkit-overflow-scrolling:touch}
+.zh-deal-gallery::-webkit-scrollbar{height:4px}
+.zh-deal-gallery::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.zh-deal-gallery img{height:200px;border-radius:var(--radius);flex-shrink:0;object-fit:cover;border:1px solid var(--border)}
+.zh-deal-claim-btn{display:block;width:100%;max-width:400px;margin:16px auto;padding:16px 32px;font-size:1.15rem;font-weight:800;text-align:center;border-radius:100px;border:none;cursor:pointer;color:#fff;transition:all .2s;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+.zh-deal-claim-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.zh-deal-biz-card{display:flex;gap:16px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px;cursor:pointer;transition:all .2s}
+.zh-deal-biz-card:hover{box-shadow:var(--shadow);border-color:var(--primary-light)}
+.zh-deal-biz-card .dl-biz-icon{width:48px;height:48px;border-radius:12px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0}
+.zh-deal-biz-card .dl-biz-info{flex:1}
+.zh-deal-biz-card .dl-biz-info h4{font-size:.95rem;font-weight:700;margin-bottom:2px}
+.zh-deal-biz-card .dl-biz-info .addr{font-size:.8rem;color:var(--text-light)}
+.zh-deal-biz-card .dl-biz-info .cat{font-size:.75rem;color:var(--primary);margin-top:2px}
+.zh-deal-back-link{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;color:var(--text-light);margin-bottom:20px;transition:color .2s}
+.zh-deal-back-link:hover{color:var(--primary);text-decoration:none}
+.zh-claim-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
+.zh-claim-modal{background:var(--card);border-radius:var(--radius-lg);padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.zh-claim-modal h3{font-size:1.3rem;font-weight:800;margin-bottom:8px;color:var(--green)}
+.zh-claim-modal .code{font-size:1.5rem;font-weight:900;letter-spacing:2px;background:var(--green-light);color:var(--green);padding:12px 24px;border-radius:8px;margin:16px 0;display:inline-block}
+
 /* ── Activity Feed ── */
 .zh-activity-list{display:flex;flex-direction:column;gap:10px}
 .zh-activity-item{display:flex;align-items:flex-start;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;transition:all .2s}
@@ -554,6 +596,10 @@ function route(){
     state.page='deals'
     var dlParts=hash.split('/')
     state.dealsCityFilter=dlParts.length>=3&&dlParts[2]?dlParts[2]:''
+  }else if(hash.startsWith('/deal/')){
+    var parts=hash.split('/')
+    state.page='deal'
+    state.dealId=parts[2]
   }else if(hash.startsWith('/events')){
     state.page='events'
     var evParts=hash.split('/')
@@ -604,6 +650,7 @@ async function load(){
     else if(state.page==='city')await loadCityPage()
     else if(state.page==='search')await loadSearchResults()
     else if(state.page==='deals')await loadDealsPage()
+    else if(state.page==='deal')await loadDealPage()
     else if(state.page==='events')await loadEventsPage()
     else if(state.page==='biz')await loadBizPage()
     else if(state.page==='about')await loadAboutPage()
@@ -924,7 +971,7 @@ function renderHomepageContent(d){
     var dl=deals[i]
     var priceHtml=dl.deal_price?'<div class="price">$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
     var endHtml=dl.end_date?'<span style="font-size:.75rem;color:var(--text-muted)">Valid until '+new Date(dl.end_date).toLocaleDateString()+'</span>':''
-    dealsHtml+='<div class="zh-deal-card" onclick="location.hash=\'#/city/'+esc(dl&&dl.directory_slug||'')+'\'">'+
+    dealsHtml+='<div class="zh-deal-card" onclick="location.hash=\'#/deal/'+esc(dl&&dl.id||'')+'\'">'+
       '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'🎉')+'</div>'+
       '<div class="zh-deal-body">'+
       '<h4>'+esc(dl.title)+'</h4>'+
@@ -1364,7 +1411,7 @@ function renderCityPage(d){
   for(var i=0;i<deals.length;i++){
     var dl=deals[i]
     dealsHtml+=`
-<div class="zh-deal-card-sm">
+<div class="zh-deal-card-sm" onclick="location.hash='#/deal/${dl.id}'">
   <div class="zh-deal-sm-body">
     <h4>${esc(dl.title)}</h4>
     ${dl.deal_price?'<div class="price">$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''}
@@ -1700,7 +1747,7 @@ async function loadDealsPage(){
     for(var i=0;i<deals.length;i++){
       var dl=deals[i];var priceHtml=dl.deal_price?'$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
       var cityTag=dl.directory_slug?'<span style="color:var(--primary);font-size:.72rem;font-weight:600">'+toTitle(dl.directory_slug)+' · </span>':''
-      h+='<div class="zh-deal-card" style="flex:0 0 280px" onclick="location.hash=\'#/city/\''+dl.directory_slug+'\'">'+
+      h+='<div class="zh-deal-card" style="flex:0 0 280px" onclick="location.hash=\'#/deal/'+dl.id+'\'">'+
         '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'\u{1f389}')+'</div>'+
         '<div class="zh-deal-body"><h4>'+esc(dl.title)+'</h4>'+
         '<div class="price">'+priceHtml+'</div>'+
@@ -1714,6 +1761,193 @@ async function loadDealsPage(){
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
   }
+}
+
+// ── Deal Detail Page ──
+var _dealTimerInterval=null
+
+async function loadDealPage(){
+  var el=document.getElementById('zh-content')
+  if(_dealTimerInterval){clearInterval(_dealTimerInterval);_dealTimerInterval=null}
+  el.innerHTML='<div class="zh-loading"><div class="zh-spinner"></div></div>'
+
+  try{
+    var d=await g('/api/v1/deals/'+state.dealId+'/page')
+    renderDealDetail(d)
+  }catch(e){
+    el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🎁</div><h3>Deal Not Found</h3><p style="color:var(--text-light);margin-bottom:16px">'+esc(e.message)+'</p><a href="#/deals">← Back to Deals</a></div>'
+  }
+}
+
+// Category accent color mappings
+var CAT_TEMPLATE_COLORS={
+  automotive: '#dc2626', education: '#7c3aed', farm: '#16a34a',
+  fitness: '#2563eb', hospitality: '#ea580c', restaurant: '#dc2626',
+  service: '#0891b2', medical: '#059669', 'real-estate': '#1e40af',
+  default: '#f27f2f'
+}
+
+function renderDealDetail(d){
+  var el=document.getElementById('zh-content')
+  var template=d.page_template||d.business_category_slug||'default'
+  var accentColor=d.accent_color||CAT_TEMPLATE_COLORS[template]||CAT_TEMPLATE_COLORS.default
+  var ctaColor=d.cta_color||accentColor
+  var ctaText=d.cta_text||'Claim This Deal'
+  var bizName=esc(d.business_name||'Local Business')
+  var bizAddr=esc(d.business_address||'')
+  var bizCat=esc(d.business_category||'')
+  var dirSlug=esc(d.directory_slug||'')
+  var dirName=esc(d.directory_name||'')
+  var bizId=d.business_id||''
+
+  // Price display
+  var priceHtml=''
+  if(d.deal_price){
+    if(d.original_price){
+      priceHtml='<div class="dl-prices"><span class="dl-original">$'+esc(d.original_price)+'</span><span class="dl-price">$'+esc(d.deal_price)+'</span></div>'
+    }else{
+      priceHtml='<div class="dl-prices"><span class="dl-price">$'+esc(d.deal_price)+'</span></div>'
+    }
+  }else if(d.coupon_code){
+    priceHtml='<div class="dl-prices"><span class="dl-price" style="font-size:1.8rem">Code: '+esc(d.coupon_code)+'</span></div>'
+  }
+  var discountBadge=d.discount_percent?'<span class="dl-discount-badge">'+d.discount_percent+'% OFF</span>':''
+
+  // Countdown timer
+  var timerHtml=''
+  if(d.show_timer&&d.end_date){
+    timerHtml='<div class="zh-deal-timer" id="dealTimer"><span style="font-size:.85rem;color:var(--text-light);margin-right:8px">⏱️ Ends in:</span><span id="dealTimerDisplay" style="font-size:1.1rem;font-weight:700;color:var(--primary)">Calculating...</span></div>'
+  }
+
+  // Gallery
+  var galleryHtml=''
+  var galleryImages=d.gallery_images
+  if(galleryImages&&Array.isArray(galleryImages)&&galleryImages.length>0){
+    var imgs=''
+    for(var i=0;i<galleryImages.length;i++){
+      imgs+='<img src="'+esc(galleryImages[i])+'" alt="Gallery '+i+'" onerror="this.style.display=\'none\'">'
+    }
+    galleryHtml='<div class="zh-deal-gallery">'+imgs+'</div>'
+  }
+
+  var claimed=d.redemption_count||0
+  var claimedText=claimed>0?' <span style="font-size:.8rem;opacity:.9">('+claimed+' claimed)</span>':''
+
+  el.innerHTML='<div class="zh-deal-detail">'+
+    '<a href="#/deals" class="zh-deal-back-link">← Back to Deals</a>'+
+    '<div class="zh-deal-hero" style="background:linear-gradient(135deg,'+accentColor+','+adjustColor(accentColor,-30)+')">'+
+      '<div class="dl-logo">'+(d.image_url?'<img src="'+esc(d.image_url)+'" alt="" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'🎉\'">':'🎉')+'</div>'+
+      '<h1>'+esc(d.title)+'</h1>'+
+      '<div class="dl-biz-name">by '+bizName+(dirName?' — '+dirName:'')+'</div>'+
+      priceHtml+
+      discountBadge+
+    '</div>'+
+    timerHtml+
+    (d.description?''+
+    '<div class="zh-deal-info-card"><h3>📝 About This Deal</h3><p>'+esc(d.description)+'</p>'+
+    (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
+    (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
+    '</div>':
+    (d.terms||d.fine_print?''+
+    '<div class="zh-deal-info-card"><h3>📝 Details</h3>'+
+    (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
+    (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
+    '</div>':''))+
+    galleryHtml+
+    (d.deal_type==='coupon'&&d.coupon_code?'<div class="zh-deal-info-card"><h3>🏷️ Coupon Code</h3><div style="font-size:1.5rem;font-weight:800;letter-spacing:3px;color:'+accentColor+';text-align:center;padding:12px;background:var(--bg);border-radius:8px;border:2px dashed var(--border)">'+esc(d.coupon_code)+'</div></div>':'')+
+    '<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+claimedText+'</button>'+
+    '<div class="zh-deal-biz-card" onclick="location.hash=\'#/city/'+dirSlug+'/biz/'+bizId+'\'">'+
+      '<div class="dl-biz-icon">🏪</div>'+
+      '<div class="dl-biz-info"><h4>'+bizName+'</h4>'+
+      (bizAddr?'<div class="addr">📍 '+bizAddr+'</div>':'')+
+      (bizCat?'<div class="cat">'+bizCat+'</div>':'')+
+      '</div>'+
+      '<span style="font-size:.8rem;color:var(--primary);font-weight:600;white-space:nowrap">View Business →</span>'+
+    '</div>'+
+    '<div style="text-align:center;margin-top:8px">'+
+      '<a href="#/deals" style="font-size:.85rem;color:var(--text-light)">← Back to All Deals</a>'+
+    '</div>'+
+  '</div>'
+
+  // Start countdown timer
+  if(d.show_timer&&d.end_date){
+    startDealTimer(new Date(d.end_date+'Z').getTime()||new Date(d.end_date).getTime())
+  }
+}
+
+function adjustColor(hex,amount){
+  var r=Math.max(0,Math.min(255,parseInt(hex.slice(1,3),16)+amount))
+  var g=Math.max(0,Math.min(255,parseInt(hex.slice(3,5),16)+amount))
+  var b=Math.max(0,Math.min(255,parseInt(hex.slice(5,7),16)+amount))
+  return '#'+r.toString(16).padStart(2,'0')+g.toString(16).padStart(2,'0')+b.toString(16).padStart(2,'0')
+}
+
+function startDealTimer(endMs){
+  function update(){
+    var now=Date.now()
+    var diff=endMs-now
+    var display=document.getElementById('dealTimerDisplay')
+    if(!display)return
+    if(diff<=0){display.textContent='Expired';if(_dealTimerInterval)clearInterval(_dealTimerInterval);return}
+    var d=Math.floor(diff/86400000)
+    var h=Math.floor((diff%86400000)/3600000)
+    var m=Math.floor((diff%3600000)/60000)
+    var s=Math.floor((diff%60000)/1000)
+    display.textContent=(d>0?d+'d ':'')+h+'h '+m+'m '+s+'s'
+  }
+  update()
+  if(_dealTimerInterval)clearInterval(_dealTimerInterval)
+  _dealTimerInterval=setInterval(update,1000)
+}
+
+async function claimDeal(id){
+  var user=state.authUser||state.user
+  // Allow claiming via visitor token or just proceed
+  var headers={'Content-Type':'application/json'}
+  if(user&&user.token)headers['Authorization']='Bearer '+user.token
+
+  try{
+    var resp=await fetch('/api/v1/deals/'+id+'/claim',{method:'POST',headers:headers})
+    if(!resp.ok){
+      var err=await resp.json().catch(function(){return{message:'Claim failed'}})
+      throw new Error(err.message||'Claim failed')
+    }
+    var data=await resp.json()
+    showClaimModal(data)
+  }catch(e){
+    alert('Could not claim deal: '+e.message)
+  }
+}
+
+function showClaimModal(data){
+  var code=data.coupon_code||data.redemption_code||''
+  var html='<div class="zh-claim-modal-overlay" onclick="closeClaimModal(event)">'+
+    '<div class="zh-claim-modal" onclick="event.stopPropagation()">'+
+      '<div style="font-size:3rem">🎉</div>'+
+      '<h3>Deal Claimed!</h3>'+
+      '<p style="color:var(--text-light);font-size:.9rem">Show this code when you visit the business:</p>'+
+      (code?'<div class="code">'+esc(code)+'</div>':'<div class="code">CLAIMED</div>')+
+      '<p style="font-size:.8rem;color:var(--text-muted);margin-bottom:16px">This deal has been added to your account</p>'+
+      '<button class="zh-btn-primary" onclick="closeClaimModal()" style="padding:10px 32px">Got It!</button>'+
+    '</div></div>'
+  var wrapper=document.createElement('div')
+  wrapper.id='claimModalWrapper'
+  wrapper.innerHTML=html
+  document.body.appendChild(wrapper)
+
+  // Refresh the count display
+  var claimBtn=document.querySelector('.zh-deal-claim-btn')
+  if(claimBtn&&data.redemption_count){
+    claimBtn.textContent='🎟️ Claimed! ('+data.redemption_count+' claimed)'
+  }
+}
+
+function closeClaimModal(e){
+  if(e&&e.target!==e.currentTarget)return
+  var w=document.getElementById('claimModalWrapper')
+  if(w)w.remove()
+  w=document.querySelector('.zh-claim-modal-overlay')
+  if(w)w.remove()
 }
 
 async function loadEventsPage(){
@@ -1832,7 +2066,7 @@ async function loadBizPage(){
 }
 
 function renderBizPage(d){
-  var b=d.business
+  var b=d.business;var bizId=b.id||state.bizId
   var el=document.getElementById('zh-content')
   var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
   var phoneHref=b.phone?'tel:'+b.phone.replace(/[^\d+]/g,''):''
@@ -1854,7 +2088,7 @@ function renderBizPage(d){
   (d.deals&&d.deals.length?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🎁 Current Deals</h3>'+d.deals.map(function(dl){return '<div style="background:var(--bg-teal);padding:14px;border-radius:8px;margin-bottom:8px"><strong>'+esc(dl.title)+'</strong>'+(dl.deal_price?'<div style="color:var(--teal);font-weight:700;margin-top:4px">$'+esc(dl.deal_price)+(dl.original_price?' <span style="text-decoration:line-through;color:var(--text-muted)">$'+esc(dl.original_price)+'</span>':'')+'</div>':'')+(dl.description?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(dl.description)+'</div>':'')+'</div>'}).join('')+'</div>':'')+
   '<!-- Reviews Section --><div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">⭐ Reviews '+(d.reviews?'('+d.reviews.length+')':'')+'</h3>'+
   (d.reviews&&d.reviews.length?d.reviews.map(function(rv){var s='★'.repeat(rv.rating)+'☆'.repeat(5-rv.rating);return '<div style="padding:10px 0;border-bottom:1px solid var(--border-light)"><div style="font-size:.9rem">'+s+'</div><div style="font-weight:600;font-size:.85rem;margin-top:2px">'+esc(rv.reviewer_name||'Anonymous')+'</div>'+(rv.content?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(rv.content)+'</div>':'')+'</div>'}).join(''):'<p style="color:var(--text-light);font-size:.85rem">No reviews yet — be the first!</p>')+
-  '</div><!-- Write Review --><div id="zhReviewForm" style="background:var(--bg-teal);padding:16px;border-radius:12px;margin-bottom:16px"><h4 style="font-size:.95rem;margin-bottom:8px;font-weight:600">✍️ Write a Review</h4><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Rating</label><div id="zhStarPicker" style="font-size:1.5rem;cursor:pointer"><span data-star="1" onclick="pickStar(1)" style="color:var(--border)">★</span><span data-star="2" onclick="pickStar(2)" style="color:var(--border)">★</span><span data-star="3" onclick="pickStar(3)" style="color:var(--border)">★</span><span data-star="4" onclick="pickStar(4)" style="color:var(--border)">★</span><span data-star="5" onclick="pickStar(5)" style="color:var(--border)">★</span></div></div><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Your thoughts</label><textarea id="zhReviewContent" placeholder="Share your experience..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;resize:vertical;min-height:60px;font-family:inherit"></textarea></div><button onclick="handleSubmitReview('+bizId+')" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem">⭐ Post Review</button></div>'+
+  '</div><!-- Write Review --><div id="zhReviewForm" style="background:var(--bg-teal);padding:16px;border-radius:12px;margin-bottom:16px"><h4 style="font-size:.95rem;margin-bottom:8px;font-weight:600">✍️ Write a Review</h4><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Rating</label><div id="zhStarPicker" style="font-size:1.5rem;cursor:pointer"><span data-star="1" onclick="pickStar(1)" style="color:var(--border)">★</span><span data-star="2" onclick="pickStar(2)" style="color:var(--border)">★</span><span data-star="3" onclick="pickStar(3)" style="color:var(--border)">★</span><span data-star="4" onclick="pickStar(4)" style="color:var(--border)">★</span><span data-star="5" onclick="pickStar(5)" style="color:var(--border)">★</span></div></div><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Your thoughts</label><textarea id="zhReviewContent" placeholder="Share your experience..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;resize:vertical;min-height:60px;font-family:inherit"></textarea></div><button onclick="handleSubmitReview('+ (b.id||state.bizId||'') +')" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem">⭐ Post Review</button></div>'+
   '</div></div></div>'
 }
 
