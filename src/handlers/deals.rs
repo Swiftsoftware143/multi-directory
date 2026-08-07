@@ -110,15 +110,30 @@ pub struct UpdateDealRequest {
     pub rotation_order: Option<i32>,
 }
 
-/// GET /api/v1/deals — list all deals
+#[derive(Debug, Deserialize)]
+pub struct DealListQuery {
+    pub business_id: Option<Uuid>,
+}
+
+/// GET /api/v1/deals — list all deals, optionally filter by business_id
 pub async fn list_deals(
     State(s): State<AppState>,
+    Query(q): Query<DealListQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals ORDER BY created_at DESC "
-    )
-    .fetch_all(&s.db)
-    .await?;
+    let deals = if let Some(biz_id) = q.business_id {
+        sqlx::query_as::<_, Deal>(
+            "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals WHERE business_id = \x241 ORDER BY created_at DESC "
+        )
+        .bind(biz_id)
+        .fetch_all(&s.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, Deal>(
+            "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, created_at, updated_at FROM deals ORDER BY created_at DESC "
+        )
+        .fetch_all(&s.db)
+        .await?
+    };
 
     Ok(Json(deals))
 }
