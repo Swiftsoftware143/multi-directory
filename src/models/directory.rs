@@ -223,6 +223,9 @@ pub struct UpdateBusinessRequest {
     pub is_active: Option<bool>,
     pub business_type: Option<String>,
     pub supplier_fields: Option<serde_json::Value>,
+    /// Standardized CTA type — one of the 13 predefined values, or None.
+    /// Stored in business_meta.meta_data->'cta_type'.
+    pub cta_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

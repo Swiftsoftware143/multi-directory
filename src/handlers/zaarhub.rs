@@ -1013,3 +1013,297 @@ pub async fn get_business_detail(
         "hours": hours,
     })))
 }
+
+// ── Standalone ZaarHub API routes ───────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CityFilterQuery {
+    pub city: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ZaarhubCategory {
+    pub category_name: String,
+    pub directory_count: i64,
+    pub icon: Option<String>,
+}
+
+/// GET /api/v1/zaarhub/categories — list aggregated categories across all zaarhub-enabled directories
+pub async fn list_categories(
+    State(s): State<AppState>,
+    Query(query): Query<CityFilterQuery>,
+) -> ApiResult<Json<Vec<ZaarhubCategory>>> {
+    let mut sql = String::from(
+        r#"WITH dir_categories AS (
+            SELECT DISTINCT c.name AS category_name, c.icon, d.id AS dir_id
+            FROM directory_categories c
+            JOIN businesses b ON b.category_id = c.id AND b.is_active = true
+            JOIN directories d ON d.id = b.directory_id
+            WHERE d.zaarhub_config IS NOT NULL
+              AND (d.zaarhub_config->>'network_visible')::boolean = true"#
+    );
+
+    if query.city.is_some() {
+        sql.push_str(" AND d.slug = $1");
+    }
+
+    sql.push_str(
+        r#"
+        )
+        SELECT category_name, MAX(icon) as icon, COUNT(DISTINCT dir_id) as directory_count
+        FROM dir_categories
+        GROUP BY category_name
+        ORDER BY directory_count DESC, category_name ASC"#
+    );
+
+    let rows: Vec<(String, Option<String>, i64)> = if let Some(ref city) = query.city {
+        sqlx::query_as(&sql).bind(city).fetch_all(&s.db).await?
+    } else {
+        sqlx::query_as(&sql).fetch_all(&s.db).await?
+    };
+
+    let categories: Vec<ZaarhubCategory> = rows
+        .into_iter()
+        .map(|(name, icon, count)| ZaarhubCategory {
+            category_name: name,
+            directory_count: count,
+            icon,
+        })
+        .collect();
+
+    Ok(Json(categories))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PaginationQuery {
+    pub city: Option<String>,
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+/// GET /api/v1/zaarhub/deals — featured deals across zaarhub directories
+pub async fn list_featured_deals(
+    State(s): State<AppState>,
+    Query(query): Query<PaginationQuery>,
+) -> ApiResult<Json<Value>> {
+    let page = query.page.unwrap_or(1).max(1);
+    let limit = query.limit.unwrap_or(20).min(100);
+    let offset = (page - 1) * limit;
+
+    let mut base_sql = String::from(
+        r#"FROM deals de
+           JOIN businesses b ON b.id = de.business_id
+           JOIN directories d ON d.id = de.directory_id
+           WHERE de.status = 'active'
+             AND de.zaarhub_featured = true
+             AND (d.zaarhub_config->>'show_deals')::boolean = true
+             AND (d.zaarhub_config->>'network_visible')::boolean = true"#
+    );
+
+    let mut param_idx = 0;
+    if query.city.is_some() {
+        param_idx += 1;
+        base_sql.push_str(&format!(" AND d.slug = ${}", param_idx));
+    }
+
+    // Count total
+    let count_sql = format!("SELECT COUNT(*) {}", base_sql);
+    let total: i64 = if let Some(ref city) = query.city {
+        sqlx::query_scalar(&count_sql).bind(city).fetch_one(&s.db).await.unwrap_or(0)
+    } else {
+        sqlx::query_scalar(&count_sql).fetch_one(&s.db).await.unwrap_or(0)
+    };
+
+    // Fetch page
+    let data_sql = format!(
+        r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price,
+                  de.discount_percent, de.image_url, b.name as biz_name, b.slug as biz_slug,
+                  d.slug as dir_slug, d.city as dir_city, de.end_date, de.zaarhub_featured
+           {}
+           ORDER BY de.created_at DESC
+           LIMIT {} OFFSET {}"#,
+        base_sql, limit, offset
+    );
+
+    let deals: Vec<(Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, String, Option<String>, Option<DateTime<Utc>>, Option<bool>)> =
+        if let Some(ref city) = query.city {
+            sqlx::query_as(&data_sql).bind(city).fetch_all(&s.db).await?
+        } else {
+            sqlx::query_as(&data_sql).fetch_all(&s.db).await?
+        };
+
+    let deal_list: Vec<Value> = deals
+        .into_iter()
+        .map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, dir_slug, dir_city, end_date, featured)| {
+            json!({
+                "id": id,
+                "title": title,
+                "description": desc,
+                "deal_price": deal_price,
+                "original_price": orig_price,
+                "discount_percent": discount,
+                "image_url": img,
+                "business_name": biz_name,
+                "business_slug": biz_slug,
+                "directory_slug": dir_slug,
+                "directory_city": dir_city,
+                "end_date": end_date,
+                "featured": featured,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "deals": deal_list,
+        "total": total,
+        "page": page,
+        "limit": limit,
+    })))
+}
+
+/// GET /api/v1/zaarhub/events — featured events across zaarhub directories
+pub async fn list_featured_events(
+    State(s): State<AppState>,
+    Query(query): Query<PaginationQuery>,
+) -> ApiResult<Json<Value>> {
+    let page = query.page.unwrap_or(1).max(1);
+    let limit = query.limit.unwrap_or(20).min(100);
+    let offset = (page - 1) * limit;
+
+    let mut base_sql = String::from(
+        r#"FROM community_events e
+           LEFT JOIN businesses b ON b.id = e.business_id
+           JOIN directories d ON d.id = e.directory_id
+           WHERE e.status = 'active'
+             AND e.zaarhub_featured = true
+             AND (d.zaarhub_config->>'show_events')::boolean = true
+             AND (d.zaarhub_config->>'network_visible')::boolean = true"#
+    );
+
+    let mut param_idx = 0;
+    if query.city.is_some() {
+        param_idx += 1;
+        base_sql.push_str(&format!(" AND d.slug = ${}", param_idx));
+    }
+
+    // Count total
+    let count_sql = format!("SELECT COUNT(*) {}", base_sql);
+    let total: i64 = if let Some(ref city) = query.city {
+        sqlx::query_scalar(&count_sql).bind(city).fetch_one(&s.db).await.unwrap_or(0)
+    } else {
+        sqlx::query_scalar(&count_sql).fetch_one(&s.db).await.unwrap_or(0)
+    };
+
+    // Fetch page
+    let data_sql = format!(
+        r#"SELECT e.id, e.title, e.description, e.event_date, e.location,
+                  e.image_url, b.name as biz_name, b.slug as biz_slug,
+                  d.slug as dir_slug, d.city as dir_city,
+                  (SELECT COUNT(*) FROM event_rsvps r WHERE r.event_id = e.id) as rsvp_count
+           {}
+           ORDER BY e.event_date ASC
+           LIMIT {} OFFSET {}"#,
+        base_sql, limit, offset
+    );
+
+    let events: Vec<(Uuid, String, Option<String>, Option<DateTime<Utc>>, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<i64>)> =
+        if let Some(ref city) = query.city {
+            sqlx::query_as(&data_sql).bind(city).fetch_all(&s.db).await?
+        } else {
+            sqlx::query_as(&data_sql).fetch_all(&s.db).await?
+        };
+
+    let event_list: Vec<Value> = events
+        .into_iter()
+        .map(|(id, title, desc, event_date, location, img, biz_name, biz_slug, dir_slug, dir_city, rsvp_count)| {
+            json!({
+                "id": id,
+                "title": title,
+                "description": desc,
+                "event_date": event_date,
+                "location": location,
+                "image_url": img,
+                "business_name": biz_name,
+                "business_slug": biz_slug,
+                "directory_slug": dir_slug,
+                "directory_city": dir_city,
+                "rsvp_count": rsvp_count,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "events": event_list,
+        "total": total,
+        "page": page,
+        "limit": limit,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToggleFeaturedRequest {
+    /// "deal" or "event"
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub featured: bool,
+}
+
+/// POST /api/v1/spotlight/:id/feature — toggle zaarhub_featured on a deal or event
+pub async fn toggle_spotlight_featured(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ToggleFeaturedRequest>,
+) -> ApiResult<Json<Value>> {
+    match body.item_type.as_str() {
+        "deal" => {
+            let existing = sqlx::query_as::<_, (Uuid, String, Option<bool>)>(
+                "SELECT id, title, zaarhub_featured FROM deals WHERE id = $1"
+            )
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Deal '{}' not found", id)))?;
+
+            sqlx::query("UPDATE deals SET zaarhub_featured = $1, updated_at = NOW() WHERE id = $2")
+                .bind(body.featured)
+                .bind(existing.0)
+                .execute(&s.db)
+                .await?;
+
+            Ok(Json(json!({
+                "id": existing.0,
+                "title": existing.1,
+                "type": "deal",
+                "featured": body.featured,
+            })))
+        }
+        "event" => {
+            let existing = sqlx::query_as::<_, (Uuid, String, Option<bool>)>(
+                "SELECT id, title, zaarhub_featured FROM community_events WHERE id = $1"
+            )
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Event '{}' not found", id)))?;
+
+            sqlx::query(
+                "UPDATE community_events SET zaarhub_featured = $1, updated_at = NOW() WHERE id = $2"
+            )
+            .bind(body.featured)
+            .bind(existing.0)
+            .execute(&s.db)
+            .await?;
+
+            Ok(Json(json!({
+                "id": existing.0,
+                "title": existing.1,
+                "type": "event",
+                "featured": body.featured,
+            })))
+        }
+        other => Err(AppError::BadRequest(format!(
+            "Invalid type '{}'. Must be 'deal' or 'event'",
+            other
+        ))),
+    }
+}

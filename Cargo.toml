@@ -11,7 +11,7 @@ codegen-units = 1
 panic = "abort"
 
 [dependencies]
-axum = "0.7"
+axum = { version = "0.7", features = ["multipart"] }
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "tokio1"] }
 tokio = { version = "1", features = ["full", "signal"] }
 tower = { version = "0.4", features = ["util"] }
@@ -27,7 +27,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
 dotenvy = "0.15"
 handlebars = "5"
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+async-trait = "0.1"
 argon2 = "0.5"
 rand = "0.8"
 lazy_static = "1.4"
@@ -35,6 +36,9 @@ ring = "0.17"
 hex = "0.4"
 rust_decimal = { version = "1.36", features = ["serde"] }
 
+
+csv = "1"
+tokio-util = { version = "0.7", features = ["io"] }
 
 # Security: DNS resolution via library instead of shell commands
 trust-dns-resolver = { version = "0.23", features = ["tokio-runtime"] }

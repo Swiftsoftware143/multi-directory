@@ -5,26 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ZaarHub Loyalty — Merchant Guide</title>
 <style>
-:root{--teal:#0d9488;--teal-light:#14b8a6;--teal-bg:#f0fdfa;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+:root{--primary:#2563eb;--primary-light:#3b82f6;--primary-bg:#eff6ff;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;margin:0;padding:0}
-a{color:var(--teal);text-decoration:none}
+a{color:var(--primary);text-decoration:none}
 a:hover{text-decoration:underline}
 
-.header{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:0}
+.header{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:0}
 .header-inner{max-width:960px;margin:0 auto;padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
 .header h1{font-size:1.3rem;font-weight:700}
 .header a{color:#fff;font-size:.85rem;opacity:.9}
 .header a:hover{opacity:1;text-decoration:underline}
 
-.hero{background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:48px 32px 56px;text-align:center}
+.hero{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:48px 32px 56px;text-align:center}
 .hero h2{font-size:2rem;margin-bottom:8px}
 .hero p{font-size:1.1rem;opacity:.9;max-width:600px;margin:0 auto}
 
 .container{max-width:860px;margin:0 auto;padding:0 24px 60px}
 
 .card{background:var(--card);border-radius:12px;padding:28px 32px;margin-bottom:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.card h3{font-size:1.15rem;color:var(--teal);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.card h3{font-size:1.15rem;color:var(--primary);margin-bottom:12px;display:flex;align-items:center;gap:10px}
 .card h3 .emoji{font-size:1.4rem}
 .card p{color:var(--text-secondary);margin-bottom:12px;line-height:1.7}
 .card p:last-child{margin-bottom:0}
@@ -33,20 +33,20 @@ a:hover{text-decoration:underline}
 
 .step-item{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;padding:12px 16px;background:var(--bg);border-radius:8px;border:1px solid var(--border)}
 .step-item:last-child{margin-bottom:0}
-.step-num{width:30px;height:30px;min-width:30px;background:var(--teal);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
+.step-num{width:30px;height:30px;min-width:30px;background:var(--primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
 .step-text{flex:1}
 .step-text p{margin:0;font-size:.9rem}
 .step-text p strong{color:var(--text)}
 
-.tip-box{background:var(--teal-bg);border-left:4px solid var(--teal);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
-.tip-box strong{color:var(--teal)}
+.tip-box{background:var(--primary-bg);border-left:4px solid var(--primary);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
+.tip-box strong{color:var(--primary)}
 
 .warn-box{background:#fffbeb;border-left:4px solid var(--warning);border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;font-size:.9rem;color:var(--text)}
 .warn-box strong{color:#d97706}
 
-.badge{display:inline-block;background:var(--teal-bg);color:var(--teal);font-size:.75rem;padding:2px 10px;border-radius:20px;font-weight:600}
+.badge{display:inline-block;background:var(--primary-bg);color:var(--primary);font-size:.75rem;padding:2px 10px;border-radius:20px;font-weight:600}
 
-.back-link{display:inline-block;margin-top:32px;color:var(--teal);font-size:.9rem}
+.back-link{display:inline-block;margin-top:32px;color:var(--primary);font-size:.9rem}
 
 @media(max-width:640px){
   .header-inner{padding:12px 16px}
@@ -67,6 +67,9 @@ a:hover{text-decoration:underline}
   </div>
 </div>
 
+<div style="background:#fef3c7;border-bottom:2px solid #f59e0b;text-align:center;padding:8px 16px;font-size:0.85rem;color:#92400e;">
+  ⚠️ <strong>Loyalty Program</strong> — Powered by the MultiDirectory loyalty engine. These features are available through the MultiDirectory loyalty proxy.
+</div>
 <div class="hero">
   <h2>🏬 Setting Up Your Loyalty Program</h2>
   <p>Everything you need to start rewarding loyal customers and growing your business with ZaarHub.</p>
@@ -217,7 +220,7 @@ a:hover{text-decoration:underline}
   <p>Add action buttons to your business listing from the <strong>Integrations tab</strong>:</p>
   <ul>
     <li><strong>Booking CTA</strong> — "Book Appointment", "Schedule a Consultation", "Book Now" — connects to CoreSwift calendar</li>
-    <li><strong>Campaign CTA</strong> — "Earn Rewards", "Join Our Loyalty Program" — connects visitors to your IncentiveSwift campaign</li>
+    <li><strong>Campaign CTA</strong> — "Earn Rewards", "Join Our Loyalty Program" — connects visitors to your the MultiDirectory loyalty engine campaign</li>
     <li><strong>SMS CTA</strong> — "Text Us", "Get Started" — triggers a FunnelSwift SMS funnel</li>
     <li>Toggles and dropdowns are all controlled vocabulary — pick from pre-approved options to keep the directory consistent</li>
   </ul>

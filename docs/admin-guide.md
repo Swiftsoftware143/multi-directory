@@ -150,10 +150,6 @@ API: `GET /api/v1/feed` returns full JSON structure for custom frontends.
 
 Deals have visual templates (classic, modern, bold, minimal), countdown timers, customizable CTA buttons and colors, gallery images, and rotation scheduling. Deal pages at `zaarhub.com/deals/{id}`.
 
-## Deal Management
-
-Deals have visual templates (classic, modern, bold, minimal), countdown timers, customizable CTA buttons and colors, gallery images, and rotation scheduling. Deal pages at `zaarhub.com/deals/{id}`.
-
 ## Supplier Portal
 
 Separate back office at `zaarhub.com/supplier/` for distributors, wholesalers, farms, and associations. See the Supplier Guide.

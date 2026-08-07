@@ -1,5 +1,7 @@
 # Gamification Engine — Blueprint
 
+> ⚠️ **BLUEPRINT ONLY — NOT IMPLEMENTED.** This document describes planned future functionality. None of the endpoints or database tables described here exist in the codebase. See `ARCHITECTURE.md` for current system design.
+
 ## Overview
 Dual-sided earning system where **visitors** earn 1% back in ZaarCash on purchases,
 and **businesses/suppliers** earn ZaarCash through **engagement activities** —

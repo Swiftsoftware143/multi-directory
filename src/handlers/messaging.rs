@@ -125,7 +125,65 @@ pub async fn send_message(
     .fetch_one(db)
     .await?;
 
+    // Fire-and-forget forward to CoreSwift CRM if configured
+    let sender_name_clone = sender_name.clone().unwrap_or_default();
+    let sender_email_clone = sender_email.clone();
+    let subject_clone = body.subject.clone();
+    let message_clone = body.message.clone();
+    tokio::spawn(async move {
+        let _ = forward_to_coreswift(
+            &sender_name_clone,
+            sender_email_clone.as_deref(),
+            subject_clone.as_deref(),
+            &message_clone,
+            "md_business",
+            &business_id.to_string(),
+        )
+        .await;
+    });
+
     Ok(Json(msg))
+}
+
+/// Forward a message to CoreSwift CRM webhook (fire-and-forget).
+/// Does NOT block or error on failure — CoreSwift being down is non-fatal.
+async fn forward_to_coreswift(
+    sender_name: &str,
+    sender_email: Option<&str>,
+    subject: Option<&str>,
+    body: &str,
+    source: &str,
+    source_id: &str,
+) {
+    let payload = serde_json::json!({
+        "sender_name": sender_name,
+        "sender_email": sender_email,
+        "sender_phone": null,
+        "subject": subject,
+        "body": body,
+        "source": source,
+        "source_id": source_id,
+    });
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let urls = [
+        "http://localhost:8084/api/messages/webhook",
+    ];
+
+    for url in &urls {
+        let _ = client
+            .post(*url)
+            .json(&payload)
+            .send()
+            .await;
+    }
 }
 
 /// GET /api/v1/messages/:business_id — list messages for a business (owner only)

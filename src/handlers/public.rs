@@ -15,6 +15,7 @@ use crate::auth::models::Claims;
 use crate::auth::middleware::verify_token;
 use crate::AppState;
 use crate::error::{AppError, ApiResult};
+use crate::utils;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PublicPage {
@@ -395,6 +396,15 @@ pub async fn business_data(
     // Merge business fields with meta fields
     let mut business_obj = serde_json::to_value(&business).unwrap_or_else(|_| json!({}));
 
+    // ── CTA Button Data (computed before mutable borrow) ────────────
+    let cta_type_val = meta.get("cta_type").and_then(|v| v.as_str()).unwrap_or("none").to_string();
+    let cta_url = if cta_type_val != "none" {
+        utils::resolve_cta_url(&cta_type_val, &business_obj, &meta)
+    } else {
+        String::new()
+    };
+    let (cta_label_text, cta_icon) = utils::cta_label(&cta_type_val);
+
     // Convert business fields to snake_case object for template
     if let Some(obj) = business_obj.as_object_mut() {
         // Add category name if business has a category_id
@@ -457,6 +467,13 @@ pub async fn business_data(
         obj.entry("license_info").or_insert_with(|| json!("licensed"));
         obj.entry("insurance_info").or_insert_with(|| json!("general liability insurance"));
         obj.entry("certifications").or_insert_with(|| json!(""));
+
+        // ── CTA Button Data ───────────────────────────────────────────
+        // Values computed above before the mutable borrow; insert them now.
+        obj.entry("cta_type").or_insert_with(|| json!(cta_type_val));
+        obj.entry("cta_url").or_insert_with(|| json!(cta_url));
+        obj.entry("cta_label").or_insert_with(|| json!(cta_label_text));
+        obj.entry("cta_icon").or_insert_with(|| json!(cta_icon));
     }
 
     // Build directory view model with extra template fields

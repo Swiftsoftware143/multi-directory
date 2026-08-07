@@ -9,7 +9,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -18,7 +17,7 @@ use crate::AppState;
 use crate::auth::models::Claims;
 use crate::error::{AppError, ApiResult};
 
-const IS_BASE: &str = "http://127.0.0.1:8083/api/v1";
+use super::proxy_common::{is_base_url, proxy_get, proxy_post};
 
 /// Request body for initiating a loyalty subscription.
 #[derive(Debug, Deserialize)]
@@ -40,13 +39,13 @@ pub(crate) struct PlanInfo {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn http() -> Client {
-    Client::new()
+fn http() -> reqwest::Client {
+    reqwest::Client::new()
 }
 
 /// Fetch public plans list from IS (no auth required).
 async fn fetch_public_plans() -> Vec<PlanInfo> {
-    let url = format!("{}/loyalty/plans", IS_BASE);
+    let url = format!("{}/loyalty/plans", is_base_url());
     match http().get(&url).send().await {
         Ok(resp) => match resp.json::<Value>().await {
             Ok(json) => json
@@ -87,7 +86,7 @@ async fn resolve_is_account(
 
     // Try visitor_accounts first, then fall back to users table
     let email: Option<String> = sqlx::query_scalar(
-        "SELECT email FROM visitor_accounts WHERE id = $1"
+        "SELECT email FROM visitor_accounts WHERE id = $1",
     )
     .bind(user_id)
     .fetch_optional(db)
@@ -97,20 +96,18 @@ async fn resolve_is_account(
     let email = match email {
         Some(e) => e,
         None => {
-            sqlx::query_scalar(
-                "SELECT email FROM users WHERE id = $1"
-            )
-            .bind(user_id)
-            .fetch_optional(db)
-            .await
-            .map_err(|_| AppError::Internal("DB lookup failed".into()))?
-            .ok_or_else(|| AppError::NotFound("Account not found".into()))?
+            sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+                .bind(user_id)
+                .fetch_optional(db)
+                .await
+                .map_err(|_| AppError::Internal("DB lookup failed".into()))?
+                .ok_or_else(|| AppError::NotFound("Account not found".into()))?
         }
     };
 
     // Look up IS account_id by email
     let is_account: Option<String> = sqlx::query_scalar(
-        "SELECT id::text FROM accounts WHERE email = $1 LIMIT 1"
+        "SELECT id::text FROM accounts WHERE email = $1 LIMIT 1",
     )
     .bind(&email)
     .fetch_optional(is_db)
@@ -138,12 +135,13 @@ pub async fn loyalty_status(
     let plans: Vec<PlanInfo> = fetch_public_plans().await;
 
     // Check IS plan status (using JWT-proxied endpoint)
-    let plan_result = super::loyalty_proxy::proxy_get(
+    let plan_result = proxy_get(
         "/loyalty/plan/status",
         &account_id,
         &email,
         &claims.role,
-    ).await;
+    )
+    .await;
 
     match plan_result {
         Ok(status_json) => Ok(Json(json!({
@@ -187,13 +185,14 @@ pub async fn loyalty_subscribe(
         "cancel_url": req.cancel_url.unwrap_or_else(|| "/business-portal".to_string()),
     });
 
-    let result = super::loyalty_proxy::proxy_post(
+    let result = proxy_post(
         "/loyalty/subscribe",
         &body,
         &account_id,
         &email,
         &claims.role,
-    ).await?;
+    )
+    .await?;
 
     Ok(Json(result))
 }

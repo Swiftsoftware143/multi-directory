@@ -354,9 +354,25 @@ pub async fn visitor_register(
         });
     }
 
-    // Note: IncentiveSwift loyalty program enrollment is a separate opt-in step.
-    // Signup only classifies via survey (community member, business, supplier).
-    // Loyalty auto-registration was removed per owner directive (July 25, 2026).
+    // Auto-provision IncentiveSwift account for loyalty/IQS access.
+    // Every MultiDirectory user gets an IS account for seamless ZaarHub integration.
+    {
+        let auto_name = req.name.clone();
+        let auto_email = req.email.clone();
+        let auto_phone = req.phone.clone();
+        tokio::spawn(async move {
+            crate::handlers::tag_sync::register_member_in_is(
+                auto_email,
+                auto_name,
+                None,
+                auto_phone,
+                "visitor",
+                None,
+                Some("zaarhub".to_string()),
+                Some(vec!["zaarhub_visitor".to_string()]),
+            ).await;
+        });
+    }
 
     // Generate JWT with role=visitor
     let now_ts = Utc::now().timestamp() as usize;

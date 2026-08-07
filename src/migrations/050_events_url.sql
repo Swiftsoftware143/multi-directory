@@ -1,0 +1,1 @@
+ALTER TABLE community_events ADD COLUMN IF NOT EXISTS url TEXT

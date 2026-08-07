@@ -351,6 +351,104 @@
     .toast.error { border-color: rgba(248,113,113,0.3); }
     .toast.success { border-color: rgba(74,222,136,0.3); }
 
+    /* B2B Feature Toggles */
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .feature-card h3 {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .feature-card .feature-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .feature-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+    }
+    .feature-label {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .feature-label small {
+      display: block;
+      font-size: 0.6875rem;
+      font-weight: 400;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+    }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255,255,255,0.1);
+      border-radius: 22px;
+      transition: background 0.2s;
+    }
+    .toggle-slider:before {
+      content: '';
+      position: absolute;
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--accent);
+    }
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(18px);
+    }
+    .feature-save-row {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .feature-save-row .btn-save { min-width: 100px; }
+    .feature-status {
+      font-size: 0.75rem;
+      color: var(--success);
+      display: none;
+    }
+    .feature-status.show { display: inline-block; }
+
     /* Responsive */
     @media (max-width: 640px) {
       .login-card { padding: 24px; }
@@ -432,6 +530,60 @@
         </div>
       </div>
 
+      <!-- B2B Feature Toggles -->
+      <div class="feature-card" id="b2b-features-section">
+        <h3>B2B Feature Toggles</h3>
+        <p class="feature-subtitle">Enable or disable B2B marketplace features globally (uses first active directory's config).</p>
+        <div class="feature-grid">
+          <div class="feature-item">
+            <div class="feature-label">
+              B2B Marketplace
+              <small>Product browsing, supplier detail pages</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-b2b-marketplace" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="feature-item">
+            <div class="feature-label">
+              B2B Orders
+              <small>Product CRUD, orders, supplier stats, import/export</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-b2b-orders" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="feature-item">
+            <div class="feature-label">
+              B2B Messages
+              <small>Business-to-business messaging</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-b2b-messages" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="feature-item">
+            <div class="feature-label">
+              B2B Supplier Discovery
+              <small>Supplier search/filter, delivery area matching</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-b2b-discover" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="feature-save-row">
+          <button class="btn btn-accent btn-save" id="save-b2b-features">
+            <span id="save-b2b-text">Save B2B Toggles</span>
+          </button>
+          <span class="feature-status" id="b2b-save-status">✓ Saved</span>
+        </div>
+      </div>
+
       <!-- Directory Cards -->
       <div class="section-label">All Directories</div>
       <div id="directory-grid" class="directory-grid">
@@ -447,6 +599,31 @@
         <p>Create your first directory to get started.</p>
       </div>
       <div id="dir-error" class="form-error hidden" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- Advanced Loyalty & IQS Management -->
+  <div style="max-width:1200px;margin:24px auto;padding:0 24px">
+    <div class="section-label">🧠 ZaarHub — Loyalty & IQS</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:12px">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <h3 style="font-size:1rem;margin-bottom:8px">🎯 Loyalty Management</h3>
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Credit rates, purchase PINs, offers, badges, QR codes, and scan history.</p>
+        <a href="/portal" class="btn btn-accent" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem">Open Business Portal →</a>
+        <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">Uses your current auth. Log into the business portal for full loyalty management.</p>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <h3 style="font-size:1rem;margin-bottom:8px">🧠 Survey Funnels (IQS)</h3>
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Create and manage intelligent qualifying surveys — proxied from IncentiveSwift.</p>
+        <a href="/portal" class="btn btn-accent" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem">Open Business Portal →</a>
+        <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">Surveys tab available in the business portal loyalty section.</p>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <h3 style="font-size:1rem;margin-bottom:8px">⚙️ IncentiveSwift Admin</h3>
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Advanced loyalty/IQS management — dashboard, campaigns, programs, and analytics.</p>
+        <a href="http://localhost:8083" target="_blank" class="btn btn-ghost" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem;border-color:var(--border);color:var(--text-secondary)">IncentiveSwift Dashboard ↗</a>
+        <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">Opens IncentiveSwift admin in a new tab. VPS-only access.</p>
+      </div>
     </div>
   </div>
 
@@ -587,6 +764,7 @@
           directories = data.data || data || [];
           if (!Array.isArray(directories)) directories = [];
           renderDirectories(directories);
+          loadB2bFeatures();
         })
         .catch(function (err) {
           dirLoading.classList.add('hidden');
@@ -650,6 +828,81 @@
       div.textContent = str;
       return div.innerHTML;
     }
+
+    // ===== B2B Feature Toggles =====
+    var b2bToggles = {
+      'b2b_marketplace': document.getElementById('toggle-b2b-marketplace'),
+      'b2b_orders': document.getElementById('toggle-b2b-orders'),
+      'b2b_messages': document.getElementById('toggle-b2b-messages'),
+      'b2b_discover': document.getElementById('toggle-b2b-discover')
+    };
+
+    function loadB2bFeatures() {
+      // Get first active directory's ID from the loaded directories
+      var activeDir = null;
+      if (Array.isArray(directories)) {
+        for (var i = 0; i < directories.length; i++) {
+          if (directories[i].is_active !== false) {
+            activeDir = directories[i];
+            break;
+          }
+        }
+      }
+      if (!activeDir || !activeDir.id) return;
+
+      apiGet('/directories/' + activeDir.id + '/features')
+        .then(function (data) {
+          var fc = data.feature_config || {};
+          Object.keys(b2bToggles).forEach(function (key) {
+            var enabled = fc[key] !== undefined ? fc[key] : true;
+            b2bToggles[key].checked = enabled;
+          });
+        })
+        .catch(function () {});
+    }
+
+    document.getElementById('save-b2b-features').addEventListener('click', function () {
+      var activeDir = null;
+      if (Array.isArray(directories)) {
+        for (var i = 0; i < directories.length; i++) {
+          if (directories[i].is_active !== false) {
+            activeDir = directories[i];
+            break;
+          }
+        }
+      }
+      if (!activeDir || !activeDir.id) {
+        showToast('No active directory found. Create a directory first.', 'error');
+        return;
+      }
+
+      // Build feature_config JSON
+      var featureConfig = {};
+      Object.keys(b2bToggles).forEach(function (key) {
+        featureConfig[key] = b2bToggles[key].checked;
+      });
+
+      var btn = document.getElementById('save-b2b-features');
+      var text = document.getElementById('save-b2b-text');
+      var status = document.getElementById('b2b-save-status');
+      btn.disabled = true;
+      text.textContent = 'Saving...';
+      status.classList.remove('show');
+
+      apiFetch('PUT', '/directories/' + activeDir.id + '/features', { feature_config: featureConfig })
+        .then(function (data) {
+          showToast('B2B feature toggles saved successfully', 'success');
+          status.classList.add('show');
+          setTimeout(function () { status.classList.remove('show'); }, 3000);
+        })
+        .catch(function (err) {
+          showToast('Failed to save: ' + (err.message || 'Unknown error'), 'error');
+        })
+        .finally(function () {
+          btn.disabled = false;
+          text.textContent = 'Save B2B Toggles';
+        });
+    });
 
     // ===== Init =====
     if (token && user) {
