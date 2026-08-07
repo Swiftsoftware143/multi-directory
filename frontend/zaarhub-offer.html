@@ -383,18 +383,31 @@ const API = '/api/v1/zaarhub';
 const params = new URLSearchParams(window.location.search);
 const listingId = params.get('listing_id');
 
-// Generate or retrieve visitor ID
-function getVisitorId() {
-  const key = 'zaarhub_visitor_id';
-  let vid = localStorage.getItem(key);
-  if (!vid) {
-    vid = 'v_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-    localStorage.setItem(key, vid);
-  }
-  return vid;
+// 🔒 Auth gate — must be signed in to claim
+function getToken() {
+  return localStorage.getItem('ws_dir_token');
 }
 
-const visitorId = getVisitorId();
+function getUserInfo() {
+  try { var u = localStorage.getItem('ws_dir_user'); return u ? JSON.parse(u) : null; } catch(e) { return null; }
+}
+
+var visitorId;
+var isAuthenticated = false;
+
+(function checkAuth() {
+  var token = getToken();
+  var user = getUserInfo();
+  if (token && user) {
+    isAuthenticated = true;
+    visitorId = user.id || user.sub || user.email;
+  } else {
+    // Redirect to login with redirect back here
+    var redirectTo = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+    history.replaceState(null, '', redirectTo);
+    window.location.href = redirectTo;
+  }
+})();
 
 async function init() {
   if (!listingId) {

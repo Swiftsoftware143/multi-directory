@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign-In &amp; Account Guide — Multi-Directory Platform</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; z-index: 10; }
+  .sidebar h2 { color: #10b981; font-size: 1.1rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sidebar nav a { display: block; padding: 8px 20px; color: #94a3b8; font-size: 0.85rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+  .sidebar .section-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 4px; }
+
+  .main { margin-left: 280px; flex: 1; padding: 40px 48px; max-width: 960px; }
+  .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
+  .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main h4 { font-size: 1rem; color: #cbd5e1; margin-top: 16px; margin-bottom: 6px; }
+  .main p, .main li { line-height: 1.7; color: #cbd5e1; }
+  .main p { margin-bottom: 12px; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; }
+  .main li { margin-bottom: 6px; }
+
+  .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .card h3 { margin-top: 0; color: #10b981; }
+  .card p { color: #cbd5e1; }
+  .card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .card td { padding: 6px 12px; border-bottom: 1px solid #334155; }
+  .card td:first-child { color: #94a3b8; white-space: nowrap; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #10b981; }
+  pre { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #e2e8f0; }
+
+  .badge { display: inline-block; background: #065f46; color: #a7f3d0; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-right: 4px; }
+  .badge.info { background: #1e3a5f; color: #93c5fd; }
+  .badge.warn { background: #713f12; color: #fde68a; }
+  .badge.success { background: #14532d; color: #86efac; }
+
+  .step-item { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; padding: 12px 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
+  .step-item:last-child { margin-bottom: 0; }
+  .step-num { width: 30px; height: 30px; min-width: 30px; background: #10b981; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
+  .step-text { flex: 1; }
+  .step-text p { margin: 0; color: #cbd5e1; line-height: 1.6; }
+  .step-text p strong { color: #e2e8f0; }
+
+  .tip-box { background: #064e3b; border-left: 4px solid #10b981; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .tip-box p { margin: 0; color: #a7f3d0; font-size: 0.9rem; }
+  .tip-box strong { color: #6ee7b7; }
+
+  .warn-box { background: #451a03; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .warn-box p { margin: 0; color: #fde68a; font-size: 0.9rem; }
+  .warn-box strong { color: #fbbf24; }
+
+  .back-link { display: inline-block; margin-top: 32px; font-size: 0.85rem; padding: 8px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; transition: all 0.2s; }
+  .back-link:hover { border-color: #10b981; text-decoration: none; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>🔐 Account Guide</h2>
+  <nav>
+    <a href="#introduction" class="active">1. Introduction</a>
+    <a href="#how-to-sign-in">2. How to Sign In</a>
+    <a href="#account-creation">3. Account Creation</a>
+    <a href="#role-switcher">4. Role Switcher</a>
+    <a href="#claiming-a-business">5. Claiming a Business</a>
+    <a href="#password-reset">6. Password Reset</a>
+    <a href="#account-settings">7. Account Settings</a>
+    <a href="#security">8. Security</a>
+    <a href="#troubleshooting">9. Troubleshooting</a>
+  </nav>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+<h1>🔐 Sign-In &amp; Account Guide</h1>
+<p style="color:#64748b;margin-bottom:32px;">Everything you need to know about signing in, creating an account, managing roles, and keeping your account secure on the Multi-Directory Platform.</p>
+
+<!-- 1. Introduction -->
+<h2 id="introduction">1. Introduction</h2>
+<p>The Multi-Directory Platform supports multiple sign-in methods so you can choose what works best for you. One account can have multiple <strong>roles</strong> (Visitor, Business Owner, Supplier), and you can switch between them without logging out.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>🔑 Google OAuth</h3>
+    <p>One-click sign-in with your Google account. No separate password to remember.</p>
+  </div>
+  <div class="card">
+    <h3>📧 Email &amp; Password</h3>
+    <p>Traditional email/password sign-in with magic link option for password-free access.</p>
+  </div>
+  <div class="card">
+    <h3>🔄 Role Switcher</h3>
+    <p>Toggle between Visitor, Business Owner, and Supplier views from the header dropdown.</p>
+  </div>
+  <div class="card">
+    <h3>🛡️ Security</h3>
+    <p>Session management, sign-out-all-devices, and OAuth token protection.</p>
+  </div>
+</div>
+
+<!-- 2. How to Sign In -->
+<h2 id="how-to-sign-in">2. How to Sign In</h2>
+<p>The platform offers three sign-in methods. All are available from the sign-in page accessible at <code>/auth/login</code> or by clicking <strong>Sign In</strong> in the top navigation bar.</p>
+
+<h3>🔑 Sign In with Google (Recommended)</h3>
+<p>Google OAuth is the fastest way to sign in — no separate password to create or remember.</p>
+
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p>Click the <strong>"Continue with Google"</strong> button on the sign-in page.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p>Select your Google account in the pop-up window. If you're already signed into Google in your browser, this happens automatically.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p>On first sign-in, you'll be prompted to complete your profile (display name, preferred role).</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">4</div>
+  <div class="step-text"><p>You're signed in. Your Google profile photo and email are linked to your platform account.</p></div>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> If you signed up with Google, you don't need a separate password. Use the "Continue with Google" button each time you sign in.</p>
+</div>
+
+<h3>📧 Sign In with Email &amp; Password</h3>
+<p>Traditional email and password authentication for users who prefer not to use Google OAuth.</p>
+
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p>Enter your <strong>email address</strong> and <strong>password</strong> in the sign-in form.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p>Click <strong>"Sign In"</strong>. If the credentials are correct, you'll be redirected to your dashboard.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p>If you've forgotten your password, click the <strong>"Forgot Password?"</strong> link to reset it (see <a href="#password-reset">Section 6: Password Reset</a>).</p></div>
+</div>
+
+<h3>✨ Magic Link Sign-In</h3>
+<p>Password-free sign-in via a one-time link sent to your email. Available as an alternative on the sign-in page.</p>
+
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p>Enter your email address and click <strong>"Send Magic Link"</strong>.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p>Check your inbox for an email with the subject "Your Sign-In Link."</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p>Click the link in the email. You'll be signed in automatically — no password needed.</p></div>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Magic links expire after <strong>15 minutes</strong>. If your link expires, request a new one from the sign-in page. Each new request invalidates previous links for security.</p>
+</div>
+
+<!-- 3. Account Creation -->
+<h2 id="account-creation">3. Account Creation</h2>
+<p>Creating an account takes less than a minute. You can create an account with Google or with an email/password combination.</p>
+
+<h3>📝 Creating an Account</h3>
+
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p>Go to the sign-in page and click <strong>"Create Account"</strong> or use the <strong>Google OAuth</strong> button if you're a new user.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p>Choose your <strong>display name</strong> — this is how other users will see you on the platform.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p>Select your <strong>primary role</strong>:</p></div>
+</div>
+
+<div class="card">
+  <table>
+    <tr><td><strong>👤 Visitor</strong></td><td>Browse directories, search for businesses, save favorites. The default role for most new users.</td></tr>
+    <tr><td><strong>🏪 Business Owner</strong></td><td>Claim and manage a business listing, post deals, respond to reviews. You'll need to claim a business after account creation.</td></tr>
+    <tr><td><strong>🚚 Supplier</strong></td><td>Access the B2B marketplace, respond to RFQs, browse lead exchanges. Designed for wholesalers, distributors, and service providers.</td></tr>
+  </table>
+</div>
+
+<div class="step-item">
+  <div class="step-num">4</div>
+  <div class="step-text"><p>If you used email/password sign-up, check your inbox for a <strong>verification email</strong>. Click the link to verify your email address. Google OAuth accounts are automatically verified.</p></div>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> You can add additional roles later — you're not locked into your initial choice. See <a href="#role-switcher">Section 4: Role Switcher</a> for details.</p>
+</div>
+
+<h3>📬 Email Verification</h3>
+<p>For email/password accounts, you must verify your email before accessing certain features (claiming businesses, posting deals, etc.).</p>
+<ul>
+  <li><strong>Verification email</strong> — Sent immediately after account creation. Subject: "Verify Your Email Address."</li>
+  <li><strong>Link expiry</strong> — Verification links expire after <strong>24 hours</strong>. You can request a new verification email from your Account Settings.</li>
+  <li><strong>Resend</strong> — If you don't receive the email within 5 minutes, check your spam folder, then use the "Resend Verification" button on the sign-in page.</li>
+</ul>
+
+<!-- 4. Role Switcher -->
+<h2 id="role-switcher">4. Role Switcher</h2>
+<p>The <strong>Role Switcher</strong> is a dropdown in the header navigation that lets you toggle between different platform views without signing out and back in. A single account can have multiple roles.</p>
+
+<h3>🔄 How the Role Switcher Works</h3>
+
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p>Look for the <strong>Role Switcher</strong> dropdown in the top-right of the header navigation. It shows your current active role.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p>Click the dropdown to see all roles available to your account. Active roles are shown with a checkmark.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p>Select a different role. The page refreshes with the navigation, dashboard, and features for that role.</p></div>
+</div>
+
+<div class="card">
+  <h3>Example Role Combinations</h3>
+  <table>
+    <tr><td><strong>Visitor + Business Owner</strong></td><td>Browse directories normally, then switch to manage your claimed business.</td></tr>
+    <tr><td><strong>Business Owner + Supplier</strong></td><td>Manage your business listing, then switch to browse the B2B marketplace and respond to RFQs.</td></tr>
+    <tr><td><strong>All three roles</strong></td><td>Full access: browse as a visitor, manage your business, and participate in B2B trading.</td></tr>
+  </table>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Tip:</strong> Each role has its own bookmarks, notification preferences, and dashboard layout. Switching roles doesn't affect your data in other roles.</p>
+</div>
+
+<h3>Adding a New Role</h3>
+<p>To add a role you don't currently have:</p>
+<ol>
+  <li>Go to <strong>Account Settings</strong> from the user menu (click your avatar in the top-right).</li>
+  <li>Select the <strong>Roles</strong> tab.</li>
+  <li>Click <strong>"Add Role"</strong> next to the role you want to add (Business Owner or Supplier).</li>
+  <li>For Business Owner role: you'll be prompted to <strong>claim a business</strong> (see <a href="#claiming-a-business">Section 5</a>).</li>
+  <li>For Supplier role: you'll complete a brief supplier profile with your business category and service area.</li>
+</ol>
+
+<!-- 5. Claiming a Business -->
+<h2 id="claiming-a-business">5. Claiming a Business</h2>
+<p>To manage a business listing, you must <strong>claim</strong> it. This verifies that you're the legitimate owner or authorized representative. The claim process is available at <code>/claim</code> and takes a few minutes.</p>
+
+<h3>📋 The 3-Step Claim Process</h3>
+
+<h4>Step 1: Find Your Business</h4>
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p>Go to <code>/claim</code> and search for your business by name or address. If your business is already listed in the directory, it will appear in the search results. If not, you can <strong>add it as a new listing</strong> first.</p></div>
+</div>
+
+<h4>Step 2: Verify Ownership</h4>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p>Select a verification method to prove you own or represent the business:</p>
+    <ul>
+      <li><strong>Email verification</strong> — A code is sent to the business's listed email or a domain-matching email address.</li>
+      <li><strong>Phone verification</strong> — An automated call or SMS to the business phone number with a verification code.</li>
+      <li><strong>Document upload</strong> — Upload a business license, utility bill, or tax certificate showing the business name and address.</li>
+    </ul>
+  </div>
+</div>
+
+<h4>Step 3: Admin Approval</h4>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p>After verification, the claim is sent to the <strong>directory admin</strong> for final review. The admin checks that the submitted information matches the business listing. Approval typically takes <strong>1–2 business days</strong>. Once approved:</p>
+    <ul>
+      <li>You gain full access to the <strong>Business Portal</strong> at <code>/portal</code>.</li>
+      <li>A <span class="badge success">Verified Owner</span> badge appears on your listing.</li>
+      <li>You can edit your business profile, post deals, and respond to reviews.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="warn-box">
+  <p><strong>⚠️ Important:</strong> If your claim is rejected, you'll receive an email with the reason. Common reasons include mismatched ownership details, incomplete documentation, or the business already being claimed by another user. You can re-submit with corrected information.</p>
+</div>
+
+<!-- 6. Password Reset -->
+<h2 id="password-reset">6. Password Reset</h2>
+<p>If you signed up with email/password and forgot your password, you can reset it through the forgot-password flow.</p>
+
+<h3>🔄 Resetting Your Password</h3>
+
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p>On the sign-in page, click the <strong>"Forgot Password?"</strong> link below the password field.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p>Enter the email address associated with your account and click <strong>"Send Reset Link"</strong>.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p>Check your inbox for an email with the subject "Reset Your Password." Click the link in the email.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">4</div>
+  <div class="step-text"><p>On the reset page, enter your <strong>new password</strong> (minimum 8 characters, at least one letter and one number) and confirm it. Click <strong>"Reset Password"</strong>.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">5</div>
+  <div class="step-text"><p>You'll be redirected to the sign-in page. Sign in with your email and new password.</p></div>
+</div>
+
+<div class="card">
+  <h3>⏱️ Reset Link Details</h3>
+  <table>
+    <tr><td><strong>Expiry</strong></td><td>Reset links expire after <strong>1 hour</strong>.</td></tr>
+    <tr><td><strong>One-time use</strong></td><td>Each link can only be used once. Request a new link if needed.</td></tr>
+    <tr><td><strong>Invalidation</strong></td><td>Requesting a new reset link invalidates any previous links.</td></tr>
+    <tr><td><strong>Google OAuth users</strong></td><td>If you signed up with Google, use the "Continue with Google" button — no password needed. You can set a password later in Account Settings if desired.</td></tr>
+  </table>
+</div>
+
+<!-- 7. Account Settings -->
+<h2 id="account-settings">7. Account Settings</h2>
+<p>Access your account settings by clicking your <strong>avatar</strong> in the top-right corner and selecting <strong>"Account Settings"</strong> from the dropdown menu.</p>
+
+<h3>👤 Profile Management</h3>
+<ul>
+  <li><strong>Display name</strong> — Change how your name appears to other users (reviews, comments, etc.).</li>
+  <li><strong>Profile photo</strong> — Upload a profile picture or use your Google account photo. Supported formats: JPG, PNG. Max size: 5 MB.</li>
+  <li><strong>Bio</strong> — Optional short bio visible on your public profile.</li>
+  <li><strong>Time zone</strong> — Set your time zone for accurate deal and event timestamps.</li>
+</ul>
+
+<h3>🔗 Connected Accounts</h3>
+<ul>
+  <li><strong>Google</strong> — Link or unlink your Google account. If Google is your only sign-in method, you'll need to set a password before unlinking.</li>
+  <li><strong>Email</strong> — Update your email address. A verification is sent to the new address before the change takes effect.</li>
+  <li><strong>Add password</strong> — Google-only users can set a password here to enable email/password sign-in as a backup.</li>
+</ul>
+
+<h3>🔔 Notification Preferences</h3>
+<ul>
+  <li><strong>Email notifications</strong> — Toggle on/off for: claim status updates, review replies, deal expirations, new messages.</li>
+  <li><strong>In-app notifications</strong> — Control which events trigger the bell icon badge in the header.</li>
+  <li><strong>Marketing emails</strong> — Opt in or out of promotional emails and platform announcements.</li>
+</ul>
+
+<!-- 8. Security -->
+<h2 id="security">8. Security</h2>
+
+<h3>🖥️ Session Management</h3>
+<p>You can view and manage all active sessions from the <strong>Security</strong> tab in Account Settings.</p>
+<ul>
+  <li><strong>Active sessions</strong> — See every device and browser currently signed into your account, including location (city/country), browser, and last active time.</li>
+  <li><strong>Sign out individual session</strong> — Click "Sign Out" next to any session to remotely end it.</li>
+  <li><strong>Sign out all devices</strong> — Use the "Sign Out Everywhere" button to end all sessions except your current one. Useful if you suspect unauthorized access.</li>
+</ul>
+
+<div class="warn-box">
+  <p><strong>⚠️ Important:</strong> If you see a session you don't recognize, sign it out immediately and change your password. Contact the directory admin if you suspect your account has been compromised.</p>
+</div>
+
+<h3>🔐 OAuth Token Handling</h3>
+<ul>
+  <li><strong>Google OAuth tokens</strong> are stored securely and never exposed to client-side JavaScript.</li>
+  <li><strong>Token refresh</strong> — Access tokens are refreshed automatically. You don't need to re-authenticate with Google unless you explicitly sign out.</li>
+  <li><strong>Scope</strong> — The platform only requests basic profile information (name, email, profile photo) from Google. No access to your Google Drive, Contacts, or other data.</li>
+</ul>
+
+<h3>🛡️ Account Protection Best Practices</h3>
+<ul>
+  <li>Use a <strong>strong, unique password</strong> — at least 12 characters with a mix of letters, numbers, and symbols.</li>
+  <li><strong>Don't share</strong> your account credentials with anyone. Each team member should have their own account.</li>
+  <li><strong>Sign out</strong> from shared or public computers when you're done.</li>
+  <li><strong>Review sessions</strong> periodically — check the Security tab for any unrecognized activity.</li>
+</ul>
+
+<!-- 9. Troubleshooting -->
+<h2 id="troubleshooting">9. Troubleshooting</h2>
+
+<h3>📧 "I Didn't Receive the Verification Email"</h3>
+<ul>
+  <li>Check your <strong>spam/junk folder</strong> — verification emails sometimes get filtered.</li>
+  <li>Wait <strong>5 minutes</strong> — some email providers delay delivery.</li>
+  <li>Verify you entered the <strong>correct email address</strong> during sign-up.</li>
+  <li>Use the <strong>"Resend Verification"</strong> button on the sign-in page.</li>
+  <li>If you still don't receive it, try signing up with a <strong>different email provider</strong> (Gmail is recommended).</li>
+</ul>
+
+<h3>🔑 "Google Sign-In Is Blocked"</h3>
+<ul>
+  <li>Ensure <strong>third-party cookies</strong> are enabled in your browser — Google OAuth requires them for the pop-up window.</li>
+  <li>Try in a <strong>private/incognito window</strong> — this rules out conflicting browser extensions.</li>
+  <li>Disable <strong>ad blockers or privacy extensions</strong> temporarily — some aggressively block OAuth pop-ups.</li>
+  <li>If using a <strong>work or school device</strong>, your organization may block Google OAuth on external sites. Try from a personal device.</li>
+</ul>
+
+<h3>🏪 "My Claim Was Rejected"</h3>
+<ul>
+  <li>Read the <strong>rejection email</strong> carefully — it includes the specific reason.</li>
+  <li><strong>Common reasons:</strong>
+    <ul>
+      <li>Name on documentation doesn't match the business listing name.</li>
+      <li>Submitted document is expired or illegible.</li>
+      <li>Business is already claimed by another verified user.</li>
+      <li>Address on documentation doesn't match the listing address.</li>
+    </ul>
+  </li>
+  <li>Re-submit with <strong>corrected documentation</strong>. You can upload a different verification document if needed.</li>
+  <li>If you believe the rejection was in error, contact the <strong>directory admin</strong> for a manual review.</li>
+</ul>
+
+<h3>🔒 "I Can't Sign In"</h3>
+<ul>
+  <li><strong>Wrong password:</strong> Use the "Forgot Password?" link. If you don't receive the reset email, check spam.</li>
+  <li><strong>Google account changed:</strong> If you changed your Google email, sign in with your original Google account and link the new one in Account Settings.</li>
+  <li><strong>Account locked:</strong> After <strong>5 failed sign-in attempts</strong>, the account is temporarily locked for 15 minutes. Wait and try again.</li>
+  <li><strong>Browser issue:</strong> Clear your browser cache and cookies, or try a different browser.</li>
+</ul>
+
+<h3>🔄 "The Role Switcher Doesn't Show My Role"</h3>
+<ul>
+  <li>Ensure you've <strong>added the role</strong> in Account Settings → Roles. Having a claimed business is separate from having the Business Owner role active.</li>
+  <li>If your claim is still <strong>pending approval</strong>, the Business Owner role may not be fully active until approval is granted.</li>
+  <li><strong>Refresh the page</strong> — role changes may take a moment to propagate.</li>
+  <li>Try <strong>signing out and back in</strong> to force a role refresh.</li>
+</ul>
+
+<div class="tip-box">
+  <p><strong>💡 Still stuck?</strong> Contact the directory admin through the support link in the footer, or email the platform team. Include your account email and a description of the issue for faster resolution.</p>
+</div>
+
+<a href="index.html" class="back-link">← Back to Guides Index</a>
+
+</div>
+
+</body>
+</html>

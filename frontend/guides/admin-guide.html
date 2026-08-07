@@ -300,6 +300,82 @@ a:hover{text-decoration:underline}
   </ul>
 </div>
 
+<!-- 13. Verification Badges -->
+<div class="card">
+  <h3><span class="emoji">🏅</span> 13. Verification Badges &amp; Trust Signals</h3>
+  <p>Businesses in the directory can earn verification badges that display on their listings. These badges help visitors identify trusted businesses at a glance:</p>
+  <ul>
+    <li><strong>Verified Owner</strong> — automatically awarded when a business owner completes the claim verification process and is confirmed as the legitimate owner</li>
+    <li><strong>Top Rated</strong> — awarded to businesses that maintain a high average rating (4.5+ stars) across a minimum number of reviews</li>
+    <li><strong>Editor's Pick</strong> — manually awarded by admins to businesses they want to feature (see Section 14 for Editor's Picks management)</li>
+  </ul>
+  <p><strong>Badge display:</strong> Badges appear as icons next to the business name on listing cards, search results, and the business detail page. They are controlled by the ZaarHub system and cannot be manually toggled by business owners (except Editor's Pick, which is admin-controlled).</p>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Use verification badges strategically. The "Verified Owner" badge is automatic once a claim is approved. Top Rated badges update automatically as new reviews come in. Editor's Pick is your manual curation tool for highlighting standout businesses.
+  </div>
+</div>
+
+<!-- 14. Editor's Picks Configuration -->
+<div class="card">
+  <h3><span class="emoji">⭐</span> 14. Editor's Picks Configuration</h3>
+  <p>Editor's Picks are featured businesses hand-selected by admins to appear in a special "Editor's Picks" section on the directory and ZaarHub frontend. They're part of the ZaarHub curation system.</p>
+  <ul>
+    <li><strong>Add an Editor's Pick</strong> — Go to the business listing admin panel, find the business, and click <strong>Mark as Editor's Pick</strong>. The business receives the Editor's Pick badge.</li>
+    <li><strong>Display order</strong> — Editor's Picks can be reordered via drag-and-drop in the admin panel. The order controls the display sequence on the frontend.</li>
+    <li><strong>Remove</strong> — Click the Editor's Pick badge or status toggle to remove curation. The badge disappears immediately from the public listing.</li>
+    <li><strong>ZaarHub visibility</strong> — Editor's Picks appear in the ZaarHub carousel alongside featured deals and spotlights, giving them cross-directory exposure.</li>
+  </ul>
+  <div class="warn-box">
+    <strong>⚠️ Note:</strong> Editor's Picks are purely a curation tool — they don't change the business's subscription tier or billing. Businesses don't pay for Editor's Pick status; it's earned through admin recognition of quality.
+  </div>
+</div>
+
+<!-- 15. B2B Pages Monitoring -->
+<div class="card">
+  <h3><span class="emoji">📋</span> 15. B2B Pages Monitoring</h3>
+  <p>Three server-rendered B2B pages are available for your directory network. As an admin, you should monitor their usage and content:</p>
+  <ul>
+    <li><strong>RFQ Marketplace</strong> (<code>/rfq-marketplace</code>) — Businesses post Request-for-Quote listings. Review RFQ volume and supplier response rates periodically to gauge marketplace health.</li>
+    <li><strong>Co-op Hub</strong> (<code>/coop-hub</code>) — Cooperative purchasing and partnership hub. Monitor which directories are participating and flag any inappropriate partnership listings.</li>
+    <li><strong>Lead Exchange</strong> (<code>/lead-exchange</code>) — Business lead marketplace. Watch for lead quality and ensure all participants follow directory terms of service.</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> All three B2B pages are server-side rendered for SEO and fast loading. They use the same design system as the rest of the platform. Check each page after major deployments to ensure rendering is working correctly.
+  </div>
+</div>
+
+<!-- 16. Data Freshness -->
+<div class="card">
+  <h3><span class="emoji">🕐</span> 16. Data Freshness &amp; Enrichment</h3>
+  <p>Business listings enriched from third-party sources (Google Places, Yelp, etc.) display a <strong>Data Freshness Timestamp</strong> to visitors. For example: "Data last updated: June 2025 from Google Places."</p>
+  <ul>
+    <li><strong>Automatic timestamps</strong> — When a listing is enriched via the Data Company enrichment engine, the enrichment date and source are recorded and displayed on the public listing.</li>
+    <li><strong>Stale data alerts</strong> — Listings that haven't been refreshed in 6+ months are flagged in the admin panel. You can trigger a re-enrichment from the dashboard.</li>
+    <li><strong>Manual refresh</strong> — Use the <strong>Enrich</strong> button on individual business listings to pull fresh data from providers and update the timestamp.</li>
+    <li><strong>Visitor confidence</strong> — Freshness badges increase visitor trust. Listings with "Updated this month" tags see higher engagement than those with outdated data.</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Set up a recurring n8n workflow to auto-enrich listings older than 90 days. This keeps your directory data fresh without manual effort.
+  </div>
+</div>
+
+<!-- 17. Notifications Ticker -->
+<div class="card">
+  <h3><span class="emoji">📡</span> 17. Notifications Ticker</h3>
+  <p>The <strong>Notifications Ticker</strong> is a scrolling bar that automatically displays recent platform activity on the directory frontend. Unlike admin-created announcements, this ticker populates automatically from real platform events — new businesses added, deals posted, reviews written, and claims verified.</p>
+  <ul>
+    <li><strong>Enable / Disable</strong> — Go to <strong>Settings → Notifications Ticker</strong> and toggle the ticker on or off. When disabled, the ticker bar is completely hidden from all frontend pages.</li>
+    <li><strong>Position</strong> — Choose <strong>top</strong> (below the header navigation bar) or <strong>bottom</strong> (above the site footer). Default is top.</li>
+    <li><strong>Scroll speed</strong> — Set to Slow (60s cycle), Normal (30s), or Fast (15s). Slower speeds are more readable; faster speeds show more items.</li>
+    <li><strong>Max items</strong> — Limit how many entries appear in the ticker queue. Default is 5, maximum is 20. Older items rotate out as new events occur.</li>
+    <li><strong>Event filters</strong> — Toggle which event types appear: new businesses, new deals, new reviews, and verified claims. Turn off types you don't want displayed.</li>
+    <li><strong>Customization</strong> — Ticker colors, font size, and animation speed can be overridden via the <strong>Theme → CSS Variables</strong> panel. Variables: <code>--ticker-bg</code>, <code>--ticker-text</code>, <code>--ticker-accent</code>, <code>--ticker-font-size</code>, <code>--ticker-speed</code>.</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> The Notifications Ticker and the Announcement Ticker (Section 30 of the main guide) serve different purposes. The Notifications Ticker is fully automatic — it shows system events with no admin input. Use the Announcement Ticker when you want to publish custom messages like holiday hours or event promotions.
+  </div>
+</div>
+
 <a href="/guides/" class="back-link">← Back to All Guides</a>
 
 </div>

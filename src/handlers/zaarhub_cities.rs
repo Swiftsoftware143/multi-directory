@@ -404,6 +404,11 @@ pub async fn claim_offer(
 
     let visitor_id = body.visitor_id.as_deref().unwrap_or("anonymous").to_string();
 
+    // 🔒 Auth gate — reject anonymous claims
+    if visitor_id == "anonymous" || visitor_id.is_empty() || visitor_id.starts_with("v_") {
+        return Err(AppError::Unauthorized);
+    }
+
     // Fetch the offer and lock it for update to avoid race conditions on max_claims
     let offer_row = sqlx::query(
         "SELECT co.* FROM claim_offers co \

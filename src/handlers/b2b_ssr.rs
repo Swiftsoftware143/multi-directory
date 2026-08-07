@@ -198,10 +198,11 @@ pub async fn render_coop_hub(
 ) -> impl axum::response::IntoResponse {
     let rows = sqlx::query(
         "SELECT g.id, g.name, g.description, g.category, g.status, g.member_count, \
-                g.min_members, g.max_members, g.active_deals, g.created_at, \
-                COALESCE(s.business_name, 'Unknown') as founder_name \
-         FROM coop_buying_groups g \
-         LEFT JOIN b2b_suppliers s ON g.founder_business_id = s.business_id \
+                g.min_members, g.max_members, \
+                (SELECT COUNT(*) FROM buying_group_deals WHERE group_id = g.id AND status = 'active')::bigint AS active_deals, \
+                g.created_at, COALESCE(b.name, 'Unknown') as founder_name \
+         FROM buying_groups g \
+         LEFT JOIN businesses b ON g.founder_business_id = b.id \
          WHERE g.status != 'archived' \
          ORDER BY g.created_at DESC LIMIT 50"
     ).fetch_all(&state.db).await.unwrap_or_default();
@@ -299,9 +300,9 @@ pub async fn render_lead_exchange(
     let rows = sqlx::query(
         "SELECT l.id, l.title, l.description, l.category, l.location, \
                 l.estimated_value, l.status, l.created_at, l.expires_at, l.source, \
-                COALESCE(s.business_name, 'Unknown') as poster_name \
+                COALESCE(b.name, 'Unknown') as poster_name \
          FROM shared_leads l \
-         LEFT JOIN b2b_suppliers s ON l.poster_business_id = s.business_id \
+         LEFT JOIN businesses b ON l.poster_business_id = b.id \
          WHERE l.status = 'available' \
          ORDER BY l.created_at DESC LIMIT 50"
     ).fetch_all(&state.db).await.unwrap_or_default();

@@ -99,6 +99,11 @@
     <a href="#legal-pages">25. Legal Pages</a>
     <a href="#branding">26. Branding</a>
     <a href="#zaarhub">27. ZaarHub Network</a>
+    <a href="#editors-picks">27a. Editor's Picks</a>
+    <a href="#data-freshness">27b. Data Freshness &amp; Timestamps</a>
+    <a href="#url-cleanliness">27c. URL Cleanliness</a>
+    <a href="#near-me">27d. Near-Me Geolocation</a>
+    <a href="#collections">27e. Collections &amp; Favorites</a>
     <a href="#sponsors-ads">28. Sponsors &amp; Advertising</a>
     <a href="#spotlight">29. Spotlight Listings</a>
     <a href="#notifications">30. Directory Notifications</a>
@@ -113,7 +118,9 @@
     <a href="#industries">39. Industries</a>
     <a href="#settings">40. Settings</a>
     <a href="#api">41. API Reference</a>
-    <a href="#faq">49. FAQ</a>
+    <a href="#b2b-ssr">42. B2B SSR Pages</a>
+    <a href="#notifications-ticker">43. Notifications Ticker</a>
+    <a href="#faq">50. FAQ</a>
     <div class="section-label">UPDATED FEATURES</div>
     <a href="#admin-vs-directory">43. Admin vs Directory Dashboard</a>
     <a href="#ai-article-writer">44. AI Article Writer (Answer-First)</a>
@@ -815,7 +822,7 @@
 
 <!-- 20. Data Company & Enrichment -->
 <h2 id="data-company">20. Data Company &amp; Enrichment</h2>
-<p>Import business data from third-party sources and enrich existing listings with additional information.</p>
+<p>Import business data from third-party sources and enrich existing listings with additional information. Enriched listings display a <strong>Data Freshness Timestamp</strong> showing when the data was last updated (e.g., "Data last updated: June 2025 from Google Places"). This gives visitors confidence that the business information they see is current and accurate.</p>
 
 <div class="feature-grid">
   <div class="card">
@@ -840,12 +847,12 @@
 
 <!-- 21. Import/Export -->
 <h2 id="import-export">21. Import/Export</h2>
-<p>Bulk import and export data. CSV import for businesses. Export businesses, reviews, contacts in CSV or JSON. Custom export templates for scheduled runs.</p>
+<p>Bulk import and export data. CSV import for businesses. Export businesses, reviews, contacts in CSV or JSON. Custom export templates for scheduled runs. All website URLs are automatically cleaned on import — tracking parameters like <code>utm_*</code>, <code>fbclid</code>, <code>ref</code>, and 30+ others are stripped before the URL is stored.</p>
 
 <div class="feature-grid">
   <div class="card">
     <h3>&#x1F4E5; CSV Import</h3>
-    <p>Import businesses, services, and locations from CSV files. View import logs for error tracking.</p>
+    <p>Import businesses, services, and locations from CSV files. View import logs for error tracking. URLs are auto-cleaned of tracking params.</p>
   </div>
   <div class="card">
     <h3>&#x1F4E4; Export Data</h3>
@@ -1054,7 +1061,7 @@
 <!-- 27. ZaarHub Network -->
 <h2 id="zaarhub">27. ZaarHub Network</h2>
 
-<p><strong>ZaarHub</strong> is the community aggregation engine that connects multiple directories into a unified discovery experience. Each directory can opt in to share its businesses, deals, and events across the entire platform.</p>
+<p><strong>ZaarHub</strong> is the community aggregation engine that connects multiple directories into a unified discovery experience. Each directory can opt in to share its businesses, deals, and events across the entire platform. ZaarHub includes <strong>Verification Badges</strong> (Verified Owner, Top Rated, Editor's Pick), a 3-step <strong>Claim Workflow</strong> at <code>/claim</code>, <strong>Editor's Picks</strong> for admin-curated featured businesses, and <strong>Near-Me Geolocation</strong> for proximity-based browsing.</p>
 
 <div class="feature-grid">
   <div class="card">
@@ -1131,6 +1138,168 @@
   <p><span class="badge get">GET</span> <code>/api/v1/zaarhub/categories</code> &mdash; List aggregated categories</p>
   <p><span class="badge get">GET</span> <code>/api/v1/zaarhub/deals</code> &mdash; Featured deals across directories</p>
   <p><span class="badge get">GET</span> <code>/api/v1/zaarhub/events</code> &mdash; Featured events across directories</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 27a. Editor's Picks -->
+<h2 id="editors-picks">27a. Editor's Picks</h2>
+
+<p><strong>Editor's Picks</strong> are admin-curated businesses that receive special placement on the directory frontend and ZaarHub carousel. This is a manual curation tool — it doesn't affect subscription tiers or billing.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>⭐ Curation Controls</h3>
+    <p>Mark any business as an Editor's Pick from the admin panel. The business immediately receives the Editor's Pick badge and appears in the featured section.</p>
+  </div>
+  <div class="card">
+    <h3>↕️ Drag-and-Drop Ordering</h3>
+    <p>Editor's Picks can be reordered via drag-and-drop. The display order on the frontend and ZaarHub carousel follows this ordering.</p>
+  </div>
+  <div class="card">
+    <h3>🌐 Cross-Directory Exposure</h3>
+    <p>Editor's Picks appear in the ZaarHub carousel alongside featured deals and spotlights, giving them visibility across the entire directory network.</p>
+  </div>
+</div>
+
+<div class="tip-box" style="background:#1e293b;border-left:4px solid #10b981;border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;">
+  <p style="margin:0;color:#a7f3d0;font-size:0.85rem;"><strong>💡 Tip:</strong> Rotate Editor's Picks weekly or monthly to keep the carousel fresh. Highlight seasonal businesses, new arrivals, or community favorites.</p>
+</div>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/editors-picks</code> — List all Editor's Picks with display order</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/editors-picks/:business_id</code> — Mark business as Editor's Pick</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/editors-picks/:business_id</code> — Remove Editor's Pick status</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/editors-picks/reorder</code> — Update display order</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 27b. Data Freshness -->
+<h2 id="data-freshness">27b. Data Freshness &amp; Timestamp Tracking</h2>
+
+<p>Every business listing displays a <strong>Data Freshness Timestamp</strong> that tells visitors when the listing was last verified. This builds trust and improves engagement on listings with recent verification.</p>
+
+<div class="card">
+  <h3>How It Works</h3>
+  <table>
+    <tr><td><strong>Enrichment timestamp</strong></td><td>When a listing is enriched from third-party sources (Google Places, Yelp, etc.), the enrichment date and source are recorded. Visitors see: "Data last updated: August 2026 from Google Places."</td></tr>
+    <tr><td><strong>Manual updates</strong></td><td>When a business owner updates their profile via the Business Portal, the timestamp refreshes to reflect the most recent edit.</td></tr>
+    <tr><td><strong>Stale data flagging</strong></td><td>Listings not refreshed in 6+ months appear in the admin panel as "stale." Admins can trigger re-enrichment with one click.</td></tr>
+    <tr><td><strong>Visitor impact</strong></td><td>Listings with recent timestamps ("Updated this month") see higher click-through rates and call conversions than listings with outdated data.</td></tr>
+  </table>
+</div>
+
+<div class="tip-box" style="background:#1e293b;border-left:4px solid #10b981;border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;">
+  <p style="margin:0;color:#a7f3d0;font-size:0.85rem;"><strong>💡 Tip:</strong> Set up a recurring n8n workflow to auto-enrich listings older than 90 days. This keeps your directory data current without manual effort and maximizes visitor confidence.</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 27c. URL Cleanliness -->
+<h2 id="url-cleanliness">27c. URL Cleanliness</h2>
+
+<p>All website URLs submitted by businesses are <strong>automatically cleaned</strong> of tracking parameters before storage. This keeps listings looking professional and prevents tracking data from leaking through displayed URLs.</p>
+
+<div class="card">
+  <h3>What Gets Stripped</h3>
+  <p>Over 30 tracking and analytics parameters are automatically removed, including:</p>
+  <ul>
+    <li><code>utm_source</code>, <code>utm_medium</code>, <code>utm_campaign</code>, <code>utm_term</code>, <code>utm_content</code></li>
+    <li><code>fbclid</code>, <code>gclid</code>, <code>gclsrc</code></li>
+    <li><code>ref</code>, <code>ref_src</code>, <code>ref_url</code></li>
+    <li><code>_ga</code>, <code>_gl</code>, <code>_ke</code></li>
+    <li><code>mc_cid</code>, <code>mc_eid</code>, <code>mc_tc</code></li>
+    <li><code>hsCtaTracking</code>, <code>hsa_cam</code>, <code>hsa_grp</code>, <code>hsa_mt</code></li>
+  </ul>
+  <p>And 15+ additional marketing/tracking parameters. The core domain and path are preserved — only query parameters are cleaned.</p>
+</div>
+
+<div class="card">
+  <h3>Where It Applies</h3>
+  <ul>
+    <li><strong>Business website URLs</strong> — Cleaned on import, manual entry, and API updates.</li>
+    <li><strong>CSV imports</strong> — All URLs in bulk imports are automatically cleaned.</li>
+    <li><strong>API submissions</strong> — URLs submitted via REST API are cleaned before storage.</li>
+    <li><strong>Display-only delivery</strong> — Raw URLs are stored cleaned; tracking params are not recoverable.</li>
+  </ul>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 27d. Near-Me Geolocation -->
+<h2 id="near-me">27d. Near-Me Geolocation</h2>
+
+<p>The <strong>Near-Me</strong> feature lets visitors find businesses closest to their current location. It uses the browser's Geolocation API with a fallback to IP-based geolocation.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>📍 Browser Geolocation</h3>
+    <p>Visitors click the "Near Me" button. The browser prompts for location permission. On approval, businesses are sorted by distance from the visitor's GPS coordinates.</p>
+  </div>
+  <div class="card">
+    <h3>🌍 IP Fallback</h3>
+    <p>If the visitor declines GPS access, the system falls back to IP-based geolocation to approximate their location and show nearby results.</p>
+  </div>
+  <div class="card">
+    <h3>📏 Distance Sorting</h3>
+    <p>Businesses are ranked by Haversine distance from the visitor's position. Each result shows "X.X mi away" for transparency.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Requirements for Near-Me Visibility</h3>
+  <ul>
+    <li>Business must have a <strong>complete, accurate address</strong> with street, city, state, and zip.</li>
+    <li>Coordinates are geocoded from the address using the platform's geocoding provider.</li>
+    <li>Incomplete addresses are excluded from near-me results — ensure all business listings have full address data.</li>
+  </ul>
+</div>
+
+<div class="warn-box" style="background:#1e293b;border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;padding:14px 18px;margin:14px 0;">
+  <p style="margin:0;color:#fde68a;font-size:0.85rem;"><strong>⚠️ Important:</strong> Near-Me results depend on geocoded coordinates. Newly imported or address-changed businesses may take a few minutes to appear in near-me results while geocoding completes.</p>
+</div>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/near-me?lat=...&amp;lng=...&amp;radius=50</code> — Businesses within radius (km)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/geocode?address=...</code> — Geocode address to lat/lng</p>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 27e. Collections & Saved Favorites -->
+<h2 id="collections">27e. Collections &amp; Saved Favorites</h2>
+
+<p>Visitors can save businesses to their personal collections for quick access. Favorites are stored in localStorage for anonymous users and synced to the server for logged-in users.</p>
+
+<div class="card">
+  <h3>How Collections Work</h3>
+  <ul>
+    <li><strong>Save any business</strong> — Click the bookmark/heart icon on any business listing card or detail page.</li>
+    <li><strong>LocalStorage fallback</strong> — Anonymous visitors' favorites persist in the browser via localStorage. No account required.</li>
+    <li><strong>Account sync</strong> — When a visitor creates an account or signs in, their localStorage favorites are merged with their server-side saved collection.</li>
+    <li><strong>Cross-device access</strong> — Logged-in users see the same saved businesses on any device.</li>
+  </ul>
+</div>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>📁 My Saved</h3>
+    <p>The <code>/user/saved</code> dashboard shows all saved businesses, written reviews, and redeemed perks in one view.</p>
+  </div>
+  <div class="card">
+    <h3>🏠 Feed Integration</h3>
+    <p>The ZaarHub feed at <code>/feed</code> surfaces saved businesses, upcoming events, and personalized recommendations.</p>
+  </div>
+</div>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/saved</code> — Get saved businesses for authenticated user</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/saved/:business_id</code> — Save a business to favorites</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/saved/:business_id</code> — Remove from favorites</p>
 </div>
 
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
@@ -1889,8 +2058,98 @@
 
 <p><strong>Two-tier model:</strong> Owner articles (directory SEO) are free. Business-sponsored articles are paid, with weekly renewal.</p>
 
+<!-- 42. B2B SSR Pages -->
+<h2 id="b2b-ssr">42. B2B SSR Pages</h2>
+
+<p>The platform includes three server-rendered B2B pages that connect suppliers, businesses, and service providers across the directory ecosystem:</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>&#x1F4CB; RFQ Marketplace</h3>
+    <p><code>/rfq-marketplace</code> — Businesses post Request-for-Quote listings. Suppliers browse and respond to RFQs. Server-side rendered for SEO and fast load times.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F91D; Co-op Hub</h3>
+    <p><code>/coop-hub</code> — Cooperative purchasing and partnership hub. Businesses and suppliers find collaboration opportunities, group buying arrangements, and shared resource agreements.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F4E3; Lead Exchange</h3>
+    <p><code>/lead-exchange</code> — Marketplace for business leads. Qualified leads can be bought, sold, or exchanged between businesses within the directory network.</p>
+  </div>
+</div>
+
+<h3>Architecture</h3>
+<div class="card">
+  <p>All three B2B pages are <strong>server-side rendered (SSR)</strong> — pre-rendered HTML is served directly, providing instant first paint, crawlable content for search engines, and excellent performance on mobile devices. The pages use the same design system and CSS framework as the rest of the platform.</p>
+</div>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/rfq-marketplace</code> &mdash; Server-rendered RFQ marketplace page</p>
+  <p><span class="badge get">GET</span> <code>/coop-hub</code> &mdash; Server-rendered Co-op Hub page</p>
+  <p><span class="badge get">GET</span> <code>/lead-exchange</code> &mdash; Server-rendered Lead Exchange page</p>
+</div>
+
+<!-- 43. Notifications Ticker -->
+<h2 id="notifications-ticker">43. Notifications Ticker</h2>
+<p>The <strong>Notifications Ticker</strong> is a real-time scrolling bar on the directory and ZaarHub frontends that automatically displays recent platform activity. Unlike the admin-managed <strong>Announcement Ticker</strong> (see <a href="#notifications">Section 30: Notifications</a>), this ticker is <strong>system-driven</strong> — it populates automatically from platform events without manual input.</p>
+
+<div class="feature-grid">
+  <div class="card">
+    <h3>🏪 New Businesses</h3>
+    <p>Recently added or verified business listings appear in the ticker.</p>
+  </div>
+  <div class="card">
+    <h3>🏷️ New Deals</h3>
+    <p>Businesses posting new deals or promotions trigger a ticker entry.</p>
+  </div>
+  <div class="card">
+    <h3>⭐ New Reviews</h3>
+    <p>Recent customer reviews with high ratings appear in the ticker.</p>
+  </div>
+  <div class="card">
+    <h3>✅ Verified Claims</h3>
+    <p>Newly claimed and verified businesses are highlighted.</p>
+  </div>
+</div>
+
+<h3>⚙️ Configuration</h3>
+<div class="card">
+  <table>
+    <tr><td><strong>Enable / Disable</strong></td><td>Toggle the ticker on or off from the admin panel under <strong>Settings → Notifications Ticker</strong>.</td></tr>
+    <tr><td><strong>Position</strong></td><td>Choose <strong>top</strong> (below header nav) or <strong>bottom</strong> (above footer).</td></tr>
+    <tr><td><strong>Scroll Speed</strong></td><td>Set animation speed: Slow (60s), Normal (30s), or Fast (15s) for a full scroll cycle.</td></tr>
+    <tr><td><strong>Max Items</strong></td><td>Limit how many ticker entries display at once (default: 5, max: 20). Older entries rotate out automatically.</td></tr>
+    <tr><td><strong>Event Types</strong></td><td>Choose which events appear: new businesses, new deals, new reviews, verified claims. Toggle each independently.</td></tr>
+  </table>
+</div>
+
+<div class="tip-box">
+  <p><strong>💡 Auto-Populated:</strong> Ticker items are generated automatically when the corresponding platform event occurs. There's no manual posting — the system detects new businesses, deals, reviews, and claims and adds them to the ticker queue automatically.</p>
+</div>
+
+<h3>🎨 CSS Customization</h3>
+<p>The ticker appearance can be customized through the admin panel's <strong>Theme</strong> settings or by overriding CSS variables:</p>
+<pre><code>/* Ticker bar background */
+--ticker-bg: #1e293b;
+/* Ticker item text color */
+--ticker-text: #e2e8f0;
+/* Ticker font size */
+--ticker-font-size: 0.9rem;
+/* Animation duration */
+--ticker-speed: 30s;
+/* Ticker item accent / highlight color */
+--ticker-accent: #10b981;</code></pre>
+
+<h3>API Endpoints</h3>
+<div class="card">
+  <p><span class="badge get">GET</span> <code>/api/v1/ticker/items</code> — Retrieve current ticker items with metadata (event type, timestamp, link URL)</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/ticker/config</code> — Retrieve current ticker configuration (enabled, position, speed, max items, event filters)</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/ticker/config</code> — Update ticker configuration (admin only)</p>
+</div>
+
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
-<h2 id="faq">49. FAQ</h2>
+<h2 id="faq">50. FAQ</h2>
 
 <details>
   <summary>How do I create a new directory?</summary>
