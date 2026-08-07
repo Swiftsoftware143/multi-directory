@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZaarHub Admin — Branding & Legal Pages</title>
+<title>ZaarHub Admin — Branding, Legal & Editor's Picks</title>
 <style>
 :root{--brand:#f27f2f;--brand-dark:#2b3255;--bg:#f8f9fc;--card:white;--text:#1a1a2e;--text-muted:#6b7280;--border:#e5e7eb;--green:#16a34a;--radius:10px}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -57,6 +57,7 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
 <div class="page">
   <div class="tabs">
     <button class="tab active" onclick="switchTab(this,'legal')">Legal Pages</button>
+    <button class="tab" onclick="switchTab(this,'picks')">Editor's Picks</button>
     <button class="tab" onclick="switchTab(this,'branding')">Branding</button>
   </div>
 
@@ -73,6 +74,18 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
       <h2>🔗 Footer Links</h2>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Legal pages marked "Show in footer" appear in the site-wide footer. Drag to reorder coming soon — for now, use display_order.</p>
       <div id="footer-links-list"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div id="tab-picks" style="display:none">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin-bottom:0">\u{1f525} Editor's Picks</h2>
+        <select id="picks-city-filter" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px" onchange="loadEditorsPicks()">
+          <option value="">All Cities</option>
+        </select>
+      </div>
+      <div id="picks-list"><div class="loading">Loading...</div></div>
     </div>
   </div>
 
@@ -219,8 +232,47 @@ async function deletePage(){
 function switchTab(btn,tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');
   document.getElementById('tab-legal').style.display=tab==='legal'?'block':'none';
+  document.getElementById('tab-picks').style.display=tab==='picks'?'block':'none';
   document.getElementById('tab-branding').style.display=tab==='branding'?'block':'none';
-  if(tab==='legal')loadLegalPages();else loadSiteConfig()
+  if(tab==='legal')loadLegalPages();
+  else if(tab==='picks'){loadCitiesDropdown();loadEditorsPicks();}
+  else loadSiteConfig()
+}
+
+async function loadCitiesDropdown(){
+  try{const r=await fetch('/api/v1/zaarhub/cities');const d=await r.json();
+    const sel=document.getElementById('picks-city-filter');
+    sel.innerHTML='<option value="">All Cities</option>'+(d.cities||[]).map(c=>`<option value="${esc(c.city_slug)}">${esc(c.city_name)}</option>`).join('');
+  }catch(e){console.error(e)}
+}
+
+async function loadEditorsPicks(){
+  const el=document.getElementById('picks-list');
+  const city=document.getElementById('picks-city-filter')?.value||'';
+  const url=city?`/api/v1/zaarhub/editors-picks?city_slug=${encodeURIComponent(city)}`:'/api/v1/zaarhub/editors-picks';
+  try{
+    const r=await fetch(url);const d=await r.json();
+    if(!d.editor_picks?.length){el.innerHTML='<div class="empty" style="text-align:center;padding:32px;color:var(--text-muted)">No editor picks yet. Toggle businesses below to feature them.</div>';return}
+    el.innerHTML=d.editor_picks.map(p=>`<div class="page-list-item">
+      <div class="info"><strong>${esc(p.business_name)}</strong><small>${esc(p.category||'')} · ${esc(p.city_name||'')}</small></div>
+      <div class="status">
+        <input type="text" class="pick-note-input" value="${esc(p.editors_pick_note||'')}" placeholder="Note..." style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:150px;margin-right:8px" id="note-${esc(p.id)}">
+        <button class="btn danger small" onclick="togglePick('${esc(p.id)}',false)">Remove</button>
+      </div>
+    </div>`).join('');
+  }catch(e){el.innerHTML='<div class="error">Failed to load. Check console.</div>';console.error(e)}
+}
+
+async function togglePick(id,on){
+  const note=document.getElementById('note-'+id)?.value||null;
+  try{
+    const r=await fetch(`/api/v1/zaarhub/admin/listings/${id}/editors-pick`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({is_editors_pick:on,editors_pick_note:note})
+    });
+    if(r.ok){showToast(on?'Added to Editor\'s Picks \u2714':'Removed from Editor\'s Picks');loadEditorsPicks();}
+    else showToast('Failed',true)
+  }catch(e){showToast('Failed',true)}
 }
 function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),2500)}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}

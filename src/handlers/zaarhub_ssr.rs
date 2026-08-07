@@ -80,6 +80,61 @@ pub async fn render_city_page(
     let page_title = meta_title.unwrap_or_else(|| format!("Best Businesses in {} | ZaarHub", city_name));
     let page_desc = meta_desc.unwrap_or_else(|| format!("Find top-rated local businesses in {}. Browse reviews, deals, and more.", city_name));
 
+    // Editor's Picks for this city
+    let city_picks = sqlx::query(
+        "SELECT bl.id, bl.business_name, bl.logo_url, bl.rating, bl.review_count, bl.category, bl.editors_pick_note \
+         FROM business_listings bl \
+         WHERE bl.city_page_id = $1 AND bl.is_editors_pick = true \
+         ORDER BY bl.rating DESC NULLS LAST LIMIT 4"
+    ).bind(city_page_id).fetch_all(&state.db).await.unwrap_or_default();
+
+    let mut city_picks_html = String::new();
+    for p in &city_picks {
+        let pname: String = p.try_get("business_name").unwrap_or_default();
+        let plogo: Option<String> = p.try_get("logo_url").unwrap_or(None);
+        let prating: Option<f64> = p.try_get("rating").unwrap_or_default();
+        let previews: i32 = p.try_get("review_count").unwrap_or(0);
+        let pcat: Option<String> = p.try_get("category").unwrap_or(None);
+        let pnote: Option<String> = p.try_get("editors_pick_note").unwrap_or(None);
+        let pid: Uuid = p.try_get("id").unwrap_or_default();
+        let pr = prating.unwrap_or(0.0);
+
+        let plogo_html = match &plogo {
+            Some(img) if !img.is_empty() => format!("<img src=\"{}\" class=\"pick-logo\" alt=\"{}\" loading=\"lazy\" onerror=\"this.style.display='none'\">", h(img), h(&pname)),
+            _ => format!("<div class='pick-logo-placeholder'>{}</div>", h(&pname[..1.min(pname.len())])),
+        };
+
+        city_picks_html.push_str(&format!(
+            r#"<a href="/zaarhub/{slug}/{id}" class="pick-card">
+       {logo}
+       <div class="pick-info">
+         <h4>{name}</h4>
+         <span class="pick-cat">{cat}</span>
+         <div class="pick-stars">{stars} {rating:.1} · {reviews} reviews</div>
+         {note_html}
+       </div>
+     </a>"#,
+            slug = h(&slug),
+            id = pid,
+            logo = plogo_html,
+            name = h(&pname),
+            cat = h(&pcat.unwrap_or_default()),
+            stars = String::from("\u{2605}".repeat(pr as usize)) + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize)),
+            rating = pr,
+            reviews = previews,
+            note_html = pnote.as_ref().map(|n| format!("<p class=\"pick-note\">\u{1f525} {}</p>", h(n))).unwrap_or_default(),
+        ));
+    }
+
+    let city_picks_section = if city_picks_html.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<div class=\"editors-picks-section\" style=\"max-width:1200px;margin:0 auto 24px;padding:0 20px\"><h2>\u{1f525} Editor's Picks in {}</h2><div class=\"picks-grid\">{}</div></div>",
+            h(&city_name), city_picks_html
+        )
+    };
+
     // Load top featured listings for this city
     let rows = sqlx::query(
         "SELECT bl.* FROM business_listings bl \
@@ -101,6 +156,15 @@ pub async fn render_city_page(
         let rating: Option<f64> = l.try_get("rating").unwrap_or_default();
         let reviews: i32 = l.try_get("review_count").unwrap_or(0);
         let lid: Uuid = l.try_get("id").unwrap_or_default();
+
+        // Verified indicator — check via business name match
+        let is_verified = sqlx::query(
+            "SELECT 1 FROM business_verifications bv \
+             JOIN businesses b ON bv.business_id = b.id \
+             WHERE b.name = $1 AND bv.status = 'approved' AND (bv.expires_at IS NULL OR bv.expires_at > now()) \
+             LIMIT 1"
+        ).bind(&name).fetch_optional(&state.db).await.unwrap_or(None).is_some();
+        let verified_icon = if is_verified { "<span class=\"verified-icon\" title=\"Verified Business\">\u{2714}</span>" } else { "" };
         let r = rating.unwrap_or(0.0);
         let stars = String::from("★".repeat(r as usize)) + &"☆".repeat(5usize.saturating_sub(r as usize));
 
@@ -129,7 +193,7 @@ pub async fn render_city_page(
             r#"<a href="/zaarhub/{slug}/{lid}" class="listing-card">
       {logo_html}
       <div class="info">
-        <h3>{name}</h3>
+        <h3>{name} {verified_icon}</h3>
         {cat_html}
         {desc_html}
         <div class="meta">
@@ -145,6 +209,7 @@ pub async fn render_city_page(
             lid = lid,
             logo_html = logo_html,
             name = h(&name),
+            verified_icon = verified_icon,
             cat_html = cat_html,
             desc_html = desc_html,
             stars = stars,
@@ -204,17 +269,31 @@ header .logo{{font-size:22px;font-weight:800;color:white;text-decoration:none}}h
 .category-tag{{display:inline-block;font-size:11px;font-weight:600;text-transform:uppercase;color:#f27f2f;background:#fff7f0;padding:3px 10px;border-radius:6px;margin-bottom:6px;margin-right:6px}}
 .desc{{font-size:13px;color:#6b7280;line-height:1.6;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 .meta{{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#6b7280;align-items:center}}
+.verified-icon{{display:inline-block;color:#16a34a;font-size:14px;margin-left:4px;cursor:help}}
 .stars{{color:#f59e0b}}
 footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer a{{color:#f27f2f;text-decoration:none}}
 .load-more{{text-align:center;margin:24px 0}}
 .load-more a{{display:inline-block;padding:14px 32px;background:#2b3255;color:white;border-radius:100px;text-decoration:none;font-weight:600;font-size:14px;transition:all .2s}}
 .load-more a:hover{{background:#f27f2f;transform:translateY(-1px)}}
+.editors-picks-section h2{{font-size:20px;font-weight:800;color:#2b3255;margin-bottom:12px}}
+.picks-grid{{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}}
+.pick-card{{display:flex;gap:14px;padding:18px;background:white;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none;color:inherit;transition:all .2s;border:2px solid transparent}}
+.pick-card:hover{{box-shadow:0 10px 40px rgba(0,0,0,.08);transform:translateY(-2px);border-color:#f27f2f}}
+.pick-logo{{width:56px;height:56px;border-radius:12px;object-fit:cover;flex-shrink:0;background:#f27f2f}}
+.pick-logo-placeholder{{width:56px;height:56px;border-radius:12px;background:#f27f2f;color:white;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0}}
+.pick-info{{flex:1;min-width:0}}
+.pick-info h4{{font-size:15px;font-weight:700;margin-bottom:2px}}
+.pick-cat{{display:inline-block;font-size:10px;font-weight:600;text-transform:uppercase;color:#f27f2f;background:#fff7f0;padding:2px 8px;border-radius:4px;margin-bottom:4px}}
+.pick-stars{{font-size:12px;color:#6b7280;margin-bottom:2px}}
+.pick-note{{font-size:12px;color:#f27f2f;font-weight:600;margin-top:4px}}
+@media(max-width:600px){{.picks-grid{{grid-template-columns:1fr}}}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 <header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub-city.html" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:14px;font-weight:500">🔍 Search</a></nav></div></header>
 {hero}
+{city_picks}
 <div class="listing-grid">{listings}</div>
 <div class="load-more"><a href="/zaarhub-city.html?city={slug}">View all {city_name} businesses →</a></div>
 {footer}
@@ -225,6 +304,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         slug = h(&slug),
         city_name = h(&city_name),
         hero = hero_section,
+        city_picks = city_picks_section,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
         listings = listings_html,
@@ -265,6 +345,64 @@ pub async fn render_cities_index(
         ));
     }
 
+    // Editor's Picks for homepage
+    let pick_rows = sqlx::query(
+        "SELECT bl.id, bl.business_name, bl.logo_url, bl.rating, bl.review_count, bl.category, bl.editors_pick_note, cp.city_slug, cp.city_name \
+         FROM business_listings bl \
+         JOIN city_pages cp ON bl.city_page_id = cp.id \
+         WHERE bl.is_editors_pick = true \
+         ORDER BY bl.rating DESC NULLS LAST LIMIT 6"
+    ).fetch_all(&state.db).await.unwrap_or_default();
+
+    let mut picks_html = String::new();
+    for p in &pick_rows {
+        let pname: String = p.try_get("business_name").unwrap_or_default();
+        let plogo: Option<String> = p.try_get("logo_url").unwrap_or(None);
+        let prating: Option<f64> = p.try_get("rating").unwrap_or_default();
+        let previews: i32 = p.try_get("review_count").unwrap_or(0);
+        let pcat: Option<String> = p.try_get("category").unwrap_or(None);
+        let pnote: Option<String> = p.try_get("editors_pick_note").unwrap_or(None);
+        let pslug: String = p.try_get("city_slug").unwrap_or_default();
+        let puname: String = p.try_get("city_name").unwrap_or_default();
+        let pid: Uuid = p.try_get("id").unwrap_or_default();
+        let pr = prating.unwrap_or(0.0);
+        let pstars = String::from("\u{2605}".repeat(pr as usize)) + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize));
+
+        let plogo_html = match &plogo {
+            Some(img) if !img.is_empty() => format!("<img src=\"{}\" alt=\"{}\" class=\"pick-logo\" loading=\"lazy\" onerror=\"this.style.display='none'\">", h(img), h(&pname)),
+            _ => format!("<div class='pick-logo-placeholder'>{}</div>", h(&pname[..1.min(pname.len())])),
+        };
+
+        picks_html.push_str(&format!(
+            r#"<a href="/zaarhub/{slug}/{id}" class="pick-card">
+       {logo}
+       <div class="pick-info">
+         <h4>{name}</h4>
+         <span class="pick-cat">{cat}</span>
+         <div class="pick-stars">{stars} {rating:.1} · {reviews} reviews</div>
+         {note_html}
+         <span class="pick-city">{city}</span>
+       </div>
+     </a>"#,
+            slug = h(&pslug),
+            id = pid,
+            logo = plogo_html,
+            name = h(&pname),
+            cat = h(&pcat.unwrap_or_default()),
+            stars = pstars,
+            rating = pr,
+            reviews = previews,
+            note_html = pnote.as_ref().map(|n| format!("<p class=\"pick-note\">\u{1f525} {}</p>", h(n))).unwrap_or_default(),
+            city = h(&puname),
+        ));
+    }
+
+    let picks_section = if picks_html.is_empty() {
+        String::new()
+    } else {
+        format!("<div class=\"editors-picks-section\"><h2>\u{1f525} Editor's Picks</h2><p class=\"editors-picks-sub\">Hand-picked businesses our editors love</p><div class=\"picks-grid\">{}</div></div>", picks_html)
+    };
+
     let footer = footer_html(&state.db).await;
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
@@ -285,6 +423,20 @@ header .logo{{font-size:22px;font-weight:800}}header .logo span{{color:#f27f2f}}
 .hero{{padding:64px 20px 48px;text-align:center;background:linear-gradient(135deg,#2b3255,#1a1a3e);color:white}}
 .hero h1{{font-size:clamp(28px,5vw,42px);margin-bottom:8px}}.hero h1 span{{color:#f27f2f}}
 .hero p{{opacity:.85;max-width:600px;margin:0 auto;font-size:16px}}
+.editors-picks-section{{max-width:1100px;margin:32px auto 0;padding:0 20px}}
+.editors-picks-section h2{{font-size:22px;font-weight:800;color:#2b3255;margin-bottom:4px}}
+.editors-picks-sub{{font-size:14px;color:#6b7280;margin-bottom:20px}}
+.picks-grid{{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}}
+.pick-card{{display:flex;gap:14px;padding:18px;background:white;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none;color:inherit;transition:all .2s;border:2px solid transparent}}
+.pick-card:hover{{box-shadow:0 10px 40px rgba(0,0,0,.08);transform:translateY(-2px);border-color:#f27f2f}}
+.pick-logo{{width:56px;height:56px;border-radius:12px;object-fit:cover;flex-shrink:0;background:#f27f2f}}
+.pick-logo-placeholder{{width:56px;height:56px;border-radius:12px;background:#f27f2f;color:white;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0}}
+.pick-info{{flex:1;min-width:0}}
+.pick-info h4{{font-size:15px;font-weight:700;margin-bottom:2px}}
+.pick-cat{{display:inline-block;font-size:10px;font-weight:600;text-transform:uppercase;color:#f27f2f;background:#fff7f0;padding:2px 8px;border-radius:4px;margin-bottom:4px}}
+.pick-stars{{font-size:12px;color:#6b7280;margin-bottom:2px}}
+.pick-note{{font-size:12px;color:#f27f2f;font-weight:600;margin-top:4px}}
+.pick-city{{font-size:11px;color:#9ca3af;display:block;margin-top:4px}}
 .city-grid{{max-width:1000px;margin:32px auto;padding:0 20px;display:grid;gap:20px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}}
 .city-card{{display:block;padding:24px;background:white;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none;color:inherit;transition:all .2s;border:2px solid transparent}}
 .city-card:hover{{box-shadow:0 10px 40px rgba(0,0,0,.08);transform:translateY(-2px);border-color:#f27f2f}}
@@ -293,18 +445,20 @@ header .logo{{font-size:22px;font-weight:800}}header .logo span{{color:#f27f2f}}
 .city-card p{{font-size:14px;color:#6b7280;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 .city-card .arrow{{font-size:13px;color:#f27f2f;font-weight:600}}
 footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer a{{color:#f27f2f;text-decoration:none}}
-@media(max-width:600px){{.city-grid{{grid-template-columns:1fr}}}}
+@media(max-width:600px){{.picks-grid{{grid-template-columns:1fr}}.city-grid{{grid-template-columns:1fr}}}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 <header><span class="logo">Zaar<span>Hub</span></span></header>
 <div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 9 Florida cities with thousands of listings, reviews, and deals.</p></div>
+{picks}
 <div class="city-grid">{cities}</div>
 {footer}
 {cookie_banner}
 </body>
 </html>"#,
+        picks = picks_section,
         cities = cities_html,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
@@ -363,6 +517,47 @@ pub async fn render_listing_page(
     let maps_html = match (coordinates_lat, coordinates_lng) {
         (Some(lat), Some(lng)) => format!("<div class='meta-row'><span class='icon'>🗺️</span><a href='https://maps.google.com/?q={},{}' target='_blank'>View on Google Maps</a></div>", lat, lng),
         _ => String::new(),
+    };
+
+    // Verification badge — query business_verifications matched via business name
+    let verified_badge = sqlx::query(
+        "SELECT bv.status FROM business_verifications bv \
+         JOIN businesses b ON bv.business_id = b.id \
+         WHERE b.name = $1 AND bv.status = 'approved' AND (bv.expires_at IS NULL OR bv.expires_at > now()) \
+         LIMIT 1"
+    ).bind(&name).fetch_optional(&state.db).await.unwrap_or(None)
+     .is_some();
+
+    let verified_html = if verified_badge {
+        "<div class=\"verified-badge\">\u{2705} Verified Business</div>"
+    } else {
+        ""
+    };
+
+    // Data freshness — get most recent verification date or listing updated_at
+    let freshness: Option<String> = {
+        let ver_date: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
+            "SELECT MAX(bv.created_at)::timestamp FROM business_verifications bv \
+             JOIN businesses b ON bv.business_id = b.id \
+             WHERE b.name = $1 AND bv.status = 'approved'"
+        ).bind(&name).fetch_optional(&state.db).await.unwrap_or(None).flatten();
+
+        let updated: Option<chrono::NaiveDateTime> = r.try_get("updated_at").unwrap_or(None);
+        let latest = match (ver_date, updated) {
+            (Some(v), Some(u)) => Some(if v > u { v } else { u }),
+            (Some(v), None) => Some(v),
+            (None, Some(u)) => Some(u),
+            (None, None) => None,
+        };
+        latest.map(|dt| dt.format("%B %d, %Y").to_string())
+    };
+
+    let is_claimed: bool = r.try_get("is_claimed").unwrap_or(false);
+
+    let freshness_html = match (&freshness, is_claimed) {
+        (Some(date), _) => format!("<div class=\"freshness\">\u{1f4c5} Data last verified: {}</div>", h(date)),
+        (None, false) => "<div class=\"freshness freshness-cta\">\u{1f4cc} <a href=\"/zaarhub-claim.html\">Claim this listing</a> to keep data fresh</div>".to_string(),
+        (None, true) => String::new(),
     };
 
     // Offers
@@ -432,6 +627,8 @@ header nav a{{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fo
 .meta-row:last-child{{border-bottom:none}}.meta-row .icon{{font-size:18px;width:24px;text-align:center}}
 .meta-row a{{color:#f27f2f;text-decoration:none;font-weight:500}}
 .offers-section{{margin-bottom:24px}}.offers-section h2{{font-size:20px;font-weight:700;margin-bottom:16px}}
+.verified-badge{{display:inline-block;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;padding:4px 12px;border-radius:8px;margin-bottom:8px}}
+.freshness{{font-size:12px;color:#9ca3af;margin-top:8px}}.freshness a{{color:#f27f2f;font-weight:600}}.freshness-cta{{font-size:12px}}
 .offer-grid{{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}}
 .offer-card{{background:white;border-radius:14px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:3px solid #16a34a}}
 .offer-card h3{{font-size:16px;font-weight:700;margin-bottom:4px}}.offer-card p{{font-size:13px;color:#6b7280;margin-bottom:8px}}
@@ -448,7 +645,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 <header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub/{slug}">← Back to {city_name}</a></nav></div></header>
 <div class="page">
 <div class="breadcrumb"><a href="/zaarhub">Cities</a> › <a href="/zaarhub/{slug}">{city_name}</a> › {name}</div>
-<div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}</div></div>
+<div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{verified_html}{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}{freshness_html}</div></div>
 <div class="detail-meta">{addr_html}{phone_html}{web_html}{maps_html}</div>
 {offers_html}
 </div>
@@ -458,9 +655,9 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         title = h(&page_title), desc = h(&desc.unwrap_or_default()),
         slug = h(&slug), id = listing_id, schema = schema,
         name = h(&name), city_name = h(&city_name),
-        logo_html = logo_html, fb = fb, cat_html = cat_html,
+        logo_html = logo_html, fb = fb, verified_html = verified_html, cat_html = cat_html,
         stars = stars, rating = rv, reviews = reviews,
-        desc_html = desc_html, addr_html = addr_html,
+        desc_html = desc_html, freshness_html = freshness_html, addr_html = addr_html,
         phone_html = phone_html, web_html = web_html,
         maps_html = maps_html, offers_html = offers_html,
         footer = footer,
