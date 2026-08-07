@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarHub Admin — Branding & Legal Pages</title>
+<style>
+:root{--brand:#f27f2f;--brand-dark:#2b3255;--bg:#f8f9fc;--card:white;--text:#1a1a2e;--text-muted:#6b7280;--border:#e5e7eb;--green:#16a34a;--radius:10px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+header{background:var(--brand-dark);color:white;padding:16px 24px;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:18px;font-weight:800}header h1 span{color:var(--brand)}
+header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;font-weight:500;margin-left:16px}
+.page{max-width:1100px;margin:0 auto;padding:24px 20px}
+.tabs{display:flex;gap:2px;margin-bottom:20px;border-bottom:2px solid var(--border)}
+.tab{padding:10px 20px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab:hover{color:var(--brand)}.tab.active{color:var(--brand);border-bottom-color:var(--brand)}
+.panel{background:var(--card);border-radius:var(--radius);padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:20px}
+.panel h2{font-size:16px;font-weight:700;margin-bottom:16px}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px}
+.form-group input,.form-group textarea,.form-group select{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}
+.form-group input:focus,.form-group textarea:focus{border-color:var(--brand)}
+.form-group textarea{min-height:300px;font-size:13px;line-height:1.6;resize:vertical}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:600px){.form-row{grid-template-columns:1fr}}
+.btn{padding:10px 24px;border-radius:8px;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s}
+.btn.primary{background:var(--brand);color:white}.btn.primary:hover{background:#e06e1a}
+.btn.secondary{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+.btn.secondary:hover{border-color:var(--brand);color:var(--brand)}
+.btn.danger{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}.btn.danger:hover{background:#fef2f2;border-color:#dc2626}
+.btn.small{padding:6px 14px;font-size:12px}
+.actions{display:flex;gap:8px;margin-top:16px}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--green);color:white;padding:14px 24px;border-radius:10px;font-weight:600;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.15);opacity:0;transform:translateY(10px);transition:all .3s;z-index:999}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.error{background:#dc2626}
+.page-list-item{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;transition:all .15s}
+.page-list-item:hover{border-color:var(--brand)}
+.page-list-item .info{flex:1}.page-list-item .info strong{font-size:14px}.page-list-item .info small{display:block;color:var(--text-muted);font-size:12px;margin-top:2px}
+.page-list-item .status{display:flex;gap:8px;align-items:center}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
+.badge.published{background:#dcfce7;color:#166534}.badge.draft{background:#f3f4f6;color:#6b7280}
+.badge.footer{background:#dbeafe;color:#1d4ed8}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.active{display:flex}
+.modal{background:var(--card);border-radius:var(--radius);max-width:700px;width:100%;max-height:90vh;overflow-y:auto;padding:28px;box-shadow:0 10px 40px rgba(0,0,0,.15)}
+.loading{text-align:center;padding:32px;color:var(--text-muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Zaar<span>Hub</span> Admin</h1>
+  <nav><a href="https://zaarhub.com">View Site</a></nav>
+</header>
+
+<div class="page">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab(this,'legal')">Legal Pages</button>
+    <button class="tab" onclick="switchTab(this,'branding')">Branding</button>
+  </div>
+
+  <div id="tab-legal">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="margin-bottom:0">📄 Legal Pages</h2>
+        <button class="btn primary small" onclick="openEditor()">+ New Page</button>
+      </div>
+      <div id="legal-list"><div class="loading">Loading...</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>🔗 Footer Links</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Legal pages marked "Show in footer" appear in the site-wide footer. Drag to reorder coming soon — for now, use display_order.</p>
+      <div id="footer-links-list"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div id="tab-branding" style="display:none">
+    <div class="panel">
+      <h2>🎨 Site Branding</h2>
+      <form id="branding-form">
+        <div class="form-row">
+          <div class="form-group"><label>Site Name</label><input name="site_name" id="cfg-site_name"></div>
+          <div class="form-group"><label>Tagline</label><input name="site_tagline" id="cfg-site_tagline"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Primary Color</label><input name="primary_color" id="cfg-primary_color" type="color" style="padding:4px;height:42px"></div>
+          <div class="form-group"><label>Secondary Color</label><input name="secondary_color" id="cfg-secondary_color" type="color" style="padding:4px;height:42px"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Logo URL</label><input name="logo_url" id="cfg-logo_url" placeholder="https://..."></div>
+          <div class="form-group"><label>Favicon URL</label><input name="favicon_url" id="cfg-favicon_url" placeholder="https://..."></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Contact Email</label><input name="contact_email" id="cfg-contact_email"></div>
+          <div class="form-group"><label>Contact Phone</label><input name="contact_phone" id="cfg-contact_phone"></div>
+        </div>
+        <div class="form-group"><label>Copyright Years</label><input name="copyright_year" id="cfg-copyright_year" placeholder="2024–2026 or 2026"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Google Analytics ID</label><input name="google_analytics_id" id="cfg-google_analytics_id" placeholder="G-XXXXXXXXXX"></div>
+          <div class="form-group"><label>Facebook App ID</label><input name="facebook_app_id" id="cfg-facebook_app_id"></div>
+        </div>
+        <div class="form-group"><label>Twitter Handle</label><input name="twitter_handle" id="cfg-twitter_handle" placeholder="@zaarhub"></div>
+        <div class="actions"><button type="submit" class="btn primary">Save Branding</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Editor modal -->
+<div class="modal-overlay" id="editor-overlay" onclick="if(event.target===this)closeEditor()">
+  <div class="modal" id="editor-modal">
+    <h2 id="editor-title">Edit Legal Page</h2>
+    <form id="editor-form">
+      <div class="form-row">
+        <div class="form-group"><label>Slug (URL)</label><input name="slug" id="ed-slug" placeholder="terms" required></div>
+        <div class="form-group"><label>Title</label><input name="title" id="ed-title" placeholder="Terms of Service" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Display Order</label><input name="display_order" id="ed-order" type="number" value="0"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer">
+          <input type="checkbox" id="ed-published"> Published
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer">
+          <input type="checkbox" id="ed-footer"> Show in Footer
+        </label>
+      </div>
+      <div class="form-group"><label>Content (HTML)</label><textarea name="content" id="ed-content" required></textarea></div>
+      <div class="actions" style="justify-content:space-between">
+        <button type="button" class="btn danger small" id="btn-delete" style="display:none" onclick="deletePage()">Delete Page</button>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn secondary" onclick="closeEditor()">Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/v1/zaarhub/admin';
+let currentTab = 'legal';
+let editingSlug = null;
+
+async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm()}
+async function loadLegalPages(){
+  const el=document.getElementById('legal-list');
+  const fl=document.getElementById('footer-links-list');
+  try{
+    const r=await fetch(`${API}/legal`);const d=await r.json();
+    if(!d.pages?.length){el.innerHTML='<div class="empty" style="text-align:center;padding:32px;color:var(--text-muted)">No pages yet. Click "New Page" to create one.</div>';fl.innerHTML='';return}
+    el.innerHTML=d.pages.map(p=>`<div class="page-list-item" onclick="openEditor('${esc(p.slug)}')">
+      <div class="info"><strong>${esc(p.title)}</strong><small>/${esc(p.slug)} · Order: ${p.display_order} · Updated: ${p.updated_at?.slice(0,10)||'—'}</small></div>
+      <div class="status"><span class="badge ${p.is_published?'published':'draft'}">${p.is_published?'Published':'Draft'}</span>${p.show_in_footer?'<span class="badge footer">Footer</span>':''}<button class="btn secondary small" onclick="event.stopPropagation();openEditor('${esc(p.slug)}')">Edit</button></div>
+    </div>`).join('');
+    fl.innerHTML=d.pages.filter(p=>p.show_in_footer).map(p=>`<div class="page-list-item">
+      <div class="info"><strong>${esc(p.title)}</strong><small>/${esc(p.slug)}</small></div>
+      <div><span class="badge footer">In Footer</span></div>
+    </div>`).join('')||'<div style="color:var(--text-muted);font-size:13px">No pages shown in footer. Mark legal pages as "Show in Footer" to add them.</div>';
+  }catch(e){el.innerHTML='<div class="error">Failed to load. Check console.</div>';console.error(e)}
+}
+async function loadSiteConfig(){
+  try{const r=await fetch(`${API}/config`);const d=await r.json();
+    Object.keys(d).forEach(k=>{const el=document.getElementById('cfg-'+k);if(el){el.value=d[k]||''}})}
+  catch(e){console.error(e)}
+}
+function setupBrandingForm(){
+  document.getElementById('branding-form').addEventListener('submit',async e=>{
+    e.preventDefault();const fd=new FormData(e.target);const body={};
+    fd.forEach((v,k)=>{if(v)body[k]=v});
+    try{const r=await fetch(`${API}/config`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(r.ok)showToast('Branding saved ✓')}
+    catch(e){showToast('Save failed',true)}
+  })
+}
+async function openEditor(slug){
+  editingSlug=slug||null;
+  document.getElementById('btn-delete').style.display=slug?'inline-block':'none';
+  document.getElementById('editor-title').textContent=slug?'Edit Legal Page':'New Legal Page';
+  if(slug){
+    try{const r=await fetch(`${API}/legal/${slug}`);const d=await r.json();
+      document.getElementById('ed-slug').value=d.slug||'';document.getElementById('ed-slug').readOnly=true;
+      document.getElementById('ed-title').value=d.title||'';document.getElementById('ed-content').value=d.content||'';
+      document.getElementById('ed-order').value=d.display_order||0;
+      document.getElementById('ed-published').checked=d.is_published||false;
+      document.getElementById('ed-footer').checked=d.show_in_footer||false}
+    catch(e){showToast('Failed to load page',true)}
+  }else{
+    document.getElementById('ed-slug').value='';document.getElementById('ed-slug').readOnly=false;
+    document.getElementById('ed-title').value='';document.getElementById('ed-content').value='<h2>Page Title</h2><p>Content here.</p>';
+    document.getElementById('ed-order').value='0';document.getElementById('ed-published').checked=false;
+    document.getElementById('ed-footer').checked=false
+  }
+  document.getElementById('editor-overlay').classList.add('active')
+}
+function closeEditor(){document.getElementById('editor-overlay').classList.remove('active')}
+document.getElementById('editor-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const body={slug:document.getElementById('ed-slug').value,title:document.getElementById('ed-title').value,
+    content:document.getElementById('ed-content').value,display_order:parseInt(document.getElementById('ed-order').value)||0,
+    is_published:document.getElementById('ed-published').checked,show_in_footer:document.getElementById('ed-footer').checked};
+  try{const r=await fetch(`${API}/legal`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){showToast('Page saved ✓');closeEditor();loadLegalPages()}
+    else showToast('Save failed',true)}
+  catch(e){showToast('Save failed',true)}
+})
+async function deletePage(){
+  if(!editingSlug||!confirm(`Delete "${editingSlug}" permanently?`))return;
+  try{const r=await fetch(`${API}/legal/${editingSlug}`,{method:'DELETE'});
+    if(r.ok){showToast('Deleted ✓');closeEditor();loadLegalPages()}
+    else showToast('Delete failed',true)}
+  catch(e){showToast('Delete failed',true)}
+}
+function switchTab(btn,tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');
+  document.getElementById('tab-legal').style.display=tab==='legal'?'block':'none';
+  document.getElementById('tab-branding').style.display=tab==='branding'?'block':'none';
+  if(tab==='legal')loadLegalPages();else loadSiteConfig()
+}
+function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),2500)}
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+init();
+</script>
+</body>
+</html>
