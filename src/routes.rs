@@ -1036,6 +1036,12 @@ async fn auth_guard(
         // Public deal redemption (visitors redeem codes without auth)
         || (path.starts_with("/deals/") && path.ends_with("/redeem") && req.method() == "POST")
         || (path.starts_with("/deals/redemptions/code/") && req.method() == "GET")
+        // Public deals browsing (visitors browse and claim deals without auth)
+        || (path == "/deals" && req.method() == "GET")
+        || (path == "/deals/featured" && req.method() == "GET")
+        || (path.starts_with("/deals/") && path.ends_with("/claim") && req.method() == "POST")
+        // Public deal detail pages (GET /deals/:uuid)
+        || (path.starts_with("/deals/") && req.method() == "GET" && path.matches('/').count() == 2)
         // Public featured deals
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
