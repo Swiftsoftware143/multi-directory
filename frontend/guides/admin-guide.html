@@ -376,6 +376,96 @@ a:hover{text-decoration:underline}
   </div>
 </div>
 
+<!-- 18. Category Management -->
+<div class="card">
+  <h3><span class="emoji">📂</span> 18. Category Management</h3>
+  <p>Categories are organized into <strong>groups</strong> (e.g., Dining, Home &amp; Outdoor, Professional) and each group contains individual categories. A business can belong to multiple categories (up to 3 by default, 5 with admin override).</p>
+  
+  <h4>Adding Businesses to Categories (Admin Role)</h4>
+  <p>When searching for or importing businesses, admins have direct category assignment: </p>
+  <ul>
+    <li><strong>During business search → add business</strong> — The admin panel's business search includes a category dropdown. After finding a business, the admin can assign categories before confirming the addition.</li>
+    <li><strong>During CSV import</strong> — Import templates include category columns. Admins can map columns to existing categories during the import wizard.</li>
+    <li><strong>During manual business creation</strong> — The "Add Business" form includes a category multi-select. Admins select categories directly — no request/approval flow needed.</li>
+    <li><strong>Post-creation</strong> — Edit any business and modify its category assignments from the business detail panel. Changes take effect immediately on the frontend.</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Categories must exist before they can be assigned. Always create the category first (from the admin panel's Category Manager), then assign businesses to it. If a category doesn't exist yet, the admin can create it inline during the business add flow.
+  </div>
+
+  <h4>Business Owner Self-Service Categories</h4>
+  <p>After claiming their business, owners can manage their category assignments through the Business Portal:</p>
+  <ul>
+    <li><strong>Removing a category</strong> — Instant. The business owner clicks "Remove" next to any assigned category. No admin approval needed. The category is immediately removed from their listing.</li>
+    <li><strong>Adding a category</strong> — Requires admin approval. The business owner browses available categories and clicks "Request." This creates a pending request visible in the admin panel under <strong>Pending Category Requests</strong>.</li>
+    <li><strong>Maximum categories</strong> — Default cap is <strong>3 categories per business</strong>. Admins can override this to 5 for verified/top-rated businesses from the business detail panel.</li>
+    <li><strong>Primary vs. secondary</strong> — The first category selected is the <strong>primary category</strong> and receives full search weight. Additional categories receive 75% search weight to prevent gaming.</li>
+  </ul>
+
+  <h4>Approving Category Requests</h4>
+  <p>From the admin panel sidebar, go to <strong>Pending Category Requests</strong>. Each request shows:</p>
+  <ul>
+    <li>Business name and current categories</li>
+    <li>Requested category with rationale (optional note from business owner)</li>
+    <li>One-click <strong>Approve</strong> or <strong>Deny</strong> with optional denial reason</li>
+  </ul>
+  <p>Approved categories appear immediately on the business listing. Denied requests include the admin's reason, which the business owner can see and address before re-submitting.</p>
+
+  <h4>Category Cleanup &amp; Merging</h4>
+  <ul>
+    <li><strong>Rename</strong> — Rename any category; all business associations are preserved automatically.</li>
+    <li><strong>Delete</strong> — Only empty categories (0 businesses assigned) can be deleted. The system prevents deleting populated categories.</li>
+    <li><strong>Merge</strong> — Select two categories and click "Merge Into." All businesses from the source category are re-assigned to the target, and the source is deleted.</li>
+    <li><strong>Group reassignment</strong> — Move a category between groups by editing its group name. Useful when restructuring (e.g., moving a category from Retail to Dining).</li>
+  </ul>
+
+  <h4>Current Category Structure (55 categories, 14 groups)</h4>
+  <details>
+    <summary><strong>🍽️ Dining</strong> (8 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Bars &amp; Breweries, Breakfast, Catering, Coffee Shop, Food &amp; Drink, Food Trucks, Pizza, Seafood</p>
+  </details>
+  <details>
+    <summary><strong>🛍️ Hyper-Local Retail &amp; Specialty Food</strong> (10 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Artisan &amp; Handmade Goods, Bakeries &amp; Dessert Shops, Books, Music &amp; Hobby, Boutiques &amp; Vintage Thrift, Electronics Repair &amp; Resale, Farmers Market, Florists &amp; Garden Shops, Gifts &amp; Stationery, Home &amp; Decor, Specialty Grocery &amp; Gourmet</p>
+  </details>
+  <details>
+    <summary><strong>🔧 Home &amp; Outdoor</strong> (9 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Cleaning Services, Electrician, HVAC, Landscaping, Maintenance &amp; Handyman, Plumber, Pool Service, Roofing, Screen Enclosures, Tree Service</p>
+  </details>
+  <details>
+    <summary><strong>🏥 Health &amp; Wellness</strong> (7 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Chiropractor, Dentist, Medical &amp; Health Services, Medical Spa, Pet Groomer, Physical Therapy, Veterinarian</p>
+  </details>
+  <details>
+    <summary><strong>💼 Professional</strong> (5 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Accountant, Business &amp; Professional Services, Personal Injury Lawyer, Property Management, Real Estate Agent</p>
+  </details>
+  <details>
+    <summary><strong>🎭 Entertainment &amp; Events</strong> (4 categories across 2 groups)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Family Entertainment, Live Music &amp; Bars, Local Attractions &amp; Tours, Special Events &amp; Party Planning</p>
+  </details>
+  <details>
+    <summary><strong>✂️ Personal Care</strong> (5 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Boat Charter, Day Spa, Fitness Studio, Hair Salon, Tattoo Parlor</p>
+  </details>
+  <details>
+    <summary><strong>🚗 Automotive</strong> (3 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Auto Repair, Car Detailing &amp; Wash, Tire Shops &amp; Oil Change</p>
+  </details>
+  <details>
+    <summary><strong>🐾 Pet Services</strong> (1 category)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Dog Daycare &amp; Boarding</p>
+  </details>
+  <details>
+    <summary><strong>📚 Education &amp; Family</strong> (1 category)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Child Care &amp; Education</p>
+  </details>
+  <details>
+    <summary><strong>📌 Other</strong> (1 category)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Other</p>
+  </details>
+</div>
+
 <a href="/guides/" class="back-link">← Back to All Guides</a>
 
 </div>
