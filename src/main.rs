@@ -1,5 +1,6 @@
 #![allow(clippy::all)]
 #![allow(unused)]
+#![recursion_limit = "256"]
 mod email;
 mod reminders;
 mod coreswift;

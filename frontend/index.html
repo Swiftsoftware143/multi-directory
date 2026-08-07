@@ -192,6 +192,44 @@ a:hover{text-decoration:underline}
 .zh-deal-biz-card .dl-biz-info .cat{font-size:.75rem;color:var(--primary);margin-top:2px}
 .zh-deal-back-link{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;color:var(--text-light);margin-bottom:20px;transition:color .2s}
 .zh-deal-back-link:hover{color:var(--primary);text-decoration:none}
+
+/* ── Phase 3a: Deal Detail Layout (Two-Column + Sticky Sidebar) ── */
+.zh-deal-layout{display:flex;gap:28px;max-width:1200px;margin:0 auto;padding:0 16px 40px;align-items:flex-start}
+.zh-deal-main{flex:1;min-width:0}
+.zh-deal-sidebar{width:340px;flex-shrink:0;position:sticky;top:88px;z-index:10}
+
+/* ── Sticky Conversion Bar (Desktop Sidebar) ── */
+.zh-deal-sticky-bar{background:var(--card);border:2px solid var(--primary-light);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-lg);text-align:center}
+.zh-deal-sticky-bar .sb-price{font-size:2.2rem;font-weight:900;color:var(--primary);margin-bottom:4px}
+.zh-deal-sticky-bar .sb-original{font-size:1rem;color:var(--text-muted);text-decoration:line-through;margin-right:6px;display:block}
+.zh-deal-sticky-bar .sb-discount{display:inline-block;background:var(--warm-light);color:var(--warm);font-size:.75rem;font-weight:700;padding:2px 10px;border-radius:100px;margin-bottom:12px}
+.zh-deal-sticky-bar .sb-timer{font-size:.85rem;color:var(--text-light);margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:4px}
+.zh-deal-sticky-bar .sb-timer-icon{font-size:1rem}
+
+/* ── Stock Progress Bar ── */
+.zh-deal-progress{margin-bottom:14px;text-align:left}
+.zh-deal-progress-label{display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-light);margin-bottom:4px;font-weight:500}
+.zh-deal-progress-track{height:8px;background:var(--border-light);border-radius:10px;overflow:hidden}
+.zh-deal-progress-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.4,0,.2,1);min-width:4px}
+
+/* ── CTA Button in Sticky Bar ── */
+.zh-deal-sticky-cta{display:block;width:100%;padding:14px 24px;font-size:1rem;font-weight:700;text-align:center;border-radius:100px;border:none;cursor:pointer;color:#fff;transition:all .2s;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.zh-deal-sticky-cta:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.25)}
+
+/* ── Mobile Bottom Sticky Bar ── */
+.zh-deal-mobile-bar{display:none}
+
+/* ── Deal Detail: Move back link inside layout ── */
+.zh-deal-detail-no-sidebar{max-width:860px;margin:0 auto;padding:0 16px 40px}
+
+/* ── Filter Row ── */
+.zh-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;justify-content:center}
+.zh-filter-row select{padding:8px 16px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;outline:none;min-width:140px}
+.zh-filter-row select option{color:#333;background:#fff}
+.zh-category-pill{padding:6px 14px;border-radius:100px;font-size:.8rem;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);transition:all .2s;white-space:nowrap}
+.zh-category-pill:hover{background:rgba(255,255,255,.18);color:#fff}
+.zh-category-pill.active{background:var(--primary);border-color:var(--primary);color:#fff}
+
 .zh-claim-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
 .zh-claim-modal{background:var(--card);border-radius:var(--radius-lg);padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
 .zh-claim-modal h3{font-size:1.3rem;font-weight:800;margin-bottom:8px;color:var(--green)}
@@ -444,6 +482,16 @@ a:hover{text-decoration:underline}
   .zh-spot-week{margin:0 12px;flex-wrap:wrap}
   .zh-modal{margin:12px}
   .zh-notif-bell,.zh-signin-btn,.zh-role-switcher{display:none}
+  /* Mobile Deal Detail: Sidebar hidden, mobile bar shown */
+  .zh-deal-layout{flex-direction:column;padding:0 12px 90px}
+  .zh-deal-sidebar{display:none}
+  .zh-deal-mobile-bar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:210;background:#fff;border-top:2px solid var(--primary-light);box-shadow:0 -4px 16px rgba(0,0,0,.1);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px));align-items:center;gap:12px;justify-content:space-between}
+  .zh-deal-mobile-bar .mb-price{font-size:1.1rem;font-weight:800;color:var(--primary);white-space:nowrap}
+  .zh-deal-mobile-bar .mb-price s{font-size:.75rem;color:var(--text-muted);font-weight:400}
+  .zh-deal-mobile-bar .mb-timer{font-size:.72rem;color:var(--text-light);white-space:nowrap}
+  .zh-deal-mobile-bar .mb-cta{padding:8px 16px;font-size:.85rem;font-weight:700;border-radius:100px;border:none;color:#fff;cursor:pointer;white-space:nowrap}
+  .zh-deal-sticky-bar{display:none}
+  .zh-deal-detail-no-sidebar{padding:0 12px 90px}
 }
 
 @media(max-width:480px){
@@ -1719,15 +1767,27 @@ async function loadNotificationsPage(){
 }
 
 // ── Deals Page ──
+// ── Deals Page ──
+var DEAL_CATEGORIES={'All':'All','Restaurants':'restaurant','Auto':'automotive','Services':'service','Retail':'retail','Health':'medical','Real Estate':'real-estate','Entertainment':'entertainment','Education':'education','Hospitality':'hospitality','Fitness':'fitness','Farm':'farm'}
+
 async function loadDealsPage(){
   var el=document.getElementById('zh-content')
+  if(!state._dealCatFilter)state._dealCatFilter='All'
+  var catFilter=state._dealCatFilter||'All'
   var cityLabel=state.dealsCityFilter?toTitle(state.dealsCityFilter):'All Communities'
   var cityOpts=''
   for(var i=0;i<state.cities.length;i++){
     var c=state.cities[i];var sel=c.slug===state.dealsCityFilter?' selected':''
     cityOpts+='<option value="'+c.slug+'"'+sel+'>'+esc(c.name)+' ('+(c.business_count||0)+' spots)</option>'
   }
-  el.innerHTML='<div class="zh-search-hero"><div class="zh-search-hero-inner"><h1>\u{1f381} '+esc(cityLabel)+' Deals & Perks</h1><p style="color:#94a3b8;margin-bottom:16px">Exclusive discounts from community businesses</p><select onchange="if(this.value)location.hash=\'#/deals/\'+this.value;else location.hash=\'#/deals\'" style="padding:8px 16px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;outline:none"><option value=""'+(!state.dealsCityFilter?' selected':'')+'>All Communities</option>'+cityOpts+'</select></div></div><div class="zh-section"><div class="zh-section-inner"><div class="zh-loading"><div class="zh-spinner"></div></div></div></div>'
+  // Build category pills
+  var catPills=''
+  var catKeys=Object.keys(DEAL_CATEGORIES)
+  for(var k=0;k<catKeys.length;k++){
+    var cn=catKeys[k];var cs=DEAL_CATEGORIES[cn];var activeCls=catFilter===cn?' active':''
+    catPills+='<span class="zh-category-pill'+activeCls+'" onclick="event.stopPropagation();state._dealCatFilter=\''+cn+'\';loadDealsPage()">'+cn+'</span>'
+  }
+  el.innerHTML='<div class="zh-search-hero"><div class="zh-search-hero-inner"><h1>🎁 '+esc(cityLabel)+' Deals & Perks</h1><p style="color:#94a3b8;margin-bottom:12px">Exclusive discounts from community businesses</p><div class="zh-filter-row"><select onchange="if(this.value)location.hash=\'#/deals/\'+this.value;else location.hash=\'#/deals\'"><option value=""'+(!state.dealsCityFilter?' selected':'')+'>All Communities</option>'+cityOpts+'</select></div><div class="zh-filter-row">'+catPills+'</div></div></div><div class="zh-section"><div class="zh-section-inner"><div class="zh-loading"><div class="zh-spinner"></div></div></div></div>'
 
   try{
     var deals=[]
@@ -1738,9 +1798,14 @@ async function loadDealsPage(){
       var d=await g('/zaarhub/homepage')
       deals=d.featured_deals||[]
     }
+    // Category filter
+    if(catFilter!=='All'){
+      var slug=DEAL_CATEGORIES[catFilter]
+      deals=deals.filter(function(dl){return (dl.business_category_slug||'')===slug||(dl.business_category||'')===slug})
+    }
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(!deals.length){
-      sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">\u{1f381}</div><h3 style="margin-bottom:6px">No deals available</h3><p style="color:var(--text-light)">Check back soon for local perks</p></div>'
+      sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🎁</div><h3 style="margin-bottom:6px">No deals available</h3><p style="color:var(--text-light)">'+(catFilter!=='All'?'No '+catFilter+' deals right now. ':'')+'Check back soon for local perks</p></div>'
       return
     }
     var h='<div class="zh-deals-scroll" style="flex-wrap:wrap">'
@@ -1748,7 +1813,7 @@ async function loadDealsPage(){
       var dl=deals[i];var priceHtml=dl.deal_price?'$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
       var cityTag=dl.directory_slug?'<span style="color:var(--primary);font-size:.72rem;font-weight:600">'+toTitle(dl.directory_slug)+' · </span>':''
       h+='<div class="zh-deal-card" style="flex:0 0 280px" onclick="location.hash=\'#/deal/'+dl.id+'\'">'+
-        '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'\u{1f389}')+'</div>'+
+        '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover" loading="lazy">':'🎉')+'</div>'+
         '<div class="zh-deal-body"><h4>'+esc(dl.title)+'</h4>'+
         '<div class="price">'+priceHtml+'</div>'+
         '<div class="biz">'+cityTag+esc(dl.business_name||'')+'</div>'+
@@ -1762,6 +1827,8 @@ async function loadDealsPage(){
     if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
   }
 }
+
+function selectDealCategory(cat){state._dealCatFilter=cat;loadDealsPage()}
 
 // ── Deal Detail Page ──
 var _dealTimerInterval=null
@@ -1799,6 +1866,24 @@ function renderDealDetail(d){
   var dirSlug=esc(d.directory_slug||'')
   var dirName=esc(d.directory_name||'')
   var bizId=d.business_id||''
+  var dealPrice=esc(d.deal_price||'')
+  var origPrice=esc(d.original_price||'')
+  var currency=d.currency||'USD'
+
+  // ── SEO + AEO: Inject meta tags + JSON-LD schema ──
+  injectDealSEO(d, bizName, currency)
+
+  // ── Stock Progress Bar ──
+  var maxClaims=d.max_claims||0
+  var claimsCount=d.claims_count||0
+  var stockBar=''
+  if(maxClaims>0){
+    var pct=Math.min(100,Math.round((claimsCount/maxClaims)*100))
+    var barColor=ctaColor||accentColor
+    stockBar='<div class="zh-deal-progress"><div class="zh-deal-progress-label"><span>'+pct+'% claimed</span><span>'+(maxClaims-claimsCount)+' of '+maxClaims+' remaining</span></div><div class="zh-deal-progress-track"><div class="zh-deal-progress-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div>'
+  }else if(claimsCount>0){
+    stockBar='<div class="zh-deal-progress"><div class="zh-deal-progress-label" style="justify-content:center"><span>'+claimsCount+' claimed</span></div></div>'
+  }
 
   // Price display
   var priceHtml=''
@@ -1813,10 +1898,16 @@ function renderDealDetail(d){
   }
   var discountBadge=d.discount_percent?'<span class="dl-discount-badge">'+d.discount_percent+'% OFF</span>':''
 
-  // Countdown timer
+  // Countdown timer (inline for hero)
   var timerHtml=''
   if(d.show_timer&&d.end_date){
     timerHtml='<div class="zh-deal-timer" id="dealTimer"><span style="font-size:.85rem;color:var(--text-light);margin-right:8px">⏱️ Ends in:</span><span id="dealTimerDisplay" style="font-size:1.1rem;font-weight:700;color:var(--primary)">Calculating...</span></div>'
+  }
+
+  // Compact timer for sidebar & mobile
+  var compactTimerHtml=''
+  if(d.show_timer&&d.end_date){
+    compactTimerHtml='<div class="sb-timer"><span class="sb-timer-icon">⏱</span><span id="sbTimerDisplay">Calculating...</span></div>'
   }
 
   // Gallery
@@ -1825,7 +1916,7 @@ function renderDealDetail(d){
   if(galleryImages&&Array.isArray(galleryImages)&&galleryImages.length>0){
     var imgs=''
     for(var i=0;i<galleryImages.length;i++){
-      imgs+='<img src="'+esc(galleryImages[i])+'" alt="Gallery '+i+'" onerror="this.style.display=\'none\'">'
+      imgs+='<img src="'+esc(galleryImages[i])+'" alt="Gallery '+i+'" onerror="this.style.display=\'none\'" loading="lazy">'
     }
     galleryHtml='<div class="zh-deal-gallery">'+imgs+'</div>'
   }
@@ -1833,46 +1924,153 @@ function renderDealDetail(d){
   var claimed=d.redemption_count||0
   var claimedText=claimed>0?' <span style="font-size:.8rem;opacity:.9">('+claimed+' claimed)</span>':''
 
-  el.innerHTML='<div class="zh-deal-detail">'+
-    '<a href="#/deals" class="zh-deal-back-link">← Back to Deals</a>'+
-    '<div class="zh-deal-hero" style="background:linear-gradient(135deg,'+accentColor+','+adjustColor(accentColor,-30)+')">'+
-      '<div class="dl-logo">'+(d.image_url?'<img src="'+esc(d.image_url)+'" alt="" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'🎉\'">':'🎉')+'</div>'+
-      '<h1>'+esc(d.title)+'</h1>'+
-      '<div class="dl-biz-name">by '+bizName+(dirName?' — '+dirName:'')+'</div>'+
-      priceHtml+
-      discountBadge+
-    '</div>'+
-    timerHtml+
-    (d.description?''+
-    '<div class="zh-deal-info-card"><h3>📝 About This Deal</h3><p>'+esc(d.description)+'</p>'+
-    (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
-    (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
-    '</div>':
-    (d.terms||d.fine_print?''+
-    '<div class="zh-deal-info-card"><h3>📝 Details</h3>'+
-    (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
-    (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
-    '</div>':''))+
-    galleryHtml+
-    (d.deal_type==='coupon'&&d.coupon_code?'<div class="zh-deal-info-card"><h3>🏷️ Coupon Code</h3><div style="font-size:1.5rem;font-weight:800;letter-spacing:3px;color:'+accentColor+';text-align:center;padding:12px;background:var(--bg);border-radius:8px;border:2px dashed var(--border)">'+esc(d.coupon_code)+'</div></div>':'')+
-    '<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+claimedText+'</button>'+
-    '<div class="zh-deal-biz-card" onclick="location.hash=\'#/city/'+dirSlug+'/biz/'+bizId+'\'">'+
-      '<div class="dl-biz-icon">🏪</div>'+
-      '<div class="dl-biz-info"><h4>'+bizName+'</h4>'+
-      (bizAddr?'<div class="addr">📍 '+bizAddr+'</div>':'')+
-      (bizCat?'<div class="cat">'+bizCat+'</div>':'')+
-      '</div>'+
-      '<span style="font-size:.8rem;color:var(--primary);font-weight:600;white-space:nowrap">View Business →</span>'+
-    '</div>'+
-    '<div style="text-align:center;margin-top:8px">'+
-      '<a href="#/deals" style="font-size:.85rem;color:var(--text-light)">← Back to All Deals</a>'+
-    '</div>'+
+  // ── Sidebar content ──
+  var sidebarHtml='<div class="zh-deal-sticky-bar">'+
+    (origPrice?'<div class="sb-original">$'+origPrice+'</div>':'')+
+    (dealPrice?'<div class="sb-price">$'+dealPrice+'</div>':'')+
+    (d.discount_percent?'<div class="sb-discount">-'+d.discount_percent+'%</div>':'')+
+    compactTimerHtml+
+    stockBar+
+    '<button class="zh-deal-sticky-cta" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+'</button>'+
   '</div>'
 
-  // Start countdown timer
+  // ── Main content (left column) ──
+  var mainHtml='<div class="zh-deal-hero" style="background:linear-gradient(135deg,'+accentColor+','+adjustColor(accentColor,-30)+')">'+
+    '<div class="dl-logo">'+(d.image_url?'<img src="'+esc(d.image_url)+'" alt="" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'🎉\'">':'🎉')+'</div>'+
+    '<h1>'+esc(d.title)+'</h1>'+
+    '<div class="dl-biz-name">by '+bizName+(dirName?' — '+dirName:'')+'</div>'+
+    priceHtml+
+    discountBadge+
+  '</div>'+
+  timerHtml+
+  (d.description?''+
+  '<div class="zh-deal-info-card"><h3>📝 About This Deal</h3><p>'+esc(d.description)+'</p>'+
+  (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
+  (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
+  '</div>':
+  (d.terms||d.fine_print?''+
+  '<div class="zh-deal-info-card"><h3>📝 Details</h3>'+
+  (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
+  (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
+  '</div>':''))+
+  galleryHtml+
+  (d.deal_type==='coupon'&&d.coupon_code?'<div class="zh-deal-info-card"><h3>🏷️ Coupon Code</h3><div style="font-size:1.5rem;font-weight:800;letter-spacing:3px;color:'+accentColor+';text-align:center;padding:12px;background:var(--bg);border-radius:8px;border:2px dashed var(--border)">'+esc(d.coupon_code)+'</div></div>':'')+
+  // Also add CTA in content for mobile scroll context
+  '<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+claimedText+'</button>'+
+  '<div class="zh-deal-biz-card" onclick="location.hash=\'#/city/'+dirSlug+'/biz/'+bizId+'\'">'+
+    '<div class="dl-biz-icon">🏪</div>'+
+    '<div class="dl-biz-info"><h4>'+bizName+'</h4>'+
+    (bizAddr?'<div class="addr">📍 '+bizAddr+'</div>':'')+
+    (bizCat?'<div class="cat">'+bizCat+'</div>':'')+
+    '</div>'+
+    '<span style="font-size:.8rem;color:var(--primary);font-weight:600;white-space:nowrap">View Business →</span>'+
+  '</div>'+
+  '<div style="text-align:center;margin-top:8px">'+
+    '<a href="#/deals" style="font-size:.85rem;color:var(--text-light)">← Back to All Deals</a>'+
+  '</div>'
+
+  // ── Mobile Bottom Bar HTML ──
+  var mobileBarHtml='<div class="zh-deal-mobile-bar" id="zhMobileDealBar">'+
+    '<div class="mb-price">'+(origPrice?'<s>$'+origPrice+'</s> ':'')+(dealPrice?'$'+dealPrice:'')+'</div>'+
+    (d.show_timer&&d.end_date?'<div class="mb-timer" id="mbTimerDisplay">Calculating...</div>':'')+
+    '<button class="mb-cta" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText||'Claim')+'</button>'+
+  '</div>'
+
+  // ── Assemble two-column layout ──
+  el.innerHTML='<a href="#/deals" class="zh-deal-back-link">← Back to Deals</a>'+
+    '<div class="zh-deal-layout">'+
+      '<div class="zh-deal-main">'+mainHtml+'</div>'+
+      '<div class="zh-deal-sidebar">'+sidebarHtml+'</div>'+
+    '</div>'+
+    mobileBarHtml
+
+  // Start timers
   if(d.show_timer&&d.end_date){
-    startDealTimer(new Date(d.end_date+'Z').getTime()||new Date(d.end_date).getTime())
+    var endMs=new Date(d.end_date+'Z').getTime()||new Date(d.end_date).getTime()
+    startDealTimer(endMs)
+    startMobileTimer(endMs)
   }
+}
+
+// ── SEO + AEO Injection ──
+function injectDealSEO(d, bizName, currency){
+  // Meta tags
+  var title=d.title||'Deal'
+  var desc=(d.description||'').substring(0,160)
+  var img=d.image_url||''
+  var url=window.location.href
+
+  document.title=title+' | ZaarHub Deals'
+
+  // og:title
+  updateMeta('property','og:title',title)
+  updateMeta('property','og:description',desc)
+  updateMeta('property','og:image',img)
+  updateMeta('property','og:url',url)
+  updateMeta('property','og:type','product')
+  // twitter
+  updateMeta('name','twitter:card','summary_large_image')
+  updateMeta('name','twitter:title',title)
+  updateMeta('name','twitter:description',desc)
+  updateMeta('name','twitter:image',img)
+
+  // JSON-LD Product + Offer Schema
+  var priceNum=parseFloat(d.deal_price)||0
+  var stockStatus='https://schema.org/InStock'
+  if(d.max_claims>0&&(d.claims_count||0)>=d.max_claims)stockStatus='https://schema.org/OutOfStock'
+
+  var schema={
+    '@context':'https://schema.org',
+    '@type':'Product',
+    'name':title,
+    'description':desc||title,
+    'image':img||undefined,
+    'offers':{
+      '@type':'Offer',
+      'price':priceNum.toFixed(2),
+      'priceCurrency':currency||'USD',
+      'availability':stockStatus,
+      'businessFunction':'https://purl.org/goodrelations/v1#Sell'
+    },
+    'brand':{'@type':'Organization','name':bizName}
+  }
+  if(d.start_date)schema.offers.validFrom=d.start_date
+  if(d.end_date)schema.offers.validThrough=d.end_date
+  if(url)schema.offers.url=url
+
+  var oldScript=document.getElementById('zh-ld-json')
+  if(oldScript)oldScript.remove()
+  var script=document.createElement('script')
+  script.type='application/ld+json'
+  script.id='zh-ld-json'
+  script.textContent=JSON.stringify(schema)
+  document.head.appendChild(script)
+}
+
+function updateMeta(attrName, attrVal, content){
+  var sel='meta['+attrName+'="'+attrVal+'"]'
+  var el=document.querySelector(sel)
+  if(!el){
+    el=document.createElement('meta')
+    el.setAttribute(attrName,attrVal)
+    document.head.appendChild(el)
+  }
+  el.setAttribute('content',content||'')
+}
+
+function startMobileTimer(endMs){
+  function update(){
+    var display=document.getElementById('mbTimerDisplay')
+    if(!display)return
+    var diff=endMs-Date.now()
+    if(diff<=0){display.textContent='Expired';return}
+    var d=Math.floor(diff/86400000)
+    var h=Math.floor((diff%86400000)/3600000)
+    var m=Math.floor((diff%3600000)/60000)
+    display.textContent=(d>0?d+'d ':'')+h+'h '+m+'m'
+  }
+  update()
+  setInterval(update,30000)
 }
 
 function adjustColor(hex,amount){
@@ -1887,13 +2085,15 @@ function startDealTimer(endMs){
     var now=Date.now()
     var diff=endMs-now
     var display=document.getElementById('dealTimerDisplay')
-    if(!display)return
-    if(diff<=0){display.textContent='Expired';if(_dealTimerInterval)clearInterval(_dealTimerInterval);return}
+    var sbDisplay=document.getElementById('sbTimerDisplay')
     var d=Math.floor(diff/86400000)
     var h=Math.floor((diff%86400000)/3600000)
     var m=Math.floor((diff%3600000)/60000)
     var s=Math.floor((diff%60000)/1000)
-    display.textContent=(d>0?d+'d ':'')+h+'h '+m+'m '+s+'s'
+    var txt=(d>0?d+'d ':'')+h+'h '+m+'m '+s+'s'
+    if(diff<=0){txt='Expired';if(_dealTimerInterval)clearInterval(_dealTimerInterval)}
+    if(display)display.textContent=txt
+    if(sbDisplay)sbDisplay.textContent='Ends in '+((d>0?d+'d ':'')+h+'h '+m+'m')
   }
   update()
   if(_dealTimerInterval)clearInterval(_dealTimerInterval)
