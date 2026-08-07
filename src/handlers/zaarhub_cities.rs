@@ -59,6 +59,8 @@ fn listing_json(r: &sqlx::postgres::PgRow) -> Value {
         "review_count": r.try_get::<i32, _>("review_count").unwrap_or(0),
         "is_featured": r.try_get::<bool, _>("is_featured").unwrap_or(false),
         "is_claimed": r.try_get::<bool, _>("is_claimed").unwrap_or(false),
+        "is_editors_pick": r.try_get::<bool, _>("is_editors_pick").unwrap_or(false),
+        "editors_pick_note": r.try_get::<Option<String>, _>("editors_pick_note").unwrap_or_default(),
         "deal_text": r.try_get::<Option<String>, _>("deal_text").unwrap_or_default(),
         "deal_url": r.try_get::<Option<String>, _>("deal_url").unwrap_or_default(),
         "coordinates_lat": r.try_get::<Option<f64>, _>("coordinates_lat").unwrap_or_default(),
@@ -545,5 +547,88 @@ pub async fn featured_listings(
             "total": total,
             "total_pages": total_pages
         }
+    })))
+}
+
+// ── Editor's Picks API ─────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct EditorsPickQuery {
+    pub city_slug: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct EditorsPickPatch {
+    pub is_editors_pick: bool,
+    pub editors_pick_note: Option<String>,
+}
+
+/// GET /api/v1/zaarhub/editors-picks — list all editor's picks, optional city filter
+pub async fn list_editors_picks(
+    State(state): State<AppState>,
+    Query(params): Query<EditorsPickQuery>,
+) -> ApiResult<Json<Value>> {
+    let (rows, _total) = if let Some(ref city_slug) = params.city_slug {
+        let rows = sqlx::query(
+            "SELECT bl.*, cp.city_name, cp.city_slug \
+             FROM business_listings bl \
+             JOIN city_pages cp ON bl.city_page_id = cp.id \
+             WHERE bl.is_editors_pick = true AND cp.city_slug = $1 \
+             ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC"
+        ).bind(city_slug).fetch_all(&state.db).await?;
+        let cnt = rows.len() as i64;
+        (rows, cnt)
+    } else {
+        let rows = sqlx::query(
+            "SELECT bl.*, cp.city_name, cp.city_slug \
+             FROM business_listings bl \
+             JOIN city_pages cp ON bl.city_page_id = cp.id \
+             WHERE bl.is_editors_pick = true \
+             ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC"
+        ).fetch_all(&state.db).await?;
+        let cnt = rows.len() as i64;
+        (rows, cnt)
+    };
+
+    let picks: Vec<Value> = rows.iter().map(|r| {
+        let mut j = listing_json(r);
+        let city_name: String = r.try_get("city_name").unwrap_or_default();
+        let city_slug: String = r.try_get("city_slug").unwrap_or_default();
+        if let Some(obj) = j.as_object_mut() {
+            obj.insert("city_name".into(), json!(city_name));
+            obj.insert("city_slug".into(), json!(city_slug));
+        }
+        j
+    }).collect();
+
+    Ok(Json(json!({
+        "editor_picks": picks,
+        "total": _total
+    })))
+}
+
+/// PATCH /api/v1/zaarhub/admin/listings/:id/editors-pick — toggle editors_pick on a listing
+pub async fn toggle_editors_pick(
+    State(state): State<AppState>,
+    Path(listing_id): Path<String>,
+    Json(payload): Json<EditorsPickPatch>,
+) -> ApiResult<Json<Value>> {
+    let listing_uuid = Uuid::parse_str(&listing_id)
+        .map_err(|_| AppError::BadRequest("Invalid listing ID".into()))?;
+
+    sqlx::query(
+        "UPDATE business_listings SET is_editors_pick = $1, editors_pick_note = $2, updated_at = now() WHERE id = $3"
+    )
+    .bind(payload.is_editors_pick)
+    .bind(&payload.editors_pick_note)
+    .bind(listing_uuid)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(json!({
+        "success": true,
+        "listing_id": listing_id,
+        "is_editors_pick": payload.is_editors_pick,
+        "editors_pick_note": payload.editors_pick_note
     })))
 }
