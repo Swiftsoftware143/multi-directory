@@ -20,7 +20,7 @@ loss for the directory, no risk of businesses being drained.
 
 **Pool mechanics:**
 - Monthly ZC pool refreshes on the 1st of each month
-- If pool runs dry, 2 options per tenant: (a) earning pauses until next refill, or (b) business pays overage at 1:1 ZC-to-cents
+- If pool runs dry, 2 options per directory: (a) earning pauses until next refill, or (b) business pays overage at 1:1 ZC-to-cents
 - Pool can roll over for 1 month max (unused ZC doesn't accumulate forever)
 - The 10% bill cap still applies — how the ZC pool translates to actual cost:
   - **Starter pool (2,000 ZC)** supports $2,000 in customer spend/month (at 1% cashback)

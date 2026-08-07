@@ -19,7 +19,7 @@ Your portal can connect to two SwiftSoftware products that add powerful features
 | **IncentiveSwift** | `https://incentiveswift.com` | Loyalty campaigns, SMS funnels, smart surveys, rewards |
 | **CoreSwift CRM** | `https://coreswiftcrm.com` | Calendar, bookings, contact management, CRM pipeline |
 
-Use the same email as your directory/ZaarHub account so the system auto-detects you. If emails don't match, the tenant connection won't work and you won't be able to link services. Both sites have a "Get Started" / "Free Trial" button — the signup form is on the app login page.
+Use the same email as your directory account so the system auto-detects you. If emails don't match, the service connection won't work and you won't be able to link services. Both sites have a "Get Started" / "Free Trial" button — the signup form is on the app login page.
 
 ### Connecting IncentiveSwift
 
