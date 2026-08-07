@@ -116,6 +116,8 @@ pub struct DealCard {
     pub directory_slug: String,
     pub end_date: Option<DateTime<Utc>>,
     pub featured: Option<bool>,
+    pub business_category: Option<String>,
+    pub business_category_slug: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -308,13 +310,15 @@ pub async fn get_homepage(
     }).collect();
 
     // Featured deals across the network (respects zaarhub_config.show_deals per directory)
-    let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, String, Option<DateTime<Utc>>, Option<bool>)>(
+    let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, String, Option<DateTime<Utc>>, Option<bool>, Option<String>, Option<String>)>(
         r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price, de.discount_percent,
                   de.image_url, b.name as biz_name, b.slug as biz_slug, d.slug as dir_slug,
-                  de.end_date, de.zaarhub_featured
+                  de.end_date, de.zaarhub_featured,
+                  dc.name AS business_category, dc.slug AS business_category_slug
            FROM deals de
            JOIN businesses b ON b.id = de.business_id
            JOIN directories d ON d.id = de.directory_id
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
              AND (d.zaarhub_config->>'show_deals')::boolean = true
@@ -325,13 +329,14 @@ pub async fn get_homepage(
     .fetch_all(&s.db)
     .await?;
 
-    let deal_list: Vec<DealCard> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, dir_slug, end_date, featured)| {
+    let deal_list: Vec<DealCard> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, dir_slug, end_date, featured, biz_cat, biz_cat_slug)| {
         DealCard {
             id, title, description: desc,
             deal_price, original_price: orig_price,
             discount_percent: discount, image_url: img,
             business_name: biz_name, business_slug: biz_slug,
             directory_slug: dir_slug, end_date, featured,
+            business_category: biz_cat, business_category_slug: biz_cat_slug,
         }
     }).collect();
 
@@ -577,11 +582,13 @@ pub async fn get_city_page(
     }).collect();
 
     // Active deals in this city
-    let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, Option<DateTime<Utc>>, Option<bool>)>(
+    let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, Option<DateTime<Utc>>, Option<bool>, Option<String>, Option<String>)>(
         r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price, de.discount_percent,
-                  de.image_url, b.name as biz_name, b.slug as biz_slug, de.end_date, de.featured
+                  de.image_url, b.name as biz_name, b.slug as biz_slug, de.end_date, de.featured,
+                  dc.name AS business_category, dc.slug AS business_category_slug
            FROM deals de
            JOIN businesses b ON b.id = de.business_id
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND de.status = 'active'
            ORDER BY de.created_at DESC
            LIMIT 8"#
@@ -590,7 +597,7 @@ pub async fn get_city_page(
     .fetch_all(&s.db)
     .await?;
 
-    let deal_cards: Vec<DealCard> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, end_date, featured)| {
+    let deal_cards: Vec<DealCard> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, end_date, featured, biz_cat, biz_cat_slug)| {
         DealCard {
             id, title, description: desc,
             deal_price, original_price: orig_price,
@@ -598,6 +605,7 @@ pub async fn get_city_page(
             business_name: biz_name, business_slug: biz_slug,
             directory_slug: dir_slug.clone(),
             end_date, featured,
+            business_category: biz_cat, business_category_slug: biz_cat_slug,
         }
     }).collect();
 
@@ -1094,6 +1102,7 @@ pub async fn list_featured_deals(
         r#"FROM deals de
            JOIN businesses b ON b.id = de.business_id
            JOIN directories d ON d.id = de.directory_id
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
              AND (d.zaarhub_config->>'show_deals')::boolean = true
@@ -1118,14 +1127,15 @@ pub async fn list_featured_deals(
     let data_sql = format!(
         r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price,
                   de.discount_percent, de.image_url, b.name as biz_name, b.slug as biz_slug,
-                  d.slug as dir_slug, d.city as dir_city, de.end_date, de.zaarhub_featured
+                  d.slug as dir_slug, d.city as dir_city, de.end_date, de.zaarhub_featured,
+                  dc.name as business_category, dc.slug as business_category_slug
            {}
            ORDER BY de.created_at DESC
            LIMIT {} OFFSET {}"#,
         base_sql, limit, offset
     );
 
-    let deals: Vec<(Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, String, Option<String>, Option<DateTime<Utc>>, Option<bool>)> =
+    let deals: Vec<(Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, String, Option<String>, Option<DateTime<Utc>>, Option<bool>, Option<String>, Option<String>)> =
         if let Some(ref city) = query.city {
             sqlx::query_as(&data_sql).bind(city).fetch_all(&s.db).await?
         } else {
@@ -1134,7 +1144,7 @@ pub async fn list_featured_deals(
 
     let deal_list: Vec<Value> = deals
         .into_iter()
-        .map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, dir_slug, dir_city, end_date, featured)| {
+        .map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, dir_slug, dir_city, end_date, featured, biz_cat, biz_cat_slug)| {
             json!({
                 "id": id,
                 "title": title,
@@ -1149,6 +1159,8 @@ pub async fn list_featured_deals(
                 "directory_city": dir_city,
                 "end_date": end_date,
                 "featured": featured,
+                "business_category": biz_cat,
+                "business_category_slug": biz_cat_slug,
             })
         })
         .collect();
