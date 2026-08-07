@@ -380,56 +380,76 @@ a:hover{text-decoration:underline}
 <div class="card">
   <h3><span class="emoji">📂</span> 18. Category Management</h3>
   <p>Categories are organized into <strong>groups</strong> (e.g., Dining, Home &amp; Outdoor, Professional) and each group contains individual categories. A business can belong to multiple categories (up to 3 by default, 5 with admin override).</p>
-  
-  <h4>Adding Businesses to Categories (Admin Role)</h4>
-  <p>When searching for or importing businesses, admins have direct category assignment: </p>
-  <ul>
-    <li><strong>During business search → add business</strong> — The admin panel's business search includes a category dropdown. After finding a business, the admin can assign categories before confirming the addition.</li>
-    <li><strong>During CSV import</strong> — Import templates include category columns. Admins can map columns to existing categories during the import wizard.</li>
-    <li><strong>During manual business creation</strong> — The "Add Business" form includes a category multi-select. Admins select categories directly — no request/approval flow needed.</li>
-    <li><strong>Post-creation</strong> — Edit any business and modify its category assignments from the business detail panel. Changes take effect immediately on the frontend.</li>
-  </ul>
-  <div class="tip-box">
-    <strong>💡 Tip:</strong> Categories must exist before they can be assigned. Always create the category first (from the admin panel's Category Manager), then assign businesses to it. If a category doesn't exist yet, the admin can create it inline during the business add flow.
+
+  <div class="warn-box">
+    <strong>⚠️ Critical:</strong> Categories must be created <strong>before</strong> searching for or adding businesses. The search engine filter dropdown is populated from existing categories. If no categories exist for a directory, the category filter will be disabled.
   </div>
 
-  <h4>Business Owner Self-Service Categories</h4>
-  <p>After claiming their business, owners can manage their category assignments through the Business Portal:</p>
+  <h4>Step 1: Create Categories First</h4>
+  <p>Before populating a directory with businesses, create your categories from the <strong>Category Manager</strong> (Admin Panel → Categories). Each category has a name, slug, and group. Categories are available immediately after creation.</p>
+
+  <h4>Step 2: Search for Businesses</h4>
+  <p>Go to <strong>Admin Panel → Search &amp; Import</strong>. The search engine includes a <strong>Category Filter dropdown</strong> that shows all existing categories. Select a category (or group) to narrow your search. The filter makes results highly targeted from the start — example: select "Coffee Shop" and the search returns coffee shops in the target city.</p>
+
+  <h4>Step 3: Assign Categories — Individual or Bulk</h4>
+  <p>After search results load, you have two ways to assign categories:</p>
+
+  <p><strong>Individual assignment:</strong></p>
   <ul>
-    <li><strong>Removing a category</strong> — Instant. The business owner clicks "Remove" next to any assigned category. No admin approval needed. The category is immediately removed from their listing.</li>
-    <li><strong>Adding a category</strong> — Requires admin approval. The business owner browses available categories and clicks "Request." This creates a pending request visible in the admin panel under <strong>Pending Category Requests</strong>.</li>
-    <li><strong>Maximum categories</strong> — Default cap is <strong>3 categories per business</strong>. Admins can override this to 5 for verified/top-rated businesses from the business detail panel.</li>
-    <li><strong>Primary vs. secondary</strong> — The first category selected is the <strong>primary category</strong> and receives full search weight. Additional categories receive 75% search weight to prevent gaming.</li>
+    <li>Each search result row has a <strong>category dropdown</strong>. The admin selects one or more categories from the dropdown.</li>
+    <li>Click <strong>Save</strong> on that row to update the business's categories immediately.</li>
+  </ul>
+
+  <p><strong>Bulk assignment:</strong></p>
+  <ul>
+    <li>Select multiple businesses using the checkboxes in the search results table.</li>
+    <li>Click the <strong>Bulk Actions</strong> button at the top of the table.</li>
+    <li>Choose <strong>"Assign Categories"</strong> from the bulk actions menu.</li>
+    <li>Select one or more target categories in the modal.</li>
+    <li>Choose <strong>Replace</strong> (overwrites existing) or <strong>Append</strong> (adds to existing).</li>
+    <li>Click <strong>Apply</strong> — all selected businesses update in one operation.</li>
+  </ul>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Use bulk assign as an auto-categorization tool. Search by one category filter, assign those results, then search by another filter and assign again. Businesses that appear in both searches get both categories — giving them natural multi-category coverage.
+  </div>
+
+  <h4>Other Assignment Methods</h4>
+  <ul>
+    <li><strong>CSV import</strong> — Import templates include a category column. Map columns to existing categories during the import wizard.</li>
+    <li><strong>Post-creation editing</strong> — Edit any business from the admin panel and modify its categories via the multi-select. Changes take effect immediately.</li>
+  </ul>
+
+  <h4>Business Owner Self-Service Categories</h4>
+  <p>After claiming their business, owners can manage categories through the Business Portal:</p>
+  <ul>
+    <li><strong>Removing a category</strong> — Instant. Owner clicks "Remove" next to any assigned category. No admin approval needed.</li>
+    <li><strong>Adding a category</strong> — Requires admin approval. Owner browses categories and clicks "Request." Creates a pending request visible under <strong>Pending Category Requests</strong>.</li>
+    <li><strong>Maximum categories</strong> — Default cap is <strong>3 per business</strong>. Admins can override to 5 for verified/top-rated businesses.</li>
+    <li><strong>Primary vs. secondary</strong> — The first category is the <strong>primary</strong> and receives full search weight. Additional categories at 75% weight to prevent gaming.</li>
   </ul>
 
   <h4>Approving Category Requests</h4>
-  <p>From the admin panel sidebar, go to <strong>Pending Category Requests</strong>. Each request shows:</p>
-  <ul>
-    <li>Business name and current categories</li>
-    <li>Requested category with rationale (optional note from business owner)</li>
-    <li>One-click <strong>Approve</strong> or <strong>Deny</strong> with optional denial reason</li>
-  </ul>
-  <p>Approved categories appear immediately on the business listing. Denied requests include the admin's reason, which the business owner can see and address before re-submitting.</p>
+  <p>Go to <strong>Pending Category Requests</strong> in the admin sidebar. Each request shows business name, current categories, requested category, and optional rationale. One-click <strong>Approve</strong> or <strong>Deny</strong> with optional denial reason.</p>
 
   <h4>Category Cleanup &amp; Merging</h4>
   <ul>
-    <li><strong>Rename</strong> — Rename any category; all business associations are preserved automatically.</li>
-    <li><strong>Delete</strong> — Only empty categories (0 businesses assigned) can be deleted. The system prevents deleting populated categories.</li>
-    <li><strong>Merge</strong> — Select two categories and click "Merge Into." All businesses from the source category are re-assigned to the target, and the source is deleted.</li>
-    <li><strong>Group reassignment</strong> — Move a category between groups by editing its group name. Useful when restructuring (e.g., moving a category from Retail to Dining).</li>
+    <li><strong>Rename</strong> — Rename any category; all business associations preserved.</li>
+    <li><strong>Delete</strong> — Only empty categories (0 businesses) can be deleted.</li>
+    <li><strong>Merge</strong> — Select two categories and click "Merge Into." All businesses from source are re-assigned to target, source deleted.</li>
+    <li><strong>Group reassignment</strong> — Move a category between groups by editing its group name.</li>
   </ul>
 
-  <h4>Current Category Structure (55 categories, 14 groups)</h4>
+  <h4>Current Category Structure (54 categories, 14 groups)</h4>
   <details>
-    <summary><strong>🍽️ Dining</strong> (8 categories)</summary>
-    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Bars &amp; Breweries, Breakfast, Catering, Coffee Shop, Food &amp; Drink, Food Trucks, Pizza, Seafood</p>
+    <summary><strong>🍽️ Dining</strong> (7 categories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Bars &amp; Breweries, Breakfast, Catering, Coffee Shop, Food Trucks, Pizza, Seafood</p>
   </details>
   <details>
     <summary><strong>🛍️ Hyper-Local Retail &amp; Specialty Food</strong> (10 categories)</summary>
-    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Artisan &amp; Handmade Goods, Bakeries &amp; Dessert Shops, Books, Music &amp; Hobby, Boutiques &amp; Vintage Thrift, Electronics Repair &amp; Resale, Farmers Market, Florists &amp; Garden Shops, Gifts &amp; Stationery, Home &amp; Decor, Specialty Grocery &amp; Gourmet</p>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Artisan &amp; Handmade Goods, Bakeries &amp; Dessert Shops, Books/Music/Hobby, Boutiques &amp; Vintage Thrift, Electronics Repair &amp; Resale, Farmers Market, Florists &amp; Garden Shops, Gifts &amp; Stationery, Home &amp; Decor, Specialty Grocery &amp; Gourmet</p>
   </details>
   <details>
-    <summary><strong>🔧 Home &amp; Outdoor</strong> (9 categories)</summary>
+    <summary><strong>🔧 Home &amp; Outdoor</strong> (10 categories)</summary>
     <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Cleaning Services, Electrician, HVAC, Landscaping, Maintenance &amp; Handyman, Plumber, Pool Service, Roofing, Screen Enclosures, Tree Service</p>
   </details>
   <details>
@@ -441,7 +461,7 @@ a:hover{text-decoration:underline}
     <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Accountant, Business &amp; Professional Services, Personal Injury Lawyer, Property Management, Real Estate Agent</p>
   </details>
   <details>
-    <summary><strong>🎭 Entertainment &amp; Events</strong> (4 categories across 2 groups)</summary>
+    <summary><strong>🎭 Entertainment &amp; Events</strong> (4 categories)</summary>
     <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Family Entertainment, Live Music &amp; Bars, Local Attractions &amp; Tours, Special Events &amp; Party Planning</p>
   </details>
   <details>
