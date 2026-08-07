@@ -1,3 +1,55 @@
-# Auto-deploy happens server-side via deploy-from-vps.sh or cron
-# This is a placeholder — SSH secrets are not available for this repo.
-# See /opt/swift/multidirectory-rust/deploy-from-vps.sh on the VPS
+# .github/workflows/deploy.yml
+# Deployments are handled server-side via swift-build-deploy.sh on the VPS.
+# This workflow runs CI checks only — cargo check + clippy + test as a sanity gate.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: cargo check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo check --all-features
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo clippy -- -D warnings
+
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: swift
+          POSTGRES_PASSWORD: SwiftSecure2026!
+          POSTGRES_DB: multidirectory_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -- --test-threads=1
+        env:
+          DATABASE_URL: postgres://swift:SwiftSecure2026!@localhost:5432/multidirectory_test
