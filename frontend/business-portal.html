@@ -434,6 +434,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div class="tab" onclick="switchLoyaltyTab('legal')" id="loyLegalTab">⚖️ Legal</div>
       <div class="tab" onclick="switchLoyaltyTab('settings')" id="loySettingsTab">⚙️ Settings</div>
       <div class="tab" onclick="switchLoyaltyTab('iqs')" id="loyIqsTab">🧠 Surveys</div>
+      <div class="tab" onclick="switchLoyaltyTab('deals')" id="loyDealsTab">🎁 Deals</div>
     </div>
     
     <!-- Loading -->
@@ -701,6 +702,87 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <h3>Your Funnels</h3>
             <div id="iqsFunnelsList"><div class="empty-state"><p>No funnels yet. Create one to start collecting survey responses!</p></div></div>
           </div>
+        </div>
+      </div>
+
+      <!-- Deals Panel -->
+      <div id="loyDealsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🎁 Deals &amp; Coupons</div>
+        <div class="section-subtitle">Create deals, discounts, and coupons for your business. Visitors can browse and claim them from the directory.</div>
+        
+        <!-- Create/Edit Deal Form -->
+        <div id="dealFormCard" class="card" style="display:none;margin-bottom:16px">
+          <h3 id="dealFormTitle">Create New Deal</h3>
+          <div class="form-group">
+            <label>Deal Title *</label>
+            <input type="text" id="dealTitle" placeholder="e.g. 20% Off Your First Visit" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="dealDesc" rows="2" placeholder="What does this deal include?" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></textarea>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Original Price</label>
+              <input type="text" id="dealOrigPrice" placeholder="$50" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Deal Price</label>
+              <input type="text" id="dealPrice" placeholder="$40" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Discount %</label>
+              <input type="number" id="dealDiscount" min="1" max="99" placeholder="20" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Coupon Code (optional)</label>
+            <input type="text" id="dealCouponCode" placeholder="e.g. SAVE20" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Start Date</label>
+              <input type="date" id="dealStartDate" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>End Date</label>
+              <input type="date" id="dealEndDate" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Redemption Limit</label>
+              <input type="number" id="dealLimit" min="1" placeholder="100" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Image URL (optional)</label>
+            <input type="url" id="dealImage" placeholder="https://example.com/deal-image.jpg" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div class="form-group">
+            <label>Terms (optional)</label>
+            <input type="text" id="dealTerms" placeholder="e.g. One per customer. Not combinable." style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div id="dealFormResult" style="margin:8px 0;font-size:.8rem"></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" id="dealSubmitBtn" onclick="submitDeal()">💾 Save Deal</button>
+            <button class="btn btn-secondary" onclick="cancelDealForm()">Cancel</button>
+          </div>
+        </div>
+        
+        <!-- Deals Toolbar -->
+        <div id="dealsToolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-primary" onclick="showDealForm()">+ New Deal</button>
+          <div id="dealsStats" style="font-size:.85rem;color:var(--text-secondary)"></div>
+        </div>
+        
+        <!-- Deals List -->
+        <div id="dealsList" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+          <div class="empty-state"><p>Loading deals...</p></div>
+        </div>
+        
+        <!-- Claims/Redemptions Panel -->
+        <div id="dealsClaimsSection" style="display:none;margin-top:24px">
+          <div class="section-title" style="font-size:1rem">📋 Recent Claims</div>
+          <div id="dealsClaimsList"></div>
         </div>
       </div>
 
@@ -1099,7 +1181,7 @@ function loyalty(path) {
 }
 
 function switchLoyaltyTab(tab) {
-  var tabs = ['dash','credits','vouchers','referrals','rewards','pin','scanner','pledges','offers','iqs','settings'];
+  var tabs = ['dash','credits','vouchers','referrals','rewards','pin','scanner','pledges','offers','iqs','deals','settings'];
   for (var i = 0; i < tabs.length; i++) {
     var t = tabs[i];
     var tabEl = document.getElementById('loy' + t.charAt(0).toUpperCase() + t.slice(1) + 'Tab');
@@ -1122,6 +1204,7 @@ function switchLoyaltyTab(tab) {
   else if (tab === 'legal') loadLegalTab();
   else if (tab === 'settings') loadSettingsTab();
   else if (tab === 'iqs') loadIqsTab();
+  else if (tab === 'deals') loadDealsTab();
 }
 
 // ── Load Loyalty Dashboard ──
@@ -2305,6 +2388,202 @@ window.addEventListener('beforeunload', function() {
 var style = document.createElement('style');
 style.textContent = '@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
 document.head.appendChild(style);
+
+// ── Deals Functions ──
+
+var _editingDealId = null;
+
+function loadDealsTab() {
+  if (!_selectedBizId) {
+    document.getElementById('dealsList').innerHTML = '<div class="empty-state"><p>Select a business first to manage deals.</p></div>';
+    return;
+  }
+  document.getElementById('dealsList').innerHTML = '<div class="empty-state"><div class="spinner"></div><p>Loading deals...</p></div>';
+  var token = localStorage.getItem('bizToken');
+  fetch(API + '/deals?business_id=' + _selectedBizId, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(deals) {
+    var list = Array.isArray(deals) ? deals : (deals.deals || []);
+    renderDealsList(list);
+    updateDealsStats(list);
+  })
+  .catch(function(e) {
+    document.getElementById('dealsList').innerHTML = '<div class="empty-state"><p style="color:var(--danger)">Failed to load deals: ' + esc(e.message) + '</p></div>';
+  });
+}
+
+function renderDealsList(deals) {
+  var container = document.getElementById('dealsList');
+  if (!container) return;
+  if (!deals || deals.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div style="font-size:2.5rem;margin-bottom:8px">🎁</div><p>No deals yet. Create your first deal to attract customers!</p><button class="btn btn-primary" onclick="showDealForm()">+ Create Deal</button></div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < deals.length; i++) {
+    var d = deals[i];
+    var statusColor = d.status === 'active' ? 'var(--green)' : (d.status === 'paused' ? 'var(--warm)' : 'var(--text-muted)');
+    var statusLabel = (d.status || 'active').charAt(0).toUpperCase() + (d.status || 'active').slice(1);
+    var priceInfo = '';
+    if (d.deal_price) {
+      priceInfo = '<div class="deal-price-row" style="font-size:1.05rem;font-weight:700;color:var(--primary);margin:4px 0">$' + esc(d.deal_price);
+      if (d.original_price) priceInfo += ' <s style="font-size:.8rem;color:var(--text-muted);font-weight:400">$' + esc(d.original_price) + '</s>';
+      if (d.discount_percent) priceInfo += ' <span style="font-size:.75rem;background:var(--warm-light);color:var(--warm);padding:2px 8px;border-radius:100px;margin-left:6px">-' + d.discount_percent + '%</span>';
+      priceInfo += '</div>';
+    }
+    var claimed = (d.redemption_count || 0);
+    html += '<div class="card" style="position:relative">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">' +
+        '<h4 style="font-size:.95rem;font-weight:700;margin:0;padding-right:80px">' + esc(d.title) + '</h4>' +
+        '<span style="font-size:.7rem;font-weight:600;color:' + statusColor + ';background:' + statusColor + '15;padding:2px 10px;border-radius:100px;white-space:nowrap">' + statusLabel + '</span>' +
+      '</div>' +
+      (d.description ? '<p style="font-size:.82rem;color:var(--text-secondary);margin:4px 0">' + esc(d.description.length > 100 ? d.description.slice(0,100) + '...' : d.description) + '</p>' : '') +
+      priceInfo +
+      '<div style="display:flex;gap:12px;font-size:.75rem;color:var(--text-muted);margin:6px 0">' +
+        '<span>🎟️ ' + claimed + ' claimed</span>' +
+        (d.redemption_limit ? '<span>📊 Limit: ' + d.redemption_limit + '</span>' : '') +
+        (d.coupon_code ? '<span>🏷️ ' + esc(d.coupon_code) + '</span>' : '') +
+      '</div>' +
+      (d.end_date ? '<div style="font-size:.72rem;color:var(--text-muted)">Expires: ' + new Date(d.end_date).toLocaleDateString() + '</div>' : '') +
+      '<div style="display:flex;gap:6px;margin-top:10px">' +
+        '<button class="btn btn-sm btn-secondary" onclick="editDeal(\'' + d.id + '\')">✏️ Edit</button>' +
+        '<button class="btn btn-sm btn-secondary" onclick="deleteDeal(\'' + d.id + '\', \'' + esc(d.title.replace(/'/g, "\\'")).replace(/&/g, '&amp;') + '\')" style="color:var(--danger)">🗑️ Delete</button>' +
+      '</div>' +
+    '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function updateDealsStats(deals) {
+  var el = document.getElementById('dealsStats');
+  if (!el) return;
+  var active = 0, total = deals.length, claimed = 0;
+  for (var i = 0; i < deals.length; i++) {
+    if (deals[i].status === 'active') active++;
+    claimed += (deals[i].redemption_count || 0);
+  }
+  el.innerHTML = active + ' active / ' + total + ' total &nbsp;|&nbsp; ' + claimed + ' claims';
+}
+
+function showDealForm(deal) {
+  _editingDealId = null;
+  var form = document.getElementById('dealFormCard');
+  document.getElementById('dealFormResult').innerHTML = '';
+  if (deal) {
+    _editingDealId = deal.id;
+    document.getElementById('dealFormTitle').textContent = 'Edit Deal';
+    document.getElementById('dealSubmitBtn').textContent = '💾 Update Deal';
+    document.getElementById('dealTitle').value = deal.title || '';
+    document.getElementById('dealDesc').value = deal.description || '';
+    document.getElementById('dealOrigPrice').value = deal.original_price || '';
+    document.getElementById('dealPrice').value = deal.deal_price || '';
+    document.getElementById('dealDiscount').value = deal.discount_percent || '';
+    document.getElementById('dealCouponCode').value = deal.coupon_code || '';
+    document.getElementById('dealLimit').value = deal.redemption_limit || '';
+    document.getElementById('dealImage').value = deal.image_url || '';
+    document.getElementById('dealTerms').value = deal.terms || '';
+    document.getElementById('dealStartDate').value = deal.start_date ? deal.start_date.slice(0,10) : '';
+    document.getElementById('dealEndDate').value = deal.end_date ? deal.end_date.slice(0,10) : '';
+  } else {
+    document.getElementById('dealFormTitle').textContent = 'Create New Deal';
+    document.getElementById('dealSubmitBtn').textContent = '💾 Save Deal';
+    ['dealTitle','dealDesc','dealOrigPrice','dealPrice','dealDiscount','dealCouponCode','dealLimit','dealImage','dealTerms','dealStartDate','dealEndDate'].forEach(function(id) {
+      document.getElementById(id).value = '';
+    });
+  }
+  form.style.display = '';
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelDealForm() {
+  _editingDealId = null;
+  document.getElementById('dealFormCard').style.display = 'none';
+  document.getElementById('dealFormResult').innerHTML = '';
+}
+
+async function submitDeal() {
+  if (!_selectedBizId) { alert('Select a business first'); return; }
+  var title = document.getElementById('dealTitle').value.trim();
+  if (!title) { alert('Deal title is required'); return; }
+  
+  var token = localStorage.getItem('bizToken');
+  var body = {
+    title: title,
+    description: document.getElementById('dealDesc').value.trim() || null,
+    original_price: document.getElementById('dealOrigPrice').value.trim() || null,
+    deal_price: document.getElementById('dealPrice').value.trim() || null,
+    discount_percent: parseInt(document.getElementById('dealDiscount').value) || null,
+    coupon_code: document.getElementById('dealCouponCode').value.trim() || null,
+    redemption_limit: parseInt(document.getElementById('dealLimit').value) || null,
+    image_url: document.getElementById('dealImage').value.trim() || null,
+    terms: document.getElementById('dealTerms').value.trim() || null,
+    business_id: _selectedBizId
+  };
+  var sd = document.getElementById('dealStartDate').value;
+  var ed = document.getElementById('dealEndDate').value;
+  if (sd) body.start_date = sd + 'T00:00:00Z';
+  if (ed) body.end_date = ed + 'T23:59:59Z';
+  
+  var resultEl = document.getElementById('dealFormResult');
+  resultEl.innerHTML = '<span style="color:var(--text-secondary)">Saving...</span>';
+  
+  try {
+    var url = _editingDealId ? (API + '/deals/' + _editingDealId) : (API + '/deals');
+    var method = _editingDealId ? 'PUT' : 'POST';
+    var resp = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      var err = await resp.json().catch(function() { return { message: 'Request failed' }; });
+      throw new Error(err.message || err.error || 'Request failed');
+    }
+    resultEl.innerHTML = '<span style="color:var(--green)">✅ Deal ' + (_editingDealId ? 'updated' : 'created') + '!</span>';
+    _editingDealId = null;
+    setTimeout(function() {
+      document.getElementById('dealFormCard').style.display = 'none';
+      resultEl.innerHTML = '';
+    }, 1500);
+    loadDealsTab();
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:var(--danger)">❌ ' + esc(e.message) + '</span>';
+  }
+}
+
+async function editDeal(id) {
+  var token = localStorage.getItem('bizToken');
+  try {
+    var resp = await fetch(API + '/deals/' + id, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!resp.ok) throw new Error('Failed to load deal');
+    var deal = await resp.json();
+    showDealForm(deal);
+  } catch(e) {
+    alert('Could not load deal: ' + e.message);
+  }
+}
+
+async function deleteDeal(id, title) {
+  if (!confirm('Delete "' + title + '"? This cannot be undone.')) return;
+  var token = localStorage.getItem('bizToken');
+  try {
+    var resp = await fetch(API + '/deals/' + id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!resp.ok) {
+      var err = await resp.json().catch(function() { return { message: 'Delete failed' }; });
+      throw new Error(err.message || 'Delete failed');
+    }
+    loadDealsTab();
+  } catch(e) {
+    alert('Failed to delete: ' + e.message);
+  }
+}
 
 // ── Advertising Functions ──
 
