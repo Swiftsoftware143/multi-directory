@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarHub — Claim Your Deal</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root {
+  --brand: #f27f2f;
+  --brand-dark: #2b3255;
+  --bg: #f8f9fc;
+  --card: #ffffff;
+  --text: #1a1a2e;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --success: #10b981;
+  --error: #ef4444;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg: 0 10px 40px rgba(0,0,0,.08);
+}
+
+* { margin:0; padding:0; box-sizing:border-box }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* Header */
+header {
+  background: var(--brand-dark);
+  color: white;
+  padding: 16px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,.15);
+}
+header .inner {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+header .logo {
+  font-size: 20px;
+  font-weight: 800;
+  color: white;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+header .logo span { color: var(--brand); }
+header .back-link {
+  color: rgba(255,255,255,.7);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color .2s;
+}
+header .back-link:hover { color: var(--brand); }
+
+/* Main */
+main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+/* Hero section */
+.biz-hero {
+  background: linear-gradient(135deg, var(--brand-dark) 0%, #1a1a3e 100%);
+  color: white;
+  padding: 40px 28px;
+  border-radius: var(--radius);
+  margin-bottom: 24px;
+  text-align: center;
+}
+.biz-hero .biz-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: white;
+  border: 3px solid var(--brand);
+  margin-bottom: 12px;
+}
+.biz-hero .biz-placeholder {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 800;
+  border: 3px solid white;
+  margin-bottom: 12px;
+}
+.biz-hero h1 { font-size: clamp(22px, 4vw, 32px); font-weight: 800; margin-bottom: 4px; }
+.biz-hero .biz-meta { font-size: 14px; opacity: .8; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+
+/* Offer card */
+.offer-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.offer-card .offer-type {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 12px;
+}
+.offer-type.promo_code { background: #dbeafe; color: #1e40af; }
+.offer-type.coupon { background: #fef3c7; color: #92400e; }
+.offer-type.link { background: #d1fae5; color: #065f46; }
+.offer-type.phone_deal { background: #ede9fe; color: #5b21b6; }
+
+.offer-card h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.offer-card .discount {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--brand);
+  margin-bottom: 12px;
+}
+.offer-card .desc {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.7;
+  margin-bottom: 16px;
+}
+.offer-card .meta-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.offer-card .expires {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #fef2f2;
+  color: #dc2626;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.offer-card .terms {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Claim form section */
+.claim-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+}
+.claim-section h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+
+.form-group {
+  margin-bottom: 14px;
+}
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+.form-group input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  transition: border-color .2s;
+  outline: none;
+}
+.form-group input:focus { border-color: var(--brand); }
+.form-group .optional { font-weight: 400; color: var(--text-muted); font-size: 11px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 32px;
+  border: none;
+  border-radius: 100px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+  width: 100%;
+}
+.btn-primary {
+  background: var(--brand);
+  color: white;
+}
+.btn-primary:hover:not(:disabled) { background: #e06a1e; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Reveal section */
+.reveal-section {
+  display: none;
+  margin-top: 20px;
+  padding: 24px;
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  border-radius: var(--radius);
+  border: 2px solid var(--success);
+  text-align: center;
+  animation: fadeInUp .5s ease;
+}
+.reveal-section.active { display: block; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.reveal-section .success-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+.reveal-section h3 { color: #065f46; font-size: 20px; margin-bottom: 12px; }
+.reveal-section .promo-code-box {
+  background: white;
+  border: 2px dashed var(--success);
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--text);
+  margin-bottom: 12px;
+  cursor: pointer;
+  user-select: all;
+  transition: background .2s;
+}
+.reveal-section .promo-code-box:hover { background: #f0fdf4; }
+.reveal-section .copy-btn {
+  display: inline-block;
+  padding: 8px 20px;
+  background: var(--success);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: all .2s;
+}
+.reveal-section .copy-btn:hover { background: #059669; }
+.reveal-section .copy-btn.copied { background: #065f46; }
+.reveal-section .redemption-link {
+  display: inline-block;
+  padding: 10px 24px;
+  background: var(--brand-dark);
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  margin: 8px 0;
+  transition: all .2s;
+}
+.reveal-section .redemption-link:hover { background: #1a1a3e; transform: translateY(-1px); }
+.reveal-section .call-now {
+  display: inline-block;
+  padding: 10px 24px;
+  background: var(--success);
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  margin: 8px 0;
+}
+
+/* Error state */
+.error-msg {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  margin-top: 12px;
+  display: none;
+}
+.error-msg.active { display: block; }
+
+/* States */
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+.loader {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .biz-hero { padding: 28px 16px; }
+  .offer-card { padding: 20px; }
+  .claim-section { padding: 20px; }
+  .offer-card .discount { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="inner">
+    <a href="/zaarhub" class="logo">⚡ Zaar<span>Hub</span></a>
+    <a href="javascript:history.back()" class="back-link">← Back</a>
+  </div>
+</header>
+<main>
+  <div id="loading" class="loading-state">
+    <div class="loader"></div>
+    <p>Loading deals...</p>
+  </div>
+  <div id="error-state" class="empty-state" style="display:none">
+    <div class="icon">⚠️</div>
+    <h3>Something went wrong</h3>
+    <p id="error-text">Could not load this listing's offers.</p>
+    <a href="/zaarhub" style="color:var(--brand);font-weight:600;margin-top:12px;display:inline-block">← Browse ZaarHub</a>
+  </div>
+  <div id="content" style="display:none">
+    <!-- Biz hero -->
+    <div class="biz-hero" id="biz-hero"></div>
+    <!-- Offers list -->
+    <div id="offers-list"></div>
+  </div>
+</main>
+
+<script>
+const API = '/api/v1/zaarhub';
+
+// Get listing ID from URL param
+const params = new URLSearchParams(window.location.search);
+const listingId = params.get('listing_id');
+
+// Generate or retrieve visitor ID
+function getVisitorId() {
+  const key = 'zaarhub_visitor_id';
+  let vid = localStorage.getItem(key);
+  if (!vid) {
+    vid = 'v_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(key, vid);
+  }
+  return vid;
+}
+
+const visitorId = getVisitorId();
+
+async function init() {
+  if (!listingId) {
+    showError('No listing specified. Browse <a href="/zaarhub">ZaarHub</a> to find deals.');
+    return;
+  }
+  try {
+    // Load listing info + offers in parallel
+    const [listingRes, offersRes] = await Promise.all([
+      fetch(`${API}/listings/${listingId}`),
+      fetch(`${API}/listings/${listingId}/offers`)
+    ]);
+
+    if (!listingRes.ok) throw new Error('Listing not found');
+    const listingData = await listingRes.json();
+    const listing = listingData.listing;
+
+    if (!offersRes.ok) throw new Error('Failed to load offers');
+    const offersData = await offersRes.json();
+    const offers = offersData.offers || [];
+
+    renderBizHero(listing);
+    renderOffers(listing, offers);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  } catch(e) {
+    console.error(e);
+    showError(e.message);
+  }
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('error-state').style.display = 'block';
+  document.getElementById('error-text').innerHTML = msg;
+}
+
+function renderBizHero(listing) {
+  const logo = listing.logo_url
+    ? `<img class="biz-logo" src="${escAttr(listing.logo_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">`
+    : '';
+  const placeholder = listing.logo_url
+    ? `<div class="biz-placeholder" style="display:none">${(listing.business_name||'?')[0]}</div>`
+    : `<div class="biz-placeholder">${(listing.business_name||'?')[0]}</div>`;
+
+  document.getElementById('biz-hero').innerHTML = `
+    ${logo}${placeholder}
+    <h1>${escHtml(listing.business_name)}</h1>
+    <div class="biz-meta">
+      ${listing.category ? `<span>${escHtml(listing.category)}</span>` : ''}
+      ${listing.rating ? `<span>★ ${listing.rating} (${listing.review_count} reviews)</span>` : ''}
+      ${listing.address ? `<span>📍 ${escHtml(listing.address)}</span>` : ''}
+    </div>
+  `;
+}
+
+function renderOffers(listing, offers) {
+  const container = document.getElementById('offers-list');
+  if (offers.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🎁</div>
+        <h3>No active offers</h3>
+        <p>${escHtml(listing.business_name)} doesn't have any active deals right now. Check back soon!</p>
+        <a href="/zaarhub" style="color:var(--brand);font-weight:600;margin-top:12px;display:inline-block">← Browse ZaarHub</a>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = offers.map(o => offerCard(o, listing)).join('');
+}
+
+function offerCard(offer, listing) {
+  const expires = offer.expires_at
+    ? `<div class="expires">⏰ Expires ${new Date(offer.expires_at).toLocaleDateString()}</div>`
+    : '';
+
+  const claimed = offer.max_claims
+    ? `<span>🔥 ${offer.current_claims}/${offer.max_claims} claimed</span>`
+    : `<span>🔥 ${offer.current_claims} claimed</span>`;
+
+  return `
+    <div class="offer-card" id="offer-${offer.id}">
+      <span class="offer-type ${escAttr(offer.offer_type)}">${typeLabel(offer.offer_type)}</span>
+      ${offer.discount_value ? `<div class="discount">${escHtml(offer.discount_value)}</div>` : ''}
+      <h2>${escHtml(offer.offer_title)}</h2>
+      ${offer.offer_description ? `<p class="desc">${escHtml(offer.offer_description)}</p>` : ''}
+      <div class="meta-row">
+        ${claimed}
+        ${expires ? `<span>⏰ ${new Date(offer.expires_at).toLocaleDateString()}</span>` : ''}
+      </div>
+      ${offer.terms_conditions ? `<div class="terms">📋 ${escHtml(offer.terms_conditions)}</div>` : ''}
+      <div class="claim-section" style="margin-top:20px;box-shadow:none;border-color:var(--border)">
+        <h3>Claim This Deal 🎁</h3>
+        <div class="form-group">
+          <label for="email-${offer.id}">Email <span class="optional">(optional)</span></label>
+          <input id="email-${offer.id}" type="email" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label for="phone-${offer.id}">Phone <span class="optional">(optional)</span></label>
+          <input id="phone-${offer.id}" type="tel" placeholder="+1 (555) 000-0000">
+        </div>
+        <button class="btn btn-primary" onclick="claimOffer('${offer.id}')">
+          🎁 Claim Deal
+        </button>
+        <div id="error-${offer.id}" class="error-msg"></div>
+        <div id="reveal-${offer.id}" class="reveal-section"></div>
+      </div>
+    </div>`;
+}
+
+function typeLabel(t) {
+  const map = { promo_code: 'Promo Code', coupon: 'Coupon', link: 'Special Link', phone_deal: 'Phone Deal' };
+  return map[t] || t;
+}
+
+async function claimOffer(offerId) {
+  const email = document.getElementById(`email-${offerId}`).value.trim();
+  const phone = document.getElementById(`phone-${offerId}`).value.trim();
+  const btn = document.querySelector(`#offer-${offerId} .btn-primary`);
+  const errorEl = document.getElementById(`error-${offerId}`);
+  const revealEl = document.getElementById(`reveal-${offerId}`);
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Claiming...';
+  errorEl.classList.remove('active');
+  revealEl.classList.remove('active');
+
+  try {
+    const res = await fetch(`${API}/offers/${offerId}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visitor_id: visitorId,
+        email: email || null,
+        phone: phone || null
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to claim offer');
+    }
+
+    const data = await res.json();
+    showReveal(offerId, data, btn);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '🎁 Claim Deal';
+    errorEl.textContent = e.message;
+    errorEl.classList.add('active');
+  }
+}
+
+function showReveal(offerId, data, btn) {
+  const revealEl = document.getElementById(`reveal-${offerId}`);
+  const offer = data.offer;
+  let html = `<div class="success-icon">🎉</div><h3>Deal Claimed!</h3>`;
+
+  if (data.promo_code) {
+    html += `
+      <p style="margin-bottom:8px;color:#065f46;font-weight:600">Your promo code:</p>
+      <div class="promo-code-box" id="code-${offerId}" title="Click to copy">${escHtml(data.promo_code)}</div>
+      <button class="copy-btn" onclick="copyCode('${offerId}', '${escAttr(data.promo_code)}')">📋 Copy Code</button>
+    `;
+  }
+
+  if (data.redemption_url) {
+    html += `<a class="redemption-link" href="${escAttr(data.redemption_url)}" target="_blank" rel="noopener">🔗 Redeem Now →</a>`;
+  }
+
+  if (offer.offer_type === 'phone_deal' && offer.redemption_phone) {
+    html += `<a class="call-now" href="tel:${escAttr(offer.redemption_phone)}">📞 Call ${escHtml(offer.redemption_phone)}</a>`;
+  }
+
+  html += `<p style="margin-top:12px;font-size:12px;color:#6b7280">Claimed at ${new Date().toLocaleString()}</p>`;
+  revealEl.innerHTML = html;
+  revealEl.classList.add('active');
+
+  btn.textContent = '✅ Claimed!';
+  btn.classList.add('claimed');
+}
+
+function copyCode(offerId, code) {
+  const btn = event.target;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = '✅ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 Copy Code';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    // Fallback: select the text
+    const el = document.getElementById(`code-${offerId}`);
+    if (el) {
+      const range = document.createRange();
+      range.selectNode(el);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      btn.textContent = '✅ Selected!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = '📋 Copy Code';
+        btn.classList.remove('copied');
+      }, 2000);
+    }
+  });
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function escAttr(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>

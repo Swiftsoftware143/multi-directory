@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarHub — Local Business Directory</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root {
+  --brand: #f27f2f;
+  --brand-dark: #2b3255;
+  --bg: #f8f9fc;
+  --card: #ffffff;
+  --text: #1a1a2e;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --star: #f59e0b;
+  --featured-glow: #f27f2f22;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg: 0 10px 40px rgba(0,0,0,.08);
+}
+
+* { margin:0; padding:0; box-sizing:border-box }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* Header */
+header {
+  background: var(--brand-dark);
+  color: white;
+  padding: 16px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,.15);
+}
+header .inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+header .logo {
+  font-size: 22px;
+  font-weight: 800;
+  color: white;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+header .logo span { color: var(--brand); }
+header .nav-links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+header .nav-links a {
+  color: rgba(255,255,255,.8);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color .2s;
+}
+header .nav-links a:hover { color: var(--brand); }
+
+/* Hero */
+.hero {
+  background: linear-gradient(135deg, var(--brand-dark) 0%, #1a1a3e 100%);
+  color: white;
+  padding: 48px 20px;
+  text-align: center;
+}
+.hero h1 { font-size: clamp(28px, 5vw, 42px); font-weight: 800; margin-bottom: 8px; }
+.hero h1 span { color: var(--brand); }
+.hero p { font-size: 16px; opacity: .85; max-width: 600px; margin: 0 auto 24px; }
+
+/* Search */
+.search-bar {
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+}
+.search-bar input {
+  flex: 1;
+  padding: 14px 20px;
+  border-radius: 100px;
+  border: 2px solid transparent;
+  font-size: 15px;
+  outline: none;
+  transition: border-color .2s;
+}
+.search-bar input:focus { border-color: var(--brand); }
+.search-bar button {
+  padding: 14px 28px;
+  border-radius: 100px;
+  border: none;
+  background: var(--brand);
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+}
+.search-bar button:hover { background: #e06a1e; transform: translateY(-1px); }
+
+/* City selector */
+.city-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 20px;
+}
+.city-tab {
+  padding: 8px 18px;
+  border-radius: 100px;
+  border: 1px solid rgba(255,255,255,.3);
+  background: transparent;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+.city-tab:hover { border-color: var(--brand); color: var(--brand); }
+.city-tab.active { background: var(--brand); border-color: var(--brand); color: white; }
+
+/* Main layout */
+.main-layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 28px;
+}
+
+/* Sidebar */
+.sidebar {
+  position: sticky;
+  top: 80px;
+  align-self: start;
+}
+.filter-group {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.filter-group h3 {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.filter-group ul { list-style: none; }
+.filter-group li { margin-bottom: 6px; }
+.filter-group li a, .filter-group li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text);
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all .15s;
+}
+.filter-group li a:hover, .filter-group li button:hover {
+  background: var(--bg);
+  color: var(--brand);
+}
+.filter-group li a.active, .filter-group li button.active {
+  background: var(--brand);
+  color: white;
+  font-weight: 600;
+}
+.filter-group .count {
+  float: right;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* Listings */
+.listing-grid {
+  display: grid;
+  gap: 16px;
+}
+.listing-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  transition: all .2s;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.listing-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+.listing-card.featured {
+  border-color: var(--brand);
+  background: var(--featured-glow);
+}
+.listing-card .logo-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.listing-card .logo-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--brand);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.listing-card .info { flex: 1; min-width: 0; }
+.listing-card .info h3 {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.listing-card .info .category-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--brand);
+  background: var(--featured-glow);
+  padding: 3px 10px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.listing-card .info .desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.listing-card .info .meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.listing-card .info .meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.listing-card .stars {
+  color: var(--star);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.view-offers-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--brand);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  margin-top: 10px;
+  text-decoration: none;
+  transition: all .2s;
+}
+.view-offers-btn:hover {
+  background: #e06a1e;
+  transform: translateY(-1px);
+}
+
+.listing-card .deal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+.featured-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--brand);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  letter-spacing: .3px;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 24px;
+}
+.pagination button {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pagination button:hover { border-color: var(--brand); color: var(--brand); }
+.pagination button.active { background: var(--brand); color: white; border-color: var(--brand); }
+.pagination button:disabled { opacity: .4; cursor: default; }
+
+/* Detail modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--card);
+  border-radius: var(--radius);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 32px;
+  position: relative;
+  box-shadow: var(--shadow-lg);
+}
+.modal .close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal .detail-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  object-fit: cover;
+  margin-bottom: 16px;
+}
+.modal h2 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+.modal .category-tag { margin-bottom: 12px; }
+.modal .detail-meta {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.modal .detail-meta a {
+  color: var(--brand);
+  text-decoration: none;
+  font-weight: 500;
+}
+.modal .detail-meta .meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.modal .detail-meta .label { font-weight: 600; color: var(--text-muted); min-width: 60px; }
+
+/* States */
+.loading { text-align: center; padding: 48px; color: var(--text-muted); }
+.empty { text-align: center; padding: 48px; color: var(--text-muted); }
+.error { text-align: center; padding: 48px; color: #ef4444; }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .main-layout { grid-template-columns: 1fr; }
+  .sidebar { position: static; }
+  .search-bar { flex-direction: column; }
+  .search-bar button { width: 100%; }
+  .listing-card { flex-direction: column; align-items: center; text-align: center; }
+  .listing-card .meta { justify-content: center; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <a href="/zaarhub-city.html" class="logo">Zaar<span>Hub</span></a>
+    <nav class="nav-links">
+      <a href="#" onclick="showAllCities()">Cities</a>
+      <a href="#" onclick="showFeatured()">Top Picks</a>
+      <a href="https://zaarhub.com">About</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero" id="hero-section">
+  <h1>Discover <span>Local Businesses</span></h1>
+  <p>Find top-rated restaurants, shops, services, and more in your Florida city.</p>
+  <div class="search-bar">
+    <input type="text" id="search-input" placeholder="Search businesses..." onkeyup="if(event.key==='Enter')doSearch()">
+    <button onclick="doSearch()">🔍 Search</button>
+  </div>
+  <div class="city-tabs" id="city-tabs"></div>
+</section>
+
+<div class="main-layout">
+  <aside class="sidebar">
+    <div class="filter-group">
+      <h3>Categories</h3>
+      <ul id="category-list"><li class="loading">Loading...</li></ul>
+    </div>
+    <div class="filter-group">
+      <h3>Sort By</h3>
+      <ul>
+        <li><button class="active" data-sort="featured" onclick="setSort('featured',this)">Featured First</button></li>
+        <li><button data-sort="rating" onclick="setSort('rating',this)">Highest Rated</button></li>
+        <li><button data-sort="name" onclick="setSort('name',this)">A–Z</button></li>
+      </ul>
+    </div>
+  </aside>
+
+  <main>
+    <div class="listing-grid" id="listing-grid">
+      <div class="loading">Loading businesses...</div>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </main>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+// ── State ──
+const API = '/api/v1/zaarhub';
+let currentCity = 'all';
+let currentCategory = '';
+let currentSort = 'featured';
+let currentSearch = '';
+let currentPage = 1;
+let citiesLoaded = false;
+
+// ── Init ──
+async function init() {
+  await loadCities();
+  await loadCategories();
+  await loadListings();
+}
+
+async function loadCities() {
+  try {
+    const res = await fetch(`${API}/cities`);
+    const data = await res.json();
+    const container = document.getElementById('city-tabs');
+    // Add "All Cities" tab
+    container.innerHTML = '<button class="city-tab active" onclick="selectCity(\'all\',this)">All Cities</button>';
+    data.cities?.forEach(c => {
+      container.innerHTML += `<button class="city-tab" onclick="selectCity('${c.city_slug}',this)">${c.city_name.replace(', FL','')}</button>`;
+    });
+    citiesLoaded = true;
+  } catch(e) { console.error('Failed to load cities', e); }
+}
+
+async function loadCategories() {
+  try {
+    const res = await fetch(`${API}/categories`);
+    const data = await res.json();
+    const list = document.getElementById('category-list');
+    list.innerHTML = '<li><button class="active" onclick="selectCategory(\'\',this)">All Categories</button></li>';
+    data.categories?.forEach(cat => {
+      list.innerHTML += `<li><button onclick="selectCategory('${cat.name}',this)">${cat.name || 'Uncategorized'} <span class="count">${cat.count}</span></button></li>`;
+    });
+  } catch(e) { console.error('Failed to load categories', e); }
+}
+
+async function loadListings() {
+  const grid = document.getElementById('listing-grid');
+  const pagination = document.getElementById('pagination');
+  grid.innerHTML = '<div class="loading">⏳ Loading...</div>';
+
+  try {
+    let url;
+    if (currentCity === 'all') {
+      if (currentSearch) {
+        url = `${API}/search?q=${encodeURIComponent(currentSearch)}&page=${currentPage}&per_page=20`;
+      } else {
+        url = `${API}/featured?page=${currentPage}&per_page=20`;
+      }
+    } else {
+      url = `${API}/cities/${currentCity}/listings?page=${currentPage}&per_page=20`;
+      if (currentCategory) url += `&category=${encodeURIComponent(currentCategory)}`;
+    }
+
+    // Apply sort (client-side if API doesn't support)
+    if (currentSort && currentCity !== 'all') url += `&sort=${currentSort}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    let listings = data.listings || [];
+    let pag = data.pagination || { page: 1, total_pages: 1, total: 0 };
+
+    // Client-side sort for 'all' mode
+    if (currentSort === 'rating') listings.sort((a,b) => (b.rating||0) - (a.rating||0));
+    if (currentSort === 'name') listings.sort((a,b) => a.business_name.localeCompare(b.business_name));
+
+    // Filter by category in 'all' mode
+    if (currentCategory && currentCity === 'all') {
+      listings = listings.filter(l => (l.category||'').toLowerCase() === currentCategory.toLowerCase());
+    }
+
+    // Search client-side filter if API didn't filter
+    if (currentSearch && currentCity === 'all' && !data.pagination) {
+      const q = currentSearch.toLowerCase();
+      listings = listings.filter(l =>
+        (l.business_name||'').toLowerCase().includes(q) ||
+        (l.description||'').toLowerCase().includes(q) ||
+        (l.category||'').toLowerCase().includes(q)
+      );
+    }
+
+    if (listings.length === 0) {
+      grid.innerHTML = '<div class="empty">📭 No businesses found. Try a different city or search.</div>';
+    } else {
+      grid.innerHTML = listings.map(l => listingCard(l)).join('');
+    }
+
+    // Pagination
+    if (pag.total_pages > 1) {
+      let html = '';
+      html += `<button ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(${currentPage-1})">← Prev</button>`;
+      for (let p = Math.max(1, currentPage-2); p <= Math.min(pag.total_pages, currentPage+2); p++) {
+        html += `<button class="${p === currentPage ? 'active' : ''}" onclick="goPage(${p})">${p}</button>`;
+      }
+      html += `<button ${currentPage >= pag.total_pages ? 'disabled' : ''} onclick="goPage(${currentPage+1})">Next →</button>`;
+      pagination.innerHTML = html;
+    } else {
+      pagination.innerHTML = listings.length >= 20
+        ? '<button onclick="goPage(2)">Next →</button>'
+        : '';
+    }
+  } catch(e) {
+    grid.innerHTML = '<div class="error">⚠️ Failed to load listings. Please try again.</div>';
+    console.error(e);
+  }
+}
+
+function listingCard(l) {
+  const stars = '★'.repeat(Math.round(l.rating || 0)) + '☆'.repeat(5 - Math.round(l.rating || 0));
+  const featuredClass = l.is_featured ? 'featured' : '';
+  const featuredPill = l.is_featured ? '<span class="featured-pill">⭐ Featured</span>' : '';
+  const dealBadge = l.deal_text ? `<div class="deal-badge">🎁 ${escHtml(l.deal_text)}</div>` : '';
+
+  const logo = l.logo_url
+    ? `<img class="logo-img" src="${escHtml(l.logo_url)}" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">`
+    : '';
+  const placeholder = logo ? `<div class="logo-placeholder" style="display:none">${(l.business_name||'?')[0]}</div>` : `<div class="logo-placeholder">${(l.business_name||'?')[0]}</div>`;
+
+  return `
+    <div class="listing-card ${featuredClass}" onclick="openListing('${l.id}')">
+      ${logo}${placeholder}
+      <div class="info">
+        ${featuredPill}
+        <h3>${escHtml(l.business_name)}</h3>
+        ${l.category ? `<span class="category-tag">${escHtml(l.category)}</span>` : ''}
+        ${l.description ? `<p class="desc">${escHtml(l.description)}</p>` : ''}
+        <div class="meta">
+          ${l.rating ? `<span class="stars">${stars} ${l.rating}</span>` : ''}
+          ${l.review_count ? `<span>${l.review_count} reviews</span>` : ''}
+          ${l.address ? `<span>📍 ${escHtml(l.address)}</span>` : ''}
+          ${l.phone ? `<span>📞 ${escHtml(l.phone)}</span>` : ''}
+        </div>
+        ${dealBadge}
+        <a href="/zaarhub-offer.html?listing_id=${l.id}" class="view-offers-btn" onclick="event.stopPropagation()">🎁 View Offers</a>
+      </div>
+    </div>`;
+}
+
+async function openListing(id) {
+  try {
+    const res = await fetch(`${API}/listings/${id}`);
+    const l = await res.json();
+    const modal = document.getElementById('modal-content');
+    const stars = '★'.repeat(Math.round(l.rating || 0)) + '☆'.repeat(5 - Math.round(l.rating || 0));
+
+    modal.innerHTML = `
+      <button class="close" onclick="closeModal()">✕</button>
+      ${l.logo_url ? `<img class="detail-logo" src="${escHtml(l.logo_url)}" alt="" onerror="this.style.display='none'">` : ''}
+      ${l.is_featured ? '<span class="featured-pill">⭐ Featured</span>' : ''}
+      <h2>${escHtml(l.business_name)}</h2>
+      ${l.category ? `<div class="category-tag">${escHtml(l.category)}${l.subcategory ? ' → ' + escHtml(l.subcategory) : ''}</div>` : ''}
+      ${l.rating ? `<div class="stars" style="font-size:18px;margin-bottom:8px">${stars} <strong>${l.rating}</strong> (${l.review_count} reviews)</div>` : ''}
+      ${l.description ? `<p style="margin-bottom:16px;line-height:1.7">${escHtml(l.description)}</p>` : ''}
+      <div class="detail-meta">
+        ${l.address ? `<div class="meta-row">📍 <span class="label">Address</span> ${escHtml(l.address)}</div>` : ''}
+        ${l.phone ? `<div class="meta-row">📞 <span class="label">Phone</span> <a href="tel:${escHtml(l.phone)}">${escHtml(l.phone)}</a></div>` : ''}
+        ${l.website ? `<div class="meta-row">🌐 <span class="label">Website</span> <a href="${escHtml(l.website)}" target="_blank" rel="noopener">${escHtml(l.website)}</a></div>` : ''}
+        ${l.coordinates_lat ? `<div class="meta-row">🗺️ <span class="label">Map</span> <a href="https://maps.google.com/?q=${l.coordinates_lat},${l.coordinates_lng}" target="_blank">View on Google Maps</a></div>` : ''}
+      </div>
+      ${l.deal_text ? `<div style="background:#dcfce7;padding:16px;border-radius:10px;margin-top:16px"><strong>🎁 Deal:</strong> ${escHtml(l.deal_text)}${l.deal_url ? `<br><a href="${escHtml(l.deal_url)}" style="color:#166534;font-weight:700">Claim Deal →</a>` : ''}</div>` : ''}
+      <a href="/zaarhub-offer.html?listing_id=${l.id}" style="display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:var(--brand);color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px">🎁 View Offers</a>
+    `;
+    document.getElementById('modal-overlay').classList.add('active');
+  } catch(e) {
+    console.error('Failed to load listing', e);
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+}
+
+// ── Actions ──
+function selectCity(slug, el) {
+  document.querySelectorAll('.city-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  currentCity = slug;
+  currentPage = 1;
+  loadListings();
+}
+
+function selectCategory(cat, el) {
+  document.querySelectorAll('#category-list button').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  currentCategory = cat;
+  currentPage = 1;
+  loadListings();
+}
+
+function setSort(sort, el) {
+  document.querySelectorAll('[data-sort]').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  currentSort = sort;
+  currentPage = 1;
+  loadListings();
+}
+
+function doSearch() {
+  currentSearch = document.getElementById('search-input').value.trim();
+  currentPage = 1;
+  if (currentSearch && currentCity === 'all') {
+    // Use search endpoint
+    loadListings();
+  } else if (currentSearch) {
+    // Use listing endpoint with search param
+    loadListings();
+  } else {
+    loadListings();
+  }
+}
+
+function showAllCities() {
+  currentCity = 'all';
+  currentSearch = '';
+  document.getElementById('search-input').value = '';
+  currentPage = 1;
+  document.querySelectorAll('.city-tab').forEach((t,i) => t.classList.toggle('active', i===0));
+  loadListings();
+}
+
+function showFeatured() {
+  currentCity = 'all';
+  currentSort = 'featured';
+  currentPage = 1;
+  loadListings();
+}
+
+function goPage(p) {
+  currentPage = p;
+  loadListings();
+  window.scrollTo({ top: 200, behavior: 'smooth' });
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Kick off
+init();
+</script>
+</body>
+</html>
