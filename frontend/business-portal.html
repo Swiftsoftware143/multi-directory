@@ -767,16 +767,14 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <div class="form-group" style="flex:1;min-width:180px">
               <label>Template Style</label>
               <select id="dealPageTemplate" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
-                <option value="">Default</option>
-                <option value="automotive">🚗 Automotive</option>
-                <option value="education">📚 Education</option>
-                <option value="farm">🌾 Farm</option>
-                <option value="fitness">💪 Fitness</option>
-                <option value="hospitality">🏨 Hospitality</option>
-                <option value="restaurant">🍽️ Restaurant</option>
-                <option value="service">🛠️ Service</option>
-                <option value="medical">🏥 Medical</option>
-                <option value="real-estate">🏠 Real Estate</option>
+                <option value="">Default (Classic)</option>
+                <option value="classic">📄 Classic</option>
+                <option value="modern">✨ Modern</option>
+                <option value="bold">🔥 Bold</option>
+                <option value="minimal">🤍 Minimal</option>
+                <option value="service">⭐ Service/Experience</option>
+                <option value="ecommerce">🛒 E-Commerce/Digital</option>
+                <option value="event">🎪 Event/Ticket</option>
               </select>
             </div>
             <div class="form-group" style="flex:0 0 auto;min-width:100px">
@@ -803,6 +801,32 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <label>Gallery Images <span style="font-size:.75rem;color:var(--text-muted)">— one URL per line</span></label>
             <textarea id="dealGalleryImages" rows="3" placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"></textarea>
           </div>
+          <hr style="margin:16px 0;border-color:var(--border)">
+          <div class="section-subtitle" style="margin-bottom:12px">⭐ Premium Features '+(typeof dealPageObj!=="undefined"&&dealPageObj.premium_features?'<span style="font-size:.75rem;color:var(--green);margin-left:6px">Enabled</span>':'<span style="font-size:.75rem;color:var(--text-muted);margin-left:6px">🔒 Upgrade Required</span>')+'</div>
+          <div id="premiumFeaturesSection" style="background:var(--bg-teal);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">'+
+            '<div class="form-group">'+
+              '<label>Redemption Type</label>'+
+              '<select id="dealRedemptionType" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">'+
+                '<option value="code">📝 Coupon Code</option>'+
+                '<option value="qr">📱 QR Code</option>'+
+                '<option value="booking">🔗 Booking Link</option>'+
+                '<option value="wallet">💳 Wallet Pass</option>'+
+              '</select>'+
+            '</div>'+
+            '<div class="form-group">'+
+              '<label>Booking URL <span style="font-size:.75rem;color:var(--text-muted)">— for booking type redemptions</span></label>'+
+              '<input type="text" id="dealBookingUrl" placeholder="https://your-booking-link.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">'+
+            '</div>'+
+            '<label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
+              '<input type="checkbox" id="dealShowQR" style="width:18px;height:18px">'+
+              '<span style="font-size:.85rem;font-weight:500">Show QR Code on Deal Page</span>'+
+            '</label>'+
+            '<label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
+              '<input type="checkbox" id="dealPremiumFeatures" style="width:18px;height:18px">'+
+              '<span style="font-size:.85rem;font-weight:500">Enable Premium Features</span>'+
+              '<span style="font-size:.75rem;color:var(--text-muted);margin-left:4px">(QR codes, template variants, social sharing, booking links)</span>'+
+            '</label>'+
+          '</div>'+
           <div id="dealFormResult" style="margin:8px 0;font-size:.8rem"></div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-primary" id="dealSubmitBtn" onclick="submitDeal()">💾 Save Deal</button>
@@ -2543,6 +2567,10 @@ function showDealForm(deal) {
     document.getElementById('dealCtaColor').value = deal.cta_color || '#f27f2f';
     document.getElementById('dealCtaText').value = deal.cta_text || '';
     document.getElementById('dealShowTimer').checked = deal.show_timer === true;
+    document.getElementById('dealRedemptionType').value = deal.redemption_type || 'code';
+    document.getElementById('dealBookingUrl').value = deal.booking_url || '';
+    document.getElementById('dealShowQR').checked = deal.show_qr === true;
+    document.getElementById('dealPremiumFeatures').checked = deal.premium_features === true;
     var galImages = deal.gallery_images;
     if (Array.isArray(galImages)) {
       document.getElementById('dealGalleryImages').value = galImages.join('\n');
@@ -2561,6 +2589,10 @@ function showDealForm(deal) {
     document.getElementById('dealCtaText').value = '';
     document.getElementById('dealShowTimer').checked = false;
     document.getElementById('dealGalleryImages').value = '';
+    document.getElementById('dealRedemptionType').value = 'code';
+    document.getElementById('dealBookingUrl').value = '';
+    document.getElementById('dealShowQR').checked = false;
+    document.getElementById('dealPremiumFeatures').checked = false;
   }
   form.style.display = '';
   form.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2596,7 +2628,11 @@ async function submitDeal() {
     cta_color: document.getElementById('dealCtaColor').value || null,
     cta_text: document.getElementById('dealCtaText').value.trim() || null,
     show_timer: document.getElementById('dealShowTimer').checked,
-    gallery_images: galleryImages
+    gallery_images: galleryImages,
+    redemption_type: document.getElementById('dealRedemptionType').value || 'code',
+    booking_url: document.getElementById('dealBookingUrl').value.trim() || null,
+    show_qr: document.getElementById('dealShowQR').checked,
+    premium_features: document.getElementById('dealPremiumFeatures').checked
   };
   var sd = document.getElementById('dealStartDate').value;
   var ed = document.getElementById('dealEndDate').value;

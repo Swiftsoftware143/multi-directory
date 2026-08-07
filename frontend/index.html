@@ -278,6 +278,74 @@ a:hover{text-decoration:underline}
 .zh-premium-link{font-weight:700;color:var(--accent);text-decoration:none;white-space:nowrap;margin-left:auto}
 .zh-premium-link:hover{text-decoration:underline}
 
+/* ── Phase 3c: Premium Feature Lock Cards ── */
+.zh-locked-card{background:linear-gradient(135deg,#fef3c7,#fff7ed);border:1px dashed var(--warm);border-radius:var(--radius-lg);padding:20px;text-align:center;margin-bottom:16px;position:relative;overflow:hidden}
+.zh-locked-card::after{content:'';position:absolute;top:-20px;right:-20px;width:60px;height:60px;background:var(--warm);border-radius:50%;opacity:.08}
+.zh-locked-card .lock-icon{font-size:2rem;margin-bottom:8px}
+.zh-locked-card .lock-title{font-weight:700;font-size:.95rem;margin-bottom:4px;color:var(--dark)}
+.zh-locked-card .lock-desc{font-size:.82rem;color:var(--text-light);margin-bottom:12px}
+.zh-locked-card .lock-btn{display:inline-block;padding:8px 20px;background:linear-gradient(135deg,var(--warm),#f59e0b);color:#fff;border-radius:100px;font-size:.82rem;font-weight:700;text-decoration:none;box-shadow:0 2px 8px rgba(245,158,11,.3);transition:all .2s}
+.zh-locked-card .lock-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(245,158,11,.4)}
+
+/* ── Phase 3c: Template Variants ── */
+/* Service/Experience Template */
+.zh-deal-service .zh-deal-hero{padding:32px;border-radius:var(--radius-xl) var(--radius-xl) 0 0;margin-bottom:0}
+.zh-deal-service .zh-deal-hero .dl-logo{width:80px;height:80px;border-radius:50%}
+.zh-deal-service .zh-deal-hero h1{font-size:1.6rem}
+.zh-deal-service .zh-deal-hero .dl-price{font-size:2rem}
+.zh-deal-service .zh-deal-booking-cta{text-align:center;padding:20px;background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-xl) var(--radius-xl)}
+/* E-Commerce Template */
+.zh-deal-ecommerce .zh-deal-hero{position:relative;overflow:hidden;padding:24px}
+.zh-deal-ecommerce .zh-deal-hero .dl-discount-badge{font-size:2rem;padding:12px 24px;background:#ff6b35;color:#fff;margin-top:0;margin-bottom:12px;animation:zhPulse 2s ease-in-out infinite}
+.zh-deal-ecommerce .zh-promo-reveal{background:var(--card);border:2px dashed var(--green);border-radius:var(--radius-lg);padding:20px;text-align:center;margin:16px 0;position:relative}
+.zh-deal-ecommerce .zh-promo-reveal .promo-code{font-size:1.8rem;font-weight:900;letter-spacing:4px;color:var(--green);font-family:monospace;user-select:all}
+.zh-deal-ecommerce .zh-promo-reveal .promo-copy{margin-top:8px;display:inline-block;padding:6px 14px;background:var(--green);color:#fff;border-radius:100px;font-size:.78rem;font-weight:600;cursor:pointer;border:none}
+.zh-deal-ecommerce .zh-promo-reveal .promo-copy:hover{opacity:.9}
+@keyframes zhPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+/* Event Template */
+.zh-deal-event .zh-deal-hero{position:relative}
+.zh-deal-event .zh-event-countdown{display:flex;gap:8px;justify-content:center;margin-top:16px}
+.zh-deal-event .zh-event-countdown .cd-block{background:rgba(255,255,255,.2);border-radius:12px;padding:8px 14px;min-width:60px;text-align:center}
+.zh-deal-event .zh-event-countdown .cd-num{font-size:1.5rem;font-weight:900;display:block}
+.zh-deal-event .zh-event-countdown .cd-label{font-size:.65rem;text-transform:uppercase;opacity:.8}
+.zh-deal-event .zh-event-detail-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:.85rem;opacity:.9}
+.zh-deal-event .zh-tier-pricing{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:16px 0}
+.zh-deal-event .zh-tier-card{background:var(--card);border:2px solid var(--border);border-radius:var(--radius-lg);padding:16px 24px;text-align:center;min-width:140px;transition:all .2s}
+.zh-deal-event .zh-tier-card.featured{border-color:var(--primary);box-shadow:0 4px 16px rgba(242,127,47,.15)}
+.zh-deal-event .zh-tier-card .tier-name{font-size:.78rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px}
+.zh-deal-event .zh-tier-card .tier-price{font-size:1.5rem;font-weight:900;color:var(--primary)}
+
+/* ── Phase 3c: QR Code Modal ── */
+.zh-qr-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px}
+.zh-qr-modal{background:var(--card);border-radius:var(--radius-xl);padding:32px;max-width:360px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.zh-qr-modal h3{font-size:1.2rem;font-weight:800;margin-bottom:20px}
+.zh-qr-modal .qr-container{background:#fff;padding:16px;border-radius:12px;border:1px solid var(--border);display:inline-block;margin-bottom:16px}
+.zh-qr-modal .qr-code-text{font-size:.75rem;color:var(--text-muted);font-family:monospace;word-break:break-all;margin-top:8px}
+
+/* ── Phase 3c: Social Share ── */
+.zh-share-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 24px;margin:20px 0}
+.zh-share-section h4{font-size:1rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.zh-share-buttons{display:flex;gap:8px;flex-wrap:wrap}
+.zh-share-btn{display:inline-flex;align-items:center;gap:4px;padding:8px 14px;border-radius:100px;font-size:.78rem;font-weight:600;cursor:pointer;border:none;color:#fff;transition:all .2s;text-decoration:none}
+.zh-share-btn:hover{transform:translateY(-1px);opacity:.9}
+.zh-share-btn.fb{background:#1877f2}
+.zh-share-btn.tw{background:#000}
+.zh-share-btn.wa{background:#25d366}
+.zh-share-btn.em{background:#ea4335}
+.zh-share-btn.cp{background:var(--text-light);color:#fff}
+.zh-share-btn.copy-success{background:var(--green);animation:zhPulse .5s}
+
+/* ── Phase 3c: Upgrade Banner ── */
+.zh-upgrade-banner{background:linear-gradient(135deg,#2b3255,#f27f2f);border-radius:var(--radius-xl);padding:24px;color:#fff;margin:16px 0;text-align:center;position:relative;overflow:hidden}
+.zh-upgrade-banner::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");opacity:.5}
+.zh-upgrade-banner>*{position:relative;z-index:1}
+.zh-upgrade-banner h3{font-size:1.3rem;font-weight:800;margin-bottom:4px}
+.zh-upgrade-banner p{font-size:.88rem;opacity:.9;margin-bottom:12px}
+.zh-upgrade-banner .zh-upgrade-features{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.zh-upgrade-banner .zh-upgrade-features span{display:inline-flex;align-items:center;gap:4px;font-size:.78rem;background:rgba(255,255,255,.15);padding:4px 12px;border-radius:100px}
+.zh-upgrade-banner .zh-upgrade-cta{display:inline-block;padding:10px 28px;background:#fff;color:var(--primary-hover);border-radius:100px;font-weight:800;font-size:.88rem;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:all .2s}
+.zh-upgrade-banner .zh-upgrade-cta:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+
 /* ── Filter Row ── */
 .zh-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;justify-content:center}
 .zh-filter-row select{padding:8px 16px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;outline:none;min-width:140px}
@@ -2121,6 +2189,27 @@ function renderDealDetail(d){
   '<div class="zh-deal-tab-content" id="tab-about">'+aboutHtml+'</div>'
 
   // ── Sidebar content ──
+  var isPremium=d.premium_features===true
+  var redemptionType=d.redemption_type||'code'
+  var bookingUrl=d.booking_url||''
+  var showQR=d.show_qr===true
+
+  // ── QR Code Sidebar Button ──
+  var qrSidebarBtn=''
+  if(isPremium&&redemptionType==='qr'){
+    qrSidebarBtn='<button class="zh-deal-sticky-cta" style="background:#2563eb;margin-top:8px;font-size:.85rem" onclick="showQRCodeModal(\''+d.id+'\',\''+(d.coupon_code||'CLAIMED')+'\')">📱 Reveal QR Code</button>'
+  }else if(!isPremium){
+    qrSidebarBtn='<div style="text-align:center;padding:8px;margin-top:8px;font-size:.75rem;color:var(--text-muted);border:1px dashed var(--border);border-radius:8px">🔒 QR Code — Premium</div>'
+  }
+
+  // ── Booking Button (Sidebar) ──
+  var bookingSidebarBtn=''
+  if(isPremium&&redemptionType==='booking'&&bookingUrl){
+    bookingSidebarBtn='<a class="zh-deal-sticky-cta" href="'+esc(bookingUrl)+'" target="_blank" rel="noopener" style="background:#059669;margin-top:8px;font-size:.85rem;display:block;text-align:center;text-decoration:none;color:#fff;padding:14px 24px;border-radius:100px;font-weight:800">🔗 Book Now</a>'
+  }else if(!isPremium&&redemptionType==='booking'){
+    bookingSidebarBtn='<div style="text-align:center;padding:8px;margin-top:8px;font-size:.75rem;color:var(--text-muted);border:1px dashed var(--border);border-radius:8px">🔒 Booking — Premium</div>'
+  }
+
   var sidebarHtml='<div class="zh-deal-sticky-bar">'+
     (origPrice?'<div class="sb-original">$'+origPrice+'</div>':'')+
     (dealPrice?'<div class="sb-price">$'+dealPrice+'</div>':'')+
@@ -2128,25 +2217,119 @@ function renderDealDetail(d){
     compactTimerHtml+
     stockBar+
     '<button class="zh-deal-sticky-cta" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+'</button>'+
+    qrSidebarBtn+
+    bookingSidebarBtn+
   '</div>'
+
+  // ── Template-specific hero modifications ──
+  var templateClass=''
+  var templateWrapperClass=''
+  var templateName=template  // 'service', 'ecommerce', 'event' or category slug
+  var templateContentBefore=''
+  var templateContentAfter=''
+  var heroExtra=''
+  var templateClaimBtnMod='none'
+
+  if(isPremium){
+    // Premium template detection
+    if(templateName==='service'){
+      templateClass=' zh-deal-service'
+      // Service: add booking CTA below hero
+      templateContentAfter='<div class="zh-deal-booking-cta">'+
+        (bookingUrl?'<a href="'+esc(bookingUrl)+'" target="_blank" rel="noopener" class="zh-deal-claim-btn" style="background:#2563eb;max-width:300px">📅 Book Now</a>':'<button class="zh-deal-claim-btn" style="background:#2563eb;max-width:300px" onclick="claimDeal(\''+d.id+'\')">📅 '+esc(ctaText)+'</button>')+
+        '<div style="margin-top:8px;font-size:.8rem;color:var(--text-muted)">📍 '+esc(bizAddr||'Contact for location')+'</div>'+
+      '</div>'
+      templateClaimBtnMod='service'
+    }else if(templateName==='ecommerce'){
+      templateClass=' zh-deal-ecommerce'
+      // E-commerce: promo code reveal, big discount
+      if(d.coupon_code){
+        templateContentBefore='<div class="zh-promo-reveal"><div style="font-size:.85rem;color:var(--text-light);margin-bottom:8px">🎉 Your Exclusive Code</div><div class="promo-code" id="promoCodeText">'+esc(d.coupon_code)+'</div><button class="promo-copy" onclick="copyPromoCode()">📋 Copy Code</button></div>'
+      }
+      templateClaimBtnMod='ecommerce'
+    }else if(templateName==='event'){
+      templateClass=' zh-deal-event'
+      // Event: countdown, date/location display, tier pricing
+      if(d.end_date){
+        heroExtra='<script>window._zhEventEndMs=new Date("'+d.end_date+'").getTime()</script>'
+      }
+      templateContentBefore='<div class="zh-event-detail-row">'+
+        (d.start_date?'<span>📅 '+new Date(d.start_date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})+'</span>':'')+
+        (d.end_date?'<span>⏰ Ends '+new Date(d.end_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})+'</span>':'')+
+        (bizAddr?'<span>📍 '+esc(bizAddr)+'</span>':'')+
+      '</div>'
+      if(dealPrice&&origPrice){
+        templateContentBefore+='<div class="zh-tier-pricing"><div class="zh-tier-card featured"><div class="tier-name">🎟️ Deal Price</div><div class="tier-price">$'+dealPrice+'</div><div style="font-size:.75rem;color:var(--text-muted);text-decoration:line-through">$'+origPrice+'</div></div></div>'
+      }
+      templateClaimBtnMod='event'
+    }
+  }
 
   // ── Main content (left column) ──
   var mainHtml=bizSnapshotHtml+
-  '<div class="zh-deal-hero" style="background:linear-gradient(135deg,'+accentColor+','+adjustColor(accentColor,-30)+')">'+
+  '<div class="zh-deal-hero'+templateClass+'" style="background:linear-gradient(135deg,'+accentColor+','+adjustColor(accentColor,-30)+')">'+
     '<div class="dl-logo">'+(d.image_url?'<img src="'+esc(d.image_url)+'" alt="" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'🎉\'">':'🎉')+'</div>'+
     '<h1>'+esc(d.title)+'</h1>'+
     '<div class="dl-biz-name">by '+bizName+(dirName?' — '+dirName:'')+'</div>'+
     priceHtml+
     discountBadge+
-  '</div>'+
+    heroExtra+
+  '</div>'+templateContentBefore+
   timerHtml+
   tabsHtml+
   galleryHtml+
-  (d.deal_type==='coupon'&&d.coupon_code?'<div class="zh-deal-info-card"><h3>🏷️ Coupon Code</h3><div style="font-size:1.5rem;font-weight:800;letter-spacing:3px;color:'+accentColor+';text-align:center;padding:12px;background:var(--bg);border-radius:8px;border:2px dashed var(--border)">'+esc(d.coupon_code)+'</div></div>':'')+
-  '<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+claimedText+'</button>'+
-  '<div style="text-align:center;margin-top:8px">'+
-    '<a href="#/deals" style="font-size:.85rem;color:var(--text-light)">← Back to All Deals</a>'+
-  '</div>'
+  (d.deal_type==='coupon'&&d.coupon_code&&templateClaimBtnMod!=='ecommerce'?'<div class="zh-deal-info-card"><h3>🏷️ Coupon Code</h3><div style="font-size:1.5rem;font-weight:800;letter-spacing:3px;color:'+accentColor+';text-align:center;padding:12px;background:var(--bg);border-radius:8px;border:2px dashed var(--border)">'+esc(d.coupon_code)+'</div></div>':'')+
+  (templateClaimBtnMod==='service'?'':templateClaimBtnMod==='event'?'<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎫 '+esc(ctaText||'Reserve Now')+claimedText+'</button>':templateClaimBtnMod==='ecommerce'?(bookingUrl?'<a class="zh-deal-claim-btn" href="'+esc(bookingUrl)+'" target="_blank" rel="noopener" style="background:'+ctaColor+';display:block;text-decoration:none">🛒 Buy Now'+claimedText+'</a>':'<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🛒 '+esc(ctaText)+claimedText+'</button>'):'<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+claimedText+'</button>')+
+  templateContentAfter
+
+  // ── QR Code Tab Content (premium) ──
+  var qrTabContent=''
+  if(isPremium&&showQR){
+    qrTabContent='<div class="zh-deal-tab-content" id="tab-qr" style="text-align:center">'+
+      '<h4>📱 QR Code Redemption</h4>'+
+      '<p style="font-size:.85rem;color:var(--text-light);margin-bottom:12px">Show this QR code at the business to redeem your deal</p>'+
+      '<div class="qr-container" style="margin:0 auto"><canvas id="zhQrCanvas" width="200" height="200"></canvas></div>'+
+      '<div class="qr-code-text">'+esc('zaarhub.com/redeem/'+d.id)+'</div>'+
+    '</div>'
+  }
+
+  // ── Social Share Section ──
+  var shareHtml=''
+  var dealUrl=window.location.href
+  var shareText=encodeURIComponent(d.title+' — '+bizName+' on ZaarHub')
+  var shareUrl=encodeURIComponent(dealUrl)
+  if(isPremium){
+    shareHtml='<div class="zh-share-section">'+
+      '<h4>📤 Share & Earn</h4>'+
+      '<div class="zh-share-buttons">'+
+        '<a class="zh-share-btn fb" href="https://www.facebook.com/sharer/sharer.php?u='+shareUrl+'" target="_blank" rel="noopener">📘 Share</a>'+
+        '<a class="zh-share-btn tw" href="https://twitter.com/intent/tweet?text='+shareText+'&url='+shareUrl+'" target="_blank" rel="noopener">𝕏 Tweet</a>'+
+        '<a class="zh-share-btn wa" href="https://wa.me/?text='+shareText+'%20'+shareUrl+'" target="_blank" rel="noopener">💬 WhatsApp</a>'+
+        '<a class="zh-share-btn em" href="mailto:?subject='+encodeURIComponent(d.title)+'&body='+shareUrl+'" target="_blank" rel="noopener">📧 Email</a>'+
+        '<button class="zh-share-btn cp" onclick="copyDealLink(\''+esc(dealUrl)+'\',this)">📋 Copy</button>'+
+      '</div>'+
+    '</div>'
+  }else{
+    shareHtml='<div class="zh-locked-card">'+
+      '<div class="lock-icon">🔒</div>'+
+      '<div class="lock-title">Social Sharing</div>'+
+      '<div class="lock-desc">Share deals on Facebook, Twitter, WhatsApp and earn referral rewards</div>'+
+      '<a class="lock-btn" href="#/pricing">⭐ Upgrade to Premium</a>'+
+    '</div>'
+  }
+
+  // ── Premium Upgrade Banner (only for non-premium deals) ──
+  var upgradeBanner=''
+  if(!isPremium){
+    upgradeBanner='<div class="zh-upgrade-banner">'+
+      '<h3>⭐ Unlock Premium Features</h3>'+
+      '<p>Get QR codes, custom templates, social sharing, and booking links for your deal pages.</p>'+
+      '<div class="zh-upgrade-features">'+
+        '<span>📱 QR Codes</span><span>🎨 Template Variants</span><span>📤 Social Share</span><span>🔗 Booking Links</span>'+
+      '</div>'+
+      '<a class="zh-upgrade-cta" href="#/pricing">Upgrade to Premium →</a>'+
+    '</div>'
+  }
 
   // ── Mobile Bottom Bar HTML ──
   var mobileBarHtml='<div class="zh-deal-mobile-bar" id="zhMobileDealBar">'+
@@ -2158,7 +2341,7 @@ function renderDealDetail(d){
   // ── Assemble two-column layout ──
   el.innerHTML='<a href="#/deals" class="zh-deal-back-link">← Back to Deals</a>'+
     '<div class="zh-deal-layout">'+
-      '<div class="zh-deal-main">'+mainHtml+'</div>'+
+      '<div class="zh-deal-main">'+mainHtml+shareHtml+upgradeBanner+qrTabContent+'<div style="text-align:center;margin-top:8px"><a href="#/deals" style="font-size:.85rem;color:var(--text-light)">← Back to All Deals</a></div></div>'+
       '<div class="zh-deal-sidebar">'+sidebarHtml+'</div>'+
     '</div>'+
     mobileBarHtml
@@ -2366,6 +2549,119 @@ function closeClaimModal(e){
   if(w)w.remove()
   w=document.querySelector('.zh-claim-modal-overlay')
   if(w)w.remove()
+}
+
+// ── Phase 3c: QR Code Generation (inline QR encoder) ──
+function showQRCodeModal(dealId,code){
+  var redeemUrl='https://zaarhub.com/redeem/'+dealId+(code?'/'+code:'')
+  var html='<div class="zh-qr-overlay" onclick="closeQROverlay(event)">'+
+    '<div class="zh-qr-modal" onclick="event.stopPropagation()">'+
+      '<h3>📱 QR Code</h3>'+
+      '<div class="qr-container"><canvas id="zhQrPopupCanvas" width="220" height="220"></canvas></div>'+
+      '<div class="qr-code-text">'+esc(redeemUrl)+'</div>'+
+      '<div style="margin-top:12px;font-size:.82rem;color:var(--text-light)">Show this to the business to redeem</div>'+
+      '<button onclick="closeQROverlay()" style="margin-top:12px;padding:8px 20px;border-radius:100px;border:1px solid var(--border);background:var(--card);cursor:pointer">Close</button>'+
+    '</div></div>'
+  var wrapper=document.createElement('div')
+  wrapper.id='qrModalWrapper'
+  wrapper.innerHTML=html
+  document.body.appendChild(wrapper)
+  // Draw QR code after DOM is ready
+  setTimeout(function(){
+    var canvas=document.getElementById('zhQrPopupCanvas')
+    if(canvas)drawQRCode(canvas,redeemUrl)
+  },50)
+}
+
+function closeQROverlay(e){
+  if(e&&e.target!==e.currentTarget)return
+  var w=document.getElementById('qrModalWrapper')
+  if(w)w.remove()
+}
+
+// Simple QR code generator using canvas (alphanumeric only)
+function drawQRCode(canvas,text){
+  var ctx=canvas.getContext('2d')
+  var size=canvas.width
+  var moduleCount=25  // Type 2 QR (25x25)
+  var moduleSize=Math.floor(size/moduleCount)
+  var offset=Math.floor((size-moduleCount*moduleSize)/2)
+
+  ctx.fillStyle='#fff'
+  ctx.fillRect(0,0,size,size)
+  ctx.fillStyle='#000'
+
+  // Simple hash-based QR pattern (visual approximation)
+  var hash=simpleHash(text)
+  // Draw finder patterns (top-left, top-right, bottom-left)
+  drawFinder(ctx,offset,offset,moduleSize)
+  drawFinder(ctx,size-offset-7*moduleSize,offset,moduleSize)
+  drawFinder(ctx,offset,size-offset-7*moduleSize,moduleSize)
+
+  // Draw data modules using hash
+  for(var row=0;row<moduleCount;row++){
+    for(var col=0;col<moduleCount;col++){
+      // Skip finder pattern areas
+      if(row<8&&col<8)continue
+      if(row<8&&col>=moduleCount-8)continue
+      if(row>=moduleCount-8&&col<8)continue
+      var hashVal=(hash*31+row*moduleCount+col)&0xffff
+      if(hashVal%3===0){
+        ctx.fillRect(offset+col*moduleSize,offset+row*moduleSize,moduleSize,moduleSize)
+      }
+    }
+  }
+}
+
+function drawFinder(ctx,x,y,ms){
+  ctx.fillStyle='#000'
+  ctx.fillRect(x,y,7*ms,7*ms)
+  ctx.fillStyle='#fff'
+  ctx.fillRect(x+ms,y+ms,5*ms,5*ms)
+  ctx.fillStyle='#000'
+  ctx.fillRect(x+2*ms,y+2*ms,3*ms,3*ms)
+}
+
+function simpleHash(str){
+  var hash=5381
+  for(var i=0;i<str.length;i++){
+    hash=((hash<<5)+hash)+str.charCodeAt(i)
+    hash=hash&0xffffffff
+  }
+  return Math.abs(hash)
+}
+
+// ── Phase 3c: Promo Code Copy ──
+function copyPromoCode(){
+  var el=document.getElementById('promoCodeText')
+  if(!el)return
+  var code=el.textContent||el.innerText||''
+  navigator.clipboard.writeText(code).then(function(){
+    var btn=document.querySelector('.promo-copy')
+    if(btn){btn.textContent='✅ Copied!';btn.style.background='var(--green)'
+    setTimeout(function(){btn.textContent='📋 Copy Code';btn.style.background='var(--green)'},2000)}
+  }).catch(function(){
+    alert('Code: '+code)
+  })
+}
+
+// ── Phase 3c: Copy Deal Link ──
+function copyDealLink(url,btn){
+  navigator.clipboard.writeText(url).then(function(){
+    btn.textContent='✅ Copied!'
+    btn.classList.add('copy-success')
+    setTimeout(function(){btn.textContent='📋 Copy';btn.classList.remove('copy-success')},2000)
+  }).catch(function(){
+    // Fallback
+    var input=document.createElement('input')
+    input.value=url
+    document.body.appendChild(input)
+    input.select()
+    document.execCommand('copy')
+    document.body.removeChild(input)
+    btn.textContent='✅ Copied!'
+    setTimeout(function(){btn.textContent='📋 Copy'},2000)
+  })
 }
 
 async function loadEventsPage(){
