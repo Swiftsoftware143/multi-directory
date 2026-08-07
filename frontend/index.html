@@ -222,6 +222,62 @@ a:hover{text-decoration:underline}
 /* ── Deal Detail: Move back link inside layout ── */
 .zh-deal-detail-no-sidebar{max-width:860px;margin:0 auto;padding:0 16px 40px}
 
+/* ── Phase 3b: Business Snapshot Header ── */
+.zh-deal-biz-snapshot{display:flex;gap:16px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 24px;margin-bottom:20px;transition:box-shadow .2s}
+.zh-deal-biz-snapshot:hover{box-shadow:var(--shadow)}
+.bizsnap-logo{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
+.bizsnap-logo-fallback{background:var(--primary-light);border:2px solid var(--primary)}
+.bizsnap-logo-img{width:100%;height:100%;object-fit:cover;border-radius:14px}
+.bizsnap-logo-letter{font-size:1.5rem;font-weight:800;color:var(--primary)}
+.bizsnap-info{flex:1;min-width:0}
+.bizsnap-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bizsnap-name{font-size:1.05rem;font-weight:700;color:var(--dark)}
+.bizsnap-verified{font-size:.72rem;background:var(--green-light);color:var(--green);padding:2px 10px;border-radius:100px;font-weight:600;white-space:nowrap}
+.bizsnap-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;font-size:.82rem;color:var(--text-light)}
+.bizsnap-loc{white-space:nowrap}
+.bizsnap-dot{color:var(--text-muted)}
+.bizsnap-cat{display:inline-block;background:var(--primary-light);color:var(--primary-hover);font-size:.72rem;font-weight:600;padding:2px 10px;border-radius:100px;white-space:nowrap}
+.bizsnap-rating-row{margin-top:6px;display:flex;align-items:center;gap:6px}
+.bizsnap-stars{color:var(--warm);font-size:.9rem;letter-spacing:1px}
+.bizsnap-rating-num{font-size:.85rem;font-weight:700;color:var(--dark)}
+.bizsnap-review-count{font-size:.75rem;color:var(--text-muted)}
+
+/* ── Phase 3b: Structured Tabs ── */
+.zh-deal-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.zh-deal-tab-btn{flex:1;min-width:fit-content;padding:12px 16px;font-size:.85rem;font-weight:600;color:var(--text-light);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;transition:all .2s;white-space:nowrap;margin-bottom:-2px}
+.zh-deal-tab-btn:hover{color:var(--primary);background:var(--primary-light)}
+.zh-deal-tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+.zh-deal-tab-content{display:none;background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-lg) var(--radius-lg);padding:24px;margin-bottom:20px}
+.zh-deal-tab-content.active{display:block}
+.zh-deal-tab-content h4{font-size:1rem;font-weight:700;color:var(--dark);margin:0 0 10px}
+.zh-deal-tab-content p{font-size:.9rem;line-height:1.6;color:var(--text);margin-bottom:8px}
+
+/* ── Phase 3b: Highlights List ── */
+.zh-deal-highlights-list{list-style:none;padding:0;margin:0}
+.zh-deal-highlights-list li{padding:8px 0;font-size:.9rem;line-height:1.5;color:var(--text);border-bottom:1px solid var(--border-light)}
+.zh-deal-highlights-list li:last-child{border-bottom:none}
+
+/* ── Phase 3b: About Section ── */
+.zh-about-section{margin-bottom:20px}
+.zh-about-section h4{font-size:1rem;font-weight:700;color:var(--dark);margin:0 0 10px}
+.zh-about-contact{display:flex;flex-direction:column;gap:8px}
+.zh-about-contact-item{display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--text)}
+.zh-about-contact-item span:first-child{font-size:1rem;flex-shrink:0}
+.zh-about-contact-item a{color:var(--primary);text-decoration:none}
+.zh-about-contact-item a:hover{text-decoration:underline}
+
+/* ── Phase 3b: Map ── */
+.zh-deal-map-container{width:100%;overflow:hidden;z-index:1}
+.zh-deal-directions-link{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;color:var(--secondary);text-decoration:none;padding:6px 0}
+.zh-deal-directions-link:hover{text-decoration:underline}
+
+/* ── Phase 3b: Premium Teaser ── */
+.zh-premium-teaser{border-top:1px dashed var(--border);padding-top:16px}
+.zh-premium-card{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,var(--accent-light),var(--secondary-light));border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--dark);flex-wrap:wrap}
+.zh-premium-icon{font-size:1.2rem}
+.zh-premium-link{font-weight:700;color:var(--accent);text-decoration:none;white-space:nowrap;margin-left:auto}
+.zh-premium-link:hover{text-decoration:underline}
+
 /* ── Filter Row ── */
 .zh-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;justify-content:center}
 .zh-filter-row select{padding:8px 16px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;outline:none;min-width:140px}
@@ -492,6 +548,12 @@ a:hover{text-decoration:underline}
   .zh-deal-mobile-bar .mb-cta{padding:8px 16px;font-size:.85rem;font-weight:700;border-radius:100px;border:none;color:#fff;cursor:pointer;white-space:nowrap}
   .zh-deal-sticky-bar{display:none}
   .zh-deal-detail-no-sidebar{padding:0 12px 90px}
+  .zh-deal-biz-snapshot{flex-direction:column;text-align:center;padding:16px}
+  .zh-deal-biz-snapshot .bizsnap-name-row{justify-content:center}
+  .zh-deal-biz-snapshot .bizsnap-meta{justify-content:center}
+  .zh-deal-biz-snapshot .bizsnap-rating-row{justify-content:center}
+  .zh-deal-tab-btn{font-size:.78rem;padding:10px 12px}
+  .zh-deal-tab-content{padding:16px}
 }
 
 @media(max-width:480px){
@@ -1862,13 +1924,26 @@ function renderDealDetail(d){
   var ctaText=d.cta_text||'Claim This Deal'
   var bizName=esc(d.business_name||'Local Business')
   var bizAddr=esc(d.business_address||'')
+  var bizCity=esc(d.business_city||'')
+  var bizState=esc(d.business_state||'')
   var bizCat=esc(d.business_category||'')
+  var bizDesc=esc(d.business_description||'')
   var dirSlug=esc(d.directory_slug||'')
   var dirName=esc(d.directory_name||'')
   var bizId=d.business_id||''
   var dealPrice=esc(d.deal_price||'')
   var origPrice=esc(d.original_price||'')
   var currency=d.currency||'USD'
+  var bizLat=d.latitude
+  var bizLng=d.longitude
+  var bizRating=d.rating||0
+  var bizReviewCount=d.review_count||0
+  var bizVerified=d.verified||false
+  var bizLogo=d.logo_url||''
+  var bizPhone=esc(d.business_phone||'')
+  var bizWebsite=esc(d.business_website||'')
+  var bizEmail=esc(d.business_email||'')
+  var highlightsData=d.highlights
 
   // ── SEO + AEO: Inject meta tags + JSON-LD schema ──
   injectDealSEO(d, bizName, currency)
@@ -1924,6 +1999,127 @@ function renderDealDetail(d){
   var claimed=d.redemption_count||0
   var claimedText=claimed>0?' <span style="font-size:.8rem;opacity:.9">('+claimed+' claimed)</span>':''
 
+  // ── Business Snapshot Header ──
+  var logoHtml=''
+  if(bizLogo){
+    logoHtml='<img class="bizsnap-logo-img" src="'+esc(bizLogo)+'" alt="" onerror="this.style.display=\'none\';this.parentNode.classList.add(\'bizsnap-logo-fallback\')">'
+  }else{
+    logoHtml='<span class="bizsnap-logo-letter">'+bizName.charAt(0).toUpperCase()+'</span>'
+  }
+  var ratingHtml=''
+  if(bizRating>0){
+    var fullStars=Math.floor(bizRating)
+    var halfStar=(bizRating-fullStars)>=0.5
+    var starsStr=''
+    for(var s=0;s<5;s++){
+      if(s<fullStars)starsStr+='★'
+      else if(s===fullStars&&halfStar)starsStr+='☆'
+      else starsStr+='☆'
+    }
+    ratingHtml='<span class="bizsnap-stars">'+starsStr+'</span><span class="bizsnap-rating-num">'+bizRating.toFixed(1)+'</span>'
+    if(bizReviewCount>0)ratingHtml+='<span class="bizsnap-review-count">('+bizReviewCount+' reviews)</span>'
+  }
+  var verifiedBadge=bizVerified?'<span class="bizsnap-verified">✅ Verified</span>':''
+  var locationStr=''
+  if(bizCity||bizState||dirName){
+    var locParts=[]
+    if(bizCity)locParts.push(bizCity)
+    if(bizState)locParts.push(bizState)
+    if(!bizCity&&!bizState&&dirName)locParts.push(dirName)
+    locationStr='<span class="bizsnap-loc">📍 '+locParts.join(', ')+'</span>'
+  }
+  var catPillHtml=bizCat?'<span class="bizsnap-cat">'+bizCat+'</span>':''
+
+  var bizSnapshotHtml='<div class="zh-deal-biz-snapshot">'+
+    '<div class="bizsnap-logo'+(bizLogo?'':' bizsnap-logo-fallback')+'">'+logoHtml+'</div>'+
+    '<div class="bizsnap-info">'+
+      '<div class="bizsnap-name-row"><span class="bizsnap-name">'+bizName+'</span>'+verifiedBadge+'</div>'+
+      '<div class="bizsnap-meta">'+locationStr+(locationStr&&catPillHtml?'<span class="bizsnap-dot">·</span>':'')+catPillHtml+'</div>'+
+      '<div class="bizsnap-rating-row">'+ratingHtml+'</div>'+
+    '</div>'+
+  '</div>'
+
+  // ── Highlights auto-generation ──
+  var highlights=null
+  if(highlightsData&&Array.isArray(highlightsData)&&highlightsData.length>0){
+    highlights=highlightsData.map(function(h){return typeof h==='string'?h:''}).filter(Boolean)
+  }
+  if(!highlights||highlights.length===0){
+    highlights=[]
+    if(d.discount_percent)highlights.push('Save '+d.discount_percent+'% off regular price')
+    if(bizName)highlights.push('Valid at '+bizName)
+    if(d.deal_price)highlights.push('Special price: $'+d.deal_price)
+    if(d.terms)highlights.push(d.terms)
+    if(highlights.length===0&&d.description)highlights.push(d.description)
+    if(highlights.length>5)highlights=highlights.slice(0,5)
+  }
+
+  var highlightsHtml='<ul class="zh-deal-highlights-list">'
+  for(var h=0;h<highlights.length;h++){
+    highlightsHtml+='<li>✨ '+esc(String(highlights[h]))+'</li>'
+  }
+  highlightsHtml+='</ul>'
+
+  // ── Fine Print tab content ──
+  var finePrintHtml=''
+  if(d.fine_print){
+    finePrintHtml+='<p>'+esc(d.fine_print)+'</p>'
+  }
+  if(d.terms){
+    finePrintHtml+='<p><strong>Terms:</strong> '+esc(d.terms)+'</p>'
+  }
+  if(d.end_date){
+    finePrintHtml+='<p><strong>Expires:</strong> '+new Date(d.end_date).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})+'</p>'
+  }
+  if(maxClaims>0&&maxClaims<100){
+    finePrintHtml+='<p>Limit 1 per person</p>'
+  }
+  if(!finePrintHtml)finePrintHtml='<p style="color:var(--text-muted);font-style:italic">No additional terms specified. Contact the business for details.</p>'
+
+  // ── About tab content ──
+  var aboutHtml=''
+  if(bizDesc){
+    aboutHtml+='<div class="zh-about-section"><h4>About '+bizName+'</h4><p>'+esc(bizDesc)+'</p></div>'
+  }
+  // Contact info
+  var contactItems=''
+  if(bizPhone)contactItems+='<div class="zh-about-contact-item"><span>📞</span><a href="tel:'+esc(bizPhone)+'">'+esc(bizPhone)+'</a></div>'
+  if(bizEmail)contactItems+='<div class="zh-about-contact-item"><span>✉️</span><a href="mailto:'+esc(bizEmail)+'">'+esc(bizEmail)+'</a></div>'
+  if(bizWebsite)contactItems+='<div class="zh-about-contact-item"><span>🌐</span><a href="'+esc(bizWebsite)+'" target="_blank" rel="noopener">'+esc(bizWebsite.replace(/^https?:\/\//,''))+'</a></div>'
+  if(bizAddr)contactItems+='<div class="zh-about-contact-item"><span>📍</span><span>'+esc(bizAddr)+'</span></div>'
+  if(contactItems){
+    aboutHtml+='<div class="zh-about-section"><h4>📋 Contact</h4><div class="zh-about-contact">'+contactItems+'</div></div>'
+  }
+  // Map
+  if(bizLat&&bizLng){
+    aboutHtml+='<div class="zh-about-section"><h4>🗺️ Location</h4>'+
+      '<div class="zh-deal-map-container" id="zhDealMap" style="height:220px;border-radius:var(--radius);border:1px solid var(--border)"></div>'+
+      (bizAddr?'<div style="margin-top:8px"><a class="zh-deal-directions-link" href="https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(bizLat)+','+encodeURIComponent(bizLng)+'" target="_blank" rel="noopener">📍 Get Directions →</a></div>':'')+
+    '</div>'
+  }else if(bizAddr){
+    aboutHtml+='<div class="zh-about-section"><h4>🗺️ Location</h4>'+
+      '<p>'+esc(bizAddr)+'</p>'+
+      '<a class="zh-deal-directions-link" href="https://maps.google.com/?q='+encodeURIComponent(bizAddr)+'" target="_blank" rel="noopener">📍 Get Directions →</a>'+
+    '</div>'
+  }
+  // Business Hours — Premium placeholder
+  aboutHtml+='<div class="zh-about-section zh-premium-teaser">'+
+    '<h4>🕐 Business Hours</h4>'+
+    '<div class="zh-premium-card"><span class="zh-premium-icon">⭐</span><span>Business Hours is a <strong>Premium Feature</strong></span><a class="zh-premium-link" href="#/pricing">Upgrade Now →</a></div>'+
+  '</div>'
+
+  // ── Tabbed content ──
+  var tabsHtml='<div class="zh-deal-tabs">'+
+    '<button class="zh-deal-tab-btn active" onclick="switchDealTab(event,\'highlights\')">✨ Highlights</button>'+
+    '<button class="zh-deal-tab-btn" onclick="switchDealTab(event,\'description\')">📝 Description</button>'+
+    '<button class="zh-deal-tab-btn" onclick="switchDealTab(event,\'fineprint\')">📋 Fine Print</button>'+
+    '<button class="zh-deal-tab-btn" onclick="switchDealTab(event,\'about\')">🏪 About</button>'+
+  '</div>'+
+  '<div class="zh-deal-tab-content active" id="tab-highlights">'+highlightsHtml+'</div>'+
+  '<div class="zh-deal-tab-content" id="tab-description"><p>'+esc(d.description||'No description provided.')+'</p></div>'+
+  '<div class="zh-deal-tab-content" id="tab-fineprint">'+finePrintHtml+'</div>'+
+  '<div class="zh-deal-tab-content" id="tab-about">'+aboutHtml+'</div>'
+
   // ── Sidebar content ──
   var sidebarHtml='<div class="zh-deal-sticky-bar">'+
     (origPrice?'<div class="sb-original">$'+origPrice+'</div>':'')+
@@ -1935,7 +2131,8 @@ function renderDealDetail(d){
   '</div>'
 
   // ── Main content (left column) ──
-  var mainHtml='<div class="zh-deal-hero" style="background:linear-gradient(135deg,'+accentColor+','+adjustColor(accentColor,-30)+')">'+
+  var mainHtml=bizSnapshotHtml+
+  '<div class="zh-deal-hero" style="background:linear-gradient(135deg,'+accentColor+','+adjustColor(accentColor,-30)+')">'+
     '<div class="dl-logo">'+(d.image_url?'<img src="'+esc(d.image_url)+'" alt="" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'🎉\'">':'🎉')+'</div>'+
     '<h1>'+esc(d.title)+'</h1>'+
     '<div class="dl-biz-name">by '+bizName+(dirName?' — '+dirName:'')+'</div>'+
@@ -1943,28 +2140,10 @@ function renderDealDetail(d){
     discountBadge+
   '</div>'+
   timerHtml+
-  (d.description?''+
-  '<div class="zh-deal-info-card"><h3>📝 About This Deal</h3><p>'+esc(d.description)+'</p>'+
-  (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
-  (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
-  '</div>':
-  (d.terms||d.fine_print?''+
-  '<div class="zh-deal-info-card"><h3>📝 Details</h3>'+
-  (d.terms?'<div class="fine-print"><strong>Terms:</strong> '+esc(d.terms)+'</div>':'')+
-  (d.fine_print?'<div class="fine-print"><strong>Fine Print:</strong> '+esc(d.fine_print)+'</div>':'')+
-  '</div>':''))+
+  tabsHtml+
   galleryHtml+
   (d.deal_type==='coupon'&&d.coupon_code?'<div class="zh-deal-info-card"><h3>🏷️ Coupon Code</h3><div style="font-size:1.5rem;font-weight:800;letter-spacing:3px;color:'+accentColor+';text-align:center;padding:12px;background:var(--bg);border-radius:8px;border:2px dashed var(--border)">'+esc(d.coupon_code)+'</div></div>':'')+
-  // Also add CTA in content for mobile scroll context
   '<button class="zh-deal-claim-btn" style="background:'+ctaColor+'" onclick="claimDeal(\''+d.id+'\')">🎟️ '+esc(ctaText)+claimedText+'</button>'+
-  '<div class="zh-deal-biz-card" onclick="location.hash=\'#/city/'+dirSlug+'/biz/'+bizId+'\'">'+
-    '<div class="dl-biz-icon">🏪</div>'+
-    '<div class="dl-biz-info"><h4>'+bizName+'</h4>'+
-    (bizAddr?'<div class="addr">📍 '+bizAddr+'</div>':'')+
-    (bizCat?'<div class="cat">'+bizCat+'</div>':'')+
-    '</div>'+
-    '<span style="font-size:.8rem;color:var(--primary);font-weight:600;white-space:nowrap">View Business →</span>'+
-  '</div>'+
   '<div style="text-align:center;margin-top:8px">'+
     '<a href="#/deals" style="font-size:.85rem;color:var(--text-light)">← Back to All Deals</a>'+
   '</div>'
@@ -1989,6 +2168,45 @@ function renderDealDetail(d){
     var endMs=new Date(d.end_date+'Z').getTime()||new Date(d.end_date).getTime()
     startDealTimer(endMs)
     startMobileTimer(endMs)
+  }
+
+  // Initialize Leaflet map for About tab
+  if(bizLat&&bizLng){
+    setTimeout(function(){
+      var mapEl=document.getElementById('zhDealMap')
+      if(mapEl&&typeof L!=='undefined'){
+        var map=L.map('zhDealMap').setView([bizLat,bizLng],15)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+          attribution:'&copy; OpenStreetMap',
+          maxZoom:19
+        }).addTo(map)
+        var marker=L.marker([bizLat,bizLng]).addTo(map)
+        marker.bindPopup('<strong>'+esc(bizName)+'</strong>').openPopup()
+        // Store map instance for tab switching
+        window._zhDealMapInstance=map
+      }
+    },200)
+  }
+}
+
+// ── Tab switching ──
+function switchDealTab(event, tabName){
+  var btns=document.querySelectorAll('.zh-deal-tab-btn')
+  for(var i=0;i<btns.length;i++)btns[i].classList.remove('active')
+  if(event&&event.target)event.target.classList.add('active')
+
+  var panels=document.querySelectorAll('.zh-deal-tab-content')
+  for(var j=0;j<panels.length;j++)panels[j].classList.remove('active')
+
+  var target=document.getElementById('tab-'+tabName)
+  if(target)target.classList.add('active')
+
+  // Invalidate Leaflet map size if switching to about tab
+  if(tabName==='about'){
+    setTimeout(function(){
+      var map=window._zhDealMapInstance
+      if(map&&map.invalidateSize)map.invalidateSize()
+    },100)
   }
 }
 

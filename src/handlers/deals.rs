@@ -499,19 +499,28 @@ pub async fn get_deal_page(
             d.rotation_schedule, d.rotation_order,
             d.created_at, d.updated_at,
             d.max_claims, d.claims_count,
+            d.highlights,
             b.name AS business_name,
             b.address AS business_address,
+            b.city AS business_city,
+            b.state AS business_state,
             b.phone AS business_phone,
             b.website AS business_website,
             b.email AS business_email,
+            b.description AS business_description,
+            b.images AS business_images,
+            b.latitude, b.longitude,
+            b.rating, b.review_count,
             dc.name AS business_category,
             dc.slug AS business_category_slug,
             dir.slug AS directory_slug,
-            dir.name AS directory_name
+            dir.name AS directory_name,
+            bv.status AS verification_status
         FROM deals d
         JOIN businesses b ON b.id = d.business_id
         LEFT JOIN directory_categories dc ON dc.id = b.category_id
         JOIN directories dir ON dir.id = d.directory_id
+        LEFT JOIN business_verifications bv ON bv.business_id = b.id
         WHERE d.id = $1"#
     )
     .bind(id)
@@ -521,6 +530,29 @@ pub async fn get_deal_page(
 
     use sqlx::Row;
     let gallery: Option<serde_json::Value> = row.try_get("gallery_images").ok();
+    let highlights: Option<serde_json::Value> = row.try_get("highlights").ok();
+    let biz_images: Option<serde_json::Value> = row.try_get("business_images").ok();
+    let biz_description: Option<String> = row.try_get("business_description").ok();
+    let lat: Option<f64> = row.try_get("latitude").ok();
+    let lng: Option<f64> = row.try_get("longitude").ok();
+    let rating: Option<f64> = row.try_get("rating").ok();
+    let review_count: Option<i32> = row.try_get("review_count").ok();
+    let verification_status: Option<String> = row.try_get("verification_status").ok();
+    let biz_city: Option<String> = row.try_get("business_city").ok();
+    let biz_state: Option<String> = row.try_get("business_state").ok();
+
+    // Extract first business image as logo_url if available
+    let logo_url: Option<String> = biz_images.as_ref().and_then(|imgs| {
+        imgs.as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str().map(String::from))
+    });
+
+    // Compute verified flag: true if verification_status is 'approved'
+    let verified = verification_status
+        .as_ref()
+        .map(|s| s == "approved")
+        .unwrap_or(false);
 
     let result = json!({
         "id": row.try_get::<Uuid, _>("id").ok(),
@@ -550,6 +582,7 @@ pub async fn get_deal_page(
         "cta_text": row.try_get::<String, _>("cta_text").ok(),
         "show_timer": row.try_get::<bool, _>("show_timer").ok(),
         "gallery_images": gallery,
+        "highlights": highlights,
         "rotation_schedule": row.try_get::<String, _>("rotation_schedule").ok(),
         "rotation_order": row.try_get::<i32, _>("rotation_order").ok(),
         "max_claims": row.try_get::<i32, _>("max_claims").ok(),
@@ -558,13 +591,22 @@ pub async fn get_deal_page(
         "updated_at": row.try_get::<DateTime<Utc>, _>("updated_at").ok(),
         "business_name": row.try_get::<String, _>("business_name").ok(),
         "business_address": row.try_get::<String, _>("business_address").ok(),
+        "business_city": biz_city,
+        "business_state": biz_state,
         "business_phone": row.try_get::<String, _>("business_phone").ok(),
         "business_website": row.try_get::<String, _>("business_website").ok(),
         "business_email": row.try_get::<String, _>("business_email").ok(),
+        "business_description": biz_description,
         "business_category": row.try_get::<String, _>("business_category").ok(),
         "business_category_slug": row.try_get::<String, _>("business_category_slug").ok(),
         "directory_slug": row.try_get::<String, _>("directory_slug").ok(),
         "directory_name": row.try_get::<String, _>("directory_name").ok(),
+        "logo_url": logo_url,
+        "latitude": lat,
+        "longitude": lng,
+        "rating": rating,
+        "review_count": review_count,
+        "verified": verified,
     });
 
     Ok(Json(result))
