@@ -379,7 +379,7 @@ a:hover{text-decoration:underline}
 <!-- 18. Category Management -->
 <div class="card">
   <h3><span class="emoji">📂</span> 18. Category Management</h3>
-  <p>Categories are organized into <strong>groups</strong> (e.g., Dining, Home &amp; Outdoor, Professional) and each group contains individual categories. A business can belong to multiple categories (up to 3 by default, 5 with admin override).</p>
+  <p>Categories are organized with categories that contain subcategories (e.g., Fine Dining contains Italian, Chinese; Food &amp; Drink contains Coffee Shop, Pizza). A business can belong to multiple subcategories (up to 3 by default, 5 with admin override).</p>
 
   <div class="warn-box">
     <strong>⚠️ Critical:</strong> Categories must be created <strong>before</strong> searching for or adding businesses. The search engine filter dropdown is populated from existing categories. If no categories exist for a directory, the category filter will be disabled.
@@ -439,10 +439,14 @@ a:hover{text-decoration:underline}
     <li><strong>Group reassignment</strong> — Move a category between groups by editing its group name.</li>
   </ul>
 
-  <h4>Current Category Structure (55 categories, 14 groups)</h4>
+  <h4>Current Category Structure (62 subcategories, 15 categories)</h4>
   <details>
-    <summary><strong>🍽️ Dining</strong> (8 categories)</summary>
-    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Bars &amp; Breweries, Breakfast, Catering, Coffee Shop, Food Trucks, Pizza, Restaurants, Seafood</p>
+    <summary><strong>🍽️ Fine Dining</strong> (8 subcategories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Chinese, French, Indian, Italian, Japanese, Mediterranean, Restaurants, Steakhouse</p>
+  </details>
+  <details>
+    <summary><strong>🥤 Food &amp; Drink</strong> (7 subcategories)</summary>
+    <p style="padding-left:16px;font-size:0.85rem;color:var(--text-light)">Bars &amp; Breweries, Breakfast, Catering, Coffee Shop, Food Trucks, Pizza, Seafood</p>
   </details>
   <details>
     <summary><strong>🛍️ Hyper-Local Retail &amp; Specialty Food</strong> (10 categories)</summary>
