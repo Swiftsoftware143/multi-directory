@@ -526,6 +526,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/messages/:business_id", get(messaging::list_messages))
         .route("/messages/:business_id/unread", get(messaging::unread_count))
         .route("/messages/:id/read", patch(messaging::mark_read))
+        // Deals & Coupons — Groupon-style deal system
+        .merge(deals::router())
         .layer(middleware::from_fn_with_state(
             s.clone(),
             auth_guard,
