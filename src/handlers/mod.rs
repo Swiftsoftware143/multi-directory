@@ -150,3 +150,5 @@ pub mod connected_services;
 pub use connected_services::*;
 pub mod event_providers;
 pub use event_providers::*;
+pub mod category_system;
+pub use category_system::*;
