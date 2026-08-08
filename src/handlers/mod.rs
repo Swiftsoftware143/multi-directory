@@ -152,3 +152,5 @@ pub mod event_providers;
 pub use event_providers::*;
 pub mod category_system;
 pub use category_system::*;
+pub mod blog_features;
+pub use blog_features::*;
