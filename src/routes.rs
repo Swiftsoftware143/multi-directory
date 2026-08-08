@@ -25,11 +25,15 @@ pub fn create_router(s: AppState) -> Router {
         .route("/auth/linked-accounts", get(sso::get_linked_accounts))
         .route("/directories", get(directories::list_directories).post(directories::create_directory))
         .route("/directories/:slug", get(directories::get_directory).put(directories::update_directory).delete(directories::delete_directory))
+        // Legacy /directory/:slug alias (used by older frontend code)
+        .route("/directory/:slug", get(directories::get_directory))
         .route("/directories/:slug/render", get(directories::render_directory))
         .route("/directories/:slug/categories", get(directories::list_categories).post(directories::create_category))
         .route("/directories/:slug/categories/:category_id", put(directories::update_category).delete(directories::delete_category))
         .route("/directories/:slug/businesses", get(businesses::list_businesses).post(businesses::create_business))
         .route("/directories/:slug/businesses/suggestions", get(businesses::search_suggestions))
+        // Legacy /directory/:slug/businesses alias
+        .route("/directory/:slug/businesses", get(businesses::list_businesses))
         .route("/directories/:slug/businesses/:business_id", get(businesses::get_business).put(businesses::update_business).delete(businesses::delete_business))
         .route("/reviews", get(reviews::list_reviews).post(reviews::create_review))
         .route("/reviews/:id", get(reviews::get_review).put(reviews::update_review).delete(reviews::delete_review))
@@ -70,6 +74,17 @@ pub fn create_router(s: AppState) -> Router {
         .route("/blog-generate", post(blog_generator::generate_blog_posts))
         .route("/blog-posts/:id/regenerate", post(blog_generator::regenerate_blog_post))
         .route("/blog-templates/:id/directories", get(blog_generator::get_template_directories).post(blog_generator::set_template_directories))
+        // Blog Features (content decay, internal linking, AEO scoring, schema markup)
+        .route("/blog/decay/scan", post(blog_features::scan_content_decay))
+        .route("/blog/decay/refresh/:id", post(blog_features::refresh_post_content))
+        .route("/blog/internal-links/suggestions", get(blog_features::internal_link_suggestions))
+        .route("/blog/internal-links/add", post(blog_features::add_internal_link))
+        .route("/blog/internal-links/:post_id/:target_id", delete(blog_features::remove_internal_link))
+        .route("/blog/aeo/score/:id", post(blog_features::score_post_aeo))
+        .route("/blog/aeo/scan-all", post(blog_features::score_all_posts_aeo))
+        .route("/blog/aeo/report", get(blog_features::aeo_report))
+        .route("/blog/schema/generate/:id", post(blog_features::generate_schema_markup))
+        .route("/blog/schema/generate-all", post(blog_features::generate_all_schema))
 
 
         .route("/crm/contacts", get(crm::list_contacts).post(crm::create_contact))
@@ -111,7 +126,11 @@ pub fn create_router(s: AppState) -> Router {
         .route("/search", get(search::search_businesses))
         .route("/search/suppliers", get(search::search_suppliers))
         .route("/api/v1/search", get(blog_qa::search_all))
+        .route("/cities", get(zaarhub_cities::list_cities))
         .route("/categories", get(categories::list_all_categories))
+        // Public aliases for frontend
+        .route("/stats/public", get(zaarhub::get_homepage))
+        .route("/subscription-plans", get(monetization::list_plans))
         // Phase 2: Multi-category system
         .route("/categories/filter-options", get(category_system::get_filter_options))
         .route("/businesses/:id/categories", get(category_system::get_business_categories).put(category_system::set_business_categories).post(category_system::set_business_categories))
@@ -586,12 +605,9 @@ pub fn create_router(s: AppState) -> Router {
         ));
 
     // ??? Serve SPA frontend at root
-    let frontend_dir = std::path::Path::new("/opt/swift/multidirectory-rust/frontend");
-    let frontend_path = if frontend_dir.exists() {
-        frontend_dir.to_string_lossy().to_string()
-    } else {
-        "./frontend".to_string()
-    };
+    let frontend_path = std::path::Path::new("/opt/swift/apps/multi-directory/frontend")
+        .to_string_lossy()
+        .to_string();
 
     // ??? Load SPA index.html into memory for fast fallback
     let index_path = std::path::Path::new(&frontend_path).join("index.html");
