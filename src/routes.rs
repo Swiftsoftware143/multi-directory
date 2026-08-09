@@ -86,6 +86,15 @@ pub fn create_router(s: AppState) -> Router {
         .route("/blog/schema/generate/:id", post(blog_features::generate_schema_markup))
         .route("/blog/schema/generate-all", post(blog_features::generate_all_schema))
 
+        // Content Research & Strategy Engine
+        .route("/research/topics", get(content_research::list_topics).post(content_research::create_topic))
+        .route("/research/topics/:id", put(content_research::update_topic).delete(content_research::delete_topic))
+        .route("/research/run", post(content_research::research_topic))
+        .route("/research/questions", get(content_research::get_research_questions))
+        .route("/research/questions/:id/use-as-keyword", post(content_research::use_question_as_keyword))
+        .route("/research/draft-post", post(content_research::draft_post_from_question))
+        .route("/research/integrations", get(content_research::list_integrations).post(content_research::save_integration))
+        .route("/research/integrations/:provider", delete(content_research::delete_integration))
 
         .route("/crm/contacts", get(crm::list_contacts).post(crm::create_contact))
         .route("/crm/contacts/:id", get(crm::get_contact).put(crm::update_contact).delete(crm::delete_contact))
@@ -781,6 +790,25 @@ pub fn create_router(s: AppState) -> Router {
                                             .status(axum::http::StatusCode::OK)
                                             .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
                                             .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // Serve content research admin panel
+                    if path == "/research" || path == "/research/" {
+                        let research_path = std::path::Path::new(&frontend).join("content-research.html");
+                        if research_path.exists() {
+                            match tokio::fs::read(&research_path).await {
+                                Ok(html) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(html))
                                             .unwrap()
                                     );
                                 }

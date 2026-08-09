@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Content Research — Multi-Directory Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      background: #12121a; color: #eef4f8; min-height: 100vh;
+    }
+    :root {
+      --bg-card: #1A1A23; --bg-input: #14141c;
+      --border: rgba(255,255,255,0.08); --border-hover: rgba(255,255,255,0.18);
+      --text-secondary: #9fb0bd; --text-tertiary: #6b7d8a;
+      --accent: #8bd3ff; --accent-hover: #66c2ff;
+      --danger: #f87171; --success: #4ade80; --warning: #fbbf24;
+      --purple: #c084fc; --radius: 8px;
+    }
+    .header {
+      background: #0d0d14; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-inner {
+      max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-brand { font-weight: 700; font-size: 1rem; color: var(--accent); text-decoration: none; }
+    .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    
+    .grid-2 { display: grid; grid-template-columns: 280px 1fr; gap: 20px; }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    }
+    .card h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+    .card h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; }
+    .card .sub { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px; }
+    
+    button {
+      padding: 8px 16px; border-radius: var(--radius); border: none; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600; transition: all .2s;
+    }
+    .btn-primary { background: var(--accent); color: #12121a; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-success { background: var(--success); color: #12121a; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-purple { background: var(--purple); color: #12121a; }
+    .btn-sm { padding: 5px 12px; font-size: 0.75rem; }
+    .btn-xs { padding: 3px 8px; font-size: 0.7rem; }
+    
+    input, select, textarea {
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 12px; color: #eef4f8;
+      font-size: 0.85rem; font-family: inherit; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    
+    .topic-item {
+      padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 6px;
+      border: 1px solid transparent; transition: all .15s; font-size: 0.85rem;
+    }
+    .topic-item:hover { background: rgba(255,255,255,0.03); border-color: var(--border); }
+    .topic-item.active { background: rgba(139,211,255,0.08); border-color: var(--accent); }
+    .topic-item .meta { font-size: 0.72rem; color: var(--text-tertiary); margin-top: 2px; }
+    
+    .question-card {
+      padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px;
+      margin-bottom: 8px; display: flex; align-items: flex-start; gap: 12px;
+      transition: all .15s;
+    }
+    .question-card:hover { border-color: var(--border-hover); }
+    .question-card .q-text { flex: 1; font-size: 0.87rem; line-height: 1.5; }
+    .question-card .q-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 0.7rem; font-weight: 600; margin-left: 6px; }
+    .badge-qa { background: rgba(139,211,255,.12); color: var(--accent); }
+    .badge-fresh { background: rgba(74,222,128,.12); color: var(--success); }
+    .badge-trend { background: rgba(251,191,36,.12); color: var(--warning); }
+    .badge-used { background: rgba(107,125,138,.12); color: var(--text-tertiary); }
+    
+    .draft-preview {
+      background: #0d0d14; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; max-height: 500px; overflow: auto;
+      font-size: 0.85rem; line-height: 1.7; white-space: pre-wrap; font-family: inherit;
+      color: #eef4f8;
+    }
+    .draft-preview h1, .draft-preview h2 { color: var(--accent); margin: 16px 0 8px; }
+    .draft-preview h1 { font-size: 1.3rem; }
+    .draft-preview h2 { font-size: 1.05rem; }
+    
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius); font-size: 0.85rem; z-index: 9999; animation: fadeIn .3s ease; font-weight: 500; }
+    .toast.success { background: var(--success); color: #12121a; }
+    .toast.error { background: var(--danger); color: #fff; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .empty { text-align: center; padding: 40px; color: var(--text-tertiary); font-size: 0.9rem; }
+    .form-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: flex-end; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { font-size: 0.78rem; color: var(--text-secondary); display: block; margin-bottom: 4px; }
+    
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 28px; max-width: 700px; width: 90%; max-height: 85vh; overflow: auto;
+    }
+    .modal-close { float: right; background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <div class="header-inner">
+    <a href="#" class="header-brand">🔬 Content Research Engine</a>
+    <span style="font-size:0.8rem;color:var(--text-secondary)" id="user-info"></span>
+  </div>
+</div>
+<div class="container">
+  <div class="grid-2">
+    <!-- LEFT: Topics -->
+    <div>
+      <div class="card">
+        <h2>📚 Research Topics</h2>
+        <p class="sub">Topics scope your research to specific areas</p>
+        <div class="form-row">
+          <input type="text" id="topic-name" placeholder="Topic name..." style="flex:1">
+          <button class="btn-primary btn-sm" onclick="createTopic()">+ Add</button>
+        </div>
+        <div id="topic-list" class="empty">Loading topics...</div>
+      </div>
+      <div class="card">
+        <h2>🔌 Integrations</h2>
+        <p class="sub">Connect search + AI providers</p>
+        <div class="form-group">
+          <label>Provider</label>
+          <select id="int-provider">
+            <option value="serpapi">SerpAPI (Recommended)</option>
+            <option value="google_cse">Google Custom Search</option>
+            <option value="bing">Bing Search API</option>
+            <option value="openai">OpenAI (Content Drafting)</option>
+            <option value="anthropic">Anthropic (Content Drafting)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" id="int-key" placeholder="API key...">
+        </div>
+        <button class="btn-purple btn-sm" onclick="saveIntegration()">Save Integration</button>
+        <div id="int-list" style="margin-top:12px"></div>
+      </div>
+    </div>
+    
+    <!-- RIGHT: Research + Drafts -->
+    <div>
+      <div class="card" id="research-controls" style="display:none">
+        <h2>🔍 Run Research</h2>
+        <p class="sub" id="selected-topic-label">Select a topic to start</p>
+        <div class="form-row">
+          <input type="text" id="search-term" placeholder="Custom search term (optional)" style="flex:1">
+          <button class="btn-primary" onclick="runResearch()">Run Research</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <label style="font-size:0.78rem"><input type="checkbox" checked onchange="toggleSource(this,'quora')"> Quora</label>
+          <label style="font-size:0.78rem"><input type="checkbox" checked onchange="toggleSource(this,'reddit')"> Reddit</label>
+          <label style="font-size:0.78rem"><input type="checkbox" checked onchange="toggleSource(this,'stackexchange')"> Stack Exchange</label>
+          <label style="font-size:0.78rem"><input type="checkbox" checked onchange="toggleSource(this,'trends')"> Google Trends</label>
+          <label style="font-size:0.78rem"><input type="checkbox" onchange="toggleSource(this,'medium')"> Medium</label>
+        </div>
+      </div>
+      
+      <div id="questions-container" class="empty">Run research on a topic to find questions</div>
+    </div>
+  </div>
+</div>
+
+<!-- Draft Modal -->
+<div class="modal-overlay" id="draft-modal" style="display:none" onclick="if(event.target===this)closeDraft()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeDraft()">&times;</button>
+    <h2>AI-Generated Draft</h2>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px" id="draft-meta"></p>
+    <div class="draft-preview" id="draft-content"></div>
+    <div style="margin-top:16px;display:flex;gap:8px">
+      <button class="btn-success btn-sm" onclick="closeDraft()">Save Draft (via Blog)</button>
+      <button class="btn-sm" onclick="copyDraft()" style="background:var(--bg-input);color:#eef4f8">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let token = '', activeTopic = null, selectedSources = ['quora','reddit','stackexchange','trends'];
+try { token = localStorage.getItem('md_admin_token') || ''; } catch(e) {}
+if (!token) document.getElementById('user-info').textContent = '⚠️ Login required';
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch(API + path, opts);
+  if (!res.ok) { const err = await res.json().catch(()=>({message:res.statusText})); throw new Error(err.message||err.error||'Request failed'); }
+  return res.json();
+}
+
+function toast(msg, type) {
+  const t = document.createElement('div'); t.className = 'toast '+type; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
+}
+
+function toggleSource(cb, src) {
+  if (cb.checked) selectedSources.push(src); else selectedSources = selectedSources.filter(s=>s!==src);
+}
+
+// ─── Topics ───
+async function loadTopics() {
+  try {
+    const data = await api('GET', '/research/topics');
+    const list = document.getElementById('topic-list');
+    if (!data.topics || !data.topics.length) { list.innerHTML = '<div class="empty">No topics yet. Add one to start researching.</div>'; return; }
+    list.innerHTML = data.topics.map(t => {
+      const active = activeTopic && activeTopic.id === t.id ? ' active' : '';
+      return `<div class="topic-item${active}" onclick="selectTopic('${t.id}')">
+        <div style="font-weight:600">${esc(t.name)}</div>
+        <div class="meta">${t.question_count||0} questions · ${t.last_researched ? new Date(t.last_researched).toLocaleDateString() : 'Never researched'}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function createTopic() {
+  const name = document.getElementById('topic-name').value.trim();
+  if (!name) return toast('Enter a topic name', 'error');
+  try {
+    const topic = await api('POST', '/research/topics', { name, search_phrase: name });
+    document.getElementById('topic-name').value = '';
+    toast('Topic created', 'success');
+    loadTopics();
+    selectTopic(topic.id);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function selectTopic(id) {
+  try {
+    const data = await api('GET', '/research/topics');
+    const topic = data.topics.find(t => t.id === id);
+    if (!topic) return;
+    activeTopic = topic;
+    document.getElementById('selected-topic-label').textContent = `Researching: ${topic.name}`;
+    document.getElementById('research-controls').style.display = 'block';
+    document.getElementById('search-term').value = topic.search_phrase || topic.name;
+    loadTopics();
+    loadQuestions();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ─── Research ───
+async function runResearch() {
+  if (!activeTopic) return toast('Select a topic first', 'error');
+  const searchTerm = document.getElementById('search-term').value.trim();
+  const btn = event.target;
+  btn.textContent = 'Researching...'; btn.disabled = true;
+  try {
+    const result = await api('POST', '/research/run', {
+      topic_id: activeTopic.id,
+      search_term: searchTerm || undefined,
+      sources: selectedSources,
+    });
+    toast(`Found ${result.questions_found} questions from ${Object.keys(result.by_source).length} sources`, 'success');
+    loadTopics();
+    loadQuestions();
+  } catch(e) { toast(e.message, 'error'); }
+  btn.textContent = 'Run Research'; btn.disabled = false;
+}
+
+async function loadQuestions() {
+  if (!activeTopic) return;
+  try {
+    const data = await api('GET', '/research/questions?topic_id=' + activeTopic.id);
+    const container = document.getElementById('questions-container');
+    if (!data.questions || !data.questions.length) {
+      container.innerHTML = '<div class="empty">No questions yet. Click "Run Research" to find real questions people are asking.</div>';
+      return;
+    }
+    container.innerHTML = data.questions.map(q => `
+      <div class="question-card">
+        <div class="q-text">
+          ${esc(q.question)}
+          <span class="badge badge-${q.entry_kind||'qa'}">${(q.entry_kind||'qa').toUpperCase()}</span>
+          ${q.is_used ? '<span class="badge badge-used">USED</span>' : ''}
+          ${q.freshness_score > 0.8 ? '<span class="badge badge-fresh">FRESH</span>' : ''}
+          ${q.source_domain ? `<br><span style="font-size:0.7rem;color:var(--text-tertiary)">Source: ${q.source_domain}</span>` : ''}
+        </div>
+        <div class="q-actions">
+          <button class="btn-xs btn-primary" onclick="draftPost('${q.id}')" ${q.is_used?'disabled':''}>Draft AI</button>
+          <button class="btn-xs" style="background:var(--bg-input);color:var(--text-secondary)" onclick="useAsKeyword('${q.id}')" ${q.used_as_keyword?'disabled':''}>→ Keyword</button>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function useAsKeyword(id) {
+  try {
+    await api('POST', `/research/questions/${id}/use-as-keyword`);
+    toast('Marked as keyword', 'success');
+    loadQuestions();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ─── AI Drafting ───
+async function draftPost(id) {
+  const btn = event.target;
+  btn.textContent = 'Drafting...'; btn.disabled = true;
+  try {
+    const result = await api('POST', '/research/draft-post', { question_id: id, tone: 'professional' });
+    showDraftModal(result);
+    toast('Draft generated!', 'success');
+    loadQuestions();
+  } catch(e) { toast(e.message, 'error'); }
+  btn.textContent = 'Draft AI'; btn.disabled = false;
+}
+
+function showDraftModal(result) {
+  document.getElementById('draft-modal').style.display = 'flex';
+  document.getElementById('draft-meta').textContent = `${result.word_count} words · Business relevance: ${result.business_relevance.substring(0, 100)}...`;
+  document.getElementById('draft-content').innerHTML = markedText(result.draft_content);
+}
+
+function closeDraft() { document.getElementById('draft-modal').style.display = 'none'; }
+function copyDraft() {
+  const text = document.getElementById('draft-content').textContent;
+  navigator.clipboard.writeText(text).then(() => toast('Copied!', 'success'));
+}
+
+function markedText(s) {
+  return s
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^[-*] (.+)$/gm, '• $1<br>')
+    .replace(/\n\n/g, '<br><br>');
+}
+
+// ─── Integrations ───
+async function saveIntegration() {
+  const provider = document.getElementById('int-provider').value;
+  const key = document.getElementById('int-key').value.trim();
+  if (!key) return toast('Enter API key', 'error');
+  try {
+    await api('POST', '/research/integrations', { provider, config: { api_key: key, provider } });
+    document.getElementById('int-key').value = '';
+    toast('Integration saved', 'success');
+    loadIntegrations();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function loadIntegrations() {
+  try {
+    const data = await api('GET', '/research/integrations');
+    const list = document.getElementById('int-list');
+    if (!data.integrations || !data.integrations.length) { list.innerHTML = '<div style="font-size:0.78rem;color:var(--text-tertiary);margin-top:8px">No integrations configured</div>'; return; }
+    list.innerHTML = data.integrations.map(i => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:0.8rem">
+        <span>${esc(i.provider)} <span style="color:var(--success)">●</span></span>
+        <button class="btn-xs btn-danger" onclick="deleteInt('${esc(i.provider)}')">×</button>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+async function deleteInt(provider) {
+  try { await api('DELETE', '/research/integrations/' + provider); loadIntegrations(); } catch(e) {}
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+loadTopics();
+loadIntegrations();
+</script>
+</body>
+</html>
