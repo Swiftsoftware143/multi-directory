@@ -315,3 +315,185 @@ async fn save_question_raw(s: &AppState, topic_id: Uuid, dir_id: Option<Uuid>, q
     ).bind(topic_id).bind(dir_id).bind(question).bind(&source_url).bind(source_domain).bind(entry_kind).bind(freshness).fetch_one(&s.db).await?;
     Ok(q)
 }
+// ── Bulk Research ──
+
+#[derive(Debug, Deserialize)]
+pub struct BulkResearchRequest {
+    pub topics: Vec<BulkResearchTopic>,
+    pub directory_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BulkResearchTopic {
+    pub name: String,
+    pub keywords: Option<Vec<String>>,
+    pub search_phrase: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BulkResearchWithCitiesRequest {
+    pub topics: Vec<BulkResearchTopic>,
+    pub cities: Vec<String>,
+    pub directory_id: Option<Uuid>,
+    pub sources: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkResearchResult {
+    pub topics_created: usize,
+    pub topics_existing: usize,
+    pub questions_generated: usize,
+    pub questions_skipped: usize,
+    pub total_combinations: usize,
+    pub by_topic: Vec<TopicResearchSummary>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TopicResearchSummary {
+    pub topic_name: String,
+    pub topic_id: Uuid,
+    pub search_phrase_used: String,
+    pub questions_found: usize,
+    pub by_source: HashMap<String, usize>,
+    pub city_variants: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkPreviewResult {
+    pub estimated_topics: usize,
+    pub estimated_combinations: usize,
+    pub estimated_questions: usize,
+    pub sample_queries: Vec<String>,
+}
+
+/// POST /api/v1/research/bulk
+///
+/// Takes multiple topics + optional cities, creates topics and runs research for every
+/// topic × city combination. Same cross-product pattern as trap_doors.
+pub async fn bulk_research(
+    State(s): State<AppState>,
+    Json(req): Json<BulkResearchWithCitiesRequest>,
+) -> ApiResult<Json<BulkResearchResult>> {
+    if req.topics.is_empty() {
+        return Err(AppError::Validation("At least one topic is required".into()));
+    }
+    if req.topics.len() > 50 {
+        return Err(AppError::Validation("Maximum 50 topics per bulk request".into()));
+    }
+    if req.cities.len() > 200 {
+        return Err(AppError::Validation("Maximum 200 cities per bulk request".into()));
+    }
+
+    let sources = req.sources.unwrap_or_else(|| vec!["quora".into(), "reddit".into(), "stackexchange".into()]);
+    let mut result = BulkResearchResult {
+        topics_created: 0,
+        topics_existing: 0,
+        questions_generated: 0,
+        questions_skipped: 0,
+        total_combinations: 0,
+        by_topic: Vec::new(),
+    };
+
+    for topic_req in &req.topics {
+        let base_search = topic_req.search_phrase.clone().unwrap_or_else(|| topic_req.name.clone());
+        let kw: Vec<String> = topic_req.keywords.clone().unwrap_or_default();
+
+        // Create or find the base topic
+        let topic_id = match sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM content_topics WHERE name = $1 AND directory_id IS NOT DISTINCT FROM $2 LIMIT 1"
+        ).bind(&topic_req.name).bind(req.directory_id).fetch_optional(&s.db).await? {
+            Some(id) => { result.topics_existing += 1; id }
+            None => {
+                let id = sqlx::query_scalar::<_, Uuid>(
+                    "INSERT INTO content_topics (name, directory_id, description, keywords, search_phrase) VALUES ($1, $2, $3, $4, $5) RETURNING id"
+                ).bind(&topic_req.name).bind(req.directory_id).bind(&topic_req.description).bind(&kw).bind(&base_search).fetch_one(&s.db).await?;
+                result.topics_created += 1;
+                id
+            }
+        };
+
+        let mut topic_qs = 0usize;
+        let mut by_source: HashMap<String, usize> = HashMap::new();
+        let city_count = if req.cities.is_empty() { 1usize } else { req.cities.len() };
+
+        // For each city, generate city-variant search phrases and research them
+        let search_variants: Vec<String> = if req.cities.is_empty() {
+            vec![base_search.clone()]
+        } else {
+            req.cities.iter().map(|city| format!("{} in {}", base_search, city)).collect()
+        };
+
+        for variant in &search_variants {
+            for src in &sources {
+                let domain = match src.as_str() {
+                    "quora" => "quora.com", "reddit" => "reddit.com",
+                    "stackexchange" => "stackexchange.com", "medium" => "medium.com",
+                    _ => continue,
+                };
+                let questions = generate_seed_questions(variant, domain);
+                let src_count = questions.len();
+                for q in questions {
+                    match save_question_raw(&s, topic_id, req.directory_id, &q, domain, "qa").await {
+                        Ok(_) => { result.questions_generated += 1; topic_qs += 1; }
+                        Err(_) => { result.questions_skipped += 1; }
+                    }
+                }
+                *by_source.entry(src.clone()).or_insert(0) += src_count;
+            }
+
+            // Google Trends variant
+            let trend_domain = "trends.google.com";
+            let trend_search = format!("{} trends {}", variant, chrono::Utc::now().format("%Y"));
+            let trend_qs = generate_seed_questions(&trend_search, trend_domain);
+            let trend_count = trend_qs.len();
+            for q in trend_qs {
+                match save_question_raw(&s, topic_id, req.directory_id, &q, trend_domain, "trend").await {
+                    Ok(_) => { result.questions_generated += 1; topic_qs += 1; }
+                    Err(_) => { result.questions_skipped += 1; }
+                }
+            }
+            *by_source.entry("trends".into()).or_insert(0) += trend_count;
+        }
+
+        sqlx::query("UPDATE content_topics SET question_count = $1, last_researched = NOW(), updated_at = NOW() WHERE id = $2")
+            .bind(topic_qs as i32).bind(topic_id).execute(&s.db).await?;
+
+        result.total_combinations += search_variants.len();
+        result.by_topic.push(TopicResearchSummary {
+            topic_name: topic_req.name.clone(),
+            topic_id,
+            search_phrase_used: base_search.clone(),
+            questions_found: topic_qs,
+            by_source,
+            city_variants: city_count,
+        });
+    }
+
+    Ok(Json(result))
+}
+
+/// POST /api/v1/research/bulk/preview
+///
+/// Preview how many questions bulk_research would generate without writing anything.
+pub async fn bulk_research_preview(
+    Json(req): Json<BulkResearchWithCitiesRequest>,
+) -> ApiResult<Json<BulkPreviewResult>> {
+    if req.topics.is_empty() { return Err(AppError::Validation("At least one topic is required".into())); }
+    let sources = req.sources.unwrap_or_else(|| vec!["quora".into(), "reddit".into(), "stackexchange".into()]);
+    let effective_cities = if req.cities.is_empty() { 1 } else { req.cities.len() };
+    let estimates: Vec<String> = req.topics.iter().take(5).flat_map(|t| {
+        let phrase = t.search_phrase.clone().unwrap_or_else(|| t.name.clone());
+        if req.cities.is_empty() {
+            vec![phrase]
+        } else {
+            req.cities.iter().take(3).map(move |c| format!("{} in {}", phrase, c)).collect::<Vec<_>>()
+        }
+    }).collect();
+    Ok(Json(BulkPreviewResult {
+        estimated_topics: req.topics.len(),
+        estimated_combinations: req.topics.len() * effective_cities,
+        estimated_questions: req.topics.len() * effective_cities * (sources.len() + 1) * 8,
+        sample_queries: estimates,
+    }))
+}
