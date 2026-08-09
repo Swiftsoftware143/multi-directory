@@ -32,22 +32,30 @@ pub async fn news_sitemap(
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     // 1. Fetch directory
-    let dir = sqlx::query!(
-        r#"SELECT id, name, description, slug, url_value, custom_domain
-           FROM directories WHERE slug = $1"#,
-        slug
+    #[derive(sqlx::FromRow)]
+    struct DirInfo {
+        id: uuid::Uuid,
+        name: String,
+        slug: String,
+    }
+    let dir = sqlx::query_as::<_, DirInfo>(
+        "SELECT id, name, slug FROM tenants WHERE slug = $1"
     )
+    .bind(&slug)
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
+    let description: Option<String> = sqlx::query_scalar(
+        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1"
+    )
+    .bind(dir.id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
     // 2. Determine domain
-    let domain = if let Some(ref cd) = dir.custom_domain {
-        cd.clone()
-    } else {
-        let uv = dir.url_value.as_deref().unwrap_or(&dir.slug);
-        format!("{}.{}", uv, s.config.base_domain)
-    };
+    let domain = format!("{}.{}", dir.slug, s.config.base_domain);
 
     // 3. Fetch items published within the last 48 hours from both tables
     //    Google News sitemap requires content within the last 48 hours.
@@ -141,22 +149,30 @@ pub async fn blog_rss_feed(
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     // 1. Fetch directory
-    let dir = sqlx::query!(
-        r#"SELECT id, name, description, slug, url_value, custom_domain
-           FROM directories WHERE slug = $1"#,
-        slug
+    #[derive(sqlx::FromRow)]
+    struct DirInfo {
+        id: uuid::Uuid,
+        name: String,
+        slug: String,
+    }
+    let dir = sqlx::query_as::<_, DirInfo>(
+        "SELECT id, name, slug FROM tenants WHERE slug = $1"
     )
+    .bind(&slug)
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
+    let description: Option<String> = sqlx::query_scalar(
+        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1"
+    )
+    .bind(dir.id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
     // 2. Determine domain
-    let domain = if let Some(ref cd) = dir.custom_domain {
-        cd.clone()
-    } else {
-        let uv = dir.url_value.as_deref().unwrap_or(&dir.slug);
-        format!("{}.{}", uv, s.config.base_domain)
-    };
+    let domain = format!("{}.{}", dir.slug, s.config.base_domain);
 
     // 3. Fetch last 50 published blog posts
     let items: Vec<RssFeedItem> = sqlx::query_as::<_, RssFeedItem>(
@@ -185,7 +201,7 @@ pub async fn blog_rss_feed(
 
     // 4. Build RSS 2.0 XML
     let now_rfc2822 = Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string();
-    let dir_description = dir.description.as_deref().unwrap_or("").to_string();
+    let dir_description = description.as_deref().unwrap_or("").to_string();
     let channel_description = if dir_description.is_empty() {
         format!("Latest blog posts from {}", esc_xml(&dir.name))
     } else {

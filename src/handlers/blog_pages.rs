@@ -20,7 +20,7 @@ pub async fn render_blog_list(
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let directory = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = $1"
+        "SELECT * FROM tenants WHERE slug = $1"
     )
     .bind(&slug)
     .fetch_optional(&s.db)
@@ -121,7 +121,7 @@ pub async fn render_blog_post(
     Path((slug, post_slug)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
     let directory = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = $1"
+        "SELECT * FROM tenants WHERE slug = $1"
     )
     .bind(&slug)
     .fetch_optional(&s.db)
@@ -322,10 +322,10 @@ n             <h3>Related Articles</h3>\n\
 
                 if let Some(cid) = conn_id {
                     // Get directory name and slug
-                    if let Ok(Some(conn_dir)) = sqlx::query!(
-                        r#"SELECT id, name, slug FROM directories WHERE id = $1"#,
-                        cid
+                    if let Ok(Some(conn_dir)) = sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+                        "SELECT id, name, slug FROM tenants WHERE id = $1"
                     )
+                    .bind(cid)
                     .fetch_optional(&s.db)
                     .await
                     {
@@ -353,13 +353,13 @@ n             <h3>Related Articles</h3>\n\
                         {
                             if let Some(cp) = conn_posts.first() {
                                 let cp_slug = cp.slug.as_deref().unwrap_or("post");
-                                let dir_slug = &conn_dir.slug;
+                                let dir_slug = &conn_dir.2;
                                 network_items.push(format!(
                                     "<li><a href=\"/api/v1/d/{dir_slug}/blog/{cp_slug}\">{title}</a> <span class=\"network-source\">from {dir_name}</span></li>",
                                     dir_slug = dir_slug,
                                     cp_slug = cp_slug,
                                     title = esc(&cp.title),
-                                    dir_name = esc(&conn_dir.name),
+                                    dir_name = esc(&conn_dir.1),
                                 ));
                             }
                         }
