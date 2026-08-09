@@ -58,8 +58,9 @@ pub async fn scan_content_decay(
         "UPDATE blog_posts \
          SET decay_flag = true, \
              refresh_priority = CASE \
+                 WHEN traffic_trend = 'declining' AND (last_refreshed IS NULL OR last_refreshed < NOW() - INTERVAL '6 months') THEN 'high'
                  WHEN page_views > 1000 AND (last_refreshed IS NULL OR last_refreshed < NOW() - INTERVAL '12 months') THEN 'high' \
-                 WHEN page_views > 500 OR (last_refreshed IS NULL OR last_refreshed < NOW() - INTERVAL '9 months') THEN 'medium' \
+                 WHEN traffic_trend = 'declining' OR page_views > 500 OR (last_refreshed IS NULL OR last_refreshed < NOW() - INTERVAL '9 months') THEN 'medium' \
                  ELSE 'low' \
              END \
          WHERE published = true \
@@ -446,15 +447,15 @@ pub async fn score_post_aeo(
         score += 10;
     }
 
-    // 2. Uses heading structure (h2, h3) for scannability (0-15 pts)
+    // 2. Uses heading structure (h2, h3) for scannability (0-10 pts)
     let h2_count = content_lower.matches("<h2").count();
     let h3_count = content_lower.matches("<h3").count();
     if h2_count >= 3 && h3_count >= 2 {
-        score += 15;
-    } else if h2_count >= 2 {
         score += 10;
+    } else if h2_count >= 2 {
+        score += 7;
     } else if h2_count >= 1 {
-        score += 5;
+        score += 4;
     }
 
     // 3. Has schema markup (0-20 pts)
@@ -479,22 +480,69 @@ pub async fn score_post_aeo(
         score += 5;
     }
 
-    // 5. Content length adequate for depth (0-15 pts)
+    // 5. Content length adequate for depth (0-10 pts)
     let word_count = content_lower.split_whitespace().count();
     if word_count >= 1500 {
-        score += 15;
-    } else if word_count >= 800 {
         score += 10;
+    } else if word_count >= 800 {
+        score += 7;
     } else if word_count >= 300 {
-        score += 5;
+        score += 4;
     }
 
-    // 6. Uses lists (ul/ol) for structured answers (0-15 pts)
+    // 6. Uses lists (ul/ol) for structured answers (0-10 pts)
     let list_count = content_lower.matches("<ul").count() + content_lower.matches("<ol").count();
     if list_count >= 3 {
-        score += 15;
-    } else if list_count >= 1 {
         score += 10;
+    } else if list_count >= 1 {
+        score += 7;
+    }
+
+    // 7. Keyword placement in title and first paragraph (0-10 pts)
+    // Extract significant words (5+ chars) from title and check their density
+    let title_lower = post.title.to_lowercase();
+    let title_keywords: Vec<&str> = title_lower
+        .split_whitespace()
+        .filter(|w| w.len() >= 5)
+        .collect();
+    if !title_keywords.is_empty() {
+        let first_200 = if content_lower.len() > 200 { &content_lower[..200] } else { &content_lower };
+        let first_para = first_200.split("</p>").next().unwrap_or(first_200);
+        let keyword_hits = title_keywords.iter()
+            .filter(|kw| first_para.contains(*kw))
+            .count();
+        let density = (keyword_hits as f64 / title_keywords.len() as f64) * 10.0;
+        score += density.round() as i32;
+    }
+
+    // 8. Readability: average sentence length under 25 words (0-10 pts)
+    // Simple heuristic: count text between periods in the first 2000 chars
+    let text_only = content_lower
+        .replace("<p>", " ").replace("</p>", ".")
+        .replace("<li>", " ").replace("</li>", ".")
+        .replace("<br>", ".").replace("<br/>", ".")
+        .replace("<br />", ".");
+    // Remove remaining HTML tags
+    let mut clean = String::new();
+    let mut in_tag = false;
+    for ch in text_only.chars() {
+        if ch == '<' { in_tag = true; continue; }
+        if ch == '>' { in_tag = false; continue; }
+        if !in_tag { clean.push(ch); }
+    }
+    let sentences: Vec<&str> = clean.split('.').filter(|s| s.trim().len() > 10).collect();
+    if !sentences.is_empty() {
+        let avg_words: f64 = sentences.iter()
+            .map(|s| s.split_whitespace().count() as f64)
+            .sum::<f64>() / sentences.len() as f64;
+        if avg_words <= 15.0 {
+            score += 10; // Excellent readability
+        } else if avg_words <= 25.0 {
+            score += 7;  // Good readability
+        } else if avg_words <= 35.0 {
+            score += 4;  // Acceptable
+        }
+        // >35 words/sentence = no points (walls of text)
     }
 
     // Clamp 0-100
