@@ -38,6 +38,7 @@ rust_decimal = { version = "1.36", features = ["serde"] }
 
 
 csv = "1"
+regex = "1"
 tokio-util = { version = "0.7", features = ["io"] }
 
 # Security: DNS resolution via library instead of shell commands
