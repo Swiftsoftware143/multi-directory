@@ -545,6 +545,34 @@ pub async fn score_post_aeo(
         // >35 words/sentence = no points (walls of text)
     }
 
+    // 9. Answer-first structure: direct answer bolded/emphasized in first 2 sentences (0-10 pts)
+    // Look for <strong>, <b>, <em> tags in the first meaningful paragraph
+    if let Some(ref answer) = post.answer_block {
+        if answer.len() > 20 {
+            // Check that content starts with an answer, not a preamble
+            let answer_lower = answer.to_lowercase();
+            // Does the answer appear within the first 300 characters of body content?
+            let early_body = if content_lower.len() > 300 { &content_lower[..300] } else { &content_lower };
+            if early_body.contains(&answer_lower[..std::cmp::min(50, answer_lower.len())]) {
+                score += 10; // Answer positioned early — strong AEO signal
+            } else if content_lower.contains(&answer_lower[..50]) {
+                score += 5;  // Answer exists but deeper in content
+            }
+        }
+    } else {
+        // No answer_block at all — try to detect if the first <p> is a direct answer
+        let first_p = content_lower.split("</p>").next().unwrap_or("");
+        let first_p_len = first_p.split_whitespace().count();
+        // Short first paragraph (1-2 sentences) = likely a direct answer format
+        if first_p_len > 5 && first_p_len <= 30
+            && (first_p.contains("<strong>") || first_p.contains("<b>") || first_p.contains("<em>"))
+        {
+            score += 7;
+        } else if first_p_len > 5 && first_p_len <= 30 {
+            score += 3;
+        }
+    }
+
     // Clamp 0-100
     score = score.clamp(0, 100);
 
