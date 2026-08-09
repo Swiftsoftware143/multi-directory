@@ -357,7 +357,7 @@ pub async fn enroll(
             phone,
             business_type,
             COALESCE(
-                (SELECT slug FROM directories WHERE id = visitor_accounts.directory_id),
+                (SELECT slug FROM tenants WHERE id = visitor_accounts.directory_id),
                 'zaarhub'
             ) as directory_slug
            FROM visitor_accounts

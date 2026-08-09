@@ -32,22 +32,32 @@ pub async fn articles_xml_feed(
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     // 1. Fetch the directory to get name, description, and domain info
-    let dir = sqlx::query!(
-        r#"SELECT id, name, description, slug, url_value, custom_domain
-           FROM directories WHERE slug = $1"#,
-        slug
+    // Fetch tenant by slug (directories are tenants in multi-directory)
+    #[derive(sqlx::FromRow)]
+    struct DirInfo {
+        id: uuid::Uuid,
+        name: String,
+        slug: String,
+    }
+    let dir = sqlx::query_as::<_, DirInfo>(
+        "SELECT id, name, slug FROM tenants WHERE slug = $1"
     )
+    .bind(&slug)
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
+    // Get description from seo_meta
+    let description: Option<String> = sqlx::query_scalar(
+        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1"
+    )
+    .bind(dir.id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
     // 2. Determine the domain for links
-    let domain = if let Some(ref cd) = dir.custom_domain {
-        cd.clone()
-    } else {
-        let uv = dir.url_value.as_deref().unwrap_or(&dir.slug);
-        format!("{}.{}", uv, s.config.base_domain)
-    };
+    let domain = format!("{}.{}", dir.slug, s.config.base_domain);
 
     // 3. Fetch the 50 latest published items from both tables
     let items: Vec<FeedItem> = sqlx::query_as::<_, FeedItem>(
@@ -106,7 +116,7 @@ pub async fn articles_xml_feed(
     ));
     xml.push_str(&format!(
         "  <description>{desc}</description>\n",
-        desc = esc_xml(dir.description.as_deref().unwrap_or(""))
+        desc = esc_xml(description.as_deref().unwrap_or(""))
     ));
     xml.push_str("  <language>en-us</language>\n");
     xml.push_str(&format!(
