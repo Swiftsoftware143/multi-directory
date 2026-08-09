@@ -154,3 +154,5 @@ pub mod category_system;
 pub use category_system::*;
 pub mod blog_features;
 pub use blog_features::*;
+pub mod content_research;
+pub use content_research::*;
