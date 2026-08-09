@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog Features — Multi-Directory Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      background: #12121a; color: #eef4f8; min-height: 100vh;
+    }
+    :root {
+      --bg-card: #1A1A23; --bg-input: #14141c;
+      --border: rgba(255,255,255,0.08); --border-hover: rgba(255,255,255,0.18);
+      --text-secondary: #9fb0bd; --text-tertiary: #6b7d8a;
+      --accent: #8bd3ff; --accent-hover: #66c2ff;
+      --danger: #f87171; --success: #4ade80; --warning: #fbbf24;
+      --radius: 8px;
+    }
+    .header {
+      background: #0d0d14; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-inner {
+      max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-brand { font-weight: 700; font-size: 1rem; color: var(--accent); text-decoration: none; }
+    .header-user { font-size: 0.8125rem; color: var(--text-secondary); }
+    .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    
+    .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .tab-btn {
+      padding: 10px 20px; background: none; border: none; color: var(--text-secondary);
+      cursor: pointer; font-weight: 500; font-size: 0.85rem; border-bottom: 2px solid transparent;
+      transition: all .2s;
+    }
+    .tab-btn:hover { color: #eef4f8; }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    }
+    .card h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+    .card .sub { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 16px; }
+    
+    button {
+      padding: 8px 16px; border-radius: var(--radius); border: none; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600; transition: all .2s;
+    }
+    .btn-primary { background: var(--accent); color: #12121a; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: .9; }
+    .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+    
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
+    .stat-card .num { font-size: 1.8rem; font-weight: 800; }
+    .stat-card .label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+    .stat-card.high .num { color: var(--danger); }
+    .stat-card.med .num { color: var(--warning); }
+    .stat-card.low .num { color: var(--success); }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); color: var(--text-tertiary); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+    td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    tr:hover { background: rgba(255,255,255,0.02); }
+    
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 0.72rem; font-weight: 600; }
+    .badge-high { background: rgba(248,113,113,.15); color: var(--danger); }
+    .badge-med { background: rgba(251,191,36,.15); color: var(--warning); }
+    .badge-low { background: rgba(74,222,128,.15); color: var(--success); }
+    .badge-rising { background: rgba(74,222,128,.15); color: var(--success); }
+    .badge-stable { background: rgba(139,211,255,.15); color: var(--accent); }
+    .badge-declining { background: rgba(248,113,113,.15); color: var(--danger); }
+    
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius); font-size: 0.85rem; z-index: 9999; animation: fadeIn .3s ease; font-weight: 500; }
+    .toast.success { background: var(--success); color: #12121a; }
+    .toast.error { background: var(--danger); color: #fff; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .loading { text-align: center; padding: 40px; color: var(--text-tertiary); }
+    .empty { text-align: center; padding: 30px; color: var(--text-tertiary); font-size: 0.9rem; }
+    
+    .form-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+    input, select, textarea { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; color: #eef4f8; font-size: 0.85rem; font-family: inherit; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    
+    .link-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.82rem; }
+    .link-item:last-child { border-bottom: none; }
+    
+    .schema-preview { background: #0d0d14; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-family: monospace; font-size: 0.78rem; max-height: 400px; overflow: auto; white-space: pre-wrap; color: #9fb0bd; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <div class="header-inner">
+    <a href="#" class="header-brand">🌐 Blog Features — Multi-Directory Admin</a>
+    <span class="header-user" id="user-info"></span>
+  </div>
+</div>
+<div class="container">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('decay')">📉 Content Decay</button>
+    <button class="tab-btn" onclick="switchTab('links')">🔗 Internal Links</button>
+    <button class="tab-btn" onclick="switchTab('aeo')">📊 AEO Scoring</button>
+    <button class="tab-btn" onclick="switchTab('schema')">🏗️ Schema Markup</button>
+  </div>
+
+  <!-- DECAY TAB -->
+  <div id="tab-decay" class="tab-content active">
+    <div class="card">
+      <h2>Content Decay Detection</h2>
+      <p class="sub">Flag stale posts (>6 months without refresh) and prioritize content updates.</p>
+      <button class="btn-primary" onclick="scanDecay()">🔍 Scan All Posts</button>
+      <span style="margin-left:12px;font-size:.8rem;color:var(--text-secondary)" id="decay-status"></span>
+    </div>
+    <div class="stats-row" id="decay-stats" style="display:none"></div>
+    <div class="card" id="decay-table-card" style="display:none">
+      <h2>Decaying Posts</h2>
+      <table>
+        <thead><tr><th>Title</th><th>Last Refreshed</th><th>Views</th><th>Trend</th><th>Priority</th><th>Action</th></tr></thead>
+        <tbody id="decay-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- INTERNAL LINKS TAB -->
+  <div id="tab-links" class="tab-content">
+    <div class="card">
+      <h2>Internal Link Suggestions</h2>
+      <p class="sub">Analyze content overlap and suggest internal links between posts.</p>
+      <button class="btn-primary" onclick="getLinkSuggestions()">🔍 Analyze Content</button>
+      <span style="margin-left:12px;font-size:.8rem;color:var(--text-secondary)" id="links-status"></span>
+    </div>
+    <div class="card" id="links-table-card" style="display:none">
+      <h2>Suggestions</h2>
+      <table>
+        <thead><tr><th>From</th><th>Suggested Link To</th><th>Anchor</th><th>Match</th><th>Action</th></tr></thead>
+        <tbody id="links-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- AEO TAB -->
+  <div id="tab-aeo" class="tab-content">
+    <div class="card">
+      <h2>AEO (Answer Engine Optimization) Scoring</h2>
+      <p class="sub">Score content for AI/voice search readiness based on structure, schema, and depth.</p>
+      <button class="btn-primary" onclick="scanAllAeo()">📊 Re-Scan All Posts</button>
+      <span style="margin-left:12px;font-size:.8rem;color:var(--text-secondary)" id="aeo-status"></span>
+    </div>
+    <div class="stats-row" id="aeo-stats" style="display:none"></div>
+    <div class="card" id="aeo-table-card" style="display:none">
+      <h2>AEO Scores</h2>
+      <table>
+        <thead><tr><th>Title</th><th>AEO Score</th><th>Schema</th><th>Traffic</th><th>Views</th><th>Action</th></tr></thead>
+        <tbody id="aeo-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SCHEMA TAB -->
+  <div id="tab-schema" class="tab-content">
+    <div class="card">
+      <h2>Schema Markup Generation</h2>
+      <p class="sub">Auto-generate schema.org JSON for blog posts (Article, FAQ, HowTo, etc.)</p>
+      <div class="form-row">
+        <select id="schema-type" style="width:200px">
+          <option value="Article">Article</option>
+          <option value="BlogPosting">BlogPosting</option>
+          <option value="NewsArticle">NewsArticle</option>
+          <option value="FAQPage">FAQPage</option>
+          <option value="HowTo">HowTo</option>
+        </select>
+        <button class="btn-primary" onclick="generateAllSchema()">Generate for All Posts</button>
+      </div>
+      <span style="font-size:.8rem;color:var(--text-secondary)" id="schema-status"></span>
+    </div>
+    <div class="card" id="schema-preview-card" style="display:none">
+      <h2>Preview — Last Generated Schema</h2>
+      <div class="schema-preview" id="schema-preview-content"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let token = '';
+
+// Try to get token from localStorage (set by admin-login.html)
+try { token = localStorage.getItem('md_admin_token') || ''; } catch(e) {}
+
+document.getElementById('user-info').textContent = token ? '🔑 Authenticated' : '⚠️ Not logged in';
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(API + path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || err.error || 'Request failed');
+  }
+  return res.json();
+}
+
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'decay' && !document.getElementById('decay-stats').style.display || document.getElementById('decay-stats').style.display === 'none') {
+    scanDecay();
+  } else if (name === 'aeo') {
+    loadAeoReport();
+  }
+}
+
+// ── DECAY ──
+async function scanDecay() {
+  document.getElementById('decay-status').textContent = 'Scanning...';
+  try {
+    const data = await api('POST', '/blog/decay/scan');
+    renderDecay(data);
+    document.getElementById('decay-status').textContent = '✅ Done';
+    toast('Scanned ' + data.total_posts + ' posts', 'success');
+  } catch(e) {
+    document.getElementById('decay-status').textContent = '❌ ' + e.message;
+    toast(e.message, 'error');
+  }
+}
+
+function renderDecay(data) {
+  const stats = document.getElementById('decay-stats');
+  stats.style.display = 'grid';
+  stats.innerHTML = `
+    <div class="stat-card"><div class="num">${data.total_posts}</div><div class="label">Total Posts</div></div>
+    <div class="stat-card high"><div class="num">${data.decayed_posts}</div><div class="label">Decayed</div></div>
+    <div class="stat-card high"><div class="num">${data.high_priority}</div><div class="label">High Priority</div></div>
+    <div class="stat-card med"><div class="num">${data.medium_priority}</div><div class="label">Medium</div></div>
+    <div class="stat-card low"><div class="num">${data.low_priority}</div><div class="label">Low Priority</div></div>
+  `;
+
+  const card = document.getElementById('decay-table-card');
+  card.style.display = 'block';
+  const tbody = document.getElementById('decay-table-body');
+  tbody.innerHTML = data.posts.map(p => `
+    <tr>
+      <td>${esc(p.title)}</td>
+      <td>${p.days_since_refresh != null ? p.days_since_refresh + 'd ago' : 'Never'}</td>
+      <td>${p.page_views}</td>
+      <td><span class="badge badge-${p.traffic_trend||'stable'}">${p.traffic_trend||'stable'}</span></td>
+      <td><span class="badge badge-${p.refresh_priority||'low'}">${p.refresh_priority||'low'}</span></td>
+      <td><button class="btn-sm btn-primary" onclick="refreshPost('${p.id}')">Refresh</button></td>
+    </tr>
+  `).join('');
+}
+
+async function refreshPost(id) {
+  try {
+    await api('POST', '/blog/decay/refresh/' + id);
+    toast('Post refreshed', 'success');
+    scanDecay();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── INTERNAL LINKS ──
+async function getLinkSuggestions() {
+  document.getElementById('links-status').textContent = 'Analyzing...';
+  try {
+    const data = await api('GET', '/blog/internal-links/suggestions');
+    renderLinks(data);
+    document.getElementById('links-status').textContent = '✅ ' + data.total_suggestions + ' suggestions found';
+    toast(data.total_suggestions + ' suggestions', 'success');
+  } catch(e) {
+    document.getElementById('links-status').textContent = '❌ ' + e.message;
+    toast(e.message, 'error');
+  }
+}
+
+function renderLinks(data) {
+  const card = document.getElementById('links-table-card');
+  card.style.display = 'block';
+  const tbody = document.getElementById('links-table-body');
+  tbody.innerHTML = data.suggestions.map(s => `
+    <tr>
+      <td>${esc(s.source_title)}</td>
+      <td>${esc(s.target_title)}</td>
+      <td><code>${esc(s.anchor_text)}</code></td>
+      <td>${s.match_type}</td>
+      <td><button class="btn-sm btn-primary" onclick="addLink('${s.source_post_id}','${s.target_post_id}','${esc(s.anchor_text)}')">Add Link</button></td>
+    </tr>
+  `).join('');
+}
+
+async function addLink(source, target, anchor) {
+  try {
+    await api('POST', '/blog/internal-links/add', { source_post_id: source, target_post_id: target, anchor_text: anchor });
+    toast('Link added', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── AEO ──
+async function loadAeoReport() {
+  document.getElementById('aeo-status').textContent = 'Loading...';
+  try {
+    const data = await api('GET', '/blog/aeo/report');
+    renderAeo(data);
+    document.getElementById('aeo-status').textContent = '';
+  } catch(e) {
+    document.getElementById('aeo-status').textContent = '❌ ' + e.message;
+  }
+}
+
+async function scanAllAeo() {
+  document.getElementById('aeo-status').textContent = 'Scoring all posts...';
+  try {
+    const data = await api('POST', '/blog/aeo/scan-all');
+    renderAeo(data.summary);
+    document.getElementById('aeo-status').textContent = '✅ Scored ' + data.scored + ' posts';
+    toast('Scored ' + data.scored + ' posts', 'success');
+  } catch(e) {
+    document.getElementById('aeo-status').textContent = '❌ ' + e.message;
+    toast(e.message, 'error');
+  }
+}
+
+function renderAeo(data) {
+  const stats = document.getElementById('aeo-stats');
+  stats.style.display = 'grid';
+  stats.innerHTML = `
+    <div class="stat-card"><div class="num">${Math.round(data.average_score)}</div><div class="label">Avg AEO Score</div></div>
+    <div class="stat-card low"><div class="num">${data.high_aeo_count}</div><div class="label">High (80-100)</div></div>
+    <div class="stat-card med"><div class="num">${data.medium_aeo_count}</div><div class="label">Medium (50-79)</div></div>
+    <div class="stat-card high"><div class="num">${data.low_aeo_count}</div><div class="label">Low (0-49)</div></div>
+  `;
+
+  const card = document.getElementById('aeo-table-card');
+  card.style.display = 'block';
+  const tbody = document.getElementById('aeo-table-body');
+  tbody.innerHTML = data.posts.map(p => {
+    const scoreBadge = p.aeo_score >= 80 ? 'low' : p.aeo_score >= 50 ? 'med' : 'high';
+    return `<tr>
+      <td>${esc(p.title)}</td>
+      <td><span class="badge badge-${scoreBadge}">${p.aeo_score}</span></td>
+      <td>${p.schema_type||'None'}</td>
+      <td><span class="badge badge-${p.traffic_trend||'stable'}">${p.traffic_trend||'stable'}</span></td>
+      <td>${p.page_views}</td>
+      <td><button class="btn-sm btn-primary" onclick="scorePost('${p.id}')">Re-score</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function scorePost(id) {
+  try {
+    const data = await api('POST', '/blog/aeo/score/' + id);
+    toast('Scored: ' + data.aeo_score + '/100', 'success');
+    loadAeoReport();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── SCHEMA ──
+async function generateAllSchema() {
+  const schemaType = document.getElementById('schema-type').value;
+  document.getElementById('schema-status').textContent = 'Generating...';
+  try {
+    const data = await api('POST', '/blog/schema/generate-all', { schema_type: schemaType });
+    document.getElementById('schema-status').textContent = '✅ Generated for ' + data.generated + ' posts';
+    toast('Schema generated for ' + data.generated + ' posts', 'success');
+  } catch(e) {
+    document.getElementById('schema-status').textContent = '❌ ' + e.message;
+    toast(e.message, 'error');
+  }
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Auto-load on tab switch
+loadAeoReport();
+scanDecay();
+</script>
+</body>
+</html>

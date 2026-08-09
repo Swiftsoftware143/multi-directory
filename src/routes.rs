@@ -770,6 +770,25 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // Serve blog features admin panel
+                    if path == "/blog-features" || path == "/blog-features/" {
+                        let blog_feat_path = std::path::Path::new(&frontend).join("blog-features-admin.html");
+                        if blog_feat_path.exists() {
+                            match tokio::fs::read(&blog_feat_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     // ??? Serve portal pages by redirecting to the HTML file (fallback file serve handles it)
                     if path == "/portal" || path == "/portal/" || path.starts_with("/portal/business") {
                         let portal_path = std::path::Path::new(&frontend).join("business-portal.html");
