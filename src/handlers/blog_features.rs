@@ -246,27 +246,38 @@ pub async fn internal_link_suggestions(
 }
 
 /// POST /api/v1/blog/internal-links/add
-/// Add an internal link to a post's internal_links JSONB array.
+/// Add an internal link to a post: stores in JSONB + injects <a href> into content body.
 pub async fn add_internal_link(
     State(s): State<AppState>,
     Json(req): Json<AddInternalLinkRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get target post title for the link entry
-    let target_title = sqlx::query_scalar::<_, String>(
-        "SELECT title FROM blog_posts WHERE id = $1"
+    // Get target post title + slug for constructing the href
+    #[derive(sqlx::FromRow)]
+    struct TargetInfo {
+        title: String,
+        slug: Option<String>,
+    }
+    let target = sqlx::query_as::<_, TargetInfo>(
+        "SELECT title, slug FROM blog_posts WHERE id = $1"
     )
     .bind(req.target_post_id)
     .fetch_optional(&s.db)
     .await?
-    .unwrap_or_default();
+    .unwrap_or(TargetInfo { title: String::new(), slug: None });
+
+    let target_title = target.title;
+    let target_slug = target.slug.unwrap_or_default();
+    let href = format!("/blog/{}", target_slug);
 
     let link_obj = json!({
         "target_id": req.target_post_id,
         "target_title": target_title,
+        "target_slug": target_slug,
         "anchor_text": req.anchor_text,
         "added_at": Utc::now().to_rfc3339(),
     });
 
+    // 1. Store in JSONB metadata
     sqlx::query(
         "UPDATE blog_posts SET internal_links = COALESCE(internal_links, '[]'::jsonb) || $1::jsonb WHERE id = $2"
     )
@@ -275,7 +286,69 @@ pub async fn add_internal_link(
     .execute(&s.db)
     .await?;
 
-    Ok(Json(json!({"status": "added", "link": link_obj})))
+    // 2. Inject <a href> into the post content HTML body
+    let source_content: Option<String> = sqlx::query_scalar(
+        "SELECT content FROM blog_posts WHERE id = $1"
+    )
+    .bind(req.source_post_id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
+    if let Some(body) = source_content {
+        let anchor = &req.anchor_text;
+        let anchor_lower = anchor.to_lowercase();
+        let body_lower = body.to_lowercase();
+        let link_tag = format!("<a href=\"{0}\">{1}</a>", href, anchor);
+        let related_note = format!(
+            "\n<p><em>Related reading: <a href=\"{0}\">{1}</a></em></p>",
+            href, anchor
+        );
+
+        // Try to find anchor_text in body outside of existing <a> tags
+        if let Some(pos) = body_lower.find(&anchor_lower) {
+            // Check if this occurrence is inside an existing <a> tag
+            let context_start = if pos > 200 { pos - 200 } else { 0 };
+            let before = &body_lower[context_start..pos];
+
+            let inside_existing_link = before.rfind("<a ").map_or(false, |lp| {
+                let between = &body_lower[context_start + lp..pos];
+                !between.contains("</a>")
+            });
+
+            let updated = if inside_existing_link {
+                // Already linked elsewhere in this context — append note at end
+                format!("{}{}", body, related_note)
+            } else {
+                // Replace plain text with linked version
+                format!("{}{}{}",
+                    &body[..pos],
+                    link_tag,
+                    &body[pos + anchor.len()..]
+                )
+            };
+
+            sqlx::query("UPDATE blog_posts SET content = $1 WHERE id = $2")
+                .bind(&updated)
+                .bind(req.source_post_id)
+                .execute(&s.db)
+                .await?;
+        } else {
+            // Anchor text not found in body — append note at end
+            let updated = format!("{}{}", body, related_note);
+            sqlx::query("UPDATE blog_posts SET content = $1 WHERE id = $2")
+                .bind(&updated)
+                .bind(req.source_post_id)
+                .execute(&s.db)
+                .await?;
+        }
+    }
+
+    Ok(Json(json!({
+        "status": "added",
+        "link": link_obj,
+        "injected_into_content": true
+    })))
 }
 
 /// DELETE /api/v1/blog/internal-links/:post_id/:target_id
