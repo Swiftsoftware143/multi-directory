@@ -93,6 +93,8 @@ pub fn create_router(s: AppState) -> Router {
         .route("/research/questions", get(content_research::get_research_questions))
         .route("/research/questions/:id/use-as-keyword", post(content_research::use_question_as_keyword))
         .route("/research/draft-post", post(content_research::draft_post_from_question))
+        .route("/research/bulk", post(content_research::bulk_research))
+        .route("/research/bulk/preview", post(content_research::bulk_research_preview))
         .route("/research/integrations", get(content_research::list_integrations).post(content_research::save_integration))
         .route("/research/integrations/:provider", delete(content_research::delete_integration))
 
