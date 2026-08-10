@@ -278,6 +278,45 @@ pub async fn member_dashboard_proxy(
     Ok(Json(result))
 }
 
+/// GET /loyalty/programs — proxies to IS /api/v1/loyalty/programs
+pub async fn loyalty_programs_proxy(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
+    let result = proxy_get("/loyalty/programs", &aid, &email, &claims.role).await?;
+    Ok(Json(result))
+}
+
+/// GET /loyalty/tiers?program_id=... — proxies to IS /api/v1/loyalty/tiers
+pub async fn loyalty_tiers_proxy(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
+    let qs = params.get("program_id").map(|p| format!("?program_id={}", p)).unwrap_or_default();
+    let result = proxy_get(&format!("/loyalty/tiers{}", qs), &aid, &email, &claims.role).await?;
+    Ok(Json(result))
+}
+
+/// GET /loyalty/member/:member_id — proxies to IS /api/v1/loyalty/member/:member_id
+pub async fn loyalty_member_proxy(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    axum::extract::Path(member_id): axum::extract::Path<uuid::Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
+    let result = proxy_get(
+        &format!("/loyalty/member/{}", member_id),
+        &aid,
+        &email,
+        &claims.role,
+    )
+    .await?;
+    Ok(Json(result))
+}
+
 /// GET /campaigns/list — proxies to IS /api/v1/campaigns
 /// Fetches the user's IncentiveSwift campaigns for the dropdown picker.
 pub async fn list_campaigns(

@@ -142,32 +142,73 @@ a:hover{text-decoration:underline}
   </div>
 </div>
 
-<!-- 5. Verifying Purchases -->
+<!-- 5. Verifying Purchases (The Scanner) -->
 <div class="card">
-  <h3><span class="emoji">✅</span> 5. Verifying Purchases</h3>
-  <p>When a customer wants to earn or redeem credits, use the <strong>Scanner tab</strong> in your loyalty dashboard.</p>
+  <h3><span class="emoji">📷</span> 5. The ZaarHub Scanner — Verifying Purchases</h3>
+  <p>The <strong>ZaarHub Scanner</strong> at <a href="/scanner"><code>/scanner</code></a> is your point-of-sale tool for processing loyalty transactions. It uses your device's camera to scan customer QR codes and award ZaarCash instantly.</p>
+  <p><strong>How to access the scanner:</strong></p>
+  <ul>
+    <li>Go to <strong><code>https://zaarhub.com/scanner</code></strong> from any device with a camera (phone, tablet, or laptop)</li>
+    <li>Sign in with your business credentials (email + password)</li>
+    <li>The scanner auto-detects your business name and category from your account</li>
+    <li>You can also add the scanner as a <strong>home screen app</strong> on your phone for quick access (it's a PWA)</li>
+  </ul>
+  <p><strong>Three scan types are available:</strong></p>
+  <ul>
+    <li><strong>✅ Check-in</strong> — Award bonus points just for visiting (10 points). No amount needed.</li>
+    <li><strong>💳 Purchase</strong> — Customer earns ZaarCash on their purchase. Enter the total purchase amount.</li>
+    <li><strong>🎁 Redeem</strong> — Customer uses their ZaarCash balance. Enter points to deduct.</li>
+  </ul>
   <div class="step-item">
     <div class="step-num">1</div>
-    <div class="step-text"><p>Customer shows their QR code on their phone</p></div>
+    <div class="step-text"><p>Open <strong><code>zaarhub.com/scanner</code></strong> on your phone or tablet</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">2</div>
-    <div class="step-text"><p>Scan the QR code with your device's camera — the customer's ID is captured automatically</p></div>
+    <div class="step-text"><p>Select the scan type (Check-in, Purchase, or Redeem) at the top</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">3</div>
-    <div class="step-text"><p>Enter the <strong>purchase amount</strong> and your <strong>Purchase PIN</strong></p></div>
+    <div class="step-text"><p>Customer shows their <strong>QR code</strong> on their phone — viewable on any ZaarHub business profile page under the Loyalty section</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">4</div>
-    <div class="step-text"><p>Click <strong>Verify</strong> — credits are awarded automatically (or the offer is applied if redeeming)</p></div>
+    <div class="step-text"><p>Point your camera at the QR code — it scans automatically within ~1 second. You'll see a green confirmation and vibration feedback</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">5</div>
-    <div class="step-text"><p><strong>Optional:</strong> If the customer wants to redeem an offer, select the offer from the dropdown before clicking Verify</p></div>
+    <div class="step-text"><p>For Purchases: enter the <strong>total amount</strong> and optional notes (e.g., "Table 7"). Click <strong>Process Transaction</strong></p></div>
   </div>
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-text"><p>Points are awarded instantly! The success screen shows the member's name, tier, and points earned. Tap <strong>Scan Next Customer</strong> to continue.</p></div>
+  </div>
+  <p><strong>Each transaction automatically records:</strong></p>
+  <ul>
+    <li>Your business ID, name, and category</li>
+    <li>A unique transaction ID for audit tracking</li>
+    <li>The scan timestamp and scan type</li>
+    <li>All fields feed into the IncentiveSwift clearinghouse for billing and reimbursement</li>
+  </ul>
   <div class="tip-box">
-    <strong>💡 Tip:</strong> Make sure your camera can clearly read the QR code. Good lighting and a steady hand help. If scanning fails, you can manually type the customer's ID.
+    <strong>💡 Tip:</strong> The scanner works offline with the service worker cache, then syncs when reconnected. Good lighting and a steady hand ensure fast scans. Works on iPhone, Android, and desktop browsers with cameras.
+  </div>
+</div>
+
+<!-- 5b. Customer Loyalty Display on Profiles -->
+<div class="card">
+  <h3><span class="emoji">👤</span> 5b. Where Customers See Their Loyalty Info</h3>
+  <p>Customers can view their loyalty status on <strong>any ZaarHub business profile page</strong> at <code>/biz/:slug/:id</code>. Each profile includes a dedicated <strong>"ZaarHub Rewards" section</strong> that shows:</p>
+  <ul>
+    <li><strong>Current tier</strong> — Bronze, Silver, Gold, or Platinum with color-coded badge</li>
+    <li><strong>ZaarCash balance</strong> — Total points earned across all participating businesses</li>
+    <li><strong>QR code</strong> — Scan-able at checkout to earn or redeem</li>
+    <li><strong>Earn rate</strong> — How many ZaarCash per $1 spent</li>
+    <li><strong>Join button</strong> — For new customers who aren't enrolled yet</li>
+  </ul>
+  <p>The loyalty section fetches live data from the IncentiveSwift loyalty engine through the Multi-Directory proxy — <strong>no separate app needed by the customer</strong>. They just visit any ZaarHub business listing while logged in.</p>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> Encourage customers to log in before visiting. When they're logged in, the "ZaarHub Rewards" card automatically shows their personal tier, balance, and scannable QR. No login = they see the program info but not their personal data.
   </div>
 </div>
 

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f172a">
+<meta name="description" content="ZaarHub Loyalty Scanner — Scan, earn, redeem">
+<link rel="manifest" href="/scanner-manifest.json">
+<title>ZaarHub Scanner</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --primary:#f27f2f;--primary-hover:#e06e1a;--primary-glow:rgba(242,127,47,0.4);
+  --secondary:#116dc0;--dark:#0f172a;--card:#fff;--bg:#f1f5f9;
+  --text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;
+  --danger:#ef4444;--success:#22c55e;--success-bg:#f0fdf4;
+  --warning:#f59e0b;--silver:#94a3b8;--gold:#eab308;--platinum:#06b6d4;
+}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--dark);color:var(--text);min-height:100vh;min-height:100dvh;
+  display:flex;align-items:center;justify-content:center;padding:0;
+}
+
+/* Auth Screen */
+.auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh;width:100%;padding:20px}
+.auth-card{background:var(--card);border-radius:20px;padding:36px 28px;width:380px;max-width:92vw;box-shadow:0 25px 60px rgba(0,0,0,.5)}
+.auth-card .logo{text-align:center;font-size:3rem;margin-bottom:4px}
+.auth-card h1{font-size:1.5rem;color:var(--primary);text-align:center;margin-bottom:2px}
+.auth-card .subtitle{text-align:center;color:var(--text-secondary);font-size:.85rem;margin-bottom:24px}
+.auth-card .error{background:#fef2f2;color:#dc2626;padding:10px 14px;border-radius:10px;font-size:.83rem;margin-bottom:14px;display:none}
+.tab-bar{display:flex;margin-bottom:20px;border-bottom:2px solid var(--border)}
+.tab{flex:1;text-align:center;padding:10px;cursor:pointer;font-weight:600;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;font-size:.88rem}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:3px}
+.form-group input,.form-group select{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:.88rem;outline:none;font-family:inherit;background:#fff;transition:border-color .2s}
+.form-group input:focus,.form-group select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.12)}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 20px;border-radius:10px;font-size:.9rem;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;gap:6px}
+.btn-primary{background:var(--primary);color:#fff;width:100%}
+.btn-primary:hover{background:var(--primary-hover)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-outline{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);padding:8px 14px;font-size:.8rem;border-radius:8px}
+.btn-outline:hover{background:rgba(255,255,255,.1)}
+
+/* Scanner Screen */
+.scanner-screen{display:none;flex-direction:column;width:100%;max-width:480px;min-height:100vh;min-height:100dvh;background:var(--dark);margin:0 auto;position:relative}
+.scanner-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:rgba(15,23,42,.95);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);position:sticky;top:0;z-index:20}
+.scanner-header h2{font-size:1rem;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}
+.scanner-header .biz-name{font-size:.75rem;color:rgba(255,255,255,.55);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scanner-body{flex:1;display:flex;flex-direction:column;padding:16px}
+
+/* Camera Viewport */
+.camera-wrap{position:relative;width:100%;aspect-ratio:1/1;max-height:55vh;border-radius:16px;overflow:hidden;background:#000;margin-bottom:16px;box-shadow:0 0 0 3px rgba(242,127,47,.2),0 8px 32px rgba(0,0,0,.4)}
+.camera-wrap.scanning{box-shadow:0 0 0 3px var(--primary-glow),0 0 40px var(--primary-glow),0 8px 32px rgba(0,0,0,.4)}
+#scannerVideo{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+#scannerCanvas{display:none}
+.scanner-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:65%;aspect-ratio:1/1;border:3px dashed rgba(255,255,255,.5);border-radius:20px;pointer-events:none;transition:all .3s}
+.scanner-guide.found{border-color:var(--success);border-style:solid;border-width:4px;background:rgba(34,197,94,.08)}
+.scanner-guide-label{position:absolute;bottom:-32px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.7);font-size:.75rem;font-weight:600;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.scanner-status-bar{text-align:center;padding:6px 12px;background:rgba(0,0,0,.5);border-radius:8px;color:#fff;font-size:.78rem;margin-top:-8px;margin-bottom:12px;transition:all .3s}
+
+/* Scan Type Segmented Control */
+.segment-wrap{display:flex;gap:4px;background:rgba(255,255,255,.08);border-radius:12px;padding:4px;margin-bottom:14px}
+.segment-btn{flex:1;padding:10px 6px;border-radius:10px;border:none;background:transparent;color:rgba(255,255,255,.6);font-size:.78rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;text-align:center}
+.segment-btn.active{background:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(242,127,47,.3)}
+.segment-btn .seg-icon{display:block;font-size:1.1rem;margin-bottom:2px}
+
+/* Form Card */
+.form-card{background:var(--card);border-radius:16px;padding:18px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.form-card .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-card .row-single{grid-template-columns:1fr}
+.form-card label{display:block;font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:3px}
+.form-card input,.form-card textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:.88rem;font-family:inherit;outline:none;transition:border-color .2s}
+.form-card input:focus,.form-card textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.1)}
+.form-card textarea{resize:none;min-height:60px}
+
+/* Buttons row in form */
+.btn-row{display:flex;gap:10px;margin-top:14px}
+.btn-row .btn{flex:1}
+.btn-row .btn-secondary{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+
+/* Success Overlay */
+.success-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:100;align-items:center;justify-content:center;flex-direction:column;padding:24px}
+.success-overlay.show{display:flex}
+.success-card{background:var(--card);border-radius:20px;padding:32px 24px;text-align:center;width:340px;max-width:90vw;box-shadow:0 25px 60px rgba(0,0,0,.5);animation:popIn .35s cubic-bezier(.34,1.56,.64,1)}
+@keyframes popIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+.success-icon{font-size:3.5rem;margin-bottom:12px}
+.success-card h2{font-size:1.3rem;font-weight:800;margin-bottom:4px;color:var(--text)}
+.success-card .member-name{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:2px}
+.success-card .member-tier{display:inline-block;padding:4px 14px;border-radius:100px;font-size:.8rem;font-weight:700;margin-bottom:16px}
+.tier-silver{background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1}
+.tier-gold{background:#fef9c3;color:#a16207;border:1px solid #fde047}
+.tier-platinum{background:#ecfeff;color:#0e7490;border:1px solid #67e8f9}
+.tier-bronze{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.points-badge{background:var(--success-bg);color:#166534;padding:12px 20px;border-radius:12px;margin:12px 0;font-size:.95rem;font-weight:700;border:1px solid #bbf7d0}
+.points-badge .pts{font-size:2rem;display:block;line-height:1.1}
+.success-details{font-size:.82rem;color:var(--text-secondary);margin:8px 0 16px}
+.success-card .btn{margin-top:4px}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--dark);color:#fff;padding:12px 24px;border-radius:10px;font-size:.85rem;font-weight:600;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.4);white-space:nowrap}
+.toast.show{opacity:1}
+.toast.error{background:#dc2626}
+
+/* Spinner */
+.spinner{width:22px;height:22px;border:2.5px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.inline-spinner{display:flex;align-items:center;justify-content:center;gap:8px}
+
+/* Safe area */
+@supports(padding:max(0px)){
+  .scanner-header{padding-top:max(14px,env(safe-area-inset-top))}
+  .scanner-body{padding-bottom:max(16px,env(safe-area-inset-bottom))}
+  .toast{bottom:max(24px,env(safe-area-inset-bottom))}
+}
+
+@media(max-width:400px){
+  .form-card .row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ AUTH SCREEN ═══ -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <div class="logo">📷</div>
+    <h1>ZaarHub Scanner</h1>
+    <p class="subtitle">Scan customer QR codes to log loyalty transactions</p>
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchAuthTab('login')" id="tabLogin">Sign In</div>
+      <div class="tab" onclick="switchAuthTab('register')" id="tabRegister">Register</div>
+    </div>
+    <div class="error" id="authError"></div>
+    <div id="loginForm">
+      <div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="you@business.com" autocomplete="email"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password"></div>
+      <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
+    </div>
+    <div id="registerForm" style="display:none">
+      <div class="form-group"><label>Business Name</label><input type="text" id="regName" placeholder="Sunrise Coffee Roasters"></div>
+      <div class="form-group"><label>Email</label><input type="email" id="regEmail" placeholder="you@business.com" autocomplete="email"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="regPassword" placeholder="Min 8 characters" autocomplete="new-password"></div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="regCategory"><option value="">Select your category</option>
+          <option value="Restaurant &amp; Cafe">🍽️ Restaurant &amp; Cafe</option>
+          <option value="Retail">🛍️ Retail</option>
+          <option value="Home Services">🛠️ Home Services</option>
+          <option value="Farm &amp; Agriculture">🌾 Farm &amp; Agriculture</option>
+          <option value="Automotive">🚗 Automotive</option>
+          <option value="Fitness &amp; Wellness">💪 Fitness &amp; Wellness</option>
+          <option value="Hospitality">🏨 Hospitality</option>
+          <option value="Medical &amp; Health">🏥 Medical &amp; Health</option>
+          <option value="Education">📚 Education</option>
+          <option value="Real Estate">🏠 Real Estate</option>
+          <option value="Wholesale / B2B">📦 Wholesale / B2B</option>
+          <option value="Professional Services">💼 Professional Services</option>
+          <option value="Other">📌 Other</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="doRegister()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCANNER SCREEN ═══ -->
+<div class="scanner-screen" id="scannerScreen">
+  <div class="scanner-header">
+    <div>
+      <h2>☰ ZaarHub Scanner</h2>
+      <div class="biz-name" id="bizNameDisplay">Loading...</div>
+    </div>
+    <button class="btn-outline" onclick="doLogout()">Sign Out</button>
+  </div>
+  <div class="scanner-body">
+    <!-- Camera -->
+    <div class="camera-wrap" id="cameraWrap">
+      <video id="scannerVideo" autoplay playsinline muted></video>
+      <canvas id="scannerCanvas"></canvas>
+      <div class="scanner-guide" id="scannerGuide">
+        <div class="scanner-guide-label">Position QR code in frame</div>
+      </div>
+    </div>
+    <div class="scanner-status-bar" id="scannerStatus">📷 Point camera at customer QR code</div>
+
+    <!-- Scan Type Buttons -->
+    <div class="segment-wrap" id="segmentWrap">
+      <button class="segment-btn active" onclick="setScanType('checkin',this)" id="segCheckin">
+        <span class="seg-icon">✅</span>Check-in
+      </button>
+      <button class="segment-btn" onclick="setScanType('purchase',this)" id="segPurchase">
+        <span class="seg-icon">💳</span>Purchase
+      </button>
+      <button class="segment-btn" onclick="setScanType('redemption',this)" id="segRedeem">
+        <span class="seg-icon">🎁</span>Redeem
+      </button>
+    </div>
+
+    <!-- Transaction Form -->
+    <div class="form-card" id="txCard">
+      <div class="row" id="amountRow" style="display:none">
+        <div class="form-group" style="margin-bottom:0">
+          <label id="amountLabel">Amount</label>
+          <input type="number" id="txAmount" placeholder="0.00" step="0.01" min="0" inputmode="decimal">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Transaction ID</label>
+          <input type="text" id="txId" readonly style="color:var(--text-secondary);font-size:.78rem;font-family:monospace">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <textarea id="txNotes" placeholder="Optional note (e.g. Table 7, Invoice #1234)"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="resetForm()">🔄 Reset</button>
+        <button class="btn btn-primary" onclick="processTransaction()" id="processBtn">Process Transaction</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SUCCESS OVERLAY ═══ -->
+<div class="success-overlay" id="successOverlay">
+  <div class="success-card">
+    <div class="success-icon" id="successIcon">✅</div>
+    <h2 id="successTitle">Success!</h2>
+    <div class="member-name" id="successMemberName"></div>
+    <div class="member-tier" id="successMemberTier"></div>
+    <div class="points-badge"><span class="pts" id="successPoints">+0</span><span id="successPointsLabel">points</span></div>
+    <div class="success-details" id="successDetails"></div>
+    <button class="btn btn-primary" onclick="closeSuccess()">Scan Next Customer</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- jsQR from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+<script>
+// ── State ──
+const API = '/api/v1';
+var _token = null;
+var _bizId = '';
+var _bizName = '';
+var _bizCategory = '';
+var _scanType = 'checkin';
+var _scannerStream = null;
+var _scanInterval = null;
+var _lastScannedQR = '';
+var _scanLocked = false;
+
+// Generate a fresh transaction ID
+function freshTxId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+    var r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16);
+  });
+}
+
+function $(id) { return document.getElementById(id); }
+
+// ── Toast ──
+function toast(msg, type) {
+  var el = $('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (type||'');
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(function(){ el.classList.remove('show'); }, 2800);
+}
+
+// ── Auth Tabs ──
+function switchAuthTab(t) {
+  $('tabLogin').classList.toggle('active',t==='login');
+  $('tabRegister').classList.toggle('active',t==='register');
+  $('loginForm').style.display = t==='login'?'':'none';
+  $('registerForm').style.display = t==='register'?'':'none';
+  $('authError').style.display = 'none';
+}
+
+// ── Auth ──
+async function doLogin() {
+  var email = $('loginEmail').value.trim(), pw = $('loginPassword').value;
+  var err = $('authError');
+  if(!email||!pw){err.textContent='Fill in all fields';err.style.display='';return}
+  err.style.display='none';
+  var btn = event.target; btn.disabled=true; btn.textContent='Signing in...';
+  try{
+    var r = await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:password})});
+    var d = await r.json();
+    if(!r.ok) throw new Error(d.message||d.error||'Login failed');
+    setSession(d);
+    _bizId = d.business_id || d.id || '';
+    _bizName = d.name || d.business_name || email.split('@')[0];
+    _bizCategory = d.category || d.business_category || '';
+    await loadBizProfile();
+    showScanner();
+  }catch(e){err.textContent=e.message;err.style.display=''}finally{btn.disabled=false;btn.textContent='Sign In'}
+}
+
+async function doRegister() {
+  var name=$('regName').value.trim(),email=$('regEmail').value.trim(),pw=$('regPassword').value,cat=$('regCategory').value;
+  var err=$('authError');
+  if(!name||!email||!pw){err.textContent='Fill in all fields';err.style.display='';return}
+  if(pw.length<8){err.textContent='Password must be 8+ characters';err.style.display='';return}
+  err.style.display='none';
+  var btn=event.target;btn.disabled=true;btn.textContent='Creating account...';
+  try{
+    var r=await fetch(API+'/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,email:email,password:pw,type:'business',category:cat})});
+    var d=await r.json();
+    if(!r.ok) throw new Error(d.message||d.error||'Registration failed');
+    setSession(d);
+    _bizId=d.business_id||d.id||'';
+    _bizName=name;_bizCategory=cat||'';
+    await loadBizProfile();
+    showScanner();
+  }catch(e){err.textContent=e.message;err.style.display=''}finally{btn.disabled=false;btn.textContent='Create Account'}
+}
+
+function setSession(d) {
+  _token = d.access_token || d.token;
+  localStorage.setItem('scannerToken',_token);
+  localStorage.setItem('scannerBizName',_bizName);
+  localStorage.setItem('scannerBizId',_bizId);
+  localStorage.setItem('scannerBizCat',_bizCategory);
+}
+
+async function loadBizProfile() {
+  try{
+    var r=await fetch(API+'/auth/me',{headers:{'Authorization':'Bearer '+_token}});
+    if(r.ok){
+      var d=await r.json();
+      _bizId=_bizId||d.business_id||d.id||'';
+      _bizName=_bizName||d.name||d.business_name||'Business';
+      _bizCategory=_bizCategory||d.category||d.business_category||'';
+    }
+  }catch(e){}
+}
+
+function doLogout() {
+  stopScanner();
+  _token=null;localStorage.clear();
+  $('scannerScreen').style.display='none';
+  $('authScreen').style.display='';
+  resetForm();
+}
+
+// ── Scan Type ──
+function setScanType(type, btn) {
+  _scanType = type;
+  document.querySelectorAll('.segment-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  // Show/hide amount field
+  var showAmt = (type==='purchase'||type==='redemption');
+  $('amountRow').style.display = showAmt ? '' : 'none';
+  $('amountLabel').textContent = type==='redemption' ? 'Points to Redeem' : 'Purchase Amount ($)';
+  // Update segment buttons
+  $('segCheckin').classList.toggle('active',type==='checkin');
+  $('segPurchase').classList.toggle('active',type==='purchase');
+  $('segRedeem').classList.toggle('active',type==='redemption');
+}
+
+// ── Scanner ──
+function showScanner() {
+  $('authScreen').style.display='none';
+  $('scannerScreen').style.display='flex';
+  $('bizNameDisplay').textContent=_bizName;
+  $('txId').value = freshTxId();
+  startScanner();
+}
+
+function startScanner() {
+  var video=$('scannerVideo');
+  if(!video)return;
+  _scanLocked=false;_lastScannedQR='';
+  $('scannerGuide').classList.remove('found');
+  $('scannerStatus').textContent='📷 Point camera at customer QR code';
+  $('cameraWrap').classList.add('scanning');
+
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:640}}})
+    .then(function(stream){
+      _scannerStream=stream;
+      video.srcObject=stream;
+      video.play();
+      scanFrame();
+    })
+    .catch(function(err){
+      $('scannerStatus').textContent='❌ Camera denied. Allow camera permission.';
+      console.error('Camera:',err);
+    });
+  }else{
+    $('scannerStatus').textContent='❌ Camera not supported';
+  }
+}
+
+function stopScanner() {
+  if(_scannerStream){_scannerStream.getTracks().forEach(function(t){t.stop()});_scannerStream=null}
+  if(_scanInterval){clearInterval(_scanInterval);_scanInterval=null}
+  var video=$('scannerVideo');if(video)video.srcObject=null;
+  $('cameraWrap').classList.remove('scanning');
+}
+
+function scanFrame() {
+  if(_scanInterval)return;
+  _scanInterval=setInterval(function(){
+    if(_scanLocked)return;
+    var video=$('scannerVideo'),canvas=$('scannerCanvas');
+    if(!video||!canvas||!video.videoWidth)return;
+    if(typeof jsQR==='undefined')return;
+
+    canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+    var ctx=canvas.getContext('2d');
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    var imgData=ctx.getImageData(0,0,canvas.width,canvas.height);
+
+    var code=jsQR(imgData.data,imgData.width,imgData.height,{inversionAttempts:'dontInvert'});
+    if(code&&code.data&&code.data!==_lastScannedQR){
+      handleQRCode(code.data);
+    }
+  },250);
+}
+
+function handleQRCode(qrData) {
+  _lastScannedQR = qrData;
+  _scanLocked = true;
+  $('scannerGuide').classList.add('found');
+  $('scannerStatus').textContent = '✅ QR scanned! ' + (_scanType==='checkin'?'Ready to check in.':(_scanType==='redemption'?'Enter points to redeem.':'Enter purchase amount.'));
+
+  // Store QR data for submission
+  $('txCard').dataset.qrCode = qrData;
+
+  // Vibrate
+  if(navigator.vibrate) navigator.vibrate(200);
+
+  // Auto-focus amount for purchase/redemption
+  if(_scanType==='purchase'||_scanType==='redemption'){
+    $('txAmount').focus();
+  }
+
+  // Generate fresh TX ID for each scan
+  $('txId').value = freshTxId();
+}
+
+function resetForm() {
+  _scanLocked = false;
+  _lastScannedQR = '';
+  $('txCard').dataset.qrCode = '';
+  $('txAmount').value = '';
+  $('txNotes').value = '';
+  $('txId').value = freshTxId();
+  $('scannerGuide').classList.remove('found');
+  $('scannerStatus').textContent = '📷 Point camera at customer QR code';
+  startScanner();
+}
+
+// ── Process Transaction ──
+async function processTransaction() {
+  var qrCode = $('txCard').dataset.qrCode;
+  if(!qrCode){toast('Scan a QR code first','error');return}
+
+  var amount = $('txAmount').value;
+  if((_scanType==='purchase'||_scanType==='redemption')&&(!amount||parseFloat(amount)<=0)){
+    toast('Enter a valid amount','error');return;
+  }
+
+  var btn=$('processBtn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="inline-spinner"><span class="spinner"></span> Processing...</span>';
+
+  var body = {
+    qr_code: qrCode,
+    business_id: _bizId,
+    business_name: _bizName,
+    program_slug: 'zaarhub-rewards',
+    scan_type: _scanType,
+    business_category: _bizCategory,
+    transaction_id: $('txId').value,
+    notes: $('txNotes').value.trim()||null
+  };
+
+  if(_scanType==='purchase'||_scanType==='redemption'){
+    body.purchase_amount = amount;
+  }
+
+  try{
+    var r = await fetch(API+'/loyalty/scan',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+      body:JSON.stringify(body)
+    });
+    var d = await r.json();
+    if(!r.ok) throw new Error(d.error||d.message||'Transaction failed');
+
+    showSuccess(d);
+  }catch(e){
+    toast(e.message,'error');
+    _scanLocked=false;
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Process Transaction';
+  }
+}
+
+function showSuccess(d) {
+  var points = d.points_awarded||d.points||0;
+  var memberName = d.member_name||d.customer_name||'Customer';
+  var memberTier = (d.member_tier||d.tier||'silver').toLowerCase();
+  var tierLabel = memberTier.charAt(0).toUpperCase()+memberTier.slice(1);
+  var tierClass = 'tier-'+memberTier;
+  var actionLabel = _scanType==='redemption'?'redeemed':(_scanType==='purchase'?'earned':'check-in');
+  var icon = _scanType==='redemption'?'🎁':(_scanType==='purchase'?'💰':'✅');
+
+  $('successIcon').textContent = icon;
+  $('successTitle').textContent = _scanType==='redemption'?'Redeemed!':(_scanType==='purchase'?'Purchase Credited!':'Checked In!');
+  $('successMemberName').textContent = memberName;
+  $('successMemberTier').textContent = tierLabel + ' ⭐ Member';
+  $('successMemberTier').className = 'member-tier '+tierClass;
+  $('successPoints').textContent = (points>=0?'+':'')+points;
+  $('successPointsLabel').textContent = 'points '+actionLabel;
+  $('successDetails').textContent = d.message||d.summary||'';
+
+  $('successOverlay').classList.add('show');
+
+  if(navigator.vibrate) navigator.vibrate([100,50,100]);
+}
+
+function closeSuccess() {
+  $('successOverlay').classList.remove('show');
+  resetForm();
+}
+
+// ── Init ──
+window.addEventListener('beforeunload',function(){stopScanner()});
+
+(function init(){
+  var saved=localStorage.getItem('scannerToken');
+  if(saved){
+    _token=saved;
+    _bizId=localStorage.getItem('scannerBizId')||'';
+    _bizName=localStorage.getItem('scannerBizName')||'';
+    _bizCategory=localStorage.getItem('scannerBizCat')||'';
+    fetch(API+'/auth/me',{headers:{'Authorization':'Bearer '+saved}})
+    .then(function(r){if(r.ok)return r.json();throw new Error('invalid')})
+    .then(function(d){
+      _bizId=_bizId||d.business_id||d.id||'';
+      _bizName=_bizName||d.name||d.business_name||'Business';
+      _bizCategory=_bizCategory||d.category||d.business_category||'';
+      showScanner();
+    })
+    .catch(function(){
+      localStorage.clear();
+      $('authScreen').style.display='';
+    });
+  }else{
+    $('authScreen').style.display='';
+  }
+})();
+
+// ── Service Worker ──
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw-scanner.js').catch(function(){});
+}
+</script>
+</body>
+</html>
