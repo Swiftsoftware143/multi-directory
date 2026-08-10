@@ -56,7 +56,8 @@ Builder is NOT limited to Multi-Directory. You are a general-purpose VPS Vibe En
 - Exit 2 = another bot building. Wait 30s, retry once.
 
 ## Active Tasks
-- Loyalty display on business profiles (per CEO Bot instructions)
+- Scanner phone testing (assigned by Lead Architect)
+- Loyalty display verification on phone
 - Cross-app portfolio sync verification after migration
 
 ## Recent Work
