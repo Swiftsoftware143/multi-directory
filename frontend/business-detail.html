@@ -266,6 +266,14 @@ a:hover{text-decoration:underline}
           <div class="map-container" id="mapContainer"></div>
         </div>
 
+        <!-- ??? ZaarHub Loyalty Rewards -->
+        <div class="card" id="loyaltySection" style="display:none">
+          <div class="card-title" style="color:var(--orange)">🏆 ZaarHub Rewards</div>
+          <div id="loyaltyContent" style="text-align:center;padding:16px 0">
+            <div style="font-size:.9rem;color:var(--text-light)">Loading loyalty program...</div>
+          </div>
+        </div>
+
         <!-- Deals -->
         <div class="card">
           <div class="card-title">🎁 Active Perks &amp; Deals</div>
@@ -483,6 +491,9 @@ function renderBusiness() {
 
   // Render reviews
   renderReviews();
+
+  // Load loyalty info
+  loadLoyalty();
 }
 
 // ── Map ──
@@ -512,6 +523,116 @@ function openDirections() {
   } else if (bizData && bizData.address) {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(bizData.address)}`, '_blank');
   }
+}
+
+// ── Loyalty Section ──
+async function loadLoyalty() {
+  const section = document.getElementById('loyaltySection');
+  const content = document.getElementById('loyaltyContent');
+  const token = localStorage.getItem('zh_token');
+
+  try {
+    // Fetch programs (may need auth)
+    var progResp = await fetch('/api/v1/loyalty/programs', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+    if (!progResp.ok && !token) return; // Not logged in and programs require auth
+    
+    var programs = progResp.ok ? await progResp.json().catch(function(){return[]}) : [];
+    var progList = Array.isArray(programs) ? programs : (programs.data || programs.programs || []);
+    var program = null;
+    for (var i = 0; i < progList.length; i++) {
+      if (progList[i].is_active || progList[i].active) { program = progList[i]; break; }
+    }
+    if (!program) return;
+
+    section.style.display = 'block';
+    var currency = program.currency_name || program.currency || 'ZaarCash';
+    var currencyShort = program.currency_icon || program.currency_short || 'ZC';
+    var earnRate = program.purchase_credit_rate || program.earn_rate || 1;
+    var programId = program.id || program.program_id || '';
+
+    // Build base loyalty card
+    var html = '<div style="background:linear-gradient(135deg,#fef3c7,#fffbeb);border:1px solid #fbbf24;border-radius:12px;padding:20px">';
+    html += '<div style="font-size:.85rem;font-weight:700;color:#92400e;margin-bottom:4px">' + currency + ' (' + currencyShort + ')</div>';
+    html += '<div style="font-size:.75rem;color:#a16207;margin-bottom:12px">Earn ' + earnRate + ' ' + currencyShort + ' per $1 spent at any ZaarHub business</div>';
+
+    // If user logged in, try to get their member badge
+    var hasMember = false;
+    if (token) {
+      try {
+        // Get user info from auth/me to find contact_id
+        var meResp = await fetch('/api/v1/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (meResp.ok) {
+          var me = await meResp.json();
+          var contactId = me.contact_id || me.id;
+          if (contactId) {
+            // Try member dashboard/badge
+            var badgeResp = await fetch('/api/v1/loyalty/badge/member/' + contactId, {
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (badgeResp.ok) {
+              var badge = await badgeResp.json();
+              var points = badge.points_balance || badge.points || 0;
+              var tierName = badge.tier || badge.current_tier || 'Bronze';
+              var tierColor = getTierColor(tierName);
+              var memberId = badge.member_id || badge.id || '';
+              hasMember = true;
+
+              html += '<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:12px;flex-wrap:wrap">';
+              html += '<span style="background:' + tierColor + ';color:#fff;border-radius:100px;padding:6px 16px;font-size:.82rem;font-weight:700">' + tierName + ' ⭐ Member</span>';
+              html += '<span style="font-size:1.3rem;font-weight:800;color:#1c1917">' + points.toLocaleString() + ' <span style="font-size:.75rem;font-weight:500;color:#78716c">' + currencyShort + '</span></span>';
+              html += '</div>';
+
+              // QR code
+              html += '<div style="margin:0 auto 12px;width:120px;height:120px;background:#fff;border-radius:10px;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,.08)">';
+              html += '<img src="/api/v1/loyalty/member/' + memberId + '/qr" alt="QR Code" style="width:100%;height:100%" onerror="this.parentElement.style.opacity=\'0.3\'">';
+              html += '</div>';
+              html += '<div style="font-size:.7rem;color:#78716c;margin-bottom:10px">Show this QR at any ZaarHub business to earn</div>';
+            }
+          }
+        }
+      } catch(e) { /* badge optional */ }
+    }
+
+    // Join button (if logged in but not enrolled) or scanner link
+    if (token && !hasMember) {
+      html += '<button onclick="joinZaarHub(\'' + programId + '\')" style="display:inline-block;background:var(--teal,#0d9488);color:#fff;border:none;border-radius:100px;padding:10px 24px;font-size:.85rem;font-weight:600;cursor:pointer;transition:all .2s">🎁 Join ZaarHub Rewards — Free</button>';
+    }
+
+    // Scanner button (always show)
+    html += '<a href="/scanner" style="display:inline-block;margin-left:10px;background:var(--orange,#ea580c);color:#fff;border-radius:100px;padding:10px 24px;font-size:.85rem;font-weight:600;text-decoration:none;transition:all .2s">🔍 Scan to Earn</a>';
+    html += '</div>';
+
+    content.innerHTML = html;
+  } catch(e) {
+    console.warn('Loyalty load:', e);
+  }
+}
+
+async function joinZaarHub(programId) {
+  var token = localStorage.getItem('zh_token');
+  if (!token) { window.location.href = '/login'; return; }
+  try {
+    var r = await fetch('/api/v1/loyalty/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ program_id: programId })
+    });
+    if (r.ok) {
+      loadLoyalty(); // Refresh section
+    }
+  } catch(e) { console.warn('Enroll:', e); }
+}
+
+function getTierColor(tier) {
+  var t = (tier || '').toLowerCase();
+  if (t.indexOf('platin') >= 0) return '#06b6d4';
+  if (t.indexOf('gold') >= 0) return '#eab308';
+  if (t.indexOf('silver') >= 0) return '#94a3b8';
+  return '#d97706'; // bronze
 }
 
 // ── Reviews ──

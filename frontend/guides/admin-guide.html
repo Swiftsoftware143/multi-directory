@@ -287,9 +287,44 @@ a:hover{text-decoration:underline}
   </ul>
 </div>
 
-<!-- 12. Integration CTA Slots -->
+<!-- 12. Loyalty Program Architecture (NEW) -->
 <div class="card">
-  <h3><span class="emoji">🔌</span> 12. Integration CTA Buttons</h3>
+  <h3><span class="emoji">🏆</span> 12. Loyalty Proxy &amp; Scanner Architecture</h3>
+  <p>The ZaarHub Loyalty Program is powered by <strong>IncentiveSwift</strong> (IS) — a separate loyalty engine handling points, tiers, QR codes, and clearinghouse billing. The Multi-Directory platform proxies all loyalty requests through to IS:8083.</p>
+  
+  <p><strong>API Proxy Routes (all live on Multi-Directory → IncentiveSwift):</strong></p>
+  <ul>
+    <li><code>GET /api/v1/loyalty/programs</code> → IS programs list</li>
+    <li><code>GET /api/v1/loyalty/tiers</code> → IS tier definitions</li>
+    <li><code>GET /api/v1/loyalty/member/:id</code> → IS member profile</li>
+    <li><code>GET /api/v1/loyalty/badge/member/:contact_id</code> → IS member badge</li>
+    <li><code>POST /api/v1/loyalty/scan</code> → IS scan processing (check-in/purchase/redeem)</li>
+    <li><code>POST /api/v1/loyalty/enroll</code> → IS program enrollment</li>
+    <li><code>GET /api/v1/loyalty/scans/business/:id</code> → IS scan history</li>
+    <li><code>GET /api/v1/loyalty/dashboard/member/:id</code> → IS member dashboard</li>
+  </ul>
+
+  <p><strong>Scanner PWA (<code>/scanner</code>):</strong></p>
+  <ul>
+    <li>Camera-based QR scanning using jsQR (250ms interval, CDN-loaded)</li>
+    <li>Three scan types: Check-in (10pts), Purchase (earn rate × amount), Redeem (deduction with caps)</li>
+    <li>Business auth via existing login/register → JWT stored in localStorage</li>
+    <li>PWA: standalone mode, manifest, service worker for offline caching</li>
+    <li>URLs: <code>/scanner</code>, <code>/scanner-manifest.json</code>, <code>/sw-scanner.js</code></li>
+  </ul>
+
+  <p><strong>Business Profile Loyalty Section:</strong> Every business detail page (<code>/biz/:slug/:id</code>) fetches program & tier data and, if the visitor is logged in, displays their personal tier badge, ZaarCash balance, and scannable QR code. Non-enrolled visitors see a "Join" button that calls <code>POST /loyalty/enroll</code>.</p>
+  
+  <p><strong>Per-Directory Feature Toggle:</strong> The <code>feature_config</code> JSONB column on directories controls whether loyalty features render. Set <code>{"loyalty_enabled": true}</code> to enable the loyalty section on business profiles for a given directory.</p>
+  
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> All loyalty endpoints require auth. Test with a valid JWT from <code>POST /auth/login</code> using the <code>Authorization: Bearer &lt;token&gt;</code> header. Bad tokens return 401.
+  </div>
+</div>
+
+<!-- 13. Integration CTA Slots -->
+<div class="card">
+  <h3><span class="emoji">🔌</span> 13. Integration CTA Buttons</h3>
   <p>Business owners configure CTA buttons on their listing from the <strong>Integrations tab</strong>:</p>
   <ul>
     <li><strong>Booking CTA</strong> — toggles CoreSwift booking widget, selects CTA from pre-approved list</li>

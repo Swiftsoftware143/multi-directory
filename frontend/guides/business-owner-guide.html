@@ -449,7 +449,52 @@
 
 <hr style="border:0;border-top:1px solid #334155;margin:40px 0">
 
-<!-- 9. Updating Business Profile -->
+<!-- 9. ZaarHub Loyalty & Scanner -->
+<h2 id="loyalty">9. ZaarHub Loyalty Program &amp; Scanner</h2>
+
+<p>As a ZaarHub business, you can participate in the <strong>ZaarHub Rewards loyalty program</strong> powered by IncentiveSwift. Customers earn ZaarCash at your business and redeem it for discounts — driving repeat visits. Your staff process transactions using the mobile <strong>Scanner PWA</strong>.</p>
+
+<h3>How Loyalty Appears on Your Profile</h3>
+<div class="card">
+  <p>Every business profile page at <code>/biz/:slug/:id</code> includes a <strong>"ZaarHub Rewards"</strong> section that shows:</p>
+  <ul>
+    <li><strong>Your program details</strong> — Currency name (ZaarCash), earn rate per $1 spent</li>
+    <li><strong>Customer's loyalty status</strong> — When logged in, customers see their tier (Bronze/Silver/Gold/Platinum), balance, and scannable QR code</li>
+    <li><strong>"Join ZaarHub Rewards"</strong> button for new customers who haven't enrolled yet</li>
+    <li><strong>"🔍 Scan to Earn"</strong> button linking to the scanner for your staff</li>
+  </ul>
+  <p>The loyalty section fetches live data from the IncentiveSwift loyalty engine via the Multi-Directory API proxy. No separate app needed — it renders inline on your business listing.</p>
+</div>
+
+<h3>Using the ZaarHub Scanner for Transactions</h3>
+<div class="card">
+  <p>The scanner at <code><strong>https://zaarhub.com/scanner</strong></code> is your staff's point-of-sale loyalty tool. It works on any device with a camera — phone, tablet, or laptop.</p>
+  
+  <p><strong>Quick setup:</strong></p>
+  <ol>
+    <li>Go to <code>zaarhub.com/scanner</code> on your device</li>
+    <li>Sign in with your business credentials</li>
+    <li>The scanner auto-detects your business name and category</li>
+    <li>Add it to your phone's home screen for instant one-tap access (it's a PWA)</li>
+  </ol>
+
+  <p><strong>Three scan types available:</strong></p>
+  <table>
+    <tr><td>✅ <strong>Check-in</strong></td><td>Award 10 bonus points for visiting. No purchase amount needed.</td></tr>
+    <tr><td>💳 <strong>Purchase</strong></td><td>Customer earns ZaarCash based on purchase total. Enter the amount.</td></tr>
+    <tr><td>🎁 <strong>Redeem</strong></td><td>Customer uses their ZaarCash balance. Points are deducted.</td></tr>
+  </table>
+
+  <p><strong>Transaction flow:</strong> Select scan type → Scan customer's QR code → Enter amount (for Purchase/Redeem) → Click Process → Points awarded instantly.</p>
+  
+  <div class="tip-box">
+    <p><strong>💡 Tip:</strong> The scanner auto-generates a unique transaction ID for every scan — great for audit trails and dispute resolution. All data flows to the IncentiveSwift clearinghouse for accurate billing.</p>
+  </div>
+</div>
+
+<hr style="border:0;border-top:1px solid #334155;margin:40px 0">
+
+<!-- 10. Updating Business Profile -->
 <h2 id="profile">9. Updating Business Profile</h2>
 
 <p>Keep your business listing accurate and up to date. A complete profile attracts more customers.</p>

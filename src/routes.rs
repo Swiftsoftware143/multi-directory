@@ -495,6 +495,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/loyalty/scan", post(iqs_proxy::scan_proxy))
         .route("/loyalty/scans/business/:business_id", get(iqs_proxy::business_scans_proxy))
         .route("/loyalty/dashboard/member/:member_id", get(iqs_proxy::member_dashboard_proxy))
+        .route("/loyalty/programs", get(iqs_proxy::loyalty_programs_proxy))
+        .route("/loyalty/tiers", get(iqs_proxy::loyalty_tiers_proxy))
+        .route("/loyalty/member/:member_id", get(iqs_proxy::loyalty_member_proxy))
         // Connected Services — API key integration for IS and CoreSwift
         .route("/connected-services", get(connected_services::list_connected_services))
         .route("/connected-services/connect", post(connected_services::connect_service))
@@ -977,6 +980,62 @@ pub fn create_router(s: AppState) -> Router {
                                         axum::response::Response::builder()
                                             .status(axum::http::StatusCode::OK)
                                             .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // ??? ZaarHub: Loyalty Scanner (business QR scan + purchase verification)
+                    if path == "/scanner" || path == "/scanner/" || path == "/scan" || path == "/scan/" {
+                        let scanner_path = std::path::Path::new(&frontend).join("scanner.html");
+                        if scanner_path.exists() {
+                            match tokio::fs::read(&scanner_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
+                    // ??? Scanner PWA assets — manifest and service worker
+                    if path == "/scanner-manifest.json" {
+                        let mf_path = std::path::Path::new(&frontend).join("scanner-manifest.json");
+                        if mf_path.exists() {
+                            match tokio::fs::read(&mf_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "application/manifest+json")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+                    if path == "/sw-scanner.js" {
+                        let sw_path = std::path::Path::new(&frontend).join("sw-scanner.js");
+                        if sw_path.exists() {
+                            match tokio::fs::read(&sw_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "application/javascript; charset=utf-8")
+                                            .header("Service-Worker-Allowed", "/")
                                             .body(axum::body::Body::from(content))
                                             .unwrap()
                                     );
