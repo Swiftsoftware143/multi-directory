@@ -59,6 +59,7 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
     <button class="tab active" onclick="switchTab(this,'legal')">Legal Pages</button>
     <button class="tab" onclick="switchTab(this,'picks')">Editor's Picks</button>
     <button class="tab" onclick="switchTab(this,'branding')">Branding</button>
+    <button class="tab" onclick="switchTab(this,'populate')">Populate Businesses</button>
   </div>
 
   <div id="tab-legal">
@@ -86,6 +87,44 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
         </select>
       </div>
       <div id="picks-list"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div id="tab-populate" style="display:none">
+    <div class="panel">
+      <h2>🔍 Populate Businesses</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Search Google Places by city + category + radius, assign each business to a category, then publish it to the directory.</p>
+
+      <div class="form-row">
+        <div class="form-group"><label>City</label>
+          <select id="pop-city" onchange="onPopCityChange()"><option value="">Loading cities...</option></select>
+        </div>
+        <div class="form-group"><label>Search query (niche)</label>
+          <input id="pop-query" placeholder="e.g. Italian restaurant" onkeydown="if(event.key==='Enter')runPopSearch()">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Radius</label>
+          <div style="display:flex;gap:8px">
+            <input id="pop-radius" type="number" value="10" style="flex:1">
+            <select id="pop-radius-unit" style="width:100px"><option value="mi">miles</option><option value="km">km</option></select>
+          </div>
+        </div>
+        <div class="form-group"><label>Assign to category</label>
+          <select id="pop-category"><option value="">Loading categories...</option></select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" onclick="runPopSearch()">Search Places</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="margin-bottom:0">Results</h2>
+        <span id="pop-status" style="font-size:13px;color:var(--text-muted)"></span>
+      </div>
+      <div id="pop-results"><div class="loading" style="color:var(--text-muted);font-size:13px">Search for businesses to see results.</div></div>
     </div>
   </div>
 
@@ -159,8 +198,10 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
 const API = '/api/v1/zaarhub/admin';
 let currentTab = 'legal';
 let editingSlug = null;
+let popResults = [];
+let popCityLatLng = {};
 
-async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm()}
+async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories()}
 async function loadLegalPages(){
   const el=document.getElementById('legal-list');
   const fl=document.getElementById('footer-links-list');
@@ -234,9 +275,11 @@ function switchTab(btn,tab){
   document.getElementById('tab-legal').style.display=tab==='legal'?'block':'none';
   document.getElementById('tab-picks').style.display=tab==='picks'?'block':'none';
   document.getElementById('tab-branding').style.display=tab==='branding'?'block':'none';
+  document.getElementById('tab-populate').style.display=tab==='populate'?'block':'none';
   if(tab==='legal')loadLegalPages();
   else if(tab==='picks'){loadCitiesDropdown();loadEditorsPicks();}
-  else loadSiteConfig()
+  else if(tab==='branding')loadSiteConfig();
+  else if(tab==='populate'){loadPopCities();loadPopCategories();}
 }
 
 async function loadCitiesDropdown(){
@@ -273,6 +316,121 @@ async function togglePick(id,on){
     if(r.ok){showToast(on?'Added to Editor\'s Picks \u2714':'Removed from Editor\'s Picks');loadEditorsPicks();}
     else showToast('Failed',true)
   }catch(e){showToast('Failed',true)}
+}
+async function loadPopCities(){
+  try{
+    const r=await fetch('/api/v1/zaarhub/cities');const d=await r.json();
+    const cities=d.cities||d.data||[];
+    popCityLatLng={};
+    const sel=document.getElementById('pop-city');
+    sel.innerHTML=cities.map(c=>{
+      const lat=c.latitude||c.lat||null;const lng=c.longitude||c.lng||null;
+      popCityLatLng[c.city_slug||c.slug]=lat&&lng?{lat,lng}:null;
+      const label=c.city_name||c.name||c.slug||'';
+      return `<option value="${esc(c.city_slug||c.slug)}" data-lat="${lat||''}" data-lng="${lng||''}">${esc(label)}</option>`;
+    }).join('')||'<option value="">No cities</option>';
+  }catch(e){console.error(e);document.getElementById('pop-city').innerHTML='<option value="">Failed to load cities</option>';}
+}
+async function loadPopCategories(){
+  try{
+    const r=await fetch('/api/v1/categories');const d=await r.json();
+    const cats=Array.isArray(d)?d:(d.categories||[]);
+    // Only show leaf subcategories (exclude parent category rows) for assignment
+    const leaves=cats.filter(c=>c.directory_id===null);
+    let html='<option value="">— Select category —</option>';
+    leaves.forEach(c=>{html+=`<option value="${esc(c.id)}">${esc(c.name)}</option>`;});
+    document.getElementById('pop-category').innerHTML=html;
+  }catch(e){console.error(e);document.getElementById('pop-category').innerHTML='<option value="">Failed to load categories</option>';}
+}
+function onPopCityChange(){/* lat/lng resolved at search time via popCityLatLng */}
+function radiusMeters(){
+  const v=parseFloat(document.getElementById('pop-radius').value)||10;
+  const unit=document.getElementById('pop-radius-unit').value;
+  return unit==='mi'?Math.round(v*1609.34):Math.round(v*1000);
+}
+async function runPopSearch(){
+  const q=document.getElementById('pop-query').value.trim();
+  if(!q){showToast('Enter a search query',true);return;}
+  const citySel=document.getElementById('pop-city');
+  const city=citySel.value;
+  const resultsEl=document.getElementById('pop-results');
+  const statusEl=document.getElementById('pop-status');
+  popResults=[];
+  resultsEl.innerHTML='<div class="loading">Searching Google Places...</div>';
+  statusEl.textContent='';
+  let url=`/api/v1/places/autocomplete?input=${encodeURIComponent(q)}`;
+  const ll=popCityLatLng[city];
+  if(ll){url+=`&lat=${ll.lat}&lng=${ll.lng}&radius=${radiusMeters()}`;}
+  try{
+    const r=await fetch(url);
+    if(!r.ok){resultsEl.innerHTML='<div class="error" style="color:#dc2626">Search failed (HTTP '+r.status+')</div>';return;}
+    const d=await r.json();
+    popResults=d.results||[];
+    if(!popResults.length){resultsEl.innerHTML='<div style="color:var(--text-muted);padding:24px;text-align:center">No results for "'+esc(q)+'".</div>';return;}
+    renderPopResults();
+  }catch(e){resultsEl.innerHTML='<div class="error" style="color:#dc2626">Search failed. Check console.</div>';console.error(e);}
+}
+function renderPopResults(){
+  const el=document.getElementById('pop-results');
+  el.innerHTML=popResults.map((b,i)=>`<div class="page-list-item">
+    <div class="info"><strong>${esc(b.name)}</strong><small>${esc(b.formatted_address||'')}</small></div>
+    <div class="status">
+      <button class="btn secondary small" onclick="previewPlace(${i})">Preview</button>
+      <button class="btn primary small" onclick="publishPlace(${i})">Publish</button>
+    </div>
+  </div>`).join('');
+}
+async function previewPlace(i){
+  const b=popResults[i];
+  if(!b)return;
+  try{
+    const r=await fetch(`/api/v1/places/details?place_id=${encodeURIComponent(b.place_id)}`);
+    const d=await r.json();
+    const p=d.place||d.result||{};
+    const catName=document.getElementById('pop-category').selectedOptions[0]?.text||'—';
+    showToast(`Preview: ${b.name} · assign to ${catName}`);
+  }catch(e){showToast('Preview failed',true);}
+}
+async function publishPlace(i){
+  const b=popResults[i];
+  if(!b)return;
+  const city=document.getElementById('pop-city').value;
+  const catId=document.getElementById('pop-category').value;
+  if(!catId){showToast('Select a category first (category must exist before publishing)',true);return;}
+  // Resolve full details then create business
+  let detail={};
+  try{
+    const dr=await fetch(`/api/v1/places/details?place_id=${encodeURIComponent(b.place_id)}`);
+    if(dr.ok){const dd=await dr.json();detail=dd.place||dd.result||{};}
+  }catch(e){}
+  const slug=(b.name||'business').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'business';
+  const body={
+    name:b.name,
+    slug:slug,
+    description:detail.formatted_address||'',
+    category_id:catId,
+    address:detail.formatted_address||b.formatted_address||'',
+    city:document.getElementById('pop-city').selectedOptions[0]?.text||'',
+    state:'FL',
+    zip:'',
+    phone:detail.formatted_phone_number||detail.phone||'',
+    email:'',
+    website:detail.website||'',
+    latitude:detail.geometry?.location?.lat||null,
+    longitude:detail.geometry?.location?.lng||null
+  };
+  try{
+    const r=await fetch(`/api/v1/directories/${encodeURIComponent(city)}/businesses`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){showToast(`Published: ${b.name} ✓`);markPublished(i);}
+    else{const err=await r.json().catch(()=>({}));showToast('Publish failed: '+(err.message||err.error||r.status),true);}
+  }catch(e){showToast('Publish failed',true);}
+}
+function markPublished(i){
+  const items=document.querySelectorAll('#pop-results .page-list-item');
+  if(items[i]){
+    items[i].style.opacity='0.45';
+    const btns=items[i].querySelectorAll('button');btns.forEach(b=>b.disabled=true);
+  }
 }
 function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),2500)}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
