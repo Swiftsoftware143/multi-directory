@@ -34,8 +34,16 @@ pub async fn list_businesses(
     let offset = (page - 1) * per_page;
     let dir_id = dir.id;
 
-    // Build dynamic query
-    let mut where_clauses = vec!["b.directory_id = \x241".to_string()];
+    // Build dynamic query.
+    // Public listing excludes non-local business types (suppliers, farms, wholesalers,
+    // distributors, manufacturers, associations — all B2B, surfaced only in the back office)
+    // and franchises/big chains (is_franchise = true). These are NOT part of the public
+    // community directory.
+    let mut where_clauses = vec![
+        "b.directory_id = \x241".to_string(),
+        "COALESCE(b.business_type, 'local') = 'local'".to_string(),
+        "COALESCE(b.is_franchise, false) = false".to_string(),
+    ];
     let mut param_idx = 2;
 
     if let Some(ref q) = qs.q {
