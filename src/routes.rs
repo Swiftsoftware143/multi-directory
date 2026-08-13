@@ -1292,6 +1292,11 @@ async fn auth_guard(
         || (path.starts_with("/book/") && req.method() == "GET")
         // Public bookmark count (no auth)
         || (path.starts_with("/bookmarks/count/") && req.method() == "GET")
+        // Public Google Places search (admin populate tool — read-only lookups)
+        || path == "/places/autocomplete"
+        || path == "/places/details"
+        || path == "/api/v1/places/autocomplete"
+        || path == "/api/v1/places/details"
         // ZaarHub community frontend API (public)
         || path.starts_with("/zaarhub/")
         || path.starts_with("/zaarhub-sitemap.xml")
