@@ -932,6 +932,25 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // ??? Serve browsable Supplier Directory (auth-gated B2B directory for business owners)
+                    if path == "/supplier-directory" || path == "/supplier-directory/" || path == "/suppliers" || path == "/suppliers/" {
+                        let dir_path = std::path::Path::new(&frontend).join("supplier-directory.html");
+                        if dir_path.exists() {
+                            match tokio::fs::read(&dir_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap()
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     // ??? ZaarHub: Business detail page (/biz/:id)
                     if path.starts_with("/biz/") {
                         let detail_path = std::path::Path::new(&frontend).join("business-detail.html");
