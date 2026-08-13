@@ -201,18 +201,34 @@ pub async fn create_business(
     .await?
     .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
 
-    // Check if business with this slug already exists in this directory
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM businesses WHERE directory_id = \x241 AND slug = \x242 "
+    // Duplicate detection: same name AND same address in the same directory = a
+    // duplicate. (A business may appear in multiple directories — different city
+    // listings are distinct. A chain with multiple real locations in one city is
+    // NOT a duplicate because the addresses differ.)
+    //
+    // Match rules:
+    //   1. name matched (case-insensitive, trimmed) AND address matched (case/space normalised)
+    //   2. OR same slug (backward-compat safety net for legacy imports)
+    let dup = sqlx::query_scalar::<_, i64>(
+        r#"SELECT COUNT(*) FROM businesses
+           WHERE directory_id = \x241 AND (
+             (LOWER(TRIM(name)) = LOWER(TRIM(\x243))
+               AND LOWER(REGEXP_REPLACE(COALESCE(address,''), '\s+', ' ', 'g'))
+                   = LOWER(REGEXP_REPLACE(COALESCE(\x244,''), '\s+', ' ', 'g'))
+               AND COALESCE(\x244,'') <> '')
+             OR slug = \x242
+           )"#
     )
     .bind(dir.id)
     .bind(&req.slug)
+    .bind(&req.name)
+    .bind(&req.address)
     .fetch_one(&s.db)
     .await?;
 
-    if existing > 0 {
+    if dup > 0 {
         return Err(AppError::Duplicate(format!(
-            "Business with slug '{}' already exists in this directory", req.slug
+            "A business named '{}' already exists at this address in this directory", req.name
         )));
     }
 
