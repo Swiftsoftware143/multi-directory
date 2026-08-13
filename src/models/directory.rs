@@ -183,6 +183,9 @@ pub struct Business {
     pub rating: Option<f64>,
     pub review_count: Option<i32>,
     pub is_active: Option<bool>,
+    pub business_type: Option<String>,
+    pub supplier_fields: Option<serde_json::Value>,
+    pub is_franchise: Option<bool>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub enriched_at: Option<DateTime<Utc>>,
@@ -203,6 +206,12 @@ pub struct CreateBusinessRequest {
     pub website: Option<String>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+    /// Business type: local (default), supplier, distributor, wholesaler, farm,
+    /// association, manufacturer, chain. Only `local` surfaces on the public directory.
+    pub business_type: Option<String>,
+    /// Franchise / big-chain flag: excludes the business from the public community
+    /// when true. Auto-suggested on publish, manual override supported.
+    pub is_franchise: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

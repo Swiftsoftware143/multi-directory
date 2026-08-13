@@ -242,8 +242,10 @@ pub async fn create_business(
 
     let business = sqlx::query_as::<_, Business>(
         r#"INSERT INTO businesses (directory_id, name, slug, description, category_id,
-           address, city, state, zip, phone, email, website, latitude, longitude)
-           VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414)
+           address, city, state, zip, phone, email, website, latitude, longitude,
+           business_type, is_franchise)
+           VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414,
+           COALESCE($15, 'local'), COALESCE($16, false))
            RETURNING *"#
     )
     .bind(dir.id)
@@ -260,6 +262,8 @@ pub async fn create_business(
     .bind(&req.website)
     .bind(req.latitude)
     .bind(req.longitude)
+    .bind(&req.business_type)
+    .bind(&req.is_franchise)
     .fetch_one(&s.db)
     .await?;
 

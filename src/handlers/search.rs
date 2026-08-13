@@ -27,6 +27,10 @@ pub struct SearchQuery {
     pub city: Option<String>,
     pub state: Option<String>,
     pub business_type: Option<String>,
+    /// Multi-type filter (e.g. search across supplier/farm/wholesaler at once).
+    /// Used by search/suppliers when no single `business_type` is requested.
+    #[serde(default)]
+    pub business_types: Vec<String>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
 }
@@ -201,6 +205,11 @@ pub async fn search_businesses(
             let p = next_param();
             wheres.push(format!("b.business_type = ${}", p));
         }
+    } else if !qs.business_types.is_empty() {
+        // Multi-type filter (e.g. supplier/farm/wholesaler at once) — used by
+        // search/suppliers when no single business_type is specified.
+        let p = next_param();
+        wheres.push(format!("b.business_type = ANY(${})", p));
     }
 
     // This is NOT parameterized — just a fixed SQL condition string
@@ -229,6 +238,7 @@ pub async fn search_businesses(
     if let Some(ref city) = qs.city { if !city.is_empty() { count_q = count_q.bind(city); } }
     if let Some(ref st) = qs.state { if !st.is_empty() { count_q = count_q.bind(st); } }
     if let Some(ref bt) = qs.business_type { if !bt.is_empty() { count_q = count_q.bind(bt); } }
+    else if !qs.business_types.is_empty() { count_q = count_q.bind(&qs.business_types); }
 
     let total: i64 = count_q.fetch_one(&s.db).await?;
 
@@ -294,6 +304,7 @@ pub async fn search_businesses(
     if let Some(ref city) = qs.city { if !city.is_empty() { data_q = data_q.bind(city); } }
     if let Some(ref st) = qs.state { if !st.is_empty() { data_q = data_q.bind(st); } }
     if let Some(ref bt) = qs.business_type { if !bt.is_empty() { data_q = data_q.bind(bt); } }
+    else if !qs.business_types.is_empty() { data_q = data_q.bind(&qs.business_types); }
     // ORDER BY tsquery param (duplicate of q for rank ordering)
     if has_q {
         if let Some(ref q) = qs.q {
@@ -322,19 +333,31 @@ pub async fn search_businesses(
     })))
 }
 
-/// GET /api/v1/search/suppliers — search only suppliers/distributors/wholesalers/farms/associations
+/// GET /api/v1/search/suppliers — search all supplier-type businesses (B2B back-office).
+/// Accepts an optional `type` query param to restrict to a single business_type.
+/// The supplier taxonomy is the `business_type` field: supplier, distributor,
+/// wholesaler, farm, association, manufacturer.
 pub async fn search_suppliers(
     State(s): State<AppState>,
-    Query(qs): Query<SearchQuery>,
+    Query(mut qs): Query<SearchQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    // Override business_type to only return supplier types
-    let mut supplier_qs = SearchQuery {
-        business_type: Some("supplier".to_string()),
-        ..qs
-    };
-    // Also include other supplier-like types
-    // We handle this by making the search function accept multiple types
-    search_businesses(State(s), Query(supplier_qs)).await
+    // If an explicit supplier `type` is requested, honor it; otherwise search
+    // across ALL supplier-type business_type values (NOT 'local').
+    let supplier_types = [
+        "supplier", "distributor", "wholesaler", "farm", "association", "manufacturer",
+    ];
+
+    // If caller passed a type in business_type, validate it's a supplier type;
+    // otherwise clear it and let the search below use the ANY() list.
+    let explicit = qs.business_type.clone().filter(|t| !t.is_empty());
+    if explicit.is_some() {
+        // Keep the caller's single-type filter (e.g. ?business_type=farm).
+    } else {
+        // No explicit type: search all supplier types via a dedicated override.
+        qs.business_types = supplier_types.iter().map(|s| s.to_string()).collect();
+    }
+
+    search_businesses(State(s), Query(qs)).await
 }
 
 // --- GET /api/v1/search/filters/:directory_id ---

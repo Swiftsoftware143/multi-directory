@@ -399,10 +399,17 @@ async function publishPlace(i){
   if(!catId){showToast('Select a category first (category must exist before publishing)',true);return;}
   // Resolve full details then create business
   let detail={};
+  let franchiseHint=false;
   try{
     const dr=await fetch(`/api/v1/places/details?place_id=${encodeURIComponent(b.place_id)}`);
-    if(dr.ok){const dd=await dr.json();detail=dd.place||dd.result||{};}
+    if(dr.ok){const dd=await dr.json();detail=dd.place||dd.result||{};franchiseHint=!!dd.is_franchise;}
   }catch(e){}
+  // Franchise / big-chain auto-flag (manual override before publishing)
+  let isFranchise=franchiseHint;
+  if(franchiseHint){
+    const override=confirm(`⚠️ "${b.name}" looks like a franchise/big chain.\n\nPublish as a LOCAL community business?\n\nOK = keep as local · Cancel = flag as franchise (excluded from public directory)`);
+    isFranchise=!override;
+  }
   const slug=(b.name||'business').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'business';
   const body={
     name:b.name,
@@ -417,7 +424,9 @@ async function publishPlace(i){
     email:'',
     website:detail.website||'',
     latitude:detail.geometry?.location?.lat||null,
-    longitude:detail.geometry?.location?.lng||null
+    longitude:detail.geometry?.location?.lng||null,
+    business_type:'local',
+    is_franchise:isFranchise
   };
   try{
     const r=await fetch(`/api/v1/directories/${encodeURIComponent(city)}/businesses`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
