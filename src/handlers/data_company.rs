@@ -172,7 +172,15 @@ pub async fn place_details(
 
     if let Some(cached_entry) = cached {
         if let Some(details) = &cached_entry.place_details {
-            return Ok(Json(serde_json::json!({ "place": details, "cached": true })));
+            let mut resp = serde_json::json!({ "place": details, "cached": true });
+            if let Some(name) = details.get("name").and_then(|v| v.as_str()) {
+                let cache_types: Vec<String> = details.get("types")
+                    .and_then(|t| t.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                resp["is_franchise"] = serde_json::json!(crate::utils::franchise::is_likely_franchise(name, &cache_types));
+            }
+            return Ok(Json(resp));
         }
     }
 
@@ -209,6 +217,9 @@ pub async fn place_details(
         .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
+    // Franchise / big-chain hint (auto-flag suggestion — admin can override).
+    let is_franchise = crate::utils::franchise::is_likely_franchise(&name, &types);
+
     // Deduplicate/update in cache
     sqlx::query(
         "INSERT INTO google_places_cache (query, place_id, name, formatted_address, phone, website, latitude, longitude, rating, user_ratings_total, types, place_details)
@@ -230,7 +241,7 @@ pub async fn place_details(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "place": result, "cached": false })))
+    Ok(Json(serde_json::json!({ "place": result, "cached": false, "is_franchise": is_franchise })))
 }
 
 // ── Business Verification ────────────────────────────────────────────────────
