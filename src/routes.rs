@@ -619,9 +619,19 @@ pub fn create_router(s: AppState) -> Router {
         ));
 
     // ??? Serve SPA frontend at root
-    let frontend_path = std::path::Path::new("/opt/swift/apps/multi-directory/frontend")
-        .to_string_lossy()
-        .to_string();
+    // Resolve the frontend directory at runtime so it works both in Docker
+    // (bind-mounted at /opt/swift/multidirectory-rust/frontend) and on baremetal
+    // (checked out at /opt/swift/apps/multi-directory/frontend).
+    let frontend_path = [
+        "/opt/swift/multidirectory-rust/frontend",
+        "/opt/swift/apps/multi-directory/frontend",
+        "./frontend",
+    ]
+    .iter()
+    .map(|p| std::path::Path::new(p))
+    .find(|p| p.join("index.html").exists())
+    .map(|p| p.to_string_lossy().to_string())
+    .unwrap_or_else(|| "/opt/swift/multidirectory-rust/frontend".to_string());
 
     // ??? Load SPA index.html into memory for fast fallback
     let index_path = std::path::Path::new(&frontend_path).join("index.html");
