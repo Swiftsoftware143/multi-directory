@@ -11,7 +11,7 @@ pub struct Category {
     pub id: Uuid,
     pub name: String,
     pub slug: String,
-    pub directory_id: Uuid,
+    pub directory_id: Option<Uuid>,
 }
 
 pub async fn list_all_categories(State(s): State<AppState>) -> ApiResult<Json<Vec<Category>>> {
