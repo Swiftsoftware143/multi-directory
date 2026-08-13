@@ -127,6 +127,9 @@ async function loadBusinessDashboard() {
       '<div class="stat-card"><div class="num">' + (data.views_this_week || 0) + '</div><div class="label">Views This Week</div><div class="change ' + changeClass + '">' + changeIcon + ' ' + (weeklyChange > 0 ? "+" : "") + weeklyChange.toFixed(1) + '% vs last week</div></div>' +
       '</div>';
     
+    // Quick actions: browse suppliers (B2B directory)
+    h += '<div class="card"><h3>🔗 Quick Actions</h3><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><a href="/supplier-directory" class="btn btn-primary">📦 Find Suppliers</a><a href="/zaarhub" class="btn btn-secondary">🌐 Community Directory</a></div></div>';
+
     // Subscription & Plan section - render inline directly
     h += renderSubscriptionSection(subData, planInfo);
     
