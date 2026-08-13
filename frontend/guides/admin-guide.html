@@ -421,7 +421,18 @@ a:hover{text-decoration:underline}
   </div>
 
   <h4>Step 1: Create Categories First</h4>
-  <p>Before populating a directory with businesses, create your categories from the <strong>Category Manager</strong> (Admin Panel → Categories). Each category has a name, slug, and group. Categories are available immediately after creation.</p>
+  <p>Before populating a directory with businesses, create your categories from the <strong>Category Manager</strong> (Admin Panel → Categories). Categories are organized as <strong>categories → subcategories</strong> (not "groups"): e.g., <em>Fine Dining</em> contains Italian, Chinese; <em>Food &amp; Drink</em> contains Coffee Shop, Pizza. A business can belong to multiple subcategories (up to 3 by default, 5 with admin override).</p>
+
+  <h4>Using the Populate Businesses tab</h4>
+  <p>Go to <strong>Admin Panel → Populate Businesses</strong>. This is a <strong>manual, admin-driven</strong> flow (not an auto-scraper):</p>
+  <ul>
+    <li><strong>Google Places key</strong> — the search uses your Google Places API key. The key is <strong>swappable</strong> (never hardcoded in source); it resolves in order: per-directory <code>api_config</code> → <code>provider_keys</code> table → <code>GOOGLE_PLACES_API_KEY</code> env var. To change it, update either the <code>provider_keys</code> row for <code>google_places</code> or the env var, then restart.</li>
+    <li><strong>Search by city + category</strong> — enter a city, pick a category/niche, and search. Results come live from Google Places.</li>
+    <li><strong>Review + publish</strong> — select which businesses to import. Duplicates are <strong>hard-blocked by name + address</strong> (a business cannot appear twice in the same directory).</li>
+  </ul>
+
+  <h4>Franchise / big-chain detection (auto-flag)</h4>
+  <p>When you publish a business, the system <strong>auto-flags likely franchises / big chains</strong> using a known-chain name list (~120 national brands) plus Google Places <code>types</code> heuristics. You'll see a <strong>manual override</strong> before publishing: confirm <em>Local</em> (small/local business) or mark <em>Franchise</em>. The community directory is focused on <strong>small, local businesses</strong> — franchises/chains (and suppliers) are <strong>excluded from the public front end</strong> and only appear in the back office where relevant.</p>
 
   <h4>Step 2: Search for Businesses</h4>
   <p>Go to <strong>Admin Panel → Search &amp; Import</strong>. The search engine includes a <strong>Category Filter dropdown</strong> that shows all existing categories. Select a category (or group) to narrow your search. The filter makes results highly targeted from the start — example: select "Coffee Shop" and the search returns coffee shops in the target city.</p>
