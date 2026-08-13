@@ -920,7 +920,7 @@ function renderHomepageContent(d){
     cityCards+='<div class="zh-city-card" onclick="location.hash=\'#/city/'+ct.slug+'\'">'+
       '<div class="emoji">'+em+'</div>'+
       '<h3>'+esc(ct.name)+'</h3>'+
-      '<p>'+esc(ct.description||ct.name+' business directory')+'</p>'+
+      '<p>'+esc(ct.description||((ct.name?ct.name+' ':'')+'business directory'))+'</p>'+
       '<span class="count">'+(ct.business_count||0)+' local spots</span>'+
       (ct.featured_image?'<div class="zh-featured-badge">⭐ Featured</div>':'')+
     '</div>'
