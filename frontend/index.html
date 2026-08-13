@@ -45,6 +45,15 @@ a:hover{text-decoration:underline}
 .zh-city-select{position:relative;flex-shrink:0}
 .zh-city-select select{appearance:none;background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius);padding:8px 32px 8px 12px;font-size:.85rem;font-weight:600;color:var(--primary-hover);cursor:pointer;outline:none;min-width:160px}
 .zh-city-select::after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.7rem;color:var(--primary);pointer-events:none}
+.zh-city-select .zh-city-input{background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius);padding:8px 32px 8px 12px;font-size:.85rem;font-weight:600;color:var(--primary-hover);outline:none;min-width:200px;width:200px}
+.zh-city-select .zh-city-input::placeholder{color:var(--text-muted);font-weight:500}
+.zh-city-dropdown{position:absolute;top:calc(100% + 4px);left:0;min-width:260px;max-width:90vw;max-height:340px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:1000;display:none}
+.zh-city-dropdown.open{display:block}
+.zh-city-dropdown .zh-city-opt{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;font-size:.86rem;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border-light)}
+.zh-city-dropdown .zh-city-opt:last-child{border-bottom:none}
+.zh-city-dropdown .zh-city-opt:hover,.zh-city-dropdown .zh-city-opt.hl{background:var(--primary-light)}
+.zh-city-dropdown .zh-city-opt .zh-city-count{font-size:.74rem;color:var(--primary);font-weight:600;white-space:nowrap}
+.zh-city-dropdown .zh-city-empty{padding:14px;font-size:.84rem;color:var(--text-muted);text-align:center}
 .zh-search-bar{flex:1;max-width:480px;position:relative}
 .zh-search-bar input{width:100%;padding:10px 16px 10px 40px;border:1px solid var(--border);border-radius:100px;font-size:.9rem;outline:none;background:var(--bg);transition:all .2s}
 .zh-search-bar input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,0.12)}
@@ -802,9 +811,62 @@ setTimeout(function(){
 },3000)
 
 // ── City Selector ──
-async function onCitySelect(e){
-  var slug=e.value;if(slug)location.hash='#/city/'+slug
+function onCitySelect(slug){
+  if(slug)location.hash='#/city/'+slug
 }
+
+// ── Searchable city typeahead ──
+function getCityList(){
+  var out=[]
+  for(var i=0;i<state.cities.length;i++){
+    var c=state.cities[i]
+    out.push({slug:(c.slug||c.city_slug), name:(c.name||c.city_name), count:(c.business_count!=null?c.business_count:(c.listing_count!=null?c.listing_count:0))})
+  }
+  return out
+}
+function openCityDropdown(){
+  var dd=document.getElementById('zh-city-dropdown');if(dd)dd.classList.add('open')
+  renderCityDropdown('')
+}
+function closeCityDropdown(){
+  var dd=document.getElementById('zh-city-dropdown');if(dd)dd.classList.remove('open')
+}
+function filterCityDropdown(q){
+  renderCityDropdown(q||'')
+}
+function renderCityDropdown(q){
+  var dd=document.getElementById('zh-city-dropdown');if(!dd)return
+  var cities=getCityList();var qs=(q||'').toLowerCase()
+  var filtered=[]
+  for(var i=0;i<cities.length;i++){
+    var c=cities[i]
+    if(!qs||(c.name||'').toLowerCase().indexOf(qs)>=0||(c.slug||'').toLowerCase().indexOf(qs)>=0)filtered.push(c)
+  }
+  if(!filtered.length){dd.innerHTML='<div class="zh-city-empty">No cities match "'+esc(q)+'"</div>';dd.classList.add('open');return}
+  var html='<div class="zh-city-opt" data-slug="" onclick="pickCity(this.dataset.slug)"><div>🌐 All Cities</div></div>'
+  for(var j=0;j<filtered.length;j++){
+    var c=filtered[j]
+    html+='<div class="zh-city-opt" data-slug="'+esc(c.slug)+'" onclick="pickCity(this.dataset.slug)"><div>'+esc(c.name)+'</div><span class="zh-city-count">'+(c.count||0)+' spots</span></div>'
+  }
+  dd.innerHTML=html;dd.classList.add('open')
+}
+function pickCity(slug){
+  closeCityDropdown();
+  if(slug)onCitySelect(slug)
+  else location.hash='#/'
+}
+function onCityKeydown(e){
+  if(e.key==='Escape'){closeCityDropdown();return}
+  if(e.key==='Enter'){
+    var q=e.target.value.trim().toLowerCase();
+    var cities=getCityList();
+    for(var i=0;i<cities.length;i++){if((cities[i].name||'').toLowerCase()===q){pickCity(cities[i].slug);return}}
+  }
+}
+document.addEventListener('click',function(e){
+  var sel=document.getElementById('zh-city-select');
+  if(sel&&!sel.contains(e.target))closeCityDropdown()
+})
 
 // ── Search ──
 function onSearchInput(e){
@@ -840,20 +902,16 @@ async function load(){
 
 // ── Render Shell (Header) ──
 function renderShell(){
-  var cityOpts='<option value="">All Cities</option>'
-  for(var i=0;i<state.cities.length;i++){
-    var c=state.cities[i];var sel=c.slug===state.slug?'selected':''
-    cityOpts+='<option value="'+c.slug+'" '+sel+'>'+esc(c.name)+' ('+c.business_count+' spots)</option>'
-  }
-
   $$('#app').innerHTML=`
 <div class="zh-header">
   <div class="zh-header-inner">
     <a class="zh-logo" href="#/" onclick="location.hash='#/'">
       <span class="logo-emoji">🌐</span><img src="/logo.png?v=2" alt="ZaarHub Community" style="height:32px;width:auto"><span class="logo-community">Community</span>
     </a>
-    <div class="zh-city-select">
-      <select onchange="onCitySelect(this)">${cityOpts}</select>
+    <div class="zh-city-select" id="zh-city-select">
+      <input type="text" class="zh-city-input" id="zh-city-input" placeholder="🏙️ Search cities…" autocomplete="off" onfocus="openCityDropdown()" oninput="filterCityDropdown(this.value)" onkeydown="onCityKeydown(event)">
+      <span class="zh-dd-caret" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:.7rem;color:var(--primary);pointer-events:none">▾</span>
+      <div class="zh-city-dropdown" id="zh-city-dropdown"></div>
     </div>
     <div class="zh-search-bar">
       <span class="icon">🔍</span>
@@ -1855,7 +1913,17 @@ function renderAboutPage(){
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:24px">\
       <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:12px;color:var(--dark)">💼 For Business Owners</h2>\
       <p style="color:var(--text);line-height:1.8;margin-bottom:16px">Claim your business listing and take control of your online presence. ZaarHub gives you the tools to showcase what makes your business special — add photos, post deals and events, respond to reviews, and connect directly with your local community.</p>\
-      <a href="/portal" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--primary);color:#fff;border-radius:100px;font-weight:600;text-decoration:none">+ Add Your Business</a>\
+      <div style="display:flex;gap:12px;flex-wrap:wrap">\
+        <a href="/portal" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--primary);color:#fff;border-radius:100px;font-weight:600;text-decoration:none">+ Add Your Business</a>\
+        <a href="/distributor" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--primary-light);color:var(--primary-hover);border-radius:100px;font-weight:600;text-decoration:none">📦 Supplier Portal</a>\
+      </div>\
+    </div>\
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:24px">\
+      <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:12px;color:var(--dark)">🚚 For Suppliers & Distributors</h2>\
+      <p style="color:var(--text);line-height:1.8;margin-bottom:16px">Are you a supplier, distributor, or wholesaler serving local businesses? ZaarHub connects you with the shop owners and service providers who need your products. List your catalog, reach qualified buyers in your region, and grow your wholesale business.</p>\
+      <div style="display:flex;gap:12px;flex-wrap:wrap">\
+        <a href="/distributor" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--secondary);color:#fff;border-radius:100px;font-weight:600;text-decoration:none">📦 Supplier Login</a>\
+      </div>\
     </div>\
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:24px">\
       <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:12px;color:var(--dark)">🌟 For the Community</h2>\
@@ -1867,6 +1935,9 @@ function renderAboutPage(){
         <li>📅 <strong>Connect</strong> — Stay up to date with community events</li>\
         <li>📑 <strong>Collect</strong> — Build your personal collection of favorite spots</li>\
       </ul>\
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:20px">\
+        <a href="/visitor" style="display:inline-flex;align-items:center;gap:6px;padding:10px 24px;background:var(--primary);color:#fff;border-radius:100px;font-weight:600;text-decoration:none">👤 Sign Up Free</a>\
+      </div>\
     </div>\
     <div style="text-align:center;padding:24px">\
       <p style="color:var(--text);margin-bottom:8px"><strong>📧 Questions or suggestions?</strong></p>\
@@ -2251,7 +2322,7 @@ function renderDealDetail(d){
       templateClass=' zh-deal-event'
       // Event: countdown, date/location display, tier pricing
       if(d.end_date){
-        heroExtra='<script>window._zhEventEndMs=new Date("'+d.end_date+'").getTime()</script>'
+        heroExtra='<scr'+'ipt>window._zhEventEndMs=new Date("'+d.end_date+'").getTime()</scr'+'ipt>'
       }
       templateContentBefore='<div class="zh-event-detail-row">'+
         (d.start_date?'<span>📅 '+new Date(d.start_date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})+'</span>':'')+
