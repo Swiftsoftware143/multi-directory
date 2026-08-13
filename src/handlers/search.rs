@@ -83,6 +83,8 @@ pub struct SearchResult {
     pub rating: Option<f64>,
     pub directory_name: Option<String>,
     pub directory_slug: Option<String>,
+    pub business_type: Option<String>,
+    pub address: Option<String>,
     /// Phase 2: multi-category assignments as JSON array of {id, name, group_name, is_primary}
     pub categories: Option<serde_json::Value>,
 }
@@ -103,6 +105,8 @@ impl sqlx::FromRow<'_, sqlx::postgres::PgRow> for SearchResult {
             rating: row.try_get("rating")?,
             directory_name: row.try_get("directory_name")?,
             directory_slug: row.try_get("directory_slug")?,
+            business_type: row.try_get("business_type")?,
+            address: row.try_get("address")?,
             categories: row.try_get("categories")?,
         })
     }
@@ -280,6 +284,7 @@ pub async fn search_businesses(
         "SELECT b.id, b.name, b.slug, b.description, cat.name AS category, \
                 b.city, b.state, b.phone, b.website, b.rating, \
                 d.name AS directory_name, d.slug AS directory_slug, \
+                b.business_type, b.address, \
                 {} AS categories \
          FROM businesses b \
          {} \

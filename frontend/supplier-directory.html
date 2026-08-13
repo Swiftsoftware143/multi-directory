@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suppliers — ZaarHub Business Directory</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root {
+  --brand: #f27f2f;
+  --brand-dark: #2b3255;
+  --bg: #f8f9fc;
+  --card: #ffffff;
+  --text: #1a1a2e;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --star: #f59e0b;
+  --accent: #8b5cf6;
+  --featured-glow: #f27f2f22;
+  --accent-glow: #8b5cf622;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg: 0 10px 40px rgba(0,0,0,.08);
+}
+
+* { margin:0; padding:0; box-sizing:border-box }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+header {
+  background: var(--brand-dark);
+  color: white;
+  padding: 16px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,.15);
+}
+header .inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+header .logo {
+  font-size: 22px;
+  font-weight: 800;
+  color: white;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+header .logo span { color: var(--brand); }
+header .nav-links { display: flex; gap: 20px; align-items: center; }
+header .nav-links a {
+  color: rgba(255,255,255,.8);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color .2s;
+  cursor: pointer;
+}
+header .nav-links a:hover { color: var(--brand); }
+
+.hero {
+  background: linear-gradient(135deg, var(--brand-dark) 0%, #1a1a3e 100%);
+  color: white;
+  padding: 40px 20px;
+  text-align: center;
+}
+.hero h1 { font-size: clamp(26px, 5vw, 38px); font-weight: 800; margin-bottom: 8px; }
+.hero h1 span { color: var(--accent); }
+.hero p { font-size: 15px; opacity: .85; max-width: 640px; margin: 0 auto 22px; }
+
+.search-bar {
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+}
+.search-bar input {
+  flex: 1;
+  padding: 13px 20px;
+  border-radius: 100px;
+  border: 2px solid transparent;
+  font-size: 15px;
+  outline: none;
+  transition: border-color .2s;
+}
+.search-bar input:focus { border-color: var(--brand); }
+.search-bar button {
+  padding: 13px 26px;
+  border-radius: 100px;
+  border: none;
+  background: var(--brand);
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+}
+.search-bar button:hover { background: #e06a1e; transform: translateY(-1px); }
+
+.main-layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 28px;
+}
+
+.sidebar { position: sticky; top: 80px; align-self: start; }
+.filter-group {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.filter-group h3 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.filter-group ul { list-style: none; }
+.filter-group li { margin-bottom: 6px; }
+.filter-group li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text);
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all .15s;
+}
+.filter-group li button:hover { background: var(--bg); color: var(--brand); }
+.filter-group li button.active {
+  background: var(--brand);
+  color: white;
+  font-weight: 600;
+}
+.filter-group .count {
+  float: right;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.listing-grid { display: grid; gap: 16px; }
+.listing-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  transition: all .2s;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.listing-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.listing-card .logo-img {
+  width: 64px; height: 64px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.listing-card .logo-placeholder {
+  width: 64px; height: 64px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 700;
+  flex-shrink: 0;
+}
+.listing-card .info { flex: 1; min-width: 0; }
+.listing-card .info h3 { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+.listing-card .type-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--accent);
+  background: var(--accent-glow);
+  padding: 3px 10px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  margin-right: 6px;
+}
+.listing-card .category-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand);
+  background: var(--featured-glow);
+  padding: 3px 10px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.listing-card .info .desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.listing-card .info .meta {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-muted);
+}
+.listing-card .info .meta span { display: flex; align-items: center; gap: 4px; }
+
+.pagination { display: flex; gap: 8px; justify-content: center; margin-top: 24px; }
+.pagination button {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pagination button:hover { border-color: var(--brand); color: var(--brand); }
+.pagination button.active { background: var(--brand); color: white; border-color: var(--brand); }
+.pagination button:disabled { opacity: .4; cursor: default; }
+
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--card);
+  border-radius: var(--radius);
+  max-width: 600px; width: 100%;
+  max-height: 90vh; overflow-y: auto;
+  padding: 32px; position: relative;
+  box-shadow: var(--shadow-lg);
+}
+.modal .close {
+  position: absolute; top: 16px; right: 16px;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: none; background: var(--bg);
+  font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal .detail-logo { width: 80px; height: 80px; border-radius: 16px; object-fit: cover; margin-bottom: 16px; }
+.modal h2 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+.modal .category-tag { margin-bottom: 12px; }
+.modal .detail-meta { display: grid; gap: 12px; margin: 20px 0; }
+.modal .detail-meta a { color: var(--brand); text-decoration: none; font-weight: 500; }
+.modal .detail-meta .meta-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.modal .detail-meta .label { font-weight: 600; color: var(--text-muted); min-width: 60px; }
+
+.loading { text-align: center; padding: 48px; color: var(--text-muted); }
+.empty { text-align: center; padding: 48px; color: var(--text-muted); }
+.error { text-align: center; padding: 48px; color: #ef4444; }
+
+@media (max-width: 768px) {
+  .main-layout { grid-template-columns: 1fr; }
+  .sidebar { position: static; }
+  .search-bar { flex-direction: column; }
+  .search-bar button { width: 100%; }
+  .listing-card { flex-direction: column; align-items: center; text-align: center; }
+  .listing-card .meta { justify-content: center; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Suppliers</span></a>
+    <nav class="nav-links">
+      <a onclick="location.href='/zaarhub'">Community Directory</a>
+      <a onclick="signOut()">Sign Out</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <h1>Find Your <span>Suppliers</span></h1>
+  <p>Browse farms, wholesalers, distributors, manufacturers, and associations to power your business.</p>
+  <div class="search-bar">
+    <input type="text" id="search-input" placeholder="Search suppliers..." onkeyup="if(event.key==='Enter')doSearch()">
+    <button onclick="doSearch()">🔍 Search</button>
+  </div>
+</section>
+
+<div class="main-layout">
+  <aside class="sidebar">
+    <div class="filter-group">
+      <h3>Supplier Type</h3>
+      <ul id="type-list">
+        <li><button class="active" data-type="" onclick="selectType('',this)">All Types</button></li>
+        <li><button data-type="farm" onclick="selectType('farm',this)">🌾 Farms</button></li>
+        <li><button data-type="wholesaler" onclick="selectType('wholesaler',this)">📦 Wholesalers</button></li>
+        <li><button data-type="distributor" onclick="selectType('distributor',this)">🚚 Distributors</button></li>
+        <li><button data-type="manufacturer" onclick="selectType('manufacturer',this)">🏭 Manufacturers</button></li>
+        <li><button data-type="association" onclick="selectType('association',this)">🤝 Associations</button></li>
+        <li><button data-type="supplier" onclick="selectType('supplier',this)">🏪 Suppliers</button></li>
+      </ul>
+    </div>
+    <div class="filter-group">
+      <h3>City</h3>
+      <ul id="city-list"><li class="loading">Loading...</li></ul>
+    </div>
+  </aside>
+
+  <main>
+    <div class="listing-grid" id="listing-grid">
+      <div class="loading">Loading suppliers...</div>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+const API = '/api/v1';
+const TYPE_LABELS = {
+  farm: '🌾 Farm', wholesaler: '📦 Wholesaler', distributor: '🚚 Distributor',
+  manufacturer: '🏭 Manufacturer', association: '🤝 Association', supplier: '🏪 Supplier'
+};
+
+let currentType = '';
+let currentCity = '';
+let currentSearch = '';
+let currentPage = 1;
+
+function getToken() {
+  let t = localStorage.getItem('zaarhub_token') || localStorage.getItem('token') || localStorage.getItem('jwt');
+  return t ? t.replace(/^Bearer\s+/i, '') : '';
+}
+function authHeaders() {
+  const t = getToken();
+  return t ? { 'Authorization': 'Bearer ' + t } : {};
+}
+function isLoggedIn() { return !!getToken(); }
+
+function signOut() {
+  ['zaarhub_token','token','jwt','zaarhub_user'].forEach(k => localStorage.removeItem(k));
+  location.href = '/login.html';
+}
+
+async function init() {
+  if (!isLoggedIn()) { location.href = '/login.html'; return; }
+  await loadCities();
+  await loadSuppliers();
+}
+
+async function loadCities() {
+  try {
+    const res = await fetch(`${API}/zaarhub/cities`, { headers: authHeaders() });
+    const data = await res.json();
+    const list = document.getElementById('city-list');
+    let html = '<li><button class="active" data-city="" onclick="selectCity(\'\',this)">All Cities</button></li>';
+    (data.cities || []).forEach(c => {
+      html += `<li><button data-city="${c.city_slug}" onclick="selectCity('${c.city_slug}',this)">${escHtml((c.city_name||'').replace(', FL',''))}</button></li>`;
+    });
+    list.innerHTML = html;
+  } catch(e) { console.error('load cities failed', e); }
+}
+
+async function loadSuppliers() {
+  const grid = document.getElementById('listing-grid');
+  const pagination = document.getElementById('pagination');
+  grid.innerHTML = '<div class="loading">Loading suppliers...</div>';
+
+  try {
+    let url = `${API}/search/suppliers?page=${currentPage}&per_page=20`;
+    if (currentSearch) url += `&q=${encodeURIComponent(currentSearch)}`;
+    if (currentCity) url += `&city=${encodeURIComponent(currentCity)}`;
+
+    const res = await fetch(url, { headers: authHeaders() });
+    if (res.status === 401) { signOut(); return; }
+    if (!res.ok) { grid.innerHTML = '<div class="error">⚠️ Failed to load suppliers.</div>'; return; }
+
+    const data = await res.json();
+    let suppliers = data.data || [];
+    // client-side type filter (backend returns all supplier types when no single type requested)
+    if (currentType) {
+      suppliers = suppliers.filter(s => (s.business_type||'').toLowerCase() === currentType.toLowerCase());
+    }
+
+    if (suppliers.length === 0) {
+      grid.innerHTML = '<div class="empty">📭 No suppliers found. Try a different filter or search.</div>';
+    } else {
+      grid.innerHTML = suppliers.map(s => supplierCard(s)).join('');
+    }
+
+    const total = data.total || suppliers.length;
+    const totalPages = data.total_pages || 1;
+    let pg = '';
+    if (totalPages > 1) {
+      pg += `<button ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(${currentPage-1})">← Prev</button>`;
+      for (let p = Math.max(1, currentPage-2); p <= Math.min(totalPages, currentPage+2); p++) {
+        pg += `<button class="${p === currentPage ? 'active' : ''}" onclick="goPage(${p})">${p}</button>`;
+      }
+      pg += `<button ${currentPage >= totalPages ? 'disabled' : ''} onclick="goPage(${currentPage+1})">Next →</button>`;
+    }
+    pagination.innerHTML = pg;
+  } catch(e) {
+    grid.innerHTML = '<div class="error">⚠️ Failed to load suppliers.</div>';
+    console.error(e);
+  }
+}
+
+function supplierCard(s) {
+  const typeLabel = TYPE_LABELS[(s.business_type||'').toLowerCase()] || (s.business_type ? escHtml(s.business_type) : '');
+  const placeholder = `<div class="logo-placeholder">${(s.name||'?')[0]}</div>`;
+  return `
+    <div class="listing-card" onclick="openSupplier(${JSON.stringify(s)})">
+      ${placeholder}
+      <div class="info">
+        <h3>${escHtml(s.name)}</h3>
+        ${typeLabel ? `<span class="type-tag">${typeLabel}</span>` : ''}
+        ${s.category ? `<span class="category-tag">${escHtml(s.category)}</span>` : ''}
+        ${s.description ? `<p class="desc">${escHtml(s.description)}</p>` : ''}
+        <div class="meta">
+          ${s.address ? `<span>📍 ${escHtml(s.address)}</span>` : ''}
+          ${s.city ? `<span>🏙️ ${escHtml(s.city)}</span>` : ''}
+          ${s.phone ? `<span>📞 ${escHtml(s.phone)}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+function openSupplier(s) {
+  const modal = document.getElementById('modal-content');
+  const typeLabel = TYPE_LABELS[(s.business_type||'').toLowerCase()] || '';
+  modal.innerHTML = `
+    <button class="close" onclick="closeModal()">✕</button>
+    <h2>${escHtml(s.name)}</h2>
+    ${typeLabel ? `<div><span class="type-tag">${typeLabel}</span></div>` : ''}
+    ${s.category ? `<div class="category-tag" style="margin-top:6px">${escHtml(s.category)}</div>` : ''}
+    ${s.description ? `<p style="margin:12px 0;line-height:1.7">${escHtml(s.description)}</p>` : ''}
+    <div class="detail-meta">
+      ${s.address ? `<div class="meta-row">📍 <span class="label">Address</span> ${escHtml(s.address)}</div>` : ''}
+      ${s.city ? `<div class="meta-row">🏙️ <span class="label">City</span> ${escHtml(s.city)}${s.state ? ', ' + escHtml(s.state) : ''}</div>` : ''}
+      ${s.phone ? `<div class="meta-row">📞 <span class="label">Phone</span> <a href="tel:${escHtml(s.phone)}">${escHtml(s.phone)}</a></div>` : ''}
+      ${s.website ? `<div class="meta-row">🌐 <span class="label">Website</span> <a href="${escHtml(s.website)}" target="_blank" rel="noopener">${escHtml(s.website)}</a></div>` : ''}
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('active');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('active'); }
+
+function selectType(t, btn) {
+  currentType = t;
+  document.querySelectorAll('#type-list button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentPage = 1;
+  loadSuppliers();
+}
+function selectCity(c, btn) {
+  currentCity = c;
+  document.querySelectorAll('#city-list button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentPage = 1;
+  loadSuppliers();
+}
+function doSearch() {
+  currentSearch = document.getElementById('search-input').value.trim();
+  currentPage = 1;
+  loadSuppliers();
+}
+function goPage(p) { currentPage = p; loadSuppliers(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+init();
+</script>
+</body>
+</html>
