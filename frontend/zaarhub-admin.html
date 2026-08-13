@@ -422,6 +422,12 @@ async function publishPlace(i){
   try{
     const r=await fetch(`/api/v1/directories/${encodeURIComponent(city)}/businesses`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.ok){showToast(`Published: ${b.name} ✓`);markPublished(i);}
+    else if(r.status===409||r.status===422){ // duplicate slug — retry with unique suffix
+      body.slug=slug+'-'+Date.now().toString(36);
+      const r2=await fetch(`/api/v1/directories/${encodeURIComponent(city)}/businesses`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(r2.ok){showToast(`Published: ${b.name} ✓`);markPublished(i);}
+      else{const err=await r2.json().catch(()=>({}));showToast('Publish failed: '+(err.message||err.error||r2.status),true);}
+    }
     else{const err=await r.json().catch(()=>({}));showToast('Publish failed: '+(err.message||err.error||r.status),true);}
   }catch(e){showToast('Publish failed',true);}
 }
