@@ -130,9 +130,11 @@ pub struct SupplierProduct {
     pub price: Option<rust_decimal::Decimal>,
     pub unit: Option<String>,
     pub min_order: Option<i32>,
+    pub currency: Option<String>,
     pub delivery_areas: Option<Vec<String>>,
     pub is_active: Option<bool>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -376,13 +378,15 @@ pub async fn search_products(
 
     // Data query
     let data_sql = format!(
-        "SELECT sp.*, b.name as business_name, b.city, b.state \
+        "SELECT sp.id, sp.business_id, sp.name, sp.description, sp.category, sp.price, sp.unit, sp.min_order, \
+                sp.currency, sp.delivery_areas, sp.is_active, sp.created_at, sp.updated_at, \
+                b.name as business_name, b.city, b.state \
          FROM supplier_products sp \
          LEFT JOIN businesses b ON b.id = sp.business_id \
          {} ORDER BY sp.name ASC LIMIT 20 OFFSET {}",
         where_clause, offset
     );
-    let mut data_q = sqlx::query_as::<_, (Uuid, Uuid, String, Option<String>, Option<String>, Option<rust_decimal::Decimal>, Option<String>, Option<i32>, Option<Vec<String>>, Option<bool>, Option<chrono::DateTime<chrono::Utc>>, String, Option<String>, Option<String>)>(&data_sql);
+    let mut data_q = sqlx::query_as::<_, (Uuid, Uuid, String, Option<String>, Option<String>, Option<rust_decimal::Decimal>, Option<String>, Option<i32>, Option<String>, Option<Vec<String>>, Option<bool>, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>, String, Option<String>, Option<String>)>(&data_sql);
     if let Some(ref q) = qs.q { if !q.is_empty() { data_q = data_q.bind(q); } }
     if let Some(ref cat) = qs.category { if !cat.is_empty() { data_q = data_q.bind(cat); } }
     if let Some(bid) = qs.business_id { data_q = data_q.bind(bid); }
@@ -393,8 +397,8 @@ pub async fn search_products(
     let results: Vec<serde_json::Value> = rows.into_iter().map(|r| json!({
         "id": r.0, "business_id": r.1, "name": r.2, "description": r.3,
         "category": r.4, "price": r.5, "unit": r.6, "min_order": r.7,
-        "delivery_areas": r.8, "is_active": r.9, "created_at": r.10,
-        "business_name": r.11, "city": r.12, "state": r.13
+        "currency": r.8, "delivery_areas": r.9, "is_active": r.10, "created_at": r.11,
+        "business_name": r.13, "city": r.14, "state": r.15
     })).collect();
 
     Ok(Json(json!({"products": results, "total": total, "page": page, "per_page": per_page})))
@@ -411,8 +415,8 @@ pub async fn my_products(
     let user_id = extract_user_id(&headers, &s)?;
     let biz_id = resolve_supplier_business(&s.db, user_id).await?;
 
-    let products = sqlx::query_as::<_, (Uuid, Uuid, String, Option<String>, Option<String>, Option<rust_decimal::Decimal>, Option<String>, Option<i32>, Option<Vec<String>>, Option<bool>, Option<chrono::DateTime<chrono::Utc>>)>(
-        "SELECT id, business_id, name, description, category, price, unit, min_order, delivery_areas, is_active, created_at \
+    let products = sqlx::query_as::<_, (Uuid, Uuid, String, Option<String>, Option<String>, Option<rust_decimal::Decimal>, Option<String>, Option<i32>, Option<String>, Option<Vec<String>>, Option<bool>, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>)>(
+        "SELECT id, business_id, name, description, category, price, unit, min_order, currency, delivery_areas, is_active, created_at, updated_at \
          FROM supplier_products WHERE business_id = $1 ORDER BY created_at DESC"
     )
     .bind(biz_id)
@@ -422,7 +426,7 @@ pub async fn my_products(
     let results: Vec<serde_json::Value> = products.into_iter().map(|r| json!({
         "id": r.0, "business_id": r.1, "name": r.2, "description": r.3,
         "category": r.4, "price": r.5, "unit": r.6, "min_order": r.7,
-        "delivery_areas": r.8, "is_active": r.9, "created_at": r.10,
+        "currency": r.8, "delivery_areas": r.9, "is_active": r.10, "created_at": r.11,
     })).collect();
 
     Ok(Json(json!({"products": results, "total": results.len()})))
@@ -437,8 +441,9 @@ pub async fn get_product(
     require_b2b_feature(&b2b_config, "b2b_orders")?;
 
     let product = sqlx::query_as::<_, SupplierProduct>(
-        "SELECT sp.*, b.name as business_name FROM supplier_products sp \
-         LEFT JOIN businesses b ON b.id = sp.business_id WHERE sp.id = $1"
+        "SELECT id, business_id, name, description, category, price, unit, min_order, currency, \
+                delivery_areas, is_active, created_at, updated_at \
+         FROM supplier_products WHERE id = $1"
     )
     .bind(id)
     .fetch_optional(&s.db)
