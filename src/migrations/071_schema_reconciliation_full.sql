@@ -596,7 +596,8 @@ CREATE TABLE IF NOT EXISTS supplier_products (
     price NUMERIC(12,2),
     unit TEXT,
     min_order INTEGER DEFAULT 1,
-    delivery_areas JSONB DEFAULT '[]',
+    currency TEXT DEFAULT 'USD',
+    delivery_areas TEXT[] DEFAULT '{}',
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
