@@ -39,9 +39,8 @@ async fn main() {
     let pool = db::connect(&config.database_url, config.db_min_connections, config.db_max_connections).await;
 
     // Connect to IncentiveSwift database as well
-    let is_db_url = std::env::var("IS_DATABASE_URL").unwrap_or_else(|_| {
-        "postgres://swift:SwiftSecure2026!@127.0.0.1:5432/incentiveswift".to_string()
-    });
+    let is_db_url = std::env::var("IS_DATABASE_URL")
+        .expect("IS_DATABASE_URL must be set (IncentiveSwift DB for loyalty integration)");
     let is_db = db::connect(&is_db_url, config.db_min_connections, config.db_max_connections).await;
 
     // Run migrations
