@@ -838,3 +838,332 @@ pub async fn provision_directory_resources(
 
     Ok(prefix)
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Loyalty / Directory → CoreSwift drill-down (Phase 2a)
+//
+// David's model:
+//   - Directory = STANDALONE or part of a NETWORK (ZaarHub = network of directories).
+//   - 3 participant types per directory, each flowing into its OWN CoreSwift list:
+//       users/customers, businesses, suppliers  (CoreSwift = backend comms hub).
+//   - Surveys/quizzes from IQS, Loyalty, or the directory itself assign TAGS,
+//     which must propagate into CoreSwift against the same contact.
+//
+// All pushes go through CoreSwift's EXTERNAL personal-key API (/api/external/contacts)
+// which supports: free-text `company`+`title`, email upsert, `list_id` membrship,
+// `tags[]` (auto-create + idempotent assign), and `fields{}` auto-provisioning.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Typed CoreSwift connection resolved for a directory (with network fallback).
+#[derive(Clone)]
+pub struct CoreSwiftConn {
+    pub tenant_id: Uuid,
+    pub api_key: String,
+    pub base_url: String,
+    pub users_list_id: Option<Uuid>,
+    pub businesses_list_id: Option<Uuid>,
+    pub suppliers_list_id: Option<Uuid>,
+}
+
+/// Resolve the per-directory CoreSwift connection + typed lists.
+/// Directory-level wins; falls back to parent network (shared tenant networks).
+pub async fn resolve_cs_conn(db: &PgPool, directory_id: Uuid) -> Result<CoreSwiftConn, String> {
+    let row = sqlx::query_as::<_, (
+        Option<Uuid>,          // dir tenant
+        Option<Uuid>,          // network_id
+        Option<Vec<u8>>,       // dir key
+        Option<String>,        // dir base_url
+        Option<Uuid>,          // dir users list
+        Option<Uuid>,          // dir businesses list
+        Option<Uuid>,          // dir suppliers list
+        Option<Uuid>,          // net tenant
+        Option<Vec<u8>>,       // net key
+        Option<String>,        // net base_url
+        Option<Uuid>,          // net users list
+        Option<Uuid>,          // net businesses list
+        Option<Uuid>,          // net suppliers list
+    )>(
+        r#"SELECT d.coreswift_tenant_id, d.network_id,
+                  d.coreswift_personal_key_encrypted, d.coreswift_base_url,
+                  d.coreswift_list_id_users, d.coreswift_list_id_businesses, d.coreswift_list_id_suppliers,
+                  n.coreswift_tenant_id,
+                  n.coreswift_personal_key_encrypted, n.coreswift_base_url,
+                  n.coreswift_list_id_users, n.coreswift_list_id_businesses, n.coreswift_list_id_suppliers
+           FROM directories d
+           LEFT JOIN networks n ON n.id = d.network_id
+           WHERE d.id = $1"#
+    )
+    .bind(directory_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error resolving CoreSwift conn: {e}"))?
+    .ok_or_else(|| format!("Directory {directory_id} not found"))?;
+
+    let (dir_tid, _net, dir_key, dir_base, dir_ul, dir_bl, dir_sl, net_tid, net_key, net_base, net_ul, net_bl, net_sl) = row;
+
+    // Tenant: dir first, then net
+    let tenant_id = dir_tid.or(net_tid).ok_or_else(|| {
+        format!("No CoreSwift tenant provisioned for directory {directory_id}")
+    })?;
+
+    // Key: dir first, then net
+    let (enc_key, base_url) = match (&dir_key, &dir_base) {
+        (Some(k), b) => (k.clone(), b.clone().filter(|s| !s.is_empty()).unwrap_or_else(coreswift_url)),
+        (None, _) => match &net_key {
+            Some(k) => (k.clone(), net_base.clone().filter(|s| !s.is_empty()).unwrap_or_else(coreswift_url)),
+            None => return Err(format!("No CoreSwift personal key configured for directory {directory_id}")),
+        },
+    };
+
+    // Decrypt the key
+    let api_key: String = sqlx::query_scalar("SELECT decrypt_provider_key($1)")
+        .bind(&enc_key)
+        .fetch_one(db)
+        .await
+        .map_err(|e| format!("Failed to decrypt CoreSwift key: {e}"))?;
+
+    // Lists: dir first, then net fallback
+    let users_list_id = dir_ul.or(net_ul);
+    let businesses_list_id = dir_bl.or(net_bl);
+    let suppliers_list_id = dir_sl.or(net_sl);
+
+    Ok(CoreSwiftConn {
+        tenant_id,
+        api_key,
+        base_url,
+        users_list_id,
+        businesses_list_id,
+        suppliers_list_id,
+    })
+}
+
+/// Participant classification → target list id.
+#[derive(Clone, Copy, PartialEq)]
+pub enum ParticipantType {
+    User,
+    Business,
+    Supplier,
+}
+
+impl ParticipantType {
+    fn list_id(&self, conn: &CoreSwiftConn) -> Option<Uuid> {
+        match self {
+            ParticipantType::User => conn.users_list_id,
+            ParticipantType::Business => conn.businesses_list_id,
+            ParticipantType::Supplier => conn.suppliers_list_id,
+        }
+    }
+    fn tag(&self) -> &'static str {
+        match self {
+            ParticipantType::User => "directory-user",
+            ParticipantType::Business => "directory-business",
+            ParticipantType::Supplier => "directory-supplier",
+        }
+    }
+}
+
+/// POST to CoreSwift /api/external/contacts using the personal key.
+async fn push_external_contact(
+    conn: &CoreSwiftConn,
+    body: serde_json::Value,
+) -> Result<(), String> {
+    let resp = HTTP
+        .post(format!("{}/api/external/contacts", conn.base_url))
+        .header("Authorization", format!("Bearer {}", conn.api_key))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("CoreSwift external contact push failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let rbody = resp.text().await.unwrap_or_default();
+        return Err(format!("CoreSwift external contact returned {status}: {rbody}"));
+    }
+
+    Ok(())
+}
+
+/// Build the base external-contact body with list + type tag + session tags.
+fn build_contact_body(
+    conn: &CoreSwiftConn,
+    ptype: ParticipantType,
+    extra_tags: &[String],
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut body = serde_json::Map::new();
+    if let Some(lid) = ptype.list_id(conn) {
+        body.insert("list_id".into(), serde_json::json!(lid.to_string()));
+    }
+    let mut tags: Vec<String> = vec![ptype.tag().to_string(), "source:multidirectory".to_string()];
+    tags.extend(extra_tags.iter().cloned());
+    body.insert("tags".into(), serde_json::json!(tags));
+    body.insert("source_app".into(), serde_json::json!("multidirectory"));
+    body
+}
+
+/// Push a loyalty member (consumer visitor) into CoreSwift CRM.
+/// classification = User (customers list) + loyalty tags + loyalty state as custom fields.
+pub async fn push_loyalty_member(
+    db: &PgPool,
+    directory_id: Uuid,
+    member_id: Uuid,
+) -> Result<(), String> {
+    let row = sqlx::query_as::<_, (
+        String, // visitor name
+        String, // email
+        Option<String>, // phone
+        i32,    // points_balance
+        i32,    // lifetime_points
+        Option<String>, // tier name
+        chrono::DateTime<chrono::Utc>, // member_since
+        Option<chrono::DateTime<chrono::Utc>>, // last_checkin_at
+        i32,    // total_checkins
+        i32,    // current_streak
+        Option<String>, // referral_code
+        i32,    // total_referrals
+        Option<chrono::NaiveDate>, // birthday
+        String, // program name
+    )>(
+        r#"SELECT
+             COALESCE(va.name, ''),
+             va.email,
+             va.phone,
+             m.points_balance,
+             m.lifetime_points,
+             t.name AS tier_name,
+             m.member_since,
+             m.last_checkin_at,
+             (SELECT COUNT(*) FROM loyalty_checkins c WHERE c.member_id = m.id)::int AS total_checkins,
+             m.current_streak,
+             m.referral_code,
+             m.total_referrals,
+             m.birthday,
+             p.name AS program_name
+           FROM loyalty_members m
+           JOIN visitor_accounts va ON va.id = m.visitor_account_id
+           JOIN loyalty_programs p ON p.id = m.program_id
+           LEFT JOIN loyalty_tiers t ON t.id = m.tier_id
+           WHERE m.id = $1"#,
+    )
+    .bind(member_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error loading loyalty member: {e}"))?
+    .ok_or_else(|| format!("Loyalty member {member_id} not found"))?;
+
+    let (name, email, phone, points_balance, lifetime_points, tier_name, member_since, last_checkin_at, total_checkins, current_streak, referral_code, total_referrals, birthday, program_name) = row;
+    let (first_name, last_name) = split_name(&name);
+
+    let conn = resolve_cs_conn(db, directory_id).await?;
+
+    let mut fields = serde_json::Map::new();
+    fields.insert("points_balance".into(), serde_json::json!(points_balance));
+    fields.insert("lifetime_points".into(), serde_json::json!(lifetime_points));
+    fields.insert("total_checkins".into(), serde_json::json!(total_checkins));
+    fields.insert("current_streak".into(), serde_json::json!(current_streak));
+    fields.insert("total_referrals".into(), serde_json::json!(total_referrals));
+    fields.insert("member_since".into(), serde_json::json!(member_since.format("%Y-%m-%d").to_string()));
+    if let Some(t) = &tier_name {
+        fields.insert("tier".into(), serde_json::json!(t));
+    }
+    if let Some(lc) = &last_checkin_at {
+        fields.insert("last_checkin_at".into(), serde_json::json!(lc.format("%Y-%m-%d").to_string()));
+    }
+    if let Some(rc) = &referral_code {
+        fields.insert("referral_code".into(), serde_json::json!(rc));
+    }
+    if let Some(bd) = &birthday {
+        fields.insert("birthday".into(), serde_json::json!(bd.format("%Y-%m-%d").to_string()));
+    }
+    fields.insert("loyalty_program".into(), serde_json::json!(program_name));
+
+    let mut body = build_contact_body(&conn, ParticipantType::User, &["loyalty-member".to_string()]);
+    body.insert("first_name".into(), serde_json::json!(first_name));
+    body.insert("last_name".into(), serde_json::json!(last_name));
+    body.insert("email".into(), serde_json::json!(email));
+    body.insert("phone".into(), serde_json::json!(phone));
+    body.insert("fields".into(), serde_json::json!(fields));
+
+    push_external_contact(&conn, serde_json::Value::Object(body)).await?;
+    tracing::info!("[coreswift] Pushed loyalty member {member_id} ({name}) to CoreSwift");
+    Ok(())
+}
+
+/// Push a business loyalty participant into CoreSwift CRM.
+/// classification = Business (businesses list) + `company` + `title` + loyalty-side fields.
+pub async fn push_loyalty_business(
+    db: &PgPool,
+    directory_id: Uuid,
+    business_id: Uuid,
+) -> Result<(), String> {
+    let row = sqlx::query_as::<_, (
+        String, // business name
+        Option<String>, // email
+        Option<String>, // phone
+        Option<String>, // website
+        Option<String>, // city
+        Option<String>, // state
+        Option<String>, // business_type
+        i64,    // deals count
+        i64,    // events count
+    )>(
+        r#"SELECT
+             b.name,
+             b.email,
+             b.phone,
+             b.website,
+             b.city,
+             b.state,
+             b.business_type,
+             (SELECT COUNT(*) FROM deals d WHERE d.business_id = b.id) AS deals_count,
+             (SELECT COUNT(*) FROM community_events e WHERE e.business_id = b.id) AS events_count
+           FROM businesses b
+           WHERE b.id = $1"#,
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error loading business: {e}"))?
+    .ok_or_else(|| format!("Business {business_id} not found"))?;
+
+    let (name, email, phone, website, city, state, business_type, deals_count, events_count) = row;
+
+    let conn = resolve_cs_conn(db, directory_id).await?;
+
+    let mut fields = serde_json::Map::new();
+    fields.insert("loyalty_deals_count".into(), serde_json::json!(deals_count));
+    fields.insert("loyalty_events_count".into(), serde_json::json!(events_count));
+    fields.insert("loyalty_participant".into(), serde_json::json!("business"));
+    if let Some(bt) = &business_type {
+        fields.insert("business_type".into(), serde_json::json!(bt));
+    }
+
+    let mut body = build_contact_body(&conn, ParticipantType::Business, &["loyalty-business".to_string()]);
+    body.insert("first_name".into(), serde_json::json!(name));
+    body.insert("last_name".into(), serde_json::json!(""));
+    body.insert("email".into(), serde_json::json!(email));
+    body.insert("phone".into(), serde_json::json!(phone));
+    body.insert("company".into(), serde_json::json!(name));
+    body.insert("title".into(), serde_json::json!("Business"));
+    body.insert("city".into(), serde_json::json!(city));
+    body.insert("state".into(), serde_json::json!(state));
+    body.insert("notes".into(), serde_json::json!(website));
+    body.insert("fields".into(), serde_json::json!(fields));
+
+    push_external_contact(&conn, serde_json::Value::Object(body)).await?;
+    tracing::info!("[coreswift] Pushed loyalty business {business_id} ({name}) to CoreSwift");
+    Ok(())
+}
+
+/// Split a full name into (first_name, last_name).
+fn split_name(full: &str) -> (String, String) {
+    let trimmed = full.trim();
+    if trimmed.is_empty() {
+        return ("Loyalty".to_string(), "Member".to_string());
+    }
+    let mut parts = trimmed.split_whitespace();
+    let first = parts.next().unwrap_or("").to_string();
+    let last = parts.collect::<Vec<_>>().join(" ");
+    (first, last)
+}
