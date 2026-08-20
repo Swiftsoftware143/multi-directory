@@ -531,7 +531,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/spotlight/:id/feature", post(zaarhub::toggle_spotlight_featured))
         // ??? ZaarHub City Pages API (Phase 4 — city_pages + business_listings CRUD)
         .route("/zaarhub/cities", get(zaarhub_cities::list_cities))
-        .route("/zaarhub/cities/:slug", get(zaarhub_cities::get_city))
+        .route("/zaarhub/cities/:slug", get(zaarhub::get_city_page))
         .route("/zaarhub/cities/:slug/listings", get(zaarhub_cities::list_city_listings))
         .route("/zaarhub/listings/:id", get(zaarhub_cities::get_listing))
         .route("/zaarhub/categories", get(zaarhub_cities::list_categories))
