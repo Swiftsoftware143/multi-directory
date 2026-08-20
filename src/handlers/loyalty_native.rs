@@ -382,6 +382,17 @@ pub async fn enroll_member(
     }
 
     let member_id = find_or_create_member(&state.db, &program_id, &body.visitor_account_id).await?;
+
+    // Drill down into CoreSwift CRM (fire-and-forget)
+    let db = state.db.clone();
+    let dir = directory_id;
+    let mid = member_id;
+    tokio::spawn(async move {
+        if let Err(e) = crate::coreswift::push_loyalty_member(&db, dir, mid).await {
+            tracing::warn!("[loyalty] CoreSwift drill-down failed on enroll: {e}");
+        }
+    });
+
     Ok(Json(json!({ "member_id": member_id })))
 }
 
@@ -429,6 +440,16 @@ pub async fn checkin(
         method,
     )
     .await?;
+
+    // Drill down into CoreSwift CRM (fire-and-forget)
+    let db = state.db.clone();
+    let dir = directory_id;
+    let mid = member_id;
+    tokio::spawn(async move {
+        if let Err(e) = crate::coreswift::push_loyalty_member(&db, dir, mid).await {
+            tracing::warn!("[loyalty] CoreSwift drill-down failed on check-in: {e}");
+        }
+    });
 
     // return updated member
     let member: LoyaltyMember = sqlx::query_as::<_, LoyaltyMember>(
