@@ -397,6 +397,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/domains/:domain_id", delete(domains::remove_domain))
         .route("/domains/:domain_id/verify", post(domains::verify_domain))
         .route("/branding/:directory_id", put(branding::update_branding))
+        .route("/branding/:directory_id/upload", post(branding::upload_branding_asset))
         .route("/branding/:directory_id/extract", post(branding::extract_colors))
         .route("/members", get(admin::admin_members))
         .route("/portfolio/sync", post(admin::portfolio_sync))
@@ -1182,11 +1183,28 @@ pub fn create_router(s: AppState) -> Router {
                     }
 
                     // SPA fallback: serve full index.html for all unmatched routes
-                    Ok(axum::response::Response::builder()
-                        .status(axum::http::StatusCode::OK)
-                        .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
-                        .body(axum::body::Body::from(index_clone2.as_ref().to_string()))
-                        .unwrap())
+                    {
+                        // White-label: if the path targets a directory (/d/{slug}),
+                        // inject that directory's branding into the served HTML.
+                        let mut html = index_clone2.as_ref().to_string();
+                        let slug = crate::branding_injector::slug_from_dir_path(&path);
+                        let branding =
+                            if let Some(slug) = slug {
+                                crate::branding_injector::fetch_branding_by_slug(
+                                    &_pool_for_host,
+                                    &slug,
+                                )
+                                .await
+                            } else {
+                                None
+                            };
+                        html = crate::branding_injector::inject_branding(&html, branding.as_ref());
+                        return Ok(axum::response::Response::builder()
+                            .status(axum::http::StatusCode::OK)
+                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                            .body(axum::body::Body::from(html))
+                            .unwrap());
+                    }
                 }
             })
         )

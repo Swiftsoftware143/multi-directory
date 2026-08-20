@@ -17,6 +17,7 @@ mod providers;
 mod template_engine;
 pub mod tracking_script;
 mod utils;
+mod branding_injector;
 
 use axum::Router;
 use std::time::Duration;
