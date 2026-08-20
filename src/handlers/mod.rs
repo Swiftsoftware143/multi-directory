@@ -117,6 +117,7 @@ pub mod dynamic_og;
 pub use dynamic_og::*;
 pub mod proxy_common;
 pub mod loyalty_proxy;
+pub mod loyalty_native;
 pub use loyalty_proxy::*;
 pub mod iqs_proxy;
 pub use iqs_proxy::*;

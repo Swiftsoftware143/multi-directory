@@ -35,6 +35,12 @@ pub fn create_router(s: AppState) -> Router {
         // Legacy /directory/:slug/businesses alias
         .route("/directory/:slug/businesses", get(businesses::list_businesses))
         .route("/directories/:slug/businesses/:business_id", get(businesses::get_business).put(businesses::update_business).delete(businesses::delete_business))
+        .route("/directories/:slug/loyalty/programs", get(loyalty_native::list_programs).post(loyalty_native::create_program))
+        .route("/directories/:slug/loyalty/programs/:program_id", get(loyalty_native::get_program_handler).put(loyalty_native::update_program).delete(loyalty_native::delete_program))
+        .route("/directories/:slug/loyalty/programs/:program_id/enroll", post(loyalty_native::enroll_member))
+        .route("/directories/:slug/loyalty/programs/:program_id/checkin", post(loyalty_native::checkin))
+        .route("/directories/:slug/loyalty/members/:visitor_account_id", get(loyalty_native::get_member))
+
         .route("/reviews", get(reviews::list_reviews).post(reviews::create_review))
         .route("/reviews/:id", get(reviews::get_review).put(reviews::update_review).delete(reviews::delete_review))
         .route("/reviews/:id/approve", post(reviews::approve_review))
