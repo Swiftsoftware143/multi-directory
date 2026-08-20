@@ -913,9 +913,29 @@ pub async fn get_business_detail(
         .await?
     };
 
+    // The business cards on city pages are built from the `business_listings` table,
+    // whose IDs live in a different UUID space than `businesses`. When a card is clicked,
+    // the SPA routes here with a `business_listings.id`, so fall back to that table before 404.
     let (biz_id, biz_name, biz_slug, biz_desc, biz_phone, biz_rating, biz_review_count,
-         biz_website, biz_address, biz_city, biz_state, biz_lat, biz_lng, biz_cat_id) = business
-        .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+         biz_website, biz_address, biz_city, biz_state, biz_lat, biz_lng, biz_cat_id) =
+        if let Some(b) = business {
+            b
+        } else if let Ok(bid) = Uuid::parse_str(&id) {
+            sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
+                r#"SELECT bl.id, bl.business_name, bl.business_name, bl.description, bl.phone, bl.rating, bl.review_count,
+                          bl.website, bl.address, cp.city_name, cp.state, bl.coordinates_lat, bl.coordinates_lng, NULL::uuid
+                   FROM business_listings bl
+                   JOIN city_pages cp ON bl.city_page_id = cp.id
+                   WHERE bl.id = $1 AND cp.city_slug = $2"#
+            )
+            .bind(bid)
+            .bind(&slug)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?
+        } else {
+            return Err(AppError::NotFound("Business not found".to_string()));
+        };
 
     // Get category name
     let category_name: Option<String> = if let Some(cat_id) = biz_cat_id {
