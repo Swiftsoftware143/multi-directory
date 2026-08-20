@@ -1,7 +1,7 @@
 //! Directory branding handlers.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Multipart, Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -99,6 +99,116 @@ pub async fn update_branding(
     .await?;
 
     Ok(Json(json!(branding)))
+}
+
+/// POST /api/v1/admin/branding/:directory_id/upload
+/// Multipart file upload for white-label branding assets (favicon / logo).
+/// Saves the file under the frontend uploads dir and stores the public URL
+/// on the directory_branding row. Field name is the asset type:
+///   * `favicon` — stored as favicon.svg
+///   * `logo`    — stored as logo.<ext>
+pub async fn upload_branding_asset(
+    State(s): State<AppState>,
+    Path(directory_id): Path<Uuid>,
+    mut multipart: Multipart,
+) -> ApiResult<impl IntoResponse> {
+    // Directory must exist.
+    let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = $1")
+        .bind(directory_id)
+        .fetch_one(&s.db)
+        .await?;
+    if exists == 0 {
+        return Err(AppError::NotFound("Directory not found".to_string()));
+    }
+
+    let mut saved: Vec<(String, String)> = Vec::new();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let Some(name) = field.name().map(|n| n.to_string()) else {
+            continue;
+        };
+        // Only accept known asset types.
+        if name != "favicon" && name != "logo" {
+            continue;
+        }
+        let file_name = field.file_name().unwrap_or("").to_string();
+        let data = match field.bytes().await {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        if data.is_empty() {
+            continue;
+        }
+
+        let ext = std::path::Path::new(&file_name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_else(|| if name == "favicon" { "svg".to_string() } else { "png".to_string() });
+
+        // Sanitize extension to a safe allowlist.
+        let safe_ext = match ext.as_str() {
+            "png" | "jpg" | "jpeg" | "svg" | "webp" | "ico" | "gif" => ext.clone(),
+            _ => if name == "favicon" { "svg".to_string() } else { "png".to_string() },
+        };
+
+        // Resolve the frontend upload base dir the same way routes.rs does.
+        let base_dir = [
+            "/opt/swift/multidirectory-rust/frontend",
+            "/opt/swift/apps/multi-directory/frontend",
+            "./frontend",
+        ]
+        .iter()
+        .map(|p| std::path::Path::new(p))
+        .find(|p| p.join("index.html").exists())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "/opt/swift/multidirectory-rust/frontend".to_string());
+
+        let asset_dir = format!("{}/uploads/branding/{}", base_dir, directory_id);
+        tokio::fs::create_dir_all(&asset_dir)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to create upload dir: {e}")))?;
+
+        let stored_name = if name == "favicon" {
+            "favicon.svg".to_string()
+        } else {
+            format!("logo.{}", safe_ext)
+        };
+        let path = format!("{}/{}", asset_dir, stored_name);
+        tokio::fs::write(&path, &data)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to write upload: {e}")))?;
+
+        let public_url = format!("/uploads/branding/{}/{}", directory_id, stored_name);
+        saved.push((name, public_url));
+    }
+
+    if saved.is_empty() {
+        return Err(AppError::BadRequest(
+            "No valid file provided (field name 'favicon' or 'logo')".to_string(),
+        ));
+    }
+
+    // Persist the URLs onto the directory_branding row (upsert).
+    for (asset_kind, url) in &saved {
+        let col = if asset_kind == "favicon" { "favicon_url" } else { "logo_url" };
+        let q = format!(
+            r#"INSERT INTO directory_branding (directory_id, {col})
+               VALUES ($1, $2)
+               ON CONFLICT (directory_id) DO UPDATE SET {col} = EXCLUDED.{col}, updated_at = NOW()"#
+        );
+        sqlx::query(&q)
+            .bind(directory_id)
+            .bind(url)
+            .execute(&s.db)
+            .await
+            .map_err(|e| AppError::Database(e))?;
+    }
+
+    Ok(Json(json!({
+        "saved": saved,
+        "message": "Branding asset uploaded successfully"
+    })))
 }
 
 /// POST /api/v1/admin/branding/:directory_id/extract

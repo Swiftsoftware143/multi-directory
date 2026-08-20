@@ -533,6 +533,10 @@ function renderBranding(){
       '<div class="form-group"><label>Logo URL</label><input id="br_logo" value="'+esc(b.logo_url||'')+'" placeholder="https://example.com/logo.png"></div>'+
       '<div class="form-group"><label>Favicon URL</label><input id="br_favicon" value="'+esc(b.favicon_url||'')+'" placeholder="https://example.com/favicon.ico"></div>'+
     '</div>'+
+    '<div class="form-row">'+
+      '<div class="form-group"><label>Upload Logo</label><input type="file" id="br_logo_file" accept="image/png,image/jpeg,image/svg+xml,image/webp"></div>'+
+      '<div class="form-group"><label>Upload Favicon</label><input type="file" id="br_favicon_file" accept="image/svg+xml,image/png,image/x-icon"></div>'+
+    '</div>'+
     '<div class="form-group"><label>Custom Font</label><input id="br_font" value="'+esc(b.font_family||'')+'" placeholder="e.g. Inter, Lato (Google Fonts)"></div>'+
     '</div>'+
     '<div class="card"><div class="card-header"><h3>🔍 Preview</h3></div><div class="preview-section" id="brandingPreview" style="background:'+esc(b.background_color||'#f5f3ff')+'">'+
@@ -577,6 +581,24 @@ function saveBranding(){
     font_family:document.getElementById('br_font').value
   };
   pu('/admin/branding/'+CUR_DIR.id,data,function(){toast('Branding saved','success');},function(){toast('Failed to save branding','error');});
+}
+function uploadBrandingAsset(kind){
+  var input=document.getElementById(kind==='favicon'?'br_favicon_file':'br_logo_file');
+  var file=input&&input.files&&input.files[0];
+  if(!file){toast('Select a file to upload','warning');return;}
+  var fd=new FormData();
+  fd.append(kind,file);
+  fetch('/admin/branding/'+CUR_DIR.id+'/upload',{method:'POST',body:fd})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d&&d.saved){
+        var url=d.saved[0][1];
+        if(kind==='favicon'){document.getElementById('br_favicon').value=url;}else{document.getElementById('br_logo').value=url;}
+        toast(kind.charAt(0).toUpperCase()+kind.slice(1)+' uploaded','success');
+        input.value='';
+      }else{toast('Upload failed','error');}
+    })
+    .catch(function(){toast('Upload error','error');});
 }
 
 // ── Domains ────────────────────────────────────────────
