@@ -48,6 +48,12 @@ pub fn create_router(s: AppState) -> Router {
         .route("/directories/:slug/loyalty/programs/:program_id/milestones", get(loyalty_native::list_milestones).post(loyalty_native::create_milestone))
         .route("/directories/:slug/loyalty/members/:member_id/rewards", get(loyalty_native::list_earned))
         .route("/directories/:slug/loyalty/rewards/earned/:earned_id/approve", post(loyalty_native::approve_reward))
+        .route("/networks/:slug/clear/scan", post(clearinghouse::clearhouse_scan))
+        .route("/networks/:slug/clear/treasury", get(clearinghouse::treasury_summary))
+        .route("/networks/:slug/clear/ledgers", get(clearinghouse::business_ledgers))
+        .route("/networks/:slug/clear/caps", get(clearinghouse::category_caps).put(clearinghouse::upsert_category_cap))
+        .route("/networks/:slug/clear/expire", post(clearinghouse::expire_points))
+        .route("/networks/:slug/clear/logs", get(clearinghouse::clearing_logs))
 
         .route("/reviews", get(reviews::list_reviews).post(reviews::create_review))
         .route("/reviews/:id", get(reviews::get_review).put(reviews::update_review).delete(reviews::delete_review))
