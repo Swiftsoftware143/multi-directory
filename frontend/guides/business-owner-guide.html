@@ -456,18 +456,57 @@
 <!-- 9. ZaarHub Loyalty & Scanner -->
 <h2 id="loyalty">9. ZaarHub Loyalty Program &amp; Scanner</h2>
 
-<p>As a ZaarHub business, you can participate in the <strong>ZaarHub Rewards loyalty program</strong> powered by IncentiveSwift. Customers earn ZaarCash at your business and redeem it for discounts — driving repeat visits. Your staff process transactions using the mobile <strong>Scanner PWA</strong>.</p>
+<p>As a ZaarHub business, you can participate in the <strong>ZaarCash loyalty program</strong> (powered by the MultiDirectory clearinghouse). Customers earn ZaarCash at your business and redeem it for real savings — driving repeat visits. Your staff process transactions using the mobile <strong>Scanner PWA</strong>.</p>
+
+<h3>Exactly What You Pay &amp; What You Get Back</h3>
+<div class="card">
+  <p><strong>Your one cost: the issuance buy-in.</strong> When you reward a customer with points, you pay <strong>$0.01 (1¢) per point</strong>. There are no monthly fees, no hidden per-transaction charges, and no cost just to be listed as participating.</p>
+  <table>
+    <tr><td>Issue 1 point (on a $1.00 purchase)</td><td><strong>You are billed $0.01</strong></td></tr>
+    <tr><td>Typical $25.00 sale → 25 points</td><td><strong>You are billed $0.25</strong></td></tr>
+    <tr><td>$50.00 sale → 50 points</td><td><strong>You are billed $0.50</strong></td></tr>
+  </table>
+  <p><strong>When you accept points:</strong> if a customer pays you with ZaarCash, you are reimbursed <strong>$0.008 per point</strong> honored.</p>
+  <table>
+    <tr><td>Honor 1 point of customer value</td><td><strong>You are reimbursed $0.008</strong></td></tr>
+    <tr><td>Customer redeems 10 points ($0.10 off)</td><td><strong>You are reimbursed $0.08</strong></td></tr>
+    <tr><td>Customer redeems 100 points ($1.00 off)</td><td><strong>You are reimbursed $0.80</strong></td></tr>
+  </table>
+  <p><strong>Your monthly ledger</strong> tracks both sides. If you issue more than you accept, your net position is negative (you paid out). If you accept more than you issue, it's positive (you're owed money). Your operator can pull the exact ledger anytime.</p>
+  <div class="tip-box">
+    <p><strong>💡 Think of it as targeted marketing:</strong> the $0.01/point you spend puts real buying power in a customer's wallet — power they're encouraged to spend at participating businesses like yours. Points earned at one partner bring customers to every partner, including you.</p>
+  </div>
+</div>
+
+<h3>Redemption Caps by Category</h3>
+<div class="card">
+  <p>The program limits how much of an invoice can be paid with points, based on <strong>your business category</strong>. This protects low-margin businesses and follows policy on certain categories:</p>
+  <table>
+    <tr><td><strong>restaurant</strong></td><td>100% of invoice can be paid with points</td></tr>
+    <tr><td><strong>retail</strong></td><td>100%</td></tr>
+    <tr><td><strong>services</strong></td><td>100%</td></tr>
+    <tr><td><strong>homegoods</strong></td><td>50%</td></tr>
+    <tr><td><strong>grocery</strong></td><td>20%</td></tr>
+    <tr><td><strong>convenience</strong></td><td>20%</td></tr>
+    <tr><td><strong>fuel</strong></td><td>20%</td></tr>
+    <tr><td><strong>tobacco</strong></td><td>0% (points not accepted)</td></tr>
+  </table>
+  <p><strong>Why it matters:</strong> low-margin categories (grocery, fuel, convenience) aren't forced to absorb heavy point discounting, while higher-margin categories (restaurant, retail, services) can use points as a full payment method to drive more redemptions to your business. The cap is applied automatically at redemption.</p>
+  <div class="tip-box">
+    <p><strong>💡 Points expire after 365 days</strong> on a rolling basis, which keeps unredeemed liability healthy and encourages customers to redeem at the register — benefiting you.</p>
+  </div>
+</div>
 
 <h3>How Loyalty Appears on Your Profile</h3>
 <div class="card">
   <p>Every business profile page at <code>/biz/:slug/:id</code> includes a <strong>"ZaarHub Rewards"</strong> section that shows:</p>
   <ul>
-    <li><strong>Your program details</strong> — Currency name (ZaarCash), earn rate per $1 spent</li>
-    <li><strong>Customer's loyalty status</strong> — When logged in, customers see their tier (Bronze/Silver/Gold/Platinum), balance, and scannable QR code</li>
+    <li><strong>Your program details</strong> — Currency name (ZaarCash), earn rate (1 point per $1 spent)</li>
+    <li><strong>Customer's loyalty status</strong> — When logged in, customers see their ZaarCash balance and scannable QR code</li>
     <li><strong>"Join ZaarHub Rewards"</strong> button for new customers who haven't enrolled yet</li>
     <li><strong>"🔍 Scan to Earn"</strong> button linking to the scanner for your staff</li>
   </ul>
-  <p>The loyalty section fetches live data from the IncentiveSwift loyalty engine via the Multi-Directory API proxy. No separate app needed — it renders inline on your business listing.</p>
+  <p>The loyalty section fetches live data from the MultiDirectory clearinghouse via the Multi-Directory API proxy. No separate app needed — it renders inline on your business listing.</p>
 </div>
 
 <h3>Using the ZaarHub Scanner for Transactions</h3>
@@ -484,15 +523,15 @@
 
   <p><strong>Three scan types available:</strong></p>
   <table>
-    <tr><td>✅ <strong>Check-in</strong></td><td>Award 10 bonus points for visiting. No purchase amount needed.</td></tr>
-    <tr><td>💳 <strong>Purchase</strong></td><td>Customer earns ZaarCash based on purchase total. Enter the amount.</td></tr>
-    <tr><td>🎁 <strong>Redeem</strong></td><td>Customer uses their ZaarCash balance. Points are deducted.</td></tr>
+    <tr><td>✅ <strong>Check-in</strong></td><td>Award bonus points for visiting. No purchase amount needed.</td></tr>
+    <tr><td>💳 <strong>Purchase</strong></td><td>Customer earns ZaarCash on the purchase total (1 point per $1). Enter the amount.</td></tr>
+    <tr><td>🎁 <strong>Redeem</strong></td><td>Customer uses their ZaarCash balance. Points are deducted (up to the category cap).</td></tr>
   </table>
 
   <p><strong>Transaction flow:</strong> Select scan type → Scan customer's QR code → Enter amount (for Purchase/Redeem) → Click Process → Points awarded instantly.</p>
   
   <div class="tip-box">
-    <p><strong>💡 Tip:</strong> The scanner auto-generates a unique transaction ID for every scan — great for audit trails and dispute resolution. All data flows to the IncentiveSwift clearinghouse for accurate billing.</p>
+    <p><strong>💡 Tip:</strong> The scanner auto-generates a unique transaction ID for every scan — great for audit trails and dispute resolution. All data flows to the MultiDirectory clearinghouse for accurate billing and reimbursement.</p>
   </div>
 </div>
 
