@@ -493,3 +493,388 @@ pub async fn get_member(
         None => Ok(Json(json!({ "member": null }))),
     }
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// Tiers, rewards, milestones (native — directory-scoped)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct LoyaltyTier {
+    pub id: Uuid,
+    pub loyalty_program_id: Uuid,
+    pub name: String,
+    pub min_points: i64,
+    pub color: String,
+    pub perks: Option<Value>,
+    pub multiplier: f64,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct LoyaltyRewardTier {
+    pub id: Uuid,
+    pub program_id: Uuid,
+    pub name: String,
+    pub points_required: i32,
+    pub requires_approval: bool,
+    #[sqlx(rename = "reward_tag")]
+    pub reward_tag: String,
+    pub marketing_boost: Option<Value>,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct LoyaltyRewardEarned {
+    pub id: Uuid,
+    pub member_id: Uuid,
+    pub tier_id: Option<Uuid>,
+    pub status: String,
+    pub earned_at: chrono::DateTime<chrono::Utc>,
+    pub approved_by: Option<Uuid>,
+    pub fulfilled_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct LoyaltyMilestone {
+    pub id: Uuid,
+    pub loyalty_program_id: Uuid,
+    pub name: String,
+    pub trigger_type: String,
+    pub trigger_value: i64,
+    pub bonus_points: i64,
+    pub bonus_reward_id: Option<Uuid>,
+    pub once_per_member: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TierInput {
+    pub name: String,
+    pub min_points: Option<i64>,
+    pub color: Option<String>,
+    pub perks: Option<Value>,
+    pub multiplier: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RewardTierInput {
+    pub name: String,
+    pub points_required: i32,
+    pub requires_approval: Option<bool>,
+    pub reward_tag: String,
+    pub marketing_boost: Option<Value>,
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RewardEarnInput {
+    pub member_id: Uuid,
+    pub tier_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RewardApproveInput {
+    pub approved: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MilestoneInput {
+    pub name: String,
+    pub trigger_type: String,
+    pub trigger_value: i64,
+    pub bonus_points: i64,
+    pub bonus_reward_id: Option<Uuid>,
+    pub once_per_member: Option<bool>,
+}
+
+async fn owned_program_id(
+    pool: &PgPool,
+    slug: &str,
+    program_id: &Uuid,
+) -> Result<Uuid, AppError> {
+    let directory_id = resolve_directory_id(pool, slug).await?;
+    let program = get_program(pool, program_id).await?;
+    if program.directory_id != directory_id {
+        return Err(AppError::NotFound("Program not found in this directory".into()));
+    }
+    Ok(directory_id)
+}
+
+// ── Tiers ──
+
+pub async fn list_tiers(
+    State(state): State<AppState>,
+    Path((slug, program_id)): Path<(String, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    let tiers: Vec<LoyaltyTier> = sqlx::query_as(
+        "SELECT id, loyalty_program_id, name, min_points, color, perks, multiplier::float8 AS multiplier, created_at
+         FROM loyalty_tiers WHERE loyalty_program_id = $1 ORDER BY min_points ASC",
+    )
+    .bind(program_id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({ "tiers": tiers })))
+}
+
+pub async fn create_tier(
+    State(state): State<AppState>,
+    Path((slug, program_id)): Path<(String, Uuid)>,
+    Json(body): Json<TierInput>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    if body.name.trim().is_empty() {
+        return Err(AppError::Validation("Tier name is required".into()));
+    }
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO loyalty_tiers (id, loyalty_program_id, name, min_points, color, perks, multiplier)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)",
+    )
+    .bind(id)
+    .bind(program_id)
+    .bind(&body.name)
+    .bind(body.min_points.unwrap_or(0))
+    .bind(body.color.as_deref().unwrap_or("#6B7280"))
+    .bind(body.perks.unwrap_or_else(|| json!([])))
+    .bind(body.multiplier.unwrap_or(1.0))
+    .execute(&state.db)
+    .await?;
+
+    let tier: LoyaltyTier = sqlx::query_as(
+        "SELECT id, loyalty_program_id, name, min_points, color, perks, multiplier::float8 AS multiplier, created_at
+         FROM loyalty_tiers WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(Json(json!({ "tier": tier })))
+}
+
+pub async fn delete_tier(
+    State(state): State<AppState>,
+    Path((slug, program_id, tier_id)): Path<(String, Uuid, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    let res = sqlx::query("DELETE FROM loyalty_tiers WHERE id = $1 AND loyalty_program_id = $2")
+        .bind(tier_id)
+        .bind(program_id)
+        .execute(&state.db)
+        .await?;
+    Ok(Json(json!({ "deleted": res.rows_affected() > 0 })))
+}
+
+// ── Rewards ──
+
+pub async fn list_rewards(
+    State(state): State<AppState>,
+    Path((slug, program_id)): Path<(String, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    let rewards: Vec<LoyaltyRewardTier> = sqlx::query_as(
+        "SELECT id, program_id, name, points_required, requires_approval, reward_tag, marketing_boost, sort_order
+         FROM loyalty_reward_tiers WHERE program_id = $1 ORDER BY sort_order ASC, points_required ASC",
+    )
+    .bind(program_id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({ "rewards": rewards })))
+}
+
+pub async fn create_reward(
+    State(state): State<AppState>,
+    Path((slug, program_id)): Path<(String, Uuid)>,
+    Json(body): Json<RewardTierInput>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    if body.name.trim().is_empty() || body.reward_tag.trim().is_empty() {
+        return Err(AppError::Validation("Reward name and tag are required".into()));
+    }
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO loyalty_reward_tiers (id, program_id, name, points_required, requires_approval, reward_tag, marketing_boost, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+    )
+    .bind(id)
+    .bind(program_id)
+    .bind(&body.name)
+    .bind(body.points_required)
+    .bind(body.requires_approval.unwrap_or(false))
+    .bind(&body.reward_tag)
+    .bind(body.marketing_boost)
+    .bind(body.sort_order.unwrap_or(0))
+    .execute(&state.db)
+    .await?;
+
+    let reward: LoyaltyRewardTier = sqlx::query_as(
+        "SELECT id, program_id, name, points_required, requires_approval, reward_tag, marketing_boost, sort_order
+         FROM loyalty_reward_tiers WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(Json(json!({ "reward": reward })))
+}
+
+pub async fn delete_reward(
+    State(state): State<AppState>,
+    Path((slug, program_id, reward_id)): Path<(String, Uuid, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    let res = sqlx::query("DELETE FROM loyalty_reward_tiers WHERE id = $1 AND program_id = $2")
+        .bind(reward_id)
+        .bind(program_id)
+        .execute(&state.db)
+        .await?;
+    Ok(Json(json!({ "deleted": res.rows_affected() > 0 })))
+}
+
+/// Member claims a reward (spends points). Creates an earned record; auto-approves if not requires_approval.
+pub async fn earn_reward(
+    State(state): State<AppState>,
+    Path((slug, program_id)): Path<(String, Uuid)>,
+    Json(body): Json<RewardEarnInput>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+
+    let reward: LoyaltyRewardTier = sqlx::query_as(
+        "SELECT id, program_id, name, points_required, requires_approval, reward_tag, marketing_boost, sort_order
+         FROM loyalty_reward_tiers WHERE id = $1 AND program_id = $2",
+    )
+    .bind(body.tier_id)
+    .bind(program_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Reward not found in this program".into()))?;
+
+    // Verify member belongs to this program + has enough points
+    let member_bal: Option<(Uuid, i32)> = sqlx::query_as(
+        "SELECT id, points_balance FROM loyalty_members WHERE id = $1 AND program_id = $2",
+    )
+    .bind(body.member_id)
+    .bind(program_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let (member_id, balance) = member_bal
+        .ok_or_else(|| AppError::NotFound("Member not found in this program".into()))?;
+
+    if balance < reward.points_required {
+        return Err(AppError::Validation("Insufficient points".into()));
+    }
+
+    // Deduct points + record earned
+    sqlx::query("UPDATE loyalty_members SET points_balance = points_balance - $1 WHERE id = $2")
+        .bind(reward.points_required)
+        .bind(member_id)
+        .execute(&state.db)
+        .await?;
+
+    let earned_id = Uuid::new_v4();
+    let status = if reward.requires_approval { "pending" } else { "approved" };
+    sqlx::query(
+        "INSERT INTO loyalty_rewards_earned (id, member_id, tier_id, status) VALUES ($1,$2,$3,$4)",
+    )
+    .bind(earned_id)
+    .bind(member_id)
+    .bind(reward.id)
+    .bind(status)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(json!({ "earned": { "id": earned_id, "reward": reward.name, "status": status, "points_spent": reward.points_required } })))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct EarnedRewardView {
+    pub id: Uuid,
+    pub member_id: Uuid,
+    pub tier_id: Option<Uuid>,
+    pub status: String,
+    pub earned_at: chrono::DateTime<chrono::Utc>,
+    pub reward_name: Option<String>,
+}
+
+pub async fn list_earned(
+    State(state): State<AppState>,
+    Path((slug, member_id)): Path<(String, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    resolve_directory_id(&state.db, &slug).await?;
+    let earned: Vec<EarnedRewardView> = sqlx::query_as(
+        "SELECT e.id, e.member_id, e.tier_id, e.status, e.earned_at, r.name AS reward_name
+         FROM loyalty_rewards_earned e
+         LEFT JOIN loyalty_reward_tiers r ON r.id = e.tier_id
+         WHERE e.member_id = $1 ORDER BY e.earned_at DESC",
+    )
+    .bind(member_id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({ "earned": earned })))
+}
+
+pub async fn approve_reward(
+    State(state): State<AppState>,
+    Path((slug, earned_id)): Path<(String, Uuid)>,
+    Json(body): Json<RewardApproveInput>,
+) -> Result<Json<Value>, AppError> {
+    resolve_directory_id(&state.db, &slug).await?;
+    let status = if body.approved { "approved" } else { "rejected" };
+    sqlx::query(
+        "UPDATE loyalty_rewards_earned SET status = $1, approved_by = NULL, fulfilled_at = CASE WHEN $1 = 'approved' THEN now() ELSE fulfilled_at END WHERE id = $2",
+    )
+    .bind(status)
+    .bind(earned_id)
+    .execute(&state.db)
+    .await?;
+    Ok(Json(json!({ "status": status })))
+}
+
+// ── Milestones ──
+
+pub async fn list_milestones(
+    State(state): State<AppState>,
+    Path((slug, program_id)): Path<(String, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    let milestones: Vec<LoyaltyMilestone> = sqlx::query_as(
+        "SELECT id, loyalty_program_id, name, trigger_type, trigger_value, bonus_points, bonus_reward_id, once_per_member, created_at
+         FROM loyalty_milestones WHERE loyalty_program_id = $1 ORDER BY trigger_value ASC",
+    )
+    .bind(program_id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(json!({ "milestones": milestones })))
+}
+
+pub async fn create_milestone(
+    State(state): State<AppState>,
+    Path((slug, program_id)): Path<(String, Uuid)>,
+    Json(body): Json<MilestoneInput>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    if body.name.trim().is_empty() || body.trigger_type.trim().is_empty() {
+        return Err(AppError::Validation("Milestone name and trigger_type are required".into()));
+    }
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO loyalty_milestones (id, loyalty_program_id, name, trigger_type, trigger_value, bonus_points, bonus_reward_id, once_per_member)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+    )
+    .bind(id)
+    .bind(program_id)
+    .bind(&body.name)
+    .bind(&body.trigger_type)
+    .bind(body.trigger_value)
+    .bind(body.bonus_points)
+    .bind(body.bonus_reward_id)
+    .bind(body.once_per_member.unwrap_or(true))
+    .execute(&state.db)
+    .await?;
+
+    let milestone: LoyaltyMilestone = sqlx::query_as(
+        "SELECT id, loyalty_program_id, name, trigger_type, trigger_value, bonus_points, bonus_reward_id, once_per_member, created_at
+         FROM loyalty_milestones WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(Json(json!({ "milestone": milestone })))
+}
