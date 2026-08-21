@@ -81,15 +81,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 @media(max-width:768px){
   .dashboard{padding:16px}
   .card-grid{grid-template-columns:1fr}
-  .loy-stats-grid{grid-template-columns:repeat(2,1fr)}
 }
-/* Loyalty Wallet */
-.loy-stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px}
-.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s;text-align:center}
-.stat-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
-.stat-card .stat-icon{font-size:2rem;margin-bottom:6px}
-.stat-card .stat-value{font-size:1.6rem;font-weight:700;color:var(--primary)}
-.stat-card .stat-label{font-size:.82rem;color:var(--text-secondary)}
 
 /* Walkthrough Overlay */
 .walkthrough-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
@@ -230,98 +222,8 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
     </div>
 
-    <!-- ZaarCash Customer Guide -->
-    <details id="zaarcashCustGuide" style="margin:24px 0 8px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-      <summary style="padding:14px 20px;cursor:pointer;font-weight:700;font-size:.95rem;display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#eff6ff,#f0fdf4)">
-        💡 How ZaarCash Rewards Work
-        <span style="margin-left:auto;font-size:.75rem;color:#64748b">click to expand</span>
-      </summary>
-      <div style="padding:16px 20px;font-size:.85rem;line-height:1.6">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
-          <div style="background:#f0fdf4;border-radius:8px;padding:14px">
-            <h4 style="margin:0 0 8px;font-size:.9rem;color:#166534">🎁 How You Earn ZaarCash</h4>
-            <ul style="margin:0;padding-left:18px">
-              <li><strong>1 ZaarCash per $1</strong> you spend at any participating loyalty partner</li>
-              <li>Show your QR code at checkout — the business scans it</li>
-              <li>$30 meal = <strong>30 ZC</strong> in ZaarCash (worth $0.30 toward future purchases)</li>
-              <li>$100 shopping = <strong>100 ZC</strong> in ZaarCash (worth $1.00 toward future purchases)</li>
-              <li>Earn at the pizzeria, the hardware store, the salon — at <strong>any participating loyalty partner</strong></li>
-            </ul>
-          </div>
-          <div style="background:#eff6ff;border-radius:8px;padding:14px">
-            <h4 style="margin:0 0 8px;font-size:.9rem;color:#1e40af">💸 How You Spend ZaarCash</h4>
-            <ul style="margin:0;padding-left:18px">
-              <li><strong>100 ZC = $1.00</strong> toward your bill at any loyalty partner</li>
-              <li>Can cover up to <strong>10% of any purchase</strong></li>
-              <li>$50 bill → use up to 500 ZC ($5 toward your bill)</li>
-              <li>Must have at least <strong>100 ZC</strong> saved before redeeming</li>
-              <li>Redeemable at <strong>any participating loyalty partner</strong> — not just where you earned it</li>
-            </ul>
-          </div>
-        </div>
-        <div style="margin-top:12px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:.82rem;color:#64748b">
-          <strong>🔑 Key point:</strong> You earn <strong>1% back in ZaarCash</strong> at every <strong>participating loyalty partner</strong> in the community. Look for the 🎯 badge on business profiles. Every dollar you spend earns ZaarCash, redeemable at any loyalty partner. It adds up: $500 in purchases = $5.00 in ZaarCash waiting for you.
-        </div>
-      </div>
-    </details>
-
-    <!-- Loyalty Enrollment CTA (shown when not yet enrolled) -->
-    <div id="loyaltyEnrollCTA" style="display:none;background:linear-gradient(135deg,#f27f2f,#e0671e);border-radius:16px;padding:28px;margin:24px 0;color:#fff;box-shadow:0 4px 20px rgba(242,127,47,0.3)">
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        <div style="font-size:3rem;flex-shrink:0">🎯</div>
-        <div style="flex:1;min-width:200px">
-          <h3 style="font-size:1.3rem;margin:0 0 8px 0;color:#fff">Join ZaarCash Rewards</h3>
-          <p style="font-size:.9rem;margin:0 0 4px 0;opacity:0.95">✅ Earn <strong>1% back in ZaarCash</strong> at every participating loyalty partner</p>
-          <p style="font-size:.85rem;margin:0 0 4px 0;opacity:0.85">✅ Redeem your ZaarCash at any loyalty partner — use toward your bill</p>
-          <p style="font-size:.85rem;margin:0;opacity:0.85">✅ Get a personal QR code to earn at checkout</p>
-        </div>
-        <button id="enrollLoyaltyBtn" onclick="enrollInLoyalty()" style="background:#fff;color:#f27f2f;border:none;padding:14px 32px;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .2s">
-          🚀 Enroll Now — Free
-        </button>
-      </div>
-      <div id="enrollStatus" style="margin-top:12px;font-size:.85rem;display:none"></div>
-    </div>
-
-    <!-- Loyalty Wallet (if available) -->
-    <div class="section">
-      <div class="section-title">🎯 My Loyalty Wallet</div>
-      <div class="section-subtitle">Credits, vouchers & rewards</div>
-      <div id="visitorLoyalty" class="loy-stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
-        <div class="stat-card">
-          <div class="stat-icon">💰</div>
-          <div class="stat-value" id="visLoyCredits">-</div>
-          <div class="stat-label">Credits</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">🎟️</div>
-          <div class="stat-value" id="visLoyVouchers">-</div>
-          <div class="stat-label">Vouchers</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">👥</div>
-          <div class="stat-value" id="visLoyReferrals">-</div>
-          <div class="stat-label">Referrals</div>
-        </div>
-        <div class="stat-card" style="grid-column:1/-1">
-          <div class="stat-icon">🎯</div>
-          <div class="stat-value" id="visLoyCode" style="font-size:1rem;letter-spacing:2px;font-family:monospace;color:var(--accent)">-</div>
-          <div class="stat-label">Referral Code</div>
-        </div>
-        <!-- QR Code Card -->
-        <div class="stat-card" style="grid-column:1/-1">
-          <div class="stat-icon">📱</div>
-          <div style="text-align:center">
-            <div id="qrCodeContainer" style="background:#fff;border:2px solid var(--border);border-radius:12px;padding:12px;display:inline-block;margin:8px auto"></div>
-            <p style="font-size:.8rem;color:var(--text-secondary);margin-top:4px">Scan at checkout for loyalty credits</p>
-          </div>
-          <div class="stat-label">Loyalty QR</div>
-        </div>
-      </div>
-    </div>
   </div>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 const API = '/api/v1';
 
@@ -449,9 +351,6 @@ async function loadDashboard() {
     // Badges
     renderBadges(data.badges || []);
 
-    // Load loyalty data (optional — may fail if visitor has no IS account)
-    loadVisitorLoyalty();
-
     hide('loadingState');
     show('dashboardContent');
   } catch(e) {
@@ -493,97 +392,6 @@ function renderBadges(badges) {
   }
   html += '</div>';
   $('badgesList').innerHTML = html;
-}
-
-// ── Visitor Loyalty ──
-function loadVisitorLoyalty() {
-  var tok = localStorage.getItem('visitorToken');
-  if (!tok) return;
-  var h = { 'Authorization': 'Bearer ' + tok };
-  fetch('/api/v1/loyalty/portal/dashboard', { headers: h })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      var cEl = document.getElementById('visLoyCredits');
-      var vEl = document.getElementById('visLoyVouchers');
-      var rEl = document.getElementById('visLoyReferrals');
-      var cdEl = document.getElementById('visLoyCode');
-      if (cEl) cEl.textContent = '$' + (d.total_credits || 0);
-      if (vEl) vEl.textContent = d.active_vouchers || 0;
-      if (rEl) rEl.textContent = d.referral_count || 0;
-      if (cdEl) cdEl.textContent = d.referrer_code || 'No code';
-      // Load QR code
-      loadVisitorQR(h);
-    })
-    .catch(function() {
-      // Show enrollment CTA if loyalty dashboard fails (no IS account)
-      var cta = document.getElementById('loyaltyEnrollCTA');
-      if (cta) cta.style.display = '';
-    });
-}
-
-// ── Loyalty Enrollment ──
-function enrollInLoyalty() {
-  var btn = document.getElementById('enrollLoyaltyBtn');
-  var status = document.getElementById('enrollStatus');
-  var token = localStorage.getItem('visitorToken');
-  if (!token) { status.textContent = '⚠️ Not logged in'; status.style.display = ''; return; }
-  btn.disabled = true;
-  btn.textContent = '⏳ Enrolling...';
-  status.style.display = '';
-  status.textContent = 'Getting you set up with ZaarCash Rewards...';
-  status.style.color = '#fff';
-
-  fetch('/api/v1/loyalty/enroll', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: '{}'
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (d.success) {
-        status.textContent = '✅ ' + d.message + ' — reloading...';
-        var cta = document.getElementById('loyaltyEnrollCTA');
-        if (cta) cta.style.display = 'none';
-        // Reload loyalty data
-        setTimeout(function() { loadVisitorLoyalty(); }, 1500);
-      } else {
-        status.textContent = '❌ ' + (d.message || 'Enrollment failed');
-        status.style.color = '#ffe0e0';
-        btn.disabled = false;
-        btn.textContent = '🚀 Enroll Now';
-      }
-    })
-    .catch(function(e) {
-      status.textContent = '❌ Network error: ' + e.message;
-      status.style.color = '#ffe0e0';
-      btn.disabled = false;
-      btn.textContent = '🚀 Enroll Now — Free';
-    });
-}
-
-function loadVisitorQR(headers) {
-  fetch('/api/v1/loyalty/qr', { headers: headers })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      var container = document.getElementById('qrCodeContainer');
-      if (!container) return;
-      container.innerHTML = '';
-      var qrId = d.qr_id || d.qr_data;
-      if (!qrId) return;
-      // Encode as loyalty URI
-      var qrText = 'loyalty://customer/' + qrId;
-      new QRCode(container, {
-        text: qrText,
-        width: 160,
-        height: 160,
-        colorDark: '#f27f2f',
-        colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.H
-      });
-    })
-    .catch(function() {
-      // Silent
-    });
 }
 
 /* === Referral Section === */
