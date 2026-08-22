@@ -92,6 +92,21 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
 
   <div id="tab-populate" style="display:none">
     <div class="panel">
+      <h2>🔑 Google Places API Key</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Save your Google Places API key here — it's stored encrypted. The Populate search below uses it to find businesses that match a city + cuisine + radius.</p>
+      <div class="form-row">
+        <div class="form-group"><label>Google Places API Key</label>
+          <input id="gplaces-key" placeholder="AIza..." style="font-family:monospace">
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+          <button class="btn primary" onclick="saveGPlacesKey()">Save Key</button>
+          <button class="btn secondary" onclick="testGPlacesKey()">Test Key</button>
+        </div>
+      </div>
+      <div id="gplaces-key-status" style="font-size:13px;color:var(--text-muted)"></div>
+    </div>
+
+    <div class="panel">
       <h2>🔍 Populate Businesses</h2>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Search Google Places by city + category + radius, assign each business to a category, then publish it to the directory.</p>
 
@@ -201,7 +216,43 @@ let editingSlug = null;
 let popResults = [];
 let popCityLatLng = {};
 
-async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories()}
+async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey()}
+
+// ── Google Places API Key ──
+async function loadGPlacesKey(){
+  const statusEl=document.getElementById('gplaces-key-status');
+  try{
+    const r=await fetch('/api/v1/zaarhub/admin/provider-keys/google-places');
+    const d=await r.json();
+    if(d.configured){statusEl.innerHTML='<span style="color:var(--green)">✓ Key configured ('+esc(d.masked)+') — Populate search ready.</span>';}
+    else{statusEl.innerHTML='<span style="color:var(--text-muted)">No key saved yet. Paste your Google Places API key and click Save.</span>';}
+  }catch(e){statusEl.innerHTML='<span style="color:#dc2626">Could not load key status.</span>';}
+}
+async function saveGPlacesKey(){
+  const key=document.getElementById('gplaces-key').value.trim();
+  const statusEl=document.getElementById('gplaces-key-status');
+  if(!key){showToast('Paste your API key first',true);return;}
+  statusEl.textContent='Saving...';
+  try{
+    const r=await fetch('/api/v1/zaarhub/admin/provider-keys/google-places',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:key})});
+    const d=await r.json();
+    if(!r.ok){showToast(d.error||'Failed to save',true);statusEl.innerHTML='<span style="color:#dc2626">'+(d.error||'Failed to save')+'</span>';return;}
+    document.getElementById('gplaces-key').value='';
+    showToast('Google Places API key saved');
+    await loadGPlacesKey();
+  }catch(e){showToast('Save failed',true);statusEl.textContent='Save failed';}
+}
+async function testGPlacesKey(){
+  const statusEl=document.getElementById('gplaces-key-status');
+  statusEl.textContent='Testing key with Google...';
+  try{
+    const r=await fetch('/api/v1/zaarhub/admin/provider-keys/google-places/test',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){statusEl.innerHTML='<span style="color:var(--green)">✓ '+esc(d.message)+'</span>';showToast('Key valid');}
+    else{statusEl.innerHTML='<span style="color:#dc2626">'+esc(d.status||'error')+': '+esc(d.message||'Key rejected')+'</span>';showToast('Key rejected by Google',true);}
+  }catch(e){statusEl.textContent='Test failed';}
+}
+
 async function loadLegalPages(){
   const el=document.getElementById('legal-list');
   const fl=document.getElementById('footer-links-list');
@@ -358,9 +409,13 @@ async function runPopSearch(){
   popResults=[];
   resultsEl.innerHTML='<div class="loading">Searching Google Places...</div>';
   statusEl.textContent='';
-  let url=`/api/v1/places/autocomplete?input=${encodeURIComponent(q)}`;
+  // Full text search (returns real businesses), not type-ahead autocomplete
+  const params=new URLSearchParams();
+  params.set('query', q);
+  if(city)params.set('city', city);
   const ll=popCityLatLng[city];
-  if(ll){url+=`&lat=${ll.lat}&lng=${ll.lng}&radius=${radiusMeters()}`;}
+  if(ll){params.set('lat', ll.lat);params.set('lng', ll.lng);params.set('radius', radiusMeters());}
+  const url='/api/v1/zaarhub/admin/places/search?'+params.toString();
   try{
     const r=await fetch(url);
     if(!r.ok){resultsEl.innerHTML='<div class="error" style="color:#dc2626">Search failed (HTTP '+r.status+')</div>';return;}

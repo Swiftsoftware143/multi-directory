@@ -181,6 +181,184 @@ pub async fn get_site_config(State(state): State<AppState>) -> ApiResult<Json<Va
     }
 }
 
+// ── Google Places Provider Key ──
+
+/// GET /api/v1/zaarhub/admin/provider-keys/google-places — get masked key + loaded state
+pub async fn get_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let row = sqlx::query(
+        "SELECT id, tenant_id, provider, api_key, is_active, scope, metadata \
+         FROM provider_keys WHERE provider = 'google_places' LIMIT 1"
+    )
+    .fetch_optional(&state.db)
+    .await?;
+
+    match row {
+        Some(r) => {
+            let api_key: String = r.try_get("api_key").unwrap_or_default();
+            let full_key = api_key.clone();
+            let masked = if full_key.len() >= 8 {
+                format!("{}...{}", &full_key[..4], &full_key[full_key.len()-4..])
+            } else {
+                "••••".to_string()
+            };
+            Ok(Json(json!({
+                "configured": !full_key.is_empty(),
+                "masked": masked,
+                "is_active": r.try_get::<bool,_>("is_active").unwrap_or(false),
+                "scope": r.try_get::<String,_>("scope").unwrap_or_else(|_| "global".to_string()),
+            })))
+        }
+        None => Ok(Json(json!({
+            "configured": false,
+            "masked": "",
+            "is_active": false,
+            "scope": "global",
+        }))),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct GplacesKeyPayload {
+    pub api_key: String,
+}
+
+/// POST /api/v1/zaarhub/admin/provider-keys/google-places — upsert (encrypt via trigger)
+pub async fn save_gplaces_key(
+    State(state): State<AppState>,
+    Json(payload): Json<GplacesKeyPayload>,
+) -> ApiResult<Json<Value>> {
+    let key = payload.api_key.trim().to_string();
+    if key.is_empty() {
+        return Err(AppError::BadRequest("API key cannot be empty".into()));
+    }
+    if !key.starts_with("AIza") {
+        return Err(AppError::BadRequest("Google Places API keys start with AIza".into()));
+    }
+
+    // provider_keys has an INSERT/UPDATE trigger that encrypts api_key -> api_key_encrypted
+    sqlx::query(
+        "INSERT INTO provider_keys (id, tenant_id, provider, api_key, is_active, scope, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, true, 'global', now(), now()) \
+         ON CONFLICT (tenant_id, provider) DO UPDATE \
+         SET api_key = EXCLUDED.api_key, is_active = true, updated_at = now()"
+    )
+    .bind(Uuid::new_v4())
+    .bind(Uuid::nil())
+    .bind("google_places")
+    .bind(&key)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(json!({"saved": true})))
+}
+
+/// POST /api/v1/zaarhub/admin/provider-keys/google-places/test — validate via Autocomplete
+pub async fn test_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let row = sqlx::query(
+        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND is_active = true LIMIT 1"
+    )
+    .fetch_optional(&state.db)
+    .await?;
+
+    let key: String = match row {
+        Some(r) => r.try_get("api_key").unwrap_or_default(),
+        None => return Err(AppError::BadRequest("No Google Places API key saved yet".into())),
+    };
+
+    let url = format!(
+        "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=italian%20restaurant&key={}",
+        key
+    );
+    let client = reqwest::Client::new();
+    let resp = client.get(&url).send().await.map_err(|e| {
+        AppError::BadRequest(format!("Network error testing key: {e}"))
+    })?;
+    let body: Value = resp.json().await.unwrap_or_else(|_| json!({}));
+    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("UKNOWN");
+
+    if status == "OK" || status == "ZERO_RESULTS" {
+        Ok(Json(json!({"ok": true, "status": status, "message": "Key is valid — Google accepts it"})))
+    } else {
+        Ok(Json(json!({
+            "ok": false,
+            "status": status,
+            "message": body.get("error_message").and_then(|v| v.as_str()).unwrap_or("Key rejected by Google"),
+        })))
+    }
+}
+
+/// PATCH /api/v1/zaarhub/admin/config — update site config
+/// GET /api/v1/zaarhub/admin/places/search — text search Google Places (returns businesses)
+#[derive(Deserialize)]
+pub struct PlacesSearchQuery {
+    pub query: String,
+    pub city: Option<String>,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+    pub radius: Option<i32>,
+}
+
+pub async fn places_text_search(
+    State(state): State<AppState>,
+    Query(q): Query<PlacesSearchQuery>,
+) -> ApiResult<Json<Value>> {
+    if q.query.trim().is_empty() {
+        return Err(AppError::BadRequest("query is required".into()));
+    }
+
+    let row = sqlx::query(
+        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND is_active = true ORDER BY updated_at DESC LIMIT 1"
+    )
+    .fetch_optional(&state.db)
+    .await?;
+    let key: String = match row {
+        Some(r) => r.try_get("api_key").unwrap_or_default(),
+        None => return Err(AppError::BadRequest("No Google Places API key saved yet — save one above".into())),
+    };
+
+    let mut query = q.query.trim().to_string();
+    if let Some(city) = q.city.as_deref() {
+        if !city.is_empty() && !query.to_lowercase().contains(&city.to_lowercase()) {
+            query.push_str(" in ");
+            query.push_str(city);
+        }
+    }
+    let url = format!(
+        "https://maps.googleapis.com/maps/api/place/textsearch/json?query={}&key={}",
+        urlencoding(&query),
+        key
+    );
+    let client = reqwest::Client::new();
+    let resp = client.get(&url).send().await.map_err(|e| {
+        AppError::BadRequest(format!("Google Places API error: {e}"))
+    })?;
+    let body: Value = resp.json().await.unwrap_or_else(|_| json!({}));
+    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+    if status == "REQUEST_DENIED" {
+        let msg = body.get("error_message").and_then(|v| v.as_str()).unwrap_or("Key REQUEST_DENIED by Google");
+        return Err(AppError::BadRequest(msg.to_string()));
+    }
+
+    let results: Vec<Value> = body.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+    let out: Vec<Value> = results.into_iter().map(|r| json!({
+        "name": r.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+        "address": r.get("formatted_address").and_then(|v| v.as_str()).unwrap_or(""),
+        "place_id": r.get("place_id").and_then(|v| v.as_str()).unwrap_or(""),
+        "rating": r.get("rating").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        "user_ratings_total": r.get("user_ratings_total").and_then(|v| v.as_i64()).unwrap_or(0),
+        "lat": r.pointer("/geometry/location/lat").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        "lng": r.pointer("/geometry/location/lng").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        "website": r.pointer("/website").and_then(|v| v.as_str()).unwrap_or(""),
+        "phone": r.pointer("/formatted_phone_number").and_then(|v| v.as_str()).unwrap_or(""),
+    })).collect();
+
+    Ok(Json(json!({ "status": status, "count": out.len(), "results": out })))
+}
+
+fn urlencoding(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join("%20")
+}
+
 /// PATCH /api/v1/zaarhub/admin/config — update site config
 pub async fn update_site_config(
     State(state): State<AppState>,
