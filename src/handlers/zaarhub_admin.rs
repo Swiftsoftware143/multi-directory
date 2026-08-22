@@ -235,15 +235,23 @@ pub async fn save_gplaces_key(
         return Err(AppError::BadRequest("Google Places API keys start with AIza".into()));
     }
 
-    // provider_keys has an INSERT/UPDATE trigger that encrypts api_key -> api_key_encrypted
+    // provider_keys has an INSERT/UPDATE trigger that encrypts api_key -> api_key_encrypted.
+    // Bind a real tenant_id (must exist in tenants FK). Reuse an existing provider key's tenant,
+    // else fall back to the super-admin seed tenant.
+    let tenant_id: Uuid = sqlx::query_scalar::<_, Uuid>(
+        "SELECT tenant_id FROM provider_keys WHERE provider = $1 LIMIT 1")
+        .bind("google_places")
+        .fetch_optional(&state.db)
+        .await?
+        .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+
     sqlx::query(
-        "INSERT INTO provider_keys (id, tenant_id, provider, api_key, is_active, scope, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, true, 'global', now(), now()) \
+        "INSERT INTO provider_keys (tenant_id, provider, api_key, is_active, scope) \
+         VALUES ($1, $2, $3, true, 'global') \
          ON CONFLICT (tenant_id, provider) DO UPDATE \
-         SET api_key = EXCLUDED.api_key, is_active = true, updated_at = now()"
+         SET api_key = EXCLUDED.api_key, is_active = true, scope = 'global', updated_at = NOW()"
     )
-    .bind(Uuid::new_v4())
-    .bind(Uuid::nil())
+    .bind(tenant_id)
     .bind("google_places")
     .bind(&key)
     .execute(&state.db)
