@@ -243,6 +243,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/scraper/providers", get(scraper::list_scraper_providers))
         .route("/scraper/import", post(scraper::data_import))
         .route("/scraper/google-places", post(scraper::scrape_google_places))
+        .route("/scraper/populate-category", post(scraper::populate_category))
         .route("/listings", get(businesses::list_all_businesses))
         // ??? Analytics routes (Phase 3 Task 2)
         .route("/analytics/track", post(analytics::track_event))

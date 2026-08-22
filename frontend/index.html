@@ -1592,10 +1592,10 @@ function renderCityPage(d){
   }
 
   // Business cards (enhanced with badges, cover, save)
-  // Filter by selected category if one is active. The synthetic "dining" pill (Places to Eat)
-  // matches the whole per-city dining slug set rather than a single exact category.
+  // Filter by selected category if one is active. The "Fine Dining" parent pill
+  // matches the whole per-city Fine Dining cuisine set rather than a single exact category.
   if(state.filterCategory){
-    if(state.filterCategory==='dining'&&state.diningSlugs.length){
+    if(state.filterCategory==='fine-dining'&&state.diningSlugs.length){
       biz=biz.filter(function(b){return b.category_slug&&state.diningSlugs.indexOf(b.category_slug)>=0})
     }else{
       biz=biz.filter(function(b){return b.category_slug===state.filterCategory})

@@ -331,6 +331,230 @@ async fn google_places_import(
 }
 
 /// GET /api/v1/scraper/providers — list available scraper sources and their key status
+/// POST /api/v1/scraper/populate-category — search Google Places and insert real
+/// businesses directly into a specific directory category (e.g. a Fine Dining cuisine)
+/// for a given city. Dedups on (directory_id, slug). This is the admin tool David asked
+/// for to populate each dining sub-category with businesses per city.
+#[derive(Debug, Deserialize)]
+pub struct PopulateCategoryRequest {
+    /// Directory (city network) to insert businesses into — UUID or slug.
+    pub directory_id: String,
+    /// Category (cuisine) to assign businesses to — UUID or slug.
+    pub category_id: String,
+    /// Human city name, e.g. "Tampa, FL".
+    pub location: String,
+    /// Override search query (defaults to "<cuisine-name> restaurants in <location>" if omitted).
+    pub query: Option<String>,
+    /// Max results to fetch from Google Places (capped at 60).
+    pub max_results: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PopulateCategoryResult {
+    pub directory_id: String,
+    pub category_id: String,
+    pub location: String,
+    pub query: String,
+    pub total_found: usize,
+    pub created: usize,
+    pub skipped_duplicate: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+}
+
+pub async fn populate_category(
+    State(s): State<AppState>,
+    Json(req): Json<PopulateCategoryRequest>,
+) -> ApiResult<impl IntoResponse> {
+    use sqlx::Row;
+
+    // Resolve directory (UUID or slug)
+    let dir_id: Uuid = if let Ok(u) = Uuid::parse_str(&req.directory_id) {
+        u
+    } else {
+        sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1 LIMIT 1")
+            .bind(&req.directory_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::BadRequest("Directory not found".into()))?
+    };
+
+    // Resolve category (UUID or slug)
+    let (cat_id, cat_name): (Uuid, String) = if let Ok(u) = Uuid::parse_str(&req.category_id) {
+        let name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
+                .bind(u)
+                .fetch_optional(&s.db)
+                .await?;
+        let name = name.ok_or_else(|| AppError::BadRequest("Category not found".into()))?;
+        (u, name)
+    } else {
+        sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, name FROM directory_categories WHERE slug = $1 LIMIT 1",
+        )
+        .bind(&req.category_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::BadRequest("Category not found".into()))?
+    };
+
+    // Build search query
+    let query = req
+        .query
+        .filter(|q| !q.trim().is_empty())
+        .unwrap_or_else(|| format!("{} restaurants in {}", cat_name, req.location));
+    let max_results = req.max_results.unwrap_or(20).min(60);
+
+    let api_key = crate::handlers::data_company::get_google_api_key(&s, Some(&dir_id.to_string())).await?;
+
+    let url = format!(
+        "https://maps.googleapis.com/maps/api/place/textsearch/json?query={}&key={}&maxresults={}",
+        urlencoding_encode(&query),
+        api_key,
+        max_results
+    );
+
+    let resp = reqwest::get(&url)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Google Places API error: {}", e)))?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Failed to parse response: {}", e)))?;
+
+    let results = body
+        .get("results")
+        .and_then(|r| r.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut created = 0usize;
+    let mut skipped = 0usize;
+    let mut failed = 0usize;
+    let mut errors = Vec::new();
+
+    for place in &results {
+        let name = place
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if name.is_empty() {
+            continue;
+        }
+        let name = name.to_string();
+
+        // Slugify name for the unique (directory_id, slug) key.
+        let slug: String = name
+            .to_lowercase()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>()
+            .split('-') // collapse runs
+            .filter(|p| !p.is_empty())
+            .collect::<Vec<_>>()
+            .join("-");
+
+        // Parse address into street / city / state+zip
+        let formatted_addr = place
+            .get("formatted_address")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let parts: Vec<&str> = formatted_addr.split(',').map(|p| p.trim()).collect();
+        let address = parts.first().map(|s| s.to_string()).unwrap_or_default();
+        let city = if parts.len() > 1 {
+            Some(parts[1].to_string())
+        } else {
+            None
+        };
+        let state_zip = if parts.len() > 2 {
+            Some(parts[2].to_string())
+        } else {
+            None
+        };
+        let phone = place
+            .get("formatted_phone_number")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let website = place
+            .get("website")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let rating = place.get("rating").and_then(|v| v.as_f64());
+        let review_count = place
+            .get("user_ratings_total")
+            .and_then(|v| v.as_i64())
+            .map(|i| i as i32);
+        let latitude = place
+            .get("geometry")
+            .and_then(|g| g.get("location"))
+            .and_then(|l| l.get("lat"))
+            .and_then(|v| v.as_f64());
+        let longitude = place
+            .get("geometry")
+            .and_then(|g| g.get("location"))
+            .and_then(|l| l.get("lng"))
+            .and_then(|v| v.as_f64());
+
+        let res = sqlx::query(
+            "INSERT INTO businesses (directory_id, name, slug, category_id, address, city, state, \
+             phone, email, website, latitude, longitude, rating, review_count, business_type, \
+             is_active) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,$10,$11,$12,$13,'local',true) \
+             ON CONFLICT (directory_id, slug) DO NOTHING",
+        )
+        .bind(dir_id)
+        .bind(&name)
+        .bind(&slug)
+        .bind(cat_id)
+        .bind(address)
+        .bind(city)
+        .bind(state_zip)
+        .bind(&phone)
+        .bind(&website)
+        .bind(latitude)
+        .bind(longitude)
+        .bind(rating)
+        .bind(review_count)
+        .execute(&s.db)
+        .await;
+
+        match res {
+            Ok(r) => {
+                let rows_affected: u64 = r.rows_affected();
+                if rows_affected > 0 {
+                    created += 1;
+                } else {
+                    skipped += 1;
+                }
+            }
+            Err(e) => {
+                failed += 1;
+                errors.push(format!("'{}': {}", name, e));
+            }
+        }
+    }
+
+    Ok(Json(json!(PopulateCategoryResult {
+        directory_id: dir_id.to_string(),
+        category_id: cat_id.to_string(),
+        location: req.location,
+        query,
+        total_found: results.len(),
+        created,
+        skipped_duplicate: skipped,
+        failed,
+        errors,
+    })))
+}
+
 pub async fn list_scraper_providers(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let providers = sqlx::query_as::<_, (String, String, bool)>(
         r#"SELECT ap.key, ap.name, pk.api_key IS NOT NULL as has_key
