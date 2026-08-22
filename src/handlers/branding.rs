@@ -9,25 +9,26 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::models::*;
+use crate::AppState;
 
 /// GET /api/v1/directories/:slug/branding
 pub async fn get_branding(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let branding = sqlx::query_as::<_, DirectoryBranding>(
-        "SELECT * FROM directory_branding WHERE directory_id = \x241 "
+        "SELECT * FROM directory_branding WHERE directory_id = \x241 ",
     )
     .bind(dir.id)
     .fetch_optional(&s.db)
@@ -43,12 +44,11 @@ pub async fn update_branding(
     Json(req): Json<UpdateBrandingRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Check directory exists
-    let dir_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = \x241 "
-    )
-    .bind(directory_id)
-    .fetch_one(&s.db)
-    .await?;
+    let dir_exists =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = \x241 ")
+            .bind(directory_id)
+            .fetch_one(&s.db)
+            .await?;
 
     if dir_exists == 0 {
         return Err(AppError::NotFound("Directory not found".to_string()));
@@ -144,12 +144,24 @@ pub async fn upload_branding_asset(
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_lowercase())
-            .unwrap_or_else(|| if name == "favicon" { "svg".to_string() } else { "png".to_string() });
+            .unwrap_or_else(|| {
+                if name == "favicon" {
+                    "svg".to_string()
+                } else {
+                    "png".to_string()
+                }
+            });
 
         // Sanitize extension to a safe allowlist.
         let safe_ext = match ext.as_str() {
             "png" | "jpg" | "jpeg" | "svg" | "webp" | "ico" | "gif" => ext.clone(),
-            _ => if name == "favicon" { "svg".to_string() } else { "png".to_string() },
+            _ => {
+                if name == "favicon" {
+                    "svg".to_string()
+                } else {
+                    "png".to_string()
+                }
+            }
         };
 
         // Resolve the frontend upload base dir the same way routes.rs does.
@@ -191,7 +203,11 @@ pub async fn upload_branding_asset(
 
     // Persist the URLs onto the directory_branding row (upsert).
     for (asset_kind, url) in &saved {
-        let col = if asset_kind == "favicon" { "favicon_url" } else { "logo_url" };
+        let col = if asset_kind == "favicon" {
+            "favicon_url"
+        } else {
+            "logo_url"
+        };
         let q = format!(
             r#"INSERT INTO directory_branding (directory_id, {col})
                VALUES ($1, $2)
@@ -224,7 +240,12 @@ pub async fn extract_colors(
     // Fetch the website and try to extract colors
     let colors = match extract_colors_from_url(&req.url).await {
         Ok(colors) => colors,
-        Err(e) => return Err(AppError::BadRequest(format!("Failed to extract colors: {}", e))),
+        Err(e) => {
+            return Err(AppError::BadRequest(format!(
+                "Failed to extract colors: {}",
+                e
+            )))
+        }
     };
 
     // Update branding with extracted colors
@@ -239,7 +260,7 @@ pub async fn extract_colors(
            extracted_from_url = \x247,
            updated_at = NOW()
            WHERE directory_id = \x248
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(&colors.primary_color)
     .bind(&colors.secondary_color)
@@ -254,7 +275,9 @@ pub async fn extract_colors(
 
     match branding {
         Some(b) => Ok(Json(json!(b))),
-        None => Err(AppError::NotFound("Branding not found for this directory. Create branding first.".to_string())),
+        None => Err(AppError::NotFound(
+            "Branding not found for this directory. Create branding first.".to_string(),
+        )),
     }
 }
 
@@ -277,12 +300,15 @@ async fn extract_colors_from_url(url: &str) -> Result<ExtractedColors, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client.get(url)
+    let resp = client
+        .get(url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch URL: {}", e))?;
 
-    let html = resp.text().await
+    let html = resp
+        .text()
+        .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
     // Simple color extraction from inline styles and CSS
@@ -294,17 +320,22 @@ async fn extract_colors_from_url(url: &str) -> Result<ExtractedColors, String> {
     // Look for common CSS color patterns
     for line in html.lines() {
         if primary.is_empty() {
-            if let Some(c) = extract_hex_color(line, &["--primary", "primary-color", "brand-primary"]) {
+            if let Some(c) =
+                extract_hex_color(line, &["--primary", "primary-color", "brand-primary"])
+            {
                 primary = c;
             }
         }
         if background.is_empty() {
-            if let Some(c) = extract_hex_color(line, &["--bg", "background-color", "--background"]) {
+            if let Some(c) = extract_hex_color(line, &["--bg", "background-color", "--background"])
+            {
                 background = c;
             }
         }
         if text.is_empty() {
-            if let Some(c) = extract_hex_color(line, &["--text", "text-color", "color:", "--color-body"]) {
+            if let Some(c) =
+                extract_hex_color(line, &["--text", "text-color", "color:", "--color-body"])
+            {
                 text = c;
             }
         }
@@ -316,11 +347,31 @@ async fn extract_colors_from_url(url: &str) -> Result<ExtractedColors, String> {
     }
 
     Ok(ExtractedColors {
-        primary_color: if primary.is_empty() { "#3B82F6".to_string() } else { primary },
-        secondary_color: if accent.is_empty() { "#10B981".to_string() } else { accent.clone() },
-        accent_color: if accent.is_empty() { "#F59E0B".to_string() } else { accent },
-        background_color: if background.is_empty() { "#FFFFFF".to_string() } else { background },
-        text_color: if text.is_empty() { "#1F2937".to_string() } else { text },
+        primary_color: if primary.is_empty() {
+            "#3B82F6".to_string()
+        } else {
+            primary
+        },
+        secondary_color: if accent.is_empty() {
+            "#10B981".to_string()
+        } else {
+            accent.clone()
+        },
+        accent_color: if accent.is_empty() {
+            "#F59E0B".to_string()
+        } else {
+            accent
+        },
+        background_color: if background.is_empty() {
+            "#FFFFFF".to_string()
+        } else {
+            background
+        },
+        text_color: if text.is_empty() {
+            "#1F2937".to_string()
+        } else {
+            text
+        },
         heading_color: "#111827".to_string(),
     })
 }

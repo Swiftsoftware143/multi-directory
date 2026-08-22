@@ -11,15 +11,17 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
-use chrono::Utc;
 
-use crate::AppState;
+use crate::auth::middleware::{
+    create_token, is_admin, is_business_owner, is_visitor, verify_token,
+};
 use crate::auth::models::Claims;
-use crate::auth::middleware::{create_token, verify_token, is_admin, is_business_owner, is_visitor};
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct SwitchRoleRequest {
@@ -57,12 +59,13 @@ pub async fn switch_role(
 ) -> ApiResult<impl IntoResponse> {
     // Extract and verify JWT manually (route is outside auth_guard)
     let claims = extract_claims_from_headers(&headers, &s.config.jwt_secret)?;
-    let email = claims.aud.clone()
+    let email = claims
+        .aud
+        .clone()
         .unwrap_or_else(|| "unknown@example.com".to_string());
 
     // The email claim stores the user's email — let's look it up properly
-    let current_user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let current_user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
     let current_role = &claims.role;
 
     // Resolve email from the appropriate table based on current role
@@ -138,8 +141,7 @@ pub async fn get_linked_accounts(
     headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     let claims = extract_claims_from_headers(&headers, &s.config.jwt_secret)?;
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
     let role = &claims.role;
 
     let email = resolve_email(&s.db, role, user_id).await?;
@@ -158,29 +160,21 @@ pub async fn get_linked_accounts(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Resolve email for the current user based on their role
-async fn resolve_email(
-    db: &sqlx::PgPool,
-    role: &str,
-    user_id: Uuid,
-) -> Result<String, AppError> {
+async fn resolve_email(db: &sqlx::PgPool, role: &str, user_id: Uuid) -> Result<String, AppError> {
     match role {
         "visitor" => {
-            sqlx::query_scalar::<_, String>(
-                "SELECT email FROM visitor_accounts WHERE id = $1"
-            )
-            .bind(user_id)
-            .fetch_optional(db)
-            .await?
-            .ok_or(AppError::NotFound("Visitor account not found".to_string()))
+            sqlx::query_scalar::<_, String>("SELECT email FROM visitor_accounts WHERE id = $1")
+                .bind(user_id)
+                .fetch_optional(db)
+                .await?
+                .ok_or(AppError::NotFound("Visitor account not found".to_string()))
         }
         "business_owner" | "admin" => {
-            sqlx::query_scalar::<_, String>(
-                "SELECT email FROM users WHERE id = $1"
-            )
-            .bind(user_id)
-            .fetch_optional(db)
-            .await?
-            .ok_or(AppError::NotFound("User account not found".to_string()))
+            sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id = $1")
+                .bind(user_id)
+                .fetch_optional(db)
+                .await?
+                .ok_or(AppError::NotFound("User account not found".to_string()))
         }
         _ => Err(AppError::BadRequest(format!("Unknown role: {}", role))),
     }
@@ -194,12 +188,11 @@ async fn find_target_account(
 ) -> Result<Option<String>, AppError> {
     match target_role {
         "visitor" => {
-            let id: Option<Uuid> = sqlx::query_scalar(
-                "SELECT id FROM visitor_accounts WHERE email = $1"
-            )
-            .bind(email)
-            .fetch_optional(db)
-            .await?;
+            let id: Option<Uuid> =
+                sqlx::query_scalar("SELECT id FROM visitor_accounts WHERE email = $1")
+                    .bind(email)
+                    .fetch_optional(db)
+                    .await?;
             Ok(id.map(|u| u.to_string()))
         }
         "business" => {
@@ -208,7 +201,7 @@ async fn find_target_account(
                 "SELECT u.id FROM users u
                  JOIN claimed_businesses cb ON cb.user_id = u.id
                  WHERE u.email = $1 AND cb.is_active = true
-                 LIMIT 1"
+                 LIMIT 1",
             )
             .bind(email)
             .fetch_optional(db)
@@ -281,7 +274,7 @@ async fn get_linked_account_info(
 
     // Check visitor account
     let has_visitor: bool = sqlx::query_scalar::<_, Option<bool>>(
-        "SELECT EXISTS(SELECT 1 FROM visitor_accounts WHERE email = $1)"
+        "SELECT EXISTS(SELECT 1 FROM visitor_accounts WHERE email = $1)",
     )
     .bind(email)
     .fetch_one(db)
@@ -291,14 +284,19 @@ async fn get_linked_account_info(
     accounts.push(LinkedAccountInfo {
         role: "visitor".to_string(),
         available: has_visitor,
-        label: if has_visitor { "Visitor Portal" } else { "Visitor Portal (not linked)" }.to_string(),
+        label: if has_visitor {
+            "Visitor Portal"
+        } else {
+            "Visitor Portal (not linked)"
+        }
+        .to_string(),
     });
 
     // Check business owner account
     let has_business: bool = sqlx::query_scalar::<_, Option<bool>>(
         "SELECT EXISTS(SELECT 1 FROM users u
          JOIN claimed_businesses cb ON cb.user_id = u.id
-         WHERE u.email = $1 AND cb.is_active = true)"
+         WHERE u.email = $1 AND cb.is_active = true)",
     )
     .bind(email)
     .fetch_one(db)
@@ -308,7 +306,12 @@ async fn get_linked_account_info(
     accounts.push(LinkedAccountInfo {
         role: "business".to_string(),
         available: has_business,
-        label: if has_business { "Business Dashboard" } else { "Business Dashboard (not linked)" }.to_string(),
+        label: if has_business {
+            "Business Dashboard"
+        } else {
+            "Business Dashboard (not linked)"
+        }
+        .to_string(),
     });
 
     // Check admin account
@@ -323,17 +326,19 @@ async fn get_linked_account_info(
     accounts.push(LinkedAccountInfo {
         role: "admin".to_string(),
         available: has_admin,
-        label: if has_admin { "Admin Panel" } else { "Admin Panel (not linked)" }.to_string(),
+        label: if has_admin {
+            "Admin Panel"
+        } else {
+            "Admin Panel (not linked)"
+        }
+        .to_string(),
     });
 
     Ok(accounts)
 }
 
 /// Extract claims from Authorization header manually (for routes outside auth_guard)
-fn extract_claims_from_headers(
-    headers: &HeaderMap,
-    jwt_secret: &str,
-) -> Result<Claims, AppError> {
+fn extract_claims_from_headers(headers: &HeaderMap, jwt_secret: &str) -> Result<Claims, AppError> {
     let auth_header = headers
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
@@ -343,6 +348,5 @@ fn extract_claims_from_headers(
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)
+    verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)
 }

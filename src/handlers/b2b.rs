@@ -6,8 +6,8 @@
 //!       Search and list endpoints are public (no auth needed).
 
 use axum::{
-    extract::{Path, State, Query, Multipart},
-    http::{StatusCode, HeaderMap, header},
+    extract::{Multipart, Path, Query, State},
+    http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::auth::models::Claims;
 use crate::auth::middleware::{create_token, verify_token};
-use crate::error::{AppError, ApiResult};
+use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── B2B Feature Config Helpers ──
 
@@ -37,14 +37,13 @@ pub(crate) fn default_b2b_config() -> Value {
 
 pub(crate) async fn get_b2b_config(db: &sqlx::PgPool, directory_id: Option<Uuid>) -> Value {
     if let Some(dir_id) = directory_id {
-        let fc: Option<Value> = sqlx::query_scalar(
-            "SELECT feature_config FROM directories WHERE id = $1"
-        )
-        .bind(dir_id)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten();
+        let fc: Option<Value> =
+            sqlx::query_scalar("SELECT feature_config FROM directories WHERE id = $1")
+                .bind(dir_id)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten();
 
         if let Some(mut fc) = fc {
             // Merge with defaults so missing keys get default values
@@ -64,13 +63,15 @@ pub(crate) async fn get_b2b_config(db: &sqlx::PgPool, directory_id: Option<Uuid>
 
 /// Returns Err if a specific B2B feature is disabled
 pub(crate) fn require_b2b_feature(config: &Value, feature: &str) -> ApiResult<()> {
-    let enabled = config.get(feature)
+    let enabled = config
+        .get(feature)
         .and_then(|v| v.as_bool())
         .unwrap_or(true); // default: enabled
     if !enabled {
-        return Err(AppError::Forbidden(
-            format!("{} is not enabled for this directory", feature)
-        ));
+        return Err(AppError::Forbidden(format!(
+            "{} is not enabled for this directory",
+            feature
+        )));
     }
     Ok(())
 }
@@ -78,11 +79,13 @@ pub(crate) fn require_b2b_feature(config: &Value, feature: &str) -> ApiResult<()
 /// Get the first active directory ID — since B2B is global (not directory-scoped in v1),
 /// we use the first directory's feature config as the network-wide toggle.
 pub(crate) async fn get_first_directory_id(db: &sqlx::PgPool) -> Option<Uuid> {
-    sqlx::query_scalar("SELECT id FROM directories WHERE status = 'active' ORDER BY created_at, id LIMIT 1")
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten()
+    sqlx::query_scalar(
+        "SELECT id FROM directories WHERE status = 'active' ORDER BY created_at, id LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,31 +158,44 @@ pub async fn b2b_register(
     Json(req): Json<B2bRegisterRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.email.is_empty() || req.password.is_empty() || req.business_type.is_empty() {
-        return Err(AppError::Validation("Email, password, and business type are required".to_string()));
+        return Err(AppError::Validation(
+            "Email, password, and business type are required".to_string(),
+        ));
     }
     if req.password.len() < 6 {
-        return Err(AppError::Validation("Password must be at least 6 characters".to_string()));
+        return Err(AppError::Validation(
+            "Password must be at least 6 characters".to_string(),
+        ));
     }
 
-    let valid_types = ["association", "farm", "wholesaler", "distributor", "manufacturer", "other"];
+    let valid_types = [
+        "association",
+        "farm",
+        "wholesaler",
+        "distributor",
+        "manufacturer",
+        "other",
+    ];
     let bt_lower = req.business_type.to_lowercase();
     if !valid_types.contains(&bt_lower.as_str()) {
         return Err(AppError::Validation(format!(
-            "Invalid business_type '{}'. Must be one of: {}", req.business_type,
+            "Invalid business_type '{}'. Must be one of: {}",
+            req.business_type,
             valid_types.join(", ")
         )));
     }
 
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_accounts WHERE email = $1"
-    )
-    .bind(&req.email)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE email = $1")
+            .bind(&req.email)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     if existing > 0 {
-        return Err(AppError::Duplicate("An account with this email already exists".to_string()));
+        return Err(AppError::Duplicate(
+            "An account with this email already exists".to_string(),
+        ));
     }
 
     // Hash password
@@ -210,12 +226,23 @@ pub async fn b2b_register(
     // Create a business record for the supplier (linked via email)
     let business_id = Uuid::new_v4();
     let biz_name = req.name.as_deref().unwrap_or("Unnamed Supplier");
-    let biz_slug = format!("{}-{}",
-        biz_name.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "-").trim_matches('-'),
+    let biz_slug = format!(
+        "{}-{}",
+        biz_name
+            .to_lowercase()
+            .replace(|c: char| !c.is_alphanumeric(), "-")
+            .trim_matches('-'),
         &business_id.to_string()[..8]
     );
-    let biz_desc = format!("{} supplier on ZaarHub Network",
-        bt_lower.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default() + &bt_lower[1..]);
+    let biz_desc = format!(
+        "{} supplier on ZaarHub Network",
+        bt_lower
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_default()
+            + &bt_lower[1..]
+    );
 
     sqlx::query(
         "INSERT INTO businesses (id, name, email, phone, slug, business_type, description, is_active, created_at, updated_at) \
@@ -258,11 +285,25 @@ pub async fn b2b_register(
     let ts_phone = visitor.phone.clone();
     let ts_business_type = bt_lower.clone();
     tokio::spawn(async move {
-        let cap = format!("{}{}", ts_business_type.chars().next().unwrap_or('S').to_uppercase(), &ts_business_type[1..]);
+        let cap = format!(
+            "{}{}",
+            ts_business_type
+                .chars()
+                .next()
+                .unwrap_or('S')
+                .to_uppercase(),
+            &ts_business_type[1..]
+        );
         crate::handlers::tag_sync::fire_tag_sync(
-            &ts_db, ts_email, ts_name, None, ts_phone,
+            &ts_db,
+            ts_email,
+            ts_name,
+            None,
+            ts_phone,
             vec!["Supplier".to_string(), cap],
-            None, Some("suppliers".to_string()), None,
+            None,
+            Some("suppliers".to_string()),
+            None,
             Some("b2b_register".to_string()),
             Some("2944af81-2086-44b8-93c1-d83e93a5dec1".to_string()),
             Some("043fb15c-0874-4f41-b81a-4f324ce98b23".to_string()),
@@ -282,33 +323,38 @@ pub async fn b2b_register(
     };
     let token = create_token(&claims, &s.config.jwt_secret)?;
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "access_token": token,
-        "token_type": "Bearer",
-        "expires_in": s.config.jwt_access_expiry,
-        "visitor": {
-            "id": visitor.id,
-            "email": visitor.email,
-            "name": visitor.name,
-            "phone": visitor.phone,
-            "business_type": bt_lower,
-            "business_id": business_id,
-            "directory_id": serde_json::Value::Null,
-            "is_active": visitor.is_active,
-            "created_at": visitor.created_at,
-        },
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": s.config.jwt_access_expiry,
+            "visitor": {
+                "id": visitor.id,
+                "email": visitor.email,
+                "name": visitor.name,
+                "phone": visitor.phone,
+                "business_type": bt_lower,
+                "business_id": business_id,
+                "directory_id": serde_json::Value::Null,
+                "is_active": visitor.is_active,
+                "created_at": visitor.created_at,
+            },
+        })),
+    ))
 }
 
 /// Extract user_id from Authorization header JWT (used by handlers outside auth_guard)
 fn extract_user_id(headers: &HeaderMap, state: &AppState) -> ApiResult<Uuid> {
-    let auth = headers.get("Authorization")
+    let auth = headers
+        .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
-    let token = auth.strip_prefix("Bearer ")
+    let token = auth
+        .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
-    let claims = verify_token(token, &state.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims =
+        verify_token(token, &state.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 
@@ -341,7 +387,9 @@ pub async fn create_product(
     .execute(&s.db)
     .await?;
 
-    Ok(Json(json!({"id": id, "business_id": biz_id, "status": "created"})))
+    Ok(Json(
+        json!({"id": id, "business_id": biz_id, "status": "created"}),
+    ))
 }
 
 /// GET /api/v1/b2b/products — search products (public, no auth needed)
@@ -358,22 +406,58 @@ pub async fn search_products(
 
     let mut wheres = vec!["sp.is_active = true".to_string()];
 
-    if let Some(ref q) = qs.q { if !q.is_empty() { wheres.push(format!("(sp.name ILIKE '%' || $1 || '%' OR COALESCE(sp.description,'') ILIKE '%' || $1 || '%')")); } }
-    if let Some(ref _cat) = qs.category { if !_cat.is_empty() { wheres.push(format!("sp.category = $2")); } }
-    if qs.business_id.is_some() { wheres.push(format!("sp.business_id = $3")); }
-    if let Some(ref _area) = qs.delivery_area { if !_area.is_empty() { wheres.push(format!("$4 = ANY(sp.delivery_areas)")); } }
-    if qs.max_price.is_some() { wheres.push(format!("COALESCE(sp.price, 0) <= $5")); }
+    if let Some(ref q) = qs.q {
+        if !q.is_empty() {
+            wheres.push(format!("(sp.name ILIKE '%' || $1 || '%' OR COALESCE(sp.description,'') ILIKE '%' || $1 || '%')"));
+        }
+    }
+    if let Some(ref _cat) = qs.category {
+        if !_cat.is_empty() {
+            wheres.push(format!("sp.category = $2"));
+        }
+    }
+    if qs.business_id.is_some() {
+        wheres.push(format!("sp.business_id = $3"));
+    }
+    if let Some(ref _area) = qs.delivery_area {
+        if !_area.is_empty() {
+            wheres.push(format!("$4 = ANY(sp.delivery_areas)"));
+        }
+    }
+    if qs.max_price.is_some() {
+        wheres.push(format!("COALESCE(sp.price, 0) <= $5"));
+    }
 
-    let where_clause = if wheres.is_empty() { String::new() } else { format!("WHERE {}", wheres.join(" AND ")) };
+    let where_clause = if wheres.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", wheres.join(" AND "))
+    };
 
     // Count query
     let count_sql = format!("SELECT COUNT(*) FROM supplier_products sp {}", where_clause);
     let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref q) = qs.q { if !q.is_empty() { count_q = count_q.bind(q); } }
-    if let Some(ref cat) = qs.category { if !cat.is_empty() { count_q = count_q.bind(cat); } }
-    if let Some(bid) = qs.business_id { count_q = count_q.bind(bid); }
-    if let Some(ref area) = qs.delivery_area { if !area.is_empty() { count_q = count_q.bind(area); } }
-    if let Some(mp) = qs.max_price { count_q = count_q.bind(mp); }
+    if let Some(ref q) = qs.q {
+        if !q.is_empty() {
+            count_q = count_q.bind(q);
+        }
+    }
+    if let Some(ref cat) = qs.category {
+        if !cat.is_empty() {
+            count_q = count_q.bind(cat);
+        }
+    }
+    if let Some(bid) = qs.business_id {
+        count_q = count_q.bind(bid);
+    }
+    if let Some(ref area) = qs.delivery_area {
+        if !area.is_empty() {
+            count_q = count_q.bind(area);
+        }
+    }
+    if let Some(mp) = qs.max_price {
+        count_q = count_q.bind(mp);
+    }
     let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
 
     // Data query
@@ -386,22 +470,65 @@ pub async fn search_products(
          {} ORDER BY sp.name ASC LIMIT 20 OFFSET {}",
         where_clause, offset
     );
-    let mut data_q = sqlx::query_as::<_, (Uuid, Uuid, String, Option<String>, Option<String>, Option<rust_decimal::Decimal>, Option<String>, Option<i32>, Option<String>, Option<Vec<String>>, Option<bool>, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>, String, Option<String>, Option<String>)>(&data_sql);
-    if let Some(ref q) = qs.q { if !q.is_empty() { data_q = data_q.bind(q); } }
-    if let Some(ref cat) = qs.category { if !cat.is_empty() { data_q = data_q.bind(cat); } }
-    if let Some(bid) = qs.business_id { data_q = data_q.bind(bid); }
-    if let Some(ref area) = qs.delivery_area { if !area.is_empty() { data_q = data_q.bind(area); } }
-    if let Some(mp) = qs.max_price { data_q = data_q.bind(mp); }
+    let mut data_q = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<rust_decimal::Decimal>,
+            Option<String>,
+            Option<i32>,
+            Option<String>,
+            Option<Vec<String>>,
+            Option<bool>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            String,
+            Option<String>,
+            Option<String>,
+        ),
+    >(&data_sql);
+    if let Some(ref q) = qs.q {
+        if !q.is_empty() {
+            data_q = data_q.bind(q);
+        }
+    }
+    if let Some(ref cat) = qs.category {
+        if !cat.is_empty() {
+            data_q = data_q.bind(cat);
+        }
+    }
+    if let Some(bid) = qs.business_id {
+        data_q = data_q.bind(bid);
+    }
+    if let Some(ref area) = qs.delivery_area {
+        if !area.is_empty() {
+            data_q = data_q.bind(area);
+        }
+    }
+    if let Some(mp) = qs.max_price {
+        data_q = data_q.bind(mp);
+    }
 
     let rows = data_q.fetch_all(&s.db).await?;
-    let results: Vec<serde_json::Value> = rows.into_iter().map(|r| json!({
-        "id": r.0, "business_id": r.1, "name": r.2, "description": r.3,
-        "category": r.4, "price": r.5, "unit": r.6, "min_order": r.7,
-        "currency": r.8, "delivery_areas": r.9, "is_active": r.10, "created_at": r.11,
-        "business_name": r.13, "city": r.14, "state": r.15
-    })).collect();
+    let results: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.0, "business_id": r.1, "name": r.2, "description": r.3,
+                "category": r.4, "price": r.5, "unit": r.6, "min_order": r.7,
+                "currency": r.8, "delivery_areas": r.9, "is_active": r.10, "created_at": r.11,
+                "business_name": r.13, "city": r.14, "state": r.15
+            })
+        })
+        .collect();
 
-    Ok(Json(json!({"products": results, "total": total, "page": page, "per_page": per_page})))
+    Ok(Json(
+        json!({"products": results, "total": total, "page": page, "per_page": per_page}),
+    ))
 }
 
 /// GET /api/v1/b2b/products/my — list the authenticated supplier's own products
@@ -423,11 +550,16 @@ pub async fn my_products(
     .fetch_all(&s.db)
     .await?;
 
-    let results: Vec<serde_json::Value> = products.into_iter().map(|r| json!({
-        "id": r.0, "business_id": r.1, "name": r.2, "description": r.3,
-        "category": r.4, "price": r.5, "unit": r.6, "min_order": r.7,
-        "currency": r.8, "delivery_areas": r.9, "is_active": r.10, "created_at": r.11,
-    })).collect();
+    let results: Vec<serde_json::Value> = products
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.0, "business_id": r.1, "name": r.2, "description": r.3,
+                "category": r.4, "price": r.5, "unit": r.6, "min_order": r.7,
+                "currency": r.8, "delivery_areas": r.9, "is_active": r.10, "created_at": r.11,
+            })
+        })
+        .collect();
 
     Ok(Json(json!({"products": results, "total": results.len()})))
 }
@@ -443,7 +575,7 @@ pub async fn get_product(
     let product = sqlx::query_as::<_, SupplierProduct>(
         "SELECT id, business_id, name, description, category, price, unit, min_order, currency, \
                 delivery_areas, is_active, created_at, updated_at \
-         FROM supplier_products WHERE id = $1"
+         FROM supplier_products WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -466,16 +598,17 @@ pub async fn update_product(
     let user_id = extract_user_id(&headers, &s)?;
     let biz_id = resolve_supplier_business(&s.db, user_id).await?;
 
-    let owner_check = sqlx::query_scalar::<_, Uuid>(
-        "SELECT business_id FROM supplier_products WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Product not found".into()))?;
+    let owner_check =
+        sqlx::query_scalar::<_, Uuid>("SELECT business_id FROM supplier_products WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Product not found".into()))?;
 
     if owner_check != biz_id {
-        return Err(AppError::Forbidden("You can only update your own products".into()));
+        return Err(AppError::Forbidden(
+            "You can only update your own products".into(),
+        ));
     }
 
     sqlx::query(
@@ -511,16 +644,17 @@ pub async fn delete_product(
     let user_id = extract_user_id(&headers, &s)?;
     let biz_id = resolve_supplier_business(&s.db, user_id).await?;
 
-    let owner_check = sqlx::query_scalar::<_, Uuid>(
-        "SELECT business_id FROM supplier_products WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Product not found".into()))?;
+    let owner_check =
+        sqlx::query_scalar::<_, Uuid>("SELECT business_id FROM supplier_products WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Product not found".into()))?;
 
     if owner_check != biz_id {
-        return Err(AppError::Forbidden("You can only delete your own products".into()));
+        return Err(AppError::Forbidden(
+            "You can only delete your own products".into(),
+        ));
     }
 
     sqlx::query("DELETE FROM supplier_products WHERE id = $1")
@@ -532,9 +666,7 @@ pub async fn delete_product(
 }
 
 /// GET /api/v1/b2b/suppliers — list all supplier-type businesses (public)
-pub async fn list_suppliers(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_suppliers(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let b2b_config = get_b2b_config(&s.db, get_first_directory_id(&s.db).await).await;
     require_b2b_feature(&b2b_config, "b2b_orders")?;
 
@@ -546,9 +678,14 @@ pub async fn list_suppliers(
     .fetch_all(&s.db)
     .await?;
 
-    let result: Vec<serde_json::Value> = suppliers.into_iter().map(|s| json!({
-        "id": s.0, "name": s.1, "city": s.2, "state": s.3, "phone": s.4, "website": s.5
-    })).collect();
+    let result: Vec<serde_json::Value> = suppliers
+        .into_iter()
+        .map(|s| {
+            json!({
+                "id": s.0, "name": s.1, "city": s.2, "state": s.3, "phone": s.4, "website": s.5
+            })
+        })
+        .collect();
 
     Ok(Json(json!({"suppliers": result, "total": result.len()})))
 }
@@ -645,7 +782,7 @@ pub async fn place_order(
 
     // Get buyer business name for notification
     let buyer_name = sqlx::query_scalar::<_, String>(
-        "SELECT COALESCE(name, 'Unknown Business') FROM businesses WHERE id = $1"
+        "SELECT COALESCE(name, 'Unknown Business') FROM businesses WHERE id = $1",
     )
     .bind(buyer_biz_id)
     .fetch_one(&s.db)
@@ -653,33 +790,46 @@ pub async fn place_order(
     .unwrap_or_else(|_| "Unknown Business".to_string());
 
     // Get product name for notification body
-    let product_name = sqlx::query_scalar::<_, String>(
-        "SELECT name FROM supplier_products WHERE id = $1"
-    )
-    .bind(req.product_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or_else(|_| "a product".to_string());
+    let product_name =
+        sqlx::query_scalar::<_, String>("SELECT name FROM supplier_products WHERE id = $1")
+            .bind(req.product_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or_else(|_| "a product".to_string());
 
     // Notify the supplier
     let title = format!("New Order from {}", buyer_name);
-    let body_text = format!("Order for {} — {} units, ${}",
-        product_name, quantity,
+    let body_text = format!(
+        "Order for {} — {} units, ${}",
+        product_name,
+        quantity,
         total_amount.map_or("0.00".to_string(), |t| format!("{:.2}", t))
     );
-    let _ = create_notification(&s.db, supplier_biz_id, "new_order", &title, Some(&body_text), Some(order_id), None).await;
+    let _ = create_notification(
+        &s.db,
+        supplier_biz_id,
+        "new_order",
+        &title,
+        Some(&body_text),
+        Some(order_id),
+        None,
+    )
+    .await;
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "id": order_id,
-        "buyer_business_id": buyer_biz_id,
-        "supplier_business_id": supplier_biz_id,
-        "product_id": req.product_id,
-        "quantity": quantity,
-        "unit_price": unit_price,
-        "total_amount": total_amount,
-        "status": "pending",
-        "created_at": Utc::now()
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "id": order_id,
+            "buyer_business_id": buyer_biz_id,
+            "supplier_business_id": supplier_biz_id,
+            "product_id": req.product_id,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "total_amount": total_amount,
+            "status": "pending",
+            "created_at": Utc::now()
+        })),
+    ))
 }
 
 /// GET /api/v1/b2b/orders — list orders for the authenticated business
@@ -705,7 +855,9 @@ pub async fn my_orders(
     match role {
         "buyer" => wheres.push(format!("buyer_business_id = $1")),
         "supplier" => wheres.push(format!("supplier_business_id = $1")),
-        _ => wheres.push(format!("(buyer_business_id = $1 OR supplier_business_id = $1)")),
+        _ => wheres.push(format!(
+            "(buyer_business_id = $1 OR supplier_business_id = $1)"
+        )),
     }
 
     if let Some(ref st) = qs.status {
@@ -751,7 +903,9 @@ pub async fn my_orders(
         "product_name": r.product_name, "buyer_name": r.buyer_name, "supplier_name": r.supplier_name
     })).collect();
 
-    Ok(Json(json!({"orders": results, "total": total, "page": page, "per_page": per_page})))
+    Ok(Json(
+        json!({"orders": results, "total": total, "page": page, "per_page": per_page}),
+    ))
 }
 
 /// GET /api/v1/b2b/orders/:id — get single order (must be buyer or supplier)
@@ -772,7 +926,7 @@ pub async fn get_order(
          LEFT JOIN supplier_products sp ON sp.id = o.product_id \
          LEFT JOIN businesses bb ON bb.id = o.buyer_business_id \
          LEFT JOIN businesses sb ON sb.id = o.supplier_business_id \
-         WHERE o.id = $1"
+         WHERE o.id = $1",
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -781,7 +935,9 @@ pub async fn get_order(
 
     // Authorization: must be buyer or supplier of this order
     if biz_id != row.buyer_business_id && biz_id != row.supplier_business_id {
-        return Err(AppError::Forbidden("You can only view your own orders".into()));
+        return Err(AppError::Forbidden(
+            "You can only view your own orders".into(),
+        ));
     }
 
     Ok(Json(json!({
@@ -810,13 +966,15 @@ pub async fn update_order_status(
     let valid_statuses = ["confirmed", "shipped", "delivered", "cancelled"];
     if !valid_statuses.contains(&req.status.as_str()) {
         return Err(AppError::Validation(format!(
-            "Invalid status '{}'. Must be one of: {}", req.status, valid_statuses.join(", ")
+            "Invalid status '{}'. Must be one of: {}",
+            req.status,
+            valid_statuses.join(", ")
         )));
     }
 
     // Verify the supplier owns this order
     let order = sqlx::query_as::<_, (Uuid, Uuid, String)>(
-        "SELECT supplier_business_id, buyer_business_id, status FROM b2b_orders WHERE id = $1"
+        "SELECT supplier_business_id, buyer_business_id, status FROM b2b_orders WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -824,7 +982,9 @@ pub async fn update_order_status(
     .ok_or_else(|| AppError::NotFound("Order not found".into()))?;
 
     if order.0 != biz_id {
-        return Err(AppError::Forbidden("Only the supplier can update order status".into()));
+        return Err(AppError::Forbidden(
+            "Only the supplier can update order status".into(),
+        ));
     }
 
     let buyer_biz_id = order.1;
@@ -845,8 +1005,13 @@ pub async fn update_order_status(
                 .bind(now).bind(id).execute(&s.db).await?;
         }
         "cancelled" => {
-            sqlx::query("UPDATE b2b_orders SET status = 'cancelled', updated_at = $1 WHERE id = $2")
-                .bind(now).bind(id).execute(&s.db).await?;
+            sqlx::query(
+                "UPDATE b2b_orders SET status = 'cancelled', updated_at = $1 WHERE id = $2",
+            )
+            .bind(now)
+            .bind(id)
+            .execute(&s.db)
+            .await?;
         }
         _ => unreachable!(),
     }
@@ -856,9 +1021,20 @@ pub async fn update_order_status(
     let title = format!("Order #{} is now {}", order_id_prefix, req.status);
     let body_text = format!("Your order status has been updated to: {}", req.status);
     let notif_type = format!("order_{}", req.status);
-    let _ = create_notification(&s.db, buyer_biz_id, &notif_type, &title, Some(&body_text), Some(id), None).await;
+    let _ = create_notification(
+        &s.db,
+        buyer_biz_id,
+        &notif_type,
+        &title,
+        Some(&body_text),
+        Some(id),
+        None,
+    )
+    .await;
 
-    Ok(Json(json!({"id": id, "status": req.status, "updated_at": now})))
+    Ok(Json(
+        json!({"id": id, "status": req.status, "updated_at": now}),
+    ))
 }
 
 // ── Phase 2: B2B Messaging ──
@@ -891,7 +1067,7 @@ pub async fn send_b2b_message(
 
     // Get sender business details
     let sender = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT name, email FROM businesses WHERE id = $1"
+        "SELECT name, email FROM businesses WHERE id = $1",
     )
     .bind(sender_biz_id)
     .fetch_optional(&s.db)
@@ -899,13 +1075,12 @@ pub async fn send_b2b_message(
     .ok_or_else(|| AppError::NotFound("Your business profile not found".into()))?;
 
     // Verify recipient exists
-    let recipient_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM businesses WHERE id = $1"
-    )
-    .bind(req.to_business_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let recipient_exists =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM businesses WHERE id = $1")
+            .bind(req.to_business_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     if recipient_exists == 0 {
         return Err(AppError::NotFound("Recipient business not found".into()));
@@ -930,10 +1105,26 @@ pub async fn send_b2b_message(
     // Notify the recipient
     let sender_name = &sender.0;
     let title = format!("New message from {}", sender_name);
-    let truncated_body = if req.subject.len() > 100 { &req.subject[..100] } else { &req.subject };
-    let _ = create_notification(&s.db, req.to_business_id, "new_message", &title, Some(truncated_body), None, Some(msg_id)).await;
+    let truncated_body = if req.subject.len() > 100 {
+        &req.subject[..100]
+    } else {
+        &req.subject
+    };
+    let _ = create_notification(
+        &s.db,
+        req.to_business_id,
+        "new_message",
+        &title,
+        Some(truncated_body),
+        None,
+        Some(msg_id),
+    )
+    .await;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": msg_id, "status": "sent"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": msg_id, "status": "sent"})),
+    ))
 }
 
 /// GET /api/v1/b2b/messages — list messages received by the authenticated business
@@ -973,22 +1164,41 @@ pub async fn my_b2b_messages(
         where_clause, per_page, offset
     );
 
-    let mut data_q = sqlx::query_as::<_, (
-        Uuid, Uuid, Option<Uuid>, Option<String>, Option<String>, Option<String>, String, bool, chrono::DateTime<chrono::Utc>
-    )>(&data_sql).bind(biz_id);
+    let mut data_q = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Option<Uuid>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            String,
+            bool,
+            chrono::DateTime<chrono::Utc>,
+        ),
+    >(&data_sql)
+    .bind(biz_id);
 
     if qs.is_read.is_some() {
         data_q = data_q.bind(qs.is_read.unwrap());
     }
 
     let rows = data_q.fetch_all(&s.db).await?;
-    let results: Vec<serde_json::Value> = rows.into_iter().map(|r| json!({
-        "id": r.0, "to_business_id": r.1, "sender_business_id": r.2,
-        "sender_name": r.3, "sender_email": r.4, "subject": r.5,
-        "message": r.6, "is_read": r.7, "created_at": r.8
-    })).collect();
+    let results: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.0, "to_business_id": r.1, "sender_business_id": r.2,
+                "sender_name": r.3, "sender_email": r.4, "subject": r.5,
+                "message": r.6, "is_read": r.7, "created_at": r.8
+            })
+        })
+        .collect();
 
-    Ok(Json(json!({"messages": results, "total": total, "page": page, "per_page": per_page})))
+    Ok(Json(
+        json!({"messages": results, "total": total, "page": page, "per_page": per_page}),
+    ))
 }
 
 /// PUT /api/v1/b2b/messages/:id/read — mark a message as read
@@ -1005,7 +1215,7 @@ pub async fn mark_message_read(
 
     // Verify this message is for this business
     let msg = sqlx::query_scalar::<_, Uuid>(
-        "SELECT to_business_id FROM business_messages WHERE id = $1 AND to_business_id IS NOT NULL"
+        "SELECT to_business_id FROM business_messages WHERE id = $1 AND to_business_id IS NOT NULL",
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -1013,7 +1223,9 @@ pub async fn mark_message_read(
     .ok_or_else(|| AppError::NotFound("Message not found".into()))?;
 
     if msg != biz_id {
-        return Err(AppError::Forbidden("You can only mark your own messages as read".into()));
+        return Err(AppError::Forbidden(
+            "You can only mark your own messages as read".into(),
+        ));
     }
 
     sqlx::query("UPDATE business_messages SET is_read = true WHERE id = $1")
@@ -1127,10 +1339,24 @@ pub async fn marketplace(
         where_clause
     );
     let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref cat) = qs.category { if !cat.is_empty() { count_q = count_q.bind(cat); } }
-    if let Some(ref q) = qs.search { if !q.is_empty() { count_q = count_q.bind(q); } }
-    if let Some(ref area) = qs.delivery_area { if !area.is_empty() { count_q = count_q.bind(area); } }
-    if let Some(mr) = qs.min_rating { count_q = count_q.bind(mr); }
+    if let Some(ref cat) = qs.category {
+        if !cat.is_empty() {
+            count_q = count_q.bind(cat);
+        }
+    }
+    if let Some(ref q) = qs.search {
+        if !q.is_empty() {
+            count_q = count_q.bind(q);
+        }
+    }
+    if let Some(ref area) = qs.delivery_area {
+        if !area.is_empty() {
+            count_q = count_q.bind(area);
+        }
+    }
+    if let Some(mr) = qs.min_rating {
+        count_q = count_q.bind(mr);
+    }
     let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
 
     // Fetch products
@@ -1147,29 +1373,50 @@ pub async fn marketplace(
     );
 
     let mut data_q = sqlx::query_as::<_, MarketplaceProductRow>(&data_sql);
-    if let Some(ref cat) = qs.category { if !cat.is_empty() { data_q = data_q.bind(cat); } }
-    if let Some(ref q) = qs.search { if !q.is_empty() { data_q = data_q.bind(q); } }
-    if let Some(ref area) = qs.delivery_area { if !area.is_empty() { data_q = data_q.bind(area); } }
-    if let Some(mr) = qs.min_rating { data_q = data_q.bind(mr); }
+    if let Some(ref cat) = qs.category {
+        if !cat.is_empty() {
+            data_q = data_q.bind(cat);
+        }
+    }
+    if let Some(ref q) = qs.search {
+        if !q.is_empty() {
+            data_q = data_q.bind(q);
+        }
+    }
+    if let Some(ref area) = qs.delivery_area {
+        if !area.is_empty() {
+            data_q = data_q.bind(area);
+        }
+    }
+    if let Some(mr) = qs.min_rating {
+        data_q = data_q.bind(mr);
+    }
 
     let rows = data_q.fetch_all(&s.db).await?;
 
-    let products: Vec<serde_json::Value> = rows.into_iter().map(|r| json!({
-        "id": r.id,
-        "name": r.name,
-        "description": r.description,
-        "price": r.price,
-        "unit": r.unit,
-        "min_order": r.min_order,
-        "category": r.category,
-        "delivery_areas": r.delivery_areas,
-        "supplier_business_id": r.business_id,
-        "supplier_name": r.business_name,
-        "supplier_rating": r.supplier_rating,
-        "created_at": r.created_at,
-    })).collect();
+    let products: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.id,
+                "name": r.name,
+                "description": r.description,
+                "price": r.price,
+                "unit": r.unit,
+                "min_order": r.min_order,
+                "category": r.category,
+                "delivery_areas": r.delivery_areas,
+                "supplier_business_id": r.business_id,
+                "supplier_name": r.business_name,
+                "supplier_rating": r.supplier_rating,
+                "created_at": r.created_at,
+            })
+        })
+        .collect();
 
-    Ok(Json(json!({"products": products, "page": page, "per_page": per_page, "total": total})))
+    Ok(Json(
+        json!({"products": products, "page": page, "per_page": per_page, "total": total}),
+    ))
 }
 
 /// GET /api/v1/b2b/suppliers/:id/detail — PUBLIC. View supplier profile with products.
@@ -1180,12 +1427,22 @@ pub async fn supplier_detail(
     let b2b_config = get_b2b_config(&s.db, get_first_directory_id(&s.db).await).await;
     require_b2b_feature(&b2b_config, "b2b_marketplace")?;
 
-    let supplier = sqlx::query_as::<_, (Uuid, String, Option<String>, String, Option<Uuid>, Option<String>)>(
+    let supplier = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            Option<Uuid>,
+            Option<String>,
+        ),
+    >(
         r#"SELECT id, name, description, business_type, featured_product_id, featured_product_cta
            FROM businesses
            WHERE id = $1
              AND business_type IN ('supplier','distributor','wholesaler','farm','association')
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(supplier_id)
     .fetch_optional(&s.db)
@@ -1195,24 +1452,27 @@ pub async fn supplier_detail(
     let (biz_id, name, description, business_type, featured_id, featured_cta) = supplier;
 
     // Get delivery_areas from supplier_fields JSONB
-    let supplier_fields: Option<serde_json::Value> = sqlx::query_scalar(
-        "SELECT supplier_fields FROM businesses WHERE id = $1"
-    )
-    .bind(biz_id)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
+    let supplier_fields: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT supplier_fields FROM businesses WHERE id = $1")
+            .bind(biz_id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
 
     let delivery_areas: Vec<String> = supplier_fields
         .as_ref()
         .and_then(|v| v.get("delivery_areas"))
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     // Active product count
     let product_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM supplier_products WHERE business_id = $1 AND is_active = true"
+        "SELECT COUNT(*) FROM supplier_products WHERE business_id = $1 AND is_active = true",
     )
     .bind(biz_id)
     .fetch_one(&s.db)
@@ -1221,7 +1481,7 @@ pub async fn supplier_detail(
 
     // Average rating from supplier_order_stats
     let avg_rating: rust_decimal::Decimal = sqlx::query_scalar(
-        "SELECT COALESCE(avg_rating, 0) FROM supplier_order_stats WHERE supplier_business_id = $1"
+        "SELECT COALESCE(avg_rating, 0) FROM supplier_order_stats WHERE supplier_business_id = $1",
     )
     .bind(biz_id)
     .fetch_one(&s.db)
@@ -1236,36 +1496,54 @@ pub async fn supplier_detail(
         .bind(fid)
         .fetch_optional(&s.db)
         .await?;
-        fp.map(|(pid, pname, pprice, punit)| json!({
-            "id": pid,
-            "name": pname,
-            "price": pprice,
-            "unit": punit,
-            "cta_text": featured_cta.unwrap_or_else(|| "Featured Product".to_string()),
-        }))
+        fp.map(|(pid, pname, pprice, punit)| {
+            json!({
+                "id": pid,
+                "name": pname,
+                "price": pprice,
+                "unit": punit,
+                "cta_text": featured_cta.unwrap_or_else(|| "Featured Product".to_string()),
+            })
+        })
     } else {
         None
     };
 
     // Top 12 active products
-    let products = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<rust_decimal::Decimal>, Option<String>, Option<i32>)>(
+    let products = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<rust_decimal::Decimal>,
+            Option<String>,
+            Option<i32>,
+        ),
+    >(
         "SELECT id, name, description, category, price, unit, min_order \
          FROM supplier_products WHERE business_id = $1 AND is_active = true \
-         ORDER BY created_at DESC LIMIT 12"
+         ORDER BY created_at DESC LIMIT 12",
     )
     .bind(biz_id)
     .fetch_all(&s.db)
     .await?;
 
-    let product_list: Vec<serde_json::Value> = products.into_iter().map(|p| json!({
-        "id": p.0,
-        "name": p.1,
-        "description": p.2,
-        "category": p.3,
-        "price": p.4,
-        "unit": p.5,
-        "min_order": p.6,
-    })).collect();
+    let product_list: Vec<serde_json::Value> = products
+        .into_iter()
+        .map(|p| {
+            json!({
+                "id": p.0,
+                "name": p.1,
+                "description": p.2,
+                "category": p.3,
+                "price": p.4,
+                "unit": p.5,
+                "min_order": p.6,
+            })
+        })
+        .collect();
 
     Ok(Json(json!({
         "supplier": {
@@ -1295,23 +1573,48 @@ pub async fn export_products(
     let user_id = extract_user_id(&headers, &s)?;
     let biz_id = resolve_supplier_business(&s.db, user_id).await?;
 
-    let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<rust_decimal::Decimal>, Option<String>, Option<i32>, Option<Vec<String>>, Option<bool>)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<rust_decimal::Decimal>,
+            Option<String>,
+            Option<i32>,
+            Option<Vec<String>>,
+            Option<bool>,
+        ),
+    >(
         "SELECT name, description, category, price, unit, min_order, delivery_areas, is_active \
-         FROM supplier_products WHERE business_id = $1 ORDER BY name ASC"
+         FROM supplier_products WHERE business_id = $1 ORDER BY name ASC",
     )
     .bind(biz_id)
     .fetch_all(&s.db)
     .await?;
 
     let mut wtr = csv::Writer::from_writer(Vec::new());
-    wtr.write_record(&["name", "description", "category", "price", "unit", "min_order", "delivery_areas", "is_active"])
-        .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    wtr.write_record(&[
+        "name",
+        "description",
+        "category",
+        "price",
+        "unit",
+        "min_order",
+        "delivery_areas",
+        "is_active",
+    ])
+    .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
 
     for row in &rows {
         let areas = row.6.as_ref().map(|a| a.join("; ")).unwrap_or_default();
         let price_str = row.3.map(|p| p.to_string()).unwrap_or_default();
         let min_order_str = row.5.map(|m| m.to_string()).unwrap_or_default();
-        let is_active_str = if row.7.unwrap_or(true) { "true" } else { "false" };
+        let is_active_str = if row.7.unwrap_or(true) {
+            "true"
+        } else {
+            "false"
+        };
 
         wtr.write_record(&[
             &row.0,
@@ -1326,11 +1629,20 @@ pub async fn export_products(
         .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
     }
 
-    let data = String::from_utf8(wtr.into_inner().map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?)
-        .map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
+    let data = String::from_utf8(
+        wtr.into_inner()
+            .map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?,
+    )
+    .map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
 
     Ok((
-        [(header::CONTENT_TYPE, "text/csv"), (header::CONTENT_DISPOSITION, "attachment; filename=products.csv")],
+        [
+            (header::CONTENT_TYPE, "text/csv"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=products.csv",
+            ),
+        ],
         data,
     ))
 }
@@ -1352,25 +1664,39 @@ pub async fn import_products(
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().map(|n| n.to_string()).unwrap_or_default();
         if name == "file" {
-            let bytes = field.bytes().await
-                .map_err(|e| AppError::BadRequest(format!("Failed to read uploaded file: {}", e)))?;
+            let bytes = field.bytes().await.map_err(|e| {
+                AppError::BadRequest(format!("Failed to read uploaded file: {}", e))
+            })?;
             csv_content = Some(String::from_utf8_lossy(&bytes).to_string());
             break;
         }
     }
 
-    let csv_data = csv_content.ok_or_else(|| AppError::BadRequest("No file uploaded. Use field name 'file'.".to_string()))?;
+    let csv_data = csv_content.ok_or_else(|| {
+        AppError::BadRequest("No file uploaded. Use field name 'file'.".to_string())
+    })?;
 
     let mut reader = csv::Reader::from_reader(csv_data.as_bytes());
-    let headers_csv = reader.headers()
+    let headers_csv = reader
+        .headers()
         .map_err(|e| AppError::BadRequest(format!("Failed to read CSV headers: {}", e)))?;
 
     // Validate expected headers
-    let expected = ["name", "description", "category", "price", "unit", "min_order", "delivery_areas", "is_active"];
+    let expected = [
+        "name",
+        "description",
+        "category",
+        "price",
+        "unit",
+        "min_order",
+        "delivery_areas",
+        "is_active",
+    ];
     let header_strings: Vec<&str> = headers_csv.iter().collect();
     if header_strings != expected {
         return Err(AppError::BadRequest(format!(
-            "Invalid CSV headers. Expected: {:?}, got: {:?}", expected, header_strings
+            "Invalid CSV headers. Expected: {:?}, got: {:?}",
+            expected, header_strings
         )));
     }
 
@@ -1403,19 +1729,36 @@ pub async fn import_products(
             continue;
         }
 
-        let description = record.get(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-        let category = record.get(2).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let description = record
+            .get(1)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let category = record
+            .get(2)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         let price: Option<f64> = record.get(3).and_then(|s| {
             let s = s.trim();
-            if s.is_empty() { None } else { s.parse::<f64>().ok() }
+            if s.is_empty() {
+                None
+            } else {
+                s.parse::<f64>().ok()
+            }
         });
 
-        let unit = record.get(4).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let unit = record
+            .get(4)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         let min_order: Option<i32> = record.get(5).and_then(|s| {
             let s = s.trim();
-            if s.is_empty() { None } else { s.parse::<i32>().ok() }
+            if s.is_empty() {
+                None
+            } else {
+                s.parse::<i32>().ok()
+            }
         });
 
         let delivery_areas: Option<Vec<String>> = record.get(6).and_then(|s| {
@@ -1423,11 +1766,17 @@ pub async fn import_products(
             if s.is_empty() {
                 None
             } else {
-                Some(s.split(';').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect())
+                Some(
+                    s.split(';')
+                        .map(|a| a.trim().to_string())
+                        .filter(|a| !a.is_empty())
+                        .collect(),
+                )
             }
         });
 
-        let is_active: bool = record.get(7)
+        let is_active: bool = record
+            .get(7)
             .map(|s| s.trim().to_lowercase())
             .map(|s| s == "true" || s == "1" || s == "yes")
             .unwrap_or(true);
@@ -1528,7 +1877,9 @@ pub async fn discover_suppliers(
                 0
             ));
             // Replace the $0 placeholder with the actual param index
-            wheres.last_mut().map(|w| *w = w.replace("$0", &param_idx.to_string()));
+            wheres
+                .last_mut()
+                .map(|w| *w = w.replace("$0", &param_idx.to_string()));
         }
     }
 
@@ -1540,7 +1891,9 @@ pub async fn discover_suppliers(
                 "(COALESCE(b.supplier_fields->>'delivery_areas','') ILIKE '%' || ${0} || '%')",
                 0
             ));
-            wheres.last_mut().map(|w| *w = w.replace("$0", &param_idx.to_string()));
+            wheres
+                .last_mut()
+                .map(|w| *w = w.replace("$0", &param_idx.to_string()));
         }
     }
 
@@ -1553,7 +1906,9 @@ pub async fn discover_suppliers(
                 "EXISTS (SELECT 1 FROM supplier_products sp WHERE sp.business_id = b.id AND sp.is_active = true AND sp.category ILIKE '%' || ${0} || '%')",
                 0
             ));
-            wheres.last_mut().map(|w| *w = w.replace("$0", &param_idx.to_string()));
+            wheres
+                .last_mut()
+                .map(|w| *w = w.replace("$0", &param_idx.to_string()));
         }
     }
 
@@ -1585,10 +1940,26 @@ pub async fn discover_suppliers(
     );
 
     let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref bt) = qs.business_type { if !bt.is_empty() { count_q = count_q.bind(bt); } }
-    if let Some(ref search) = qs.search { if !search.is_empty() { count_q = count_q.bind(search); } }
-    if let Some(ref area) = qs.delivery_area { if !area.is_empty() { count_q = count_q.bind(area); } }
-    if let Some(ref cat) = qs.category { if !cat.is_empty() { count_q = count_q.bind(cat); } }
+    if let Some(ref bt) = qs.business_type {
+        if !bt.is_empty() {
+            count_q = count_q.bind(bt);
+        }
+    }
+    if let Some(ref search) = qs.search {
+        if !search.is_empty() {
+            count_q = count_q.bind(search);
+        }
+    }
+    if let Some(ref area) = qs.delivery_area {
+        if !area.is_empty() {
+            count_q = count_q.bind(area);
+        }
+    }
+    if let Some(ref cat) = qs.category {
+        if !cat.is_empty() {
+            count_q = count_q.bind(cat);
+        }
+    }
     let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
 
     // Fetch suppliers with product count and ratings
@@ -1615,34 +1986,55 @@ pub async fn discover_suppliers(
     );
 
     let mut data_q = sqlx::query_as::<_, SupplierDiscoveryRow>(&data_sql);
-    if let Some(ref bt) = qs.business_type { if !bt.is_empty() { data_q = data_q.bind(bt); } }
-    if let Some(ref search) = qs.search { if !search.is_empty() { data_q = data_q.bind(search); } }
-    if let Some(ref area) = qs.delivery_area { if !area.is_empty() { data_q = data_q.bind(area); } }
-    if let Some(ref cat) = qs.category { if !cat.is_empty() { data_q = data_q.bind(cat); } }
+    if let Some(ref bt) = qs.business_type {
+        if !bt.is_empty() {
+            data_q = data_q.bind(bt);
+        }
+    }
+    if let Some(ref search) = qs.search {
+        if !search.is_empty() {
+            data_q = data_q.bind(search);
+        }
+    }
+    if let Some(ref area) = qs.delivery_area {
+        if !area.is_empty() {
+            data_q = data_q.bind(area);
+        }
+    }
+    if let Some(ref cat) = qs.category {
+        if !cat.is_empty() {
+            data_q = data_q.bind(cat);
+        }
+    }
 
     let rows = data_q.fetch_all(&s.db).await?;
-    let suppliers: Vec<serde_json::Value> = rows.into_iter().map(|r| {
-        let areas: Vec<String> = r.delivery_areas
-            .as_ref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
+    let suppliers: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            let areas: Vec<String> = r
+                .delivery_areas
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
 
-        let avg = r.avg_rating
-            .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
-            .unwrap_or(0.0);
+            let avg = r
+                .avg_rating
+                .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
+                .unwrap_or(0.0);
 
-        json!({
-            "business_id": r.business_id,
-            "name": r.name,
-            "description": r.description,
-            "business_type": r.business_type,
-            "delivery_areas": areas,
-            "product_count": r.product_count,
-            "avg_rating": avg,
-            "review_count": r.review_count,
-            "created_at": r.created_at,
+            json!({
+                "business_id": r.business_id,
+                "name": r.name,
+                "description": r.description,
+                "business_type": r.business_type,
+                "delivery_areas": areas,
+                "product_count": r.product_count,
+                "avg_rating": avg,
+                "review_count": r.review_count,
+                "created_at": r.created_at,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!({
         "suppliers": suppliers,
@@ -1697,7 +2089,7 @@ pub async fn my_notifications(
 
     // Unread count
     let unread_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM b2b_notifications WHERE business_id = $1 AND is_read = false"
+        "SELECT COUNT(*) FROM b2b_notifications WHERE business_id = $1 AND is_read = false",
     )
     .bind(biz_id)
     .fetch_one(&s.db)
@@ -1711,23 +2103,42 @@ pub async fn my_notifications(
         where_clause, per_page, offset
     );
 
-    let mut data_q = sqlx::query_as::<_, (Uuid, Uuid, String, String, Option<String>, Option<Uuid>, Option<Uuid>, bool, chrono::DateTime<chrono::Utc>)>(&data_sql).bind(biz_id);
+    let mut data_q = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<Uuid>,
+            Option<Uuid>,
+            bool,
+            chrono::DateTime<chrono::Utc>,
+        ),
+    >(&data_sql)
+    .bind(biz_id);
     if qs.is_read.is_some() {
         data_q = data_q.bind(qs.is_read.unwrap());
     }
 
     let rows = data_q.fetch_all(&s.db).await?;
-    let notifications: Vec<serde_json::Value> = rows.into_iter().map(|r| json!({
-        "id": r.0,
-        "business_id": r.1,
-        "type": r.2,
-        "title": r.3,
-        "body": r.4,
-        "related_order_id": r.5,
-        "related_message_id": r.6,
-        "is_read": r.7,
-        "created_at": r.8
-    })).collect();
+    let notifications: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.0,
+                "business_id": r.1,
+                "type": r.2,
+                "title": r.3,
+                "body": r.4,
+                "related_order_id": r.5,
+                "related_message_id": r.6,
+                "is_read": r.7,
+                "created_at": r.8
+            })
+        })
+        .collect();
 
     Ok(Json(json!({
         "notifications": notifications,
@@ -1750,16 +2161,17 @@ pub async fn mark_notification_read(
     let user_id = extract_user_id(&headers, &s)?;
     let biz_id = resolve_buyer_business(&s.db, user_id).await?;
 
-    let owner = sqlx::query_scalar::<_, Uuid>(
-        "SELECT business_id FROM b2b_notifications WHERE id = $1"
-    )
-    .bind(notification_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Notification not found".into()))?;
+    let owner =
+        sqlx::query_scalar::<_, Uuid>("SELECT business_id FROM b2b_notifications WHERE id = $1")
+            .bind(notification_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Notification not found".into()))?;
 
     if owner != biz_id {
-        return Err(AppError::Forbidden("You can only mark your own notifications as read".into()));
+        return Err(AppError::Forbidden(
+            "You can only mark your own notifications as read".into(),
+        ));
     }
 
     sqlx::query("UPDATE b2b_notifications SET is_read = true WHERE id = $1")
@@ -1782,7 +2194,7 @@ pub async fn mark_all_read(
     let biz_id = resolve_buyer_business(&s.db, user_id).await?;
 
     let result = sqlx::query(
-        "UPDATE b2b_notifications SET is_read = true WHERE business_id = $1 AND is_read = false"
+        "UPDATE b2b_notifications SET is_read = true WHERE business_id = $1 AND is_read = false",
     )
     .bind(biz_id)
     .execute(&s.db)
@@ -1832,7 +2244,7 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
            WHERE cb.visitor_account_id = $1
              AND b.business_type IN ('supplier','distributor','wholesaler','farm','association')
            ORDER BY cb.created_at DESC
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(user_id)
     .fetch_optional(db)
@@ -1850,7 +2262,7 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
            WHERE cb.user_id = $1
              AND b.business_type IN ('supplier','distributor','wholesaler','farm','association')
            ORDER BY cb.created_at DESC
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(user_id)
     .fetch_optional(db)
@@ -1861,12 +2273,10 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
     }
 
     // Fallback: find the visitor_account and match by email in businesses table
-    let email = sqlx::query_scalar::<_, String>(
-        "SELECT email FROM visitor_accounts WHERE id = $1"
-    )
-    .bind(user_id)
-    .fetch_optional(db)
-    .await?;
+    let email = sqlx::query_scalar::<_, String>("SELECT email FROM visitor_accounts WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await?;
 
     if let Some(ref em) = email {
         let biz_id = sqlx::query_scalar::<_, Uuid>(
@@ -1874,7 +2284,7 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
                WHERE email = $1
                  AND business_type IN ('supplier','distributor','wholesaler','farm','association')
                ORDER BY created_at DESC
-               LIMIT 1"#
+               LIMIT 1"#,
         )
         .bind(em)
         .fetch_optional(db)
@@ -1886,7 +2296,7 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
     }
 
     Err(AppError::NotFound(
-        "No supplier business linked to your account. Register as a supplier first.".into()
+        "No supplier business linked to your account. Register as a supplier first.".into(),
     ))
 }
 
@@ -1899,7 +2309,7 @@ pub async fn resolve_buyer_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiResu
            FROM claimed_businesses cb
            WHERE cb.visitor_account_id = $1
            ORDER BY cb.created_at DESC
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(user_id)
     .fetch_optional(db)
@@ -1915,7 +2325,7 @@ pub async fn resolve_buyer_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiResu
            FROM claimed_businesses cb
            WHERE cb.user_id = $1
            ORDER BY cb.created_at DESC
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(user_id)
     .fetch_optional(db)
@@ -1926,16 +2336,14 @@ pub async fn resolve_buyer_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiResu
     }
 
     // Fallback: find the visitor_account and match by email in businesses table
-    let email = sqlx::query_scalar::<_, String>(
-        "SELECT email FROM visitor_accounts WHERE id = $1"
-    )
-    .bind(user_id)
-    .fetch_optional(db)
-    .await?;
+    let email = sqlx::query_scalar::<_, String>("SELECT email FROM visitor_accounts WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await?;
 
     if let Some(ref em) = email {
         let biz_id = sqlx::query_scalar::<_, Uuid>(
-            "SELECT id FROM businesses WHERE email = $1 ORDER BY created_at DESC LIMIT 1"
+            "SELECT id FROM businesses WHERE email = $1 ORDER BY created_at DESC LIMIT 1",
         )
         .bind(em)
         .fetch_optional(db)
@@ -1947,6 +2355,6 @@ pub async fn resolve_buyer_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiResu
     }
 
     Err(AppError::NotFound(
-        "No business linked to your account. Claim a business first.".into()
+        "No business linked to your account. Claim a business first.".into(),
     ))
 }

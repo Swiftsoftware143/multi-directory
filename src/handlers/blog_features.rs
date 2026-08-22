@@ -12,13 +12,13 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
-use chrono::{DateTime, Utc, Duration};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ─── 1. Content Decay Detection ───────────────────────────────────────────────
 
@@ -48,9 +48,7 @@ pub struct DecaySummary {
 
 /// POST /api/v1/blog/decay/scan
 /// Scan all published blog posts and update decay flags + refresh priorities.
-pub async fn scan_content_decay(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn scan_content_decay(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let now = Utc::now();
 
     // Mark posts as decayed if last_refreshed is > 6 months old or null and created > 6 months ago
@@ -81,7 +79,7 @@ pub async fn scan_content_decay(
          WHERE published = true \
            AND last_refreshed IS NOT NULL \
            AND last_refreshed >= NOW() - INTERVAL '6 months' \
-           AND decay_flag = true"
+           AND decay_flag = true",
     )
     .execute(&s.db)
     .await?;
@@ -100,16 +98,24 @@ pub async fn scan_content_decay(
     .fetch_all(&s.db)
     .await?;
 
-    let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM blog_posts WHERE published = true"
-    )
-    .fetch_one(&s.db)
-    .await?;
+    let total =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM blog_posts WHERE published = true")
+            .fetch_one(&s.db)
+            .await?;
 
     let decayed = posts.iter().filter(|p| p.decay_flag).count() as i64;
-    let high = posts.iter().filter(|p| p.refresh_priority.as_deref() == Some("high")).count() as i64;
-    let medium = posts.iter().filter(|p| p.refresh_priority.as_deref() == Some("medium")).count() as i64;
-    let low = posts.iter().filter(|p| p.refresh_priority.as_deref() == Some("low")).count() as i64;
+    let high = posts
+        .iter()
+        .filter(|p| p.refresh_priority.as_deref() == Some("high"))
+        .count() as i64;
+    let medium = posts
+        .iter()
+        .filter(|p| p.refresh_priority.as_deref() == Some("medium"))
+        .count() as i64;
+    let low = posts
+        .iter()
+        .filter(|p| p.refresh_priority.as_deref() == Some("low"))
+        .count() as i64;
 
     Ok(Json(DecaySummary {
         total_posts: total,
@@ -167,7 +173,8 @@ pub async fn internal_link_suggestions(
     State(s): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory_id = params.get("directory_id")
+    let directory_id = params
+        .get("directory_id")
         .and_then(|v| Uuid::parse_str(v).ok());
 
     // Fetch all published posts for link analysis
@@ -200,7 +207,7 @@ pub async fn internal_link_suggestions(
     for (i, source) in posts.iter().enumerate() {
         // Skip posts that already have plenty of internal links
         let existing_count = sqlx::query_scalar::<_, i64>(
-            "SELECT jsonb_array_length(internal_links) FROM blog_posts WHERE id = $1"
+            "SELECT jsonb_array_length(internal_links) FROM blog_posts WHERE id = $1",
         )
         .bind(source.id)
         .fetch_one(&s.db)
@@ -218,9 +225,13 @@ pub async fn internal_link_suggestions(
             .filter(|w| w.len() > 3)
             .collect();
 
-        for candidate in &posts[i+1..] {
-            if candidate.id == source.id { continue; }
-            if suggestions.len() >= 50 { break; }
+        for candidate in &posts[i + 1..] {
+            if candidate.id == source.id {
+                continue;
+            }
+            if suggestions.len() >= 50 {
+                break;
+            }
 
             let candidate_title = candidate.title.to_lowercase();
             for word in &source_words {
@@ -258,13 +269,15 @@ pub async fn add_internal_link(
         title: String,
         slug: Option<String>,
     }
-    let target = sqlx::query_as::<_, TargetInfo>(
-        "SELECT title, slug FROM blog_posts WHERE id = $1"
-    )
-    .bind(req.target_post_id)
-    .fetch_optional(&s.db)
-    .await?
-    .unwrap_or(TargetInfo { title: String::new(), slug: None });
+    let target =
+        sqlx::query_as::<_, TargetInfo>("SELECT title, slug FROM blog_posts WHERE id = $1")
+            .bind(req.target_post_id)
+            .fetch_optional(&s.db)
+            .await?
+            .unwrap_or(TargetInfo {
+                title: String::new(),
+                slug: None,
+            });
 
     let target_title = target.title;
     let target_slug = target.slug.unwrap_or_default();
@@ -288,13 +301,12 @@ pub async fn add_internal_link(
     .await?;
 
     // 2. Inject <a href> into the post content HTML body
-    let source_content: Option<String> = sqlx::query_scalar(
-        "SELECT content FROM blog_posts WHERE id = $1"
-    )
-    .bind(req.source_post_id)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
+    let source_content: Option<String> =
+        sqlx::query_scalar("SELECT content FROM blog_posts WHERE id = $1")
+            .bind(req.source_post_id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
 
     if let Some(body) = source_content {
         let anchor = &req.anchor_text;
@@ -322,7 +334,8 @@ pub async fn add_internal_link(
                 format!("{}{}", body, related_note)
             } else {
                 // Replace plain text with linked version
-                format!("{}{}{}",
+                format!(
+                    "{}{}{}",
                     &body[..pos],
                     link_tag,
                     &body[pos + anchor.len()..]
@@ -359,7 +372,7 @@ pub async fn remove_internal_link(
     Path((post_id, target_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<impl IntoResponse> {
     let current = sqlx::query_scalar::<_, Option<Value>>(
-        "SELECT internal_links FROM blog_posts WHERE id = $1"
+        "SELECT internal_links FROM blog_posts WHERE id = $1",
     )
     .bind(post_id)
     .fetch_optional(&s.db)
@@ -379,15 +392,15 @@ pub async fn remove_internal_link(
     });
     let after = links.len();
 
-    sqlx::query(
-        "UPDATE blog_posts SET internal_links = $1::jsonb WHERE id = $2"
-    )
-    .bind(serde_json::to_value(&links).unwrap_or_default())
-    .bind(post_id)
-    .execute(&s.db)
-    .await?;
+    sqlx::query("UPDATE blog_posts SET internal_links = $1::jsonb WHERE id = $2")
+        .bind(serde_json::to_value(&links).unwrap_or_default())
+        .bind(post_id)
+        .execute(&s.db)
+        .await?;
 
-    Ok(Json(json!({"status": "removed", "links_removed": before - after, "remaining": after})))
+    Ok(Json(
+        json!({"status": "removed", "links_removed": before - after, "remaining": after}),
+    ))
 }
 
 // ─── 3. AEO (Answer Engine Optimization) Scoring ─────────────────────────────
@@ -469,7 +482,9 @@ pub async fn score_post_aeo(
     }
 
     // 4. Has internal links (0-15 pts)
-    let link_count = post.internal_links.as_ref()
+    let link_count = post
+        .internal_links
+        .as_ref()
         .and_then(|v| v.as_array())
         .map_or(0, |a| a.len());
     if link_count >= 5 {
@@ -506,9 +521,14 @@ pub async fn score_post_aeo(
         .filter(|w| w.len() >= 5)
         .collect();
     if !title_keywords.is_empty() {
-        let first_200 = if content_lower.len() > 200 { &content_lower[..200] } else { &content_lower };
+        let first_200 = if content_lower.len() > 200 {
+            &content_lower[..200]
+        } else {
+            &content_lower
+        };
         let first_para = first_200.split("</p>").next().unwrap_or(first_200);
-        let keyword_hits = title_keywords.iter()
+        let keyword_hits = title_keywords
+            .iter()
             .filter(|kw| first_para.contains(*kw))
             .count();
         let density = (keyword_hits as f64 / title_keywords.len() as f64) * 10.0;
@@ -518,29 +538,42 @@ pub async fn score_post_aeo(
     // 8. Readability: average sentence length under 25 words (0-10 pts)
     // Simple heuristic: count text between periods in the first 2000 chars
     let text_only = content_lower
-        .replace("<p>", " ").replace("</p>", ".")
-        .replace("<li>", " ").replace("</li>", ".")
-        .replace("<br>", ".").replace("<br/>", ".")
+        .replace("<p>", " ")
+        .replace("</p>", ".")
+        .replace("<li>", " ")
+        .replace("</li>", ".")
+        .replace("<br>", ".")
+        .replace("<br/>", ".")
         .replace("<br />", ".");
     // Remove remaining HTML tags
     let mut clean = String::new();
     let mut in_tag = false;
     for ch in text_only.chars() {
-        if ch == '<' { in_tag = true; continue; }
-        if ch == '>' { in_tag = false; continue; }
-        if !in_tag { clean.push(ch); }
+        if ch == '<' {
+            in_tag = true;
+            continue;
+        }
+        if ch == '>' {
+            in_tag = false;
+            continue;
+        }
+        if !in_tag {
+            clean.push(ch);
+        }
     }
     let sentences: Vec<&str> = clean.split('.').filter(|s| s.trim().len() > 10).collect();
     if !sentences.is_empty() {
-        let avg_words: f64 = sentences.iter()
+        let avg_words: f64 = sentences
+            .iter()
             .map(|s| s.split_whitespace().count() as f64)
-            .sum::<f64>() / sentences.len() as f64;
+            .sum::<f64>()
+            / sentences.len() as f64;
         if avg_words <= 15.0 {
             score += 10; // Excellent readability
         } else if avg_words <= 25.0 {
-            score += 7;  // Good readability
+            score += 7; // Good readability
         } else if avg_words <= 35.0 {
-            score += 4;  // Acceptable
+            score += 4; // Acceptable
         }
         // >35 words/sentence = no points (walls of text)
     }
@@ -552,11 +585,15 @@ pub async fn score_post_aeo(
             // Check that content starts with an answer, not a preamble
             let answer_lower = answer.to_lowercase();
             // Does the answer appear within the first 300 characters of body content?
-            let early_body = if content_lower.len() > 300 { &content_lower[..300] } else { &content_lower };
+            let early_body = if content_lower.len() > 300 {
+                &content_lower[..300]
+            } else {
+                &content_lower
+            };
             if early_body.contains(&answer_lower[..std::cmp::min(50, answer_lower.len())]) {
                 score += 10; // Answer positioned early — strong AEO signal
             } else if content_lower.contains(&answer_lower[..50]) {
-                score += 5;  // Answer exists but deeper in content
+                score += 5; // Answer exists but deeper in content
             }
         }
     } else {
@@ -564,7 +601,8 @@ pub async fn score_post_aeo(
         let first_p = content_lower.split("</p>").next().unwrap_or("");
         let first_p_len = first_p.split_whitespace().count();
         // Short first paragraph (1-2 sentences) = likely a direct answer format
-        if first_p_len > 5 && first_p_len <= 30
+        if first_p_len > 5
+            && first_p_len <= 30
             && (first_p.contains("<strong>") || first_p.contains("<b>") || first_p.contains("<em>"))
         {
             score += 7;
@@ -577,7 +615,13 @@ pub async fn score_post_aeo(
     score = score.clamp(0, 100);
 
     // Determine traffic trend based on score
-    let trend: &str = if score >= 80 { "rising" } else if score >= 50 { "stable" } else { "declining" };
+    let trend: &str = if score >= 80 {
+        "rising"
+    } else if score >= 50 {
+        "stable"
+    } else {
+        "declining"
+    };
 
     sqlx::query(
         "UPDATE blog_posts SET aeo_score = $1, traffic_trend = $2, updated_at = NOW() WHERE id = $3"
@@ -606,14 +650,11 @@ pub async fn score_post_aeo(
 
 /// POST /api/v1/blog/aeo/scan-all
 /// Re-score AEO for all published posts.
-pub async fn score_all_posts_aeo(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let post_ids = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM blog_posts WHERE published = true"
-    )
-    .fetch_all(&s.db)
-    .await?;
+pub async fn score_all_posts_aeo(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let post_ids =
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM blog_posts WHERE published = true")
+            .fetch_all(&s.db)
+            .await?;
 
     let mut scored = 0;
     for pid in &post_ids {
@@ -672,17 +713,22 @@ pub async fn score_all_posts_aeo(
     // Return updated scores
     let posts = sqlx::query_as::<_, AeoScoredPost>(
         "SELECT id, title, slug, aeo_score, answer_block, schema_type, traffic_trend, page_views \
-         FROM blog_posts WHERE published = true ORDER BY aeo_score DESC LIMIT 100"
+         FROM blog_posts WHERE published = true ORDER BY aeo_score DESC LIMIT 100",
     )
     .fetch_all(&s.db)
     .await?;
 
     let avg = if !posts.is_empty() {
         posts.iter().map(|p| p.aeo_score as f64).sum::<f64>() / posts.len() as f64
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     let high = posts.iter().filter(|p| p.aeo_score >= 80).count() as i64;
-    let medium = posts.iter().filter(|p| p.aeo_score >= 50 && p.aeo_score < 80).count() as i64;
+    let medium = posts
+        .iter()
+        .filter(|p| p.aeo_score >= 50 && p.aeo_score < 80)
+        .count() as i64;
     let low = posts.iter().filter(|p| p.aeo_score < 50).count() as i64;
 
     Ok(Json(json!({
@@ -699,22 +745,25 @@ pub async fn score_all_posts_aeo(
 
 /// GET /api/v1/blog/aeo/report
 /// Get AEO score report for all published posts.
-pub async fn aeo_report(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn aeo_report(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let posts = sqlx::query_as::<_, AeoScoredPost>(
         "SELECT id, title, slug, aeo_score, answer_block, schema_type, traffic_trend, page_views \
-         FROM blog_posts WHERE published = true ORDER BY aeo_score DESC LIMIT 100"
+         FROM blog_posts WHERE published = true ORDER BY aeo_score DESC LIMIT 100",
     )
     .fetch_all(&s.db)
     .await?;
 
     let avg = if !posts.is_empty() {
         posts.iter().map(|p| p.aeo_score as f64).sum::<f64>() / posts.len() as f64
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     let high = posts.iter().filter(|p| p.aeo_score >= 80).count() as i64;
-    let medium = posts.iter().filter(|p| p.aeo_score >= 50 && p.aeo_score < 80).count() as i64;
+    let medium = posts
+        .iter()
+        .filter(|p| p.aeo_score >= 50 && p.aeo_score < 80)
+        .count() as i64;
     let low = posts.iter().filter(|p| p.aeo_score < 50).count() as i64;
 
     Ok(Json(AeoSummary {
@@ -765,19 +814,27 @@ pub async fn generate_schema_markup(
 
     // Get directory info for publisher data
     let dir_info: Option<(String, String)> = if let Some(did) = post.directory_id {
-        sqlx::query_as::<_, (String, String)>(
-            "SELECT name, domain FROM directories WHERE id = $1"
-        )
-        .bind(did)
-        .fetch_optional(&s.db)
-        .await
-        .ok()
-        .flatten()
-    } else { None };
+        sqlx::query_as::<_, (String, String)>("SELECT name, domain FROM directories WHERE id = $1")
+            .bind(did)
+            .fetch_optional(&s.db)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
 
     let schema_type = req.schema_type.unwrap_or_else(|| "Article".to_string());
-    let publisher_name = dir_info.as_ref().map_or("SwiftSoftware Directory".to_string(), |d| d.0.clone());
-    let site_url = dir_info.as_ref().and_then(|d| if d.1.is_empty() { None } else { Some(format!("https://{}", d.1)) });
+    let publisher_name = dir_info
+        .as_ref()
+        .map_or("SwiftSoftware Directory".to_string(), |d| d.0.clone());
+    let site_url = dir_info.as_ref().and_then(|d| {
+        if d.1.is_empty() {
+            None
+        } else {
+            Some(format!("https://{}", d.1))
+        }
+    });
 
     let word_count = post.content.split_whitespace().count();
     let reading_time_minutes = (word_count as f64 / 200.0).ceil() as i32;
@@ -805,7 +862,10 @@ pub async fn generate_schema_markup(
 
     // Add article body
     if let Some(obj) = schema.as_object_mut() {
-        obj.insert("articleBody".to_string(), json!(post.content.chars().take(5000).collect::<String>()));
+        obj.insert(
+            "articleBody".to_string(),
+            json!(post.content.chars().take(5000).collect::<String>()),
+        );
     }
 
     // Merge additional fields
@@ -856,8 +916,14 @@ pub async fn generate_all_schema(
     for (pid, title, slug, content, author_name, created_at, updated_at, directory_id) in &posts {
         let dir_info: Option<String> = if let Some(did) = directory_id {
             sqlx::query_scalar::<_, String>("SELECT name FROM directories WHERE id = $1")
-                .bind(did).fetch_optional(&s.db).await.ok().flatten()
-        } else { None };
+                .bind(did)
+                .fetch_optional(&s.db)
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
 
         let wc = content.split_whitespace().count();
         let rt = (wc as f64 / 200.0).ceil() as i32;
@@ -883,5 +949,7 @@ pub async fn generate_all_schema(
         generated += 1;
     }
 
-    Ok(Json(json!({"generated": generated, "schema_type": schema_type})))
+    Ok(Json(
+        json!({"generated": generated, "schema_type": schema_type}),
+    ))
 }

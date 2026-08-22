@@ -7,12 +7,12 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Submission {
@@ -73,9 +73,7 @@ pub struct UpdateSubmissionRequest {
 }
 
 /// GET /api/v1/submissions — list all submissions (admin view)
-pub async fn list_submissions(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_submissions(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let submissions = sqlx::query_as::<_, Submission>(
         "SELECT id, business_name, category, address, city, state, zip, phone, email, website, description, submitted_by, submitter_email, directory_id, status, admin_notes, created_at, updated_at FROM submissions ORDER BY created_at DESC "
     )
@@ -218,7 +216,9 @@ pub async fn approve_submission(
     .ok_or_else(|| AppError::NotFound("Submission not found".into()))?;
 
     if submission.status.as_deref() == Some("approved") {
-        return Err(AppError::BadRequest("Submission is already approved".into()));
+        return Err(AppError::BadRequest(
+            "Submission is already approved".into(),
+        ));
     }
 
     // Generate a slug from the business name
@@ -264,7 +264,10 @@ pub async fn reject_submission(
     Path(id): Path<Uuid>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<impl IntoResponse> {
-    let admin_notes = body.get("admin_notes").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let admin_notes = body
+        .get("admin_notes")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let submission = sqlx::query_as::<_, Submission>(
         "UPDATE submissions SET status = 'rejected', admin_notes = COALESCE(\x241, admin_notes), updated_at = NOW() WHERE id = \x242 RETURNING id, business_name, category, address, city, state, zip, phone, email, website, description, submitted_by, submitter_email, directory_id, status, admin_notes, created_at, updated_at "
@@ -281,7 +284,13 @@ pub async fn reject_submission(
 fn slugify(s: &str) -> String {
     s.to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()

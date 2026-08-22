@@ -1,18 +1,18 @@
 //! Analytics tracking and reporting handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Data Types ───────────────────────────────────────────────────────────────
 
@@ -113,50 +113,55 @@ pub async fn track_event(
 }
 
 /// GET /api/v1/analytics/summary — requires auth (protected route)
-pub async fn get_summary(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn get_summary(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let total_page_views = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'page_view'"
+        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'page_view'",
     )
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     let total_listing_views = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'listing_view'"
+        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'listing_view'",
     )
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     let total_phone_clicks = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'phone_click'"
+        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'phone_click'",
     )
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     let total_website_clicks = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'website_click'"
+        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'website_click'",
     )
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     let total_direction_clicks = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'direction_click'"
+        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'direction_click'",
     )
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     let total_deal_claims = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'deal_claim'"
+        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'deal_claim'",
     )
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     let total_submissions = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'submission'"
+        "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'submission'",
     )
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     // Top listings by views
     let rows = sqlx::query_as::<_, (Option<Uuid>, Option<String>, i64)>(
@@ -165,8 +170,13 @@ pub async fn get_summary(
     .fetch_all(&s.db)
     .await.unwrap_or_default();
 
-    let top_listings: Vec<TopListing> = rows.into_iter()
-        .map(|(eid, etype, cnt)| TopListing { entity_id: eid, entity_type: etype, count: cnt })
+    let top_listings: Vec<TopListing> = rows
+        .into_iter()
+        .map(|(eid, etype, cnt)| TopListing {
+            entity_id: eid,
+            entity_type: etype,
+            count: cnt,
+        })
         .collect();
 
     // Daily counts for last 14 days
@@ -176,7 +186,8 @@ pub async fn get_summary(
     .fetch_all(&s.db)
     .await.unwrap_or_default();
 
-    let daily_counts: Vec<DailyCount> = daily_rows.into_iter()
+    let daily_counts: Vec<DailyCount> = daily_rows
+        .into_iter()
         .map(|(d, c)| DailyCount { date: d, count: c })
         .collect();
 
@@ -198,23 +209,22 @@ pub async fn by_directory(
     State(s): State<AppState>,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = \x241 "
-    )
-    .bind(directory_id)
-    .fetch_one(&s.db)
-    .await?;
+    let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = \x241 ")
+        .bind(directory_id)
+        .fetch_one(&s.db)
+        .await?;
 
     if exists == 0 {
         return Err(AppError::NotFound("Directory not found".to_string()));
     }
 
     let total_events = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events WHERE directory_id = \x241 "
+        "SELECT COUNT(*) FROM analytics_events WHERE directory_id = \x241 ",
     )
     .bind(directory_id)
     .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    .await
+    .unwrap_or(0);
 
     let page_views = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM analytics_events WHERE directory_id = \x241 AND event_type = 'page_view'"
@@ -297,11 +307,10 @@ pub async fn list_events(
         .await?
     };
 
-    let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM analytics_events "
-    )
-    .fetch_one(&s.db)
-    .await.unwrap_or(0);
+    let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM analytics_events ")
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
     Ok(Json(json!({
         "data": events,
@@ -312,14 +321,11 @@ pub async fn list_events(
 }
 
 /// DELETE /api/v1/analytics/events/old — purge events older than 90 days
-pub async fn purge_old_events(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let result = sqlx::query(
-        "DELETE FROM analytics_events WHERE created_at < NOW() - INTERVAL '90 days'"
-    )
-    .execute(&s.db)
-    .await?;
+pub async fn purge_old_events(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let result =
+        sqlx::query("DELETE FROM analytics_events WHERE created_at < NOW() - INTERVAL '90 days'")
+            .execute(&s.db)
+            .await?;
 
     let deleted = result.rows_affected();
 

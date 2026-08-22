@@ -1,11 +1,14 @@
 /// ZaarHub legal pages + site config management
-use axum::{extract::{Path, Query, State}, Json};
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 // ── Legal Pages ──
@@ -27,8 +30,10 @@ pub struct LegalPagePayload {
 pub async fn list_legal_pages(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let rows = sqlx::query(
         "SELECT id, slug, title, is_published, show_in_footer, display_order, updated_at \
-         FROM zaarhub_legal_pages ORDER BY display_order ASC, title ASC"
-    ).fetch_all(&state.db).await?;
+         FROM zaarhub_legal_pages ORDER BY display_order ASC, title ASC",
+    )
+    .fetch_all(&state.db)
+    .await?;
 
     let pages: Vec<Value> = rows.iter().map(|r| {
         json!({
@@ -76,21 +81,29 @@ pub async fn save_legal_page(
     State(state): State<AppState>,
     Json(payload): Json<LegalPagePayload>,
 ) -> ApiResult<Json<Value>> {
-    let existing = sqlx::query(
-        "SELECT id FROM zaarhub_legal_pages WHERE slug = $1"
-    ).bind(&payload.slug).fetch_optional(&state.db).await?;
+    let existing = sqlx::query("SELECT id FROM zaarhub_legal_pages WHERE slug = $1")
+        .bind(&payload.slug)
+        .fetch_optional(&state.db)
+        .await?;
 
     match existing {
         Some(r) => {
             let id: Uuid = r.try_get("id").unwrap_or_default();
             sqlx::query(
                 "UPDATE zaarhub_legal_pages SET title = $1, content = $2, is_published = $3, \
-                 show_in_footer = $4, display_order = $5, updated_at = now() WHERE id = $6"
+                 show_in_footer = $4, display_order = $5, updated_at = now() WHERE id = $6",
             )
-            .bind(&payload.title).bind(&payload.content).bind(payload.is_published)
-            .bind(payload.show_in_footer).bind(payload.display_order).bind(id)
-            .execute(&state.db).await?;
-            Ok(Json(json!({ "id": id.to_string(), "slug": payload.slug, "updated": true })))
+            .bind(&payload.title)
+            .bind(&payload.content)
+            .bind(payload.is_published)
+            .bind(payload.show_in_footer)
+            .bind(payload.display_order)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
+            Ok(Json(
+                json!({ "id": id.to_string(), "slug": payload.slug, "updated": true }),
+            ))
         }
         None => {
             let id = Uuid::new_v4();
@@ -101,7 +114,9 @@ pub async fn save_legal_page(
             .bind(id).bind(&payload.slug).bind(&payload.title).bind(&payload.content)
             .bind(payload.is_published).bind(payload.show_in_footer).bind(payload.display_order)
             .execute(&state.db).await?;
-            Ok(Json(json!({ "id": id.to_string(), "slug": payload.slug, "created": true })))
+            Ok(Json(
+                json!({ "id": id.to_string(), "slug": payload.slug, "created": true }),
+            ))
         }
     }
 }
@@ -112,8 +127,12 @@ pub async fn delete_legal_page(
     Path(slug): Path<String>,
 ) -> ApiResult<Json<Value>> {
     let result = sqlx::query("DELETE FROM zaarhub_legal_pages WHERE slug = $1")
-        .bind(&slug).execute(&state.db).await?;
-    Ok(Json(json!({ "deleted": result.rows_affected() > 0, "slug": slug })))
+        .bind(&slug)
+        .execute(&state.db)
+        .await?;
+    Ok(Json(
+        json!({ "deleted": result.rows_affected() > 0, "slug": slug }),
+    ))
 }
 
 // ── Site Config ──
@@ -137,7 +156,8 @@ pub struct SiteConfigPayload {
 /// GET /api/v1/zaarhub/admin/config — get site config
 pub async fn get_site_config(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let row = sqlx::query("SELECT * FROM zaarhub_site_config LIMIT 1")
-        .fetch_optional(&state.db).await?;
+        .fetch_optional(&state.db)
+        .await?;
 
     match row {
         Some(r) => Ok(Json(json!({
@@ -167,7 +187,8 @@ pub async fn update_site_config(
     Json(payload): Json<SiteConfigPayload>,
 ) -> ApiResult<Json<Value>> {
     let existing = sqlx::query("SELECT id FROM zaarhub_site_config LIMIT 1")
-        .fetch_optional(&state.db).await?;
+        .fetch_optional(&state.db)
+        .await?;
 
     match existing {
         Some(r) => {

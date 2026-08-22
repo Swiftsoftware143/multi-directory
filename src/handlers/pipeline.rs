@@ -15,8 +15,8 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Request ──
 
@@ -88,29 +88,56 @@ fn normalize_website(website: &str) -> String {
 
 // ── Dedup Lookups ──
 
-pub async fn find_existing_by_phone(pool: &PgPool, phone: &str, dir_id: Option<Uuid>) -> Result<Option<Uuid>, sqlx::Error> {
+pub async fn find_existing_by_phone(
+    pool: &PgPool,
+    phone: &str,
+    dir_id: Option<Uuid>,
+) -> Result<Option<Uuid>, sqlx::Error> {
     let normalized = normalize_phone(phone);
     if let Some(did) = dir_id {
-        sqlx::query_scalar("SELECT id FROM businesses WHERE phone = $1 AND directory_id = $2 LIMIT 1")
-            .bind(&normalized).bind(did).fetch_optional(pool).await
+        sqlx::query_scalar(
+            "SELECT id FROM businesses WHERE phone = $1 AND directory_id = $2 LIMIT 1",
+        )
+        .bind(&normalized)
+        .bind(did)
+        .fetch_optional(pool)
+        .await
     } else {
         sqlx::query_scalar("SELECT id FROM businesses WHERE phone = $1 LIMIT 1")
-            .bind(&normalized).fetch_optional(pool).await
+            .bind(&normalized)
+            .fetch_optional(pool)
+            .await
     }
 }
 
-pub async fn find_existing_by_website(pool: &PgPool, website: &str, dir_id: Option<Uuid>) -> Result<Option<Uuid>, sqlx::Error> {
+pub async fn find_existing_by_website(
+    pool: &PgPool,
+    website: &str,
+    dir_id: Option<Uuid>,
+) -> Result<Option<Uuid>, sqlx::Error> {
     let normalized = normalize_website(website);
     if let Some(did) = dir_id {
-        sqlx::query_scalar("SELECT id FROM businesses WHERE website = $1 AND directory_id = $2 LIMIT 1")
-            .bind(&normalized).bind(did).fetch_optional(pool).await
+        sqlx::query_scalar(
+            "SELECT id FROM businesses WHERE website = $1 AND directory_id = $2 LIMIT 1",
+        )
+        .bind(&normalized)
+        .bind(did)
+        .fetch_optional(pool)
+        .await
     } else {
         sqlx::query_scalar("SELECT id FROM businesses WHERE website = $1 LIMIT 1")
-            .bind(&normalized).fetch_optional(pool).await
+            .bind(&normalized)
+            .fetch_optional(pool)
+            .await
     }
 }
 
-async fn find_existing_by_name_city(pool: &PgPool, name: &str, city: &str, dir_id: Option<Uuid>) -> Result<Option<Uuid>, sqlx::Error> {
+async fn find_existing_by_name_city(
+    pool: &PgPool,
+    name: &str,
+    city: &str,
+    dir_id: Option<Uuid>,
+) -> Result<Option<Uuid>, sqlx::Error> {
     if let Some(did) = dir_id {
         sqlx::query_scalar(
             "SELECT id FROM businesses WHERE LOWER(name) = LOWER($1) AND LOWER(COALESCE(city,'')) = LOWER($2) AND directory_id = $3 LIMIT 1"
@@ -128,21 +155,77 @@ fn merge_business(existing: &Value, incoming: &IngestBusiness) -> Value {
     let mut result = existing.clone();
     let obj = result.as_object_mut().unwrap();
 
-    if let Some(ref name) = incoming.name { if !name.is_empty() { obj.insert("name".into(), Value::String(name.clone())); } }
-    if let Some(ref desc) = incoming.description { if !desc.is_empty() { obj.insert("description".into(), Value::String(desc.clone())); } }
-    if let Some(ref phone) = incoming.phone { if !phone.is_empty() { obj.insert("phone".into(), Value::String(normalize_phone(phone))); } }
-    if let Some(ref email) = incoming.email { if !email.is_empty() { obj.insert("email".into(), Value::String(email.clone())); } }
-    if let Some(ref website) = incoming.website { if !website.is_empty() { obj.insert("website".into(), Value::String(normalize_website(website))); } }
-    if let Some(ref addr) = incoming.address { if !addr.is_empty() { obj.insert("address".into(), Value::String(addr.clone())); } }
-    if let Some(ref city) = incoming.city { if !city.is_empty() { obj.insert("city".into(), Value::String(city.clone())); } }
-    if let Some(ref state) = incoming.state { if !state.is_empty() { obj.insert("state".into(), Value::String(state.clone())); } }
-    if let Some(ref zip) = incoming.zip { if !zip.is_empty() { obj.insert("zip".into(), Value::String(zip.clone())); } }
-    if let Some(lat) = incoming.latitude { if obj.get("latitude").and_then(|v| v.as_f64()).unwrap_or(0.0) == 0.0 { obj.insert("latitude".into(), json!(lat)); } }
-    if let Some(lng) = incoming.longitude { if obj.get("longitude").and_then(|v| v.as_f64()).unwrap_or(0.0) == 0.0 { obj.insert("longitude".into(), json!(lng)); } }
-    if let Some(ref bt) = incoming.business_type { if !bt.is_empty() { obj.insert("business_type".into(), Value::String(bt.clone())); } }
-    if let Some(rating) = incoming.rating { obj.insert("rating".into(), json!(rating)); }
-    if let Some(rc) = incoming.review_count { obj.insert("review_count".into(), json!(rc)); }
-    if let Some(ref imgs) = incoming.image_urls { if !imgs.is_empty() { obj.insert("images".into(), json!(imgs)); } }
+    if let Some(ref name) = incoming.name {
+        if !name.is_empty() {
+            obj.insert("name".into(), Value::String(name.clone()));
+        }
+    }
+    if let Some(ref desc) = incoming.description {
+        if !desc.is_empty() {
+            obj.insert("description".into(), Value::String(desc.clone()));
+        }
+    }
+    if let Some(ref phone) = incoming.phone {
+        if !phone.is_empty() {
+            obj.insert("phone".into(), Value::String(normalize_phone(phone)));
+        }
+    }
+    if let Some(ref email) = incoming.email {
+        if !email.is_empty() {
+            obj.insert("email".into(), Value::String(email.clone()));
+        }
+    }
+    if let Some(ref website) = incoming.website {
+        if !website.is_empty() {
+            obj.insert("website".into(), Value::String(normalize_website(website)));
+        }
+    }
+    if let Some(ref addr) = incoming.address {
+        if !addr.is_empty() {
+            obj.insert("address".into(), Value::String(addr.clone()));
+        }
+    }
+    if let Some(ref city) = incoming.city {
+        if !city.is_empty() {
+            obj.insert("city".into(), Value::String(city.clone()));
+        }
+    }
+    if let Some(ref state) = incoming.state {
+        if !state.is_empty() {
+            obj.insert("state".into(), Value::String(state.clone()));
+        }
+    }
+    if let Some(ref zip) = incoming.zip {
+        if !zip.is_empty() {
+            obj.insert("zip".into(), Value::String(zip.clone()));
+        }
+    }
+    if let Some(lat) = incoming.latitude {
+        if obj.get("latitude").and_then(|v| v.as_f64()).unwrap_or(0.0) == 0.0 {
+            obj.insert("latitude".into(), json!(lat));
+        }
+    }
+    if let Some(lng) = incoming.longitude {
+        if obj.get("longitude").and_then(|v| v.as_f64()).unwrap_or(0.0) == 0.0 {
+            obj.insert("longitude".into(), json!(lng));
+        }
+    }
+    if let Some(ref bt) = incoming.business_type {
+        if !bt.is_empty() {
+            obj.insert("business_type".into(), Value::String(bt.clone()));
+        }
+    }
+    if let Some(rating) = incoming.rating {
+        obj.insert("rating".into(), json!(rating));
+    }
+    if let Some(rc) = incoming.review_count {
+        obj.insert("review_count".into(), json!(rc));
+    }
+    if let Some(ref imgs) = incoming.image_urls {
+        if !imgs.is_empty() {
+            obj.insert("images".into(), json!(imgs));
+        }
+    }
 
     result
 }
@@ -176,7 +259,10 @@ pub async fn pipeline_ingest(
             Some(u)
         } else {
             sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1 LIMIT 1")
-                .bind(did).fetch_optional(&s.db).await.unwrap_or(None)
+                .bind(did)
+                .fetch_optional(&s.db)
+                .await
+                .unwrap_or(None)
         }
     } else {
         None
@@ -186,7 +272,11 @@ pub async fn pipeline_ingest(
         // Skip if no name
         let name = match &biz.name {
             Some(n) if !n.is_empty() => n.clone(),
-            _ => { skipped += 1; errors.push("Business missing name — skipped".into()); continue; }
+            _ => {
+                skipped += 1;
+                errors.push("Business missing name — skipped".into());
+                continue;
+            }
         };
 
         // Try to find existing by phone, website, or name+city (sequential, not chained closures)
@@ -213,7 +303,9 @@ pub async fn pipeline_ingest(
         if existing_id.is_none() {
             if let Some(ref city) = biz.city {
                 if !city.is_empty() {
-                    if let Ok(Some(id)) = find_existing_by_name_city(&s.db, &name, city, dir_id).await {
+                    if let Ok(Some(id)) =
+                        find_existing_by_name_city(&s.db, &name, city, dir_id).await
+                    {
                         existing_id = Some(id);
                     }
                 }
@@ -230,8 +322,13 @@ pub async fn pipeline_ingest(
         if let Some(existing) = existing_id {
             // Fetch existing, merge, update
             let existing_row: Option<Value> = sqlx::query_as::<_, (Value,)>(
-                "SELECT row_to_json(b.*) FROM businesses b WHERE id = $1"
-            ).bind(existing).fetch_optional(&s.db).await.map(|r| r.map(|v| v.0)).unwrap_or(None);
+                "SELECT row_to_json(b.*) FROM businesses b WHERE id = $1",
+            )
+            .bind(existing)
+            .fetch_optional(&s.db)
+            .await
+            .map(|r| r.map(|v| v.0))
+            .unwrap_or(None);
 
             if let Some(existing_data) = existing_row {
                 let merged = merge_business(&existing_data, biz);
@@ -262,9 +359,12 @@ pub async fn pipeline_ingest(
             }
         } else {
             // Create new business
-            let slug = name.to_lowercase()
+            let slug = name
+                .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")
-                .chars().take(200).collect::<String>();
+                .chars()
+                .take(200)
+                .collect::<String>();
             let phone = biz.phone.as_ref().map(|p| normalize_phone(p));
             let website = biz.website.as_ref().map(|w| normalize_website(w));
 
@@ -298,7 +398,10 @@ pub async fn pipeline_ingest(
 
             match result {
                 Ok(_) => created += 1,
-                Err(e) => { errors.push(format!("Failed to create '{}': {}", name, e)); skipped += 1; }
+                Err(e) => {
+                    errors.push(format!("Failed to create '{}': {}", name, e));
+                    skipped += 1;
+                }
             }
         }
     }

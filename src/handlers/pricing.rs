@@ -13,9 +13,9 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::auth::models::Claims;
 use crate::auth::middleware::is_admin;
-use crate::error::{AppError, ApiResult};
+use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 // ── Models ───────────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ pub async fn list_services(
         sqlx::query_as::<_, ServicePrice>(
             r#"SELECT * FROM service_prices
                WHERE directory_id = $1 OR (directory_id IS NULL AND network_id IS NULL)
-               ORDER BY service_key"#
+               ORDER BY service_key"#,
         )
         .bind(dir_id)
         .fetch_all(&s.db)
@@ -160,7 +160,7 @@ pub async fn list_services(
         sqlx::query_as::<_, ServicePrice>(
             r#"SELECT * FROM service_prices
                WHERE network_id = $1 OR (network_id IS NULL AND directory_id IS NULL)
-               ORDER BY service_key"#
+               ORDER BY service_key"#,
         )
         .bind(net_id)
         .fetch_all(&s.db)
@@ -230,15 +230,17 @@ pub async fn create_bundle(
     }
 
     // Check slug uniqueness
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM price_bundles WHERE slug = $1"
-    )
-    .bind(&req.slug)
-    .fetch_one(&s.db)
-    .await?;
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM price_bundles WHERE slug = $1")
+            .bind(&req.slug)
+            .fetch_one(&s.db)
+            .await?;
 
     if existing > 0 {
-        return Err(AppError::Duplicate(format!("Bundle slug '{}' already exists", req.slug)));
+        return Err(AppError::Duplicate(format!(
+            "Bundle slug '{}' already exists",
+            req.slug
+        )));
     }
 
     // Insert the bundle
@@ -272,12 +274,11 @@ pub async fn create_bundle(
     }
 
     // Fetch services for the response
-    let services = sqlx::query_as::<_, BundleService>(
-        "SELECT * FROM bundle_services WHERE bundle_id = $1"
-    )
-    .bind(bundle.id)
-    .fetch_all(&s.db)
-    .await?;
+    let services =
+        sqlx::query_as::<_, BundleService>("SELECT * FROM bundle_services WHERE bundle_id = $1")
+            .bind(bundle.id)
+            .fetch_all(&s.db)
+            .await?;
 
     Ok(Json(json!({
         "bundle": bundle,
@@ -295,7 +296,7 @@ pub async fn list_bundles(
         sqlx::query_as::<_, PriceBundle>(
             r#"SELECT * FROM price_bundles
                WHERE directory_id = $1 OR (directory_id IS NULL AND network_id IS NULL)
-               ORDER BY sort_order, name"#
+               ORDER BY sort_order, name"#,
         )
         .bind(dir_id)
         .fetch_all(&s.db)
@@ -304,28 +305,25 @@ pub async fn list_bundles(
         sqlx::query_as::<_, PriceBundle>(
             r#"SELECT * FROM price_bundles
                WHERE network_id = $1 OR (network_id IS NULL AND directory_id IS NULL)
-               ORDER BY sort_order, name"#
+               ORDER BY sort_order, name"#,
         )
         .bind(net_id)
         .fetch_all(&s.db)
         .await?
     } else {
-        sqlx::query_as::<_, PriceBundle>(
-            "SELECT * FROM price_bundles ORDER BY sort_order, name"
-        )
-        .fetch_all(&s.db)
-        .await?
+        sqlx::query_as::<_, PriceBundle>("SELECT * FROM price_bundles ORDER BY sort_order, name")
+            .fetch_all(&s.db)
+            .await?
     };
 
     // Enrich each bundle with its services
     let mut result = Vec::new();
     for bundle in &bundles {
-        let services: Vec<BundleService> = sqlx::query_as(
-            "SELECT * FROM bundle_services WHERE bundle_id = $1"
-        )
-        .bind(bundle.id)
-        .fetch_all(&s.db)
-        .await?;
+        let services: Vec<BundleService> =
+            sqlx::query_as("SELECT * FROM bundle_services WHERE bundle_id = $1")
+                .bind(bundle.id)
+                .fetch_all(&s.db)
+                .await?;
 
         result.push(json!({
             "bundle": bundle,
@@ -342,20 +340,17 @@ pub async fn get_bundle(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let bundle = sqlx::query_as::<_, PriceBundle>(
-        "SELECT * FROM price_bundles WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Bundle not found".to_string()))?;
+    let bundle = sqlx::query_as::<_, PriceBundle>("SELECT * FROM price_bundles WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Bundle not found".to_string()))?;
 
-    let services: Vec<BundleService> = sqlx::query_as(
-        "SELECT * FROM bundle_services WHERE bundle_id = $1"
-    )
-    .bind(bundle.id)
-    .fetch_all(&s.db)
-    .await?;
+    let services: Vec<BundleService> =
+        sqlx::query_as("SELECT * FROM bundle_services WHERE bundle_id = $1")
+            .bind(bundle.id)
+            .fetch_all(&s.db)
+            .await?;
 
     Ok(Json(json!({
         "bundle": bundle,
@@ -376,19 +371,17 @@ pub async fn update_bundle(
     }
 
     // Check bundle exists
-    let existing = sqlx::query_as::<_, PriceBundle>(
-        "SELECT * FROM price_bundles WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Bundle not found".to_string()))?;
+    let existing = sqlx::query_as::<_, PriceBundle>("SELECT * FROM price_bundles WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Bundle not found".to_string()))?;
 
     // If slug changed, check uniqueness
     if let Some(ref new_slug) = req.slug {
         if new_slug != &existing.slug {
             let slug_count = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM price_bundles WHERE slug = $1 AND id != $2"
+                "SELECT COUNT(*) FROM price_bundles WHERE slug = $1 AND id != $2",
             )
             .bind(new_slug)
             .bind(id)
@@ -396,7 +389,10 @@ pub async fn update_bundle(
             .await?;
 
             if slug_count > 0 {
-                return Err(AppError::Duplicate(format!("Bundle slug '{}' already exists", new_slug)));
+                return Err(AppError::Duplicate(format!(
+                    "Bundle slug '{}' already exists",
+                    new_slug
+                )));
             }
         }
     }
@@ -414,7 +410,7 @@ pub async fn update_bundle(
                is_featured = COALESCE($9, is_featured),
                updated_at = NOW()
            WHERE id = $1
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(id)
     .bind(&req.name)
@@ -448,12 +444,11 @@ pub async fn update_bundle(
     }
 
     // Fetch current services
-    let services: Vec<BundleService> = sqlx::query_as(
-        "SELECT * FROM bundle_services WHERE bundle_id = $1"
-    )
-    .bind(id)
-    .fetch_all(&s.db)
-    .await?;
+    let services: Vec<BundleService> =
+        sqlx::query_as("SELECT * FROM bundle_services WHERE bundle_id = $1")
+            .bind(id)
+            .fetch_all(&s.db)
+            .await?;
 
     Ok(Json(json!({
         "bundle": bundle,
@@ -531,7 +526,7 @@ pub async fn get_grandfathered(
     }
 
     let rows = sqlx::query_as::<_, GrandfatheredPricing>(
-        "SELECT * FROM grandfathered_pricing WHERE business_id = $1 ORDER BY service_key"
+        "SELECT * FROM grandfathered_pricing WHERE business_id = $1 ORDER BY service_key",
     )
     .bind(business_id)
     .fetch_all(&s.db)
@@ -551,7 +546,7 @@ pub async fn public_pricing(
         // Get directory-specific prices, falling back to global defaults
         // We do this in Rust rather than a complex UNION query for clarity
         let dir_prices = sqlx::query_as::<_, ServicePrice>(
-            "SELECT * FROM service_prices WHERE directory_id = $1 AND is_active = true"
+            "SELECT * FROM service_prices WHERE directory_id = $1 AND is_active = true",
         )
         .bind(dir_id)
         .fetch_all(&s.db)
@@ -567,7 +562,7 @@ pub async fn public_pricing(
         merge_prices(dir_prices, global_prices)
     } else if let Some(net_id) = q.network_id {
         let net_prices = sqlx::query_as::<_, ServicePrice>(
-            "SELECT * FROM service_prices WHERE network_id = $1 AND is_active = true"
+            "SELECT * FROM service_prices WHERE network_id = $1 AND is_active = true",
         )
         .bind(net_id)
         .fetch_all(&s.db)
@@ -614,12 +609,11 @@ pub async fn public_pricing(
     // Enrich bundles with services
     let mut enriched_bundles = Vec::new();
     for bundle in &bundles {
-        let bs: Vec<BundleService> = sqlx::query_as(
-            "SELECT * FROM bundle_services WHERE bundle_id = $1"
-        )
-        .bind(bundle.id)
-        .fetch_all(&s.db)
-        .await?;
+        let bs: Vec<BundleService> =
+            sqlx::query_as("SELECT * FROM bundle_services WHERE bundle_id = $1")
+                .bind(bundle.id)
+                .fetch_all(&s.db)
+                .await?;
 
         enriched_bundles.push(json!({
             "id": bundle.id,
@@ -643,10 +637,7 @@ pub async fn public_pricing(
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Merge scoped prices over global defaults. Scoped entries override matching global ones.
-fn merge_prices(
-    scoped: Vec<ServicePrice>,
-    global: Vec<ServicePrice>,
-) -> Vec<ServicePrice> {
+fn merge_prices(scoped: Vec<ServicePrice>, global: Vec<ServicePrice>) -> Vec<ServicePrice> {
     let mut map: std::collections::HashMap<String, ServicePrice> = std::collections::HashMap::new();
 
     for p in global {

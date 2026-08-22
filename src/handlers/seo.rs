@@ -7,13 +7,13 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Models ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ pub struct SitemapConfig {
     pub id: Uuid,
     pub directory_id: Option<Uuid>,
     pub auto_generate: Option<bool>,
-    pub priority: Option<f64>,   // DECIMAL(2,1) maps to f64 via sqlx
+    pub priority: Option<f64>, // DECIMAL(2,1) maps to f64 via sqlx
     pub change_freq: Option<String>,
     pub last_generated: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
@@ -74,7 +74,10 @@ pub async fn get_seo_meta(
     let page_id = if page_id == "homepage" || page_id == "null" || page_id == "none" {
         None
     } else {
-        Some(Uuid::parse_str(&page_id).map_err(|_| AppError::BadRequest("Invalid page_id UUID".to_string()))?)
+        Some(
+            Uuid::parse_str(&page_id)
+                .map_err(|_| AppError::BadRequest("Invalid page_id UUID".to_string()))?,
+        )
     };
 
     let meta = sqlx::query_as::<_, SeoMeta>(
@@ -89,20 +92,18 @@ pub async fn get_seo_meta(
 
     match meta {
         Some(m) => Ok(Json(serde_json::json!(m))),
-        None => {
-            Ok(Json(serde_json::json!({
-                "page_type": page_type,
-                "page_id": page_id,
-                "title": null,
-                "description": null,
-                "keywords": null,
-                "og_image": null,
-                "og_title": null,
-                "og_description": null,
-                "schema_type": null,
-                "custom_schema": null
-            })))
-        }
+        None => Ok(Json(serde_json::json!({
+            "page_type": page_type,
+            "page_id": page_id,
+            "title": null,
+            "description": null,
+            "keywords": null,
+            "og_image": null,
+            "og_title": null,
+            "og_description": null,
+            "schema_type": null,
+            "custom_schema": null
+        }))),
     }
 }
 
@@ -115,7 +116,10 @@ pub async fn update_seo_meta(
     let page_id = if page_id == "homepage" || page_id == "null" || page_id == "none" {
         None
     } else {
-        Some(Uuid::parse_str(&page_id).map_err(|_| AppError::BadRequest("Invalid page_id UUID".to_string()))?)
+        Some(
+            Uuid::parse_str(&page_id)
+                .map_err(|_| AppError::BadRequest("Invalid page_id UUID".to_string()))?,
+        )
     };
 
     let result = sqlx::query_as::<_, SeoMeta>(
@@ -152,14 +156,12 @@ pub async fn update_seo_meta(
 }
 
 /// GET /api/v1/seo/sitemap-config — list all sitemap configs
-pub async fn list_all_sitemap_configs(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_all_sitemap_configs(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let configs = sqlx::query_as::<_, SitemapConfig>(
         "SELECT id, directory_id, auto_generate, \
          CAST(priority AS DOUBLE PRECISION) as priority, \
          change_freq, last_generated, created_at \
-         FROM sitemap_config ORDER BY created_at DESC"
+         FROM sitemap_config ORDER BY created_at DESC",
     )
     .fetch_all(&s.db)
     .await?;
@@ -222,14 +224,10 @@ pub async fn update_sitemap_config(
 }
 
 /// POST /api/v1/seo/regenerate-sitemap — force regenerate sitemap
-pub async fn regenerate_sitemap(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    sqlx::query(
-        "UPDATE sitemap_config SET last_generated = NOW() WHERE auto_generate = true",
-    )
-    .execute(&s.db)
-    .await?;
+pub async fn regenerate_sitemap(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+    sqlx::query("UPDATE sitemap_config SET last_generated = NOW() WHERE auto_generate = true")
+        .execute(&s.db)
+        .await?;
 
     let count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM sitemap_config WHERE auto_generate = true",
@@ -245,17 +243,14 @@ pub async fn regenerate_sitemap(
 }
 
 /// GET /api/v1/sitemap.xml — generate and return XML sitemap
-pub async fn generate_sitemap(
-    State(s): State<AppState>,
-) -> impl IntoResponse {
+pub async fn generate_sitemap(State(s): State<AppState>) -> impl IntoResponse {
     let base_url = format!("https://{}", s.config.base_domain);
 
     // Collect all directories
-    let directories = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT id, slug FROM directories ORDER BY name",
-    )
-    .fetch_all(&s.db)
-    .await;
+    let directories =
+        sqlx::query_as::<_, (Uuid, String)>("SELECT id, slug FROM directories ORDER BY name")
+            .fetch_all(&s.db)
+            .await;
 
     let dirs = match directories {
         Ok(d) => d,
@@ -310,7 +305,8 @@ pub async fn generate_sitemap(
 
         let (priority, change_freq) = match cfg {
             Ok(Some((p, cf))) => (
-                p.map(|v| format!("{:.1}", v)).unwrap_or_else(|| "0.9".to_string()),
+                p.map(|v| format!("{:.1}", v))
+                    .unwrap_or_else(|| "0.9".to_string()),
                 cf.unwrap_or_else(|| "weekly".to_string()),
             ),
             _ => ("0.9".to_string(), "weekly".to_string()),
@@ -345,9 +341,7 @@ pub async fn generate_sitemap(
 }
 
 /// GET /api/v1/robots.txt — serve dynamic robots.txt
-pub async fn get_robots_txt(
-    State(s): State<AppState>,
-) -> impl IntoResponse {
+pub async fn get_robots_txt(State(s): State<AppState>) -> impl IntoResponse {
     let base_url = format!("https://{}", s.config.base_domain);
     let robots = format!("User-agent: *\nAllow: /\n\nSitemap: {base_url}/sitemap.xml\n");
     (

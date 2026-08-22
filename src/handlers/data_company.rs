@@ -2,18 +2,18 @@
 //! Google Places autofill, business verification, data enrichment, bulk CSV export
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use uuid::Uuid;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Google Places Cache ──────────────────────────────────────────────────────
 
@@ -78,15 +78,18 @@ pub async fn places_autocomplete(
     .await?;
 
     if let Some(cached_entry) = cached {
-        let results: Vec<PlacesAutocompleteResult> = if let Some(details) = &cached_entry.place_details {
-            serde_json::from_value(details.clone())
-                .unwrap_or_else(|_| vec![PlacesAutocompleteResult {
+        let results: Vec<PlacesAutocompleteResult> = if let Some(details) =
+            &cached_entry.place_details
+        {
+            serde_json::from_value(details.clone()).unwrap_or_else(|_| {
+                vec![PlacesAutocompleteResult {
                     place_id: cached_entry.place_id.clone().unwrap_or_default(),
                     name: cached_entry.name.clone().unwrap_or_default(),
                     formatted_address: cached_entry.formatted_address.clone().unwrap_or_default(),
                     types: cached_entry.types.clone().unwrap_or_default(),
                     matched: true,
-                }])
+                }]
+            })
         } else {
             vec![PlacesAutocompleteResult {
                 place_id: cached_entry.place_id.clone().unwrap_or_default(),
@@ -96,7 +99,9 @@ pub async fn places_autocomplete(
                 matched: true,
             }]
         };
-        return Ok(Json(serde_json::json!({ "results": results, "cached": true })));
+        return Ok(Json(
+            serde_json::json!({ "results": results, "cached": true }),
+        ));
     }
 
     // Build Google Places Autocomplete URL
@@ -108,32 +113,60 @@ pub async fn places_autocomplete(
     if let Some(lat) = q.lat {
         if let Some(lng) = q.lng {
             let radius = q.radius.unwrap_or(50000.0);
-            url.push_str(&format!("&location={},{}&radius={}", lat, lng, radius as i64));
+            url.push_str(&format!(
+                "&location={},{}&radius={}",
+                lat, lng, radius as i64
+            ));
         }
     }
 
-    let resp = reqwest::get(&url).await
+    let resp = reqwest::get(&url)
+        .await
         .map_err(|e| AppError::Internal(format!("Google Places request failed: {}", e)))?;
 
-    let body: serde_json::Value = resp.json().await
-        .map_err(|e| AppError::Internal(format!("Failed to parse Google Places response: {}", e)))?;
+    let body: serde_json::Value = resp.json().await.map_err(|e| {
+        AppError::Internal(format!("Failed to parse Google Places response: {}", e))
+    })?;
 
-    let predictions = body.get("predictions").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let results: Vec<PlacesAutocompleteResult> = predictions.iter().filter_map(|p| {
-        let place_id = p.get("place_id")?.as_str()?.to_string();
-        let name = p.get("structured_formatting")
-            .and_then(|f| f.get("main_text"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("")
-            .to_string();
-        let formatted_address = p.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string();
-        let types: Vec<String> = p.get("types")
-            .and_then(|t| t.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default();
+    let predictions = body
+        .get("predictions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let results: Vec<PlacesAutocompleteResult> = predictions
+        .iter()
+        .filter_map(|p| {
+            let place_id = p.get("place_id")?.as_str()?.to_string();
+            let name = p
+                .get("structured_formatting")
+                .and_then(|f| f.get("main_text"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let formatted_address = p
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or("")
+                .to_string();
+            let types: Vec<String> = p
+                .get("types")
+                .and_then(|t| t.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
 
-        Some(PlacesAutocompleteResult { place_id, name, formatted_address, types, matched: false })
-    }).collect();
+            Some(PlacesAutocompleteResult {
+                place_id,
+                name,
+                formatted_address,
+                types,
+                matched: false,
+            })
+        })
+        .collect();
 
     // Cache the results
     if let Some(first) = results.first() {
@@ -152,7 +185,9 @@ pub async fn places_autocomplete(
         .await?;
     }
 
-    Ok(Json(serde_json::json!({ "results": results, "cached": false })))
+    Ok(Json(
+        serde_json::json!({ "results": results, "cached": false }),
+    ))
 }
 
 /// GET /api/v1/places/details — get detailed info for a Google Place
@@ -174,11 +209,18 @@ pub async fn place_details(
         if let Some(details) = &cached_entry.place_details {
             let mut resp = serde_json::json!({ "place": details, "cached": true });
             if let Some(name) = details.get("name").and_then(|v| v.as_str()) {
-                let cache_types: Vec<String> = details.get("types")
+                let cache_types: Vec<String> = details
+                    .get("types")
                     .and_then(|t| t.as_array())
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default();
-                resp["is_franchise"] = serde_json::json!(crate::utils::franchise::is_likely_franchise(name, &cache_types));
+                resp["is_franchise"] = serde_json::json!(
+                    crate::utils::franchise::is_likely_franchise(name, &cache_types)
+                );
             }
             return Ok(Json(resp));
         }
@@ -189,32 +231,61 @@ pub async fn place_details(
         q.place_id, api_key
     );
 
-    let resp = reqwest::get(&url).await
+    let resp = reqwest::get(&url)
+        .await
         .map_err(|e| AppError::Internal(format!("Google Places details request failed: {}", e)))?;
 
-    let mut body: serde_json::Value = resp.json().await
-        .map_err(|e| AppError::Internal(format!("Failed to parse Google Places details response: {}", e)))?;
+    let mut body: serde_json::Value = resp.json().await.map_err(|e| {
+        AppError::Internal(format!(
+            "Failed to parse Google Places details response: {}",
+            e
+        ))
+    })?;
 
     let result = body.get_mut("result").cloned().unwrap_or_default();
 
     // Cache the details
-    let name = result.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let formatted_address = result.get("formatted_address").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let phone = result.get("formatted_phone_number").and_then(|v| v.as_str()).map(String::from);
-    let website = result.get("website").and_then(|v| v.as_str()).map(String::from);
-    let latitude = result.get("geometry")
+    let name = result
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let formatted_address = result
+        .get("formatted_address")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let phone = result
+        .get("formatted_phone_number")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let website = result
+        .get("website")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let latitude = result
+        .get("geometry")
         .and_then(|g| g.get("location"))
         .and_then(|l| l.get("lat"))
         .and_then(|v| v.as_f64());
-    let longitude = result.get("geometry")
+    let longitude = result
+        .get("geometry")
         .and_then(|g| g.get("location"))
         .and_then(|l| l.get("lng"))
         .and_then(|v| v.as_f64());
     let rating = result.get("rating").and_then(|v| v.as_f64());
-    let user_ratings_total = result.get("user_ratings_total").and_then(|v| v.as_i64()).map(|v| v as i32);
-    let types: Vec<String> = result.get("types")
+    let user_ratings_total = result
+        .get("user_ratings_total")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32);
+    let types: Vec<String> = result
+        .get("types")
         .and_then(|t| t.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     // Franchise / big-chain hint (auto-flag suggestion — admin can override).
@@ -241,7 +312,9 @@ pub async fn place_details(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "place": result, "cached": false, "is_franchise": is_franchise })))
+    Ok(Json(
+        serde_json::json!({ "place": result, "cached": false, "is_franchise": is_franchise }),
+    ))
 }
 
 // ── Business Verification ────────────────────────────────────────────────────
@@ -273,7 +346,7 @@ pub struct YelpSearchQuery {
     pub longitude: Option<f64>,
     pub categories: Option<String>,
     pub limit: Option<u32>,
-    pub directory_id: Option<String>,  // used to look up per-directory API key
+    pub directory_id: Option<String>, // used to look up per-directory API key
 }
 
 #[derive(Debug, Deserialize)]
@@ -289,7 +362,10 @@ pub async fn yelp_search(
 ) -> ApiResult<impl IntoResponse> {
     let api_key = get_yelp_api_key(&state, q.directory_id.as_deref()).await?;
 
-    let mut url = format!("https://api.yelp.com/v3/businesses/search?limit={}", q.limit.unwrap_or(10));
+    let mut url = format!(
+        "https://api.yelp.com/v3/businesses/search?limit={}",
+        q.limit.unwrap_or(10)
+    );
     if let Some(term) = &q.term {
         url.push_str(&format!("&term={}", urlencoding(&term)));
     }
@@ -328,7 +404,10 @@ pub async fn yelp_details(
 ) -> ApiResult<impl IntoResponse> {
     let api_key = get_yelp_api_key(&state, q.directory_id.as_deref()).await?;
 
-    let url = format!("https://api.yelp.com/v3/businesses/{}", urlencoding(&q.yelp_id));
+    let url = format!(
+        "https://api.yelp.com/v3/businesses/{}",
+        urlencoding(&q.yelp_id)
+    );
 
     let client = reqwest::Client::new();
     let resp = client
@@ -347,18 +426,22 @@ pub async fn yelp_details(
 }
 
 /// Get Yelp API key — per-directory with env var fallback
-pub(crate) async fn get_yelp_api_key(state: &AppState, directory_id: Option<&str>) -> Result<String, AppError> {
+pub(crate) async fn get_yelp_api_key(
+    state: &AppState,
+    directory_id: Option<&str>,
+) -> Result<String, AppError> {
     // Check per-directory config first
     if let Some(dir_id) = directory_id {
         if let Ok(uid) = Uuid::parse_str(dir_id) {
-            let config: Option<serde_json::Value> = sqlx::query_scalar(
-                "SELECT api_config FROM directories WHERE id = $1"
-            )
-            .bind(uid)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_| AppError::Internal("DB error reading directory config".to_string()))?
-            .flatten();
+            let config: Option<serde_json::Value> =
+                sqlx::query_scalar("SELECT api_config FROM directories WHERE id = $1")
+                    .bind(uid)
+                    .fetch_optional(&state.db)
+                    .await
+                    .map_err(|_| {
+                        AppError::Internal("DB error reading directory config".to_string())
+                    })?
+                    .flatten();
 
             if let Some(cfg) = config {
                 if let Some(key) = cfg.get("yelp_api_key").and_then(|k| k.as_str()) {
@@ -372,7 +455,7 @@ pub(crate) async fn get_yelp_api_key(state: &AppState, directory_id: Option<&str
 
     // Fallback: check provider_keys table
     let from_db: Option<String> = sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = 'yelp' AND is_active = true LIMIT 1"
+        "SELECT api_key FROM provider_keys WHERE provider = 'yelp' AND is_active = true LIMIT 1",
     )
     .fetch_optional(&state.db)
     .await
@@ -383,22 +466,29 @@ pub(crate) async fn get_yelp_api_key(state: &AppState, directory_id: Option<&str
     }
 
     // Last fallback to env var
-    std::env::var("YELP_API_KEY")
-        .map_err(|_| AppError::Internal("YELP_API_KEY not configured (set via Provider Keys or env var)".to_string()))
+    std::env::var("YELP_API_KEY").map_err(|_| {
+        AppError::Internal(
+            "YELP_API_KEY not configured (set via Provider Keys or env var)".to_string(),
+        )
+    })
 }
 
 /// Get Google Places API key — per-directory with env var fallback
-pub(crate) async fn get_google_api_key(state: &AppState, directory_id: Option<&str>) -> Result<String, AppError> {
+pub(crate) async fn get_google_api_key(
+    state: &AppState,
+    directory_id: Option<&str>,
+) -> Result<String, AppError> {
     if let Some(dir_id) = directory_id {
         if let Ok(uid) = Uuid::parse_str(dir_id) {
-            let config: Option<serde_json::Value> = sqlx::query_scalar(
-                "SELECT api_config FROM directories WHERE id = $1"
-            )
-            .bind(uid)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_| AppError::Internal("DB error reading directory config".to_string()))?
-            .flatten();
+            let config: Option<serde_json::Value> =
+                sqlx::query_scalar("SELECT api_config FROM directories WHERE id = $1")
+                    .bind(uid)
+                    .fetch_optional(&state.db)
+                    .await
+                    .map_err(|_| {
+                        AppError::Internal("DB error reading directory config".to_string())
+                    })?
+                    .flatten();
 
             if let Some(cfg) = config {
                 if let Some(key) = cfg.get("google_places_api_key").and_then(|k| k.as_str()) {
@@ -422,8 +512,11 @@ pub(crate) async fn get_google_api_key(state: &AppState, directory_id: Option<&s
         return Ok(key.clone());
     }
 
-    std::env::var("GOOGLE_PLACES_API_KEY")
-        .map_err(|_| AppError::Internal("GOOGLE_PLACES_API_KEY not configured (set via Provider Keys or env var)".to_string()))
+    std::env::var("GOOGLE_PLACES_API_KEY").map_err(|_| {
+        AppError::Internal(
+            "GOOGLE_PLACES_API_KEY not configured (set via Provider Keys or env var)".to_string(),
+        )
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -449,12 +542,11 @@ pub async fn create_verification(
     Json(req): Json<CreateVerificationRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Check business exists
-    let biz_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM businesses WHERE id = $1)"
-    )
-    .bind(req.business_id)
-    .fetch_one(&state.db)
-    .await?;
+    let biz_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM businesses WHERE id = $1)")
+            .bind(req.business_id)
+            .fetch_one(&state.db)
+            .await?;
 
     if !biz_exists {
         return Err(AppError::NotFound("Business not found".to_string()));
@@ -483,7 +575,7 @@ pub async fn get_verification(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let verification = sqlx::query_as::<_, BusinessVerification>(
-        "SELECT * FROM business_verifications WHERE id = $1"
+        "SELECT * FROM business_verifications WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -503,7 +595,9 @@ pub async fn update_verification(
     let valid_statuses = ["pending", "approved", "rejected", "expired"];
     if !valid_statuses.contains(&status) {
         return Err(AppError::Validation(format!(
-            "Invalid status '{}'. Must be one of: {}", status, valid_statuses.join(", ")
+            "Invalid status '{}'. Must be one of: {}",
+            status,
+            valid_statuses.join(", ")
         )));
     }
 
@@ -533,7 +627,7 @@ pub async fn business_verifications(
     Path(business_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let verifications = sqlx::query_as::<_, BusinessVerification>(
-        "SELECT * FROM business_verifications WHERE business_id = $1 ORDER BY created_at DESC"
+        "SELECT * FROM business_verifications WHERE business_id = $1 ORDER BY created_at DESC",
     )
     .bind(business_id)
     .fetch_all(&state.db)
@@ -543,11 +637,9 @@ pub async fn business_verifications(
 }
 
 /// GET /api/v1/verifications — list all verifications (with optional status filter)
-pub async fn list_verifications(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_verifications(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let verifications = sqlx::query_as::<_, BusinessVerification>(
-        "SELECT * FROM business_verifications ORDER BY created_at DESC LIMIT 100"
+        "SELECT * FROM business_verifications ORDER BY created_at DESC LIMIT 100",
     )
     .fetch_all(&state.db)
     .await?;
@@ -584,16 +676,18 @@ pub async fn enrich_business(
     State(state): State<AppState>,
     Json(req): Json<EnrichmentRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let source = req.source.clone().unwrap_or_else(|| "google_places".to_string());
+    let source = req
+        .source
+        .clone()
+        .unwrap_or_else(|| "google_places".to_string());
 
     // Get current business data
-    let business = sqlx::query_as::<_, crate::models::Business>(
-        "SELECT * FROM businesses WHERE id = $1"
-    )
-    .bind(req.business_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+    let business =
+        sqlx::query_as::<_, crate::models::Business>("SELECT * FROM businesses WHERE id = $1")
+            .bind(req.business_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
     let data_before = serde_json::json!({
         "name": business.name,
@@ -618,7 +712,8 @@ pub async fn enrich_business(
     };
 
     // Search for the business
-    let search_query = format!("{} {} {} {}", 
+    let search_query = format!(
+        "{} {} {} {}",
         business.name,
         business.city.as_deref().unwrap_or(""),
         business.state.as_deref().unwrap_or(""),
@@ -631,13 +726,19 @@ pub async fn enrich_business(
         api_key
     );
 
-    let resp = reqwest::get(&search_url).await
+    let resp = reqwest::get(&search_url)
+        .await
         .map_err(|e| AppError::Internal(format!("Places search failed: {}", e)))?;
 
-    let result: serde_json::Value = resp.json().await
-        .map_err(|e| AppError::Internal(format!("Failed to parse Places search response: {}", e)))?;
+    let result: serde_json::Value = resp.json().await.map_err(|e| {
+        AppError::Internal(format!("Failed to parse Places search response: {}", e))
+    })?;
 
-    let candidates = result.get("candidates").and_then(|c| c.as_array()).cloned().unwrap_or_default();
+    let candidates = result
+        .get("candidates")
+        .and_then(|c| c.as_array())
+        .cloned()
+        .unwrap_or_default();
     let place = candidates.first();
 
     let enrichment_result = if let Some(p) = place {
@@ -645,8 +746,16 @@ pub async fn enrich_business(
         let enriched_address = p.get("formatted_address").and_then(|v| v.as_str());
         let enriched_phone = p.get("formatted_phone_number").and_then(|v| v.as_str());
         let enriched_website = p.get("website").and_then(|v| v.as_str());
-        let lat = p.get("geometry").and_then(|g| g.get("location")).and_then(|l| l.get("lat")).and_then(|v| v.as_f64());
-        let lng = p.get("geometry").and_then(|g| g.get("location")).and_then(|l| l.get("lng")).and_then(|v| v.as_f64());
+        let lat = p
+            .get("geometry")
+            .and_then(|g| g.get("location"))
+            .and_then(|l| l.get("lat"))
+            .and_then(|v| v.as_f64());
+        let lng = p
+            .get("geometry")
+            .and_then(|g| g.get("location"))
+            .and_then(|l| l.get("lng"))
+            .and_then(|v| v.as_f64());
         let rating = p.get("rating").and_then(|v| v.as_f64());
         let rating_total = p.get("user_ratings_total").and_then(|v| v.as_i64());
 
@@ -661,34 +770,47 @@ pub async fn enrich_business(
             "user_ratings_total": rating_total,
         });
 
-        let confidence = if enriched_phone.is_some() || enriched_website.is_some() { 0.9 } else { 0.5 };
+        let confidence = if enriched_phone.is_some() || enriched_website.is_some() {
+            0.9
+        } else {
+            0.5
+        };
 
         // Update business with enriched data if better than current
         if let Some(addr) = enriched_address {
             if business.address.is_none() || business.address.as_deref() == Some("") {
                 sqlx::query("UPDATE businesses SET address = $1 WHERE id = $2")
-                    .bind(addr).bind(req.business_id)
-                    .execute(&state.db).await?;
+                    .bind(addr)
+                    .bind(req.business_id)
+                    .execute(&state.db)
+                    .await?;
             }
         }
         if let Some(ph) = enriched_phone {
             if business.phone.is_none() || business.phone.as_deref() == Some("") {
                 sqlx::query("UPDATE businesses SET phone = $1 WHERE id = $2")
-                    .bind(ph).bind(req.business_id)
-                    .execute(&state.db).await?;
+                    .bind(ph)
+                    .bind(req.business_id)
+                    .execute(&state.db)
+                    .await?;
             }
         }
         if let Some(ws) = enriched_website {
             if business.website.is_none() || business.website.as_deref() == Some("") {
                 sqlx::query("UPDATE businesses SET website = $1 WHERE id = $2")
-                    .bind(ws).bind(req.business_id)
-                    .execute(&state.db).await?;
+                    .bind(ws)
+                    .bind(req.business_id)
+                    .execute(&state.db)
+                    .await?;
             }
         }
         if let (Some(latv), Some(lngv)) = (lat, lng) {
             sqlx::query("UPDATE businesses SET latitude = $1, longitude = $2 WHERE id = $3")
-                .bind(latv).bind(lngv).bind(req.business_id)
-                .execute(&state.db).await?;
+                .bind(latv)
+                .bind(lngv)
+                .bind(req.business_id)
+                .execute(&state.db)
+                .await?;
         }
 
         serde_json::json!({
@@ -729,11 +851,9 @@ pub async fn enrich_business(
 }
 
 /// GET /api/v1/enrich/logs — list enrichment logs
-pub async fn list_enrichment_logs(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_enrichment_logs(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let logs = sqlx::query_as::<_, DataEnrichmentLog>(
-        "SELECT * FROM data_enrichment_logs ORDER BY created_at DESC LIMIT 100"
+        "SELECT * FROM data_enrichment_logs ORDER BY created_at DESC LIMIT 100",
     )
     .fetch_all(&state.db)
     .await?;
@@ -764,7 +884,8 @@ pub async fn bulk_export(
                     .bind(did).fetch_optional(&state.db).await?
             } else {
                 sqlx::query("SELECT jsonb_agg(to_jsonb(b.*)) as data FROM businesses b")
-                    .fetch_optional(&state.db).await?
+                    .fetch_optional(&state.db)
+                    .await?
             };
             results
                 .and_then(|r| r.get::<Option<serde_json::Value>, _>("data"))
@@ -777,7 +898,8 @@ pub async fn bulk_export(
                     .bind(did).fetch_optional(&state.db).await?
             } else {
                 sqlx::query("SELECT jsonb_agg(to_jsonb(r.*)) as data FROM reviews r")
-                    .fetch_optional(&state.db).await?
+                    .fetch_optional(&state.db)
+                    .await?
             };
             results
                 .and_then(|r| r.get::<Option<serde_json::Value>, _>("data"))
@@ -790,7 +912,8 @@ pub async fn bulk_export(
                     .bind(did).fetch_optional(&state.db).await?
             } else {
                 sqlx::query("SELECT jsonb_agg(to_jsonb(c.*)) as data FROM crm_contacts c")
-                    .fetch_optional(&state.db).await?
+                    .fetch_optional(&state.db)
+                    .await?
             };
             results
                 .and_then(|r| r.get::<Option<serde_json::Value>, _>("data"))
@@ -799,17 +922,24 @@ pub async fn bulk_export(
         }
         "deals" => {
             let results = sqlx::query("SELECT jsonb_agg(to_jsonb(d.*)) as data FROM deals d")
-                .fetch_optional(&state.db).await?;
+                .fetch_optional(&state.db)
+                .await?;
             results
                 .and_then(|r| r.get::<Option<serde_json::Value>, _>("data"))
                 .and_then(|v| v.as_array().cloned())
                 .unwrap_or_default()
         }
-        _ => return Err(AppError::Validation(format!("Unsupported entity type: {}", entity_type))),
+        _ => {
+            return Err(AppError::Validation(format!(
+                "Unsupported entity type: {}",
+                entity_type
+            )))
+        }
     };
 
     if output_format == "csv" && !rows.is_empty() {
-        let headers: Vec<String> = rows[0].as_object()
+        let headers: Vec<String> = rows[0]
+            .as_object()
             .map(|obj| obj.keys().cloned().collect())
             .unwrap_or_default();
 
@@ -817,18 +947,19 @@ pub async fn bulk_export(
         csv_lines.push(headers.join(","));
 
         for row in &rows {
-            let vals: Vec<String> = headers.iter().map(|h| {
-                row.get(h)
-                    .and_then(|v| {
-                        match v {
+            let vals: Vec<String> = headers
+                .iter()
+                .map(|h| {
+                    row.get(h)
+                        .and_then(|v| match v {
                             serde_json::Value::String(s) => Some(s.clone()),
                             serde_json::Value::Null => String::new().into(),
                             other => Some(other.to_string()),
-                        }
-                    })
-                    .unwrap_or_default()
-                    .replace('"', "\"\"")
-            }).collect();
+                        })
+                        .unwrap_or_default()
+                        .replace('"', "\"\"")
+                })
+                .collect();
             csv_lines.push(format!("\"{}\"", vals.join("\",\"")));
         }
 
@@ -851,9 +982,11 @@ pub async fn bulk_export(
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn urlencoding(s: &str) -> String {
-    s.chars().map(|c| match c {
-        'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-        ' ' => "+".to_string(),
-        other => format!("%{:02X}", other as u8),
-    }).collect()
+    s.chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            ' ' => "+".to_string(),
+            other => format!("%{:02X}", other as u8),
+        })
+        .collect()
 }

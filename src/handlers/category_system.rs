@@ -12,8 +12,8 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult, validate_pagination};
 
 // ── Filter Options ───────────────────────────────────────────────────────────
 
@@ -42,13 +42,11 @@ pub struct CategoryGroup {
 ///
 /// Returns all categories from directory_categories grouped by group_name
 /// for use in dropdown filter menus on the search page.
-pub async fn get_filter_options(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn get_filter_options(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let rows = sqlx::query_as::<_, (Uuid, String, String, Option<String>)>(
         r#"SELECT id, name, slug, group_name
            FROM directory_categories
-           ORDER BY COALESCE(group_name, 'zzz') ASC, name ASC"#
+           ORDER BY COALESCE(group_name, 'zzz') ASC, name ASC"#,
     )
     .fetch_all(&s.db)
     .await?;
@@ -111,7 +109,7 @@ pub async fn get_business_categories(
            FROM business_categories bc
            LEFT JOIN directory_categories dc ON dc.id = bc.category_id
            WHERE bc.business_id = $1
-           ORDER BY bc.is_primary DESC, dc.name ASC"#
+           ORDER BY bc.is_primary DESC, dc.name ASC"#,
     )
     .bind(id)
     .fetch_all(&s.db)
@@ -162,14 +160,16 @@ pub async fn set_business_categories(
 
     // Validate all category IDs exist
     let valid_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directory_categories WHERE id = ANY($1)"
+        "SELECT COUNT(*) FROM directory_categories WHERE id = ANY($1)",
     )
     .bind(&req.category_ids)
     .fetch_one(&s.db)
     .await?;
 
     if valid_count != req.category_ids.len() as i64 {
-        return Err(AppError::BadRequest("One or more category IDs are invalid".to_string()));
+        return Err(AppError::BadRequest(
+            "One or more category IDs are invalid".to_string(),
+        ));
     }
 
     // Transaction: delete existing, insert new
@@ -195,7 +195,9 @@ pub async fn set_business_categories(
 
     tx.commit().await?;
 
-    Ok(Json(json!({"status": "updated", "category_count": req.category_ids.len()})))
+    Ok(Json(
+        json!({"status": "updated", "category_count": req.category_ids.len()}),
+    ))
 }
 
 // ── Delete Single Category ───────────────────────────────────────────────────
@@ -209,7 +211,7 @@ pub async fn delete_business_category(
     Path((business_id, category_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<impl IntoResponse> {
     let current_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM business_categories WHERE business_id = $1"
+        "SELECT COUNT(*) FROM business_categories WHERE business_id = $1",
     )
     .bind(business_id)
     .fetch_one(&s.db)
@@ -217,20 +219,21 @@ pub async fn delete_business_category(
 
     if current_count <= 1 {
         return Err(AppError::BadRequest(
-            "Business must have at least one category assigned".to_string()
+            "Business must have at least one category assigned".to_string(),
         ));
     }
 
-    let deleted = sqlx::query(
-        "DELETE FROM business_categories WHERE business_id = $1 AND category_id = $2"
-    )
-    .bind(business_id)
-    .bind(category_id)
-    .execute(&s.db)
-    .await?;
+    let deleted =
+        sqlx::query("DELETE FROM business_categories WHERE business_id = $1 AND category_id = $2")
+            .bind(business_id)
+            .bind(category_id)
+            .execute(&s.db)
+            .await?;
 
     if deleted.rows_affected() == 0 {
-        return Err(AppError::NotFound("Category assignment not found".to_string()));
+        return Err(AppError::NotFound(
+            "Category assignment not found".to_string(),
+        ));
     }
 
     Ok(Json(json!({"status": "removed"})))
@@ -256,14 +259,14 @@ pub async fn bulk_assign_categories(
 ) -> ApiResult<impl IntoResponse> {
     if req.business_ids.is_empty() || req.category_ids.is_empty() {
         return Err(AppError::BadRequest(
-            "business_ids and category_ids must not be empty".to_string()
+            "business_ids and category_ids must not be empty".to_string(),
         ));
     }
 
     let mode = req.mode.to_lowercase();
     if mode != "replace" && mode != "append" {
         return Err(AppError::BadRequest(
-            "mode must be 'replace' or 'append'".to_string()
+            "mode must be 'replace' or 'append'".to_string(),
         ));
     }
 
@@ -281,7 +284,7 @@ pub async fn bulk_assign_categories(
         // Check max categories for this business
         let existing_count = if mode == "append" {
             sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM business_categories WHERE business_id = $1"
+                "SELECT COUNT(*) FROM business_categories WHERE business_id = $1",
             )
             .bind(bid)
             .fetch_one(&mut *tx)
@@ -298,7 +301,7 @@ pub async fn bulk_assign_categories(
             let is_primary = existing_count == 0 && i == 0;
             let result = sqlx::query(
                 "INSERT INTO business_categories (business_id, category_id, is_primary) \
-                 VALUES ($1, $2, $3) ON CONFLICT (business_id, category_id) DO NOTHING"
+                 VALUES ($1, $2, $3) ON CONFLICT (business_id, category_id) DO NOTHING",
             )
             .bind(bid)
             .bind(cat_id)
@@ -309,7 +312,9 @@ pub async fn bulk_assign_categories(
             if let Err(e) = result {
                 tracing::warn!(
                     "Failed to insert category {} for business {}: {}",
-                    cat_id, bid, e
+                    cat_id,
+                    bid,
+                    e
                 );
             }
         }
@@ -355,12 +360,11 @@ pub async fn create_category_request(
     Json(req): Json<CreateCategoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Check category exists
-    let cat_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directory_categories WHERE id = $1"
-    )
-    .bind(req.category_id)
-    .fetch_one(&s.db)
-    .await?;
+    let cat_exists =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directory_categories WHERE id = $1")
+            .bind(req.category_id)
+            .fetch_one(&s.db)
+            .await?;
 
     if cat_exists == 0 {
         return Err(AppError::NotFound("Category not found".to_string()));
@@ -368,7 +372,7 @@ pub async fn create_category_request(
 
     // Check not already assigned
     let already_assigned = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM business_categories WHERE business_id = $1 AND category_id = $2"
+        "SELECT COUNT(*) FROM business_categories WHERE business_id = $1 AND category_id = $2",
     )
     .bind(business_id)
     .bind(req.category_id)
@@ -377,14 +381,14 @@ pub async fn create_category_request(
 
     if already_assigned > 0 {
         return Err(AppError::Duplicate(
-            "Business already has this category assigned".to_string()
+            "Business already has this category assigned".to_string(),
         ));
     }
 
     // Check not already requested
     let already_requested = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM category_requests \
-         WHERE business_id = $1 AND category_id = $2 AND status = 'pending'"
+         WHERE business_id = $1 AND category_id = $2 AND status = 'pending'",
     )
     .bind(business_id)
     .bind(req.category_id)
@@ -393,13 +397,13 @@ pub async fn create_category_request(
 
     if already_requested > 0 {
         return Err(AppError::Duplicate(
-            "A pending request for this category already exists".to_string()
+            "A pending request for this category already exists".to_string(),
         ));
     }
 
     let request = sqlx::query_as::<_, CategoryRequest>(
         "INSERT INTO category_requests (business_id, category_id, notes) \
-         VALUES ($1, $2, $3) RETURNING *"
+         VALUES ($1, $2, $3) RETURNING *",
     )
     .bind(business_id)
     .bind(req.category_id)
@@ -426,55 +430,101 @@ pub async fn list_category_requests(
     let status_filter = qs.status.unwrap_or_else(|| "pending".to_string());
 
     let requests: Vec<serde_json::Value> = if let Some(bid) = qs.business_id {
-        sqlx::query_as::<_, (Uuid, Uuid, Uuid, Option<Uuid>, String, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+        sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                Uuid,
+                Uuid,
+                Option<Uuid>,
+                String,
+                Option<String>,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(
             "SELECT cr.id, cr.business_id, cr.category_id, cr.requested_by, cr.status, \
                     cr.notes, cr.created_at, cr.updated_at \
              FROM category_requests cr \
              WHERE cr.status = $1 AND cr.business_id = $2 \
-             ORDER BY cr.created_at DESC"
+             ORDER BY cr.created_at DESC",
         )
         .bind(&status_filter)
         .bind(bid)
         .fetch_all(&s.db)
         .await?
         .into_iter()
-        .map(|(id, business_id, category_id, requested_by, status, notes, created_at, updated_at)| {
-            json!({
-                "id": id,
-                "business_id": business_id,
-                "category_id": category_id,
-                "requested_by": requested_by,
-                "status": status,
-                "notes": notes,
-                "created_at": created_at,
-                "updated_at": updated_at
-            })
-        })
+        .map(
+            |(
+                id,
+                business_id,
+                category_id,
+                requested_by,
+                status,
+                notes,
+                created_at,
+                updated_at,
+            )| {
+                json!({
+                    "id": id,
+                    "business_id": business_id,
+                    "category_id": category_id,
+                    "requested_by": requested_by,
+                    "status": status,
+                    "notes": notes,
+                    "created_at": created_at,
+                    "updated_at": updated_at
+                })
+            },
+        )
         .collect()
     } else {
-        sqlx::query_as::<_, (Uuid, Uuid, Uuid, Option<Uuid>, String, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+        sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                Uuid,
+                Uuid,
+                Option<Uuid>,
+                String,
+                Option<String>,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(
             "SELECT cr.id, cr.business_id, cr.category_id, cr.requested_by, cr.status, \
                     cr.notes, cr.created_at, cr.updated_at \
              FROM category_requests cr \
              WHERE cr.status = $1 \
-             ORDER BY cr.created_at DESC"
+             ORDER BY cr.created_at DESC",
         )
         .bind(&status_filter)
         .fetch_all(&s.db)
         .await?
         .into_iter()
-        .map(|(id, business_id, category_id, requested_by, status, notes, created_at, updated_at)| {
-            json!({
-                "id": id,
-                "business_id": business_id,
-                "category_id": category_id,
-                "requested_by": requested_by,
-                "status": status,
-                "notes": notes,
-                "created_at": created_at,
-                "updated_at": updated_at
-            })
-        })
+        .map(
+            |(
+                id,
+                business_id,
+                category_id,
+                requested_by,
+                status,
+                notes,
+                created_at,
+                updated_at,
+            )| {
+                json!({
+                    "id": id,
+                    "business_id": business_id,
+                    "category_id": category_id,
+                    "requested_by": requested_by,
+                    "status": status,
+                    "notes": notes,
+                    "created_at": created_at,
+                    "updated_at": updated_at
+                })
+            },
+        )
         .collect()
     };
 
@@ -490,7 +540,7 @@ pub async fn approve_category_request(
     Path(request_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let request = sqlx::query_as::<_, (Uuid, Uuid, String)>(
-        "SELECT id, business_id, status FROM category_requests WHERE id = $1"
+        "SELECT id, business_id, status FROM category_requests WHERE id = $1",
     )
     .bind(request_id)
     .fetch_optional(&s.db)
@@ -498,9 +548,10 @@ pub async fn approve_category_request(
     .ok_or_else(|| AppError::NotFound("Category request not found".to_string()))?;
 
     if request.2 != "pending" {
-        return Err(AppError::BadRequest(
-            format!("Request status is '{}', not 'pending'", request.2)
-        ));
+        return Err(AppError::BadRequest(format!(
+            "Request status is '{}', not 'pending'",
+            request.2
+        )));
     }
 
     let mut tx = s.db.begin().await?;
@@ -509,7 +560,7 @@ pub async fn approve_category_request(
     sqlx::query(
         "INSERT INTO business_categories (business_id, category_id, is_primary) \
          VALUES ($1, (SELECT category_id FROM category_requests WHERE id = $2), false) \
-         ON CONFLICT (business_id, category_id) DO NOTHING"
+         ON CONFLICT (business_id, category_id) DO NOTHING",
     )
     .bind(request.1)
     .bind(request_id)
@@ -518,7 +569,7 @@ pub async fn approve_category_request(
 
     // Update request status
     sqlx::query(
-        "UPDATE category_requests SET status = 'approved', updated_at = now() WHERE id = $1"
+        "UPDATE category_requests SET status = 'approved', updated_at = now() WHERE id = $1",
     )
     .bind(request_id)
     .execute(&mut *tx)
@@ -538,7 +589,7 @@ pub async fn deny_category_request(
 ) -> ApiResult<impl IntoResponse> {
     let updated = sqlx::query(
         "UPDATE category_requests SET status = 'denied', updated_at = now() \
-         WHERE id = $1 AND status = 'pending'"
+         WHERE id = $1 AND status = 'pending'",
     )
     .bind(request_id)
     .execute(&s.db)
@@ -546,7 +597,7 @@ pub async fn deny_category_request(
 
     if updated.rows_affected() == 0 {
         return Err(AppError::NotFound(
-            "Category request not found or not pending".to_string()
+            "Category request not found or not pending".to_string(),
         ));
     }
 
@@ -579,12 +630,14 @@ async fn get_max_categories_internal(
             (meta_data->>'max_categories')::int, NULL
            ) FROM business_meta
            WHERE business_id = $1 AND template = 'default'
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(business_id)
     .fetch_optional(exec)
     .await?
     .flatten();
 
-    Ok(override_count.map(|c| c.clamp(1, 5) as usize).unwrap_or(DEFAULT_MAX_CATEGORIES))
+    Ok(override_count
+        .map(|c| c.clamp(1, 5) as usize)
+        .unwrap_or(DEFAULT_MAX_CATEGORIES))
 }

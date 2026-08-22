@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Account - Community Visitor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;--secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;--dark:#2b3255;--bg:#f8fafc;--card:#fff;--text:#4a5568;--text-secondary:#718096;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b;--accent:#8b5cf6}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Auth screens */
+.auth-container{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,var(--dark) 0%,#1a3a6b 100%)}
+.auth-card{background:var(--card);border-radius:16px;padding:40px;width:420px;max-width:90vw;box-shadow:0 25px 50px -12px rgba(0,0,0,.4)}
+.auth-card h1{font-size:1.75rem;color:var(--primary);text-align:center;margin-bottom:4px}
+.auth-card .tagline{text-align:center;color:var(--text-secondary);font-size:.9rem;margin-bottom:28px}
+.auth-card .error{background:#fef2f2;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.auth-card .success-msg{background:#f0fdf4;color:#16a34a;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.tab-bar{display:flex;margin-bottom:24px;border-bottom:2px solid var(--border)}
+.tab{flex:1;text-align:center;padding:10px;cursor:pointer;font-weight:600;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* Dashboard */
+.dashboard{display:none;max-width:1000px;margin:0 auto;padding:24px}
+.dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.dashboard-header h1{font-size:1.5rem;color:var(--text)}
+.dashboard-header .user-info{font-size:.85rem;color:var(--text-secondary)}
+.logout-btn{background:none;border:1px solid var(--border);color:var(--text-secondary);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:.85rem;transition:all .2s}
+.logout-btn:hover{background:#f1f5f9;color:var(--danger);border-color:var(--danger)}
+
+/* Profile card */
+.profile-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.profile-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--secondary));display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#fff;flex-shrink:0}
+.profile-info h2{font-size:1.2rem;margin-bottom:2px}
+.profile-info p{font-size:.85rem;color:var(--text-secondary)}
+.profile-info .email{color:var(--primary);font-weight:500}
+
+/* Section */
+.section{margin-bottom:24px}
+.section-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.section-subtitle{font-size:.85rem;color:var(--text-secondary);margin-bottom:16px}
+
+/* Cards */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s}
+.card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.card h4{font-size:.95rem;margin-bottom:4px;color:var(--text)}
+.card p{font-size:.82rem;color:var(--text-secondary);margin-bottom:8px}
+.card .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge.active{background:#dcfce7;color:#16a34a}
+.badge.inactive{background:#f1f5f9;color:#64748b}
+.badge.warning{background:#fef3c7;color:#d97706}
+.badge.accent{background:#f3e8ff;color:#7c3aed}
+.card .meta{font-size:.78rem;color:var(--text-secondary);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+
+/* Empty state */
+.empty-state{text-align:center;padding:40px 20px}
+.empty-state .icon{font-size:3rem;margin-bottom:12px}
+.empty-state h3{font-size:1.1rem;margin-bottom:4px}
+.empty-state p{font-size:.85rem;color:var(--text-secondary)}
+
+/* Loading */
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:#e06e1a}
+.btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#cbd5e1}
+.btn-block{width:100%}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.form-group input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;font-family:inherit}
+.form-group input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(13,148,136,.15)}
+.form-hint{font-size:.75rem;color:var(--text-secondary);margin-top:2px}
+
+/* Responsive */
+@media(max-width:768px){
+  .dashboard{padding:16px}
+  .card-grid{grid-template-columns:1fr}
+  .loy-stats-grid{grid-template-columns:repeat(2,1fr)}
+}
+/* Loyalty Wallet */
+.loy-stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s;text-align:center}
+.stat-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.stat-card .stat-icon{font-size:2rem;margin-bottom:6px}
+.stat-card .stat-value{font-size:1.6rem;font-weight:700;color:var(--primary)}
+.stat-card .stat-label{font-size:.82rem;color:var(--text-secondary)}
+
+/* Walkthrough Overlay */
+.walkthrough-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.walkthrough-card{background:#fff;border-radius:16px;padding:32px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .3s}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.walkthrough-card .icon{font-size:3rem;margin-bottom:12px}
+.walkthrough-card h3{font-size:1.2rem;color:#0f172a;margin-bottom:8px}
+.walkthrough-card p{font-size:.9rem;color:#475569;line-height:1.6;margin-bottom:20px}
+.walkthrough-card .btn{background:#f27f2f;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+.walkthrough-card .btn:hover{background:#e06e1a}
+.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#f27f2f;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(13,148,136,.3);z-index:9998;border:none;transition:all .2s}
+.walkthrough-help-icon:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(13,148,136,.4)}
+</style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="authScreen" class="auth-container">
+  <div class="auth-card">
+    <h1>👤 ZaarHub</h1>
+    <p class="tagline">Community Visitor Account</p>
+    <div id="authError" class="error"></div>
+    <div id="authSuccess" class="success-msg"></div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchAuthTab('login')" id="loginTab">Login</div>
+      <div class="tab" onclick="switchAuthTab('register')" id="registerTab">Register</div>
+    </div>
+
+    <!-- Login Form -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter your password">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doLogin()">Sign In</button>
+    </div>
+
+    <!-- Register Form -->
+    <div id="registerForm" style="display:none">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="regName" placeholder="Your name (optional)">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="regPassword" placeholder="At least 6 characters">
+      </div>
+      <div class="form-group">
+        <label>Phone (optional)</label>
+        <input type="tel" id="regPhone" placeholder="+1 (555) 123-4567">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doRegister()">Create Visitor Account</button>
+      <p style="text-align:center;margin-top:12px;font-size:.8rem;color:var(--text-secondary)">
+        Already have an account? <a href="#" onclick="switchAuthTab('login');return false">Sign in</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="dashboard">
+  <div class="dashboard-header">
+    <div>
+      <h1>👤 My Account</h1>
+      <div class="user-info" id="userInfo">Community Visitor</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/saved-places" style="color:var(--primary);font-size:.9rem;cursor:pointer;text-decoration:none;padding:4px 8px;border:1px solid var(--primary);border-radius:4px;" title="My Saved Places">⭐ Saved</a>
+      <a href="/guides/participant-guide.html" target="_blank" style="color:var(--primary);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="How it Works">❓</a>
+      <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingState" style="text-align:center;padding:40px">
+    <div class="spinner"></div>
+    <p style="margin-top:12px;color:var(--text-secondary)">Loading your profile...</p>
+  </div>
+
+  <!-- Content -->
+  <div id="dashboardContent" style="display:none">
+
+    <!-- Profile -->
+    <div class="profile-card" id="profileCard">
+      <div class="profile-avatar" id="profileAvatar">👤</div>
+      <div class="profile-info">
+        <h2 id="profileName">Visitor</h2>
+        <p class="email" id="profileEmail">email@example.com</p>
+        <p id="profileMeta">Member since today</p>
+      </div>
+    </div>
+
+    <!-- Saved Deals -->
+    <div class="section">
+      <div class="section-title">🎟️ Saved Deals</div>
+      <div class="section-subtitle">Deals you've claimed or favorited</div>
+      <div id="savedDeals">
+        <div class="empty-state">
+          <div class="icon">🎟️</div>
+          <h3>No saved deals yet</h3>
+          <p>Browse directory listings and claim deals to save them here.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Favorites -->
+    <div class="section">
+      <div class="section-title">⭐ Favorites</div>
+      <div class="section-subtitle">Businesses you've saved as favorites</div>
+      <div id="favoritesList">
+        <div class="empty-state">
+          <div class="icon">⭐</div>
+          <h3>No favorites yet</h3>
+          <p>Save businesses you love to find them quickly later.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Badges -->
+    <div class="section">
+      <div class="section-title">🏆 Badges & Achievements</div>
+      <div class="section-subtitle">Earn badges by engaging with the community</div>
+      <div id="badgesList">
+        <div class="empty-state">
+          <div class="icon">🏆</div>
+          <h3>No badges earned yet</h3>
+          <p>Community features and gamification are coming soon!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZaarCash Customer Guide -->
+    <details id="zaarcashCustGuide" style="margin:24px 0 8px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <summary style="padding:14px 20px;cursor:pointer;font-weight:700;font-size:.95rem;display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#eff6ff,#f0fdf4)">
+        💡 How ZaarCash Rewards Work
+        <span style="margin-left:auto;font-size:.75rem;color:#64748b">click to expand</span>
+      </summary>
+      <div style="padding:16px 20px;font-size:.85rem;line-height:1.6">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
+          <div style="background:#f0fdf4;border-radius:8px;padding:14px">
+            <h4 style="margin:0 0 8px;font-size:.9rem;color:#166534">🎁 How You Earn ZaarCash</h4>
+            <ul style="margin:0;padding-left:18px">
+              <li><strong>1 ZaarCash per $1</strong> you spend at any participating loyalty partner</li>
+              <li>Show your QR code at checkout — the business scans it</li>
+              <li>$30 meal = <strong>30 ZC</strong> in ZaarCash (worth $0.30 toward future purchases)</li>
+              <li>$100 shopping = <strong>100 ZC</strong> in ZaarCash (worth $1.00 toward future purchases)</li>
+              <li>Earn at the pizzeria, the hardware store, the salon — at <strong>any participating loyalty partner</strong></li>
+            </ul>
+          </div>
+          <div style="background:#eff6ff;border-radius:8px;padding:14px">
+            <h4 style="margin:0 0 8px;font-size:.9rem;color:#1e40af">💸 How You Spend ZaarCash</h4>
+            <ul style="margin:0;padding-left:18px">
+              <li><strong>100 ZC = $1.00</strong> toward your bill at any loyalty partner</li>
+              <li>Can cover up to <strong>10% of any purchase</strong></li>
+              <li>$50 bill → use up to 500 ZC ($5 toward your bill)</li>
+              <li>Must have at least <strong>100 ZC</strong> saved before redeeming</li>
+              <li>Redeemable at <strong>any participating loyalty partner</strong> — not just where you earned it</li>
+            </ul>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:.82rem;color:#64748b">
+          <strong>🔑 Key point:</strong> You earn <strong>1% back in ZaarCash</strong> at every <strong>participating loyalty partner</strong> in the community. Look for the 🎯 badge on business profiles. Every dollar you spend earns ZaarCash, redeemable at any loyalty partner. It adds up: $500 in purchases = $5.00 in ZaarCash waiting for you.
+        </div>
+      </div>
+    </details>
+
+    <!-- Loyalty Enrollment CTA (shown when not yet enrolled) -->
+    <div id="loyaltyEnrollCTA" style="display:none;background:linear-gradient(135deg,#f27f2f,#e0671e);border-radius:16px;padding:28px;margin:24px 0;color:#fff;box-shadow:0 4px 20px rgba(242,127,47,0.3)">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="font-size:3rem;flex-shrink:0">🎯</div>
+        <div style="flex:1;min-width:200px">
+          <h3 style="font-size:1.3rem;margin:0 0 8px 0;color:#fff">Join ZaarCash Rewards</h3>
+          <p style="font-size:.9rem;margin:0 0 4px 0;opacity:0.95">✅ Earn <strong>1% back in ZaarCash</strong> at every participating loyalty partner</p>
+          <p style="font-size:.85rem;margin:0 0 4px 0;opacity:0.85">✅ Redeem your ZaarCash at any loyalty partner — use toward your bill</p>
+          <p style="font-size:.85rem;margin:0;opacity:0.85">✅ Get a personal QR code to earn at checkout</p>
+        </div>
+        <button id="enrollLoyaltyBtn" onclick="enrollInLoyalty()" style="background:#fff;color:#f27f2f;border:none;padding:14px 32px;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .2s">
+          🚀 Enroll Now — Free
+        </button>
+      </div>
+      <div id="enrollStatus" style="margin-top:12px;font-size:.85rem;display:none"></div>
+    </div>
+
+    <!-- Loyalty Wallet (if available) -->
+    <div class="section">
+      <div class="section-title">🎯 My Loyalty Wallet</div>
+      <div class="section-subtitle">Credits, vouchers & rewards</div>
+      <div id="visitorLoyalty" class="loy-stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+        <div class="stat-card">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value" id="visLoyCredits">-</div>
+          <div class="stat-label">Credits</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🎟️</div>
+          <div class="stat-value" id="visLoyVouchers">-</div>
+          <div class="stat-label">Vouchers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">👥</div>
+          <div class="stat-value" id="visLoyReferrals">-</div>
+          <div class="stat-label">Referrals</div>
+        </div>
+        <div class="stat-card" style="grid-column:1/-1">
+          <div class="stat-icon">🎯</div>
+          <div class="stat-value" id="visLoyCode" style="font-size:1rem;letter-spacing:2px;font-family:monospace;color:var(--accent)">-</div>
+          <div class="stat-label">Referral Code</div>
+        </div>
+        <!-- QR Code Card -->
+        <div class="stat-card" style="grid-column:1/-1">
+          <div class="stat-icon">📱</div>
+          <div style="text-align:center">
+            <div id="qrCodeContainer" style="background:#fff;border:2px solid var(--border);border-radius:12px;padding:12px;display:inline-block;margin:8px auto"></div>
+            <p style="font-size:.8rem;color:var(--text-secondary);margin-top:4px">Scan at checkout for loyalty credits</p>
+          </div>
+          <div class="stat-label">Loyalty QR</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+const API = '/api/v1';
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+function switchAuthTab(tab) {
+  if (tab === 'login') {
+    $('loginTab').classList.add('active');
+    $('registerTab').classList.remove('active');
+    show('loginForm');
+    hide('registerForm');
+  } else {
+    $('registerTab').classList.add('active');
+    $('loginTab').classList.remove('active');
+    hide('loginForm');
+    show('registerForm');
+  }
+  hide('authError');
+  hide('authSuccess');
+}
+
+function showError(msg) {
+  var el = $('authError');
+  el.textContent = msg;
+  el.style.display = '';
+}
+function showSuccess(msg) {
+  var el = $('authSuccess');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── API Calls ──
+async function g(path) {
+  var token = localStorage.getItem('visitorToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { headers: h });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+async function po(path, body) {
+  var h = { 'Content-Type': 'application/json' };
+  var r = await fetch(API + path, { method: 'POST', headers: h, body: JSON.stringify(body) });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+// ── Auth ──
+async function doLogin() {
+  var email = $('loginEmail').value.trim();
+  var password = $('loginPassword').value;
+  if (!email || !password) { showError('Please enter email and password'); return; }
+  hide('authError');
+  try {
+    var r = await po('/visitor/login', { email, password });
+    localStorage.setItem('visitorToken', r.access_token);
+    localStorage.setItem('visitorInfo', JSON.stringify(r.visitor));
+    loadDashboard();
+  } catch(e) {
+    showError(e.message);
+  }
+}
+
+async function doRegister() {
+  var name = $('regName').value.trim() || undefined;
+  var email = $('regEmail').value.trim();
+  var password = $('regPassword').value;
+  var phone = $('regPhone').value.trim() || undefined;
+  if (!email || !password) { showError('Email and password are required'); return; }
+  if (password.length < 6) { showError('Password must be at least 6 characters'); return; }
+  hide('authError');
+  try {
+    var r = await po('/visitor/register', { email, password, name, phone });
+    localStorage.setItem('visitorToken', r.access_token);
+    localStorage.setItem('visitorInfo', JSON.stringify(r.visitor));
+    showSuccess('Account created! Loading your profile...');
+    setTimeout(loadDashboard, 500);
+  } catch(e) {
+    showError(e.message);
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('visitorToken');
+  localStorage.removeItem('visitorInfo');
+  hide('dashboard');
+  show('authScreen');
+  show('loginForm');
+  hide('registerForm');
+  $('loginTab').classList.add('active');
+  $('registerTab').classList.remove('active');
+}
+
+// ── Dashboard ──
+async function loadDashboard() {
+  var token = localStorage.getItem('visitorToken');
+  if (!token) { show('authScreen'); hide('dashboard'); return; }
+
+  hide('authScreen');
+  show('dashboard');
+  show('loadingState');
+  hide('dashboardContent');
+
+  try {
+    var data = await g('/visitor/profile');
+    var v = data.visitor || {};
+    $('profileName').textContent = v.name || 'Visitor';
+    $('profileEmail').textContent = v.email;
+    $('profileMeta').textContent = 'Member since ' + (v.created_at ? new Date(v.created_at).toLocaleDateString() : 'today');
+    if (v.name) {
+      $('profileAvatar').textContent = v.name.charAt(0).toUpperCase();
+    }
+
+    // Saved deals
+    renderDeals(data.saved_deals || []);
+
+    // Favorites
+    renderFavorites(data.favorites || []);
+
+    // Badges
+    renderBadges(data.badges || []);
+
+    // Load loyalty data (optional — may fail if visitor has no IS account)
+    loadVisitorLoyalty();
+
+    hide('loadingState');
+    show('dashboardContent');
+  } catch(e) {
+    // Token expired or invalid
+    doLogout();
+  }
+}
+
+function renderDeals(deals) {
+  if (!deals || deals.length === 0) return;
+  var html = '<div class="card-grid">';
+  for (var d of deals) {
+    html += '<div class="card">';
+    if (d.image_url) html += '<img src="' + esc(d.image_url) + '" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px">';
+    html += '<h4>' + esc(d.title) + '</h4>';
+    if (d.description) html += '<p>' + esc(d.description) + '</p>';
+    if (d.discount_value) html += '<span class="badge warning">' + esc(d.discount_value) + '</span>';
+    html += '</div>';
+  }
+  html += '</div>';
+  $('savedDeals').innerHTML = html;
+}
+
+function renderFavorites(favorites) {
+  if (!favorites || favorites.length === 0) return;
+  var html = '<div class="card-grid">';
+  for (var f of favorites) {
+    html += '<div class="card"><h4>' + esc(f.name || 'Business') + '</h4></div>';
+  }
+  html += '</div>';
+  $('favoritesList').innerHTML = html;
+}
+
+function renderBadges(badges) {
+  if (!badges || badges.length === 0) return;
+  var html = '<div class="card-grid">';
+  for (var b of badges) {
+    html += '<div class="card"><span class="badge accent">' + esc(b.name || 'Badge') + '</span></div>';
+  }
+  html += '</div>';
+  $('badgesList').innerHTML = html;
+}
+
+// ── Visitor Loyalty ──
+function loadVisitorLoyalty() {
+  var tok = localStorage.getItem('visitorToken');
+  if (!tok) return;
+  var h = { 'Authorization': 'Bearer ' + tok };
+  fetch('/api/v1/loyalty/portal/dashboard', { headers: h })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var cEl = document.getElementById('visLoyCredits');
+      var vEl = document.getElementById('visLoyVouchers');
+      var rEl = document.getElementById('visLoyReferrals');
+      var cdEl = document.getElementById('visLoyCode');
+      if (cEl) cEl.textContent = '$' + (d.total_credits || 0);
+      if (vEl) vEl.textContent = d.active_vouchers || 0;
+      if (rEl) rEl.textContent = d.referral_count || 0;
+      if (cdEl) cdEl.textContent = d.referrer_code || 'No code';
+      // Load QR code
+      loadVisitorQR(h);
+    })
+    .catch(function() {
+      // Show enrollment CTA if loyalty dashboard fails (no IS account)
+      var cta = document.getElementById('loyaltyEnrollCTA');
+      if (cta) cta.style.display = '';
+    });
+}
+
+// ── Loyalty Enrollment ──
+function enrollInLoyalty() {
+  var btn = document.getElementById('enrollLoyaltyBtn');
+  var status = document.getElementById('enrollStatus');
+  var token = localStorage.getItem('visitorToken');
+  if (!token) { status.textContent = '⚠️ Not logged in'; status.style.display = ''; return; }
+  btn.disabled = true;
+  btn.textContent = '⏳ Enrolling...';
+  status.style.display = '';
+  status.textContent = 'Getting you set up with ZaarCash Rewards...';
+  status.style.color = '#fff';
+
+  fetch('/api/v1/loyalty/enroll', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: '{}'
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.success) {
+        status.textContent = '✅ ' + d.message + ' — reloading...';
+        var cta = document.getElementById('loyaltyEnrollCTA');
+        if (cta) cta.style.display = 'none';
+        // Reload loyalty data
+        setTimeout(function() { loadVisitorLoyalty(); }, 1500);
+      } else {
+        status.textContent = '❌ ' + (d.message || 'Enrollment failed');
+        status.style.color = '#ffe0e0';
+        btn.disabled = false;
+        btn.textContent = '🚀 Enroll Now';
+      }
+    })
+    .catch(function(e) {
+      status.textContent = '❌ Network error: ' + e.message;
+      status.style.color = '#ffe0e0';
+      btn.disabled = false;
+      btn.textContent = '🚀 Enroll Now — Free';
+    });
+}
+
+function loadVisitorQR(headers) {
+  fetch('/api/v1/loyalty/qr', { headers: headers })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var container = document.getElementById('qrCodeContainer');
+      if (!container) return;
+      container.innerHTML = '';
+      var qrId = d.qr_id || d.qr_data;
+      if (!qrId) return;
+      // Encode as loyalty URI
+      var qrText = 'loyalty://customer/' + qrId;
+      new QRCode(container, {
+        text: qrText,
+        width: 160,
+        height: 160,
+        colorDark: '#f27f2f',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    })
+    .catch(function() {
+      // Silent
+    });
+}
+
+/* === Referral Section === */
+function showReferralSection(){
+  var main=document.querySelector('.main-content')||document.getElementById('app');
+  if(!main)return;
+  main.innerHTML='<div style="padding:24px"><div class="card" style="background:var(--bg-card, #1e293b);border:1px solid var(--border, #334155);border-radius:12px;padding:24px"><h2 style="margin-bottom:16px;font-size:1.4rem">\ud83d\udc65 Refer & Earn Zaarcash</h2><p style="color:#94a3b8;font-size:.9rem;margin-bottom:20px">Share ZaarHub with friends and earn Zaarcash when they sign up!</p><div id="refPortalSection"><div style="text-align:center;padding:20px"><span class="spinner-teal" style="display:inline-block;width:32px;height:32px;border:3px solid #334155;border-top-color:var(--primary, #f27f2f);border-radius:50%;animation:spin 1s linear infinite"></span></div></div></div></div>';
+  loadReferralPortalData();
+}
+
+async function loadReferralPortalData(){
+  try{
+    var codeR=await g('/api/v1/referrals/my-code');
+    var code=codeR.referral_code||'';
+    var link='zaarhub.com/join?ref='+code;
+    var balanceR=await g('/api/v1/referrals/balance');
+    var balance=balanceR.zaarcash_balance||0;
+    var el=document.getElementById('refPortalSection');
+    var hasCode=!!code;
+    el.innerHTML='';
+    if(!hasCode){
+      el.innerHTML='<div style="text-align:center;padding:20px"><button class="btn btn-primary" onclick="generatePortalRefCode()" style="background:var(--primary, #f27f2f);color:white;padding:12px 32px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">\ud83d\udd17 Generate Your Referral Link</button></div>';
+      return;
+    }
+    el.innerHTML='<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:20px;margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px"><span style="font-size:1rem">\ud83d\udcb0 Balance: <strong style="color:var(--primary, #f27f2f);font-size:1.3rem">'+balance+'</strong> Zaarcash</span><span style="font-size:.85rem;color:#94a3b8">Refer a friend \u2192 they sign up \u2192 admin verifies \u2192 you earn!</span></div></div><div style="margin-bottom:16px"><label style="display:block;font-size:.9rem;color:#cbd5e1;margin-bottom:6px">Your Referral Link</label><div style="display:flex;gap:8px"><input type="text" id="portalRefLink" value="'+esc(link)+'" readonly style="flex:1;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:.9rem;font-family:monospace"><button onclick="copyPortalRefLink()" style="background:var(--primary, #f27f2f);color:white;padding:8px 20px;border:none;border-radius:6px;cursor:pointer;font-size:.85rem">\ud83d\udccb Copy</button></div></div><div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:16px"><h4 style="color:#cbd5e1;font-size:.9rem;margin-bottom:8px">How it works</h4><ol style="color:#94a3b8;font-size:.85rem;line-height:1.8;padding-left:20px"><li>Share your referral link with friends</li><li>They sign up on ZaarHub using your link</li><li>An admin verifies their account</li><li>You earn 50 Zaarcash per referral!</li></ol></div>';
+  }catch(e){
+    var el=document.getElementById('refPortalSection');
+    if(el)el.innerHTML='<div style="text-align:center;padding:20px;color:#94a3b8">Login to see referral info.</div>';
+  }
+}
+
+async function generatePortalRefCode(){
+  try{
+    var r=await po('/api/v1/referrals/generate',{});
+    toast('Referral link created!','success');
+    loadReferralPortalData();
+  }catch(e){
+    toast('Error: '+e.message,'error');
+  }
+}
+
+function copyPortalRefLink(){
+  var inp=document.getElementById('portalRefLink');
+  if(!inp)return;
+  inp.select();
+  navigator.clipboard.writeText(inp.value).then(function(){toast('Link copied!','success');}).catch(function(){toast('Press Ctrl+C','info');});
+}
+
+/* === Role Switcher in Visitor Portal === */
+async function checkLinkedAdminAccount(){
+  try{
+    var resp=await g('/auth/linked-accounts');
+    if(resp&&resp.linked_accounts&&resp.linked_accounts.length>0){
+      var hasAdmin=resp.linked_accounts.some(function(a){return a.role==='admin';});
+      var hasBusiness=resp.linked_accounts.some(function(a){return a.role==='admin'||a.role==='business';});
+      if(hasAdmin||hasBusiness){
+        var nav=document.querySelector('nav');
+        if(nav){
+          var div=document.createElement('div');
+          div.style.cssText='padding:8px 16px;border-top:1px solid #334155;margin-top:8px';
+          div.innerHTML='<select onchange="switchVisitorRole(this.value)" style="width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.85rem"><option value="visitor">\ud83d\udc64 Visitor</option>'+(hasAdmin?'<option value="admin">\u2699\ufe0f Admin Dashboard</option>':'')+(hasBusiness?'<option value="business">\ud83c\udfed Business Dashboard</option>':'')+'</select>';
+          nav.appendChild(div);
+        }
+      }
+    }
+  }catch(e){}
+}
+
+async function switchVisitorRole(targetRole){
+  if(targetRole==='visitor')return;
+  try{
+    var resp=await po('/auth/switch-role',{target_role:targetRole});
+    if(resp.access_token){
+      localStorage.setItem('visitorBackupToken',localStorage.getItem('visitorToken'));
+      localStorage.setItem('adminToken',resp.access_token);
+      if(resp.switch_back_token){
+        localStorage.setItem('switch_back_token',resp.switch_back_token);
+      }
+      window.location.href='/admin';
+    }
+  }catch(e){
+    toast('Switch failed: '+e.message,'error');
+  }
+}
+
+
+// ── Walkthrough System ──
+var VWT={
+  feed:{i:"🏠",t:"Your Feed",x:"Your personalized neighborhood feed. See bookmarks, upcoming events, active polls, and business suggestions based on your interests."},
+  events:{i:"📅",t:"Events",x:"Browse upcoming community events. RSVP to events you're interested in and see who else is attending."},
+  saved:{i:"❤️",t:"Saved Places",x:"Your saved businesses. Bookmark businesses you like to come back to them later. Tap the heart on any listing to save it."},
+  bookings:{i:"📋",t:"My Bookings",x:"Your service booking requests. Track the status of appointments — pending, confirmed, or completed."},
+  referrals:{i:"👥",t:"Refer & Earn",x:"Refer friends and businesses to earn Zaarcash. Share your unique link and get rewarded after admin verification."},
+  surveys:{i:"📋",t:"Interest Survey",x:"Complete your interest survey to get personalized business suggestions on your feed. Tell us what you're interested in."},
+  deals:{i:"🏷️",t:"Local Deals",x:"Browse local deals from nearby businesses. You can filter by category and save deals you're interested in."},
+  places:{i:"📍",t:"Saved Places",x:"All your bookmarked businesses in one place. Quick access to directions, phone, and reviews."},
+  profile:{i:"👤",t:"Your Profile",x:"Manage your name, email, preferences. This is where you control your account settings."}
+};
+function showVWalkthrough(p){
+  var w=VWT[p];if(!w)return;
+  var k="vwt_"+p+"_dismissed";
+  if(localStorage.getItem(k))return;
+  var ov=document.createElement("div");ov.className="walkthrough-overlay";ov.id="vwtOverlay";
+  ov.innerHTML='<div class="walkthrough-card"><div class="icon">'+w.i+'</div><h3>'+w.t+'</h3><p>'+w.x+'</p><button class="btn" onclick="document.getElementById(\'vwtOverlay\').remove();localStorage.setItem(\'vwt_'+p+'\',\'true\')">Got it</button></div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){if(e.target===ov){ov.remove();localStorage.setItem("vwt_"+p,"true");}};
+}
+
+// ── Help icon ──
+var helpIcon=document.createElement("button");helpIcon.className="walkthrough-help-icon";helpIcon.innerHTML="❓";
+helpIcon.title="Page guide";
+helpIcon.onclick=function(){
+  var p=localStorage.getItem("visitorCurrentTab")||"feed";
+  localStorage.removeItem("vwt_"+p);
+  showVWalkthrough(p);
+};
+document.body.appendChild(helpIcon);
+
+// ── Init ──
+(function init() {
+  if (localStorage.getItem('visitorToken')) {
+    loadDashboard();
+    // Check for linked admin/business accounts and add role switcher
+    if (typeof checkLinkedAdminAccount === 'function') {
+      checkLinkedAdminAccount();
+    }
+  }
+  // Auto-show walkthrough on first visit
+  setTimeout(function(){
+    var p=localStorage.getItem("visitorCurrentTab")||"feed";
+    showVWalkthrough(p);
+  },800);
+})();
+</script>
+  <div data-directory-slug="visitor" style="display:none"></div>
+  <script src="/public/directories/survey-widget.js" defer></script>
+</body>
+</html>

@@ -5,19 +5,19 @@
 //! A background worker endpoint (called by cron) processes due jobs.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use uuid::Uuid;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Models ──
 
@@ -85,12 +85,10 @@ pub async fn add_job(
     }
 
     // Validate directory exists
-    let dir_exists: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM directories WHERE id = $1",
-    )
-    .bind(req.directory_id)
-    .fetch_one(&s.db)
-    .await?;
+    let dir_exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM directories WHERE id = $1")
+        .bind(req.directory_id)
+        .fetch_one(&s.db)
+        .await?;
 
     if dir_exists == 0 {
         return Err(AppError::NotFound("Directory not found".into()));
@@ -146,10 +144,7 @@ pub async fn list_queue(
     };
 
     // Count query
-    let count_sql = format!(
-        "SELECT COUNT(*) FROM content_queue cq {}",
-        where_clause,
-    );
+    let count_sql = format!("SELECT COUNT(*) FROM content_queue cq {}", where_clause,);
     let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
 
     if let Some(ref status) = params.status {
@@ -204,13 +199,12 @@ pub async fn update_job(
     Json(req): Json<UpdateJobRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Only pending jobs can be edited
-    let existing = sqlx::query_as::<_, ContentQueueItem>(
-        "SELECT * FROM content_queue WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Queue item not found".into()))?;
+    let existing =
+        sqlx::query_as::<_, ContentQueueItem>("SELECT * FROM content_queue WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Queue item not found".into()))?;
 
     if existing.status != "pending" {
         return Err(AppError::BadRequest(
@@ -245,13 +239,12 @@ pub async fn cancel_job(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let existing = sqlx::query_as::<_, ContentQueueItem>(
-        "SELECT * FROM content_queue WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Queue item not found".into()))?;
+    let existing =
+        sqlx::query_as::<_, ContentQueueItem>("SELECT * FROM content_queue WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Queue item not found".into()))?;
 
     if existing.status == "completed" || existing.status == "cancelled" {
         return Err(AppError::BadRequest(format!(
@@ -281,7 +274,9 @@ pub async fn bulk_add_jobs(
     }
 
     if req.jobs.len() > 100 {
-        return Err(AppError::Validation("Maximum 100 jobs per bulk request".into()));
+        return Err(AppError::Validation(
+            "Maximum 100 jobs per bulk request".into(),
+        ));
     }
 
     let mut created: Vec<ContentQueueItem> = Vec::new();
@@ -298,13 +293,11 @@ pub async fn bulk_add_jobs(
         }
 
         // Validate directory exists
-        let dir_exists: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM directories WHERE id = $1",
-        )
-        .bind(job.directory_id)
-        .fetch_one(&s.db)
-        .await
-        .unwrap_or(0);
+        let dir_exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM directories WHERE id = $1")
+            .bind(job.directory_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
         if dir_exists == 0 {
             errors.push(json!({
@@ -338,12 +331,15 @@ pub async fn bulk_add_jobs(
         }
     }
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "created": created.len(),
-        "errors": errors.len(),
-        "items": created,
-        "error_details": errors,
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "created": created.len(),
+            "errors": errors.len(),
+            "items": created,
+            "error_details": errors,
+        })),
+    ))
 }
 
 // ── 6. POST /api/v1/cron/content-queue-worker — Process due jobs ──
@@ -360,9 +356,7 @@ pub async fn bulk_add_jobs(
 /// blog generation for queued jobs can be wired to blog_generator::generate_blog_posts).
 ///
 /// Safe to call every hour — idempotent.
-pub async fn process_content_queue(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn process_content_queue(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let due_jobs = sqlx::query_as::<_, ContentQueueItem>(
         r#"SELECT * FROM content_queue
            WHERE status = 'pending'
@@ -389,12 +383,10 @@ pub async fn process_content_queue(
         let result = match job.queue_type.as_str() {
             "trap_door" => process_trap_door_job(&s, job).await,
             "blog" => process_blog_job(&s, job).await,
-            _ => {
-                Err(AppError::Internal(format!(
-                    "Unknown queue_type: {}",
-                    job.queue_type
-                )))
-            }
+            _ => Err(AppError::Internal(format!(
+                "Unknown queue_type: {}",
+                job.queue_type
+            ))),
         };
 
         match result {
@@ -449,10 +441,7 @@ pub async fn process_content_queue(
 /// Replicates the logic from scheduled_generate_trap_doors but for a single
 /// keyword context. Uses the directory_id from the job to fetch services,
 /// cities, day tags, and time tags, then generates programmatic pages.
-async fn process_trap_door_job(
-    s: &AppState,
-    job: &ContentQueueItem,
-) -> Result<String, AppError> {
+async fn process_trap_door_job(s: &AppState, job: &ContentQueueItem) -> Result<String, AppError> {
     let dir_id = job.directory_id;
 
     // Fetch services for this directory
@@ -503,7 +492,10 @@ async fn process_trap_door_job(
                     let slug = format!(
                         "{}-{}-{}-{}-{}",
                         job.keyword.to_lowercase().replace(' ', "-"),
-                        service_slug.replace(' ', "-").replace('&', "and").to_lowercase(),
+                        service_slug
+                            .replace(' ', "-")
+                            .replace('&', "and")
+                            .to_lowercase(),
                         city.to_lowercase().replace(' ', "-"),
                         time,
                         day,
@@ -548,7 +540,14 @@ async fn process_trap_door_job(
 
                     let content = format!(
                         r#"<p>Find {} providers in {} offering {} services open {} on {}. Browse our directory of {} businesses serving the {} area during {} hours.</p>"#,
-                        service_name, city, job.keyword, time_label(time).to_lowercase(), day, service_name, city, time_label(time).to_lowercase(),
+                        service_name,
+                        city,
+                        job.keyword,
+                        time_label(time).to_lowercase(),
+                        day,
+                        service_name,
+                        city,
+                        time_label(time).to_lowercase(),
                     );
 
                     let result = sqlx::query(
@@ -592,10 +591,7 @@ async fn process_trap_door_job(
 /// Currently serves as a placeholder. When full LLM blog generation is wired
 /// for queued jobs, this should be replaced with a call to the blog generator.
 /// For now, it marks the job as completed without generating content.
-async fn process_blog_job(
-    _s: &AppState,
-    _job: &ContentQueueItem,
-) -> Result<String, AppError> {
+async fn process_blog_job(_s: &AppState, _job: &ContentQueueItem) -> Result<String, AppError> {
     // TODO: Wire up full blog generation from content_queue.
     // This should call blog_generator::generate_blog_posts or similar
     // with the job's template_id, keyword, and merge_fields.
@@ -604,7 +600,10 @@ async fn process_blog_job(
     // don't accumulate. Full AI blog generation for queued jobs can be
     // added in a follow-up iteration.
 
-    Ok("Blog job acknowledged — generation not yet wired for queue. Marked as completed.".to_string())
+    Ok(
+        "Blog job acknowledged — generation not yet wired for queue. Marked as completed."
+            .to_string(),
+    )
 }
 
 // ── Helpers ──

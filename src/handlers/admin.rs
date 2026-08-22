@@ -1,69 +1,55 @@
 //! Admin handlers: dashboard, admin listings, portfolio sync.
 
 use axum::{
-    extract::{State, Extension},
+    extract::{Extension, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use serde_json::json;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::models::*;
+use crate::AppState;
 
 /// GET /api/v1/admin/directories — list all directories (admin)
-pub async fn admin_list_directories(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let directories: Vec<Directory> = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories ORDER BY created_at DESC "
-    )
-    .fetch_all(&s.db)
-    .await?;
+pub async fn admin_list_directories(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let directories: Vec<Directory> =
+        sqlx::query_as::<_, Directory>("SELECT * FROM directories ORDER BY created_at DESC ")
+            .fetch_all(&s.db)
+            .await?;
 
     Ok(Json(json!(directories)))
 }
 
 /// GET /api/v1/admin/dashboard/stats
-pub async fn dashboard_stats(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let total_directories = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories "
-    )
-    .fetch_one(&s.db)
-    .await?;
+pub async fn dashboard_stats(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let total_directories = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories ")
+        .fetch_one(&s.db)
+        .await?;
 
-    let total_businesses = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM businesses "
-    )
-    .fetch_one(&s.db)
-    .await?;
+    let total_businesses = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM businesses ")
+        .fetch_one(&s.db)
+        .await?;
 
-    let total_reviews = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM reviews "
-    )
-    .fetch_one(&s.db)
-    .await?;
+    let total_reviews = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews ")
+        .fetch_one(&s.db)
+        .await?;
 
-    let total_domains = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM domain_mappings "
-    )
-    .fetch_one(&s.db)
-    .await?;
+    let total_domains = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domain_mappings ")
+        .fetch_one(&s.db)
+        .await?;
 
     let active_directories = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE status = 'published' AND status IS NOT NULL "
+        "SELECT COUNT(*) FROM directories WHERE status = 'published' AND status IS NOT NULL ",
     )
     .fetch_one(&s.db)
     .await?;
 
-    let published_directories = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE status = 'published'"
-    )
-    .fetch_one(&s.db)
-    .await?;
+    let published_directories =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE status = 'published'")
+            .fetch_one(&s.db)
+            .await?;
 
     Ok(Json(json!(DashboardStats {
         total_directories,
@@ -83,7 +69,7 @@ pub struct MemberRow {
     pub id: uuid::Uuid,
     pub name: Option<String>,
     pub email: String,
-    pub member_type: String,     // visitor, business_owner, supplier
+    pub member_type: String, // visitor, business_owner, supplier
     pub business_type: Option<String>,
     pub directory_slug: Option<String>,
     pub signed_up_at: Option<String>,
@@ -92,9 +78,7 @@ pub struct MemberRow {
     pub interests: Option<Vec<String>>,
 }
 
-pub async fn admin_members(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn admin_members(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     #[derive(sqlx::FromRow)]
     struct MemberRecord {
         id: uuid::Uuid,
@@ -115,17 +99,17 @@ pub async fn admin_members(
            FROM visitor_accounts va
            WHERE va.email IS NOT NULL
            ORDER BY va.created_at DESC NULLS LAST
-           LIMIT 500"#
+           LIMIT 500"#,
     )
     .fetch_all(&s.db)
     .await?;
 
     // Resolve directory slugs in one batch
-    let dir_ids: Vec<uuid::Uuid> = members.iter()
-        .filter_map(|m| m.directory_id)
-        .collect();
+    let dir_ids: Vec<uuid::Uuid> = members.iter().filter_map(|m| m.directory_id).collect();
     let dir_slugs: std::collections::HashMap<uuid::Uuid, String> = if !dir_ids.is_empty() {
-        let placeholders: Vec<String> = dir_ids.iter().enumerate()
+        let placeholders: Vec<String> = dir_ids
+            .iter()
+            .enumerate()
             .map(|(i, _)| format!("${}", i + 1))
             .collect();
         let query = format!(
@@ -153,25 +137,30 @@ pub async fn admin_members(
         std::collections::HashSet::new()
     };
 
-    let rows: Vec<MemberRow> = members.into_iter().map(|m| {
-        let member_type = match m.business_type.as_deref() {
-            Some("supplier") | Some("farm") | Some("wholesaler") | Some("distributor") => "supplier",
-            Some("business") | Some("service") => "business_owner",
-            _ => "visitor",
-        };
-        MemberRow {
-            id: m.id,
-            name: m.name,
-            email: m.email.clone(),
-            member_type: member_type.to_string(),
-            business_type: m.business_type,
-            directory_slug: m.directory_id.and_then(|did| dir_slugs.get(&did).cloned()),
-            signed_up_at: m.created_at.map(|t| t.format("%Y-%m-%d %H:%M").to_string()),
-            survey_completed: m.survey_answered_at.is_some(),
-            loyalty_enrolled: loyalty_emails.contains(&m.email),
-            interests: m.interest_tags,
-        }
-    }).collect();
+    let rows: Vec<MemberRow> = members
+        .into_iter()
+        .map(|m| {
+            let member_type = match m.business_type.as_deref() {
+                Some("supplier") | Some("farm") | Some("wholesaler") | Some("distributor") => {
+                    "supplier"
+                }
+                Some("business") | Some("service") => "business_owner",
+                _ => "visitor",
+            };
+            MemberRow {
+                id: m.id,
+                name: m.name,
+                email: m.email.clone(),
+                member_type: member_type.to_string(),
+                business_type: m.business_type,
+                directory_slug: m.directory_id.and_then(|did| dir_slugs.get(&did).cloned()),
+                signed_up_at: m.created_at.map(|t| t.format("%Y-%m-%d %H:%M").to_string()),
+                survey_completed: m.survey_answered_at.is_some(),
+                loyalty_enrolled: loyalty_emails.contains(&m.email),
+                interests: m.interest_tags,
+            }
+        })
+        .collect();
 
     Ok(Json(json!({
         "total": rows.len(),
@@ -188,7 +177,9 @@ async fn check_loyalty_enrollment(
     if emails.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let placeholders: Vec<String> = emails.iter().enumerate()
+    let placeholders: Vec<String> = emails
+        .iter()
+        .enumerate()
         .map(|(i, _)| format!("${}", i + 1))
         .collect();
     let query = format!(
@@ -202,15 +193,15 @@ async fn check_loyalty_enrollment(
     for email in emails {
         q = q.bind(*email);
     }
-    let results = q.fetch_all(&s.is_db).await
+    let results = q
+        .fetch_all(&s.is_db)
+        .await
         .map_err(|e| AppError::Internal(format!("IS lookup failed: {}", e)))?;
     Ok(results.into_iter().collect())
 }
 
 /// POST /api/v1/admin/portfolio-sync
-pub async fn portfolio_sync(
-    State(_s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn portfolio_sync(State(_s): State<AppState>) -> ApiResult<impl IntoResponse> {
     // This endpoint can be called from other Swift apps to sync portfolio companies
     // Actual implementation would pull from the workflowswift portfolio_companies table
     // For now, return acknowledgement

@@ -745,7 +745,7 @@ function showNearToast(msg,duration){
 (function(){var s=document.createElement('style');s.textContent='@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}.zh-near-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--primary);color:#fff;border-radius:100px;font-size:.78rem;font-weight:600;white-space:nowrap}.zh-near-badge .close{cursor:pointer;opacity:.7;margin-left:4px}.zh-near-badge .close:hover{opacity:1}.zh-dist-badge{font-size:.72rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px;margin-left:6px}';document.head.appendChild(s)})()
 
 // ── State ──
-let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
+let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',diningSlugs:[],loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
 
 // ── Collections (localStorage) ──
 function loadCollections(){try{var r=localStorage.getItem('zh_collections');return r?JSON.parse(r):[]}catch(e){return[]}}
@@ -1535,6 +1535,8 @@ function renderCityPage(d){
   var deals=d.active_deals||[]
   var events=d.upcoming_events||[]
   var cats=d.categories||[]
+  var diningSlugs=(d.dining_slugs&&Array.isArray(d.dining_slugs))?d.dining_slugs:[]
+  state.diningSlugs=diningSlugs
   var dirInfo=d.directory||{}
   var cityName=esc(dirInfo.name||toTitle(state.slug))
   var bizCount=d.stats?.business_count||biz.length
@@ -1547,11 +1549,10 @@ function renderCityPage(d){
     if(!groups[g])groups[g]=[]
     groups[g].push(ct)
   }
-  // Top 8 popular categories as clickable pills in the filter bar
-  var sortedByCount=cats.slice().sort(function(a,b){return (b.business_count||0)-(a.business_count||0)}).slice(0,8)
+  // Top 8 featured categories as clickable pills (fixed pinned order from backend)
   var topPills=''
-  for(var ti=0;ti<sortedByCount.length;ti++){
-    var tc=sortedByCount[ti];var icon=tc.icon||'📂'
+  for(var ti=0;ti<Math.min(cats.length,8);ti++){
+    var tc=cats[ti];var icon=tc.icon||'📂'
     var tActive=state.filterCategory===tc.slug?' active':''
     topPills+='<span class="zh-filter-pill'+tActive+'" onclick="filterCity(\''+esc(tc.slug)+'\',this)">'+icon+' '+esc(tc.name)+' ('+(tc.business_count||0)+')</span>'
   }
@@ -1591,9 +1592,14 @@ function renderCityPage(d){
   }
 
   // Business cards (enhanced with badges, cover, save)
-  // Filter by selected category if one is active
+  // Filter by selected category if one is active. The synthetic "dining" pill (Places to Eat)
+  // matches the whole per-city dining slug set rather than a single exact category.
   if(state.filterCategory){
-    biz=biz.filter(function(b){return b.category_slug===state.filterCategory})
+    if(state.filterCategory==='dining'&&state.diningSlugs.length){
+      biz=biz.filter(function(b){return b.category_slug&&state.diningSlugs.indexOf(b.category_slug)>=0})
+    }else{
+      biz=biz.filter(function(b){return b.category_slug===state.filterCategory})
+    }
   }
   var bizHtml=''
   for(var i=0;i<biz.length;i++){

@@ -12,19 +12,15 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::models::*;
+use crate::AppState;
 
 /// GET /api/v1/networks
-pub async fn list_networks(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let networks = sqlx::query_as::<_, Network>(
-        "SELECT * FROM networks ORDER BY created_at DESC"
-    )
-    .fetch_all(&s.db)
-    .await?;
+pub async fn list_networks(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let networks = sqlx::query_as::<_, Network>("SELECT * FROM networks ORDER BY created_at DESC")
+        .fetch_all(&s.db)
+        .await?;
 
     Ok(Json(json!(networks)))
 }
@@ -34,13 +30,11 @@ pub async fn get_network(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let network = sqlx::query_as::<_, Network>(
-        "SELECT * FROM networks WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Network '{}' not found", id)))?;
+    let network = sqlx::query_as::<_, Network>("SELECT * FROM networks WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!("Network '{}' not found", id)))?;
 
     Ok(Json(json!(network)))
 }
@@ -51,25 +45,28 @@ pub async fn create_network(
     Json(req): Json<CreateNetworkRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.name.is_empty() || req.slug.is_empty() {
-        return Err(AppError::Validation("Name and slug are required".to_string()));
+        return Err(AppError::Validation(
+            "Name and slug are required".to_string(),
+        ));
     }
 
     // Check slug uniqueness
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM networks WHERE slug = $1"
-    )
-    .bind(&req.slug)
-    .fetch_one(&s.db)
-    .await?;
+    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM networks WHERE slug = $1")
+        .bind(&req.slug)
+        .fetch_one(&s.db)
+        .await?;
 
     if existing > 0 {
-        return Err(AppError::Duplicate(format!("Network slug '{}' already exists", req.slug)));
+        return Err(AppError::Duplicate(format!(
+            "Network slug '{}' already exists",
+            req.slug
+        )));
     }
 
     let network = sqlx::query_as::<_, Network>(
         r#"INSERT INTO networks (name, slug, description, root_domain, status)
            VALUES ($1, $2, $3, $4, $5)
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(&req.name)
     .bind(&req.slug)
@@ -83,7 +80,7 @@ pub async fn create_network(
     sqlx::query(
         r#"INSERT INTO network_branding (network_id)
            VALUES ($1)
-           ON CONFLICT (network_id) DO NOTHING"#
+           ON CONFLICT (network_id) DO NOTHING"#,
     )
     .bind(network.id)
     .execute(&s.db)
@@ -92,7 +89,7 @@ pub async fn create_network(
     // Auto-create a default hero section for the network homepage
     sqlx::query(
         r#"INSERT INTO homepage_sections (network_id, section_type, sort_order, title)
-           VALUES ($1, 'hero', 0, $2)"#
+           VALUES ($1, 'hero', 0, $2)"#,
     )
     .bind(network.id)
     .bind(&req.name)
@@ -120,13 +117,11 @@ pub async fn update_network(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateNetworkRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let existing = sqlx::query_as::<_, Network>(
-        "SELECT * FROM networks WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Network '{}' not found", id)))?;
+    let existing = sqlx::query_as::<_, Network>("SELECT * FROM networks WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!("Network '{}' not found", id)))?;
 
     let new_name = req.name.unwrap_or(existing.name.clone());
     let new_slug = req.slug.unwrap_or(existing.slug.clone());
@@ -136,7 +131,7 @@ pub async fn update_network(
 
     if new_slug != existing.slug {
         let slug_exists = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM networks WHERE slug = $1 AND id != $2"
+            "SELECT COUNT(*) FROM networks WHERE slug = $1 AND id != $2",
         )
         .bind(&new_slug)
         .bind(id)
@@ -144,7 +139,10 @@ pub async fn update_network(
         .await?;
 
         if slug_exists > 0 {
-            return Err(AppError::Duplicate(format!("Slug '{}' already in use", new_slug)));
+            return Err(AppError::Duplicate(format!(
+                "Slug '{}' already in use",
+                new_slug
+            )));
         }
     }
 
@@ -189,7 +187,7 @@ pub async fn list_network_directories(
     Path(network_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let directories = sqlx::query_as::<_, Directory>(
-        r#"SELECT * FROM directories WHERE network_id = $1 ORDER BY created_at ASC"#
+        r#"SELECT * FROM directories WHERE network_id = $1 ORDER BY created_at ASC"#,
     )
     .bind(network_id)
     .fetch_all(&s.db)
@@ -204,12 +202,15 @@ pub async fn get_network_branding(
     Path(network_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let branding = sqlx::query_as::<_, NetworkBranding>(
-        "SELECT * FROM network_branding WHERE network_id = $1"
+        "SELECT * FROM network_branding WHERE network_id = $1",
     )
     .bind(network_id)
     .fetch_optional(&s.db)
     .await?
-    .ok_or(AppError::NotFound(format!("Branding for network '{}' not found", network_id)))?;
+    .ok_or(AppError::NotFound(format!(
+        "Branding for network '{}' not found",
+        network_id
+    )))?;
 
     Ok(Json(json!(branding)))
 }
@@ -235,7 +236,7 @@ pub async fn update_network_branding(
                body_font = COALESCE($11, body_font),
                updated_at = NOW()
            WHERE network_id = $12
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(&req.logo_url)
     .bind(&req.logo_footer_url)
@@ -271,18 +272,16 @@ pub async fn get_network_homepage(
 
     // Also include the network's branding
     let branding = sqlx::query_as::<_, NetworkBranding>(
-        "SELECT * FROM network_branding WHERE network_id = $1"
+        "SELECT * FROM network_branding WHERE network_id = $1",
     )
     .bind(network_id)
     .fetch_optional(&s.db)
     .await?;
 
-    let network = sqlx::query_as::<_, Network>(
-        "SELECT * FROM networks WHERE id = $1"
-    )
-    .bind(network_id)
-    .fetch_optional(&s.db)
-    .await;
+    let network = sqlx::query_as::<_, Network>("SELECT * FROM networks WHERE id = $1")
+        .bind(network_id)
+        .fetch_optional(&s.db)
+        .await;
 
     Ok(Json(json!({
         "sections": sections,
@@ -296,13 +295,14 @@ pub async fn get_directory_homepage(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     // If directory belongs to a network, return the network's homepage
     if let Some(network_id) = directory.network_id {
@@ -314,18 +314,16 @@ pub async fn get_directory_homepage(
         .await?;
 
         let branding = sqlx::query_as::<_, NetworkBranding>(
-            "SELECT * FROM network_branding WHERE network_id = $1"
+            "SELECT * FROM network_branding WHERE network_id = $1",
         )
         .bind(network_id)
         .fetch_optional(&s.db)
         .await?;
 
-        let network = sqlx::query_as::<_, Network>(
-            "SELECT * FROM networks WHERE id = $1"
-        )
-        .bind(network_id)
-        .fetch_optional(&s.db)
-        .await?;
+        let network = sqlx::query_as::<_, Network>("SELECT * FROM networks WHERE id = $1")
+            .bind(network_id)
+            .fetch_optional(&s.db)
+            .await?;
 
         return Ok(Json(json!({
             "directory": directory,
@@ -359,10 +357,14 @@ pub async fn create_homepage_section(
     Json(req): Json<CreateHomepageSectionRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.network_id.is_none() && req.directory_id.is_none() {
-        return Err(AppError::Validation("Either network_id or directory_id is required".to_string()));
+        return Err(AppError::Validation(
+            "Either network_id or directory_id is required".to_string(),
+        ));
     }
     if req.network_id.is_some() && req.directory_id.is_some() {
-        return Err(AppError::Validation("Cannot set both network_id and directory_id — use one or the other".to_string()));
+        return Err(AppError::Validation(
+            "Cannot set both network_id and directory_id — use one or the other".to_string(),
+        ));
     }
     if req.section_type.is_empty() {
         return Err(AppError::Validation("section_type is required".to_string()));
@@ -409,7 +411,7 @@ pub async fn update_homepage_section(
                is_active = COALESCE($9, is_active),
                updated_at = NOW()
            WHERE id = $10
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(&req.section_type)
     .bind(&req.sort_order)
@@ -423,7 +425,10 @@ pub async fn update_homepage_section(
     .bind(id)
     .fetch_optional(&s.db)
     .await?
-    .ok_or(AppError::NotFound(format!("Homepage section '{}' not found", id)))?;
+    .ok_or(AppError::NotFound(format!(
+        "Homepage section '{}' not found",
+        id
+    )))?;
 
     Ok(Json(json!(section)))
 }
@@ -433,13 +438,12 @@ pub async fn get_homepage_section(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let section = sqlx::query_as::<_, HomepageSection>(
-        "SELECT * FROM homepage_sections WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("Homepage section '{}' not found", id)))?;
+    let section =
+        sqlx::query_as::<_, HomepageSection>("SELECT * FROM homepage_sections WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Homepage section '{}' not found", id)))?;
 
     Ok(Json(json!(section)))
 }
@@ -454,7 +458,10 @@ pub async fn delete_homepage_section(
         .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound(format!("Homepage section '{}' not found", id)));
+        return Err(AppError::NotFound(format!(
+            "Homepage section '{}' not found",
+            id
+        )));
     }
 
     Ok(Json(json!({"deleted": true})))

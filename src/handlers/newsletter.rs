@@ -4,24 +4,23 @@
 //! and manages their own subscribers. Admin level is only for David's personal use.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Html, Json},
+    response::{Html, IntoResponse, Json},
     Json as JsonBody,
 };
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 use lettre::{
-    transport::smtp::authentication::Credentials,
-    AsyncSmtpTransport, Tokio1Executor,
-    Message, AsyncTransport,
+    transport::smtp::authentication::Credentials, AsyncSmtpTransport, AsyncTransport, Message,
+    Tokio1Executor,
 };
 
-use crate::AppState;
 use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── Newsletter Queue ──
 
@@ -138,12 +137,15 @@ pub async fn list_newsletters(
     State(s): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir_id = params.get("directory_id")
+    let dir_id = params
+        .get("directory_id")
         .ok_or_else(|| AppError::BadRequest("directory_id is required".into()))?;
-    let uuid: Uuid = dir_id.parse().map_err(|_| AppError::BadRequest("invalid uuid".into()))?;
+    let uuid: Uuid = dir_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("invalid uuid".into()))?;
 
     let newsletters = sqlx::query_as::<_, Newsletter>(
-        "SELECT * FROM newsletter_queue WHERE directory_id = $1 ORDER BY created_at DESC"
+        "SELECT * FROM newsletter_queue WHERE directory_id = $1 ORDER BY created_at DESC",
     )
     .bind(uuid)
     .fetch_all(&s.db)
@@ -156,13 +158,11 @@ pub async fn get_newsletter(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let n = sqlx::query_as::<_, Newsletter>(
-        "SELECT * FROM newsletter_queue WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
+    let n = sqlx::query_as::<_, Newsletter>("SELECT * FROM newsletter_queue WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
 
     Ok(Json(n))
 }
@@ -194,13 +194,11 @@ pub async fn update_newsletter(
     Path(id): Path<Uuid>,
     JsonBody(req): JsonBody<UpdateNewsletterRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let existing = sqlx::query_as::<_, Newsletter>(
-        "SELECT * FROM newsletter_queue WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
+    let existing = sqlx::query_as::<_, Newsletter>("SELECT * FROM newsletter_queue WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
 
     let title = req.title.unwrap_or(existing.title);
     let intro_text = req.intro_text.or(existing.intro_text);
@@ -215,7 +213,7 @@ pub async fn update_newsletter(
            SET title = $1, intro_text = $2, include_blog = $3, include_deals = $4,
                manual_sections = $5::jsonb, scheduled_at = $6, status = $7, updated_at = NOW()
            WHERE id = $8
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(&title)
     .bind(intro_text)
@@ -259,7 +257,7 @@ pub async fn get_email_settings(
         .ok_or_else(|| AppError::NotFound("directory not found".into()))?;
 
     let settings = sqlx::query_as::<_, DirectoryEmailSettings>(
-        "SELECT * FROM directory_email_settings WHERE directory_id = $1"
+        "SELECT * FROM directory_email_settings WHERE directory_id = $1",
     )
     .bind(dir.0)
     .fetch_optional(&s.db)
@@ -273,7 +271,11 @@ pub async fn get_email_settings(
             }
             Ok(Json(resp).into_response())
         }
-        None => Ok((StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no email settings configured"}))).into_response()),
+        None => Ok((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "no email settings configured"})),
+        )
+            .into_response()),
     }
 }
 
@@ -348,7 +350,10 @@ pub async fn list_subscribers(
 
     let status_filter = params.get("status").map(|s| s.as_str()).unwrap_or("active");
     let page: i64 = params.get("page").and_then(|p| p.parse().ok()).unwrap_or(1);
-    let per_page: i64 = params.get("per_page").and_then(|p| p.parse().ok()).unwrap_or(50);
+    let per_page: i64 = params
+        .get("per_page")
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(50);
     let offset = (page - 1) * per_page;
 
     let subscribers = sqlx::query_as::<_, NewsletterSubscriber>(
@@ -362,7 +367,7 @@ pub async fn list_subscribers(
     .await?;
 
     let total: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM newsletter_subscribers WHERE directory_id = $1 AND status = $2"
+        "SELECT COUNT(*) FROM newsletter_subscribers WHERE directory_id = $1 AND status = $2",
     )
     .bind(dir.0)
     .bind(status_filter)
@@ -408,7 +413,9 @@ pub async fn add_subscriber(
     let name = req.name.clone();
     tokio::spawn(async move {
         match crate::coreswift::push_newsletter_signup(&db, dir_id, &email, name.as_deref()).await {
-            Ok(contact_id) => tracing::info!("[newsletter] CoreSwift push OK for {email}, contact={contact_id}"),
+            Ok(contact_id) => {
+                tracing::info!("[newsletter] CoreSwift push OK for {email}, contact={contact_id}")
+            }
             Err(e) => tracing::warn!("[newsletter] CoreSwift push failed for {email}: {e}"),
         }
     });
@@ -433,12 +440,15 @@ pub async fn add_subscriber(
             "st-petersburg" => "sp-zh-newsletter",
             "winter-garden" => "wg-zh-newsletter",
             _ => &ts_dir_slug,
-        }.to_string();
+        }
+        .to_string();
 
         let tags = vec!["Subscriber".to_string(), newsletter_tag];
 
         // Resolve tenant_id from directory so CoreSwift tag-sync doesn't 422
-        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id).await.ok()
+        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id)
+            .await
+            .ok()
             .map(|(tid, _, _, _)| tid.to_string());
 
         crate::handlers::tag_sync::fire_tag_sync(
@@ -453,7 +463,7 @@ pub async fn add_subscriber(
             Some(ts_dir_slug),
             Some("newsletter_signup".to_string()),
             resolved_tenant, // tenant_id (resolved)
-            None, // coreswift_list_id
+            None,            // coreswift_list_id
         );
     });
 
@@ -507,9 +517,20 @@ pub async fn add_global_subscriber(
     tokio::spawn(async move {
         // Try the standard directory-based push first (it'll use whatever list is configured)
         if dir_id_clone != Uuid::nil() {
-            match crate::coreswift::push_newsletter_signup(&db, dir_id_clone, &email, name.as_deref()).await {
-                Ok(contact_id) => tracing::info!("[global-newsletter] CoreSwift push OK for {email}, contact={contact_id}"),
-                Err(e) => tracing::warn!("[global-newsletter] CoreSwift push failed for {email}: {e}"),
+            match crate::coreswift::push_newsletter_signup(
+                &db,
+                dir_id_clone,
+                &email,
+                name.as_deref(),
+            )
+            .await
+            {
+                Ok(contact_id) => tracing::info!(
+                    "[global-newsletter] CoreSwift push OK for {email}, contact={contact_id}"
+                ),
+                Err(e) => {
+                    tracing::warn!("[global-newsletter] CoreSwift push failed for {email}: {e}")
+                }
             }
         }
     });
@@ -522,7 +543,9 @@ pub async fn add_global_subscriber(
     tokio::spawn(async move {
         let tags = vec!["Subscriber".to_string(), "Global-Newsletter".to_string()];
 
-        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id).await.ok()
+        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id)
+            .await
+            .ok()
             .map(|(tid, _, _, _)| tid.to_string());
 
         crate::handlers::tag_sync::fire_tag_sync(
@@ -576,7 +599,9 @@ pub async fn import_subscribers(
         }
     }
 
-    Ok(Json(serde_json::json!({"added": added, "total": req.subscribers.len()})))
+    Ok(Json(
+        serde_json::json!({"added": added, "total": req.subscribers.len()}),
+    ))
 }
 
 pub async fn unsubscribe_subscriber(
@@ -598,7 +623,9 @@ pub async fn unsubscribe_subscriber(
     .await?;
 
     if r.rows_affected() == 0 {
-        return Err(AppError::NotFound("subscriber not found or already unsubscribed".into()));
+        return Err(AppError::NotFound(
+            "subscriber not found or already unsubscribed".into(),
+        ));
     }
 
     Ok(Json(serde_json::json!({"status": "unsubscribed"})))
@@ -611,13 +638,11 @@ pub async fn generate_newsletter_content(
     Path(id): Path<Uuid>,
     Query(params): Query<GenerateParams>,
 ) -> ApiResult<impl IntoResponse> {
-    let n = sqlx::query_as::<_, Newsletter>(
-        "SELECT * FROM newsletter_queue WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
+    let n = sqlx::query_as::<_, Newsletter>("SELECT * FROM newsletter_queue WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
 
     let (render, _) = build_newsletter_render(&s, &n).await?;
 
@@ -629,7 +654,8 @@ pub async fn generate_newsletter_content(
             "title": render.title,
             "sections": render.json_sections,
             "generated_at": render.generated_at
-        })).into_response()),
+        }))
+        .into_response()),
     }
 }
 
@@ -639,20 +665,18 @@ pub async fn send_newsletter(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let n = sqlx::query_as::<_, Newsletter>(
-        "SELECT * FROM newsletter_queue WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
+    let n = sqlx::query_as::<_, Newsletter>("SELECT * FROM newsletter_queue WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("newsletter not found".into()))?;
 
     if n.status.as_deref() == Some("sent") {
         return Err(AppError::BadRequest("newsletter already sent".into()));
     }
 
     let smtp = sqlx::query_as::<_, DirectoryEmailSettings>(
-        "SELECT * FROM directory_email_settings WHERE directory_id = $1"
+        "SELECT * FROM directory_email_settings WHERE directory_id = $1",
     )
     .bind(n.directory_id)
     .fetch_optional(&s.db)
@@ -660,7 +684,7 @@ pub async fn send_newsletter(
     .ok_or_else(|| AppError::BadRequest("no SMTP settings configured for this directory".into()))?;
 
     let subscribers = sqlx::query_as::<_, NewsletterSubscriber>(
-        "SELECT * FROM newsletter_subscribers WHERE directory_id = $1 AND status = 'active'"
+        "SELECT * FROM newsletter_subscribers WHERE directory_id = $1 AND status = 'active'",
     )
     .bind(n.directory_id)
     .fetch_all(&s.db)
@@ -673,8 +697,16 @@ pub async fn send_newsletter(
     let (render, dir_name) = build_newsletter_render(&s, &n).await?;
 
     // SMTP connection
-    let from_name_final = if smtp.from_name.is_empty() { dir_name.clone() } else { smtp.from_name.clone() };
-    let from_email_final = if smtp.from_email.is_empty() { format!("noreply@{}", smtp.smtp_host) } else { smtp.from_email.clone() };
+    let from_name_final = if smtp.from_name.is_empty() {
+        dir_name.clone()
+    } else {
+        smtp.from_name.clone()
+    };
+    let from_email_final = if smtp.from_email.is_empty() {
+        format!("noreply@{}", smtp.smtp_host)
+    } else {
+        smtp.from_email.clone()
+    };
     let from_addr = format!("{} <{}>", from_name_final, from_email_final);
 
     let creds = Credentials::new(smtp.smtp_username.clone(), smtp.smtp_password.clone());
@@ -697,12 +729,19 @@ pub async fn send_newsletter(
     };
 
     // Fetch dir slug for unsubscribe link
-    let dir_slug: Option<String> = sqlx::query_as::<_, (String,)>("SELECT slug FROM directories WHERE id = $1")
-        .bind(n.directory_id).fetch_optional(&s.db).await
-        .map_err(|e| AppError::Internal(e.to_string()))?
-        .map(|r| r.0);
+    let dir_slug: Option<String> =
+        sqlx::query_as::<_, (String,)>("SELECT slug FROM directories WHERE id = $1")
+            .bind(n.directory_id)
+            .fetch_optional(&s.db)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .map(|r| r.0);
 
-    let base_url = format!("https://{}.{}", dir_slug.as_deref().unwrap_or("directory"), s.config.base_domain);
+    let base_url = format!(
+        "https://{}.{}",
+        dir_slug.as_deref().unwrap_or("directory"),
+        s.config.base_domain
+    );
 
     let mut sent = 0u64;
     let mut failed = 0u64;
@@ -716,17 +755,24 @@ pub async fn send_newsletter(
         let final_text = personal_text.replace("{{UNSUBSCRIBE_URL}}", &unsub_url);
 
         let email = match Message::builder()
-            .from(from_addr.parse().map_err(|_| AppError::Internal("invalid from address".into()))?)
-            .to(sub.email.parse().map_err(|_| AppError::Internal("invalid to address".into()))?)
+            .from(
+                from_addr
+                    .parse()
+                    .map_err(|_| AppError::Internal("invalid from address".into()))?,
+            )
+            .to(sub
+                .email
+                .parse()
+                .map_err(|_| AppError::Internal("invalid to address".into()))?)
             .subject(&n.title)
-            .multipart(
-                lettre::message::MultiPart::alternative_plain_html(
-                    final_text,
-                    final_html,
-                )
-            ) {
+            .multipart(lettre::message::MultiPart::alternative_plain_html(
+                final_text, final_html,
+            )) {
             Ok(e) => e,
-            Err(_) => { failed += 1; continue; }
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
         };
 
         match mailer.send(email).await {
@@ -754,17 +800,23 @@ async fn build_newsletter_render(
     s: &AppState,
     n: &Newsletter,
 ) -> Result<(NewsletterRender, String), AppError> {
-    let dir_info: Option<(String, String)> = sqlx::query_as(
-        "SELECT name, slug FROM directories WHERE id = $1"
-    )
-    .bind(n.directory_id)
-    .fetch_optional(&s.db)
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))?
-    .map(|r: (String, String)| r);
+    let dir_info: Option<(String, String)> =
+        sqlx::query_as("SELECT name, slug FROM directories WHERE id = $1")
+            .bind(n.directory_id)
+            .fetch_optional(&s.db)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .map(|r: (String, String)| r);
 
-    let dir_name = dir_info.as_ref().map(|d| d.0.as_str()).unwrap_or("Your Directory").to_string();
-    let dir_slug = dir_info.as_ref().map(|d| d.1.as_str()).unwrap_or("directory");
+    let dir_name = dir_info
+        .as_ref()
+        .map(|d| d.0.as_str())
+        .unwrap_or("Your Directory")
+        .to_string();
+    let dir_slug = dir_info
+        .as_ref()
+        .map(|d| d.1.as_str())
+        .unwrap_or("directory");
     let dir_url = format!("https://{}.{}", dir_slug, s.config.base_domain);
 
     let mut sections: Vec<serde_json::Value> = Vec::new();
@@ -812,13 +864,15 @@ async fn build_newsletter_render(
             let mut blog_items: Vec<serde_json::Value> = Vec::new();
             let mut blog_html = String::from(
                 r#"<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:16px 24px"><tr><td>
-                   <h2 style="font-family:Helvetica,Arial,sans-serif;font-size:20px;color:#0f172a;margin:0 0 12px 0">📝 Latest Blog Posts</h2>"#
+                   <h2 style="font-family:Helvetica,Arial,sans-serif;font-size:20px;color:#0f172a;margin:0 0 12px 0">📝 Latest Blog Posts</h2>"#,
             );
             text_parts.push("\n📝 LATEST BLOG POSTS\n".to_string());
 
             for (id, title, slug, excerpt, created) in &posts {
                 let post_url = format!("{}/blog/{}", dir_url, slug);
-                let date_str = created.map(|d| d.format("%B %d, %Y").to_string()).unwrap_or_default();
+                let date_str = created
+                    .map(|d| d.format("%B %d, %Y").to_string())
+                    .unwrap_or_default();
                 let excerpt_text = excerpt.as_deref().unwrap_or("");
 
                 blog_items.push(serde_json::json!({"id":id,"title":title,"slug":slug,"excerpt":excerpt,"date":created}));
@@ -856,12 +910,16 @@ async fn build_newsletter_render(
             let mut deal_items: Vec<serde_json::Value> = Vec::new();
             let mut deal_html = String::from(
                 r#"<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:16px 24px;background:#f0fdfa"><tr><td>
-                   <h2 style="font-family:Helvetica,Arial,sans-serif;font-size:20px;color:#0f172a;margin:0 0 12px 0">🔥 Featured Deals</h2>"#
+                   <h2 style="font-family:Helvetica,Arial,sans-serif;font-size:20px;color:#0f172a;margin:0 0 12px 0">🔥 Featured Deals</h2>"#,
             );
             text_parts.push("\n🔥 FEATURED DEALS\n".to_string());
 
             for (id, title, desc, price, discount, _status, featured) in &deals {
-                let badge = if *featured { r#"<span style="background:#f59e0b;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px">FEATURED</span>"# } else { "" };
+                let badge = if *featured {
+                    r#"<span style="background:#f59e0b;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px">FEATURED</span>"#
+                } else {
+                    ""
+                };
                 let discount_str = discount.map(|d| format!("{}% OFF", d)).unwrap_or_default();
 
                 deal_items.push(serde_json::json!({"id":id,"title":title,"description":desc,"deal_price":price,"discount_percent":discount,"featured":featured}));
@@ -881,10 +939,18 @@ async fn build_newsletter_render(
                 }
                 deal_html.push_str("</div>");
                 text_parts.push(format!("\n  💰 {}", title));
-                if let Some(p) = price { text_parts.push(format!("     Price: ${}", p)); }
-                if !discount_str.is_empty() { text_parts.push(format!("     Discount: {}", discount_str)); }
-                if let Some(d) = desc { text_parts.push(format!("     {}", d)); }
-                if *featured { text_parts.push("     ⭐ FEATURED".to_string()); }
+                if let Some(p) = price {
+                    text_parts.push(format!("     Price: ${}", p));
+                }
+                if !discount_str.is_empty() {
+                    text_parts.push(format!("     Discount: {}", discount_str));
+                }
+                if let Some(d) = desc {
+                    text_parts.push(format!("     {}", d));
+                }
+                if *featured {
+                    text_parts.push("     ⭐ FEATURED".to_string());
+                }
             }
             deal_html.push_str("</td></tr></table>");
             html_parts.push(deal_html);
@@ -897,7 +963,10 @@ async fn build_newsletter_render(
         if let Some(arr) = ms.as_array() {
             for section in arr {
                 sections.push(serde_json::json!({"type":"manual","content":section}));
-                let heading = section.get("heading").and_then(|h| h.as_str()).unwrap_or("Sponsored");
+                let heading = section
+                    .get("heading")
+                    .and_then(|h| h.as_str())
+                    .unwrap_or("Sponsored");
                 let body = section.get("body").and_then(|b| b.as_str()).unwrap_or("");
                 let link = section.get("link").and_then(|l| l.as_str());
 
@@ -905,7 +974,8 @@ async fn build_newsletter_render(
                     r#"<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:16px 24px;background:#fffbeb"><tr><td>
                        <h3 style="font-family:Helvetica,Arial,sans-serif;font-size:15px;color:#92400e;margin:0 0 6px 0">📢 {}</h3>
                        <div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#78350f;line-height:1.5">{}</div>"#,
-                    html_escape(heading), html_escape(body)
+                    html_escape(heading),
+                    html_escape(body)
                 );
                 if let Some(l) = link {
                     man_html.push_str(&format!(
@@ -916,7 +986,9 @@ async fn build_newsletter_render(
                 man_html.push_str("</td></tr></table>");
                 html_parts.push(man_html);
                 text_parts.push(format!("\n📢 {}: {}", heading, body));
-                if let Some(l) = link { text_parts.push(format!("   Learn more: {}", l)); }
+                if let Some(l) = link {
+                    text_parts.push(format!("   Learn more: {}", l));
+                }
             }
         }
     }
@@ -953,19 +1025,22 @@ a{{color:#0d9488}}
     );
     let text_body = text_parts.join("\n");
 
-    Ok((NewsletterRender {
-        title: n.title.clone(),
-        html: html_body,
-        text: text_body,
-        json_sections: sections,
-        generated_at: Utc::now(),
-    }, dir_name))
+    Ok((
+        NewsletterRender {
+            title: n.title.clone(),
+            html: html_body,
+            text: text_body,
+            json_sections: sections,
+            generated_at: Utc::now(),
+        },
+        dir_name,
+    ))
 }
 
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
-     .replace('<', "&lt;")
-     .replace('>', "&gt;")
-     .replace('"', "&quot;")
-     .replace('\'', "&#39;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }

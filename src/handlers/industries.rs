@@ -2,7 +2,7 @@
 //! Manages user industry dashboard selections, synced with template_categories.
 
 use axum::{
-    extract::{State, Extension},
+    extract::{Extension, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
 use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserIndustryDashboard {
@@ -46,9 +46,7 @@ pub struct IndustryOption {
 /// Lists industries available (from workflowswift template_categories via hardcoded sync,
 /// or from a dedicated industries table). For now we return the canonical list.
 /// This syncs with template_categories in workflowswift DB.
-pub async fn list_available_industries(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_available_industries(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     // Try to fetch from workflowswift DB first (cross-database query)
     let industries = sqlx::query_as::<_, IndustryOption>(
         "SELECT slug, name, description, icon, sort_order::int FROM template_categories WHERE is_active = true ORDER BY sort_order ASC"
@@ -110,12 +108,14 @@ pub async fn set_user_industry(
     let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
 
     if req.industry_slug.is_empty() {
-        return Err(AppError::Validation("industry_slug is required".to_string()));
+        return Err(AppError::Validation(
+            "industry_slug is required".to_string(),
+        ));
     }
 
     // Count current industries to check plan limit
     let current_count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM user_industry_dashboards WHERE user_id = $1 AND is_active = true"
+        "SELECT COUNT(*) FROM user_industry_dashboards WHERE user_id = $1 AND is_active = true",
     )
     .bind(user_id)
     .fetch_one(&s.db)
@@ -133,7 +133,7 @@ pub async fn set_user_industry(
              INNER JOIN business_subscriptions bs ON bs.tier_id = pt.id
              INNER JOIN businesses b ON b.id = bs.business_id
              WHERE bs.status = 'active' AND b.owner_id IS NOT NULL
-             LIMIT 1"
+             LIMIT 1",
         )
         .fetch_optional(&s.db)
         .await
@@ -148,7 +148,7 @@ pub async fn set_user_industry(
 
     // Check if we're adding a new one (upsert flow)
     let existing = sqlx::query_as::<_, UserIndustryDashboard>(
-        "SELECT * FROM user_industry_dashboards WHERE user_id = $1 AND industry_slug = $2"
+        "SELECT * FROM user_industry_dashboards WHERE user_id = $1 AND industry_slug = $2",
     )
     .bind(user_id)
     .bind(&req.industry_slug)
@@ -162,7 +162,8 @@ pub async fn set_user_industry(
         )));
     }
 
-    let dashboard_name = req.dashboard_name
+    let dashboard_name = req
+        .dashboard_name
         .unwrap_or_else(|| format!("{} Dashboard", req.industry_slug.replace('-', " ")));
 
     // Upsert: insert or activate
@@ -212,7 +213,9 @@ pub async fn remove_user_industry(
         .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Industry dashboard not found".to_string()));
+        return Err(AppError::NotFound(
+            "Industry dashboard not found".to_string(),
+        ));
     }
 
     Ok(Json(json!({"message": "Industry dashboard deactivated"})))
@@ -227,7 +230,7 @@ pub async fn get_industry_limit(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     let current_count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM user_industry_dashboards WHERE user_id = $1 AND is_active = true"
+        "SELECT COUNT(*) FROM user_industry_dashboards WHERE user_id = $1 AND is_active = true",
     )
     .bind(user_id)
     .fetch_one(&s.db)
@@ -240,7 +243,7 @@ pub async fn get_industry_limit(
          WHERE bs.status = 'active' AND (b.owner_id = $1 OR b.id IN (
             SELECT business_id FROM business_subscriptions WHERE status = 'active'
          ))
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(user_id)
     .fetch_optional(&s.db)

@@ -92,9 +92,7 @@ fn extract_admin(headers: &HeaderMap, jwt_secret: &str) -> Result<(Uuid, String)
 
 fn require_admin(role: &str) -> Result<(), AppError> {
     if role != "admin" && role != "super_admin" {
-        return Err(AppError::Forbidden(
-            "Admin access required".to_string(),
-        ));
+        return Err(AppError::Forbidden("Admin access required".to_string()));
     }
     Ok(())
 }
@@ -107,10 +105,7 @@ fn build_provider_config(
     db_config: &serde_json::Value,
     req: &CreateProviderRequest,
 ) -> ProviderConfig {
-    let cfg = db_config
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let cfg = db_config.as_object().cloned().unwrap_or_default();
 
     let city = req
         .city
@@ -127,7 +122,10 @@ fn build_provider_config(
 
     let lng = req.lng.or_else(|| cfg.get("lng").and_then(|v| v.as_f64()));
 
-    let radius_miles = req.radius_miles.or_else(|| cfg.get("radius_miles").and_then(|v| v.as_i64().map(|n| n as i32)));
+    let radius_miles = req.radius_miles.or_else(|| {
+        cfg.get("radius_miles")
+            .and_then(|v| v.as_i64().map(|n| n as i32))
+    });
 
     ProviderConfig {
         api_key: api_key.to_string(),
@@ -145,10 +143,7 @@ fn build_update_config(
     db_config: &serde_json::Value,
     req: &UpdateProviderRequest,
 ) -> ProviderConfig {
-    let cfg = db_config
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let cfg = db_config.as_object().cloned().unwrap_or_default();
 
     let city = req
         .city
@@ -165,7 +160,10 @@ fn build_update_config(
 
     let lng = req.lng.or_else(|| cfg.get("lng").and_then(|v| v.as_f64()));
 
-    let radius_miles = req.radius_miles.or_else(|| cfg.get("radius_miles").and_then(|v| v.as_i64().map(|n| n as i32)));
+    let radius_miles = req.radius_miles.or_else(|| {
+        cfg.get("radius_miles")
+            .and_then(|v| v.as_i64().map(|n| n as i32))
+    });
 
     ProviderConfig {
         api_key: api_key.to_string(),
@@ -258,10 +256,13 @@ pub async fn create_provider(
     .fetch_one(&s.db)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "provider": row,
-        "message": "Event provider created"
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "provider": row,
+            "message": "Event provider created"
+        })),
+    ))
 }
 
 /// `PUT /api/v1/admin/directories/:directory_id/event-providers/:provider_id`
@@ -284,11 +285,7 @@ pub async fn update_provider(
     .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
 
     // Merge config
-    let mut cfg = existing
-        .config
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let mut cfg = existing.config.as_object().cloned().unwrap_or_default();
 
     if let Some(ref city) = req.city {
         cfg.insert("city".into(), json!(city));
@@ -345,13 +342,11 @@ pub async fn delete_provider(
     let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
     require_admin(&role)?;
 
-    let result = sqlx::query(
-        "DELETE FROM event_providers WHERE id = $1 AND directory_id = $2",
-    )
-    .bind(provider_id)
-    .bind(directory_id)
-    .execute(&s.db)
-    .await?;
+    let result = sqlx::query("DELETE FROM event_providers WHERE id = $1 AND directory_id = $2")
+        .bind(provider_id)
+        .bind(directory_id)
+        .execute(&s.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Event provider not found".to_string()));
@@ -372,13 +367,11 @@ pub async fn test_provider(
     let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
     require_admin(&role)?;
 
-    let row = sqlx::query_as::<_, EventProviderRow>(
-        "SELECT * FROM event_providers WHERE id = $1",
-    )
-    .bind(provider_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
+    let row = sqlx::query_as::<_, EventProviderRow>("SELECT * FROM event_providers WHERE id = $1")
+        .bind(provider_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
 
     let api_key = row
         .api_key
@@ -420,13 +413,11 @@ pub async fn sync_provider(
     let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
     require_admin(&role)?;
 
-    let row = sqlx::query_as::<_, EventProviderRow>(
-        "SELECT * FROM event_providers WHERE id = $1",
-    )
-    .bind(provider_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
+    let row = sqlx::query_as::<_, EventProviderRow>("SELECT * FROM event_providers WHERE id = $1")
+        .bind(provider_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
 
     let api_key = row
         .api_key
@@ -447,7 +438,8 @@ pub async fn sync_provider(
     match provider.fetch_events(&cfg).await {
         Ok(raw_events) => {
             let count = raw_events.len() as i32;
-            let synced = upsert_raw_events(&s.db, row.directory_id, provider_id, &raw_events).await?;
+            let synced =
+                upsert_raw_events(&s.db, row.directory_id, provider_id, &raw_events).await?;
 
             let _ = sqlx::query(
                 r#"UPDATE event_providers
@@ -498,13 +490,11 @@ pub async fn sync_status(
     let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
     require_admin(&role)?;
 
-    let row = sqlx::query_as::<_, EventProviderRow>(
-        "SELECT * FROM event_providers WHERE id = $1",
-    )
-    .bind(provider_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
+    let row = sqlx::query_as::<_, EventProviderRow>("SELECT * FROM event_providers WHERE id = $1")
+        .bind(provider_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
 
     Ok(Json(json!({
         "provider_id": row.id,
@@ -521,10 +511,7 @@ pub async fn sync_status(
 
 /// Build a ProviderConfig from the DB row for the sync operation.
 fn build_sync_config(api_key: &str, db_config: &serde_json::Value) -> ProviderConfig {
-    let cfg = db_config
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let cfg = db_config.as_object().cloned().unwrap_or_default();
 
     let city = cfg
         .get("city")
@@ -541,10 +528,11 @@ fn build_sync_config(api_key: &str, db_config: &serde_json::Value) -> ProviderCo
         .and_then(|v| v.as_i64())
         .map(|n| n as i32);
 
-    let categories = cfg
-        .get("categories")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+    let categories = cfg.get("categories").and_then(|v| v.as_array()).map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    });
 
     ProviderConfig {
         api_key: api_key.to_string(),
@@ -584,10 +572,7 @@ async fn upsert_raw_events(
         let end_date = end;
 
         // Build the location string from venue parts
-        let location = ev
-            .venue_name
-            .clone()
-            .or_else(|| ev.venue_address.clone());
+        let location = ev.venue_name.clone().or_else(|| ev.venue_address.clone());
 
         let address = if ev.venue_name.is_some() {
             ev.venue_address.clone()

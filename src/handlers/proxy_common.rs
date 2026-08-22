@@ -6,8 +6,8 @@
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::Value;
 
-use crate::error::AppError;
 use crate::auth::models::Claims;
+use crate::error::AppError;
 
 /// Return the IncentiveSwift base URL from environment, with a sensible default.
 pub(crate) fn is_base_url() -> String {
@@ -37,8 +37,12 @@ pub(crate) fn make_is_jwt(
     claims.insert("exp", serde_json::Value::Number((now + 300).into()));
 
     let header = Header::new(jsonwebtoken::Algorithm::HS256);
-    encode(&header, &claims, &EncodingKey::from_secret(secret.as_bytes()))
-        .map_err(|e| AppError::Internal(format!("JWT encode failed: {}", e)))
+    encode(
+        &header,
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| AppError::Internal(format!("JWT encode failed: {}", e)))
 }
 
 /// Look up the IS account_id by email from MD's user table.
@@ -47,27 +51,23 @@ pub(crate) async fn resolve_is_account(
     is_db: &sqlx::PgPool,
     md_claims: &Claims,
 ) -> Result<(String, String), AppError> {
-    let user_id = uuid::Uuid::parse_str(&md_claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = uuid::Uuid::parse_str(&md_claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Get email from MD users table
-    let email: String = sqlx::query_scalar(
-        "SELECT email FROM users WHERE id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|_| AppError::Internal("DB lookup failed".into()))?
-    .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+    let email: String = sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|_| AppError::Internal("DB lookup failed".into()))?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
     // Look up IS account_id by email
-    let is_account: Option<String> = sqlx::query_scalar(
-        "SELECT id::text FROM accounts WHERE email = $1 LIMIT 1",
-    )
-    .bind(&email)
-    .fetch_optional(is_db)
-    .await
-    .map_err(|_| AppError::Internal("IS lookup failed".into()))?;
+    let is_account: Option<String> =
+        sqlx::query_scalar("SELECT id::text FROM accounts WHERE email = $1 LIMIT 1")
+            .bind(&email)
+            .fetch_optional(is_db)
+            .await
+            .map_err(|_| AppError::Internal("IS lookup failed".into()))?;
 
     let account_id = match is_account {
         Some(id) => id,
@@ -79,10 +79,9 @@ pub(crate) async fn resolve_is_account(
 
 /// Resolve the IS JWT secret from env.
 fn is_jwt_secret() -> String {
-    std::env::var("IS_JWT_SECRET")
-        .unwrap_or_else(|_| {
-            "rr0NC13QNMpmvuopQjOZFqQKxtq1JosBr/i/mZ+QyrHwryQzaVzWKA1htAEBN9WI".to_string()
-        })
+    std::env::var("IS_JWT_SECRET").unwrap_or_else(|_| {
+        "rr0NC13QNMpmvuopQjOZFqQKxtq1JosBr/i/mZ+QyrHwryQzaVzWKA1htAEBN9WI".to_string()
+    })
 }
 
 /// Proxy a GET request to IncentiveSwift.

@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::auth::models::Claims;
 use crate::auth::middleware::{create_token, is_admin, verify_token};
-use crate::error::{AppError, ApiResult};
+use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── Data Types ──
 
@@ -156,13 +156,12 @@ pub async fn business_profile(
 
     // Find claimed businesses for this user_id OR owner_email
     // We need the user's email from the claims (or from visitor_accounts lookup)
-    let visitor_email: Option<String> = sqlx::query_scalar(
-        "SELECT email FROM visitor_accounts WHERE id = $1"
-    )
-    .bind(user_id)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
+    let visitor_email: Option<String> =
+        sqlx::query_scalar("SELECT email FROM visitor_accounts WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
 
     let claims_rows = sqlx::query_as::<_, ClaimedBusinessRow>(
         r#"SELECT id, business_id, owner_email, owner_name, owner_phone, user_id, is_active, created_at
@@ -192,7 +191,14 @@ pub async fn business_profile(
 
         let business_profile = match biz {
             Some((id, name, category, city, state, phone, website, images)) => BusinessProfile {
-                id, name, category, city, state, phone, website, images,
+                id,
+                name,
+                category,
+                city,
+                state,
+                phone,
+                website,
+                images,
             },
             None => continue,
         };
@@ -210,16 +216,35 @@ pub async fn business_profile(
         .fetch_optional(&s.db)
         .await?;
 
-        let subscription = sub.map(|(id, tier_id, tier_name, status, billing_cycle, price_paid, start_date, end_date, auto_renew)| {
-            BusinessSubscriptionInfo {
-                id, tier_id, tier_name,
-                status, billing_cycle, price_paid, start_date, end_date, auto_renew,
-            }
-        });
+        let subscription = sub.map(
+            |(
+                id,
+                tier_id,
+                tier_name,
+                status,
+                billing_cycle,
+                price_paid,
+                start_date,
+                end_date,
+                auto_renew,
+            )| {
+                BusinessSubscriptionInfo {
+                    id,
+                    tier_id,
+                    tier_name,
+                    status,
+                    billing_cycle,
+                    price_paid,
+                    start_date,
+                    end_date,
+                    auto_renew,
+                }
+            },
+        );
 
         // Fetch verification status
         let verification = sqlx::query_as::<_, BusinessVerificationRow>(
-            r#"SELECT status, verified_at FROM business_verifications WHERE business_id = $1"#
+            r#"SELECT status, verified_at FROM business_verifications WHERE business_id = $1"#,
         )
         .bind(claim.business_id)
         .fetch_optional(&s.db)
@@ -246,23 +271,28 @@ pub async fn visitor_register(
     Json(req): Json<VisitorRegisterRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.email.is_empty() || req.password.is_empty() {
-        return Err(AppError::Validation("Email and password are required".to_string()));
+        return Err(AppError::Validation(
+            "Email and password are required".to_string(),
+        ));
     }
     if req.password.len() < 6 {
-        return Err(AppError::Validation("Password must be at least 6 characters".to_string()));
+        return Err(AppError::Validation(
+            "Password must be at least 6 characters".to_string(),
+        ));
     }
 
     // Check if visitor already exists
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_accounts WHERE email = $1"
-    )
-    .bind(&req.email)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE email = $1")
+            .bind(&req.email)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     if existing > 0 {
-        return Err(AppError::Duplicate("A visitor account with this email already exists".to_string()));
+        return Err(AppError::Duplicate(
+            "A visitor account with this email already exists".to_string(),
+        ));
     }
 
     // Hash password with argon2
@@ -279,13 +309,12 @@ pub async fn visitor_register(
 
     // If directory_id is provided, validate it exists
     if let Some(dir_id) = req.directory_id {
-        let dir_exists = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM directories WHERE id = $1"
-        )
-        .bind(dir_id)
-        .fetch_one(&s.db)
-        .await
-        .unwrap_or(0);
+        let dir_exists =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = $1")
+                .bind(dir_id)
+                .fetch_one(&s.db)
+                .await
+                .unwrap_or(0);
 
         if dir_exists == 0 {
             return Err(AppError::Validation("Directory not found".to_string()));
@@ -319,14 +348,13 @@ pub async fn visitor_register(
         let ts_dir_id = visitor.directory_id;
         tokio::spawn(async move {
             let (dir_slug, city) = if let Some(did) = ts_dir_id {
-                let slug: Option<String> = sqlx::query_scalar(
-                    "SELECT slug FROM directories WHERE id = $1"
-                )
-                .bind(did)
-                .fetch_optional(&ts_db)
-                .await
-                .unwrap_or(None)
-                .flatten();
+                let slug: Option<String> =
+                    sqlx::query_scalar("SELECT slug FROM directories WHERE id = $1")
+                        .bind(did)
+                        .fetch_optional(&ts_db)
+                        .await
+                        .unwrap_or(None)
+                        .flatten();
                 let s = slug.unwrap_or_default();
                 let c = s.replace("-", " ");
                 (s, c)
@@ -335,7 +363,11 @@ pub async fn visitor_register(
             };
 
             let tags = vec!["Customer".to_string(), city.clone()];
-            let city_list = if city.is_empty() { None } else { Some(format!("{} - Subscribers", city)) };
+            let city_list = if city.is_empty() {
+                None
+            } else {
+                Some(format!("{} - Subscribers", city))
+            };
 
             crate::handlers::tag_sync::fire_tag_sync(
                 &ts_db,
@@ -370,7 +402,8 @@ pub async fn visitor_register(
                 None,
                 Some("zaarhub".to_string()),
                 Some(vec!["zaarhub_visitor".to_string()]),
-            ).await;
+            )
+            .await;
         });
     }
 
@@ -387,20 +420,23 @@ pub async fn visitor_register(
     };
     let token = create_token(&claims, &s.config.jwt_secret)?;
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "access_token": token,
-        "token_type": "Bearer",
-        "expires_in": s.config.jwt_access_expiry,
-        "visitor": VisitorAccountResponse {
-            id: visitor.id,
-            email: visitor.email,
-            name: visitor.name,
-            phone: visitor.phone,
-            directory_id: visitor.directory_id,
-            is_active: visitor.is_active,
-            created_at: visitor.created_at,
-        },
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": s.config.jwt_access_expiry,
+            "visitor": VisitorAccountResponse {
+                id: visitor.id,
+                email: visitor.email,
+                name: visitor.name,
+                phone: visitor.phone,
+                directory_id: visitor.directory_id,
+                is_active: visitor.is_active,
+                created_at: visitor.created_at,
+            },
+        })),
+    ))
 }
 
 /// POST /api/v1/visitor/login
@@ -408,32 +444,31 @@ pub async fn visitor_login(
     State(s): State<AppState>,
     Json(req): Json<VisitorLoginRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    use argon2::{
-        Argon2, PasswordHash, PasswordVerifier,
-    };
+    use argon2::{Argon2, PasswordHash, PasswordVerifier};
 
     if req.email.is_empty() || req.password.is_empty() {
-        return Err(AppError::Validation("Email and password are required".to_string()));
+        return Err(AppError::Validation(
+            "Email and password are required".to_string(),
+        ));
     }
 
-    let visitor = sqlx::query_as::<_, VisitorAccount>(
-        "SELECT * FROM visitor_accounts WHERE email = $1"
-    )
-    .bind(&req.email)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| {
-        tracing::warn!("Visitor login failed: user not found for {}", &req.email);
-        AppError::InvalidCredentials
-    })?;
+    let visitor =
+        sqlx::query_as::<_, VisitorAccount>("SELECT * FROM visitor_accounts WHERE email = $1")
+            .bind(&req.email)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!("Visitor login failed: user not found for {}", &req.email);
+                AppError::InvalidCredentials
+            })?;
 
     if !visitor.is_active {
         return Err(AppError::Forbidden("Account is deactivated".to_string()));
     }
 
     // Verify password
-    let parsed_hash = PasswordHash::new(&visitor.password_hash)
-        .map_err(|e| AppError::Hash(e.to_string()))?;
+    let parsed_hash =
+        PasswordHash::new(&visitor.password_hash).map_err(|e| AppError::Hash(e.to_string()))?;
     let argon2 = Argon2::default();
     argon2
         .verify_password(req.password.as_bytes(), &parsed_hash)
@@ -485,38 +520,37 @@ pub async fn visitor_profile(
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
-    
+
     let token = auth_header
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
-    
-    let claims = verify_token(token, &s.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
-    
+
+    let claims = verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
+
     let visitor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
-    let visitor = sqlx::query_as::<_, VisitorAccount>(
-        "SELECT * FROM visitor_accounts WHERE id = $1"
-    )
-    .bind(visitor_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Visitor not found".to_string()))?;
+    let visitor =
+        sqlx::query_as::<_, VisitorAccount>("SELECT * FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound("Visitor not found".to_string()))?;
 
     // Get saved deals — deals where this visitor claimed/flagged
-    let saved_deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>)>(
-        r#"SELECT d.id, d.title, d.description, d.discount_value, d.image_url
+    let saved_deals =
+        sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>)>(
+            r#"SELECT d.id, d.title, d.description, d.discount_value, d.image_url
            FROM deals d
            JOIN deal_claims dc ON dc.deal_id = d.id
            WHERE dc.visitor_account_id = $1 OR dc.email = $2
            ORDER BY dc.created_at DESC
-           LIMIT 20"#
-    )
-    .bind(visitor_id)
-    .bind(&visitor.email)
-    .fetch_all(&s.db)
-    .await
-    .unwrap_or_default();
+           LIMIT 20"#,
+        )
+        .bind(visitor_id)
+        .bind(&visitor.email)
+        .fetch_all(&s.db)
+        .await
+        .unwrap_or_default();
 
     Ok(Json(json!({
         "visitor": {
@@ -550,16 +584,15 @@ pub async fn get_directory_features(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let feature_config: Option<Value> = sqlx::query_scalar(
-        r#"SELECT feature_config FROM directories WHERE id = $1"#
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
+    let feature_config: Option<Value> =
+        sqlx::query_scalar(r#"SELECT feature_config FROM directories WHERE id = $1"#)
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
 
     let zaarhub_config: Value = sqlx::query_scalar(
-        r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#
+        r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#,
     )
     .bind(id)
     .fetch_one(&s.db)
@@ -589,12 +622,10 @@ pub async fn update_directory_features(
     }
 
     // Check directory exists
-    let exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_one(&s.db)
-    .await?;
+    let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = $1")
+        .bind(id)
+        .fetch_one(&s.db)
+        .await?;
 
     if exists == 0 {
         return Err(AppError::NotFound("Directory not found".to_string()));
@@ -602,7 +633,7 @@ pub async fn update_directory_features(
 
     // Build the new config from current + updates
     let current_config: Value = sqlx::query_scalar(
-        r#"SELECT COALESCE(feature_config, '{}'::jsonb) FROM directories WHERE id = $1"#
+        r#"SELECT COALESCE(feature_config, '{}'::jsonb) FROM directories WHERE id = $1"#,
     )
     .bind(id)
     .fetch_one(&s.db)
@@ -611,54 +642,78 @@ pub async fn update_directory_features(
 
     let mut config = current_config.as_object().cloned().unwrap_or_default();
 
-    if let Some(v) = req.deals { config.insert("deals".to_string(), json!(v)); }
-    if let Some(v) = req.blogging { config.insert("blogging".to_string(), json!(v)); }
-    if let Some(v) = req.community_posts { config.insert("community_posts".to_string(), json!(v)); }
-    if let Some(v) = req.b2b_marketplace { config.insert("b2b_marketplace".to_string(), json!(v)); }
-    if let Some(v) = req.visitor_accounts { config.insert("visitor_accounts".to_string(), json!(v)); }
-    if let Some(v) = req.gamification { config.insert("gamification".to_string(), json!(v)); }
+    if let Some(v) = req.deals {
+        config.insert("deals".to_string(), json!(v));
+    }
+    if let Some(v) = req.blogging {
+        config.insert("blogging".to_string(), json!(v));
+    }
+    if let Some(v) = req.community_posts {
+        config.insert("community_posts".to_string(), json!(v));
+    }
+    if let Some(v) = req.b2b_marketplace {
+        config.insert("b2b_marketplace".to_string(), json!(v));
+    }
+    if let Some(v) = req.visitor_accounts {
+        config.insert("visitor_accounts".to_string(), json!(v));
+    }
+    if let Some(v) = req.gamification {
+        config.insert("gamification".to_string(), json!(v));
+    }
 
     let new_config = Value::Object(config);
 
-    sqlx::query(
-        r#"UPDATE directories SET feature_config = $1, updated_at = NOW() WHERE id = $2"#
-    )
-    .bind(&new_config)
-    .bind(id)
-    .execute(&s.db)
-    .await?;
+    sqlx::query(r#"UPDATE directories SET feature_config = $1, updated_at = NOW() WHERE id = $2"#)
+        .bind(&new_config)
+        .bind(id)
+        .execute(&s.db)
+        .await?;
 
     // Also handle ZaarHub-specific config in zaarhub_config column
     let any_zh = [
-        req.network_visible.is_some(), req.homepage_featured.is_some(),
-        req.show_deals.is_some(), req.show_events.is_some(),
-        req.show_reviews.is_some(), req.show_activity.is_some(),
-    ].iter().any(|&x| x);
+        req.network_visible.is_some(),
+        req.homepage_featured.is_some(),
+        req.show_deals.is_some(),
+        req.show_events.is_some(),
+        req.show_reviews.is_some(),
+        req.show_activity.is_some(),
+    ]
+    .iter()
+    .any(|&x| x);
 
     if any_zh {
         let mut zh_patches = Vec::new();
-        if let Some(v) = req.network_visible { zh_patches.push(format!("\"network_visible\": {}", v)); }
-        if let Some(v) = req.homepage_featured { zh_patches.push(format!("\"homepage_featured\": {}", v)); }
-        if let Some(v) = req.show_deals { zh_patches.push(format!("\"show_deals\": {}", v)); }
-        if let Some(v) = req.show_events { zh_patches.push(format!("\"show_events\": {}", v)); }
-        if let Some(v) = req.show_reviews { zh_patches.push(format!("\"show_reviews\": {}", v)); }
-        if let Some(v) = req.show_activity { zh_patches.push(format!("\"show_activity\": {}", v)); }
+        if let Some(v) = req.network_visible {
+            zh_patches.push(format!("\"network_visible\": {}", v));
+        }
+        if let Some(v) = req.homepage_featured {
+            zh_patches.push(format!("\"homepage_featured\": {}", v));
+        }
+        if let Some(v) = req.show_deals {
+            zh_patches.push(format!("\"show_deals\": {}", v));
+        }
+        if let Some(v) = req.show_events {
+            zh_patches.push(format!("\"show_events\": {}", v));
+        }
+        if let Some(v) = req.show_reviews {
+            zh_patches.push(format!("\"show_reviews\": {}", v));
+        }
+        if let Some(v) = req.show_activity {
+            zh_patches.push(format!("\"show_activity\": {}", v));
+        }
 
         if !zh_patches.is_empty() {
             let zh_sql = format!(
                 "UPDATE directories SET zaarhub_config = zaarhub_config || '{{}}'::jsonb || '{{{}}}'::jsonb, updated_at = NOW() WHERE id = $1",
                 zh_patches.join(", ")
             );
-            sqlx::query(&zh_sql)
-                .bind(id)
-                .execute(&s.db)
-                .await?;
+            sqlx::query(&zh_sql).bind(id).execute(&s.db).await?;
         }
     }
 
     // Fetch the full updated zaarhub_config to return
     let zaarhub_config: Value = sqlx::query_scalar(
-        r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#
+        r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#,
     )
     .bind(id)
     .fetch_one(&s.db)

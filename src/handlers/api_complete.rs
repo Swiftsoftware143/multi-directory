@@ -7,14 +7,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use sqlx::Row;
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
+use sqlx::Row;
 
 // ── API Keys ──────────────────────────────────────────────────────────────────
 
@@ -127,14 +127,10 @@ pub async fn create_api_key(
 }
 
 /// GET /api/v1/admin/api-keys — list all API keys
-pub async fn list_api_keys(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let keys = sqlx::query_as::<_, ApiKey>(
-        "SELECT * FROM api_keys ORDER BY created_at DESC"
-    )
-    .fetch_all(&state.db)
-    .await?;
+pub async fn list_api_keys(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let keys = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys ORDER BY created_at DESC")
+        .fetch_all(&state.db)
+        .await?;
 
     let resp: Vec<ApiKeyResponse> = keys.into_iter().map(|k| k.into()).collect();
     Ok(Json(serde_json::json!(resp)))
@@ -145,13 +141,11 @@ pub async fn get_api_key(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let key = sqlx::query_as::<_, ApiKey>(
-        "SELECT * FROM api_keys WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
+    let key = sqlx::query_as::<_, ApiKey>("SELECT * FROM api_keys WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
 
     Ok(Json(serde_json::json!(ApiKeyResponse::from(key))))
 }
@@ -171,7 +165,7 @@ pub async fn update_api_key(
             is_active = COALESCE($5, is_active),
             expires_at = COALESCE($6, expires_at),
             updated_at = NOW()
-         WHERE id = $7 RETURNING *"
+         WHERE id = $7 RETURNING *",
     )
     .bind(&req.name)
     .bind(&req.scopes)
@@ -213,17 +207,22 @@ pub async fn verify_api_key(
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let key = auth_header.strip_prefix("Bearer ")
+    let key = auth_header
+        .strip_prefix("Bearer ")
         .or_else(|| {
             // Also accept just the raw key without Bearer prefix
-            if auth_header.starts_with("md_") { Some(auth_header) } else { None }
+            if auth_header.starts_with("md_") {
+                Some(auth_header)
+            } else {
+                None
+            }
         })
         .ok_or_else(|| AppError::Unauthorized)?;
 
     let hash = sha256_hash(key);
     let prefix = key.split('_').nth(1).unwrap_or("").to_string();
     let api_key = sqlx::query_as::<_, ApiKey>(
-        "SELECT * FROM api_keys WHERE key_hash = $1 OR key_prefix = $2"
+        "SELECT * FROM api_keys WHERE key_hash = $1 OR key_prefix = $2",
     )
     .bind(&hash)
     .bind(&prefix)
@@ -344,10 +343,15 @@ pub async fn create_webhook(
     Json(req): Json<CreateWebhookRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let valid_events = vec![
-        "business.created", "business.updated", "business.deleted",
-        "review.created", "review.approved",
-        "deal.created", "deal.claimed",
-        "submission.created", "submission.approved",
+        "business.created",
+        "business.updated",
+        "business.deleted",
+        "review.created",
+        "review.approved",
+        "deal.created",
+        "deal.claimed",
+        "submission.created",
+        "submission.approved",
         "contact.created",
         "directory.created",
     ];
@@ -355,14 +359,15 @@ pub async fn create_webhook(
     for event in &req.events {
         if !valid_events.contains(&event.as_str()) {
             return Err(AppError::Validation(format!(
-                "Invalid event '{}'. Valid events: {:?}", event, valid_events
+                "Invalid event '{}'. Valid events: {:?}",
+                event, valid_events
             )));
         }
     }
 
     let webhook = sqlx::query_as::<_, Webhook>(
         "INSERT INTO webhooks (url, events, directory_id, secret, retry_count, timeout_seconds)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *"
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
     )
     .bind(&req.url)
     .bind(&req.events)
@@ -377,14 +382,10 @@ pub async fn create_webhook(
 }
 
 /// GET /api/v1/admin/webhooks — list webhooks
-pub async fn list_webhooks(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let webhooks = sqlx::query_as::<_, Webhook>(
-        "SELECT * FROM webhooks ORDER BY created_at DESC"
-    )
-    .fetch_all(&state.db)
-    .await?;
+pub async fn list_webhooks(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let webhooks = sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks ORDER BY created_at DESC")
+        .fetch_all(&state.db)
+        .await?;
     Ok(Json(serde_json::json!(webhooks)))
 }
 
@@ -393,13 +394,11 @@ pub async fn get_webhook(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let webhook = sqlx::query_as::<_, Webhook>(
-        "SELECT * FROM webhooks WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Webhook not found".to_string()))?;
+    let webhook = sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Webhook not found".to_string()))?;
     Ok(Json(serde_json::json!(webhook)))
 }
 
@@ -418,7 +417,7 @@ pub async fn update_webhook(
             retry_count = COALESCE($5, retry_count),
             timeout_seconds = COALESCE($6, timeout_seconds),
             updated_at = NOW()
-         WHERE id = $7 RETURNING *"
+         WHERE id = $7 RETURNING *",
     )
     .bind(&req.url)
     .bind(&req.events)
@@ -454,7 +453,7 @@ pub async fn list_webhook_deliveries(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let deliveries = sqlx::query_as::<_, WebhookDelivery>(
-        "SELECT * FROM webhook_deliveries WHERE webhook_id = $1 ORDER BY created_at DESC LIMIT 50"
+        "SELECT * FROM webhook_deliveries WHERE webhook_id = $1 ORDER BY created_at DESC LIMIT 50",
     )
     .bind(id)
     .fetch_all(&state.db)
@@ -473,7 +472,7 @@ pub async fn dispatch_webhook_event(
     payload: serde_json::Value,
 ) {
     let webhooks = sqlx::query_as::<_, Webhook>(
-        "SELECT * FROM webhooks WHERE $1 = ANY(events) AND is_active = true"
+        "SELECT * FROM webhooks WHERE $1 = ANY(events) AND is_active = true",
     )
     .bind(event_type)
     .fetch_all(&state.db)
@@ -505,7 +504,7 @@ pub async fn dispatch_webhook_event(
         // Create delivery record
         let _ = sqlx::query(
             "INSERT INTO webhook_deliveries (id, webhook_id, event_type, payload, status)
-             VALUES ($1, $2, $3, $4::jsonb, 'pending')"
+             VALUES ($1, $2, $3, $4::jsonb, 'pending')",
         )
         .bind(delivery_id)
         .bind(webhook.id)
@@ -541,13 +540,21 @@ pub async fn dispatch_webhook_event(
                     }
                 };
 
-                let mut req = client.post(&webhook_url)
+                let mut req = client
+                    .post(&webhook_url)
                     .json(&payload)
                     .header("Content-Type", "application/json")
                     .header("User-Agent", "MultiDirectory-Webhook/1.0");
 
                 if let Some(secret) = &webhook_secret {
-                    req = req.header("X-Webhook-Signature", sha256_hash(&format!("{}{}", secret, serde_json::to_string(&payload).unwrap_or_default())));
+                    req = req.header(
+                        "X-Webhook-Signature",
+                        sha256_hash(&format!(
+                            "{}{}",
+                            secret,
+                            serde_json::to_string(&payload).unwrap_or_default()
+                        )),
+                    );
                     req = req.header("X-Webhook-Secret", secret.as_str());
                 }
 
@@ -556,7 +563,11 @@ pub async fn dispatch_webhook_event(
                         let status_code = resp.status().as_u16() as i32;
                         let response_body = resp.text().await.unwrap_or_default();
 
-                        let delivery_status = if status_code < 500 { "delivered" } else { "failed" };
+                        let delivery_status = if status_code < 500 {
+                            "delivered"
+                        } else {
+                            "failed"
+                        };
 
                         let _ = sqlx::query(
                             "UPDATE webhook_deliveries SET status = $1, attempt_count = $2, response_status_code = $3, response_body = $4, completed_at = NOW() WHERE id = $5"
@@ -589,7 +600,8 @@ pub async fn dispatch_webhook_event(
                 }
 
                 if attempt < max_retries {
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt as u32))).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt as u32)))
+                        .await;
                 }
             }
 
@@ -613,10 +625,12 @@ pub async fn dispatch_webhook_event(
     }
 
     // Update last_triggered_at
-    let _ = sqlx::query("UPDATE webhooks SET last_triggered_at = NOW() WHERE id = ANY($1) AND is_active = true")
-        .bind(&webhooks.iter().map(|w| w.id).collect::<Vec<_>>())
-        .execute(&state.db)
-        .await;
+    let _ = sqlx::query(
+        "UPDATE webhooks SET last_triggered_at = NOW() WHERE id = ANY($1) AND is_active = true",
+    )
+    .bind(&webhooks.iter().map(|w| w.id).collect::<Vec<_>>())
+    .execute(&state.db)
+    .await;
 }
 
 // ── Rate Limiter (in-memory, simple sliding window) ───────────────────────────
@@ -644,8 +658,12 @@ pub fn check_rate_limit(key_id: &str, rpm: i32, rph: i32) -> (bool, i32, i32) {
     });
 
     // Prune old entries
-    state.minute_window.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
-    state.hour_window.retain(|t| now.duration_since(*t) < Duration::from_secs(3600));
+    state
+        .minute_window
+        .retain(|t| now.duration_since(*t) < Duration::from_secs(60));
+    state
+        .hour_window
+        .retain(|t| now.duration_since(*t) < Duration::from_secs(3600));
 
     let minute_count = state.minute_window.len() as i32;
     let hour_count = state.hour_window.len() as i32;
@@ -681,13 +699,12 @@ pub async fn get_api_key_usage(
     .await
     .unwrap_or(0);
 
-    let total_usage: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM api_key_usage WHERE api_key_id = $1"
-    )
-    .bind(id)
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(0);
+    let total_usage: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM api_key_usage WHERE api_key_id = $1")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
 
     let recent: Vec<serde_json::Value> = sqlx::query(
         "SELECT endpoint, method, status_code, created_at FROM api_key_usage WHERE api_key_id = $1 ORDER BY created_at DESC LIMIT 20"

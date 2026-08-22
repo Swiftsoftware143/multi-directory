@@ -1,7 +1,7 @@
 //! Review CRUD and moderation handlers.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -9,35 +9,37 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult, validate_pagination};
+use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::models::*;
+use crate::AppState;
 
 /// GET /api/v1/reviews — list all reviews (admin)
 pub async fn list_reviews(
     State(s): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let page = params.get("page").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1);
-    let per_page = params.get("per_page").and_then(|v| v.parse::<i64>().ok()).unwrap_or(50);
+    let page = params
+        .get("page")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1);
+    let per_page = params
+        .get("per_page")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(50);
     let (page, per_page) = validate_pagination(Some(page), Some(per_page));
     let offset = (page - 1) * per_page;
 
     let status_filter = params.get("status");
 
     let total = if let Some(ref st) = status_filter {
-        sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM reviews WHERE status = \x241 "
-        )
-        .bind(st)
-        .fetch_one(&s.db)
-        .await?
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews WHERE status = \x241 ")
+            .bind(st)
+            .fetch_one(&s.db)
+            .await?
     } else {
-        sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM reviews "
-        )
-        .fetch_one(&s.db)
-        .await?
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews ")
+            .fetch_one(&s.db)
+            .await?
     };
 
     let reviews = if let Some(ref st) = status_filter {
@@ -51,7 +53,7 @@ pub async fn list_reviews(
         .await?
     } else {
         sqlx::query_as::<_, Review>(
-            "SELECT * FROM reviews ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 "
+            "SELECT * FROM reviews ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 ",
         )
         .bind(per_page)
         .bind(offset)
@@ -76,16 +78,17 @@ pub async fn create_review(
     Json(req): Json<CreateReviewRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.rating < 1 || req.rating > 5 {
-        return Err(AppError::Validation("Rating must be between 1 and 5".to_string()));
+        return Err(AppError::Validation(
+            "Rating must be between 1 and 5".to_string(),
+        ));
     }
 
     // Verify business exists
-    let biz_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM businesses WHERE id = \x241 "
-    )
-    .bind(req.business_id)
-    .fetch_one(&s.db)
-    .await?;
+    let biz_exists =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM businesses WHERE id = \x241 ")
+            .bind(req.business_id)
+            .fetch_one(&s.db)
+            .await?;
 
     if biz_exists == 0 {
         return Err(AppError::NotFound("Business not found".to_string()));
@@ -116,13 +119,11 @@ pub async fn get_review(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let review = sqlx::query_as::<_, Review>(
-        "SELECT * FROM reviews WHERE id = \x241 "
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Review not found".to_string()))?;
+    let review = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = \x241 ")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound("Review not found".to_string()))?;
 
     Ok(Json(json!(review)))
 }
@@ -144,7 +145,7 @@ pub async fn update_review(
            source = COALESCE(\x247, source),
            source_url = COALESCE(\x248, source_url),
            updated_at = NOW()
-           WHERE id = \x249 RETURNING *"#
+           WHERE id = \x249 RETURNING *"#,
     )
     .bind(req.rating)
     .bind(&req.title)
@@ -186,7 +187,7 @@ pub async fn approve_review(
 ) -> ApiResult<impl IntoResponse> {
     let review = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET status = 'approved', is_verified = true, updated_at = NOW()
-           WHERE id = \x241 RETURNING *"#
+           WHERE id = \x241 RETURNING *"#,
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -217,7 +218,7 @@ pub async fn reject_review(
 ) -> ApiResult<impl IntoResponse> {
     let review = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET status = 'rejected', updated_at = NOW()
-           WHERE id = \x241 RETURNING *"#
+           WHERE id = \x241 RETURNING *"#,
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -242,7 +243,7 @@ pub async fn get_review_stats(
            COUNT(*) FILTER (WHERE rating = 3) as r3,
            COUNT(*) FILTER (WHERE rating = 4) as r4,
            COUNT(*) FILTER (WHERE rating = 5) as r5
-           FROM reviews WHERE business_id = \x241 AND status = 'approved'"#
+           FROM reviews WHERE business_id = \x241 AND status = 'approved'"#,
     )
     .bind(business_id)
     .fetch_optional(&s.db)
@@ -283,28 +284,34 @@ pub async fn get_review_stats(
     }
 }
 
-
 pub async fn list_business_reviews(
     State(s): State<AppState>,
     Path((slug, business_id)): Path<(String, Uuid)>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     // Verify directory exists
-    let _dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let _dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
-    let page = params.get("page").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1);
-    let per_page = params.get("per_page").and_then(|v| v.parse::<i64>().ok()).unwrap_or(50);
+    let page = params
+        .get("page")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1);
+    let per_page = params
+        .get("per_page")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(50);
     let (page, per_page) = validate_pagination(Some(page), Some(per_page));
     let offset = (page - 1) * per_page;
 
     let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM reviews WHERE business_id = \x241 AND status = 'approved'"
+        "SELECT COUNT(*) FROM reviews WHERE business_id = \x241 AND status = 'approved'",
     )
     .bind(business_id)
     .fetch_one(&s.db)

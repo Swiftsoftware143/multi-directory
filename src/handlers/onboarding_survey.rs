@@ -15,9 +15,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::auth::models::Claims;
 use crate::auth::middleware::is_admin;
-use crate::error::{AppError, ApiResult};
+use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 // ── Data Types ───────────────────────────────────────────────────────────────
@@ -30,8 +30,8 @@ pub struct SurveyConfig {
     pub enabled: bool,
     pub title: String,
     pub description: Option<String>,
-    pub questions: Value,           // JSONB
-    pub completion_tags: Value,     // JSONB
+    pub questions: Value,       // JSONB
+    pub completion_tags: Value, // JSONB
     pub trigger_event: String,
     pub required: bool,
     pub created_at: DateTime<Utc>,
@@ -46,8 +46,8 @@ pub struct SurveyResponse {
     pub visitor_account_id: Option<Uuid>,
     pub visitor_fingerprint: Option<String>,
     pub directory_id: Uuid,
-    pub answers: Value,             // JSONB
-    pub applied_tags: Vec<String>,  // TEXT[]
+    pub answers: Value,            // JSONB
+    pub applied_tags: Vec<String>, // TEXT[]
     pub completed_at: DateTime<Utc>,
 }
 
@@ -95,7 +95,7 @@ pub async fn get_survey_config(
     }
 
     let config = sqlx::query_as::<_, SurveyConfig>(
-        r#"SELECT * FROM directory_surveys WHERE directory_id = $1"#
+        r#"SELECT * FROM directory_surveys WHERE directory_id = $1"#,
     )
     .bind(directory_id)
     .fetch_optional(&s.db)
@@ -130,12 +130,10 @@ pub async fn upsert_survey_config(
     }
 
     // Verify directory exists
-    let dir_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = $1"
-    )
-    .bind(directory_id)
-    .fetch_one(&s.db)
-    .await?;
+    let dir_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = $1")
+        .bind(directory_id)
+        .fetch_one(&s.db)
+        .await?;
 
     if dir_exists == 0 {
         return Err(AppError::NotFound("Directory not found".to_string()));
@@ -143,17 +141,22 @@ pub async fn upsert_survey_config(
 
     // Check if config already exists
     let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directory_surveys WHERE directory_id = $1"
+        "SELECT COUNT(*) FROM directory_surveys WHERE directory_id = $1",
     )
     .bind(directory_id)
     .fetch_one(&s.db)
     .await?;
 
     let enabled = req.enabled.unwrap_or(false);
-    let title = req.title.clone().unwrap_or_else(|| "Help us personalize your experience".to_string());
+    let title = req
+        .title
+        .clone()
+        .unwrap_or_else(|| "Help us personalize your experience".to_string());
     let description = req.description;
     let questions = req.questions.unwrap_or(json!([]));
-    let trigger_event = req.trigger_event.unwrap_or_else(|| "first_visit".to_string());
+    let trigger_event = req
+        .trigger_event
+        .unwrap_or_else(|| "first_visit".to_string());
     let required = req.required.unwrap_or(false);
     let completion_tags = req.completion_tags.unwrap_or(json!([]));
 
@@ -164,7 +167,7 @@ pub async fn upsert_survey_config(
                 enabled = $1, title = $2, description = $3, questions = $4,
                 completion_tags = $5, trigger_event = $6, required = $7,
                 updated_at = NOW()
-               WHERE directory_id = $8"#
+               WHERE directory_id = $8"#,
         )
         .bind(enabled)
         .bind(&title)
@@ -182,7 +185,7 @@ pub async fn upsert_survey_config(
             r#"INSERT INTO directory_surveys
                 (directory_id, enabled, title, description, questions,
                  completion_tags, trigger_event, required)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
         )
         .bind(directory_id)
         .bind(enabled)
@@ -201,7 +204,7 @@ pub async fn upsert_survey_config(
 
     // Return updated config
     let config = sqlx::query_as::<_, SurveyConfig>(
-        r#"SELECT * FROM directory_surveys WHERE directory_id = $1"#
+        r#"SELECT * FROM directory_surveys WHERE directory_id = $1"#,
     )
     .bind(directory_id)
     .fetch_one(&s.db)
@@ -223,7 +226,7 @@ pub async fn toggle_survey(
     }
 
     let config = sqlx::query_as::<_, SurveyConfig>(
-        r#"SELECT * FROM directory_surveys WHERE directory_id = $1"#
+        r#"SELECT * FROM directory_surveys WHERE directory_id = $1"#,
     )
     .bind(directory_id)
     .fetch_optional(&s.db)
@@ -235,18 +238,30 @@ pub async fn toggle_survey(
         None => true,
     };
 
-    let title = config.as_ref().map(|c| c.title.clone()).unwrap_or_else(|| "Help us personalize your experience".to_string());
+    let title = config
+        .as_ref()
+        .map(|c| c.title.clone())
+        .unwrap_or_else(|| "Help us personalize your experience".to_string());
     let description = config.as_ref().and_then(|c| c.description.clone());
-    let questions = config.as_ref().map(|c| c.questions.clone()).unwrap_or(json!([]));
-    let completion_tags = config.as_ref().map(|c| c.completion_tags.clone()).unwrap_or(json!([]));
-    let trigger_event = config.as_ref().map(|c| c.trigger_event.clone()).unwrap_or_else(|| "first_visit".to_string());
+    let questions = config
+        .as_ref()
+        .map(|c| c.questions.clone())
+        .unwrap_or(json!([]));
+    let completion_tags = config
+        .as_ref()
+        .map(|c| c.completion_tags.clone())
+        .unwrap_or(json!([]));
+    let trigger_event = config
+        .as_ref()
+        .map(|c| c.trigger_event.clone())
+        .unwrap_or_else(|| "first_visit".to_string());
     let required = config.as_ref().map(|c| c.required).unwrap_or(false);
 
     if config.is_some() {
         sqlx::query(
             r#"UPDATE directory_surveys SET
                 enabled = $1, updated_at = NOW()
-               WHERE directory_id = $2"#
+               WHERE directory_id = $2"#,
         )
         .bind(new_enabled)
         .bind(directory_id)
@@ -257,7 +272,7 @@ pub async fn toggle_survey(
             r#"INSERT INTO directory_surveys
                 (directory_id, enabled, title, description, questions,
                  completion_tags, trigger_event, required)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
         )
         .bind(directory_id)
         .bind(new_enabled)
@@ -288,16 +303,14 @@ pub async fn public_get_survey(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
 
     let config = sqlx::query_as::<_, SurveyConfig>(
-        r#"SELECT * FROM directory_surveys WHERE directory_id = $1 AND enabled = true"#
+        r#"SELECT * FROM directory_surveys WHERE directory_id = $1 AND enabled = true"#,
     )
     .bind(dir.0)
     .fetch_optional(&s.db)
@@ -335,20 +348,19 @@ pub async fn public_submit_survey(
     Json(req): Json<SubmitSurveyRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Resolve directory by slug
-    let dir = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT id, name FROM directories WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
+    let dir =
+        sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM directories WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
 
     let directory_id = dir.0;
     let directory_name = dir.1;
 
     // Look up the enabled survey for this directory
     let config = sqlx::query_as::<_, SurveyConfig>(
-        r#"SELECT * FROM directory_surveys WHERE directory_id = $1 AND enabled = true"#
+        r#"SELECT * FROM directory_surveys WHERE directory_id = $1 AND enabled = true"#,
     )
     .bind(directory_id)
     .fetch_optional(&s.db)
@@ -356,7 +368,8 @@ pub async fn public_submit_survey(
     .ok_or_else(|| AppError::BadRequest("No active survey for this directory".to_string()))?;
 
     // Extract tags from completion_tags JSON array
-    let applied_tags: Vec<String> = config.completion_tags
+    let applied_tags: Vec<String> = config
+        .completion_tags
         .as_array()
         .map(|arr| {
             arr.iter()
@@ -370,7 +383,10 @@ pub async fn public_submit_survey(
     let mut wants_newsletter: bool = false;
     if let Some(answers_arr) = req.answers.as_array() {
         for ans in answers_arr {
-            let qid = ans.get("question_id").and_then(|v| v.as_str()).unwrap_or("");
+            let qid = ans
+                .get("question_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let value = ans.get("value");
             match qid {
                 // Supplier classification → granular tag
@@ -400,10 +416,8 @@ pub async fn public_submit_survey(
                             wants_newsletter = true;
                             // Short code based on directory slug for ZaarHub newsletter tags
                             // Format: {code}-zh-newsletter (e.g., pc-zh-newsletter, pb-zh-newsletter)
-                            let newsletter_tag = format!(
-                                "{}-zh-newsletter",
-                                directory_slug_to_code(&slug)
-                            );
+                            let newsletter_tag =
+                                format!("{}-zh-newsletter", directory_slug_to_code(&slug));
                             if !answer_tags.contains(&newsletter_tag) {
                                 answer_tags.push(newsletter_tag);
                             }
@@ -488,7 +502,7 @@ pub async fn public_submit_survey(
                     match sqlx::query(
                         r#"INSERT INTO newsletter_subscribers (directory_id, email, name, status)
                            VALUES ($1, $2, '', 'active')
-                           ON CONFLICT (directory_id, email) DO NOTHING"#
+                           ON CONFLICT (directory_id, email) DO NOTHING"#,
                     )
                     .bind(nl_directory_id)
                     .bind(&visitor_email_for_nl)
@@ -499,18 +513,21 @@ pub async fn public_submit_survey(
                             if r.rows_affected() > 0 {
                                 tracing::info!(
                                     "[newsletter] Auto-subscribed {} to directory {}",
-                                    visitor_email_for_nl, nl_directory_id
+                                    visitor_email_for_nl,
+                                    nl_directory_id
                                 );
                             } else {
                                 tracing::info!(
                                     "[newsletter] {} already subscribed to directory {}",
-                                    visitor_email_for_nl, nl_directory_id
+                                    visitor_email_for_nl,
+                                    nl_directory_id
                                 );
                             }
                         }
                         Err(e) => tracing::warn!(
                             "[newsletter] Failed to auto-subscribe {}: {}",
-                            visitor_email_for_nl, e
+                            visitor_email_for_nl,
+                            e
                         ),
                     }
                 });
@@ -561,7 +578,7 @@ async fn sync_feature_config(
     enabled: bool,
 ) -> Result<(), AppError> {
     let current_config: Value = sqlx::query_scalar(
-        r#"SELECT COALESCE(feature_config, '{}'::jsonb) FROM directories WHERE id = $1"#
+        r#"SELECT COALESCE(feature_config, '{}'::jsonb) FROM directories WHERE id = $1"#,
     )
     .bind(directory_id)
     .fetch_one(db)
@@ -572,13 +589,11 @@ async fn sync_feature_config(
     config.insert("onboarding_survey".to_string(), json!(enabled));
     let new_config = Value::Object(config);
 
-    sqlx::query(
-        r#"UPDATE directories SET feature_config = $1, updated_at = NOW() WHERE id = $2"#
-    )
-    .bind(&new_config)
-    .bind(directory_id)
-    .execute(db)
-    .await?;
+    sqlx::query(r#"UPDATE directories SET feature_config = $1, updated_at = NOW() WHERE id = $2"#)
+        .bind(&new_config)
+        .bind(directory_id)
+        .execute(db)
+        .await?;
 
     Ok(())
 }

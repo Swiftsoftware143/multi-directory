@@ -2,17 +2,17 @@
 //! Tracks incoming/outgoing calls and phone number management.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Data Types ───────────────────────────────────────────────────────────────
 
@@ -256,7 +256,8 @@ pub async fn update_call_lead(
     }
     q = q.bind(id);
 
-    let log = q.fetch_optional(&s.db)
+    let log = q
+        .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Call log not found".to_string()))?;
 
@@ -264,9 +265,7 @@ pub async fn update_call_lead(
 }
 
 /// GET /api/v1/call-logs/stats — aggregated call statistics
-pub async fn call_log_stats(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn call_log_stats(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let stats = sqlx::query_as::<_, CallLogStats>(
         "SELECT COUNT(*)::bigint AS total_calls, COUNT(*) FILTER (WHERE call_status = 'missed')::bigint AS missed_calls, COUNT(*) FILTER (WHERE call_status = 'completed')::bigint AS completed_calls, COUNT(*) FILTER (WHERE call_status = 'voicemail')::bigint AS voicemail_calls, CASE WHEN COUNT(*) > 0 THEN ROUND(COUNT(*) FILTER (WHERE call_status = 'missed')::numeric / COUNT(*)::numeric * 100, 1)::float8 ELSE 0.0 END AS missed_percentage, COALESCE(ROUND(AVG(duration_seconds)::numeric, 1), 0.0)::float8 AS avg_duration_seconds, COALESCE(SUM(duration_seconds), 0)::bigint AS total_duration_seconds, COUNT(DISTINCT caller_number)::bigint AS total_unique_callers, COUNT(*) FILTER (WHERE lead_name IS NOT NULL AND lead_name != '')::bigint AS total_leads FROM call_logs "
     )

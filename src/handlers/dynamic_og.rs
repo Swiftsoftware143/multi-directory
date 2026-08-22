@@ -25,7 +25,7 @@ pub async fn dynamic_og_image(
             let id = Uuid::parse_str(&page_id_str)
                 .map_err(|_| AppError::NotFound("Invalid directory ID".into()))?;
             let row = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
-                "SELECT name, description, city FROM directories WHERE id = $1"
+                "SELECT name, description, city FROM directories WHERE id = $1",
             )
             .bind(id)
             .fetch_optional(&s.db)
@@ -33,7 +33,9 @@ pub async fn dynamic_og_image(
             .ok_or(AppError::NotFound("Directory not found".into()))?;
 
             let dir_name = row.0.clone();
-            let desc = row.1.unwrap_or_else(|| format!("Browse {} - find local businesses and services.", &row.0));
+            let desc = row.1.unwrap_or_else(|| {
+                format!("Browse {} - find local businesses and services.", &row.0)
+            });
             (row.0, desc, dir_name)
         }
         "blog" => {
@@ -43,7 +45,7 @@ pub async fn dynamic_og_image(
                 "SELECT bp.title, bp.excerpt, d.name \
                  FROM blog_posts bp \
                  JOIN directories d ON d.id = bp.directory_id \
-                 WHERE bp.id = $1"
+                 WHERE bp.id = $1",
             )
             .bind(id)
             .fetch_optional(&s.db)
@@ -61,7 +63,7 @@ pub async fn dynamic_og_image(
                 "SELECT b.name, b.description, d.name \
                  FROM businesses b \
                  JOIN directories d ON d.id = b.directory_id \
-                 WHERE b.id = $1"
+                 WHERE b.id = $1",
             )
             .bind(id)
             .fetch_optional(&s.db)
@@ -69,7 +71,12 @@ pub async fn dynamic_og_image(
             .ok_or(AppError::NotFound("Business not found".into()))?;
 
             let dir_name = row.2.unwrap_or_default();
-            let desc = row.1.unwrap_or_else(|| format!("Find {} - browse services, reviews, and contact info.", &row.0));
+            let desc = row.1.unwrap_or_else(|| {
+                format!(
+                    "Find {} - browse services, reviews, and contact info.",
+                    &row.0
+                )
+            });
             (row.0, desc, dir_name)
         }
         "trapdoor" | "programmatic" => {
@@ -77,24 +84,37 @@ pub async fn dynamic_og_image(
                 .map_err(|_| AppError::NotFound("Invalid page ID".into()))?;
             let row = sqlx::query_as::<
                 _,
-                (Option<String>, Option<String>, Option<String>, Option<String>),
+                (
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                ),
             >(
                 "SELECT pp.title, pp.meta_title, pp.meta_description, d.name \
                  FROM programmatic_pages pp \
                  JOIN directories d ON d.id = pp.directory_id \
-                 WHERE pp.id = $1"
+                 WHERE pp.id = $1",
             )
             .bind(id)
             .fetch_optional(&s.db)
             .await?
             .ok_or(AppError::NotFound("Trapdoor page not found".into()))?;
 
-            let title = row.0.or(row.1.clone()).unwrap_or_else(|| "Page".to_string());
+            let title = row
+                .0
+                .or(row.1.clone())
+                .unwrap_or_else(|| "Page".to_string());
             let description = row.2.unwrap_or_default();
             let dir_name = row.3.unwrap_or_default();
             (title, description, dir_name)
         }
-        _ => return Err(AppError::NotFound(format!("Unknown page type: {}", page_type))),
+        _ => {
+            return Err(AppError::NotFound(format!(
+                "Unknown page type: {}",
+                page_type
+            )))
+        }
     };
 
     let svg = generate_og_svg(&title, &description, &dir_name);
@@ -102,7 +122,10 @@ pub async fn dynamic_og_image(
     let headers = [
         (header::CONTENT_TYPE, "image/svg+xml; charset=utf-8"),
         (header::CACHE_CONTROL, "public, max-age=3600"),
-        (axum::http::HeaderName::from_static("x-og-generated"), "true"),
+        (
+            axum::http::HeaderName::from_static("x-og-generated"),
+            "true",
+        ),
     ];
 
     Ok((headers, svg))

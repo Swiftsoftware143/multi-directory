@@ -8,18 +8,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::error::{ApiResult, AppError};
+use crate::handlers::pipeline::{
+    find_existing_by_phone, find_existing_by_website, pipeline_ingest, IngestBusiness,
+    IngestRequest,
+};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
-use crate::handlers::pipeline::{pipeline_ingest, find_existing_by_phone, find_existing_by_website, IngestBusiness, IngestRequest};
 
 // ── Scraper Configuration ──
 
 #[derive(Debug, Deserialize)]
 pub struct ScraperConfig {
-    pub source: String,           // "nextdoor", "chamber", "yellowpages", "manta", "brightlocal", etc.
+    pub source: String, // "nextdoor", "chamber", "yellowpages", "manta", "brightlocal", etc.
     pub directory_id: Option<String>,
-    pub location: Option<String>,  // city, state or zip
-    pub query: Option<String>,     // category or keyword filter
+    pub location: Option<String>, // city, state or zip
+    pub query: Option<String>,    // category or keyword filter
     pub max_results: Option<i32>,
 }
 
@@ -49,7 +52,6 @@ pub struct ScrapedBusiness {
 }
 
 // ── Google Places Scraper (already has API in provider_keys) ──
-
 
 /// POST /api/v1/scraper/import — unified data import endpoint
 /// Admin selects source, business type, location, and keyword.
@@ -116,7 +118,10 @@ pub async fn data_import(
     // Route to the appropriate source handler
     match req.source.as_str() {
         "google_places" => google_places_import(State(s), req).await,
-        _ => Err(AppError::BadRequest(format!("Source '{}' not yet implemented. Available: google_places", req.source)))
+        _ => Err(AppError::BadRequest(format!(
+            "Source '{}' not yet implemented. Available: google_places",
+            req.source
+        ))),
     }
 }
 
@@ -146,12 +151,18 @@ async fn google_places_import(
         max_results
     );
 
-    let resp = reqwest::get(&url).await
+    let resp = reqwest::get(&url)
+        .await
         .map_err(|e| AppError::BadRequest(format!("Google Places API error: {}", e)))?
-        .json::<serde_json::Value>().await
+        .json::<serde_json::Value>()
+        .await
         .map_err(|e| AppError::BadRequest(format!("Failed to parse response: {}", e)))?;
 
-    let results = resp.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+    let results = resp
+        .get("results")
+        .and_then(|r| r.as_array())
+        .cloned()
+        .unwrap_or_default();
     let mut businesses = Vec::new();
 
     // Resolve directory_id
@@ -160,33 +171,61 @@ async fn google_places_import(
             Some(u)
         } else {
             sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1 LIMIT 1")
-                .bind(did).fetch_optional(&s.db).await.unwrap_or(None)
+                .bind(did)
+                .fetch_optional(&s.db)
+                .await
+                .unwrap_or(None)
         }
-    } else { None };
+    } else {
+        None
+    };
 
     for place in &results {
-        let name = place.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-        let formatted_addr = place.get("formatted_address").and_then(|v| v.as_str()).unwrap_or("");
+        let name = place
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let formatted_addr = place
+            .get("formatted_address")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let addr_parts: Vec<&str> = formatted_addr.split(',').collect();
         let city = addr_parts.first().map(|s| s.trim().to_string());
         let rest = addr_parts.get(1).map(|s| s.trim().to_string());
 
         // Check for existing match by phone, website, or name+city
-        let phone = place.get("formatted_phone_number").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let website = place.get("website").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let phone = place
+            .get("formatted_phone_number")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let website = place
+            .get("website")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         let mut existing_match = None;
         let mut action = "create".to_string();
 
         if let Some(ref p) = phone {
             if let Ok(Some(id)) = find_existing_by_phone(&s.db, p, dir_id).await {
-                let existing_name: Option<String> = sqlx::query_scalar("SELECT name FROM businesses WHERE id = $1")
-                    .bind(id).fetch_optional(&s.db).await.unwrap_or(None);
+                let existing_name: Option<String> =
+                    sqlx::query_scalar("SELECT name FROM businesses WHERE id = $1")
+                        .bind(id)
+                        .fetch_optional(&s.db)
+                        .await
+                        .unwrap_or(None);
                 existing_match = Some(ExistingMatch {
                     id: id.to_string(),
                     name: existing_name.unwrap_or_default(),
                     phone: phone.clone(),
                     website: website.clone(),
-                    fields_to_merge: vec!["description".into(), "website".into(), "rating".into(), "review_count".into(), "images".into()],
+                    fields_to_merge: vec![
+                        "description".into(),
+                        "website".into(),
+                        "rating".into(),
+                        "review_count".into(),
+                        "images".into(),
+                    ],
                 });
                 action = "merge".to_string();
             }
@@ -195,22 +234,34 @@ async fn google_places_import(
         if existing_match.is_none() {
             if let Some(ref w) = website {
                 if let Ok(Some(id)) = find_existing_by_website(&s.db, w, dir_id).await {
-                    let existing_name: Option<String> = sqlx::query_scalar("SELECT name FROM businesses WHERE id = $1")
-                        .bind(id).fetch_optional(&s.db).await.unwrap_or(None);
+                    let existing_name: Option<String> =
+                        sqlx::query_scalar("SELECT name FROM businesses WHERE id = $1")
+                            .bind(id)
+                            .fetch_optional(&s.db)
+                            .await
+                            .unwrap_or(None);
                     existing_match = Some(ExistingMatch {
                         id: id.to_string(),
                         name: existing_name.unwrap_or_default(),
                         phone: phone.clone(),
                         website: website.clone(),
-                        fields_to_merge: vec!["phone".into(), "description".into(), "rating".into()],
+                        fields_to_merge: vec![
+                            "phone".into(),
+                            "description".into(),
+                            "rating".into(),
+                        ],
                     });
                     action = "merge".to_string();
                 }
             }
         }
 
-        let category = place.get("types").and_then(|t| t.as_array())
-            .and_then(|a| a.first()).and_then(|v| v.as_str()).map(|s| s.to_string());
+        let category = place
+            .get("types")
+            .and_then(|t| t.as_array())
+            .and_then(|a| a.first())
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         businesses.push(ImportReviewBusiness {
             name,
@@ -223,7 +274,10 @@ async fn google_places_import(
             zip: None,
             category,
             rating: place.get("rating").and_then(|v| v.as_f64()),
-            review_count: place.get("user_ratings_total").and_then(|v| v.as_i64()).map(|i| i as i32),
+            review_count: place
+                .get("user_ratings_total")
+                .and_then(|v| v.as_i64())
+                .map(|i| i as i32),
             image_urls: vec![],
             existing_match,
             action,
@@ -235,25 +289,32 @@ async fn google_places_import(
         let ingest_req = crate::handlers::pipeline::IngestRequest {
             source: "google_places".into(),
             directory_id: req.directory_id.clone(),
-            businesses: businesses.iter().map(|b| crate::handlers::pipeline::IngestBusiness {
-                name: Some(b.name.clone()),
-                description: None,
-                phone: b.phone.clone(),
-                email: b.email.clone(),
-                website: b.website.clone(),
-                address: b.address.clone(),
-                city: b.city.clone(),
-                state: b.state.clone(),
-                zip: b.zip.clone(),
-                latitude: None,
-                longitude: None,
-                category: b.category.clone(),
-                rating: b.rating,
-                review_count: b.review_count,
-                image_urls: None,
-                business_type: if req.business_type == "supplier" { Some("supplier".into()) } else { None },
-                raw: None,
-            }).collect(),
+            businesses: businesses
+                .iter()
+                .map(|b| crate::handlers::pipeline::IngestBusiness {
+                    name: Some(b.name.clone()),
+                    description: None,
+                    phone: b.phone.clone(),
+                    email: b.email.clone(),
+                    website: b.website.clone(),
+                    address: b.address.clone(),
+                    city: b.city.clone(),
+                    state: b.state.clone(),
+                    zip: b.zip.clone(),
+                    latitude: None,
+                    longitude: None,
+                    category: b.category.clone(),
+                    rating: b.rating,
+                    review_count: b.review_count,
+                    image_urls: None,
+                    business_type: if req.business_type == "supplier" {
+                        Some("supplier".into())
+                    } else {
+                        None
+                    },
+                    raw: None,
+                })
+                .collect(),
         };
         // Fire and forget — results go through pipeline
         let _ = pipeline_ingest(s, Json(ingest_req)).await;
@@ -270,9 +331,7 @@ async fn google_places_import(
 }
 
 /// GET /api/v1/scraper/providers — list available scraper sources and their key status
-pub async fn list_scraper_providers(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_scraper_providers(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let providers = sqlx::query_as::<_, (String, String, bool)>(
         r#"SELECT ap.key, ap.name, pk.api_key IS NOT NULL as has_key
            FROM available_providers ap
@@ -283,9 +342,14 @@ pub async fn list_scraper_providers(
     .fetch_all(&s.db)
     .await?;
 
-    let result: Vec<serde_json::Value> = providers.into_iter().map(|(key, name, has_key)| json!({
-        "key": key, "name": name, "configured": has_key
-    })).collect();
+    let result: Vec<serde_json::Value> = providers
+        .into_iter()
+        .map(|(key, name, has_key)| {
+            json!({
+                "key": key, "name": name, "configured": has_key
+            })
+        })
+        .collect();
 
     Ok(Json(json!({"providers": result, "total": result.len()})))
 }
@@ -296,9 +360,19 @@ pub async fn run_scraper(
     Json(cfg): Json<ScraperConfig>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate source
-    let valid_sources = ["google_places", "brightlocal", "nextdoor", "chamber", "yellowpages", "manta"];
+    let valid_sources = [
+        "google_places",
+        "brightlocal",
+        "nextdoor",
+        "chamber",
+        "yellowpages",
+        "manta",
+    ];
     if !valid_sources.contains(&cfg.source.as_str()) {
-        return Err(AppError::BadRequest(format!("Unknown scraper source: {}", cfg.source)));
+        return Err(AppError::BadRequest(format!(
+            "Unknown scraper source: {}",
+            cfg.source
+        )));
     }
 
     // Get API key for the source
@@ -315,7 +389,7 @@ pub async fn run_scraper(
     Ok(Json(json!({
         "source": cfg.source,
         "configured": api_key.is_some(),
-        "message": format!("Scraper '{}' is {}. Provide API key in Settings > API Keys.", 
+        "message": format!("Scraper '{}' is {}. Provide API key in Settings > API Keys.",
             cfg.source, if api_key.is_some() { "configured" } else { "not configured" }),
         "note": "Full scraping pipeline will stream results through /pipeline/ingest"
     })))
@@ -347,36 +421,65 @@ pub async fn scrape_google_places(
         max_results
     );
 
-    let resp = reqwest::get(&url).await
+    let resp = reqwest::get(&url)
+        .await
         .map_err(|e| AppError::BadRequest(format!("Google Places API error: {}", e)))?
-        .json::<serde_json::Value>().await
+        .json::<serde_json::Value>()
+        .await
         .map_err(|e| AppError::BadRequest(format!("Failed to parse response: {}", e)))?;
 
-    let results = resp.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+    let results = resp
+        .get("results")
+        .and_then(|r| r.as_array())
+        .cloned()
+        .unwrap_or_default();
     let mut businesses = Vec::new();
 
     for place in &results {
-        let name = place.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-        let formatted_addr = place.get("formatted_address").and_then(|v| v.as_str()).unwrap_or("");
+        let name = place
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let formatted_addr = place
+            .get("formatted_address")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let parts: Vec<&str> = formatted_addr.split(',').collect();
         let city = parts.get(0).map(|s| s.trim().to_string());
         let state_zip = parts.get(1).map(|s| s.trim().to_string());
 
         businesses.push(ScrapedBusiness {
             name,
-            phone: place.get("formatted_phone_number").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            phone: place
+                .get("formatted_phone_number")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             email: None,
-            website: place.get("website").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            website: place
+                .get("website")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             address: Some(formatted_addr.to_string()),
             city,
             state: state_zip,
             zip: None,
-            category: place.get("types").and_then(|t| t.as_array())
-                .and_then(|a| a.first()).and_then(|v| v.as_str()).map(|s| s.to_string()),
+            category: place
+                .get("types")
+                .and_then(|t| t.as_array())
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             rating: place.get("rating").and_then(|v| v.as_f64()),
-            review_count: place.get("user_ratings_total").and_then(|v| v.as_i64()).map(|i| i as i32),
+            review_count: place
+                .get("user_ratings_total")
+                .and_then(|v| v.as_i64())
+                .map(|i| i as i32),
             image_urls: vec![],
-            source_url: place.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            source_url: place
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         });
     }
 

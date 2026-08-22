@@ -4,20 +4,20 @@
 //! multi-LLM provider selection (DeepSeek, OpenAI, Gemini), and image/video injection.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use chrono::NaiveDateTime;
 use std::collections::HashMap;
+use uuid::Uuid;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Blog Template CRUD ──
 
@@ -115,7 +115,9 @@ pub async fn list_templates(
     State(s): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir_id = params.get("directory_id").and_then(|v| Uuid::parse_str(v).ok());
+    let dir_id = params
+        .get("directory_id")
+        .and_then(|v| Uuid::parse_str(v).ok());
     let template_type = params.get("type");
     let category = params.get("category");
 
@@ -222,7 +224,7 @@ pub async fn update_template(
             status = COALESCE($13, status),
             updated_at = NOW()
            WHERE id = $14
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(req.name)
     .bind(req.description)
@@ -297,12 +299,11 @@ pub async fn get_template_directories(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let dirs: Vec<(Uuid,)> = sqlx::query_as(
-        "SELECT directory_id FROM blog_template_directories WHERE template_id = $1"
-    )
-    .bind(id)
-    .fetch_all(&s.db)
-    .await?;
+    let dirs: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT directory_id FROM blog_template_directories WHERE template_id = $1")
+            .bind(id)
+            .fetch_all(&s.db)
+            .await?;
 
     Ok(Json(dirs.into_iter().map(|d| d.0).collect::<Vec<_>>()))
 }
@@ -319,8 +320,14 @@ pub async fn generate_blog_posts(
         .await?
         .ok_or_else(|| AppError::NotFound("template not found".into()))?;
 
-    let provider = req.llm_provider.as_deref().unwrap_or(tpl.llm_provider.as_deref().unwrap_or("deepseek"));
-    let model = req.llm_model.as_deref().unwrap_or(tpl.llm_model.as_deref().unwrap_or("deepseek-chat"));
+    let provider = req
+        .llm_provider
+        .as_deref()
+        .unwrap_or(tpl.llm_provider.as_deref().unwrap_or("deepseek"));
+    let model = req
+        .llm_model
+        .as_deref()
+        .unwrap_or(tpl.llm_model.as_deref().unwrap_or("deepseek-chat"));
     let publish = req.publish.unwrap_or(false);
     let word_count = tpl.word_count.unwrap_or(1000);
 
@@ -330,37 +337,57 @@ pub async fn generate_blog_posts(
 
     for dir_id in &req.directory_ids {
         // Get directory info for merge fields
-        let dir_info: Option<(String, String, String)> = sqlx::query_as(
-            "SELECT name, slug, COALESCE(city, '') FROM directories WHERE id = $1"
-        )
-        .bind(dir_id)
-        .fetch_optional(&s.db)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        let dir_info: Option<(String, String, String)> =
+            sqlx::query_as("SELECT name, slug, COALESCE(city, '') FROM directories WHERE id = $1")
+                .bind(dir_id)
+                .fetch_optional(&s.db)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        let (dir_name, dir_slug, dir_city) = dir_info.unwrap_or_else(|| ("Directory".into(), "directory".into(), String::new()));
+        let (dir_name, dir_slug, dir_city) =
+            dir_info.unwrap_or_else(|| ("Directory".into(), "directory".into(), String::new()));
 
         // Auto-fill directory merge fields
         fields.insert("directory_name".to_string(), dir_name.clone());
-        fields.insert("directory_url".to_string(), format!("https://{}.{}", dir_slug, s.config.base_domain));
+        fields.insert(
+            "directory_url".to_string(),
+            format!("https://{}.{}", dir_slug, s.config.base_domain),
+        );
         fields.insert("directory_slug".to_string(), dir_slug.clone());
-        fields.insert("city".to_string(), if dir_city.is_empty() { fields.get("city").cloned().unwrap_or_default() } else { dir_city.clone() });
+        fields.insert(
+            "city".to_string(),
+            if dir_city.is_empty() {
+                fields.get("city").cloned().unwrap_or_default()
+            } else {
+                dir_city.clone()
+            },
+        );
 
         // Build the prompt using the template
         let filled_template = fill_template(&tpl.content_template, &fields);
         let merge_fields_str = serde_json::to_string(&tpl.merge_fields).unwrap_or_default();
 
-        let prompt = build_llm_prompt(&filled_template, &fields, word_count, provider, &merge_fields_str);
+        let prompt = build_llm_prompt(
+            &filled_template,
+            &fields,
+            word_count,
+            provider,
+            &merge_fields_str,
+        );
 
         // Call LLM
         match call_llm(&s.db, provider, model, &prompt).await {
             Ok(generated) => {
                 // Parse title from generated content (first h1 or first line)
-                let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
+                let (title, mut content) =
+                    extract_title_and_content(&generated, &fields, &tpl.name);
 
                 let date_str = Utc::now().format("%B %d, %Y").to_string();
                 let byline = "Admin";
-                let meta = format!(r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by {}</p>"#, date_str, byline);
+                let meta = format!(
+                    r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by {}</p>"#,
+                    date_str, byline
+                );
                 content = meta + "\n" + &content;
 
                 // Generate slug
@@ -399,7 +426,11 @@ pub async fn generate_blog_posts(
                             title,
                             directory_id: *dir_id,
                             slug,
-                            status: if publish { "published".to_string() } else { "draft".to_string() },
+                            status: if publish {
+                                "published".to_string()
+                            } else {
+                                "draft".to_string()
+                            },
                             generated_at: Utc::now(),
                         });
                     }
@@ -415,11 +446,14 @@ pub async fn generate_blog_posts(
     }
 
     let total_generated = posts.len();
-    Ok((StatusCode::CREATED, Json(GenerateBlogResponse {
-        posts,
-        total_generated,
-        total_failed: failed,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(GenerateBlogResponse {
+            posts,
+            total_generated,
+            total_failed: failed,
+        }),
+    ))
 }
 
 // ── Regenerate Single Post ──
@@ -429,7 +463,7 @@ pub async fn regenerate_blog_post(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let post = sqlx::query_as::<_, (Uuid, Option<Uuid>, Option<serde_json::Value>)>(
-        "SELECT id, template_id, template_data FROM blog_posts WHERE id = $1"
+        "SELECT id, template_id, template_data FROM blog_posts WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -438,7 +472,11 @@ pub async fn regenerate_blog_post(
 
     let tpl_id = match post.1 {
         Some(tid) => tid,
-        None => return Err(AppError::BadRequest("post has no template reference".into())),
+        None => {
+            return Err(AppError::BadRequest(
+                "post has no template reference".into(),
+            ))
+        }
     };
 
     let tpl = sqlx::query_as::<_, BlogTemplate>("SELECT * FROM blog_templates WHERE id = $1")
@@ -448,21 +486,38 @@ pub async fn regenerate_blog_post(
         .ok_or_else(|| AppError::NotFound("template for this post not found".into()))?;
 
     let template_data = post.2.unwrap_or(json!({}));
-    let fields: HashMap<String, String> = serde_json::from_value(template_data.get("fields").cloned().unwrap_or(json!({}))).unwrap_or_default();
-    let provider = template_data.get("provider").and_then(|v| v.as_str()).unwrap_or("deepseek");
-    let model = template_data.get("model").and_then(|v| v.as_str()).unwrap_or("deepseek-chat");
+    let fields: HashMap<String, String> =
+        serde_json::from_value(template_data.get("fields").cloned().unwrap_or(json!({})))
+            .unwrap_or_default();
+    let provider = template_data
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .unwrap_or("deepseek");
+    let model = template_data
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("deepseek-chat");
 
     let filled_template = fill_template(&tpl.content_template, &fields);
-    let prompt = build_llm_prompt(&filled_template, &fields, tpl.word_count.unwrap_or(1000), provider, "{}");
+    let prompt = build_llm_prompt(
+        &filled_template,
+        &fields,
+        tpl.word_count.unwrap_or(1000),
+        provider,
+        "{}",
+    );
 
     match call_llm(&s.db, provider, model, &prompt).await {
         Ok(generated) => {
             let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
 
-                let date_str = Utc::now().format("%B %d, %Y").to_string();
-                let byline = "Admin";
-                let meta = format!(r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by {}</p>"#, date_str, byline);
-                content = meta + "\n" + &content;
+            let date_str = Utc::now().format("%B %d, %Y").to_string();
+            let byline = "Admin";
+            let meta = format!(
+                r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by {}</p>"#,
+                date_str, byline
+            );
+            content = meta + "\n" + &content;
             let slug = slugify(&title);
 
             sqlx::query(
@@ -475,7 +530,9 @@ pub async fn regenerate_blog_post(
             .execute(&s.db)
             .await?;
 
-            Ok(Json(json!({"id": id, "title": title, "slug": slug, "status": "regenerated"})))
+            Ok(Json(
+                json!({"id": id, "title": title, "slug": slug, "status": "regenerated"}),
+            ))
         }
         Err(e) => Err(AppError::Internal(format!("LLM call failed: {}", e))),
     }
@@ -491,7 +548,10 @@ async fn inject_media(
     tpl: &BlogTemplate,
 ) -> Result<(), AppError> {
     // Try to find relevant YouTube videos
-    let query = fields.get("focus_keyword").cloned().unwrap_or_else(|| "business services".to_string());
+    let query = fields
+        .get("focus_keyword")
+        .cloned()
+        .unwrap_or_else(|| "business services".to_string());
     let city = fields.get("city").cloned().unwrap_or_default();
 
     let search_query = if city.is_empty() {
@@ -503,7 +563,10 @@ async fn inject_media(
     // Use existing YouTube API if configured, or try to fetch relevant videos
     // For now, use a simple approach — search for free stock image and video
     let image_url = generate_image_url(&search_query);
-    let video_url = search_youtube_video(&s, &search_query).await.ok().unwrap_or_default();
+    let video_url = search_youtube_video(&s, &search_query)
+        .await
+        .ok()
+        .unwrap_or_default();
 
     if !image_url.is_empty() || !video_url.is_empty() {
         sqlx::query(
@@ -539,18 +602,37 @@ fn generate_image_url(query: &str) -> String {
 async fn search_youtube_video(_s: &AppState, query: &str) -> Result<String, String> {
     // Placeholder — will be wired to YouTube Data API
     // For now, construct a search URL
-    let encoded: String = query.chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' })
+    let encoded: String = query
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
-    Ok(format!("https://www.youtube.com/results?search_query={}", encoded.replace(' ', "+")))
+    Ok(format!(
+        "https://www.youtube.com/results?search_query={}",
+        encoded.replace(' ', "+")
+    ))
 }
 
 // ── LLM Integration ──
 
-fn build_llm_prompt(filled_template: &str, fields: &HashMap<String, String>, word_count: i32, provider: &str, _merge_fields_schema: &str) -> String {
+fn build_llm_prompt(
+    filled_template: &str,
+    fields: &HashMap<String, String>,
+    word_count: i32,
+    provider: &str,
+    _merge_fields_schema: &str,
+) -> String {
     let keyword = fields.get("focus_keyword").cloned().unwrap_or_default();
     let city = fields.get("city").cloned().unwrap_or_default();
-    let industry = fields.get("industry").cloned().unwrap_or_else(|| fields.get("service_area").cloned().unwrap_or_default());
+    let industry = fields
+        .get("industry")
+        .cloned()
+        .unwrap_or_else(|| fields.get("service_area").cloned().unwrap_or_default());
 
     format!(
         r#"You are an expert SEO content writer. Write a high-quality, well-structured blog post in HTML format.
@@ -573,7 +655,12 @@ Generate the complete HTML blog post now. Start with an <h1> title tag."#,
     )
 }
 
-async fn call_llm(db: &sqlx::PgPool, provider: &str, model: &str, prompt: &str) -> Result<String, AppError> {
+async fn call_llm(
+    db: &sqlx::PgPool,
+    provider: &str,
+    model: &str,
+    prompt: &str,
+) -> Result<String, AppError> {
     match provider {
         "deepseek" => call_deepseek(db, model, prompt).await,
         "openai" => call_openai(db, model, prompt).await,
@@ -583,9 +670,12 @@ async fn call_llm(db: &sqlx::PgPool, provider: &str, model: &str, prompt: &str) 
 }
 
 async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
-    let api_key = fetch_provider_key(db, "deepseek").await
+    let api_key = fetch_provider_key(db, "deepseek")
+        .await
         .or_else(|| std::env::var("DEEPSEEK_API_KEY").ok())
-        .ok_or_else(|| AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into()))?;
+        .ok_or_else(|| {
+            AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into())
+        })?;
     let url = "https://api.deepseek.com/v1/chat/completions";
 
     let body = json!({
@@ -596,7 +686,8 @@ async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<S
     });
 
     let client = reqwest::Client::new();
-    let resp = client.post(url)
+    let resp = client
+        .post(url)
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -604,7 +695,9 @@ async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<S
         .await
         .map_err(|e| AppError::Internal(format!("DeepSeek request failed: {}", e)))?;
 
-    let data: serde_json::Value = resp.json().await
+    let data: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| AppError::Internal(format!("DeepSeek parse failed: {}", e)))?;
 
     let content = data["choices"][0]["message"]["content"]
@@ -616,9 +709,12 @@ async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<S
 }
 
 async fn call_openai(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
-    let api_key = fetch_provider_key(db, "openai").await
+    let api_key = fetch_provider_key(db, "openai")
+        .await
         .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-        .ok_or_else(|| AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into()))?;
+        .ok_or_else(|| {
+            AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into())
+        })?;
     let url = "https://api.openai.com/v1/chat/completions";
 
     let body = json!({
@@ -629,7 +725,8 @@ async fn call_openai(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<Str
     });
 
     let client = reqwest::Client::new();
-    let resp = client.post(url)
+    let resp = client
+        .post(url)
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -637,7 +734,9 @@ async fn call_openai(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<Str
         .await
         .map_err(|e| AppError::Internal(format!("OpenAI request failed: {}", e)))?;
 
-    let data: serde_json::Value = resp.json().await
+    let data: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| AppError::Internal(format!("OpenAI parse failed: {}", e)))?;
 
     let content = data["choices"][0]["message"]["content"]
@@ -665,13 +764,19 @@ fn fill_template(template: &str, fields: &HashMap<String, String>) -> String {
     result
 }
 
-fn extract_title_and_content(generated: &str, fields: &HashMap<String, String>, template_name: &str) -> (String, String) {
+fn extract_title_and_content(
+    generated: &str,
+    fields: &HashMap<String, String>,
+    template_name: &str,
+) -> (String, String) {
     // Try to extract <h1> title
     if let Some(start) = generated.find("<h1") {
         if let Some(h1_start) = generated[start..].find('>') {
             let content_start = start + h1_start + 1;
             if let Some(h1_end) = generated[content_start..].find("</h1>") {
-                let title = generated[content_start..content_start + h1_end].trim().to_string();
+                let title = generated[content_start..content_start + h1_end]
+                    .trim()
+                    .to_string();
                 if !title.is_empty() {
                     return (title, generated.to_string());
                 }
@@ -681,7 +786,10 @@ fn extract_title_and_content(generated: &str, fields: &HashMap<String, String>, 
 
     // Fallback: use the template name with city context
     let city = fields.get("city").cloned().unwrap_or_default();
-    let industry = fields.get("industry").cloned().unwrap_or_else(|| fields.get("service_area").cloned().unwrap_or_default());
+    let industry = fields
+        .get("industry")
+        .cloned()
+        .unwrap_or_else(|| fields.get("service_area").cloned().unwrap_or_default());
 
     let title = if city.is_empty() {
         format!("{} - Expert Guide", template_name)
@@ -693,7 +801,8 @@ fn extract_title_and_content(generated: &str, fields: &HashMap<String, String>, 
 }
 
 fn slugify(s: &str) -> String {
-    let slug: String = s.chars()
+    let slug: String = s
+        .chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == ' ' {
                 c.to_ascii_lowercase()
@@ -703,16 +812,16 @@ fn slugify(s: &str) -> String {
         })
         .collect();
 
-    let slug = slug.split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-");
+    let slug = slug.split_whitespace().collect::<Vec<_>>().join("-");
 
     // Remove consecutive dashes
     let mut result = String::new();
     let mut prev_dash = false;
     for c in slug.chars() {
         if c == '-' {
-            if !prev_dash { result.push(c); }
+            if !prev_dash {
+                result.push(c);
+            }
             prev_dash = true;
         } else {
             result.push(c);
@@ -726,7 +835,7 @@ fn slugify(s: &str) -> String {
 /// Fetch the first active API key for a provider from the provider_keys table.
 async fn fetch_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<String> {
     sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = $1 AND is_active = true LIMIT 1"
+        "SELECT api_key FROM provider_keys WHERE provider = $1 AND is_active = true LIMIT 1",
     )
     .bind(provider)
     .fetch_optional(db)
@@ -746,7 +855,10 @@ pub async fn call_llm_json(
 ) -> Result<Vec<serde_json::Value>, String> {
     let (api_key, model) = if let Some(pc) = provider_config {
         let key = pc.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
-        let mdl = pc.get("model").and_then(|v| v.as_str()).unwrap_or("gpt-4o-mini");
+        let mdl = pc
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("gpt-4o-mini");
         (key.to_string(), mdl.to_string())
     } else {
         let mut key = fetch_provider_key(db, "openai").await;
@@ -774,7 +886,8 @@ pub async fn call_llm_json(
         "max_tokens": 4096
     });
 
-    let resp = client.post(url)
+    let resp = client
+        .post(url)
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -782,24 +895,33 @@ pub async fn call_llm_json(
         .await
         .map_err(|e| format!("AI request failed: {}", e))?;
 
-    let json: serde_json::Value = resp.json().await
+    let json: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse AI response: {}", e))?;
 
     // Extract content from response
-    let content = json.pointer("/choices/0/message/content")
+    let content = json
+        .pointer("/choices/0/message/content")
         .or_else(|| json.pointer("/candidates/0/content/parts/0/text"))
         .and_then(|v| v.as_str())
         .unwrap_or("[]");
 
     // Try to parse as JSON array, stripping markdown fences if needed
-    let cleaned = content.trim()
+    let cleaned = content
+        .trim()
         .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
 
-    serde_json::from_str::<Vec<serde_json::Value>>(cleaned)
-        .map_err(|e| format!("Failed to parse AI JSON output: {} — content: {}", e, cleaned.chars().take(200).collect::<String>()))
+    serde_json::from_str::<Vec<serde_json::Value>>(cleaned).map_err(|e| {
+        format!(
+            "Failed to parse AI JSON output: {} — content: {}",
+            e,
+            cleaned.chars().take(200).collect::<String>()
+        )
+    })
 }
 
 /// Generate blog content from a prompt. Used by blog_qa for post generation.
@@ -831,7 +953,8 @@ pub async fn generate_blog_content(
         "max_tokens": 4096
     });
 
-    let resp = client.post(url)
+    let resp = client
+        .post(url)
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -839,10 +962,13 @@ pub async fn generate_blog_content(
         .await
         .map_err(|e| format!("Blog content request failed: {}", e))?;
 
-    let json: serde_json::Value = resp.json().await
+    let json: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse blog content response: {}", e))?;
 
-    let content = json.pointer("/choices/0/message/content")
+    let content = json
+        .pointer("/choices/0/message/content")
         .or_else(|| json.pointer("/candidates/0/content/parts/0/text"))
         .and_then(|v| v.as_str())
         .unwrap_or("");

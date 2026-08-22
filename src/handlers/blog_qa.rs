@@ -119,7 +119,7 @@ pub struct ConfigItem {
 fn mask_api_key(val: &Value) -> Value {
     if let Some(s) = val.as_str() {
         if s.len() > 4 {
-            let masked = format!("{}****", &s[s.len()-4..]);
+            let masked = format!("{}****", &s[s.len() - 4..]);
             return Value::String(masked);
         }
         return Value::String("****".to_string());
@@ -145,21 +145,16 @@ pub async fn fetch_keywords(
     State(s): State<AppState>,
     Json(req): Json<FetchKeywordsReq>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory_name = sqlx::query_scalar::<_, String>(
-        "SELECT name FROM directories WHERE id = $1"
-    )
-    .bind(req.directory_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let directory_name =
+        sqlx::query_scalar::<_, String>("SELECT name FROM directories WHERE id = $1")
+            .bind(req.directory_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let keywords_json: Vec<Value> = match req.source.as_str() {
-        "answer_the_public" => {
-            fetch_atp_keywords(&s, &req.seed_keywords).await?
-        }
-        "dataforseo" => {
-            fetch_dataforseo_keywords(&s, &req.seed_keywords, &directory_name).await?
-        }
+        "answer_the_public" => fetch_atp_keywords(&s, &req.seed_keywords).await?,
+        "dataforseo" => fetch_dataforseo_keywords(&s, &req.seed_keywords, &directory_name).await?,
         _ => {
             // "ai_generated" — default
             let ai_prompt = format!(
@@ -239,13 +234,16 @@ async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Va
     );
 
     let client = reqwest::Client::new();
-    let resp = client.get(&url)
+    let resp = client
+        .get(&url)
         .header("Accept", "application/json")
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("AnswerThePublic request failed: {}", e)))?;
 
-    let atp_json: Value = resp.json().await
+    let atp_json: Value = resp
+        .json()
+        .await
         .map_err(|e| AppError::Internal(format!("AnswerThePublic response parse failed: {}", e)))?;
 
     // ATP response has { keyword: "...", questions: [ { question: "...", type: "question" }, ... ] }
@@ -254,20 +252,29 @@ async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Va
     if let Some(questions) = atp_json.get("results").or_else(|| atp_json.get("data")) {
         if let Some(arr) = questions.as_array() {
             for item in arr {
-                let question = item.get("question")
+                let question = item
+                    .get("question")
                     .or_else(|| item.get("query"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 if !question.is_empty() {
                     // Infer a keyword from the seed or the question
                     let kw = seeds.get(0).cloned().unwrap_or_default();
-                    let intent = if question.starts_with("how") { "how" }
-                        else if question.starts_with("what") { "what" }
-                        else if question.starts_with("why") { "why" }
-                        else if question.starts_with("where") { "where" }
-                        else if question.starts_with("when") { "when" }
-                        else if question.starts_with("which") { "which" }
-                        else { "what" };
+                    let intent = if question.starts_with("how") {
+                        "how"
+                    } else if question.starts_with("what") {
+                        "what"
+                    } else if question.starts_with("why") {
+                        "why"
+                    } else if question.starts_with("where") {
+                        "where"
+                    } else if question.starts_with("when") {
+                        "when"
+                    } else if question.starts_with("which") {
+                        "which"
+                    } else {
+                        "what"
+                    };
                     results.push(serde_json::json!({
                         "question": question,
                         "keyword": kw,
@@ -279,7 +286,9 @@ async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Va
     }
 
     if results.is_empty() {
-        return Err(AppError::NotFound("No questions returned from AnswerThePublic. Try broader seed keywords.".into()));
+        return Err(AppError::NotFound(
+            "No questions returned from AnswerThePublic. Try broader seed keywords.".into(),
+        ));
     }
 
     Ok(results)
@@ -287,18 +296,24 @@ async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Va
 
 // ── DataForSEO Integration ──
 // Uses DataForSEO API v3 for keyword ideas: https://docs.dataforseo.com/v3/keywords_data/google_ads/keywords_for_site/live/
-async fn fetch_dataforseo_keywords(state: &AppState, seeds: &[String], _directory: &str) -> Result<Vec<Value>, AppError> {
+async fn fetch_dataforseo_keywords(
+    state: &AppState,
+    seeds: &[String],
+    _directory: &str,
+) -> Result<Vec<Value>, AppError> {
     let config_row = sqlx::query_as::<_, (String, Option<String>)>(
         r#"SELECT decrypt_provider_key(api_key_encrypted) as api_key, 
                 decrypt_provider_key(base_url_encrypted) as login
          FROM provider_keys WHERE provider = 'dataforseo' AND is_active = true
-         LIMIT 1"#
+         LIMIT 1"#,
     )
     .fetch_optional(&state.db)
     .await?
-    .ok_or_else(|| AppError::NotFound(
-        "DataForSEO API key not configured. Set login + key in Integrations page.".into()
-    ))?;
+    .ok_or_else(|| {
+        AppError::NotFound(
+            "DataForSEO API key not configured. Set login + key in Integrations page.".into(),
+        )
+    })?;
 
     let (api_key, login_opt) = config_row;
     let login = login_opt.unwrap_or_default();
@@ -317,7 +332,8 @@ async fn fetch_dataforseo_keywords(state: &AppState, seeds: &[String], _director
     }]);
 
     let client = reqwest::Client::new();
-    let resp = client.post(url)
+    let resp = client
+        .post(url)
         .header("Authorization", format!("Basic {}", auth))
         .header("Content-Type", "application/json")
         .json(&payload)
@@ -325,7 +341,9 @@ async fn fetch_dataforseo_keywords(state: &AppState, seeds: &[String], _director
         .await
         .map_err(|e| AppError::Internal(format!("DataForSEO request failed: {}", e)))?;
 
-    let dfs_json: Value = resp.json().await
+    let dfs_json: Value = resp
+        .json()
+        .await
         .map_err(|e| AppError::Internal(format!("DataForSEO response parse failed: {}", e)))?;
 
     let mut results = Vec::new();
@@ -334,11 +352,21 @@ async fn fetch_dataforseo_keywords(state: &AppState, seeds: &[String], _director
             if let Some(result) = task.get("result").and_then(|v| v.as_array()) {
                 for item in result {
                     if let Some(keyword) = item.get("keyword").and_then(|v| v.as_str()) {
-                        let competition = item.get("competition").and_then(|v| v.as_f64()).unwrap_or(0.5);
-                        let search_volume = item.get("search_volume").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                        let intent = if competition > 0.7 { "how" }
-                            else if search_volume > 1000.0 { "what" }
-                            else { "question" };
+                        let competition = item
+                            .get("competition")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.5);
+                        let search_volume = item
+                            .get("search_volume")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0);
+                        let intent = if competition > 0.7 {
+                            "how"
+                        } else if search_volume > 1000.0 {
+                            "what"
+                        } else {
+                            "question"
+                        };
                         let question = format!("What about {}?", keyword);
                         results.push(serde_json::json!({
                             "question": question,
@@ -353,7 +381,7 @@ async fn fetch_dataforseo_keywords(state: &AppState, seeds: &[String], _director
 
     if results.is_empty() {
         return Err(AppError::NotFound(
-            "No keywords returned from DataForSEO. Check API key validity.".into()
+            "No keywords returned from DataForSEO. Check API key validity.".into(),
         ));
     }
 
@@ -403,7 +431,7 @@ pub async fn generate_posts(
     let rows = sqlx::query(
         "SELECT id, question, keyword, target_category FROM blog_qa_keywords \
          WHERE directory_id = $1 AND status = 'unused' \
-         ORDER BY frequency DESC LIMIT $2"
+         ORDER BY frequency DESC LIMIT $2",
     )
     .bind(req.directory_id)
     .bind(count)
@@ -430,33 +458,39 @@ pub async fn generate_posts(
         );
 
         // Generate content via blog_generator
-        let content = crate::handlers::blog_generator::generate_blog_content(
-            &s.db, &s.config, &prompt
-        )
-        .await
-        .map_err(|e| AppError::Internal(format!("Blog generation failed: {}", e)))?;
+        let content =
+            crate::handlers::blog_generator::generate_blog_content(&s.db, &s.config, &prompt)
+                .await
+                .map_err(|e| AppError::Internal(format!("Blog generation failed: {}", e)))?;
 
         // Replace placeholder with actual link if target category exists
         let final_content = if let Some(ref cat) = target_category {
-            content.replace("[INSERT_DIRECTORY_LINK]",
-                &format!("<a href=\"/api/v1/d/{}/categories/{}\">Browse {} {}</a>",
-                    req.directory_id, cat, cat, "services"))
+            content.replace(
+                "[INSERT_DIRECTORY_LINK]",
+                &format!(
+                    "<a href=\"/api/v1/d/{}/categories/{}\">Browse {} {}</a>",
+                    req.directory_id, cat, cat, "services"
+                ),
+            )
         } else {
             content
         };
 
         // Insert blog post as draft
-        let slug = question.to_lowercase()
+        let slug = question
+            .to_lowercase()
             .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
             .split_whitespace()
             .collect::<Vec<_>>()
             .join("-")
-            .chars().take(100).collect::<String>();
+            .chars()
+            .take(100)
+            .collect::<String>();
 
         let blog_id = sqlx::query_scalar::<_, i32>(
             "INSERT INTO blog_posts (title, slug, excerpt, content, directory_id, published) \
              VALUES ($1, $2, $3, $4, $5, false) \
-             RETURNING id"
+             RETURNING id",
         )
         .bind(&question)
         .bind(&slug)
@@ -469,7 +503,7 @@ pub async fn generate_posts(
         // Record QA association
         sqlx::query(
             "INSERT INTO blog_qa_posts (directory_id, blog_post_id, question, keyword, status) \
-             VALUES ($1, $2, $3, $4, 'draft')"
+             VALUES ($1, $2, $3, $4, 'draft')",
         )
         .bind(req.directory_id)
         .bind(blog_id)
@@ -531,10 +565,18 @@ pub async fn list_keywords(
     // Count query
     let count_sql = format!("SELECT COUNT(*) FROM blog_qa_keywords {}", where_str);
     let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref dir_id) = q.directory_id { count_query = count_query.bind(dir_id); }
-    if let Some(ref status) = q.status { count_query = count_query.bind(status); }
-    if let Some(ref source) = q.source { count_query = count_query.bind(source); }
-    if let Some(ref intent) = q.intent { count_query = count_query.bind(intent); }
+    if let Some(ref dir_id) = q.directory_id {
+        count_query = count_query.bind(dir_id);
+    }
+    if let Some(ref status) = q.status {
+        count_query = count_query.bind(status);
+    }
+    if let Some(ref source) = q.source {
+        count_query = count_query.bind(source);
+    }
+    if let Some(ref intent) = q.intent {
+        count_query = count_query.bind(intent);
+    }
     let total = count_query.fetch_one(&s.db).await.unwrap_or(0);
 
     // Data query
@@ -542,17 +584,31 @@ pub async fn list_keywords(
         "SELECT id, directory_id, question, keyword, intent, source, frequency, status, \
                 target_category, created_at \
          FROM blog_qa_keywords {} ORDER BY frequency DESC, created_at DESC LIMIT ${} OFFSET ${}",
-        where_str, bind_idx, bind_idx + 1
+        where_str,
+        bind_idx,
+        bind_idx + 1
     );
     let mut data_query = sqlx::query_as::<_, KeywordItem>(&data_sql);
-    if let Some(ref dir_id) = q.directory_id { data_query = data_query.bind(dir_id); }
-    if let Some(ref status) = q.status { data_query = data_query.bind(status); }
-    if let Some(ref source) = q.source { data_query = data_query.bind(source); }
-    if let Some(ref intent) = q.intent { data_query = data_query.bind(intent); }
+    if let Some(ref dir_id) = q.directory_id {
+        data_query = data_query.bind(dir_id);
+    }
+    if let Some(ref status) = q.status {
+        data_query = data_query.bind(status);
+    }
+    if let Some(ref source) = q.source {
+        data_query = data_query.bind(source);
+    }
+    if let Some(ref intent) = q.intent {
+        data_query = data_query.bind(intent);
+    }
     data_query = data_query.bind(per_page).bind(offset);
     let keywords = data_query.fetch_all(&s.db).await.unwrap_or_default();
 
-    Ok(Json(KeywordListResponse { keywords, total, page }))
+    Ok(Json(KeywordListResponse {
+        keywords,
+        total,
+        page,
+    }))
 }
 
 /// POST /api/v1/blog-qa/generate-digest
@@ -560,13 +616,12 @@ pub async fn generate_digest(
     State(s): State<AppState>,
     Json(req): Json<DigestReq>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir_info = sqlx::query_as::<_, (String, String)>(
-        "SELECT name, slug FROM directories WHERE id = $1"
-    )
-    .bind(req.directory_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let dir_info =
+        sqlx::query_as::<_, (String, String)>("SELECT name, slug FROM directories WHERE id = $1")
+            .bind(req.directory_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let (dir_name, dir_slug) = dir_info;
 
@@ -575,7 +630,7 @@ pub async fn generate_digest(
         "SELECT bp.title, bp.excerpt, bp.slug, bp.created_at \
          FROM blog_qa_posts bqp JOIN blog_posts bp ON bqp.blog_post_id = bp.id \
          WHERE bqp.directory_id = $1 AND bp.published = true \
-         ORDER BY bp.created_at DESC LIMIT 10"
+         ORDER BY bp.created_at DESC LIMIT 10",
     )
     .bind(req.directory_id)
     .fetch_all(&s.db)
@@ -592,7 +647,12 @@ pub async fn generate_digest(
         let excerpt: Option<String> = row.get("excerpt");
         let slug: Option<String> = row.get("slug");
 
-        let snippet = excerpt.as_deref().unwrap_or("").chars().take(200).collect::<String>();
+        let snippet = excerpt
+            .as_deref()
+            .unwrap_or("")
+            .chars()
+            .take(200)
+            .collect::<String>();
         let slug_str = slug.as_deref().unwrap_or("post").to_string();
         body.push_str(&format!(
             "<div style=\"margin:20px 0;padding:16px;border:1px solid #e2e8f0;border-radius:8px\">\
@@ -607,11 +667,15 @@ pub async fn generate_digest(
         body.push_str("<p>No published posts yet. Generate some Q&A posts first!</p>");
     }
 
-    let digest_title = format!("{} Weekly Roundup — {}", dir_name, chrono::Utc::now().format("%B %d, %Y"));
+    let digest_title = format!(
+        "{} Weekly Roundup — {}",
+        dir_name,
+        chrono::Utc::now().format("%B %d, %Y")
+    );
 
     let digest_id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO newsletter_digests (directory_id, title, body, status) \
-         VALUES ($1, $2, $3, 'draft') RETURNING id"
+         VALUES ($1, $2, $3, 'draft') RETURNING id",
     )
     .bind(req.directory_id)
     .bind(&digest_title)
@@ -632,12 +696,10 @@ pub async fn send_digest(
     State(s): State<AppState>,
     Json(req): Json<SendDigestReq>,
 ) -> ApiResult<impl IntoResponse> {
-    sqlx::query(
-        "UPDATE newsletter_digests SET status = 'sent', sent_at = NOW() WHERE id = $1"
-    )
-    .bind(req.digest_id)
-    .execute(&s.db)
-    .await?;
+    sqlx::query("UPDATE newsletter_digests SET status = 'sent', sent_at = NOW() WHERE id = $1")
+        .bind(req.digest_id)
+        .execute(&s.db)
+        .await?;
 
     Ok(Json(serde_json::json!({"status": "sent"})))
 }
@@ -673,9 +735,7 @@ pub async fn schedule_weekly(
 // ─── Integration Config handlers ───
 
 /// GET /api/v1/integration-configs
-pub async fn list_configs(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_configs(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let mut configs = sqlx::query_as::<_, ConfigItem>(
         "SELECT id, provider, config, enabled, created_at, updated_at FROM integration_configs ORDER BY provider"
     )
@@ -696,13 +756,12 @@ pub async fn save_config(
     State(s): State<AppState>,
     Json(req): Json<SaveConfigReq>,
 ) -> ApiResult<impl IntoResponse> {
-    let config_json = serde_json::to_string(&req.config)
-        .unwrap_or_else(|_| "{}".to_string());
+    let config_json = serde_json::to_string(&req.config).unwrap_or_else(|_| "{}".to_string());
 
     let item = sqlx::query_as::<_, ConfigItem>(
         "INSERT INTO integration_configs (provider, config) VALUES ($1, $2::jsonb) \
          ON CONFLICT (provider) DO UPDATE SET config = $2::jsonb, updated_at = NOW() \
-         RETURNING id, provider, config, enabled, created_at, updated_at"
+         RETURNING id, provider, config, enabled, created_at, updated_at",
     )
     .bind(&req.provider)
     .bind(&config_json)
@@ -796,7 +855,7 @@ pub async fn search_all(
             let rows = sqlx::query(
                 "SELECT title, excerpt, slug, created_at FROM blog_posts \
                  WHERE (title ILIKE $1 OR excerpt ILIKE $1 OR content ILIKE $1) \
-                 ORDER BY created_at DESC LIMIT 20"
+                 ORDER BY created_at DESC LIMIT 20",
             )
             .bind(&pattern)
             .fetch_all(&s.db)
@@ -818,7 +877,7 @@ pub async fn search_all(
             let rows = sqlx::query(
                 "SELECT question, keyword FROM blog_qa_keywords \
                  WHERE (question ILIKE $1 OR keyword ILIKE $1) \
-                 ORDER BY frequency DESC LIMIT 20"
+                 ORDER BY frequency DESC LIMIT 20",
             )
             .bind(&pattern)
             .fetch_all(&s.db)
@@ -841,7 +900,7 @@ pub async fn search_all(
                 "SELECT title, excerpt, slug FROM blog_posts \
                  WHERE (title ILIKE $1 OR excerpt ILIKE $1) \
                  AND created_at >= $2 \
-                 ORDER BY created_at DESC LIMIT 20"
+                 ORDER BY created_at DESC LIMIT 20",
             )
             .bind(&pattern)
             .bind(two_days_ago)
@@ -866,7 +925,7 @@ pub async fn search_all(
             let biz_rows = sqlx::query(
                 "SELECT name, description, slug FROM businesses \
                  WHERE name ILIKE $1 OR description ILIKE $1 \
-                 LIMIT 10"
+                 LIMIT 10",
             )
             .bind(&pattern)
             .fetch_all(&s.db)
@@ -887,7 +946,7 @@ pub async fn search_all(
             let blog_rows = sqlx::query(
                 "SELECT title, excerpt, slug FROM blog_posts \
                  WHERE (title ILIKE $1 OR excerpt ILIKE $1) \
-                 ORDER BY created_at DESC LIMIT 10"
+                 ORDER BY created_at DESC LIMIT 10",
             )
             .bind(&pattern)
             .fetch_all(&s.db)

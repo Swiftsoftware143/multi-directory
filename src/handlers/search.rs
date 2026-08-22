@@ -1,7 +1,7 @@
 //! Search handlers: full-text search, filters, and search config management.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -11,8 +11,8 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult, validate_pagination};
 
 // --- Request / Response types ---
 
@@ -143,7 +143,10 @@ pub async fn search_businesses(
 
     // Track parameter count — ONLY for parameterized clauses, not fixed SQL.
     let mut param_count: i32 = 0;
-    let mut next_param = || { param_count += 1; param_count };
+    let mut next_param = || {
+        param_count += 1;
+        param_count
+    };
 
     let mut wheres: Vec<String> = Vec::new();
     let mut extra_joins: Vec<String> = Vec::new();
@@ -157,7 +160,7 @@ pub async fn search_businesses(
         extra_joins.push(
             "JOIN business_categories bc_filter ON bc_filter.business_id = b.id \
              JOIN directory_categories dc_filter ON dc_filter.id = bc_filter.category_id"
-                .to_string()
+                .to_string(),
         );
         let p = next_param();
         wheres.push(format!("LOWER(dc_filter.name) = LOWER(${})", p));
@@ -166,10 +169,13 @@ pub async fn search_businesses(
         extra_joins.push(
             "JOIN business_categories bc_filter ON bc_filter.business_id = b.id \
              JOIN directory_categories dc_filter ON dc_filter.id = bc_filter.category_id"
-                .to_string()
+                .to_string(),
         );
         let p = next_param();
-        wheres.push(format!("LOWER(COALESCE(dc_filter.group_name, '')) = LOWER(${})", p));
+        wheres.push(format!(
+            "LOWER(COALESCE(dc_filter.group_name, '')) = LOWER(${})",
+            p
+        ));
     }
 
     if qs.directory.is_some() {
@@ -223,26 +229,59 @@ pub async fn search_businesses(
     let extra_join_clause = extra_joins.join(" ");
     let cat_join = "LEFT JOIN directory_categories cat ON b.category_id = cat.id";
 
-    let all_joins = format!("{} {} {}", cat_join,
-        if extra_join_clause.is_empty() { "" } else { " " },
-        extra_join_clause);
+    let all_joins = format!(
+        "{} {} {}",
+        cat_join,
+        if extra_join_clause.is_empty() {
+            ""
+        } else {
+            " "
+        },
+        extra_join_clause
+    );
 
     // --- Count query ---
-    let count_sql = format!("SELECT COUNT(DISTINCT b.id) FROM businesses b {} {}", all_joins, where_clause);
+    let count_sql = format!(
+        "SELECT COUNT(DISTINCT b.id) FROM businesses b {} {}",
+        all_joins, where_clause
+    );
     let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
 
     // Bind parameters in the same order as the closure assigned them
     if has_subcat_filter {
-        if let Some(ref sc) = qs.subcategory { count_q = count_q.bind(sc); }
+        if let Some(ref sc) = qs.subcategory {
+            count_q = count_q.bind(sc);
+        }
     } else if has_cat_filter {
-        if let Some(ref cat) = qs.category { count_q = count_q.bind(cat); }
+        if let Some(ref cat) = qs.category {
+            count_q = count_q.bind(cat);
+        }
     }
-    if let Some(ref dir_id) = qs.directory { count_q = count_q.bind(dir_id); }
-    if let Some(ref q) = qs.q { if !q.is_empty() { count_q = count_q.bind(q); } }
-    if let Some(ref city) = qs.city { if !city.is_empty() { count_q = count_q.bind(city); } }
-    if let Some(ref st) = qs.state { if !st.is_empty() { count_q = count_q.bind(st); } }
-    if let Some(ref bt) = qs.business_type { if !bt.is_empty() { count_q = count_q.bind(bt); } }
-    else if !qs.business_types.is_empty() { count_q = count_q.bind(&qs.business_types); }
+    if let Some(ref dir_id) = qs.directory {
+        count_q = count_q.bind(dir_id);
+    }
+    if let Some(ref q) = qs.q {
+        if !q.is_empty() {
+            count_q = count_q.bind(q);
+        }
+    }
+    if let Some(ref city) = qs.city {
+        if !city.is_empty() {
+            count_q = count_q.bind(city);
+        }
+    }
+    if let Some(ref st) = qs.state {
+        if !st.is_empty() {
+            count_q = count_q.bind(st);
+        }
+    }
+    if let Some(ref bt) = qs.business_type {
+        if !bt.is_empty() {
+            count_q = count_q.bind(bt);
+        }
+    } else if !qs.business_types.is_empty() {
+        count_q = count_q.bind(&qs.business_types);
+    }
 
     let total: i64 = count_q.fetch_one(&s.db).await?;
 
@@ -291,7 +330,10 @@ pub async fn search_businesses(
          LEFT JOIN directories d ON b.directory_id = d.id \
          {} {} \
          LIMIT ${} OFFSET ${}",
-        categories_subquery, all_joins, where_clause, order_clause,
+        categories_subquery,
+        all_joins,
+        where_clause,
+        order_clause,
         lo_start,
         lo_start + 1
     );
@@ -300,16 +342,39 @@ pub async fn search_businesses(
 
     // Bind WHERE params in closure order
     if has_subcat_filter {
-        if let Some(ref sc) = qs.subcategory { data_q = data_q.bind(sc); }
+        if let Some(ref sc) = qs.subcategory {
+            data_q = data_q.bind(sc);
+        }
     } else if has_cat_filter {
-        if let Some(ref cat) = qs.category { data_q = data_q.bind(cat); }
+        if let Some(ref cat) = qs.category {
+            data_q = data_q.bind(cat);
+        }
     }
-    if let Some(ref dir_id) = qs.directory { data_q = data_q.bind(dir_id); }
-    if let Some(ref q) = qs.q { if !q.is_empty() { data_q = data_q.bind(q); } }
-    if let Some(ref city) = qs.city { if !city.is_empty() { data_q = data_q.bind(city); } }
-    if let Some(ref st) = qs.state { if !st.is_empty() { data_q = data_q.bind(st); } }
-    if let Some(ref bt) = qs.business_type { if !bt.is_empty() { data_q = data_q.bind(bt); } }
-    else if !qs.business_types.is_empty() { data_q = data_q.bind(&qs.business_types); }
+    if let Some(ref dir_id) = qs.directory {
+        data_q = data_q.bind(dir_id);
+    }
+    if let Some(ref q) = qs.q {
+        if !q.is_empty() {
+            data_q = data_q.bind(q);
+        }
+    }
+    if let Some(ref city) = qs.city {
+        if !city.is_empty() {
+            data_q = data_q.bind(city);
+        }
+    }
+    if let Some(ref st) = qs.state {
+        if !st.is_empty() {
+            data_q = data_q.bind(st);
+        }
+    }
+    if let Some(ref bt) = qs.business_type {
+        if !bt.is_empty() {
+            data_q = data_q.bind(bt);
+        }
+    } else if !qs.business_types.is_empty() {
+        data_q = data_q.bind(&qs.business_types);
+    }
     // ORDER BY tsquery param (duplicate of q for rank ordering)
     if has_q {
         if let Some(ref q) = qs.q {
@@ -349,7 +414,12 @@ pub async fn search_suppliers(
     // If an explicit supplier `type` is requested, honor it; otherwise search
     // across ALL supplier-type business_type values (NOT 'local').
     let supplier_types = [
-        "supplier", "distributor", "wholesaler", "farm", "association", "manufacturer",
+        "supplier",
+        "distributor",
+        "wholesaler",
+        "farm",
+        "association",
+        "manufacturer",
     ];
 
     // If caller passed a type in business_type, validate it's a supplier type;
@@ -371,12 +441,11 @@ pub async fn get_filters(
     State(s): State<AppState>,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = \x241 "
-    )
-    .bind(directory_id)
-    .fetch_one(&s.db)
-    .await?;
+    let dir_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = \x241 ")
+            .bind(directory_id)
+            .fetch_one(&s.db)
+            .await?;
 
     if dir_count == 0 {
         return Err(AppError::NotFound("Directory not found".to_string()));
@@ -386,7 +455,7 @@ pub async fn get_filters(
         "SELECT DISTINCT COALESCE(c.name, '') FROM businesses b \
          LEFT JOIN directory_categories c ON b.category_id = c.id \
          WHERE b.directory_id = \x241 AND b.category_id IS NOT NULL \
-         ORDER BY 1 "
+         ORDER BY 1 ",
     )
     .bind(directory_id)
     .fetch_all(&s.db)
@@ -395,7 +464,7 @@ pub async fn get_filters(
     let cities: Vec<(String,)> = sqlx::query_as(
         "SELECT DISTINCT COALESCE(b.city, '') FROM businesses b \
          WHERE b.directory_id = \x241 AND b.city IS NOT NULL AND b.city != '' \
-         ORDER BY 1 "
+         ORDER BY 1 ",
     )
     .bind(directory_id)
     .fetch_all(&s.db)
@@ -404,26 +473,36 @@ pub async fn get_filters(
     let states: Vec<(String,)> = sqlx::query_as(
         "SELECT DISTINCT COALESCE(b.state, '') FROM businesses b \
          WHERE b.directory_id = \x241 AND b.state IS NOT NULL AND b.state != '' \
-         ORDER BY 1 "
+         ORDER BY 1 ",
     )
     .bind(directory_id)
     .fetch_all(&s.db)
     .await?;
 
     Ok(Json(FilterOptions {
-        categories: categories.into_iter().map(|r| r.0).filter(|s| !s.is_empty()).collect(),
-        cities: cities.into_iter().map(|r| r.0).filter(|s| !s.is_empty()).collect(),
-        states: states.into_iter().map(|r| r.0).filter(|s| !s.is_empty()).collect(),
+        categories: categories
+            .into_iter()
+            .map(|r| r.0)
+            .filter(|s| !s.is_empty())
+            .collect(),
+        cities: cities
+            .into_iter()
+            .map(|r| r.0)
+            .filter(|s| !s.is_empty())
+            .collect(),
+        states: states
+            .into_iter()
+            .map(|r| r.0)
+            .filter(|s| !s.is_empty())
+            .collect(),
     }))
 }
 
 // --- GET /api/v1/search/config ---
 
-pub async fn list_search_configs(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_search_configs(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let configs = sqlx::query_as::<_, SearchConfig>(
-        "SELECT sc.* FROM search_config sc ORDER BY sc.directory_id "
+        "SELECT sc.* FROM search_config sc ORDER BY sc.directory_id ",
     )
     .fetch_all(&s.db)
     .await?;
@@ -437,19 +516,18 @@ pub async fn create_search_config(
     State(s): State<AppState>,
     Json(req): Json<CreateSearchConfigRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = \x241 "
-    )
-    .bind(req.directory_id)
-    .fetch_one(&s.db)
-    .await?;
+    let dir_exists =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = \x241 ")
+            .bind(req.directory_id)
+            .fetch_one(&s.db)
+            .await?;
 
     if dir_exists == 0 {
         return Err(AppError::NotFound("Directory not found".to_string()));
     }
 
     let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM search_config WHERE directory_id = \x241 "
+        "SELECT COUNT(*) FROM search_config WHERE directory_id = \x241 ",
     )
     .bind(req.directory_id)
     .fetch_one(&s.db)
@@ -457,19 +535,20 @@ pub async fn create_search_config(
 
     if existing > 0 {
         return Err(AppError::Duplicate(
-            "Search config already exists for this directory".to_string()
+            "Search config already exists for this directory".to_string(),
         ));
     }
 
-    let filter_fields = req.filter_fields
+    let filter_fields = req
+        .filter_fields
         .map(|f| serde_json::to_value(f).unwrap_or_default())
-        .unwrap_or_else(|| serde_json::json!(["category","city","state","rating","price"]));
+        .unwrap_or_else(|| serde_json::json!(["category", "city", "state", "rating", "price"]));
 
     let config = sqlx::query_as::<_, SearchConfig>(
         "INSERT INTO search_config \
          (directory_id, enable_fulltext, enable_filters, filter_fields, \
           results_per_page, enable_location_search, default_radius_km) \
-         VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247) RETURNING *"
+         VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247) RETURNING *",
     )
     .bind(req.directory_id)
     .bind(req.enable_fulltext.unwrap_or(true))
@@ -491,7 +570,7 @@ pub async fn get_search_config(
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let config = sqlx::query_as::<_, SearchConfig>(
-        "SELECT * FROM search_config WHERE directory_id = \x241 "
+        "SELECT * FROM search_config WHERE directory_id = \x241 ",
     )
     .bind(directory_id)
     .fetch_optional(&s.db)
@@ -499,7 +578,9 @@ pub async fn get_search_config(
 
     match config {
         Some(c) => Ok(Json(json!(c))),
-        None => Err(AppError::NotFound("Search config not found for this directory".to_string())),
+        None => Err(AppError::NotFound(
+            "Search config not found for this directory".to_string(),
+        )),
     }
 }
 
@@ -511,7 +592,7 @@ pub async fn update_search_config(
     Json(req): Json<UpdateSearchConfigRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let current = sqlx::query_as::<_, SearchConfig>(
-        "SELECT * FROM search_config WHERE directory_id = \x241 "
+        "SELECT * FROM search_config WHERE directory_id = \x241 ",
     )
     .bind(directory_id)
     .fetch_optional(&s.db)
@@ -522,21 +603,31 @@ pub async fn update_search_config(
         None => return Err(AppError::NotFound("Search config not found".to_string())),
     };
 
-    let enable_fulltext = req.enable_fulltext.unwrap_or(current.enable_fulltext.unwrap_or(true));
-    let enable_filters = req.enable_filters.unwrap_or(current.enable_filters.unwrap_or(true));
+    let enable_fulltext = req
+        .enable_fulltext
+        .unwrap_or(current.enable_fulltext.unwrap_or(true));
+    let enable_filters = req
+        .enable_filters
+        .unwrap_or(current.enable_filters.unwrap_or(true));
     let filter_fields = match req.filter_fields {
         Some(f) => serde_json::to_value(f).unwrap_or(current.filter_fields.unwrap_or_default()),
         None => current.filter_fields.unwrap_or_default(),
     };
-    let results_per_page = req.results_per_page.unwrap_or(current.results_per_page.unwrap_or(20));
-    let enable_location_search = req.enable_location_search.unwrap_or(current.enable_location_search.unwrap_or(false));
-    let default_radius_km = req.default_radius_km.unwrap_or(current.default_radius_km.unwrap_or(10));
+    let results_per_page = req
+        .results_per_page
+        .unwrap_or(current.results_per_page.unwrap_or(20));
+    let enable_location_search = req
+        .enable_location_search
+        .unwrap_or(current.enable_location_search.unwrap_or(false));
+    let default_radius_km = req
+        .default_radius_km
+        .unwrap_or(current.default_radius_km.unwrap_or(10));
 
     let config = sqlx::query_as::<_, SearchConfig>(
         "UPDATE search_config SET \
          enable_fulltext = \x241, enable_filters = \x242, filter_fields = \x243, \
          results_per_page = \x244, enable_location_search = \x245, default_radius_km = \x246 \
-         WHERE directory_id = \x247 RETURNING *"
+         WHERE directory_id = \x247 RETURNING *",
     )
     .bind(enable_fulltext)
     .bind(enable_filters)

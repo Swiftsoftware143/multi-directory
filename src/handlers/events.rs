@@ -15,7 +15,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 // ── Data Types ──
@@ -139,8 +139,7 @@ fn extract_admin_id(headers: &HeaderMap, jwt_secret: &str) -> Result<Uuid, AppEr
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let claims = verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     if claims.role != "admin" && claims.role != "super_admin" {
         return Err(AppError::Forbidden("Admin access required".to_string()));
@@ -161,8 +160,7 @@ fn extract_user_id(headers: &HeaderMap, jwt_secret: &str) -> Result<(Uuid, Strin
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let claims = verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     let id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
     Ok((id, claims.role))
@@ -179,17 +177,14 @@ fn extract_visitor_account_id(headers: &HeaderMap, jwt_secret: &str) -> Result<U
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let claims = verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 
 /// Extract visitor ID from JWT if present (optional auth).
 fn extract_visitor_id_optional(headers: &HeaderMap, jwt_secret: &str) -> Option<Uuid> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())?;
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok())?;
 
     let token = auth_header.strip_prefix("Bearer ")?;
     let claims = verify_token(token, jwt_secret).ok()?;
@@ -210,13 +205,14 @@ async fn user_can_manage_event(
 
     // Check if user is the event creator
     let is_creator = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM community_events WHERE id = $1 AND created_by = $2"
+        "SELECT COUNT(*) FROM community_events WHERE id = $1 AND created_by = $2",
     )
     .bind(event_id)
     .bind(user_id)
     .fetch_one(db)
     .await
-    .unwrap_or(0) > 0;
+    .unwrap_or(0)
+        > 0;
 
     Ok(is_creator)
 }
@@ -230,7 +226,7 @@ async fn fetch_user_rsvp_status(
 ) -> Option<String> {
     let vid = visitor_id?;
     sqlx::query_scalar::<_, String>(
-        "SELECT status FROM event_rsvps WHERE event_id = $1 AND visitor_account_id = $2"
+        "SELECT status FROM event_rsvps WHERE event_id = $1 AND visitor_account_id = $2",
     )
     .bind(event_id)
     .bind(vid)
@@ -268,7 +264,7 @@ pub async fn create_event(
                 r#"SELECT COUNT(*) FROM claimed_businesses
                    WHERE business_id = $1 AND (user_id = $2 OR owner_email = (
                        SELECT email FROM users WHERE id = $2
-                   ))"#
+                   ))"#,
             )
             .bind(biz_id)
             .bind(user_id)
@@ -286,13 +282,11 @@ pub async fn create_event(
     }
 
     // Verify directory exists
-    let dir_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = $1",
-    )
-    .bind(req.directory_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0)
+    let dir_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = $1")
+        .bind(req.directory_id)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0)
         > 0;
 
     if !dir_exists {
@@ -352,7 +346,7 @@ pub async fn list_events(
                AND ($3::text IS NULL OR ce.category = $3)
                AND ($4::uuid IS NULL OR ce.business_id = $4)
              ORDER BY ce.event_date ASC
-             LIMIT $5 OFFSET $6"
+             LIMIT $5 OFFSET $6",
         )
         .bind(q.directory_id)
         .bind(status)
@@ -367,7 +361,7 @@ pub async fn list_events(
                AND ($3::text IS NULL OR ce.category = $3)
                AND ($4::uuid IS NULL OR ce.business_id = $4)
              ORDER BY ce.event_date ASC
-             LIMIT $5 OFFSET $6"
+             LIMIT $5 OFFSET $6",
         )
         .bind(q.directory_id)
         .bind(status)
@@ -382,15 +376,14 @@ pub async fn list_events(
     let mut events: Vec<EventWithRsvpCount> = Vec::new();
     for event in events_raw {
         let rsvp_count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')"
+            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')",
         )
         .bind(event.id)
         .fetch_one(&s.db)
         .await
         .unwrap_or(0);
 
-        let user_rsvp_status =
-            fetch_user_rsvp_status(&s.db, event.id, visitor_id).await;
+        let user_rsvp_status = fetch_user_rsvp_status(&s.db, event.id, visitor_id).await;
 
         events.push(EventWithRsvpCount {
             id: event.id,
@@ -429,13 +422,11 @@ pub async fn get_event(
 ) -> ApiResult<impl IntoResponse> {
     let visitor_id = extract_visitor_id_optional(&headers, &s.config.jwt_secret);
 
-    let event = sqlx::query_as::<_, CommunityEvent>(
-        "SELECT * FROM community_events WHERE id = $1",
-    )
-    .bind(event_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
+    let event = sqlx::query_as::<_, CommunityEvent>("SELECT * FROM community_events WHERE id = $1")
+        .bind(event_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
 
     let rsvp_count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')",
@@ -481,13 +472,11 @@ pub async fn rsvp_event(
     let visitor_id = extract_visitor_account_id(&headers, &s.config.jwt_secret)?;
 
     // Verify event exists and is active
-    let event = sqlx::query_as::<_, CommunityEvent>(
-        "SELECT * FROM community_events WHERE id = $1",
-    )
-    .bind(event_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
+    let event = sqlx::query_as::<_, CommunityEvent>("SELECT * FROM community_events WHERE id = $1")
+        .bind(event_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
 
     if event.status != "active" {
         return Err(AppError::BadRequest(
@@ -600,13 +589,11 @@ pub async fn cancel_event(
         ));
     }
 
-    let event = sqlx::query_as::<_, CommunityEvent>(
-        "SELECT * FROM community_events WHERE id = $1",
-    )
-    .bind(event_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
+    let event = sqlx::query_as::<_, CommunityEvent>("SELECT * FROM community_events WHERE id = $1")
+        .bind(event_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
 
     if event.status == "cancelled" {
         return Err(AppError::BadRequest(
@@ -643,13 +630,12 @@ pub async fn edit_event(
     }
 
     // Fetch current event as baseline
-    let current = sqlx::query_as::<_, CommunityEvent>(
-        "SELECT * FROM community_events WHERE id = $1",
-    )
-    .bind(event_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
+    let current =
+        sqlx::query_as::<_, CommunityEvent>("SELECT * FROM community_events WHERE id = $1")
+            .bind(event_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
 
     // Merge: use new value if Some, otherwise keep existing
     let new_title = req.title.clone().unwrap_or(current.title);
@@ -703,7 +689,18 @@ pub async fn events_page(
     let dir_id = q.directory_id;
 
     // Fetch directory info
-    let dir_row = sqlx::query_as::<_, (Uuid, String, Option<String>, String, String, Option<serde_json::Value>, Option<String>)>(
+    let dir_row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            String,
+            Option<serde_json::Value>,
+            Option<String>,
+        ),
+    >(
         r#"SELECT id, name, description, slug, template, color_scheme, region
            FROM directories WHERE id = $1"#,
     )
@@ -737,15 +734,14 @@ pub async fn events_page(
     let mut event_list: Vec<serde_json::Value> = Vec::new();
     for event in events_raw {
         let rsvp_count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')"
+            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')",
         )
         .bind(event.id)
         .fetch_one(&s.db)
         .await
         .unwrap_or(0);
 
-        let user_rsvp_status =
-            fetch_user_rsvp_status(&s.db, event.id, visitor_id).await;
+        let user_rsvp_status = fetch_user_rsvp_status(&s.db, event.id, visitor_id).await;
 
         event_list.push(json!({
             "id": event.id,

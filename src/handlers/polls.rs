@@ -7,14 +7,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::auth::middleware::verify_token;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── Auth Helpers ──
 
@@ -30,8 +30,7 @@ pub fn extract_admin_id(headers: &HeaderMap, jwt_secret: &str) -> Result<Uuid, A
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let claims = verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     // Verify the user has admin role
     if claims.role != "admin" && claims.role != "superadmin" {
@@ -53,8 +52,7 @@ pub fn extract_visitor_account_id(headers: &HeaderMap, jwt_secret: &str) -> Resu
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let claims = verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
@@ -132,20 +130,23 @@ pub async fn create_poll(
         return Err(AppError::Validation("Question is required".to_string()));
     }
     if req.options.len() < 2 {
-        return Err(AppError::Validation("At least 2 options required".to_string()));
+        return Err(AppError::Validation(
+            "At least 2 options required".to_string(),
+        ));
     }
     if req.options.len() > 20 {
-        return Err(AppError::Validation("Maximum 20 options allowed".to_string()));
+        return Err(AppError::Validation(
+            "Maximum 20 options allowed".to_string(),
+        ));
     }
 
     // Verify directory exists
-    let dir_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE id = $1"
-    )
-    .bind(req.directory_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0) > 0;
+    let dir_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = $1")
+        .bind(req.directory_id)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0)
+        > 0;
 
     if !dir_exists {
         return Err(AppError::NotFound("Directory not found".to_string()));
@@ -164,10 +165,13 @@ pub async fn create_poll(
     .fetch_one(&s.db)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "poll": poll,
-        "message": "Poll created successfully"
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "poll": poll,
+            "message": "Poll created successfully"
+        })),
+    ))
 }
 
 /// GET /api/v1/polls?directory_id=X&status=active — list polls for a directory
@@ -189,37 +193,32 @@ pub async fn list_polls(
             .await?
         } else {
             sqlx::query_as::<_, Poll>(
-                "SELECT * FROM polls WHERE directory_id = $1 ORDER BY created_at DESC"
+                "SELECT * FROM polls WHERE directory_id = $1 ORDER BY created_at DESC",
             )
             .bind(dir_id)
             .fetch_all(&s.db)
             .await?
         }
     } else if let Some(ref status) = q.status {
-        sqlx::query_as::<_, Poll>(
-            "SELECT * FROM polls WHERE status = $1 ORDER BY created_at DESC"
-        )
-        .bind(status)
-        .fetch_all(&s.db)
-        .await?
+        sqlx::query_as::<_, Poll>("SELECT * FROM polls WHERE status = $1 ORDER BY created_at DESC")
+            .bind(status)
+            .fetch_all(&s.db)
+            .await?
     } else {
-        sqlx::query_as::<_, Poll>(
-            "SELECT * FROM polls ORDER BY created_at DESC"
-        )
-        .fetch_all(&s.db)
-        .await?
+        sqlx::query_as::<_, Poll>("SELECT * FROM polls ORDER BY created_at DESC")
+            .fetch_all(&s.db)
+            .await?
     };
 
     // Attach vote counts for each poll
     let mut result: Vec<PollWithCounts> = Vec::new();
     for poll in polls {
-        let total_votes = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1"
-        )
-        .bind(poll.id)
-        .fetch_one(&s.db)
-        .await
-        .unwrap_or(0);
+        let total_votes =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1")
+                .bind(poll.id)
+                .fetch_one(&s.db)
+                .await
+                .unwrap_or(0);
 
         // Get per-option vote counts
         let mut option_votes: Vec<i64> = vec![0i64; poll.options.len()];
@@ -281,21 +280,18 @@ pub async fn get_poll(
 ) -> ApiResult<impl IntoResponse> {
     let visitor_id = extract_visitor_id_optional(&headers, &s.config.jwt_secret);
 
-    let poll = sqlx::query_as::<_, Poll>(
-        "SELECT * FROM polls WHERE id = $1"
-    )
-    .bind(poll_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Poll not found".to_string()))?;
+    let poll = sqlx::query_as::<_, Poll>("SELECT * FROM polls WHERE id = $1")
+        .bind(poll_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Poll not found".to_string()))?;
 
-    let total_votes = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1"
-    )
-    .bind(poll.id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let total_votes =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1")
+            .bind(poll.id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     // Get per-option vote counts
     let mut option_votes: Vec<i64> = vec![0i64; poll.options.len()];
@@ -315,7 +311,7 @@ pub async fn get_poll(
 
     let user_vote: Option<i32> = if let Some(vid) = visitor_id {
         sqlx::query_scalar::<_, i32>(
-            "SELECT option_index FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2"
+            "SELECT option_index FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2",
         )
         .bind(poll.id)
         .bind(vid)
@@ -354,13 +350,11 @@ pub async fn cast_vote(
     let visitor_id = extract_visitor_account_id(&headers, &s.config.jwt_secret)?;
 
     // Verify the poll exists and is active
-    let poll = sqlx::query_as::<_, Poll>(
-        "SELECT * FROM polls WHERE id = $1"
-    )
-    .bind(poll_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Poll not found".to_string()))?;
+    let poll = sqlx::query_as::<_, Poll>("SELECT * FROM polls WHERE id = $1")
+        .bind(poll_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Poll not found".to_string()))?;
 
     if poll.status != "active" {
         return Err(AppError::BadRequest("Poll is not active".to_string()));
@@ -379,16 +373,14 @@ pub async fn cast_vote(
     }
 
     // Upsert: delete existing vote then insert new one
-    sqlx::query(
-        "DELETE FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2"
-    )
-    .bind(poll_id)
-    .bind(visitor_id)
-    .execute(&s.db)
-    .await?;
+    sqlx::query("DELETE FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2")
+        .bind(poll_id)
+        .bind(visitor_id)
+        .execute(&s.db)
+        .await?;
 
     sqlx::query(
-        "INSERT INTO poll_votes (poll_id, visitor_account_id, option_index) VALUES ($1, $2, $3)"
+        "INSERT INTO poll_votes (poll_id, visitor_account_id, option_index) VALUES ($1, $2, $3)",
     )
     .bind(poll_id)
     .bind(visitor_id)
@@ -412,28 +404,26 @@ pub async fn close_poll(
     let admin_id = extract_admin_id(&headers, &s.config.jwt_secret)?;
 
     // Verify the poll exists and user is the creator
-    let poll = sqlx::query_as::<_, Poll>(
-        "SELECT * FROM polls WHERE id = $1"
-    )
-    .bind(poll_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Poll not found".to_string()))?;
+    let poll = sqlx::query_as::<_, Poll>("SELECT * FROM polls WHERE id = $1")
+        .bind(poll_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Poll not found".to_string()))?;
 
     if poll.created_by != admin_id {
-        return Err(AppError::Forbidden("Only the poll creator can close it".to_string()));
+        return Err(AppError::Forbidden(
+            "Only the poll creator can close it".to_string(),
+        ));
     }
 
     if poll.status != "active" {
         return Err(AppError::BadRequest("Poll is already closed".to_string()));
     }
 
-    sqlx::query(
-        "UPDATE polls SET status = 'closed' WHERE id = $1"
-    )
-    .bind(poll_id)
-    .execute(&s.db)
-    .await?;
+    sqlx::query("UPDATE polls SET status = 'closed' WHERE id = $1")
+        .bind(poll_id)
+        .execute(&s.db)
+        .await?;
 
     Ok(Json(json!({
         "message": "Poll closed",
@@ -444,9 +434,7 @@ pub async fn close_poll(
 /// Helper: extract visitor ID if present (no error if missing).
 /// Mirrors the function in visitors.rs
 fn extract_visitor_id_optional(headers: &HeaderMap, jwt_secret: &str) -> Option<Uuid> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())?;
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok())?;
 
     let token = auth_header.strip_prefix("Bearer ")?;
 

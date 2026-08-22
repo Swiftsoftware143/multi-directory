@@ -3,7 +3,7 @@
 //! Creates a B2B lead exchange that Google's algorithm cannot replicate.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::HeaderMap,
     response::IntoResponse,
     Json,
@@ -15,9 +15,9 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::auth::middleware::verify_token;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── Auth helpers ──
 
@@ -29,8 +29,8 @@ fn extract_user_id(headers: &HeaderMap, state: &AppState) -> ApiResult<Uuid> {
     let token = auth
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
-    let claims = verify_token(token, &state.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims =
+        verify_token(token, &state.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 
@@ -179,12 +179,11 @@ pub struct MessageRequest {
 // ── API: GET /b2b/rfqs/stats ──
 
 pub async fn rfq_stats(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let open_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM rfqs WHERE status = 'open' AND is_public = true",
-    )
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(0);
+    let open_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM rfqs WHERE status = 'open' AND is_public = true")
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
 
     let awarded_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM rfqs WHERE status = 'awarded' AND is_public = true",
@@ -233,12 +232,11 @@ pub async fn list_rfqs(
     .fetch_all(&state.db)
     .await?;
 
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM rfqs WHERE status = 'open' AND is_public = true",
-    )
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(0);
+    let total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM rfqs WHERE status = 'open' AND is_public = true")
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
 
     Ok(Json(json!({
         "rfqs": rfqs,
@@ -497,20 +495,15 @@ pub async fn list_bids(
     let user_id = extract_user_id(&headers, &state)?;
     let biz_id = resolve_business_id(&state.db, user_id).await?;
 
-    let poster: Option<Uuid> = sqlx::query_scalar(
-        "SELECT poster_business_id FROM rfqs WHERE id = $1",
-    )
-    .bind(rfq_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let poster: Option<Uuid> =
+        sqlx::query_scalar("SELECT poster_business_id FROM rfqs WHERE id = $1")
+            .bind(rfq_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     match poster {
         Some(p) if p == biz_id => {}
-        Some(_) => {
-            return Err(AppError::Forbidden(
-                "Only RFQ owner can view bids".into(),
-            ))
-        }
+        Some(_) => return Err(AppError::Forbidden("Only RFQ owner can view bids".into())),
         None => return Err(AppError::NotFound("RFQ not found".into())),
     }
 
@@ -547,27 +540,21 @@ pub async fn accept_bid(
     match rfq {
         Some((poster, status)) => {
             if poster != biz_id {
-                return Err(AppError::Forbidden(
-                    "Only RFQ owner can accept bids".into(),
-                ));
+                return Err(AppError::Forbidden("Only RFQ owner can accept bids".into()));
             }
             if status != "open" {
-                return Err(AppError::Validation(format!(
-                    "RFQ is already {}",
-                    status
-                )));
+                return Err(AppError::Validation(format!("RFQ is already {}", status)));
             }
         }
         None => return Err(AppError::NotFound("RFQ not found".into())),
     }
 
-    let bidder: Option<Uuid> = sqlx::query_scalar(
-        "SELECT bidder_business_id FROM rfq_bids WHERE id = $1 AND rfq_id = $2",
-    )
-    .bind(bid_id)
-    .bind(rfq_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let bidder: Option<Uuid> =
+        sqlx::query_scalar("SELECT bidder_business_id FROM rfq_bids WHERE id = $1 AND rfq_id = $2")
+            .bind(bid_id)
+            .bind(rfq_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     let bidder_id = match bidder {
         Some(b) => b,
@@ -606,20 +593,15 @@ pub async fn reject_bid(
     let user_id = extract_user_id(&headers, &state)?;
     let biz_id = resolve_business_id(&state.db, user_id).await?;
 
-    let poster: Option<Uuid> = sqlx::query_scalar(
-        "SELECT poster_business_id FROM rfqs WHERE id = $1",
-    )
-    .bind(rfq_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let poster: Option<Uuid> =
+        sqlx::query_scalar("SELECT poster_business_id FROM rfqs WHERE id = $1")
+            .bind(rfq_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     match poster {
         Some(p) if p == biz_id => {}
-        Some(_) => {
-            return Err(AppError::Forbidden(
-                "Only RFQ owner can reject bids".into(),
-            ))
-        }
+        Some(_) => return Err(AppError::Forbidden("Only RFQ owner can reject bids".into())),
         None => return Err(AppError::NotFound("RFQ not found".into())),
     }
 

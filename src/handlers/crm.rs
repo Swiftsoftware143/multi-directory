@@ -6,14 +6,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc, NaiveDate};
 
 use serde_json::json;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Contact ───────────────────────────────────────────────────────
 
@@ -77,9 +77,7 @@ pub struct ContactSearchQuery {
 }
 
 /// GET /api/v1/crm/contacts
-pub async fn list_contacts(
-    State(s): State<AppState>,
-) -> ApiResult<Json<Vec<CrmContact>>> {
+pub async fn list_contacts(State(s): State<AppState>) -> ApiResult<Json<Vec<CrmContact>>> {
     let contacts = sqlx::query_as::<_, CrmContact>(
         "SELECT id, first_name, last_name, email, phone, company, position, directory_id, status, tags, notes, source, assigned_to, last_contacted_at, created_at, updated_at FROM crm_contacts ORDER BY created_at DESC "
     )
@@ -240,9 +238,7 @@ pub struct UpdatePipelineRequest {
 }
 
 /// GET /api/v1/crm/pipelines
-pub async fn list_pipelines(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_pipelines(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let pipelines = sqlx::query_as::<_, CrmPipeline>(
         "SELECT id, name, stages, directory_id, default_pipeline, created_at FROM crm_pipelines ORDER BY created_at DESC "
     )
@@ -257,7 +253,9 @@ pub async fn create_pipeline(
     State(s): State<AppState>,
     Json(req): Json<CreatePipelineRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let stages = req.stages.unwrap_or_else(|| serde_json::json!(["Lead", "Contacted", "Qualified", "Negotiation", "Closed"]));
+    let stages = req.stages.unwrap_or_else(|| {
+        serde_json::json!(["Lead", "Contacted", "Qualified", "Negotiation", "Closed"])
+    });
 
     let pipeline = sqlx::query_as::<_, CrmPipeline>(
         "INSERT INTO crm_pipelines (name, stages, directory_id, default_pipeline) VALUES (\x241, \x242, \x243, \x244) RETURNING id, name, stages, directory_id, default_pipeline, created_at "
@@ -378,9 +376,7 @@ pub struct UpdateDealRequest {
 }
 
 /// GET /api/v1/crm/deals
-pub async fn list_deals(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_deals(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let deals = sqlx::query_as::<_, CrmDeal>(
         "SELECT id, title, contact_id, value, currency, pipeline_id, stage, status, directory_id, expected_close_date, created_at, updated_at FROM crm_deal_records ORDER BY created_at DESC "
     )
@@ -512,7 +508,7 @@ pub async fn directory_crm_stats(
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let dir = sqlx::query_as::<_, DirectorySlugId>(
-        "SELECT id, name FROM directories WHERE slug = \x241 "
+        "SELECT id, name FROM directories WHERE slug = \x241 ",
     )
     .bind(&slug)
     .fetch_optional(&s.db)
@@ -520,7 +516,7 @@ pub async fn directory_crm_stats(
     .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let total_contacts = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM crm_contacts WHERE directory_id = \x241 "
+        "SELECT COUNT(*) FROM crm_contacts WHERE directory_id = \x241 ",
     )
     .bind(dir.id)
     .fetch_one(&s.db)
@@ -528,7 +524,7 @@ pub async fn directory_crm_stats(
     .unwrap_or(0);
 
     let total_deals = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 "
+        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 ",
     )
     .bind(dir.id)
     .fetch_one(&s.db)
@@ -536,7 +532,7 @@ pub async fn directory_crm_stats(
     .unwrap_or(0);
 
     let deals_won = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 AND status = 'won'"
+        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 AND status = 'won'",
     )
     .bind(dir.id)
     .fetch_one(&s.db)
@@ -544,7 +540,7 @@ pub async fn directory_crm_stats(
     .unwrap_or(0);
 
     let deals_lost = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 AND status = 'lost'"
+        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 AND status = 'lost'",
     )
     .bind(dir.id)
     .fetch_one(&s.db)
@@ -552,7 +548,7 @@ pub async fn directory_crm_stats(
     .unwrap_or(0);
 
     let deals_open = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 AND status = 'open'"
+        "SELECT COUNT(*) FROM crm_deal_records WHERE directory_id = \x241 AND status = 'open'",
     )
     .bind(dir.id)
     .fetch_one(&s.db)

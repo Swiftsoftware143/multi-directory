@@ -4,19 +4,14 @@
 //! saves it as a blog post, stores metadata in business_meta,
 //! and creates a business-article entry for the SEO Articles tab.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
-use chrono::Utc;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Request / Response ──────────────────────────────────────────────────────
 
@@ -65,39 +60,41 @@ pub async fn generate_answer_first(
     // ── Resolve directory_id ──────────────────────────────────────────────
     let directory_id = if let Some(did) = req.directory_id {
         // Verify directory exists
-        let exists: bool = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM directories WHERE id = $1)"
-        )
-        .bind(did)
-        .fetch_one(&app.db)
-        .await
-        .unwrap_or(false);
+        let exists: bool =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM directories WHERE id = $1)")
+                .bind(did)
+                .fetch_one(&app.db)
+                .await
+                .unwrap_or(false);
         if !exists {
             return Err(AppError::NotFound("Directory not found".into()));
         }
         did
     } else if let Some(bid) = req.business_id {
         // Look up the directory from the business
-        let dir_id: Option<Uuid> = sqlx::query_scalar(
-            "SELECT directory_id FROM businesses WHERE id = $1"
-        )
-        .bind(bid)
-        .fetch_optional(&app.db)
-        .await?;
+        let dir_id: Option<Uuid> =
+            sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
+                .bind(bid)
+                .fetch_optional(&app.db)
+                .await?;
         match dir_id {
             Some(did) => did,
-            None => return Err(AppError::NotFound("Business not found — cannot resolve directory".into())),
+            None => {
+                return Err(AppError::NotFound(
+                    "Business not found — cannot resolve directory".into(),
+                ))
+            }
         }
     } else {
         return Err(AppError::BadRequest(
-            "Either directory_id or business_id is required".into()
+            "Either directory_id or business_id is required".into(),
         ));
     };
 
     // ── Verify business_id if provided ────────────────────────────────────
     if let Some(bid) = req.business_id {
         let exists: bool = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM businesses WHERE id = $1 AND directory_id = $2)"
+            "SELECT EXISTS(SELECT 1 FROM businesses WHERE id = $1 AND directory_id = $2)",
         )
         .bind(bid)
         .bind(directory_id)
@@ -105,15 +102,18 @@ pub async fn generate_answer_first(
         .await
         .unwrap_or(false);
         if !exists {
-            return Err(AppError::NotFound("Business not found in this directory".into()));
+            return Err(AppError::NotFound(
+                "Business not found in this directory".into(),
+            ));
         }
     }
 
     // ── Resolve business info ─────────────────────────────────────────────
-    let (biz_name, biz_slug, biz_city, biz_state, biz_category) = if let Some(bid) = req.business_id {
+    let (biz_name, biz_slug, biz_city, biz_state, biz_category) = if let Some(bid) = req.business_id
+    {
         let row2: Option<(String, String, Option<String>, Option<String>, Option<Uuid>)> =
             sqlx::query_as(
-                "SELECT name, slug, city, state, category_id FROM businesses WHERE id = $1"
+                "SELECT name, slug, city, state, category_id FROM businesses WHERE id = $1",
             )
             .bind(bid)
             .fetch_optional(&app.db)
@@ -129,35 +129,81 @@ pub async fn generate_answer_first(
                 } else {
                     None
                 };
-                (n, biz_slug2, c.unwrap_or_default(), st.unwrap_or_default(), cat_name.unwrap_or_default())
+                (
+                    n,
+                    biz_slug2,
+                    c.unwrap_or_default(),
+                    st.unwrap_or_default(),
+                    cat_name.unwrap_or_default(),
+                )
             }
             None => return Err(AppError::NotFound("Business not found".into())),
         }
     } else {
         // Use submitted data or fallbacks
         (
-            req.business_name.clone().unwrap_or_else(|| "Business".to_string()),
-            slugify(&req.business_name.clone().unwrap_or_else(|| "business".to_string())),
+            req.business_name
+                .clone()
+                .unwrap_or_else(|| "Business".to_string()),
+            slugify(
+                &req.business_name
+                    .clone()
+                    .unwrap_or_else(|| "business".to_string()),
+            ),
             req.city.clone().unwrap_or_default(),
             req.state.clone().unwrap_or_default(),
-            req.specialty.clone().unwrap_or_else(|| "Service".to_string()),
+            req.specialty
+                .clone()
+                .unwrap_or_else(|| "Service".to_string()),
         )
     };
 
-    let city = if biz_city.is_empty() { req.city.as_deref().unwrap_or("Your City") } else { &biz_city };
-    let state = if biz_state.is_empty() { req.state.as_deref().unwrap_or("") } else { &biz_state };
+    let city = if biz_city.is_empty() {
+        req.city.as_deref().unwrap_or("Your City")
+    } else {
+        &biz_city
+    };
+    let state = if biz_state.is_empty() {
+        req.state.as_deref().unwrap_or("")
+    } else {
+        &biz_state
+    };
     let specialty = req.specialty.as_deref().unwrap_or(&biz_category);
     let metric = req.metric.as_deref().unwrap_or("exceptional results");
     let nearby = req.nearby_areas.as_deref().unwrap_or(&[]);
-    let pain_point = req.pain_point.as_deref().unwrap_or("finding a reliable provider");
-    let differentiator = req.differentiator.as_deref().unwrap_or("personalized service");
-    let price_range = req.price_range.as_deref().unwrap_or("competitive market rates");
-    let booking_method = req.booking_method.as_deref().unwrap_or("online booking system");
+    let pain_point = req
+        .pain_point
+        .as_deref()
+        .unwrap_or("finding a reliable provider");
+    let differentiator = req
+        .differentiator
+        .as_deref()
+        .unwrap_or("personalized service");
+    let price_range = req
+        .price_range
+        .as_deref()
+        .unwrap_or("competitive market rates");
+    let booking_method = req
+        .booking_method
+        .as_deref()
+        .unwrap_or("online booking system");
     let response_time = req.response_time.as_deref().unwrap_or("within 24 hours");
 
-    let state_display = if state.is_empty() { String::new() } else { format!(", {}", state) };
+    let state_display = if state.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", state)
+    };
     let city_state = format!("{}{}", city, state_display);
-    let city_display = format!("{}{}", city, if state.is_empty() { String::new() } else { format!(", {}", state) });
+    let city_display = format!(
+        "{}{}",
+        city,
+        if state.is_empty() {
+            String::new()
+        } else {
+            format!(", {}", state)
+        }
+    );
 
     let nearby_str = if nearby.is_empty() {
         "the surrounding communities".to_string()
@@ -165,8 +211,20 @@ pub async fn generate_answer_first(
         nearby.join(", ")
     };
 
-    let competitor_html = build_comparison_table(&biz_name, &specialty, &req.competitor_names, &req.competitor_metrics);
-    let faq_html = build_faq_section(&biz_name, &specialty, &city_display, price_range, booking_method, response_time);
+    let competitor_html = build_comparison_table(
+        &biz_name,
+        &specialty,
+        &req.competitor_names,
+        &req.competitor_metrics,
+    );
+    let faq_html = build_faq_section(
+        &biz_name,
+        &specialty,
+        &city_display,
+        price_range,
+        booking_method,
+        response_time,
+    );
 
     // ── Build the Answer-First article HTML ───────────────────────────────
     let article_html = format!(
@@ -211,9 +269,19 @@ pub async fn generate_answer_first(
 
     // ── Generate title ─────────────────────────────────────────────────────
     let title = if city.is_empty() {
-        format!("{} - Best {} Provider", &biz_name, capitalize_first(specialty))
+        format!(
+            "{} - Best {} Provider",
+            &biz_name,
+            capitalize_first(specialty)
+        )
     } else {
-        format!("{} - Best {} in {}, {}", &biz_name, capitalize_first(specialty), city, state)
+        format!(
+            "{} - Best {} in {}, {}",
+            &biz_name,
+            capitalize_first(specialty),
+            city,
+            state
+        )
     };
 
     // ── Generate slug ──────────────────────────────────────────────────────
@@ -247,7 +315,7 @@ pub async fn generate_answer_first(
             r#"INSERT INTO business_meta (business_id, template, meta_data)
                VALUES ($1, $2, $3::jsonb)
                ON CONFLICT (business_id, template)
-               DO UPDATE SET meta_data = $3::jsonb, updated_at = NOW()"#
+               DO UPDATE SET meta_data = $3::jsonb, updated_at = NOW()"#,
         )
         .bind(bid)
         .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
@@ -257,12 +325,10 @@ pub async fn generate_answer_first(
     }
 
     // ── Get directory slug for public URLs ────────────────────────────────
-    let dir_slug: String = sqlx::query_scalar(
-        "SELECT slug FROM directories WHERE id = $1"
-    )
-    .bind(directory_id)
-    .fetch_one(&app.db)
-    .await?;
+    let dir_slug: String = sqlx::query_scalar("SELECT slug FROM directories WHERE id = $1")
+        .bind(directory_id)
+        .fetch_one(&app.db)
+        .await?;
 
     // ── Determine unique slug ─────────────────────────────────────────────
     let final_slug = make_unique_slug(&app.db, &base_slug, directory_id).await;
@@ -270,11 +336,7 @@ pub async fn generate_answer_first(
     // ── Create excerpt ─────────────────────────────────────────────────────
     let excerpt = format!(
         "Learn why {} is the top choice for {} in {} — {} with {}.",
-        &biz_name,
-        specialty,
-        city_display,
-        differentiator,
-        metric,
+        &biz_name, specialty, city_display, differentiator, metric,
     );
 
     // ── Save as blog post ──────────────────────────────────────────────────
@@ -304,7 +366,7 @@ pub async fn generate_answer_first(
             "INSERT INTO business_articles \
              (directory_id, business_id, title, slug, keyword, meta_description, content, status, \
               is_owner_article, subscription_active) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'published', false, true)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'published', false, true)",
         )
         .bind(directory_id)
         .bind(bid)
@@ -458,20 +520,15 @@ fn slugify(s: &str) -> String {
         .join("-")
 }
 
-async fn make_unique_slug(
-    db: &sqlx::PgPool,
-    base_slug: &str,
-    directory_id: Uuid,
-) -> String {
+async fn make_unique_slug(db: &sqlx::PgPool, base_slug: &str, directory_id: Uuid) -> String {
     // Check blog_posts for duplicates
-    let existing: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM blog_posts WHERE directory_id = $1 AND slug = $2"
-    )
-    .bind(directory_id)
-    .bind(base_slug)
-    .fetch_one(db)
-    .await
-    .unwrap_or(0);
+    let existing: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM blog_posts WHERE directory_id = $1 AND slug = $2")
+            .bind(directory_id)
+            .bind(base_slug)
+            .fetch_one(db)
+            .await
+            .unwrap_or(0);
 
     if existing == 0 {
         return base_slug.to_string();
@@ -488,7 +545,7 @@ async fn make_unique_article_slug(
     directory_id: Uuid,
 ) -> String {
     let existing: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM business_articles WHERE directory_id = $1 AND slug = $2"
+        "SELECT COUNT(*) FROM business_articles WHERE directory_id = $1 AND slug = $2",
     )
     .bind(directory_id)
     .bind(base_slug)
@@ -534,14 +591,15 @@ pub async fn suggest_competitors(
     let mut businesses: Vec<CompetitorSuggestion> = Vec::new();
 
     // 1. Try same directory exact match first
-    let same_dir: Vec<(Uuid, String, Option<String>, Option<String>, Option<Uuid>)> = sqlx::query_as(
-        "SELECT b.id, b.name, b.city, b.state, b.category_id \
-         FROM businesses b WHERE b.directory_id = $1"
-    )
-    .bind(req.directory_id)
-    .fetch_all(&app.db)
-    .await
-    .map_err(|e| AppError::Internal(format!("DB query failed: {}", e)))?;
+    let same_dir: Vec<(Uuid, String, Option<String>, Option<String>, Option<Uuid>)> =
+        sqlx::query_as(
+            "SELECT b.id, b.name, b.city, b.state, b.category_id \
+         FROM businesses b WHERE b.directory_id = $1",
+        )
+        .bind(req.directory_id)
+        .fetch_all(&app.db)
+        .await
+        .map_err(|e| AppError::Internal(format!("DB query failed: {}", e)))?;
 
     // Get directory slug
     let dir_slug: String = sqlx::query_scalar("SELECT slug FROM directories WHERE id = $1")
@@ -571,20 +629,30 @@ pub async fn suggest_competitors(
         };
 
         // Score relevance
-        let city_match = req.city.as_ref().map(|c| {
-            city.as_deref().map(|bc| {
-                bc.to_lowercase().contains(&c.to_lowercase())
-                    || c.to_lowercase().contains(&bc.to_lowercase())
-            }).unwrap_or(false)
-        }).unwrap_or(false);
+        let city_match = req
+            .city
+            .as_ref()
+            .map(|c| {
+                city.as_deref()
+                    .map(|bc| {
+                        bc.to_lowercase().contains(&c.to_lowercase())
+                            || c.to_lowercase().contains(&bc.to_lowercase())
+                    })
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
 
         // Only include if same city or no city filter — keep suggestions useful
         if req.city.is_some() && !city_match && req.state.is_some() {
-            let state_match = state.as_deref().map(|s| {
-                req.state.as_deref().map(|rs| {
-                    s.to_lowercase() == rs.to_lowercase()
-                }).unwrap_or(false)
-            }).unwrap_or(false);
+            let state_match = state
+                .as_deref()
+                .map(|s| {
+                    req.state
+                        .as_deref()
+                        .map(|rs| s.to_lowercase() == rs.to_lowercase())
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false);
             if !state_match {
                 continue;
             }
@@ -630,16 +698,23 @@ pub async fn setup_core_swift_tenant(
     State(app): State<AppState>,
     Json(req): Json<SwiftSetupRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let tenant_name = req.directory_name.unwrap_or_else(|| "Directory".to_string());
-    let tenant_slug = req.directory_slug.unwrap_or_else(|| "directory".to_string());
-    
+    let tenant_name = req
+        .directory_name
+        .unwrap_or_else(|| "Directory".to_string());
+    let tenant_slug = req
+        .directory_slug
+        .unwrap_or_else(|| "directory".to_string());
+
     // Generate a unique API token for this tenant
     let api_token = uuid::Uuid::new_v4().to_string();
-    let api_url = format!("http://{}:{}/tenant/{}", app.config.host, app.config.port, tenant_slug);
-    
+    let api_url = format!(
+        "http://{}:{}/tenant/{}",
+        app.config.host, app.config.port, tenant_slug
+    );
+
     // In self-hosted mode, the tenant is implicit (same DB/app)
     // For multi-tenant, this would POST to Core Swift API
-    
+
     Ok(Json(json!({
         "api_url": api_url,
         "api_token": api_token,
@@ -659,11 +734,13 @@ pub async fn test_core_swift_connection(
     State(app): State<AppState>,
     Json(req): Json<SwiftTestRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let url = req.url.unwrap_or_else(|| format!("http://{}:{}", app.config.host, app.config.port));
-    
+    let url = req
+        .url
+        .unwrap_or_else(|| format!("http://{}:{}", app.config.host, app.config.port));
+
     // In self-hosted mode, localhost is always reachable
     // In production, would call Core Swift health endpoint
-    
+
     Ok(Json(json!({
         "connected": true,
         "message": format!("Connected to Core Swift at {}", url),

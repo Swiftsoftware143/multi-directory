@@ -7,16 +7,16 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
 use std::env;
+use uuid::Uuid;
 
-use crate::AppState;
-use crate::auth::models::Claims;
 use crate::auth::middleware::verify_token;
-use crate::error::{AppError, ApiResult};
+use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── Auth Helpers (used by handlers that are before the auth_guard middleware) ──
 
@@ -26,27 +26,24 @@ pub fn extract_visitor_id(headers: &HeaderMap, jwt_secret: &str) -> Result<Uuid,
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
-    
+
     let token = auth_header
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
-    
-    let claims = verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
-    
+
+    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
+
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 
 /// Extract visitor ID from JWT if present, returns None if no auth header or invalid token.
 pub fn extract_visitor_id_optional(headers: &HeaderMap, jwt_secret: &str) -> Option<Uuid> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())?;
-    
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok())?;
+
     let token = auth_header.strip_prefix("Bearer ")?;
-    
+
     let claims = verify_token(token, jwt_secret).ok()?;
-    
+
     Uuid::parse_str(&claims.sub).ok()
 }
 
@@ -210,12 +207,11 @@ pub async fn track_visitor(
 
     // Upsert visitor by fingerprint
     let visitor = if let Some(ref fp) = req.fingerprint {
-        let existing = sqlx::query_as::<_, Visitor>(
-            "SELECT * FROM visitors WHERE fingerprint = $1"
-        )
-        .bind(fp)
-        .fetch_optional(&s.db)
-        .await?;
+        let existing =
+            sqlx::query_as::<_, Visitor>("SELECT * FROM visitors WHERE fingerprint = $1")
+                .bind(fp)
+                .fetch_optional(&s.db)
+                .await?;
 
         if let Some(v) = existing {
             sqlx::query("UPDATE visitors SET last_seen_at = NOW(), user_agent = COALESCE($1, user_agent), ip_address = COALESCE($2, ip_address), language = COALESCE($3, language), screen_resolution = COALESCE($4, screen_resolution), timezone = COALESCE($5, timezone) WHERE id = $6")
@@ -299,13 +295,12 @@ pub async fn track_visitor_event(
     Json(req): Json<TrackEventRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Get visitor_id from session
-    let visitor_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT visitor_id FROM visitor_sessions WHERE id = $1"
-    )
-    .bind(req.session_id)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
+    let visitor_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT visitor_id FROM visitor_sessions WHERE id = $1")
+            .bind(req.session_id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
 
     sqlx::query(
         "INSERT INTO visitor_events (visitor_id, session_id, directory_id, business_id, category_id, event_type, event_value, metadata, page_url, scroll_depth, duration_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)"
@@ -350,40 +345,63 @@ pub async fn end_session(
 }
 
 /// GET /api/v1/visitors/summary — aggregated visitor stats (auth required)
-pub async fn get_visitor_summary(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn get_visitor_summary(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let total_visitors = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitors")
-        .fetch_one(&s.db).await.unwrap_or(0);
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
     let unique_visitors_30d = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(DISTINCT visitor_id) FROM visitor_sessions WHERE started_at >= NOW() - INTERVAL '30 days'"
     ).fetch_one(&s.db).await.unwrap_or(0);
 
     let total_sessions = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_sessions")
-        .fetch_one(&s.db).await.unwrap_or(0);
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
     let avg_session = sqlx::query_scalar::<_, Option<f64>>(
-        "SELECT AVG(duration_secs) FROM visitor_sessions WHERE duration_secs > 0"
-    ).fetch_one(&s.db).await.unwrap_or(None).unwrap_or(0.0);
+        "SELECT AVG(duration_secs) FROM visitor_sessions WHERE duration_secs > 0",
+    )
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(None)
+    .unwrap_or(0.0);
 
     let bounces = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_sessions WHERE is_bounce = true"
-    ).fetch_one(&s.db).await.unwrap_or(0);
+        "SELECT COUNT(*) FROM visitor_sessions WHERE is_bounce = true",
+    )
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
 
-    let bounce_rate = if total_sessions > 0 { (bounces as f64 / total_sessions as f64) * 100.0 } else { 0.0 };
+    let bounce_rate = if total_sessions > 0 {
+        (bounces as f64 / total_sessions as f64) * 100.0
+    } else {
+        0.0
+    };
 
     let avg_scroll = sqlx::query_scalar::<_, Option<f64>>(
-        "SELECT AVG(scroll_depth_pct) FROM visitor_sessions WHERE scroll_depth_pct > 0"
-    ).fetch_one(&s.db).await.unwrap_or(None).unwrap_or(0.0);
+        "SELECT AVG(scroll_depth_pct) FROM visitor_sessions WHERE scroll_depth_pct > 0",
+    )
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(None)
+    .unwrap_or(0.0);
 
     // Locations
     let locations = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, i64)>(
         "SELECT city, region, country, COUNT(*) as count FROM visitors WHERE city IS NOT NULL GROUP BY city, region, country ORDER BY count DESC LIMIT 20"
     ).fetch_all(&s.db).await.unwrap_or_default();
 
-    let locs: Vec<LocationCount> = locations.into_iter()
-        .map(|(c, r, co, cnt)| LocationCount { city: c, region: r, country: co, count: cnt })
+    let locs: Vec<LocationCount> = locations
+        .into_iter()
+        .map(|(c, r, co, cnt)| LocationCount {
+            city: c,
+            region: r,
+            country: co,
+            count: cnt,
+        })
         .collect();
 
     // Daily visitors last 30 days
@@ -391,7 +409,8 @@ pub async fn get_visitor_summary(
         "SELECT to_char(started_at::date, 'YYYY-MM-DD') as date, COUNT(DISTINCT visitor_id) as count FROM visitor_sessions WHERE started_at >= NOW() - INTERVAL '30 days' GROUP BY started_at::date ORDER BY date"
     ).fetch_all(&s.db).await.unwrap_or_default();
 
-    let days: Vec<DailyVisitorCount> = daily.into_iter()
+    let days: Vec<DailyVisitorCount> = daily
+        .into_iter()
         .map(|(d, c)| DailyVisitorCount { date: d, count: c })
         .collect();
 
@@ -440,10 +459,12 @@ pub async fn business_visitor_summary(
     .fetch_one(&s.db).await.unwrap_or(0);
 
     let phone_clicks = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_events WHERE business_id = $1 AND event_type = 'phone_click'"
+        "SELECT COUNT(*) FROM visitor_events WHERE business_id = $1 AND event_type = 'phone_click'",
     )
     .bind(business_id)
-    .fetch_one(&s.db).await.unwrap_or(0);
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
 
     let website_clicks = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM visitor_events WHERE business_id = $1 AND event_type = 'website_click'"
@@ -482,13 +503,21 @@ pub async fn business_visitor_summary(
            JOIN visitors v ON v.id = ve.visitor_id
            WHERE ve.business_id = $1 AND v.city IS NOT NULL
            GROUP BY v.city, v.region, v.country
-           ORDER BY count DESC LIMIT 10"#
+           ORDER BY count DESC LIMIT 10"#,
     )
     .bind(business_id)
-    .fetch_all(&s.db).await.unwrap_or_default();
+    .fetch_all(&s.db)
+    .await
+    .unwrap_or_default();
 
-    let locs: Vec<LocationCount> = locations.into_iter()
-        .map(|(c, r, co, cnt)| LocationCount { city: c, region: r, country: co, count: cnt })
+    let locs: Vec<LocationCount> = locations
+        .into_iter()
+        .map(|(c, r, co, cnt)| LocationCount {
+            city: c,
+            region: r,
+            country: co,
+            count: cnt,
+        })
         .collect();
 
     // Views over time (last 30 days)
@@ -501,53 +530,54 @@ pub async fn business_visitor_summary(
     .bind(business_id)
     .fetch_all(&s.db).await.unwrap_or_default();
 
-    let days: Vec<DailyVisitorCount> = daily.into_iter()
+    let days: Vec<DailyVisitorCount> = daily
+        .into_iter()
         .map(|(d, c)| DailyVisitorCount { date: d, count: c })
         .collect();
 
     // ── Category-level stats ──
     // Get category info for this business
-    let biz = sqlx::query_as::<_, crate::models::Business>(
-        "SELECT * FROM businesses WHERE id = $1"
-    )
-    .bind(business_id)
-    .fetch_optional(&s.db)
-    .await?;
+    let biz =
+        sqlx::query_as::<_, crate::models::Business>("SELECT * FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(&s.db)
+            .await?;
 
-    let (category_name, category_total_views, category_share_pct, category_rank) =
-        if let Some(ref biz_row) = biz {
-            if let Some(cat_id) = biz_row.category_id {
-                // Get category name
-                let cat_name: Option<String> = sqlx::query_scalar(
-                    "SELECT name FROM directory_categories WHERE id = $1"
-                )
-                .bind(cat_id)
-                .fetch_optional(&s.db)
-                .await?
-                .flatten();
+    let (category_name, category_total_views, category_share_pct, category_rank) = if let Some(
+        ref biz_row,
+    ) = biz
+    {
+        if let Some(cat_id) = biz_row.category_id {
+            // Get category name
+            let cat_name: Option<String> =
+                sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
+                    .bind(cat_id)
+                    .fetch_optional(&s.db)
+                    .await?
+                    .flatten();
 
-                // Count all listing_view events in this category (last 30 days)
-                let cat_total: i64 = sqlx::query_scalar(
-                    "SELECT COUNT(*) FROM visitor_events ve
+            // Count all listing_view events in this category (last 30 days)
+            let cat_total: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM visitor_events ve
                      JOIN businesses b ON b.id = ve.business_id
                      WHERE b.category_id = $1
                        AND ve.event_type = 'listing_view'
-                       AND ve.created_at >= NOW() - INTERVAL '30 days'"
-                )
-                .bind(cat_id)
-                .fetch_one(&s.db)
-                .await
-                .unwrap_or(0);
+                       AND ve.created_at >= NOW() - INTERVAL '30 days'",
+            )
+            .bind(cat_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
-                // Calculate share
-                let share = if cat_total > 0 {
-                    (total_views as f64 / cat_total as f64) * 100.0
-                } else {
-                    0.0
-                };
+            // Calculate share
+            let share = if cat_total > 0 {
+                (total_views as f64 / cat_total as f64) * 100.0
+            } else {
+                0.0
+            };
 
-                // Rank this business among others in the same category (by listing views)
-                let rank: Option<i32> = sqlx::query_scalar(
+            // Rank this business among others in the same category (by listing views)
+            let rank: Option<i32> = sqlx::query_scalar(
                     "SELECT rn FROM (
                        SELECT b.id, ROW_NUMBER() OVER (ORDER BY COUNT(ve.id) DESC) as rn
                        FROM businesses b
@@ -562,13 +592,13 @@ pub async fn business_visitor_summary(
                 .await?
                 .flatten();
 
-                (cat_name, cat_total, share, rank.unwrap_or(0))
-            } else {
-                (None, 0i64, 0.0f64, 0i32)
-            }
+            (cat_name, cat_total, share, rank.unwrap_or(0))
         } else {
             (None, 0i64, 0.0f64, 0i32)
-        };
+        }
+    } else {
+        (None, 0i64, 0.0f64, 0i32)
+    };
 
     Ok(Json(json!(BusinessVisitorSummary {
         total_views,
@@ -663,19 +693,18 @@ pub async fn toggle_favorite(
     let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
 
     // Get the business's directory_id
-    let biz_info = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT directory_id FROM businesses WHERE id = $1"
-    )
-    .bind(business_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+    let biz_info =
+        sqlx::query_as::<_, (Uuid,)>("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
     let directory_id = biz_info.0;
 
     // Check if already favorited
     let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2",
     )
     .bind(visitor_id)
     .bind(business_id)
@@ -686,7 +715,7 @@ pub async fn toggle_favorite(
     let saved = if existing > 0 {
         // Remove
         sqlx::query(
-            "DELETE FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+            "DELETE FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2",
         )
         .bind(visitor_id)
         .bind(business_id)
@@ -740,7 +769,7 @@ pub async fn list_favorites(
         LEFT JOIN directory_categories dc ON dc.id = b.category_id
         JOIN directories d ON d.id = vf.directory_id
         WHERE vf.visitor_account_id = $1
-        ORDER BY vf.created_at DESC"#
+        ORDER BY vf.created_at DESC"#,
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
@@ -770,13 +799,14 @@ pub async fn check_favorite(
     };
 
     let saved = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2",
     )
     .bind(visitor_id)
     .bind(business_id)
     .fetch_one(&s.db)
     .await
-    .unwrap_or(0) > 0;
+    .unwrap_or(0)
+        > 0;
 
     Ok(Json(json!({
         "saved": saved,
@@ -790,7 +820,7 @@ pub async fn get_bookmark_count(
     Path(business_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_favorites WHERE business_id = $1"
+        "SELECT COUNT(*) FROM visitor_favorites WHERE business_id = $1",
     )
     .bind(business_id)
     .fetch_one(&s.db)
@@ -818,7 +848,7 @@ pub async fn toggle_bookmark(
 ) -> ApiResult<impl IntoResponse> {
     // If no visitor account id is provided, try claims extension (JWT auth)
     let visitor_id = req.visitor_account_id;
-    
+
     let visitor_id = match visitor_id {
         Some(id) => id,
         None => {
@@ -827,19 +857,18 @@ pub async fn toggle_bookmark(
     };
 
     // Get the business's directory_id
-    let biz_info = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT directory_id FROM businesses WHERE id = $1"
-    )
-    .bind(req.business_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+    let biz_info =
+        sqlx::query_as::<_, (Uuid,)>("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(req.business_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
     let directory_id = biz_info.0;
 
     // Check if already favorited
     let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+        "SELECT COUNT(*) FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2",
     )
     .bind(visitor_id)
     .bind(req.business_id)
@@ -850,7 +879,7 @@ pub async fn toggle_bookmark(
     let bookmarked = if existing > 0 {
         // Remove
         sqlx::query(
-            "DELETE FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2"
+            "DELETE FROM visitor_favorites WHERE visitor_account_id = $1 AND business_id = $2",
         )
         .bind(visitor_id)
         .bind(req.business_id)
@@ -872,7 +901,7 @@ pub async fn toggle_bookmark(
 
     // Get updated count
     let count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM visitor_favorites WHERE business_id = $1"
+        "SELECT COUNT(*) FROM visitor_favorites WHERE business_id = $1",
     )
     .bind(req.business_id)
     .fetch_one(&s.db)
@@ -912,7 +941,7 @@ pub async fn claim_business(
     Json(req): Json<ClaimBusinessRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM claimed_businesses WHERE business_id = $1"
+        "SELECT COUNT(*) FROM claimed_businesses WHERE business_id = $1",
     )
     .bind(business_id)
     .fetch_one(&s.db)
@@ -939,7 +968,15 @@ pub async fn claim_business(
     let name = req.owner_name.clone();
     let phone = req.owner_phone.clone();
     tokio::spawn(async move {
-        match crate::coreswift::push_claimed_business(&db, biz_id, &email, name.as_deref(), phone.as_deref()).await {
+        match crate::coreswift::push_claimed_business(
+            &db,
+            biz_id,
+            &email,
+            name.as_deref(),
+            phone.as_deref(),
+        )
+        .await
+        {
             Ok(_) => tracing::info!("[claim] CoreSwift push OK for business {biz_id}"),
             Err(e) => tracing::warn!("[claim] CoreSwift push failed for business {biz_id}: {e}"),
         }
@@ -961,17 +998,19 @@ pub async fn claim_business(
         .await;
 
         if let Ok(Some((dir_id, city_or_slug))) = biz_info {
-            let dir_slug: String = sqlx::query_scalar(
-                "SELECT slug FROM directories WHERE id = $1"
-            )
-            .bind(dir_id)
-            .fetch_optional(&ts_db)
-            .await
-            .unwrap_or(None)
-            .flatten()
-            .unwrap_or_default();
+            let dir_slug: String = sqlx::query_scalar("SELECT slug FROM directories WHERE id = $1")
+                .bind(dir_id)
+                .fetch_optional(&ts_db)
+                .await
+                .unwrap_or(None)
+                .flatten()
+                .unwrap_or_default();
 
-            let city = if city_or_slug.is_empty() { dir_slug.replace("-", " ") } else { city_or_slug };
+            let city = if city_or_slug.is_empty() {
+                dir_slug.replace("-", " ")
+            } else {
+                city_or_slug
+            };
             let tags = vec!["Business".to_string(), city.clone()];
             let city_list_name = if city.is_empty() {
                 String::new()
@@ -1003,7 +1042,14 @@ pub async fn claim_business(
     // Loyalty auto-registration was removed per owner directive (July 25, 2026).
 
     // Create a CRM deal record in the default pipeline
-    let _ = create_claim_deal(&s.db, business_id, &req.owner_name, &req.owner_email, &req.owner_phone).await;
+    let _ = create_claim_deal(
+        &s.db,
+        business_id,
+        &req.owner_name,
+        &req.owner_email,
+        &req.owner_phone,
+    )
+    .await;
 
     // Auto-fetch business images from Google Places (fire-and-forget)
     let db_fetch = s.db.clone();
@@ -1023,37 +1069,47 @@ pub async fn claim_business(
     // If the claimant's email domain matches the business website domain,
     // or the business email field matches the claimant email, auto-approve.
     // The claimant submits a website URL in the claim form — use that plus the DB's website.
-    let owner_email_domain = req.owner_email.split('@').nth(1).unwrap_or("").to_lowercase();
-    
+    let owner_email_domain = req
+        .owner_email
+        .split('@')
+        .nth(1)
+        .unwrap_or("")
+        .to_lowercase();
+
     // Fetch existing business info from DB
     let biz_domain_info = sqlx::query_as::<_, (Option<String>, Option<String>)>(
-        "SELECT website, email FROM businesses WHERE id = $1"
+        "SELECT website, email FROM businesses WHERE id = $1",
     )
     .bind(business_id)
     .fetch_optional(&s.db)
     .await?
     .unwrap_or((None, None));
-    
+
     let (biz_website, biz_email) = biz_domain_info;
-    
+
     // The submitted website from the claim form takes priority over the DB website
-    let submitted_website = req.website.as_ref()
+    let submitted_website = req
+        .website
+        .as_ref()
         .map(|w| w.trim())
         .filter(|w| !w.is_empty())
         .or_else(|| biz_website.as_ref().map(|w| w.as_str()));
-    
+
     let mut auto_approved = false;
     let mut temp_password = String::new();
     let mut no_website = submitted_website.is_none();
-    
+
     // Check business email field match
     if let Some(ref be) = biz_email {
         if be.to_lowercase() == req.owner_email.to_lowercase() {
             auto_approved = true;
-            tracing::info!("[claim] Auto-approved {} — email matches business email field", req.owner_email);
+            tracing::info!(
+                "[claim] Auto-approved {} — email matches business email field",
+                req.owner_email
+            );
         }
     }
-    
+
     // Check website domain match (without url crate — manual extraction)
     if !auto_approved {
         if let Some(ref w) = submitted_website {
@@ -1069,16 +1125,21 @@ pub async fn claim_business(
             // Remove www. prefix
             let host_clean = host_clean.strip_prefix("www.").unwrap_or(host_clean);
             // Check if email domain matches the website host, or is a subdomain of it
-            if !owner_email_domain.is_empty() && (host_clean == owner_email_domain 
-                || owner_email_domain.ends_with(&format!(".{}", host_clean)))
+            if !owner_email_domain.is_empty()
+                && (host_clean == owner_email_domain
+                    || owner_email_domain.ends_with(&format!(".{}", host_clean)))
             {
                 auto_approved = true;
-                tracing::info!("[claim] Auto-approved {} — domain {} matches website {}", 
-                    req.owner_email, owner_email_domain, host_clean);
+                tracing::info!(
+                    "[claim] Auto-approved {} — domain {} matches website {}",
+                    req.owner_email,
+                    owner_email_domain,
+                    host_clean
+                );
             }
         }
     }
-    
+
     // Save the submitted website to the business listing if provided
     if let Some(ref w) = req.website {
         let w = w.trim();
@@ -1092,17 +1153,16 @@ pub async fn claim_business(
             .await;
         }
     }
-    
+
     if auto_approved {
         // Get directory_id for the business
-        let dir_id: Option<Uuid> = sqlx::query_scalar(
-            "SELECT directory_id FROM businesses WHERE id = $1"
-        )
-        .bind(business_id)
-        .fetch_optional(&s.db)
-        .await?
-        .flatten();
-        
+        let dir_id: Option<Uuid> =
+            sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
+                .bind(business_id)
+                .fetch_optional(&s.db)
+                .await?
+                .flatten();
+
         if let Some(directory_id) = dir_id {
             // Upsert business_verifications with approved status
             let _ = sqlx::query(
@@ -1115,7 +1175,7 @@ pub async fn claim_business(
             .bind(directory_id)
             .execute(&s.db)
             .await;
-            
+
             // Update claimed_businesses verified_at
             let _ = sqlx::query(
                 "UPDATE claimed_businesses SET verified_at = NOW(), updated_at = NOW() WHERE id = $1"
@@ -1123,24 +1183,24 @@ pub async fn claim_business(
             .bind(cb.id)
             .execute(&s.db)
             .await;
-            
+
             // Create visitor account with temp password
-            use argon2::{Argon2, PasswordHasher};
             use argon2::password_hash::SaltString;
+            use argon2::{Argon2, PasswordHasher};
             use rand::rngs::OsRng;
-            
+
             // Generate 8-char password from random bytes
             use rand::RngCore;
             let mut bytes = [0u8; 6];
             OsRng.fill_bytes(&mut bytes);
             temp_password = hex::encode(bytes);
-            
+
             let salt = SaltString::generate(&mut OsRng);
             let password_hash = Argon2::default()
                 .hash_password(temp_password.as_bytes(), &salt)
                 .map(|h| h.to_string())
                 .unwrap_or_default();
-            
+
             if !password_hash.is_empty() {
                 let owner_name = req.owner_name.clone().unwrap_or_default();
                 let owner_phone = req.owner_phone.clone().unwrap_or_default();
@@ -1160,25 +1220,28 @@ pub async fn claim_business(
         }
     }
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "id": cb.id,
-        "business_id": cb.business_id,
-        "owner_email": cb.owner_email,
-        "owner_name": cb.owner_name,
-        "owner_phone": cb.owner_phone,
-        "is_active": cb.is_active,
-        "created_at": cb.created_at,
-        "auto_approved": auto_approved,
-        "temp_password": if auto_approved { Some(&temp_password) } else { None },
-        "no_website": if auto_approved { false } else { no_website },
-        "message": if auto_approved {
-            "Your business has been verified! Check your email for login credentials."
-        } else if no_website {
-            "A website URL is required to claim a listing. Please provide your website."
-        } else {
-            "We couldn't automatically verify your ownership. Our team will review your claim within 24 hours."
-        }
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "id": cb.id,
+            "business_id": cb.business_id,
+            "owner_email": cb.owner_email,
+            "owner_name": cb.owner_name,
+            "owner_phone": cb.owner_phone,
+            "is_active": cb.is_active,
+            "created_at": cb.created_at,
+            "auto_approved": auto_approved,
+            "temp_password": if auto_approved { Some(&temp_password) } else { None },
+            "no_website": if auto_approved { false } else { no_website },
+            "message": if auto_approved {
+                "Your business has been verified! Check your email for login credentials."
+            } else if no_website {
+                "A website URL is required to claim a listing. Please provide your website."
+            } else {
+                "We couldn't automatically verify your ownership. Our team will review your claim within 24 hours."
+            }
+        })),
+    ))
 }
 
 /// Create a deal record in the default pipeline when a business is claimed.
@@ -1191,33 +1254,33 @@ async fn create_claim_deal(
 ) -> Result<(), String> {
     // Get the business info
     let biz = sqlx::query_as::<_, (uuid::Uuid, String, String)>(
-        "SELECT directory_id, name, COALESCE(city, '') FROM businesses WHERE id = $1"
+        "SELECT directory_id, name, COALESCE(city, '') FROM businesses WHERE id = $1",
     )
     .bind(business_id)
     .fetch_optional(db)
     .await
     .map_err(|e| format!("DB error looking up business: {e}"))?
     .ok_or_else(|| format!("Business {business_id} not found"))?;
-    
+
     let (directory_id, biz_name, biz_city) = biz;
-    
+
     // Find the default pipeline for this directory (or the global one)
     let pipeline = sqlx::query_as::<_, (Uuid, serde_json::Value)>(
         r#"SELECT id, COALESCE(stages, '[]'::jsonb) FROM crm_pipelines 
            WHERE directory_id = $1 OR directory_id IS NULL 
            ORDER BY CASE WHEN directory_id = $1 THEN 0 ELSE 1 END, default_pipeline DESC
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(directory_id)
     .fetch_optional(db)
     .await
     .map_err(|e| format!("DB error finding pipeline: {e}"))?;
-    
+
     let (pipeline_id, stages_json) = match pipeline {
         Some(p) => p,
         None => return Ok(()), // No pipeline configured, silently skip
     };
-    
+
     // First stage is the default
     let first_stage: String = stages_json
         .as_array()
@@ -1225,11 +1288,17 @@ async fn create_claim_deal(
         .and_then(|v| v.as_str())
         .unwrap_or("Lead")
         .to_string();
-    
-    let title = format!("{} - Claimed{}", biz_name, 
-        if biz_city.is_empty() { String::new() } else { format!(" ({})", biz_city) }
+
+    let title = format!(
+        "{} - Claimed{}",
+        biz_name,
+        if biz_city.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", biz_city)
+        }
     );
-    
+
     let deal_id = Uuid::new_v4();
     sqlx::query(
         r#"INSERT INTO crm_deal_records (id, title, value, currency, pipeline_id, stage, status, directory_id)
@@ -1246,14 +1315,19 @@ async fn create_claim_deal(
     .execute(db)
     .await
     .map_err(|e| format!("Failed to create deal record: {e}"))?;
-    
-    tracing::info!("[claim] Created deal {deal_id} for business {business_id} at stage '{first_stage}'");
+
+    tracing::info!(
+        "[claim] Created deal {deal_id} for business {business_id} at stage '{first_stage}'"
+    );
     Ok(())
 }
 
 /// Auto-fetch business images from Google Places when a business is claimed.
 /// Queries Places API by business name + city, pulls photo_references, constructs URLs.
-async fn fetch_business_images_on_claim(db: &sqlx::PgPool, business_id: Uuid) -> Result<usize, String> {
+async fn fetch_business_images_on_claim(
+    db: &sqlx::PgPool,
+    business_id: Uuid,
+) -> Result<usize, String> {
     let api_key = match env::var("GOOGLE_PLACES_API_KEY") {
         Ok(k) => k,
         Err(_) => return Err("GOOGLE_PLACES_API_KEY not set".to_string()),
@@ -1261,7 +1335,7 @@ async fn fetch_business_images_on_claim(db: &sqlx::PgPool, business_id: Uuid) ->
 
     // Get business info
     let biz = sqlx::query_as::<_, (String, String)>(
-        r#"SELECT name, COALESCE(city, '') FROM businesses WHERE id = $1"#
+        r#"SELECT name, COALESCE(city, '') FROM businesses WHERE id = $1"#,
     )
     .bind(business_id)
     .fetch_optional(db)
@@ -1301,8 +1375,13 @@ async fn fetch_business_images_on_claim(db: &sqlx::PgPool, business_id: Uuid) ->
         urlenc(&search_query), api_key
     );
 
-    let resp = reqwest::get(&search_url).await.map_err(|e| format!("Places search request failed: {e}"))?;
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Places parse failed: {e}"))?;
+    let resp = reqwest::get(&search_url)
+        .await
+        .map_err(|e| format!("Places search request failed: {e}"))?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Places parse failed: {e}"))?;
 
     let place_id = body["candidates"]
         .as_array()
@@ -1321,8 +1400,13 @@ async fn fetch_business_images_on_claim(db: &sqlx::PgPool, business_id: Uuid) ->
         place_id, api_key
     );
 
-    let resp = reqwest::get(&details_url).await.map_err(|e| format!("Places details request failed: {e}"))?;
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Places details parse failed: {e}"))?;
+    let resp = reqwest::get(&details_url)
+        .await
+        .map_err(|e| format!("Places details request failed: {e}"))?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Places details parse failed: {e}"))?;
 
     let photos = body["result"]["photos"]
         .as_array()
@@ -1345,26 +1429,22 @@ async fn fetch_business_images_on_claim(db: &sqlx::PgPool, business_id: Uuid) ->
     let photos_json = serde_json::to_value(&photos).unwrap_or_default();
 
     // Get existing images and merge
-    let existing: serde_json::Value = sqlx::query_scalar(
-        r#"SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"#
-    )
-    .bind(business_id)
-    .fetch_one(db)
-    .await
-    .map_err(|e| format!("DB error reading existing images: {e}"))?;
+    let existing: serde_json::Value =
+        sqlx::query_scalar(r#"SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"#)
+            .bind(business_id)
+            .fetch_one(db)
+            .await
+            .map_err(|e| format!("DB error reading existing images: {e}"))?;
 
-    sqlx::query(
-        r#"UPDATE businesses SET images = $1, updated_at = NOW() WHERE id = $2"#
-    )
-    .bind(&photos_json)
-    .bind(business_id)
-    .execute(db)
-    .await
-    .map_err(|e| format!("DB error updating images: {e}"))?;
+    sqlx::query(r#"UPDATE businesses SET images = $1, updated_at = NOW() WHERE id = $2"#)
+        .bind(&photos_json)
+        .bind(business_id)
+        .execute(db)
+        .await
+        .map_err(|e| format!("DB error updating images: {e}"))?;
 
     Ok(count)
 }
-
 
 // ── City Request / Poll Feature ──
 
@@ -1403,63 +1483,82 @@ pub async fn request_city(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let city_name = req.city_name.trim();
     if city_name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "City name is required"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "City name is required"})),
+        ));
     }
-    
+
     // Check if city already exists in directory
-    let slug = city_name.to_lowercase()
+    let slug = city_name
+        .to_lowercase()
         .replace(' ', "-")
         .replace(|c: char| !c.is_alphanumeric() && c != '-', "");
-    
-    let existing_dir: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM directories WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&app_state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
-    .flatten();
-    
+
+    let existing_dir: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&app_state.db)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?
+            .flatten();
+
     if existing_dir.is_some() {
-        return Err((StatusCode::CONFLICT, Json(json!({"error": "This city is already listed on ZaarHub!"}))));
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({"error": "This city is already listed on ZaarHub!"})),
+        ));
     }
-    
+
     // Upsert vote
     let state = req.state.as_deref().unwrap_or("FL");
-    let email = req.email.as_ref().map(|e| e.trim()).filter(|e| !e.is_empty());
-    
+    let email = req
+        .email
+        .as_ref()
+        .map(|e| e.trim())
+        .filter(|e| !e.is_empty());
+
     let result = sqlx::query_as::<_, (Uuid, i32)>(
         r#"INSERT INTO city_requests (city_name, state, email, votes)
            VALUES ($1, $2, $3, 1)
            ON CONFLICT (city_name, state) DO UPDATE
            SET votes = city_requests.votes + 1,
                updated_at = NOW()
-           RETURNING id, votes"#
+           RETURNING id, votes"#,
     )
     .bind(&city_name)
     .bind(state)
     .bind(email)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
-    
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
+
     // If we have a directory_id and the INSERT path includes it, we need to handle the ON CONFLICT
-    // The query above doesn't use directory_id since it's simple upsert. 
+    // The query above doesn't use directory_id since it's simple upsert.
     // The real directory_id scoping happens on the admin/managed side.
-    
+
     match result {
-        Some((id, votes)) => {
-            Ok(Json(json!({
-                "id": id,
-                "city_name": city_name,
-                "state": state,
-                "votes": votes,
-                "message": "Thanks! Your vote has been counted."
-            })))
-        },
-        None => {
-            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Could not process request"}))))
-        }
+        Some((id, votes)) => Ok(Json(json!({
+            "id": id,
+            "city_name": city_name,
+            "state": state,
+            "votes": votes,
+            "message": "Thanks! Your vote has been counted."
+        }))),
+        None => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Could not process request"})),
+        )),
     }
 }
 
@@ -1472,12 +1571,17 @@ pub async fn get_city_requests(
            FROM city_requests
            WHERE status = 'pending'
            ORDER BY votes DESC, created_at DESC
-           LIMIT 50"#
+           LIMIT 50"#,
     )
     .fetch_all(&app_state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
-    
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
+
     Ok(Json(json!({"requests": requests})))
 }
 
@@ -1490,13 +1594,18 @@ pub async fn admin_get_city_requests(
         r#"SELECT id, city_name, state, votes, status, created_at, processed_at
            FROM city_requests
            WHERE directory_id = $1
-           ORDER BY votes DESC, created_at DESC"#
+           ORDER BY votes DESC, created_at DESC"#,
     )
     .bind(dir_id)
     .fetch_all(&app_state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
-    
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
+
     Ok(Json(json!({"requests": requests})))
 }
 
@@ -1509,16 +1618,26 @@ pub async fn admin_mark_city_added(
         r#"UPDATE city_requests
            SET status = 'added',
                processed_at = NOW()
-           WHERE id = $1"#
+           WHERE id = $1"#,
     )
     .bind(request_id)
     .execute(&app_state.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
-    
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
+
     if result.rows_affected() == 0 {
-        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "City request not found"}))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "City request not found"})),
+        ));
     }
-    
-    Ok(Json(json!({"message": "City marked as added", "id": request_id})))
+
+    Ok(Json(
+        json!({"message": "City marked as added", "id": request_id}),
+    ))
 }

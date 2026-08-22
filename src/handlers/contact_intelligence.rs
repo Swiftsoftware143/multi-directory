@@ -12,17 +12,13 @@
 //! Writes results to `data_enrichment_logs` with source='monthly_pipeline'.
 //! Updates `businesses.updated_at` and `businesses.enriched_at`.
 
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 // ── Response types ───────────────────────────────────────────────────────────
@@ -84,7 +80,7 @@ pub async fn contact_intelligence_pipeline(
              WHERE cb.id IS NULL \
                AND (b.updated_at < NOW() - INTERVAL '30 days' OR b.enriched_at IS NULL) \
              ORDER BY b.id \
-             LIMIT $1 OFFSET $2"
+             LIMIT $1 OFFSET $2",
         )
         .bind(BATCH_SIZE)
         .bind(offset)
@@ -138,7 +134,11 @@ pub async fn contact_intelligence_pipeline(
                 }
                 Ok(None) => { /* no match */ }
                 Err(e) => {
-                    tracing::warn!("Google Places enrichment failed for business {}: {}", biz.id, e);
+                    tracing::warn!(
+                        "Google Places enrichment failed for business {}: {}",
+                        biz.id,
+                        e
+                    );
                 }
             }
 
@@ -157,7 +157,11 @@ pub async fn contact_intelligence_pipeline(
             }
 
             // ── Log the enrichment result ──
-            let status = if overall_success { "completed" } else { "partial" };
+            let status = if overall_success {
+                "completed"
+            } else {
+                "partial"
+            };
             let data_after = serde_json::json!({
                 "fields_updated": fields_updated,
                 "enrichment_source": enrichment_source,
@@ -166,7 +170,7 @@ pub async fn contact_intelligence_pipeline(
             if let Err(e) = sqlx::query(
                 "INSERT INTO data_enrichment_logs \
                  (business_id, source, enrichment_type, data_after, status) \
-                 VALUES ($1, $2, $3, $4::jsonb, $5)"
+                 VALUES ($1, $2, $3, $4::jsonb, $5)",
             )
             .bind(biz.id)
             .bind("monthly_pipeline")
@@ -182,7 +186,7 @@ pub async fn contact_intelligence_pipeline(
 
             // ── Update business timestamps ──
             if let Err(e) = sqlx::query(
-                "UPDATE businesses SET updated_at = NOW(), enriched_at = NOW() WHERE id = $1"
+                "UPDATE businesses SET updated_at = NOW(), enriched_at = NOW() WHERE id = $1",
             )
             .bind(biz.id)
             .execute(&state.db)
@@ -226,7 +230,10 @@ pub async fn contact_intelligence_pipeline(
 ///
 /// For now, returns true if the phone looks like a valid E.164 format.
 async fn validate_phone_placeholder(phone: &str) -> Result<bool, String> {
-    let cleaned: String = phone.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect();
+    let cleaned: String = phone
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '+')
+        .collect();
     if cleaned.len() >= 10 && cleaned.len() <= 16 {
         Ok(true)
     } else {
@@ -255,7 +262,9 @@ async fn check_website_resolves(client: &Client, url: &str) -> Result<bool, Stri
                     let http_url = normalized.replace("https://", "http://");
                     if http_url != normalized {
                         match client.get(&http_url).send().await {
-                            Ok(resp) => Ok(resp.status().is_success() || resp.status().is_redirection()),
+                            Ok(resp) => {
+                                Ok(resp.status().is_success() || resp.status().is_redirection())
+                            }
                             Err(_) => Err(format!("Website unreachable: {}", e)),
                         }
                     } else {
@@ -303,11 +312,13 @@ async fn enrich_via_google_places(
         .await
         .map_err(|e| format!("Google Places request failed: {}", e))?;
 
-    let result: serde_json::Value = resp.json()
+    let result: serde_json::Value = resp
+        .json()
         .await
         .map_err(|e| format!("Failed to parse Places response: {}", e))?;
 
-    let candidates = result.get("candidates")
+    let candidates = result
+        .get("candidates")
         .and_then(|c| c.as_array())
         .cloned()
         .unwrap_or_default();
@@ -327,7 +338,12 @@ async fn enrich_via_google_places(
     }
 
     // Check for photos
-    if place.get("photos").and_then(|p| p.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if place
+        .get("photos")
+        .and_then(|p| p.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         fields.push("photos".to_string());
     }
 
@@ -360,8 +376,14 @@ async fn enrich_via_google_places(
     // Update latitude/longitude if we have them
     if let Some(geometry) = place.get("geometry") {
         if let (Some(lat), Some(lng)) = (
-            geometry.get("location").and_then(|l| l.get("lat")).and_then(|v| v.as_f64()),
-            geometry.get("location").and_then(|l| l.get("lng")).and_then(|v| v.as_f64()),
+            geometry
+                .get("location")
+                .and_then(|l| l.get("lat"))
+                .and_then(|v| v.as_f64()),
+            geometry
+                .get("location")
+                .and_then(|l| l.get("lng"))
+                .and_then(|v| v.as_f64()),
         ) {
             sqlx::query("UPDATE businesses SET latitude = $1, longitude = $2 WHERE id = $3")
                 .bind(lat)
@@ -376,16 +398,28 @@ async fn enrich_via_google_places(
 
     // Cache the place details
     let name = place.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let formatted_address = place.get("formatted_address").and_then(|v| v.as_str()).unwrap_or("");
+    let formatted_address = place
+        .get("formatted_address")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let phone = place.get("formatted_phone_number").and_then(|v| v.as_str());
     let website = place.get("website").and_then(|v| v.as_str());
     let rating = place.get("rating").and_then(|v| v.as_f64());
-    let user_ratings_total = place.get("user_ratings_total").and_then(|v| v.as_i64()).map(|v| v as i32);
-    let types: Vec<String> = place.get("types")
+    let user_ratings_total = place
+        .get("user_ratings_total")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32);
+    let types: Vec<String> = place
+        .get("types")
         .and_then(|t| t.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
-    let photos: Vec<String> = place.get("photos")
+    let photos: Vec<String> = place
+        .get("photos")
         .and_then(|p| p.as_array())
         .map(|a| a.iter().filter_map(|v| v.to_string().into()).collect())
         .unwrap_or_default();
@@ -398,7 +432,7 @@ async fn enrich_via_google_places(
               latitude, longitude, rating, user_ratings_total, types, photos, \
               opening_hours, place_details) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb) \
-             ON CONFLICT DO NOTHING"
+             ON CONFLICT DO NOTHING",
         )
         .bind(&search_query.trim())
         .bind(place_id)
@@ -445,9 +479,11 @@ async fn attempt_email_discovery(
 // ── URL encoding helper (copied from data_company.rs for local use) ──────────
 
 fn urlencoding(s: &str) -> String {
-    s.chars().map(|c| match c {
-        'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-        ' ' => "+".to_string(),
-        other => format!("%{:02X}", other as u8),
-    }).collect()
+    s.chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            ' ' => "+".to_string(),
+            other => format!("%{:02X}", other as u8),
+        })
+        .collect()
 }

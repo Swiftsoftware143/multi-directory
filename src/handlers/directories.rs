@@ -6,7 +6,7 @@
 //! - GET /api/v1/directories/:slug/preview returns template preview
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -15,19 +15,25 @@ use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult, validate_pagination};
+use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::models::*;
 use crate::template_engine;
 use crate::tracking_script;
+use crate::AppState;
 
 /// GET /api/v1/directories
 pub async fn list_directories(
     State(s): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let page = params.get("page").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1);
-    let per_page = params.get("per_page").and_then(|v| v.parse::<i64>().ok()).unwrap_or(50);
+    let page = params
+        .get("page")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1);
+    let per_page = params
+        .get("per_page")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(50);
     let (page, per_page) = validate_pagination(Some(page), Some(per_page));
     let offset = (page - 1) * per_page;
 
@@ -36,7 +42,7 @@ pub async fn list_directories(
         .await?;
 
     let directories = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 "
+        "SELECT * FROM directories ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 ",
     )
     .bind(per_page)
     .bind(offset)
@@ -59,13 +65,14 @@ pub async fn get_directory(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     Ok(Json(json!(directory)))
 }
@@ -76,40 +83,57 @@ pub async fn create_directory(
     Json(req): Json<CreateDirectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.name.is_empty() {
-        return Err(AppError::Validation("Directory name is required".to_string()));
+        return Err(AppError::Validation(
+            "Directory name is required".to_string(),
+        ));
     }
 
     // Auto-generate slug if not provided
     let slug = match &req.slug {
         Some(s) if !s.is_empty() => s.clone(),
-        _ => req.name.to_lowercase()
+        _ => req
+            .name
+            .to_lowercase()
             .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
             .replace(' ', "-")
-            .chars().take(80).collect::<String>(),
+            .chars()
+            .take(80)
+            .collect::<String>(),
     };
 
     if slug.is_empty() {
-        return Err(AppError::Validation("Slug is required (auto-generation failed)".to_string()));
+        return Err(AppError::Validation(
+            "Slug is required (auto-generation failed)".to_string(),
+        ));
     }
 
     // Check slug uniqueness
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_one(&s.db)
-    .await?;
+    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE slug = $1")
+        .bind(&slug)
+        .fetch_one(&s.db)
+        .await?;
 
     if existing > 0 {
-        return Err(AppError::Duplicate(format!("Directory slug '{}' already exists", slug)));
+        return Err(AppError::Duplicate(format!(
+            "Directory slug '{}' already exists",
+            slug
+        )));
     }
 
-    let template = req.template.as_deref().unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
-    let template = if template_engine::is_valid_template(template) { template } else { template_engine::TEMPLATE_LOCAL_BUSINESS };
+    let template = req
+        .template
+        .as_deref()
+        .unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
+    let template = if template_engine::is_valid_template(template) {
+        template
+    } else {
+        template_engine::TEMPLATE_LOCAL_BUSINESS
+    };
 
     // Determine network mode
     let network_mode = req.network_mode.as_deref().unwrap_or("standalone");
-    let (network_id, url_type, url_value, custom_domain) = resolve_network_config(&s, &req, &slug, network_mode).await?;
+    let (network_id, url_type, url_value, custom_domain) =
+        resolve_network_config(&s, &req, &slug, network_mode).await?;
 
     let template_config = req.template_config.clone().unwrap_or_default();
 
@@ -119,7 +143,7 @@ pub async fn create_directory(
     } else if network_mode == "connect" {
         if let Some(nid) = network_id {
             let nb = sqlx::query_as::<_, crate::models::NetworkBranding>(
-                "SELECT * FROM network_branding WHERE network_id = $1"
+                "SELECT * FROM network_branding WHERE network_id = $1",
             )
             .bind(nid)
             .fetch_optional(&s.db)
@@ -174,7 +198,7 @@ pub async fn create_directory(
         let network = sqlx::query_as::<_, crate::models::Network>(
             r#"INSERT INTO networks (name, slug, description, root_domain)
                VALUES ($1, $2, $3, $4)
-               RETURNING *"#
+               RETURNING *"#,
         )
         .bind(&req.name)
         .bind(&network_slug)
@@ -202,7 +226,7 @@ pub async fn create_directory(
         // Create default homepage hero section
         sqlx::query(
             r#"INSERT INTO homepage_sections (network_id, section_type, sort_order, title)
-               VALUES ($1, 'hero', 0, $2)"#
+               VALUES ($1, 'hero', 0, $2)"#,
         )
         .bind(network.id)
         .bind(&req.name)
@@ -217,12 +241,10 @@ pub async fn create_directory(
             .await?;
 
         // Re-fetch directory to get updated network_id
-        directory = sqlx::query_as::<_, Directory>(
-            "SELECT * FROM directories WHERE id = $1"
-        )
-        .bind(directory.id)
-        .fetch_one(&s.db)
-        .await?;
+        directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE id = $1")
+            .bind(directory.id)
+            .fetch_one(&s.db)
+            .await?;
 
         // For new networks, provision the network tenant + directory resources
         let db2 = s.db.clone();
@@ -231,14 +253,24 @@ pub async fn create_directory(
         let dir_slug2 = slug.clone();
         tokio::spawn(async move {
             // First provision the network tenant
-            match crate::coreswift::provision_tenant(&db2, dir_id2, &dir_name2, &dir_slug2, true).await {
-                Ok(_) => tracing::info!("[directory] CoreSwift network tenant provisioned for {dir_slug2}"),
-                Err(e) => tracing::warn!("[directory] CoreSwift network tenant provisioning failed: {e}"),
+            match crate::coreswift::provision_tenant(&db2, dir_id2, &dir_name2, &dir_slug2, true)
+                .await
+            {
+                Ok(_) => tracing::info!(
+                    "[directory] CoreSwift network tenant provisioned for {dir_slug2}"
+                ),
+                Err(e) => {
+                    tracing::warn!("[directory] CoreSwift network tenant provisioning failed: {e}")
+                }
             }
             // Then provision directory resources (booking calendar, tags, etc.)
             match crate::coreswift::provision_directory_resources(&db2, dir_id2, &dir_slug2).await {
-                Ok(prefix) => tracing::info!("[directory] CoreSwift resources provisioned for {dir_slug2} (prefix={prefix})"),
-                Err(e) => tracing::warn!("[directory] CoreSwift resource provisioning failed for {dir_slug2}: {e}"),
+                Ok(prefix) => tracing::info!(
+                    "[directory] CoreSwift resources provisioned for {dir_slug2} (prefix={prefix})"
+                ),
+                Err(e) => tracing::warn!(
+                    "[directory] CoreSwift resource provisioning failed for {dir_slug2}: {e}"
+                ),
             }
         });
     }
@@ -250,15 +282,18 @@ pub async fn create_directory(
         let dir_name = req.name.clone();
         let dir_slug = slug.clone();
         tokio::spawn(async move {
-            match crate::coreswift::provision_tenant(&db, dir_id, &dir_name, &dir_slug, false).await {
+            match crate::coreswift::provision_tenant(&db, dir_id, &dir_name, &dir_slug, false).await
+            {
                 Ok(_) => {
                     tracing::info!("[directory] CoreSwift tenant provisioned for {dir_slug}");
                     match crate::coreswift::provision_directory_resources(&db, dir_id, &dir_slug).await {
                         Ok(prefix) => tracing::info!("[directory] CoreSwift resources provisioned for {dir_slug} (prefix={prefix})"),
                         Err(e) => tracing::warn!("[directory] CoreSwift resource provisioning failed for {dir_slug}: {e}"),
                     }
-                },
-                Err(e) => tracing::warn!("[directory] CoreSwift provisioning failed for {dir_slug}: {e}"),
+                }
+                Err(e) => {
+                    tracing::warn!("[directory] CoreSwift provisioning failed for {dir_slug}: {e}")
+                }
             }
         });
     }
@@ -275,35 +310,54 @@ async fn resolve_network_config(
 ) -> ApiResult<(Option<Uuid>, Option<String>, Option<String>, Option<String>)> {
     match network_mode {
         "connect" => {
-            let network_id = req.parent_network_id
-                .ok_or(AppError::Validation("parent_network_id is required when network_mode='connect'".to_string()))?;
+            let network_id = req.parent_network_id.ok_or(AppError::Validation(
+                "parent_network_id is required when network_mode='connect'".to_string(),
+            ))?;
 
-            let network_exists = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM networks WHERE id = $1"
-            )
-            .bind(network_id)
-            .fetch_one(&s.db)
-            .await?;
+            let network_exists =
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM networks WHERE id = $1")
+                    .bind(network_id)
+                    .fetch_one(&s.db)
+                    .await?;
 
             if network_exists == 0 {
-                return Err(AppError::NotFound(format!("Network '{}' not found", network_id)));
+                return Err(AppError::NotFound(format!(
+                    "Network '{}' not found",
+                    network_id
+                )));
             }
 
-            let url_type = req.url_type.clone().unwrap_or_else(|| "subfolder".to_string());
+            let url_type = req
+                .url_type
+                .clone()
+                .unwrap_or_else(|| "subfolder".to_string());
             let url_value = req.url_value.clone().unwrap_or_else(|| slug.to_string());
             let custom_domain = req.custom_domain.clone();
 
-            Ok((Some(network_id), Some(url_type), Some(url_value), custom_domain))
+            Ok((
+                Some(network_id),
+                Some(url_type),
+                Some(url_value),
+                custom_domain,
+            ))
         }
         "new_network" => {
-            let url_type = req.url_type.clone().unwrap_or_else(|| "standalone".to_string());
+            let url_type = req
+                .url_type
+                .clone()
+                .unwrap_or_else(|| "standalone".to_string());
             let url_value = req.url_value.clone().or_else(|| Some(slug.to_string()));
             let custom_domain = req.custom_domain.clone();
             Ok((None, Some(url_type), url_value, custom_domain))
         }
         _ => {
             // Standalone
-            Ok((None, Some("standalone".to_string()), Some(slug.to_string()), req.custom_domain.clone()))
+            Ok((
+                None,
+                Some("standalone".to_string()),
+                Some(slug.to_string()),
+                req.custom_domain.clone(),
+            ))
         }
     }
 }
@@ -314,35 +368,55 @@ pub async fn update_directory(
     Path(slug): Path<String>,
     Json(req): Json<UpdateDirectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let existing = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let existing = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let new_name = req.name.unwrap_or(existing.name);
     let new_slug = req.slug.unwrap_or(existing.slug.clone());
     let new_description = req.description.or(existing.description);
     let new_status = req.status.or(existing.status);
-    let new_template = req.template.unwrap_or(existing.template.unwrap_or_else(|| template_engine::TEMPLATE_LOCAL_BUSINESS.to_string()));
+    let new_template = req.template.unwrap_or(
+        existing
+            .template
+            .unwrap_or_else(|| template_engine::TEMPLATE_LOCAL_BUSINESS.to_string()),
+    );
     let new_color_scheme = req.color_scheme.or(existing.color_scheme);
     let new_network_id = req.network_id.or(existing.network_id);
     let new_url_type = req.url_type.or(existing.url_type);
     let new_url_value = req.url_value.or(existing.url_value);
     let new_custom_domain = req.custom_domain.or(existing.custom_domain);
     let new_city = req.city.or(existing.city);
-    let new_head_injection = req.head_injection.clone().or(existing.head_injection.clone());
-    let new_body_injection = req.body_injection.clone().or(existing.body_injection.clone());
-    let new_footer_injection = req.footer_injection.clone().or(existing.footer_injection.clone());
+    let new_head_injection = req
+        .head_injection
+        .clone()
+        .or(existing.head_injection.clone());
+    let new_body_injection = req
+        .body_injection
+        .clone()
+        .or(existing.body_injection.clone());
+    let new_footer_injection = req
+        .footer_injection
+        .clone()
+        .or(existing.footer_injection.clone());
     let new_template_config = req.template_config.clone().or(existing.template_config);
-    let new_email_signature_html = req.email_signature_html.clone().or(existing.email_signature_html);
-    let new_email_signature_text = req.email_signature_text.clone().or(existing.email_signature_text);
+    let new_email_signature_html = req
+        .email_signature_html
+        .clone()
+        .or(existing.email_signature_html);
+    let new_email_signature_text = req
+        .email_signature_text
+        .clone()
+        .or(existing.email_signature_text);
 
     if new_slug != slug {
         let slug_exists = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM directories WHERE slug = $1 AND id != $2"
+            "SELECT COUNT(*) FROM directories WHERE slug = $1 AND id != $2",
         )
         .bind(&new_slug)
         .bind(existing.id)
@@ -350,7 +424,10 @@ pub async fn update_directory(
         .await?;
 
         if slug_exists > 0 {
-            return Err(AppError::Duplicate(format!("Slug '{}' already in use", new_slug)));
+            return Err(AppError::Duplicate(format!(
+                "Slug '{}' already in use",
+                new_slug
+            )));
         }
     }
 
@@ -392,10 +469,16 @@ pub async fn delete_directory(
         .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound(format!("Directory '{}' not found", slug)));
+        return Err(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )));
     }
 
-    Ok((StatusCode::OK, Json(json!({"message": "Directory deleted successfully"}))))
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Directory deleted successfully"})),
+    ))
 }
 
 /// GET /api/v1/directories/:slug/render — render directory page with template
@@ -404,13 +487,14 @@ pub async fn render_directory(
     Path(slug): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let categories = sqlx::query_as::<_, DirectoryCategory>(
         "SELECT * FROM directory_categories WHERE directory_id = \x241 ORDER BY sort_order ASC, name ASC "
@@ -430,10 +514,15 @@ pub async fn render_directory(
     let mut meta_map = HashMap::new();
     for biz in &businesses {
         if let Ok(meta) = sqlx::query_as::<_, BusinessMeta>(
-            "SELECT * FROM business_meta WHERE business_id = \x241 AND template = \x242 "
+            "SELECT * FROM business_meta WHERE business_id = \x241 AND template = \x242 ",
         )
         .bind(biz.id)
-        .bind(directory.template.as_deref().unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS))
+        .bind(
+            directory
+                .template
+                .as_deref()
+                .unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS),
+        )
         .fetch_optional(&s.db)
         .await
         {
@@ -443,20 +532,18 @@ pub async fn render_directory(
         }
     }
 
-    let template_id = directory.template.as_deref().unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
+    let template_id = directory
+        .template
+        .as_deref()
+        .unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
     let engine = s.template_engine.lock().unwrap();
 
     let dir_val = serde_json::to_value(&directory).unwrap_or_default();
     let cats_val = serde_json::to_value(&categories).unwrap_or_default();
     let biz_val = serde_json::to_value(&businesses).unwrap_or_default();
-    let ctx = template_engine::build_template_context(
-        &dir_val,
-        &biz_val,
-        &cats_val,
-        None,
-        None,
-    );
-    let html = engine.render_directory_page(template_id, &ctx)
+    let ctx = template_engine::build_template_context(&dir_val, &biz_val, &cats_val, None, None);
+    let html = engine
+        .render_directory_page(template_id, &ctx)
         .map_err(|e| AppError::Internal(e))?;
 
     // Inject visitor tracking script into directory page
@@ -488,7 +575,11 @@ pub async fn render_directory(
 
     // Inject survey widget if onboarding_survey is enabled in feature_config
     if let Some(ref fc) = directory.feature_config {
-        if fc.get("onboarding_survey").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if fc
+            .get("onboarding_survey")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             let survey_tag = "<script src=\"/survey-widget.js\"></script>";
             output = output.replace("</head>", &format!("\n{}\n</head>", survey_tag));
         }
@@ -511,13 +602,14 @@ pub async fn list_categories(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let categories = sqlx::query_as::<_, DirectoryCategoryWithParent>(
         "SELECT dc.id, dc.directory_id, dc.name, dc.slug, dc.sort_order, dc.parent_id, p.name as parent_name FROM directory_categories dc LEFT JOIN directory_categories p ON p.id = dc.parent_id WHERE dc.directory_id = \x241 ORDER BY dc.sort_order ASC, dc.name ASC"
@@ -536,16 +628,19 @@ pub async fn create_category(
     Json(req): Json<CreateCategoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.name.is_empty() || req.slug.is_empty() {
-        return Err(AppError::Validation("Name and slug are required".to_string()));
+        return Err(AppError::Validation(
+            "Name and slug are required".to_string(),
+        ));
     }
 
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let category = sqlx::query_as::<_, DirectoryCategory>(
         "INSERT INTO directory_categories (directory_id, name, slug, sort_order, parent_id) VALUES (\x241, \x242, \x243, \x244, \x245) RETURNING *"
@@ -567,16 +662,17 @@ pub async fn update_category(
     Path((slug, category_id)): Path<(String, Uuid)>,
     Json(req): Json<UpdateCategoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let existing = sqlx::query_as::<_, DirectoryCategory>(
-        "SELECT * FROM directory_categories WHERE id = \x241 AND directory_id = \x242 "
+        "SELECT * FROM directory_categories WHERE id = \x241 AND directory_id = \x242 ",
     )
     .bind(category_id)
     .bind(dir.id)
@@ -590,7 +686,9 @@ pub async fn update_category(
 
     // Prevent setting parent_id to self
     if req.parent_id == Some(category_id) {
-        return Err(AppError::Validation("A category cannot be its own parent".to_string()));
+        return Err(AppError::Validation(
+            "A category cannot be its own parent".to_string(),
+        ));
     }
 
     let new_parent_id = req.parent_id.or(existing.parent_id);
@@ -617,31 +715,30 @@ pub async fn delete_category(
     Path((slug, category_id)): Path<(String, Uuid)>,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let _dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let _dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     // Check for existing businesses
-    let business_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM businesses WHERE category_id = \x241"
-    )
-    .bind(category_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let business_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM businesses WHERE category_id = \x241")
+            .bind(category_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     // Check for subcategories
-    let subcategory_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM directory_categories WHERE parent_id = \x241"
-    )
-    .bind(category_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let subcategory_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM directory_categories WHERE parent_id = \x241")
+            .bind(category_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     let force = params.get("force").map(|v| v == "true").unwrap_or(false);
 
@@ -653,52 +750,47 @@ pub async fn delete_category(
     }
 
     if force && business_count > 0 {
-        if let Some(reassign_to) = params.get("reassign_to").and_then(|v| Uuid::parse_str(v).ok()) {
+        if let Some(reassign_to) = params
+            .get("reassign_to")
+            .and_then(|v| Uuid::parse_str(v).ok())
+        {
             // Reassign businesses to target category
-            sqlx::query(
-                "UPDATE businesses SET category_id = \x241 WHERE category_id = \x242"
-            )
-            .bind(reassign_to)
-            .bind(category_id)
-            .execute(&s.db)
-            .await?;
+            sqlx::query("UPDATE businesses SET category_id = \x241 WHERE category_id = \x242")
+                .bind(reassign_to)
+                .bind(category_id)
+                .execute(&s.db)
+                .await?;
         } else {
             // Delete all businesses in this category
-            sqlx::query(
-                "DELETE FROM businesses WHERE category_id = \x241"
-            )
-            .bind(category_id)
-            .execute(&s.db)
-            .await?;
+            sqlx::query("DELETE FROM businesses WHERE category_id = \x241")
+                .bind(category_id)
+                .execute(&s.db)
+                .await?;
         }
     }
 
     // If force and reassign_to for subcategories, move subcategories up to parent's parent
     if force && subcategory_count > 0 {
         let parent_of_deleted = sqlx::query_scalar::<_, Option<Uuid>>(
-            "SELECT parent_id FROM directory_categories WHERE id = \x241"
+            "SELECT parent_id FROM directory_categories WHERE id = \x241",
         )
         .bind(category_id)
         .fetch_optional(&s.db)
         .await?
         .flatten();
 
-        sqlx::query(
-            "UPDATE directory_categories SET parent_id = \x241 WHERE parent_id = \x242"
-        )
-        .bind(parent_of_deleted)
-        .bind(category_id)
-        .execute(&s.db)
-        .await?;
+        sqlx::query("UPDATE directory_categories SET parent_id = \x241 WHERE parent_id = \x242")
+            .bind(parent_of_deleted)
+            .bind(category_id)
+            .execute(&s.db)
+            .await?;
     }
 
     // Clear category_id from visitor_events
-    sqlx::query(
-        "UPDATE visitor_events SET category_id = NULL WHERE category_id = \x241"
-    )
-    .bind(category_id)
-    .execute(&s.db)
-    .await?;
+    sqlx::query("UPDATE visitor_events SET category_id = NULL WHERE category_id = \x241")
+        .bind(category_id)
+        .execute(&s.db)
+        .await?;
 
     // Now delete the category itself
     let cur = sqlx::query("DELETE FROM directory_categories WHERE id = \x241")
@@ -719,13 +811,14 @@ pub async fn categories_bulk_move(
     Path(slug): Path<String>,
     Json(req): Json<BulkMoveRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let _dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let _dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     if req.category_ids.is_empty() {
         return Err(AppError::Validation("No category IDs provided".to_string()));
@@ -734,24 +827,22 @@ pub async fn categories_bulk_move(
     let mut affected = 0usize;
 
     if req.move_businesses {
-        let result = sqlx::query(
-            "UPDATE businesses SET category_id = \x241 WHERE category_id = ANY(\x242)"
-        )
-        .bind(req.target_category_id)
-        .bind(&req.category_ids)
-        .execute(&s.db)
-        .await?;
+        let result =
+            sqlx::query("UPDATE businesses SET category_id = \x241 WHERE category_id = ANY(\x242)")
+                .bind(req.target_category_id)
+                .bind(&req.category_ids)
+                .execute(&s.db)
+                .await?;
         affected += result.rows_affected() as usize;
     }
 
     if req.move_subcategories {
-        let result = sqlx::query(
-            "UPDATE directory_categories SET parent_id = \x241 WHERE id = ANY(\x242)"
-        )
-        .bind(req.target_category_id)
-        .bind(&req.category_ids)
-        .execute(&s.db)
-        .await?;
+        let result =
+            sqlx::query("UPDATE directory_categories SET parent_id = \x241 WHERE id = ANY(\x242)")
+                .bind(req.target_category_id)
+                .bind(&req.category_ids)
+                .execute(&s.db)
+                .await?;
         affected += result.rows_affected() as usize;
     }
 
@@ -768,13 +859,14 @@ pub async fn categories_bulk_delete(
     Path(slug): Path<String>,
     Json(req): Json<BulkDeleteCategoriesRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let _dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let _dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     if req.category_ids.is_empty() {
         return Err(AppError::Validation("No category IDs provided".to_string()));
@@ -782,46 +874,38 @@ pub async fn categories_bulk_delete(
 
     if let Some(reassign_to) = req.reassign_to {
         // Reassign businesses to target category
-        sqlx::query(
-            "UPDATE businesses SET category_id = \x241 WHERE category_id = ANY(\x242)"
-        )
-        .bind(reassign_to)
-        .bind(&req.category_ids)
-        .execute(&s.db)
-        .await?;
+        sqlx::query("UPDATE businesses SET category_id = \x241 WHERE category_id = ANY(\x242)")
+            .bind(reassign_to)
+            .bind(&req.category_ids)
+            .execute(&s.db)
+            .await?;
 
         // Move subcategories up
         sqlx::query(
-            "UPDATE directory_categories SET parent_id = NULL WHERE parent_id = ANY(\x241)"
+            "UPDATE directory_categories SET parent_id = NULL WHERE parent_id = ANY(\x241)",
         )
         .bind(&req.category_ids)
         .execute(&s.db)
         .await?;
     } else {
         // Delete all businesses in these categories
-        sqlx::query(
-            "DELETE FROM businesses WHERE category_id = ANY(\x241)"
-        )
-        .bind(&req.category_ids)
-        .execute(&s.db)
-        .await?;
+        sqlx::query("DELETE FROM businesses WHERE category_id = ANY(\x241)")
+            .bind(&req.category_ids)
+            .execute(&s.db)
+            .await?;
     }
 
     // Clear category_id from visitor_events
-    sqlx::query(
-        "UPDATE visitor_events SET category_id = NULL WHERE category_id = ANY(\x241)"
-    )
-    .bind(&req.category_ids)
-    .execute(&s.db)
-    .await?;
+    sqlx::query("UPDATE visitor_events SET category_id = NULL WHERE category_id = ANY(\x241)")
+        .bind(&req.category_ids)
+        .execute(&s.db)
+        .await?;
 
     // Delete the categories
-    sqlx::query(
-        "DELETE FROM directory_categories WHERE id = ANY(\x241)"
-    )
-    .bind(&req.category_ids)
-    .execute(&s.db)
-    .await?;
+    sqlx::query("DELETE FROM directory_categories WHERE id = ANY(\x241)")
+        .bind(&req.category_ids)
+        .execute(&s.db)
+        .await?;
 
     Ok(Json(json!(CategoryBulkResult {
         success: true,

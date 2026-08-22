@@ -2,17 +2,17 @@
 //! Directory events table, n8n webhook integration
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Directory Events ─────────────────────────────────────────────────────────
 
@@ -96,7 +96,11 @@ pub async fn list_events(
     }
 
     query_str.push_str(" ORDER BY created_at DESC");
-    query_str.push_str(&format!(" LIMIT ${} OFFSET ${}", param_idx + 1, param_idx + 2));
+    query_str.push_str(&format!(
+        " LIMIT ${} OFFSET ${}",
+        param_idx + 1,
+        param_idx + 2
+    ));
 
     // Build the query manually since sqlx doesn't support dynamic query building well
     let events: Vec<serde_json::Value> = {
@@ -111,11 +115,14 @@ pub async fn list_events(
 
         let result = db_q.fetch_all(&state.db).await;
         match result {
-            Ok(rows) => rows.into_iter().map(|e| serde_json::to_value(e).unwrap_or_default()).collect(),
+            Ok(rows) => rows
+                .into_iter()
+                .map(|e| serde_json::to_value(e).unwrap_or_default())
+                .collect(),
             Err(_) => {
                 // Fallback: simple query without filters
                 sqlx::query_as::<_, DirectoryEvent>(
-                    "SELECT * FROM directory_events ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+                    "SELECT * FROM directory_events ORDER BY created_at DESC LIMIT $1 OFFSET $2",
                 )
                 .bind(limit)
                 .bind(offset)
@@ -215,9 +222,7 @@ pub async fn create_event(
 }
 
 /// GET /api/v1/events/unprocessed — get events not yet processed by n8n
-pub async fn unprocessed_events(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn unprocessed_events(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let events = sqlx::query_as::<_, DirectoryEvent>(
         "SELECT * FROM directory_events WHERE n8n_webhook_sent = false OR n8n_webhook_sent IS NULL ORDER BY created_at ASC LIMIT 100"
     )
@@ -232,12 +237,10 @@ pub async fn mark_event_processed(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let result = sqlx::query(
-        "UPDATE directory_events SET processed = true WHERE id = $1"
-    )
-    .bind(id)
-    .execute(&state.db)
-    .await?;
+    let result = sqlx::query("UPDATE directory_events SET processed = true WHERE id = $1")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Event not found".to_string()));
@@ -330,12 +333,20 @@ pub async fn record_event(
                     .await
                 {
                     Ok(_) => {
-                        let _ = sqlx::query("UPDATE directory_events SET n8n_webhook_sent = true WHERE id = $1")
-                            .bind(e.id).execute(&state.db).await;
+                        let _ = sqlx::query(
+                            "UPDATE directory_events SET n8n_webhook_sent = true WHERE id = $1",
+                        )
+                        .bind(e.id)
+                        .execute(&state.db)
+                        .await;
                     }
                     Err(_) => {
-                        let _ = sqlx::query("UPDATE directory_events SET n8n_webhook_failed = true WHERE id = $1")
-                            .bind(e.id).execute(&state.db).await;
+                        let _ = sqlx::query(
+                            "UPDATE directory_events SET n8n_webhook_failed = true WHERE id = $1",
+                        )
+                        .bind(e.id)
+                        .execute(&state.db)
+                        .await;
                     }
                 }
             }
