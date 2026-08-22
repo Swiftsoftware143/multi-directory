@@ -47,6 +47,9 @@ pub struct DirectoryHomepageData {
     pub active_deals: Vec<DealCard>,
     pub upcoming_events: Vec<EventCard>,
     pub categories: Vec<CategoryPill>,
+    /// Slugs of the dining categories the synthetic "Places to Eat" pill resolves to, so the
+    /// frontend filterCity('dining') can match the full browsable dining set per city.
+    pub dining_slugs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spotlights: Option<Vec<Value>>,
 }
@@ -152,9 +155,7 @@ pub struct DirectoryListQuery {
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 /// GET /api/v1/zaarhub/cities — list active cities with counts
-pub async fn list_cities(
-    State(s): State<AppState>,
-) -> ApiResult<Json<Vec<CityHub>>> {
+pub async fn list_cities(State(s): State<AppState>) -> ApiResult<Json<Vec<CityHub>>> {
     let rows = sqlx::query_as::<_, (Uuid, String, String, Option<String>, i64, String)>(
         r#"SELECT d.id, d.name, d.slug, d.description,
                   COALESCE((SELECT COUNT(*) FROM businesses b WHERE b.directory_id = d.id AND b.is_active = true), 0) as business_count,
@@ -166,8 +167,9 @@ pub async fn list_cities(
     .fetch_all(&s.db)
     .await?;
 
-    let cities: Vec<CityHub> = rows.into_iter().map(|(id, name, slug, desc, count, status)| {
-        CityHub {
+    let cities: Vec<CityHub> = rows
+        .into_iter()
+        .map(|(id, name, slug, desc, count, status)| CityHub {
             id,
             name,
             slug,
@@ -175,18 +177,25 @@ pub async fn list_cities(
             business_count: count,
             featured_image: None,
             status,
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(Json(cities))
 }
 
 /// GET /api/v1/zaarhub/activity — recent platform-wide activity
-pub async fn get_activity(
-    State(s): State<AppState>,
-) -> ApiResult<Json<Vec<ActivityItem>>> {
+pub async fn get_activity(State(s): State<AppState>) -> ApiResult<Json<Vec<ActivityItem>>> {
     // Recent reviews (only from directories visible on network)
-    let recent_reviews: Vec<(Uuid, String, Option<String>, i32, Option<String>, Option<DateTime<Utc>>, String, String)> = sqlx::query_as(
+    let recent_reviews: Vec<(
+        Uuid,
+        String,
+        Option<String>,
+        i32,
+        Option<String>,
+        Option<DateTime<Utc>>,
+        String,
+        String,
+    )> = sqlx::query_as(
         r#"SELECT r.id, b.name, r.reviewer_name, r.rating, r.content, r.created_at,
                   b.slug, d.slug as dir_slug
            FROM reviews r
@@ -196,25 +205,33 @@ pub async fn get_activity(
              AND (d.zaarhub_config->>'network_visible')::boolean = true
              AND (d.zaarhub_config->>'show_reviews')::boolean = true
            ORDER BY r.created_at DESC
-           LIMIT 10"#
+           LIMIT 10"#,
     )
     .fetch_all(&s.db)
     .await?;
 
-    let mut items: Vec<ActivityItem> = recent_reviews.into_iter().map(|(id, biz_name, reviewer, rating, _comment, ts, biz_slug, dir_slug)| {
-        let reviewer_name = reviewer.unwrap_or_else(|| "Someone".to_string());
-        let stars = "★".repeat(rating as usize);
-        ActivityItem {
-            id: format!("review-{}", id),
-            activity_type: "review".to_string(),
-            message: format!("{} left a {}-star review for {}", reviewer_name, rating, biz_name),
-            business_name: Some(biz_name),
-            business_slug: Some(biz_slug),
-            directory_slug: Some(dir_slug),
-            directory_name: None,
-            timestamp: ts.unwrap_or_else(Utc::now),
-        }
-    }).collect();
+    let mut items: Vec<ActivityItem> = recent_reviews
+        .into_iter()
+        .map(
+            |(id, biz_name, reviewer, rating, _comment, ts, biz_slug, dir_slug)| {
+                let reviewer_name = reviewer.unwrap_or_else(|| "Someone".to_string());
+                let stars = "★".repeat(rating as usize);
+                ActivityItem {
+                    id: format!("review-{}", id),
+                    activity_type: "review".to_string(),
+                    message: format!(
+                        "{} left a {}-star review for {}",
+                        reviewer_name, rating, biz_name
+                    ),
+                    business_name: Some(biz_name),
+                    business_slug: Some(biz_slug),
+                    directory_slug: Some(dir_slug),
+                    directory_name: None,
+                    timestamp: ts.unwrap_or_else(Utc::now),
+                }
+            },
+        )
+        .collect();
 
     // Recent deals added (from directories with show_deals enabled)
     let recent_deals: Vec<(Uuid, String, String, String, DateTime<Utc>)> = sqlx::query_as(
@@ -226,7 +243,7 @@ pub async fn get_activity(
              AND (d.zaarhub_config->>'network_visible')::boolean = true
              AND (d.zaarhub_config->>'show_deals')::boolean = true
            ORDER BY de.created_at DESC
-           LIMIT 5"#
+           LIMIT 5"#,
     )
     .fetch_all(&s.db)
     .await?;
@@ -252,7 +269,7 @@ pub async fn get_activity(
            JOIN directories d ON d.id = b.directory_id
            WHERE (d.zaarhub_config->>'network_visible')::boolean = true
            ORDER BY cb.created_at DESC
-           LIMIT 5"#
+           LIMIT 5"#,
     )
     .fetch_all(&s.db)
     .await?;
@@ -279,9 +296,7 @@ pub async fn get_activity(
 
 /// GET /api/v1/zaarhub/homepage — full homepage data for the ZaarHub network homepage
 /// If a network slug is provided, scopes data to that network
-pub async fn get_homepage(
-    State(s): State<AppState>,
-) -> ApiResult<Json<Value>> {
+pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
     // Featured/active cities with business counts
     let cities = sqlx::query_as::<_, (Uuid, String, String, Option<String>, i64, Option<serde_json::Value>)>(
         r#"SELECT d.id, d.name, d.slug, d.description,
@@ -296,18 +311,23 @@ pub async fn get_homepage(
     .fetch_all(&s.db)
     .await?;
 
-    let city_list: Vec<Value> = cities.into_iter().map(|(id, name, slug, desc, count, zh_config)| {
-        let featured_url = zh_config
-            .and_then(|c| c.get("featured_image_url").and_then(|v| v.as_str().map(|s| s.to_string())));
-        json!({
-            "id": id,
-            "name": name,
-            "slug": slug,
-            "description": desc,
-            "business_count": count,
-            "featured_image": featured_url,
+    let city_list: Vec<Value> = cities
+        .into_iter()
+        .map(|(id, name, slug, desc, count, zh_config)| {
+            let featured_url = zh_config.and_then(|c| {
+                c.get("featured_image_url")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+            });
+            json!({
+                "id": id,
+                "name": name,
+                "slug": slug,
+                "description": desc,
+                "business_count": count,
+                "featured_image": featured_url,
+            })
         })
-    }).collect();
+        .collect();
 
     // Featured deals across the network (respects zaarhub_config.show_deals per directory)
     let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, String, Option<DateTime<Utc>>, Option<bool>, Option<String>, Option<String>)>(
@@ -329,19 +349,60 @@ pub async fn get_homepage(
     .fetch_all(&s.db)
     .await?;
 
-    let deal_list: Vec<DealCard> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, dir_slug, end_date, featured, biz_cat, biz_cat_slug)| {
-        DealCard {
-            id, title, description: desc,
-            deal_price, original_price: orig_price,
-            discount_percent: discount, image_url: img,
-            business_name: biz_name, business_slug: biz_slug,
-            directory_slug: dir_slug, end_date, featured,
-            business_category: biz_cat, business_category_slug: biz_cat_slug,
-        }
-    }).collect();
+    let deal_list: Vec<DealCard> = deals
+        .into_iter()
+        .map(
+            |(
+                id,
+                title,
+                desc,
+                deal_price,
+                orig_price,
+                discount,
+                img,
+                biz_name,
+                biz_slug,
+                dir_slug,
+                end_date,
+                featured,
+                biz_cat,
+                biz_cat_slug,
+            )| {
+                DealCard {
+                    id,
+                    title,
+                    description: desc,
+                    deal_price,
+                    original_price: orig_price,
+                    discount_percent: discount,
+                    image_url: img,
+                    business_name: biz_name,
+                    business_slug: biz_slug,
+                    directory_slug: dir_slug,
+                    end_date,
+                    featured,
+                    business_category: biz_cat,
+                    business_category_slug: biz_cat_slug,
+                }
+            },
+        )
+        .collect();
 
     // Upcoming events across the network
-    let events = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<DateTime<Utc>>, Option<String>, Option<String>, Option<String>, String, Option<i64>)>(
+    let events = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<DateTime<Utc>>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            String,
+            Option<i64>,
+        ),
+    >(
         r#"SELECT e.id, e.title, e.description, e.event_date, e.location,
                   e.image_url, b.slug as biz_slug, d.slug as dir_slug,
                   (SELECT COUNT(*) FROM event_rsvps r WHERE r.event_id = e.id) as rsvp_count
@@ -353,34 +414,61 @@ pub async fn get_homepage(
              AND (d.zaarhub_config->>'show_events')::boolean = true
              AND (d.zaarhub_config->>'network_visible')::boolean = true
            ORDER BY e.event_date ASC
-           LIMIT 6"#
+           LIMIT 6"#,
     )
     .fetch_all(&s.db)
     .await?;
 
-    let event_list: Vec<EventCard> = events.into_iter().map(|(id, title, desc, event_date, location, img, biz_slug, dir_slug, rsvp_count)| {
-        EventCard {
-            id, title, description: desc, event_date, location,
-            image_url: img,
-            business_name: None,
-            business_slug: biz_slug,
-            directory_slug: Some(dir_slug),
-            rsvp_count,
-        }
-    }).collect();
+    let event_list: Vec<EventCard> = events
+        .into_iter()
+        .map(
+            |(id, title, desc, event_date, location, img, biz_slug, dir_slug, rsvp_count)| {
+                EventCard {
+                    id,
+                    title,
+                    description: desc,
+                    event_date,
+                    location,
+                    image_url: img,
+                    business_name: None,
+                    business_slug: biz_slug,
+                    directory_slug: Some(dir_slug),
+                    rsvp_count,
+                }
+            },
+        )
+        .collect();
 
     // Network-wide stats
-    let total_businesses: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM businesses WHERE is_active = true")
-        .fetch_one(&s.db).await.unwrap_or(0);
-    let total_reviews: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE status = 'approved'")
-        .fetch_one(&s.db).await.unwrap_or(0);
+    let total_businesses: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM businesses WHERE is_active = true")
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
+    let total_reviews: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE status = 'approved'")
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
     let total_cities: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM directories WHERE (status = 'active' OR status IS NULL) AND (zaarhub_config->>'network_visible')::boolean = true"
     )
         .fetch_one(&s.db).await.unwrap_or(0);
 
     // Recent activity feed (top 8)
-    let activity = sqlx::query_as::<_, (Uuid, String, Option<String>, i32, Option<String>, Option<DateTime<Utc>>, String, String)>(
+    let activity = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            i32,
+            Option<String>,
+            Option<DateTime<Utc>>,
+            String,
+            String,
+        ),
+    >(
         r#"SELECT r.id, b.name, r.reviewer_name, r.rating, r.content, r.created_at,
                   b.slug, d.slug as dir_slug
            FROM reviews r
@@ -388,7 +476,7 @@ pub async fn get_homepage(
            JOIN directories d ON d.id = b.directory_id
            WHERE r.status = 'approved'
            ORDER BY r.created_at DESC
-           LIMIT 8"#
+           LIMIT 8"#,
     )
     .fetch_all(&s.db)
     .await?;
@@ -410,20 +498,44 @@ pub async fn get_homepage(
                   (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.is_active = true) as biz_count,
                   c.icon, c.group_name
            FROM directory_categories c
-           ORDER BY biz_count DESC"#
+           ORDER BY
+             CASE c.slug
+               WHEN 'fine-dining' THEN 1 WHEN 'fitness-studio' THEN 2 WHEN 'day-spa' THEN 3
+               WHEN 'dentist' THEN 4 WHEN 'real-estate-agent' THEN 5 WHEN 'hair-salon' THEN 6
+               WHEN 'auto-repair' THEN 7 WHEN 'plumber' THEN 8
+               ELSE 100
+             END ASC,
+             biz_count DESC"#
     )
     .fetch_all(&s.db)
     .await?;
 
-    let category_pills: Vec<Value> = categories.into_iter().map(|(id, name, slug, count, icon, group_name)| {
-        json!({
-            "id": id, "name": name, "slug": slug, "business_count": count.unwrap_or(0),
-            "icon": icon, "group_name": group_name,
+    let category_pills: Vec<Value> = categories
+        .into_iter()
+        .map(|(id, name, slug, count, icon, group_name)| {
+            json!({
+                "id": id, "name": name, "slug": slug, "business_count": count.unwrap_or(0),
+                "icon": icon, "group_name": group_name,
+            })
         })
-    }).collect();
+        .collect();
 
     // ??? Phase 4: Spotlight/sponsored listings across active directories
-    let spotlights = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, String, Option<String>)>(
+    let spotlights = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<f64>,
+            Option<i32>,
+            Option<String>,
+            String,
+            Option<String>,
+        ),
+    >(
         r#"SELECT sl.id, b.name, b.slug, b.description,
                   dc.name as category,
                   b.rating, b.review_count,
@@ -436,24 +548,30 @@ pub async fn get_homepage(
              AND sl.start_date <= CURRENT_DATE
              AND sl.end_date >= CURRENT_DATE
            ORDER BY sl.slot_position ASC
-           LIMIT 12"#
+           LIMIT 12"#,
     )
     .fetch_all(&s.db)
-    .await.unwrap_or_default();
+    .await
+    .unwrap_or_default();
 
-    let spotlight_list: Vec<Value> = spotlights.into_iter().map(|(id, name, slug, desc, cat, rating, rv_count, badge, pos, dir_slug)| {
-        json!({
-            "id": id,
-            "name": name,
-            "slug": slug,
-            "description": desc,
-            "category": cat,
-            "rating": rating,
-            "review_count": rv_count,
-            "badge_text": badge,
-            "directory_slug": dir_slug,
-        })
-    }).collect();
+    let spotlight_list: Vec<Value> = spotlights
+        .into_iter()
+        .map(
+            |(id, name, slug, desc, cat, rating, rv_count, badge, pos, dir_slug)| {
+                json!({
+                    "id": id,
+                    "name": name,
+                    "slug": slug,
+                    "description": desc,
+                    "category": cat,
+                    "rating": rating,
+                    "review_count": rv_count,
+                    "badge_text": badge,
+                    "directory_slug": dir_slug,
+                })
+            },
+        )
+        .collect();
 
     Ok(Json(json!({
         "cities": city_list,
@@ -477,7 +595,7 @@ pub async fn get_city_page(
 ) -> ApiResult<Json<DirectoryHomepageData>> {
     // Look up directory
     let dir = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>)>(
-        "SELECT id, name, slug, description, city FROM directories WHERE slug = $1"
+        "SELECT id, name, slug, description, city FROM directories WHERE slug = $1",
     )
     .bind(&slug)
     .fetch_optional(&s.db)
@@ -488,7 +606,7 @@ pub async fn get_city_page(
 
     // Business count
     let biz_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND is_active = true"
+        "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND is_active = true",
     )
     .bind(dir_id)
     .fetch_one(&s.db)
@@ -499,7 +617,7 @@ pub async fn get_city_page(
     let total_reviews: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(*) FROM reviews r
            JOIN businesses b ON b.id = r.business_id
-           WHERE b.directory_id = $1 AND r.status = 'approved'"#
+           WHERE b.directory_id = $1 AND r.status = 'approved'"#,
     )
     .bind(dir_id)
     .fetch_one(&s.db)
@@ -510,7 +628,7 @@ pub async fn get_city_page(
     let total_deals: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(*) FROM deals de
            JOIN businesses b ON b.id = de.business_id
-           WHERE b.directory_id = $1 AND de.status = 'active'"#
+           WHERE b.directory_id = $1 AND de.status = 'active'"#,
     )
     .bind(dir_id)
     .fetch_one(&s.db)
@@ -521,7 +639,7 @@ pub async fn get_city_page(
     let total_events: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(*) FROM community_events e
            JOIN directories d ON d.id = e.directory_id
-           WHERE d.id = $1 AND (e.event_date >= NOW() OR e.event_date IS NULL)"#
+           WHERE d.id = $1 AND (e.event_date >= NOW() OR e.event_date IS NULL)"#,
     )
     .bind(dir_id)
     .fetch_one(&s.db)
@@ -529,7 +647,26 @@ pub async fn get_city_page(
     .unwrap_or(0);
 
     // Featured businesses (with rating + category)
-    let businesses = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>, Option<String>, Option<String>)>(
+    let businesses = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<f64>,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<f64>,
+            Option<f64>,
+            Option<Uuid>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
         r#"SELECT b.id, b.name, b.slug, b.description, b.rating, b.review_count,
                   b.phone, b.website, b.address, b.city, b.latitude, b.longitude, b.category_id,
                   dc.name as category_name, dc.slug as category_slug
@@ -537,49 +674,93 @@ pub async fn get_city_page(
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND b.is_active = true
            ORDER BY b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST
-           LIMIT 500"#
+           LIMIT 500"#,
     )
     .bind(dir_id)
     .fetch_all(&s.db)
     .await?;
 
-    let featured: Vec<BusinessCard> = businesses.into_iter().map(|(id, name, slug, desc, rating, review_count, phone, website, address, city, lat, lng, cat_id, cat_name, cat_slug)| {
-        BusinessCard {
-            id, name, slug, description: desc,
-            category: cat_name, category_slug: cat_slug,
-            rating, review_count,
-            phone, website, address, city,
-            image_url: None,
-            latitude: lat, longitude: lng,
-            is_claimed: false,
-            has_deal: false,
-        }
-    }).collect();
+    let featured: Vec<BusinessCard> = businesses
+        .into_iter()
+        .map(
+            |(
+                id,
+                name,
+                slug,
+                desc,
+                rating,
+                review_count,
+                phone,
+                website,
+                address,
+                city,
+                lat,
+                lng,
+                cat_id,
+                cat_name,
+                cat_slug,
+            )| {
+                BusinessCard {
+                    id,
+                    name,
+                    slug,
+                    description: desc,
+                    category: cat_name,
+                    category_slug: cat_slug,
+                    rating,
+                    review_count,
+                    phone,
+                    website,
+                    address,
+                    city,
+                    image_url: None,
+                    latitude: lat,
+                    longitude: lng,
+                    is_claimed: false,
+                    has_deal: false,
+                }
+            },
+        )
+        .collect();
 
     // Recent reviews
-    let reviews = sqlx::query_as::<_, (Uuid, String, String, Option<String>, i32, Option<String>, Option<DateTime<Utc>>)>(
+    let reviews = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            i32,
+            Option<String>,
+            Option<DateTime<Utc>>,
+        ),
+    >(
         r#"SELECT r.id, b.name, b.slug, r.reviewer_name, r.rating, r.content, r.created_at
            FROM reviews r
            JOIN businesses b ON b.id = r.business_id
            WHERE b.directory_id = $1 AND r.status = 'approved'
            ORDER BY r.created_at DESC
-           LIMIT 10"#
+           LIMIT 10"#,
     )
     .bind(dir_id)
     .fetch_all(&s.db)
     .await?;
 
-    let review_cards: Vec<ReviewCard> = reviews.into_iter().map(|(id, biz_name, biz_slug, reviewer, rating, comment, ts)| {
-        ReviewCard {
-            id,
-            business_name: biz_name,
-            business_slug: biz_slug,
-            reviewer_name: reviewer,
-            rating,
-            comment,
-            created_at: ts.unwrap_or_else(Utc::now),
-        }
-    }).collect();
+    let review_cards: Vec<ReviewCard> = reviews
+        .into_iter()
+        .map(
+            |(id, biz_name, biz_slug, reviewer, rating, comment, ts)| ReviewCard {
+                id,
+                business_name: biz_name,
+                business_slug: biz_slug,
+                reviewer_name: reviewer,
+                rating,
+                comment,
+                created_at: ts.unwrap_or_else(Utc::now),
+            },
+        )
+        .collect();
 
     // Active deals in this city
     let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, Option<DateTime<Utc>>, Option<bool>, Option<String>, Option<String>)>(
@@ -597,20 +778,58 @@ pub async fn get_city_page(
     .fetch_all(&s.db)
     .await?;
 
-    let deal_cards: Vec<DealCard> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, end_date, featured, biz_cat, biz_cat_slug)| {
-        DealCard {
-            id, title, description: desc,
-            deal_price, original_price: orig_price,
-            discount_percent: discount, image_url: img,
-            business_name: biz_name, business_slug: biz_slug,
-            directory_slug: dir_slug.clone(),
-            end_date, featured,
-            business_category: biz_cat, business_category_slug: biz_cat_slug,
-        }
-    }).collect();
+    let deal_cards: Vec<DealCard> = deals
+        .into_iter()
+        .map(
+            |(
+                id,
+                title,
+                desc,
+                deal_price,
+                orig_price,
+                discount,
+                img,
+                biz_name,
+                biz_slug,
+                end_date,
+                featured,
+                biz_cat,
+                biz_cat_slug,
+            )| {
+                DealCard {
+                    id,
+                    title,
+                    description: desc,
+                    deal_price,
+                    original_price: orig_price,
+                    discount_percent: discount,
+                    image_url: img,
+                    business_name: biz_name,
+                    business_slug: biz_slug,
+                    directory_slug: dir_slug.clone(),
+                    end_date,
+                    featured,
+                    business_category: biz_cat,
+                    business_category_slug: biz_cat_slug,
+                }
+            },
+        )
+        .collect();
 
     // Upcoming events
-    let events = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<DateTime<Utc>>, Option<String>, Option<String>, Option<String>, Option<i64>)>(
+    let events = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<DateTime<Utc>>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<i64>,
+        ),
+    >(
         r#"SELECT e.id, e.title, e.description, e.event_date, e.location,
                   e.image_url, b.slug as biz_slug,
                   (SELECT COUNT(*) FROM event_rsvps r WHERE r.event_id = e.id) as rsvp_count
@@ -618,42 +837,153 @@ pub async fn get_city_page(
            LEFT JOIN businesses b ON b.id = e.business_id
            WHERE e.directory_id = $1 AND (e.event_date >= NOW() - INTERVAL '1 day')
            ORDER BY e.event_date ASC
-           LIMIT 6"#
+           LIMIT 6"#,
     )
     .bind(dir_id)
     .fetch_all(&s.db)
     .await?;
 
-    let event_cards: Vec<EventCard> = events.into_iter().map(|(id, title, desc, event_date, location, img, biz_slug, rsvp_count)| {
-        EventCard {
-            id, title, description: desc, event_date, location,
-            image_url: img,
-            business_name: None,
-            business_slug: biz_slug,
-            directory_slug: Some(dir_slug.clone()),
-            rsvp_count,
-        }
-    }).collect();
+    let event_cards: Vec<EventCard> = events
+        .into_iter()
+        .map(
+            |(id, title, desc, event_date, location, img, biz_slug, rsvp_count)| EventCard {
+                id,
+                title,
+                description: desc,
+                event_date,
+                location,
+                image_url: img,
+                business_name: None,
+                business_slug: biz_slug,
+                directory_slug: Some(dir_slug.clone()),
+                rsvp_count,
+            },
+        )
+        .collect();
 
     // Categories for filtering
+    // Always include the pinned featured 8 even if a city has 0 businesses in them,
+    // then append any remaining categories that have active businesses in this city.
+    //
+    // NOTE on dining: the bare 'fine-dining' parent category and its cuisine children
+    // (chinese, french, indian, italian, japanese, mediterranean, steakhouse) have ZERO
+    // businesses in every city, so pinning 'fine-dining' produced a dead pill that filtered
+    // to nothing. Real dining/restaurant traffic lives under the Food & Drink group children
+    // (pizza, coffee-shop, catering, seafood, breakfast, bars-breweries, food-trucks) plus
+    // bakeries-dessert / farmers-market. We therefore replace the dead fine-dining pin with a
+    // synthetic "Places to Eat" pill that resolves to the city's actual dining categories,
+    // and expose `dining_slugs` so the frontend filterCity('dining') matches the whole set.
     let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>, Option<String>, Option<String>)>(
         r#"SELECT c.id, c.name, c.slug,
                   (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true) as biz_count,
                   c.icon, c.group_name
            FROM directory_categories c
-           WHERE EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true)
-           ORDER BY c.group_name, c.name"#
+           WHERE c.slug IN ('fitness-studio','day-spa','dentist','real-estate-agent','hair-salon','auto-repair','plumber')
+              OR EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true)
+           ORDER BY
+             CASE c.slug
+               WHEN 'fitness-studio' THEN 1 WHEN 'day-spa' THEN 2 WHEN 'dentist' THEN 3
+               WHEN 'real-estate-agent' THEN 4 WHEN 'hair-salon' THEN 5 WHEN 'auto-repair' THEN 6
+               WHEN 'plumber' THEN 7
+               ELSE 100
+             END ASC,
+             c.group_name, c.name"#
     )
     .bind(dir_id)
     .fetch_all(&s.db)
     .await?;
 
-    let category_pills: Vec<CategoryPill> = categories.into_iter().map(|(id, name, slug, count, icon, group_name)| {
-        CategoryPill { id, name, slug, business_count: count.unwrap_or(0), icon, group_name }
-    }).collect();
+    let mut category_pills: Vec<CategoryPill> = categories
+        .into_iter()
+        .map(|(id, name, slug, count, icon, group_name)| CategoryPill {
+            id,
+            name,
+            slug,
+            business_count: count.unwrap_or(0),
+            icon,
+            group_name,
+        })
+        .collect();
+
+    // Dining set: the categories the "Places to Eat" pill should match. We derive it from the
+    // Food & Drink group children present in this city PLUS the specialty-food dining cats
+    // (bakeries, farmers market). Slug list is exposed to the frontend so filterCity('dining')
+    // matches any of them (single exact-slug match would hit 0 everywhere).
+    let dining_slugs: Vec<String> = category_pills
+        .iter()
+        .filter(|c| {
+            let g = c.group_name.as_deref().unwrap_or("");
+            (g == "Food & Drink"
+                || g == "Fine Dining"
+                || g == "Hyper-Local Retail & Specialty Food")
+                && c.slug != "food-drink"
+        })
+        .map(|c| c.slug.clone())
+        .collect::<Vec<String>>()
+        .into_iter()
+        .filter(|s| {
+            matches!(
+                s.as_str(),
+                "breakfast"
+                    | "pizza"
+                    | "seafood"
+                    | "coffee-shop"
+                    | "catering"
+                    | "bars-breweries"
+                    | "food-trucks"
+                    | "bakeries-dessert"
+                    | "farmers-market"
+            )
+        })
+        .collect();
+
+    // Aggregate business count across the dining set for this city.
+    let dining_count: i64 = if dining_slugs.is_empty() {
+        0
+    } else {
+        let cnt: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM businesses b
+               JOIN directory_categories c ON c.id = b.category_id
+               WHERE b.directory_id = $1 AND b.is_active = true
+                 AND c.slug = ANY($2)"#,
+        )
+        .bind(dir_id)
+        .bind(&dining_slugs)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+        cnt
+    };
+
+    // Insert the synthetic "Places to Eat" pill as the #1 pinned pill.
+    category_pills.insert(
+        0,
+        CategoryPill {
+            id: Uuid::nil(),
+            name: "Places to Eat".to_string(),
+            slug: "dining".to_string(),
+            business_count: dining_count,
+            icon: Some("🍽️".to_string()),
+            group_name: Some("Food & Drink".to_string()),
+        },
+    );
 
     // ??? Phase 4: Spotlights for this directory
-    let spotlights = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, i32, Option<bool>)>(
+    let spotlights = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<f64>,
+            Option<i32>,
+            Option<String>,
+            i32,
+            Option<bool>,
+        ),
+    >(
         r#"SELECT sl.id, b.name, b.slug, b.description,
                   dc.name as category,
                   b.rating, b.review_count,
@@ -665,26 +995,32 @@ pub async fn get_city_page(
              AND sl.is_active = true
              AND sl.start_date <= CURRENT_DATE
              AND sl.end_date >= CURRENT_DATE
-           ORDER BY sl.slot_position ASC, sl.featured DESC"#
+           ORDER BY sl.slot_position ASC, sl.featured DESC"#,
     )
     .bind(dir_id)
     .fetch_all(&s.db)
-    .await.unwrap_or_default();
+    .await
+    .unwrap_or_default();
 
-    let spotlight_list: Vec<Value> = spotlights.into_iter().map(|(id, name, slug, desc, cat, rating, rv_count, badge, pos, featured)| {
-        json!({
-            "id": id,
-            "name": name,
-            "slug": slug,
-            "description": desc,
-            "category": cat,
-            "rating": rating,
-            "review_count": rv_count,
-            "badge_text": badge,
-            "slot_position": pos,
-            "featured": featured.unwrap_or(false),
-        })
-    }).collect();
+    let spotlight_list: Vec<Value> = spotlights
+        .into_iter()
+        .map(
+            |(id, name, slug, desc, cat, rating, rv_count, badge, pos, featured)| {
+                json!({
+                    "id": id,
+                    "name": name,
+                    "slug": slug,
+                    "description": desc,
+                    "category": cat,
+                    "rating": rating,
+                    "review_count": rv_count,
+                    "badge_text": badge,
+                    "slot_position": pos,
+                    "featured": featured.unwrap_or(false),
+                })
+            },
+        )
+        .collect();
 
     Ok(Json(DirectoryHomepageData {
         directory: DirectorySummary {
@@ -707,6 +1043,7 @@ pub async fn get_city_page(
         active_deals: deal_cards,
         upcoming_events: event_cards,
         categories: category_pills,
+        dining_slugs,
         spotlights: Some(spotlight_list),
     }))
 }
@@ -747,7 +1084,7 @@ pub async fn search_businesses(
     // Since the ILIKE/field selection varies by what's provided, use a raw query
     // with sqlx::query_as bound parameters rather than format! injection.
     // We use a CTE pattern: always include the search term for parameter consistency.
-    
+
     // Capture proximity params before the block so they're in scope for the results builder
     let proximity = if let (Some(lat), Some(lng)) = (query.lat, query.lng) {
         let radius = query.radius.unwrap_or(5000.0); // default 5km
@@ -755,10 +1092,25 @@ pub async fn search_businesses(
     } else {
         None
     };
-    
-    let rows: Vec<(Uuid, String, String, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, String, String)> = {
+
+    let rows: Vec<(
+        Uuid,
+        String,
+        String,
+        Option<String>,
+        Option<f64>,
+        Option<i32>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<f64>,
+        Option<f64>,
+        String,
+        String,
+    )> = {
         let (city_param, category_param) = (query.city.clone(), query.category.clone());
-        
+
         // Build base query
         let mut sql = String::from(
             r#"SELECT b.id, b.name, b.slug, b.description, b.rating, b.review_count, 
@@ -766,7 +1118,7 @@ pub async fn search_businesses(
                       d.name as dir_name, d.slug as dir_slug
                FROM businesses b
                JOIN directories d ON d.id = b.directory_id
-               WHERE b.is_active = true"#
+               WHERE b.is_active = true"#,
         );
 
         let mut param_count: i32 = 0;
@@ -788,7 +1140,10 @@ pub async fn search_businesses(
 
         if let Some(ref _category) = category_param {
             param_count += 1;
-            sql.push_str(&format!(" AND b.category_id IN (SELECT id FROM directory_categories WHERE slug = ${})", param_count));
+            sql.push_str(&format!(
+                " AND b.category_id IN (SELECT id FROM directory_categories WHERE slug = ${})",
+                param_count
+            ));
         }
 
         // Add proximity clause if lat/lng provided — inlined as numeric literals (safe for f64)
@@ -812,7 +1167,25 @@ pub async fn search_businesses(
         sql.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
 
         // Build query with proper binds (only string params use binds — lat/lng inlined as numeric literals)
-        let mut q = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, String, String)>(&sql);
+        let mut q = sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                String,
+                String,
+                Option<String>,
+                Option<f64>,
+                Option<i32>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<f64>,
+                Option<f64>,
+                String,
+                String,
+            ),
+        >(&sql);
 
         param_count = 0;
         if !search_term.is_empty() && !search_pattern.is_empty() {
@@ -831,38 +1204,62 @@ pub async fn search_businesses(
         q.fetch_all(&s.db).await?
     };
 
-    let results: Vec<Value> = rows.into_iter().map(|(id, name, slug, desc, rating, review_count, phone, website, address, city, lat, lng, dir_name, dir_slug)| {
-        // Calculate distance from search center if proximity is active
-        let distance: Option<f64> = if let Some((slat, slng, _)) = proximity {
-            if let (Some(blat), Some(blng)) = (lat, lng) {
-                // Haversine in JS-compatible form; compute server-side as well
-                let dlat = (blat - slat).to_radians();
-                let dlng = (blng - slng).to_radians();
-                let a = (dlat / 2.0).sin().powi(2)
-                    + slat.to_radians().cos() * blat.to_radians().cos() * (dlng / 2.0).sin().powi(2);
-                let c = 2.0 * a.sqrt().asin();
-                Some((6371000.0 * c).round() / 1000.0) // distance in km, rounded to 3 decimals
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+    let results: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(
+                id,
+                name,
+                slug,
+                desc,
+                rating,
+                review_count,
+                phone,
+                website,
+                address,
+                city,
+                lat,
+                lng,
+                dir_name,
+                dir_slug,
+            )| {
+                // Calculate distance from search center if proximity is active
+                let distance: Option<f64> = if let Some((slat, slng, _)) = proximity {
+                    if let (Some(blat), Some(blng)) = (lat, lng) {
+                        // Haversine in JS-compatible form; compute server-side as well
+                        let dlat = (blat - slat).to_radians();
+                        let dlng = (blng - slng).to_radians();
+                        let a = (dlat / 2.0).sin().powi(2)
+                            + slat.to_radians().cos()
+                                * blat.to_radians().cos()
+                                * (dlng / 2.0).sin().powi(2);
+                        let c = 2.0 * a.sqrt().asin();
+                        Some((6371000.0 * c).round() / 1000.0) // distance in km, rounded to 3 decimals
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
 
-        json!({
-            "id": id, "name": name, "slug": slug,
-            "description": desc, "rating": rating,
-            "review_count": review_count, "phone": phone,
-            "website": website, "address": address,
-            "city": city, "latitude": lat, "longitude": lng,
-            "directory_name": dir_name, "directory_slug": dir_slug,
-            "distance_km": distance,
-        })
-    }).collect();
+                json!({
+                    "id": id, "name": name, "slug": slug,
+                    "description": desc, "rating": rating,
+                    "review_count": review_count, "phone": phone,
+                    "website": website, "address": address,
+                    "city": city, "latitude": lat, "longitude": lng,
+                    "directory_name": dir_name, "directory_slug": dir_slug,
+                    "distance_km": distance,
+                })
+            },
+        )
+        .collect();
 
     let total: i64 = if search_term.is_empty() && query.city.is_none() && query.category.is_none() {
         sqlx::query_scalar("SELECT COUNT(*) FROM businesses WHERE is_active = true")
-            .fetch_one(&s.db).await.unwrap_or(0)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0)
     } else {
         0 // rough count not critical for MVP
     };
@@ -880,32 +1277,66 @@ pub async fn get_business_detail(
     State(s): State<AppState>,
     Path((slug, id)): Path<(String, String)>,
 ) -> ApiResult<Json<Value>> {
-    let dir_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM directories WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir_id: Uuid = sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Directory '{}' not found", slug)))?;
 
     // Try UUID lookup first, then slug
     let business = if let Ok(bid) = Uuid::parse_str(&id) {
-        sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
+        sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<f64>,
+                Option<i32>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<f64>,
+                Option<f64>,
+                Option<Uuid>,
+            ),
+        >(
             r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.rating, b.review_count,
                       b.website, b.address, b.city, b.state, b.latitude, b.longitude, b.category_id
                FROM businesses b
-               WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#
+               WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
         .bind(bid)
         .bind(dir_id)
         .fetch_optional(&s.db)
         .await?
     } else {
-        sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
+        sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<f64>,
+                Option<i32>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<f64>,
+                Option<f64>,
+                Option<Uuid>,
+            ),
+        >(
             r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.rating, b.review_count,
                       b.website, b.address, b.city, b.state, b.latitude, b.longitude, b.category_id
                FROM businesses b
-               WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#
+               WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
         .bind(&id)
         .bind(dir_id)
@@ -916,12 +1347,25 @@ pub async fn get_business_detail(
     // The business cards on city pages are built from the `business_listings` table,
     // whose IDs live in a different UUID space than `businesses`. When a card is clicked,
     // the SPA routes here with a `business_listings.id`, so fall back to that table before 404.
-    let (biz_id, biz_name, biz_slug, biz_desc, biz_phone, biz_rating, biz_review_count,
-         biz_website, biz_address, biz_city, biz_state, biz_lat, biz_lng, biz_cat_id) =
-        if let Some(b) = business {
-            b
-        } else if let Ok(bid) = Uuid::parse_str(&id) {
-            sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
+    let (
+        biz_id,
+        biz_name,
+        biz_slug,
+        biz_desc,
+        biz_phone,
+        biz_rating,
+        biz_review_count,
+        biz_website,
+        biz_address,
+        biz_city,
+        biz_state,
+        biz_lat,
+        biz_lng,
+        biz_cat_id,
+    ) = if let Some(b) = business {
+        b
+    } else if let Ok(bid) = Uuid::parse_str(&id) {
+        sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
                 r#"SELECT bl.id, bl.business_name, bl.business_name, bl.description, bl.phone, bl.rating, bl.review_count,
                           bl.website, bl.address, cp.city_name, cp.state, bl.coordinates_lat, bl.coordinates_lng, NULL::uuid
                    FROM business_listings bl
@@ -933,9 +1377,9 @@ pub async fn get_business_detail(
             .fetch_optional(&s.db)
             .await?
             .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?
-        } else {
-            return Err(AppError::NotFound("Business not found".to_string()));
-        };
+    } else {
+        return Err(AppError::NotFound("Business not found".to_string()));
+    };
 
     // Get category name
     let category_name: Option<String> = if let Some(cat_id) = biz_cat_id {
@@ -956,49 +1400,77 @@ pub async fn get_business_detail(
         .unwrap_or_default();
 
     // Get recent reviews for this business
-    let reviews = sqlx::query_as::<_, (Uuid, Option<String>, i32, Option<String>, Option<DateTime<Utc>>)>(
+    let reviews = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Option<String>,
+            i32,
+            Option<String>,
+            Option<DateTime<Utc>>,
+        ),
+    >(
         r#"SELECT id, reviewer_name, rating, content, created_at
            FROM reviews
            WHERE business_id = $1 AND status = 'approved'
            ORDER BY created_at DESC
-           LIMIT 10"#
+           LIMIT 10"#,
     )
     .bind(biz_id)
     .fetch_all(&s.db)
     .await?;
 
-    let review_list: Vec<Value> = reviews.into_iter().map(|(id, reviewer, rating, content, ts)| {
-        json!({
-            "id": id,
-            "reviewer_name": reviewer,
-            "rating": rating,
-            "content": content,
-            "created_at": ts,
+    let review_list: Vec<Value> = reviews
+        .into_iter()
+        .map(|(id, reviewer, rating, content, ts)| {
+            json!({
+                "id": id,
+                "reviewer_name": reviewer,
+                "rating": rating,
+                "content": content,
+                "created_at": ts,
+            })
         })
-    }).collect();
+        .collect();
 
     // Get active deals for this business
-    let deals = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<DateTime<Utc>>)>(
+    let deals = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<DateTime<Utc>>,
+        ),
+    >(
         r#"SELECT id, title, description, deal_price, original_price, discount_percent, end_date
            FROM deals
            WHERE business_id = $1 AND status = 'active'
-           ORDER BY created_at DESC"#
+           ORDER BY created_at DESC"#,
     )
     .bind(biz_id)
     .fetch_all(&s.db)
     .await?;
 
-    let deal_list: Vec<Value> = deals.into_iter().map(|(id, title, desc, deal_price, orig_price, discount, end_date)| {
-        json!({
-            "id": id, "title": title, "description": desc,
-            "deal_price": deal_price, "original_price": orig_price,
-            "discount_percent": discount, "end_date": end_date,
-        })
-    }).collect();
+    let deal_list: Vec<Value> = deals
+        .into_iter()
+        .map(
+            |(id, title, desc, deal_price, orig_price, discount, end_date)| {
+                json!({
+                    "id": id, "title": title, "description": desc,
+                    "deal_price": deal_price, "original_price": orig_price,
+                    "discount_percent": discount, "end_date": end_date,
+                })
+            },
+        )
+        .collect();
 
     // Check if business is verified/claimed
     let is_claimed: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM claimed_businesses WHERE business_id = $1)"
+        "SELECT EXISTS(SELECT 1 FROM claimed_businesses WHERE business_id = $1)",
     )
     .bind(biz_id)
     .fetch_one(&s.db)
@@ -1007,7 +1479,7 @@ pub async fn get_business_detail(
 
     // Hours
     let hours: Option<Value> = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT hours FROM business_meta WHERE business_id = $1 AND hours IS NOT NULL LIMIT 1"
+        "SELECT hours FROM business_meta WHERE business_id = $1 AND hours IS NOT NULL LIMIT 1",
     )
     .bind(biz_id)
     .fetch_optional(&s.db)
@@ -1068,7 +1540,7 @@ pub async fn list_categories(
             JOIN businesses b ON b.category_id = c.id AND b.is_active = true
             JOIN directories d ON d.id = b.directory_id
             WHERE d.zaarhub_config IS NOT NULL
-              AND (d.zaarhub_config->>'network_visible')::boolean = true"#
+              AND (d.zaarhub_config->>'network_visible')::boolean = true"#,
     );
 
     if query.city.is_some() {
@@ -1081,7 +1553,14 @@ pub async fn list_categories(
         SELECT category_name, MAX(icon) as icon, COUNT(DISTINCT dir_id) as directory_count
         FROM dir_categories
         GROUP BY category_name
-        ORDER BY directory_count DESC, category_name ASC"#
+        ORDER BY
+          CASE category_name
+            WHEN 'Fine Dining' THEN 1 WHEN 'Fitness Studio' THEN 2 WHEN 'Day Spa' THEN 3
+            WHEN 'Dentist' THEN 4 WHEN 'Real Estate Agent' THEN 5 WHEN 'Hair Salon' THEN 6
+            WHEN 'Auto Repair' THEN 7 WHEN 'Plumber' THEN 8
+            ELSE 100
+          END ASC,
+          directory_count DESC, category_name ASC"#,
     );
 
     let rows: Vec<(String, Option<String>, i64)> = if let Some(ref city) = query.city {
@@ -1126,7 +1605,7 @@ pub async fn list_featured_deals(
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
              AND (d.zaarhub_config->>'show_deals')::boolean = true
-             AND (d.zaarhub_config->>'network_visible')::boolean = true"#
+             AND (d.zaarhub_config->>'network_visible')::boolean = true"#,
     );
 
     let mut param_idx = 0;
@@ -1138,9 +1617,16 @@ pub async fn list_featured_deals(
     // Count total
     let count_sql = format!("SELECT COUNT(*) {}", base_sql);
     let total: i64 = if let Some(ref city) = query.city {
-        sqlx::query_scalar(&count_sql).bind(city).fetch_one(&s.db).await.unwrap_or(0)
+        sqlx::query_scalar(&count_sql)
+            .bind(city)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0)
     } else {
-        sqlx::query_scalar(&count_sql).fetch_one(&s.db).await.unwrap_or(0)
+        sqlx::query_scalar(&count_sql)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0)
     };
 
     // Fetch page
@@ -1155,34 +1641,70 @@ pub async fn list_featured_deals(
         base_sql, limit, offset
     );
 
-    let deals: Vec<(Uuid, String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, String, String, String, Option<String>, Option<DateTime<Utc>>, Option<bool>, Option<String>, Option<String>)> =
-        if let Some(ref city) = query.city {
-            sqlx::query_as(&data_sql).bind(city).fetch_all(&s.db).await?
-        } else {
-            sqlx::query_as(&data_sql).fetch_all(&s.db).await?
-        };
+    let deals: Vec<(
+        Uuid,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i32>,
+        Option<String>,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<DateTime<Utc>>,
+        Option<bool>,
+        Option<String>,
+        Option<String>,
+    )> = if let Some(ref city) = query.city {
+        sqlx::query_as(&data_sql)
+            .bind(city)
+            .fetch_all(&s.db)
+            .await?
+    } else {
+        sqlx::query_as(&data_sql).fetch_all(&s.db).await?
+    };
 
     let deal_list: Vec<Value> = deals
         .into_iter()
-        .map(|(id, title, desc, deal_price, orig_price, discount, img, biz_name, biz_slug, dir_slug, dir_city, end_date, featured, biz_cat, biz_cat_slug)| {
-            json!({
-                "id": id,
-                "title": title,
-                "description": desc,
-                "deal_price": deal_price,
-                "original_price": orig_price,
-                "discount_percent": discount,
-                "image_url": img,
-                "business_name": biz_name,
-                "business_slug": biz_slug,
-                "directory_slug": dir_slug,
-                "directory_city": dir_city,
-                "end_date": end_date,
-                "featured": featured,
-                "business_category": biz_cat,
-                "business_category_slug": biz_cat_slug,
-            })
-        })
+        .map(
+            |(
+                id,
+                title,
+                desc,
+                deal_price,
+                orig_price,
+                discount,
+                img,
+                biz_name,
+                biz_slug,
+                dir_slug,
+                dir_city,
+                end_date,
+                featured,
+                biz_cat,
+                biz_cat_slug,
+            )| {
+                json!({
+                    "id": id,
+                    "title": title,
+                    "description": desc,
+                    "deal_price": deal_price,
+                    "original_price": orig_price,
+                    "discount_percent": discount,
+                    "image_url": img,
+                    "business_name": biz_name,
+                    "business_slug": biz_slug,
+                    "directory_slug": dir_slug,
+                    "directory_city": dir_city,
+                    "end_date": end_date,
+                    "featured": featured,
+                    "business_category": biz_cat,
+                    "business_category_slug": biz_cat_slug,
+                })
+            },
+        )
         .collect();
 
     Ok(Json(json!({
@@ -1209,7 +1731,7 @@ pub async fn list_featured_events(
            WHERE e.status = 'active'
              AND e.zaarhub_featured = true
              AND (d.zaarhub_config->>'show_events')::boolean = true
-             AND (d.zaarhub_config->>'network_visible')::boolean = true"#
+             AND (d.zaarhub_config->>'network_visible')::boolean = true"#,
     );
 
     let mut param_idx = 0;
@@ -1221,9 +1743,16 @@ pub async fn list_featured_events(
     // Count total
     let count_sql = format!("SELECT COUNT(*) {}", base_sql);
     let total: i64 = if let Some(ref city) = query.city {
-        sqlx::query_scalar(&count_sql).bind(city).fetch_one(&s.db).await.unwrap_or(0)
+        sqlx::query_scalar(&count_sql)
+            .bind(city)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0)
     } else {
-        sqlx::query_scalar(&count_sql).fetch_one(&s.db).await.unwrap_or(0)
+        sqlx::query_scalar(&count_sql)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0)
     };
 
     // Fetch page
@@ -1238,30 +1767,58 @@ pub async fn list_featured_events(
         base_sql, limit, offset
     );
 
-    let events: Vec<(Uuid, String, Option<String>, Option<DateTime<Utc>>, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<i64>)> =
-        if let Some(ref city) = query.city {
-            sqlx::query_as(&data_sql).bind(city).fetch_all(&s.db).await?
-        } else {
-            sqlx::query_as(&data_sql).fetch_all(&s.db).await?
-        };
+    let events: Vec<(
+        Uuid,
+        String,
+        Option<String>,
+        Option<DateTime<Utc>>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<i64>,
+    )> = if let Some(ref city) = query.city {
+        sqlx::query_as(&data_sql)
+            .bind(city)
+            .fetch_all(&s.db)
+            .await?
+    } else {
+        sqlx::query_as(&data_sql).fetch_all(&s.db).await?
+    };
 
     let event_list: Vec<Value> = events
         .into_iter()
-        .map(|(id, title, desc, event_date, location, img, biz_name, biz_slug, dir_slug, dir_city, rsvp_count)| {
-            json!({
-                "id": id,
-                "title": title,
-                "description": desc,
-                "event_date": event_date,
-                "location": location,
-                "image_url": img,
-                "business_name": biz_name,
-                "business_slug": biz_slug,
-                "directory_slug": dir_slug,
-                "directory_city": dir_city,
-                "rsvp_count": rsvp_count,
-            })
-        })
+        .map(
+            |(
+                id,
+                title,
+                desc,
+                event_date,
+                location,
+                img,
+                biz_name,
+                biz_slug,
+                dir_slug,
+                dir_city,
+                rsvp_count,
+            )| {
+                json!({
+                    "id": id,
+                    "title": title,
+                    "description": desc,
+                    "event_date": event_date,
+                    "location": location,
+                    "image_url": img,
+                    "business_name": biz_name,
+                    "business_slug": biz_slug,
+                    "directory_slug": dir_slug,
+                    "directory_city": dir_city,
+                    "rsvp_count": rsvp_count,
+                })
+            },
+        )
         .collect();
 
     Ok(Json(json!({
@@ -1289,7 +1846,7 @@ pub async fn toggle_spotlight_featured(
     match body.item_type.as_str() {
         "deal" => {
             let existing = sqlx::query_as::<_, (Uuid, String, Option<bool>)>(
-                "SELECT id, title, zaarhub_featured FROM deals WHERE id = $1"
+                "SELECT id, title, zaarhub_featured FROM deals WHERE id = $1",
             )
             .bind(id)
             .fetch_optional(&s.db)
@@ -1311,7 +1868,7 @@ pub async fn toggle_spotlight_featured(
         }
         "event" => {
             let existing = sqlx::query_as::<_, (Uuid, String, Option<bool>)>(
-                "SELECT id, title, zaarhub_featured FROM community_events WHERE id = $1"
+                "SELECT id, title, zaarhub_featured FROM community_events WHERE id = $1",
             )
             .bind(id)
             .fetch_optional(&s.db)

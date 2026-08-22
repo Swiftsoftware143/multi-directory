@@ -1,20 +1,20 @@
 //! Business CRUD and search handlers.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
-use serde::{Serialize, Deserialize};
 use base64::Engine as _;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult, validate_pagination};
+use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::models::*;
 use crate::utils;
+use crate::AppState;
 
 /// GET /api/v1/directories/:slug/businesses
 pub async fn list_businesses(
@@ -22,13 +22,14 @@ pub async fn list_businesses(
     Path(slug): Path<String>,
     Query(qs): Query<ListBusinessesQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let (page, per_page) = validate_pagination(qs.page, qs.per_page);
     let offset = (page - 1) * per_page;
@@ -81,10 +82,7 @@ pub async fn list_businesses(
     let where_str = where_clauses.join(" AND ");
 
     // Count query
-    let count_sql = format!(
-        "SELECT COUNT(*) FROM businesses b WHERE {}",
-        where_str
-    );
+    let count_sql = format!("SELECT COUNT(*) FROM businesses b WHERE {}", where_str);
 
     // Build query params for count
     let mut count_q = sqlx::query_as::<_, (i64,)>(&count_sql).bind(dir_id);
@@ -119,7 +117,10 @@ pub async fn list_businesses(
     // Data query
     let data_sql = format!(
         "SELECT b.* FROM businesses b WHERE {} ORDER BY {} LIMIT ${} OFFSET ${}",
-        where_str, order_by, param_idx, param_idx + 1
+        where_str,
+        order_by,
+        param_idx,
+        param_idx + 1
     );
 
     let mut data_q = sqlx::query_as::<_, Business>(&data_sql).bind(dir_id);
@@ -159,18 +160,19 @@ pub async fn get_business(
     State(s): State<AppState>,
     Path((slug, business_id)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     // Try by UUID first, then by slug
     let business = if let Ok(bid) = Uuid::parse_str(&business_id) {
         sqlx::query_as::<_, Business>(
-            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 "
+            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 ",
         )
         .bind(bid)
         .bind(dir.id)
@@ -178,7 +180,7 @@ pub async fn get_business(
         .await?
     } else {
         sqlx::query_as::<_, Business>(
-            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 "
+            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 ",
         )
         .bind(&business_id)
         .bind(dir.id)
@@ -198,16 +200,19 @@ pub async fn create_business(
     Json(req): Json<CreateBusinessRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.name.is_empty() || req.slug.is_empty() {
-        return Err(AppError::Validation("Name and slug are required".to_string()));
+        return Err(AppError::Validation(
+            "Name and slug are required".to_string(),
+        ));
     }
 
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     // Duplicate detection: same name AND same address in the same directory = a
     // duplicate. (A business may appear in multiple directories — different city
@@ -225,7 +230,7 @@ pub async fn create_business(
                    = LOWER(REGEXP_REPLACE(COALESCE(\x244,''), '\s+', ' ', 'g'))
                AND COALESCE(\x244,'') <> '')
              OR slug = \x242
-           )"#
+           )"#,
     )
     .bind(dir.id)
     .bind(&req.slug)
@@ -236,7 +241,8 @@ pub async fn create_business(
 
     if dup > 0 {
         return Err(AppError::Duplicate(format!(
-            "A business named '{}' already exists at this address in this directory", req.name
+            "A business named '{}' already exists at this address in this directory",
+            req.name
         )));
     }
 
@@ -276,13 +282,11 @@ pub async fn update_business(
     Path((_slug, business_id)): Path<(String, Uuid)>,
     Json(req): Json<UpdateBusinessRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let _existing = sqlx::query_as::<_, Business>(
-        "SELECT * FROM businesses WHERE id = \x241 "
-    )
-    .bind(business_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Business not found".to_string()))?;
+    let _existing = sqlx::query_as::<_, Business>("SELECT * FROM businesses WHERE id = \x241 ")
+        .bind(business_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound("Business not found".to_string()))?;
 
     // Validate cta_type if provided
     if let Some(ref cta) = req.cta_type {
@@ -314,7 +318,7 @@ pub async fn update_business(
            business_type = COALESCE($15, business_type),
            supplier_fields = COALESCE($16, supplier_fields),
            updated_at = NOW()
-           WHERE id = $17 RETURNING *"#
+           WHERE id = $17 RETURNING *"#,
     )
     .bind(&req.name)
     .bind(&req.slug)
@@ -345,7 +349,7 @@ pub async fn update_business(
                VALUES ($1, $2, $3::jsonb)
                ON CONFLICT (business_id, template)
                DO UPDATE SET meta_data = business_meta.meta_data || $3::jsonb,
-                             updated_at = NOW()"#
+                             updated_at = NOW()"#,
         )
         .bind(business_id)
         .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
@@ -395,9 +399,7 @@ impl sqlx::FromRow<'_, sqlx::postgres::PgRow> for ListBusinessResult {
     }
 }
 
-pub async fn list_all_businesses(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_all_businesses(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let businesses = sqlx::query_as::<_, ListBusinessResult>(
         "SELECT b.id, b.name, b.slug, b.description, cat.name AS category, \
                 b.city, b.state, b.phone, b.website, b.rating, \
@@ -405,7 +407,7 @@ pub async fn list_all_businesses(
          FROM businesses b \
          LEFT JOIN directory_categories cat ON b.category_id = cat.id \
          LEFT JOIN directories d ON b.directory_id = d.id \
-         ORDER BY b.name"
+         ORDER BY b.name",
     )
     .fetch_all(&s.db)
     .await?;
@@ -436,16 +438,20 @@ pub async fn search_suggestions(
     Path(slug): Path<String>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<axum::Json<serde_json::Value>> {
-    let dir = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )))?;
 
     let q = params.get("q").cloned().unwrap_or_default();
-    let limit = params.get("limit").and_then(|v| v.parse::<i64>().ok()).unwrap_or(10);
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(10);
 
     if q.len() < 2 {
         let empty: Vec<BusinessSearchResult> = Vec::new();
@@ -461,7 +467,7 @@ pub async fn search_suggestions(
            ORDER BY
              CASE WHEN b.name ILIKE $2 THEN 0 ELSE 1 END,
              b.name ASC
-           LIMIT $3"#
+           LIMIT $3"#,
     )
     .bind(dir.id)
     .bind(format!("%{}%", q))
@@ -485,43 +491,50 @@ pub async fn upload_business_images(
     Json(req): Json<UploadImagesRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Verify business exists
-    let exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM businesses WHERE id = $1"
-    )
-    .bind(business_id)
-    .fetch_one(&s.db)
-    .await?;
-    
+    let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM businesses WHERE id = $1")
+        .bind(business_id)
+        .fetch_one(&s.db)
+        .await?;
+
     if exists == 0 {
         return Err(AppError::NotFound("Business not found".to_string()));
     }
-    
-    // Build URLs for uploaded images — for now store references to /uploads/ 
+
+    // Build URLs for uploaded images — for now store references to /uploads/
     // In future, upload to CDN. For MVP, we save base64 data to local files.
-    let upload_dir = format!("/opt/swift/www/zaarhub.com/uploads/businesses/{}", business_id);
-    tokio::fs::create_dir_all(&upload_dir).await
+    let upload_dir = format!(
+        "/opt/swift/www/zaarhub.com/uploads/businesses/{}",
+        business_id
+    );
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to create upload dir: {e}")))?;
-    
+
     let mut saved_images: Vec<String> = Vec::new();
-    
+
     for (i, img_data) in req.images.iter().enumerate() {
         // Support both data URIs and raw base64
-        let (format_name, base64_data) = if let Some(stripped) = img_data.strip_prefix("data:image/") {
-            let parts: Vec<&str> = stripped.splitn(2, ';').collect();
-            let fmt = parts[0].to_string(); // e.g., "jpeg", "png", "webp"
-            if parts.len() < 2 || !parts[1].starts_with("base64,") {
-                continue;
-            }
-            let data = &parts[1][7..]; // after "base64,"
-            (fmt, data.to_string())
-        } else {
-            // Assume raw base64, default to jpeg
-            ("jpeg".to_string(), img_data.clone())
-        };
-        
+        let (format_name, base64_data) =
+            if let Some(stripped) = img_data.strip_prefix("data:image/") {
+                let parts: Vec<&str> = stripped.splitn(2, ';').collect();
+                let fmt = parts[0].to_string(); // e.g., "jpeg", "png", "webp"
+                if parts.len() < 2 || !parts[1].starts_with("base64,") {
+                    continue;
+                }
+                let data = &parts[1][7..]; // after "base64,"
+                (fmt, data.to_string())
+            } else {
+                // Assume raw base64, default to jpeg
+                ("jpeg".to_string(), img_data.clone())
+            };
+
         match base64::engine::general_purpose::STANDARD.decode(&base64_data) {
             Ok(bytes) => {
-                let ext = if format_name == "jpeg" { "jpg" } else { &format_name };
+                let ext = if format_name == "jpeg" {
+                    "jpg"
+                } else {
+                    &format_name
+                };
                 let filename = format!("photo_{}.{}", i, ext);
                 let path = format!("{}/{}", upload_dir, filename);
                 if let Err(e) = tokio::fs::write(&path, &bytes).await {
@@ -536,22 +549,28 @@ pub async fn upload_business_images(
             }
         }
     }
-    
+
     if saved_images.is_empty() {
-        return Err(AppError::Validation("No valid images found in request".to_string()));
+        return Err(AppError::Validation(
+            "No valid images found in request".to_string(),
+        ));
     }
-    
+
     // Append to existing images JSONB array (dedup by URL)
     let existing: Vec<String> = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"
+        "SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1",
     )
     .bind(business_id)
     .fetch_one(&s.db)
     .await?
     .as_array()
-    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+    .map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect()
+    })
     .unwrap_or_default();
-    
+
     // Merge: existing first, then new ones that aren't already present
     let all_images: Vec<String> = {
         let mut seen = std::collections::HashSet::new();
@@ -568,9 +587,10 @@ pub async fn upload_business_images(
         }
         merged
     };
-    
-    let images_json = serde_json::to_value(&all_images).map_err(|e| AppError::Internal(format!("JSON error: {e}")))?;
-    
+
+    let images_json = serde_json::to_value(&all_images)
+        .map_err(|e| AppError::Internal(format!("JSON error: {e}")))?;
+
     sqlx::query("UPDATE businesses SET images = $1::jsonb, updated_at = NOW() WHERE id = $2")
         .bind(&images_json)
         .bind(business_id)
@@ -579,20 +599,20 @@ pub async fn upload_business_images(
 
     // Advance any open deal to "Contacted" stage if we're still at "Lead"
     let _ = advance_deal_to_contacted(&s.db, business_id).await;
-    
-    Ok((StatusCode::OK, Json(json!({
-        "success": true,
-        "uploaded": saved_images.len(),
-        "total_images": all_images.len(),
-        "images": all_images
-    }))))
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "uploaded": saved_images.len(),
+            "total_images": all_images.len(),
+            "images": all_images
+        })),
+    ))
 }
 
 /// Advance a deal from "Lead" to "Contacted" when images are uploaded.
-async fn advance_deal_to_contacted(
-    db: &sqlx::PgPool,
-    business_id: Uuid,
-) -> Result<(), String> {
+async fn advance_deal_to_contacted(db: &sqlx::PgPool, business_id: Uuid) -> Result<(), String> {
     // Find a claimed business that has an open deal at "Lead" stage
     let deal_id: Option<Uuid> = sqlx::query_scalar(
         r#"SELECT dr.id FROM crm_deal_records dr
@@ -600,7 +620,7 @@ async fn advance_deal_to_contacted(
            WHERE dr.title ILIKE (SELECT name FROM businesses WHERE id = $1) || '%'
              AND dr.stage = 'Lead'
              AND dr.status = 'open'
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(business_id)
     .fetch_optional(db)
@@ -609,17 +629,18 @@ async fn advance_deal_to_contacted(
     .flatten();
 
     if let Some(deal_id) = deal_id {
-        sqlx::query("UPDATE crm_deal_records SET stage = 'Contacted', updated_at = NOW() WHERE id = $1")
-            .bind(deal_id)
-            .execute(db)
-            .await
-            .map_err(|e| format!("Failed to advance deal: {e}"))?;
+        sqlx::query(
+            "UPDATE crm_deal_records SET stage = 'Contacted', updated_at = NOW() WHERE id = $1",
+        )
+        .bind(deal_id)
+        .execute(db)
+        .await
+        .map_err(|e| format!("Failed to advance deal: {e}"))?;
         tracing::info!("[pipeline] Advanced deal {deal_id} to 'Contacted' after image upload");
     }
 
     Ok(())
 }
-
 
 /// PUT /api/v1/businesses/:id/featured-deal — set featured deal for a business
 #[derive(Debug, Deserialize)]

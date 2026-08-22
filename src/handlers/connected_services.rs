@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::auth::models::Claims;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 use super::proxy_common::*;
 
@@ -55,15 +55,14 @@ pub async fn list_connected_services(
     State(s): State<AppState>,
     Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Look up connected services in MD
     let row = sqlx::query_as::<_, (bool, Option<chrono::NaiveDateTime>)>(
         r#"SELECT is_active, expires_at
            FROM connected_services
            WHERE user_id = $1 AND service = 'incentiveswift'
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(user_id)
     .fetch_optional(&s.db)
@@ -74,7 +73,9 @@ pub async fn list_connected_services(
     let is_expires = row.and_then(|(_, exp)| exp.map(|e| e.to_string()));
 
     // Check CoreSwift connection — coreswift is auto-connected if tenant_id exists
-    let coreswift_connected = check_coreswift_connection_internal(&s, &claims).await.unwrap_or(false);
+    let coreswift_connected = check_coreswift_connection_internal(&s, &claims)
+        .await
+        .unwrap_or(false);
 
     Ok(Json(json!({
         "incentiveswift": {
@@ -94,8 +95,7 @@ pub async fn connect_service(
     Extension(claims): Extension<Claims>,
     Json(body): Json<ConnectServiceRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     match body.service.as_str() {
         "incentiveswift" => {
@@ -114,7 +114,9 @@ pub async fn connect_service(
                 .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
 
             if !resp.status().is_success() {
-                return Err(AppError::BadRequest("Invalid API key — verification failed".into()));
+                return Err(AppError::BadRequest(
+                    "Invalid API key — verification failed".into(),
+                ));
             }
 
             let v: Value = resp.json().await.unwrap_or_default();
@@ -142,14 +144,14 @@ pub async fn connect_service(
                 "service": "incentiveswift",
                 "message": "Connected to IncentiveSwift successfully"
             })))
-        },
+        }
         "coreswift" => {
             // CoreSwift is auto-provisioned per directory; just toggle the flag
             sqlx::query(
                 r#"INSERT INTO connected_services (user_id, service, is_active, created_at)
                    VALUES ($1, 'coreswift', true, NOW())
                    ON CONFLICT (user_id, service)
-                   DO UPDATE SET is_active = true, updated_at = NOW()"#
+                   DO UPDATE SET is_active = true, updated_at = NOW()"#,
             )
             .bind(user_id)
             .execute(&s.db)
@@ -161,8 +163,11 @@ pub async fn connect_service(
                 "service": "coreswift",
                 "message": "Connected to CoreSwift CRM successfully"
             })))
-        },
-        _ => Err(AppError::BadRequest(format!("Unknown service: {}", body.service))),
+        }
+        _ => Err(AppError::BadRequest(format!(
+            "Unknown service: {}",
+            body.service
+        ))),
     }
 }
 
@@ -173,8 +178,7 @@ pub async fn disconnect_service(
     Extension(claims): Extension<Claims>,
     Path(service): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     let svc = service.to_lowercase();
 
@@ -208,7 +212,7 @@ pub async fn disconnect_service(
             .execute(&s.db)
             .await
             .map_err(|_| AppError::Internal("DB error".into()))?;
-        },
+        }
         "coreswift" => {
             sqlx::query(
                 "UPDATE connected_services SET is_active = false, updated_at = NOW() WHERE user_id = $1 AND service = 'coreswift'"
@@ -217,7 +221,7 @@ pub async fn disconnect_service(
             .execute(&s.db)
             .await
             .map_err(|_| AppError::Internal("DB error".into()))?;
-        },
+        }
         _ => return Err(AppError::BadRequest(format!("Unknown service: {}", svc))),
     }
 
@@ -254,16 +258,21 @@ pub async fn verify_service_key(
                 "service": "incentiveswift",
                 "valid": valid,
             })))
-        },
+        }
         "coreswift" => {
             // For CoreSwift, check if there's a tenant connection
-            let connected = check_coreswift_connection_internal(&s, &claims).await.unwrap_or(false);
+            let connected = check_coreswift_connection_internal(&s, &claims)
+                .await
+                .unwrap_or(false);
             Ok(Json(json!({
                 "service": "coreswift",
                 "valid": connected,
             })))
-        },
-        _ => Err(AppError::BadRequest(format!("Unknown service: {}", body.service))),
+        }
+        _ => Err(AppError::BadRequest(format!(
+            "Unknown service: {}",
+            body.service
+        ))),
     }
 }
 
@@ -274,8 +283,7 @@ pub async fn list_service_campaigns(
     Extension(claims): Extension<Claims>,
     Path(service): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     match service.to_lowercase().as_str() {
         "incentiveswift" => {
@@ -297,8 +305,11 @@ pub async fn list_service_campaigns(
             let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
             let result = proxy_get("/campaigns", &aid, &email, &claims.role).await?;
             Ok(Json(result))
-        },
-        _ => Err(AppError::BadRequest(format!("Unknown service: {}", service))),
+        }
+        _ => Err(AppError::BadRequest(format!(
+            "Unknown service: {}",
+            service
+        ))),
     }
 }
 
@@ -307,8 +318,7 @@ async fn check_coreswift_connection_internal(
     s: &AppState,
     claims: &Claims,
 ) -> Result<bool, AppError> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Check if there's a coreswift entry in connected_services
     let active: Option<bool> = sqlx::query_scalar(

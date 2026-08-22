@@ -6,12 +6,12 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ===== Landing Page =====
 
@@ -69,9 +69,7 @@ pub struct UpdateLandingPageRequest {
 }
 
 /// GET /api/v1/landing-pages — list all landing pages
-pub async fn list_landing_pages(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_landing_pages(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let pages = sqlx::query_as::<_, LandingPage>(
         "SELECT id, title, slug, directory_id, hero_title, hero_subtitle, hero_cta_text, hero_cta_url, features, testimonials, faq, seo_title, seo_description, published, created_at, updated_at FROM landing_pages ORDER BY created_at DESC "
     )
@@ -212,13 +210,11 @@ pub async fn directory_landing_pages(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let pages = sqlx::query_as::<_, LandingPage>(
         "SELECT id, title, slug, directory_id, hero_title, hero_subtitle, hero_cta_text, hero_cta_url, features, testimonials, faq, seo_title, seo_description, published, created_at, updated_at FROM landing_pages WHERE directory_id = \x241 ORDER BY created_at DESC "
@@ -286,9 +282,7 @@ pub struct UpdateThemeRequest {
 }
 
 /// GET /api/v1/public-themes — list all themes
-pub async fn list_public_themes(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_public_themes(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let themes = sqlx::query_as::<_, PublicTheme>(
         "SELECT id, name, slug, directory_id, primary_color, secondary_color, header_style, layout, show_search, show_categories, show_featured, items_per_page, custom_css, custom_js, created_at FROM public_themes ORDER BY created_at DESC "
     )

@@ -3,7 +3,7 @@
 //! Creates a referral economy that no generic search engine can replicate.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::HeaderMap,
     response::IntoResponse,
     Json,
@@ -14,9 +14,9 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::auth::middleware::verify_token;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── Auth helpers ──
 
@@ -28,8 +28,8 @@ fn extract_user_id(headers: &HeaderMap, state: &AppState) -> ApiResult<Uuid> {
     let token = auth
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
-    let claims = verify_token(token, &state.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims =
+        verify_token(token, &state.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 
@@ -243,9 +243,7 @@ pub async fn claim_lead(
         )));
     }
     if claimed_by.is_some() {
-        return Err(AppError::Validation(
-            "Lead has already been claimed".into(),
-        ));
+        return Err(AppError::Validation("Lead has already been claimed".into()));
     }
 
     sqlx::query(

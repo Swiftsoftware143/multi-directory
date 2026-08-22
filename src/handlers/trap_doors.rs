@@ -4,19 +4,19 @@
 //! SEO landing pages targeting long-tail queries that bigger competitors miss.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Models ──
 
@@ -113,22 +113,22 @@ pub async fn generate_trap_doors(
 ) -> ApiResult<impl IntoResponse> {
     // Validate template belongs to this directory
     let tmpl = sqlx::query_as::<_, TrapDoorTemplate>(
-        "SELECT * FROM trap_door_templates WHERE id=$1 AND directory_id=$2"
+        "SELECT * FROM trap_door_templates WHERE id=$1 AND directory_id=$2",
     )
     .bind(req.template_id)
     .bind(dir_id)
     .fetch_optional(&s.db)
     .await?
-    .ok_or(AppError::NotFound("Template not found in this directory".into()))?;
+    .ok_or(AppError::NotFound(
+        "Template not found in this directory".into(),
+    ))?;
 
     // Fetch directory name + services
-    let dir_name: String = sqlx::query_scalar(
-        "SELECT name FROM directories WHERE id=$1"
-    )
-    .bind(dir_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Directory".into()))?;
+    let dir_name: String = sqlx::query_scalar("SELECT name FROM directories WHERE id=$1")
+        .bind(dir_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound("Directory".into()))?;
 
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
         "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true"
@@ -149,7 +149,8 @@ pub async fn generate_trap_doors(
             let city_slug = slugify(city);
             for day in &user_day_tags {
                 for time in &user_time_tags {
-                    let slug = tmpl.pattern
+                    let slug = tmpl
+                        .pattern
                         .replace("{service}", svc_slug)
                         .replace("{city}", &city_slug)
                         .replace("{day}", day)
@@ -159,7 +160,7 @@ pub async fn generate_trap_doors(
 
                     // Check for duplicate
                     let exists: i64 = sqlx::query_scalar(
-                        "SELECT COUNT(*) FROM programmatic_pages WHERE directory_id=$1 AND slug=$2"
+                        "SELECT COUNT(*) FROM programmatic_pages WHERE directory_id=$1 AND slug=$2",
                     )
                     .bind(dir_id)
                     .bind(&slug)
@@ -173,8 +174,10 @@ pub async fn generate_trap_doors(
                     }
 
                     let title = format!("{} in {} Open {} {}", svc_name, city, time, day);
-                    let meta_title = format!("{} in {} Open {} {} | {}",
-                        svc_name, city, time, day, dir_name);
+                    let meta_title = format!(
+                        "{} in {} Open {} {} | {}",
+                        svc_name, city, time, day, dir_name
+                    );
                     let meta_description = format!(
                         "Find {} providers in {} open {} on {}. Browse top-rated {} services near you.",
                         svc_name, city, time, day, svc_name
@@ -185,7 +188,7 @@ pub async fn generate_trap_doors(
                         "INSERT INTO programmatic_pages \
                          (directory_id,service_id,slug,title,meta_title,meta_description,h1,\
                           day_tags,time_tags,status) \
-                         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft')"
+                         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft')",
                     )
                     .bind(dir_id)
                     .bind(svc_id)
@@ -206,13 +209,12 @@ pub async fn generate_trap_doors(
     }
 
     // Update template page_count and last_generated_at
-    let total_for_tmpl: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM programmatic_pages WHERE directory_id=$1"
-    )
-    .bind(dir_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let total_for_tmpl: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM programmatic_pages WHERE directory_id=$1")
+            .bind(dir_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     sqlx::query(
         "UPDATE trap_door_templates SET page_count=$1, last_generated_at=NOW(), updated_at=NOW() WHERE id=$2"
@@ -239,13 +241,15 @@ pub async fn preview_trap_doors(
 ) -> ApiResult<impl IntoResponse> {
     // Validate template belongs to this directory
     let tmpl = sqlx::query_as::<_, TrapDoorTemplate>(
-        "SELECT * FROM trap_door_templates WHERE id=$1 AND directory_id=$2"
+        "SELECT * FROM trap_door_templates WHERE id=$1 AND directory_id=$2",
     )
     .bind(req.template_id)
     .bind(dir_id)
     .fetch_optional(&s.db)
     .await?
-    .ok_or(AppError::NotFound("Template not found in this directory".into()))?;
+    .ok_or(AppError::NotFound(
+        "Template not found in this directory".into(),
+    ))?;
 
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
         "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true"
@@ -258,7 +262,8 @@ pub async fn preview_trap_doors(
     let user_day_tags: Vec<String> = req.day_tags.iter().map(|d| d.to_lowercase()).collect();
     let user_time_tags: Vec<String> = req.time_tags.iter().map(|t| t.to_lowercase()).collect();
 
-    let estimated_total = services.len() * req.cities.len() * user_day_tags.len() * user_time_tags.len();
+    let estimated_total =
+        services.len() * req.cities.len() * user_day_tags.len() * user_time_tags.len();
 
     // Build a few sample slugs
     let mut sample_slugs: Vec<String> = Vec::new();
@@ -270,7 +275,8 @@ pub async fn preview_trap_doors(
                     if sample_slugs.len() >= 10 {
                         break 'outer;
                     }
-                    let slug = tmpl.pattern
+                    let slug = tmpl
+                        .pattern
                         .replace("{service}", svc_slug)
                         .replace("{city}", &city_slug)
                         .replace("{day}", day)
@@ -341,9 +347,12 @@ pub async fn track_page_event(
                 .execute(&s.db)
                 .await?;
         }
-        _ => return Err(AppError::Validation(format!(
-            "Unknown event type '{}'. Valid: impression, click, conversion", event
-        ))),
+        _ => {
+            return Err(AppError::Validation(format!(
+                "Unknown event type '{}'. Valid: impression, click, conversion",
+                event
+            )))
+        }
     }
 
     Ok(Json(json!({"tracked": event, "page_id": page_id})))
@@ -376,7 +385,11 @@ pub async fn list_trap_door_pages(
         idx += 1;
     }
     if let Some(ref search) = params.get("search") {
-        conditions.push(format!("(pp.title ILIKE ${} OR pp.slug ILIKE ${})", idx, idx + 1));
+        conditions.push(format!(
+            "(pp.title ILIKE ${} OR pp.slug ILIKE ${})",
+            idx,
+            idx + 1
+        ));
         idx += 2;
     }
 
@@ -458,7 +471,7 @@ pub async fn trap_door_analytics(
            COALESCE(SUM(impressions),0) as total_impressions, \
            COALESCE(SUM(clicks),0) as total_clicks, \
            COALESCE(SUM(conversions),0) as total_conversions \
-         FROM programmatic_pages WHERE directory_id=$1"
+         FROM programmatic_pages WHERE directory_id=$1",
     )
     .bind(dir_id)
     .fetch_all(&s.db)
@@ -488,7 +501,7 @@ pub async fn trap_door_analytics(
          FROM programmatic_pages \
          WHERE directory_id=$1 \
          ORDER BY impressions DESC \
-         LIMIT 20"
+         LIMIT 20",
     )
     .bind(dir_id)
     .fetch_all(&s.db)
@@ -512,18 +525,21 @@ pub async fn trap_door_analytics(
             "SELECT unnest(day_tags) as day, COUNT(*) as cnt \
              FROM programmatic_pages \
              WHERE directory_id=$1 AND day_tags IS NOT NULL AND array_length(day_tags,1) > 0 \
-             GROUP BY day ORDER BY cnt DESC"
+             GROUP BY day ORDER BY cnt DESC",
         )
         .bind(dir_id)
         .fetch_all(&s.db)
         .await?;
 
-        day_counts.iter().map(|row| {
-            json!({
-                "day": row.try_get::<String, _>("day").unwrap_or_default(),
-                "count": row.try_get::<i64, _>("cnt").unwrap_or(0),
+        day_counts
+            .iter()
+            .map(|row| {
+                json!({
+                    "day": row.try_get::<String, _>("day").unwrap_or_default(),
+                    "count": row.try_get::<i64, _>("cnt").unwrap_or(0),
+                })
             })
-        }).collect()
+            .collect()
     };
 
     Ok(Json(json!({
@@ -557,8 +573,16 @@ fn generate_faq_schema(
 
     let city_display = if city.is_empty() { "your area" } else { city };
     let service_lower = service_name.to_lowercase();
-    let day_str = if day_tags.is_empty() { String::new() } else { day_tags.join(", ") };
-    let time_str = if time_tags.is_empty() { String::new() } else { time_tags.join(", ") };
+    let day_str = if day_tags.is_empty() {
+        String::new()
+    } else {
+        day_tags.join(", ")
+    };
+    let time_str = if time_tags.is_empty() {
+        String::new()
+    } else {
+        time_tags.join(", ")
+    };
     let has_time = !time_str.is_empty();
     let has_day = !day_str.is_empty();
 
@@ -588,7 +612,11 @@ fn generate_faq_schema(
 
     // 2. Weekend availability
     if is_weekend || has_day {
-        let day_context = if is_weekend { "on weekends" } else { &format!("on {}", day_str) };
+        let day_context = if is_weekend {
+            "on weekends"
+        } else {
+            &format!("on {}", day_str)
+        };
         questions.push(qa(
             &format!("Are {} available {} in {}?", service_name, day_context, city_display),
             &format!(
@@ -678,8 +706,16 @@ fn generate_faq_accordion(
 
     let city_display = if city.is_empty() { "your area" } else { city };
     let service_lower = service_name.to_lowercase();
-    let day_str = if day_tags.is_empty() { String::new() } else { day_tags.join(", ") };
-    let time_str = if time_tags.is_empty() { String::new() } else { time_tags.join(", ") };
+    let day_str = if day_tags.is_empty() {
+        String::new()
+    } else {
+        day_tags.join(", ")
+    };
+    let time_str = if time_tags.is_empty() {
+        String::new()
+    } else {
+        time_tags.join(", ")
+    };
     let has_time = !time_str.is_empty();
     let has_day = !day_str.is_empty();
     let esc_svc_dir = htmlesc(service_name);
@@ -693,12 +729,26 @@ fn generate_faq_accordion(
 
     let q_find_best = format!("How do I find the best {} in {}?", esc_svc_dir, esc_city);
     let a_find_best = format!("Start by browsing our directory of {} providers in {}. You can compare reviews, check business hours, and view contact information for each listing in our network.", esc_svc_low, esc_city);
-    let q_hiring = format!("What should I look for when hiring {} in {}?", esc_svc_low, esc_city);
+    let q_hiring = format!(
+        "What should I look for when hiring {} in {}?",
+        esc_svc_low, esc_city
+    );
     let a_hiring = format!("Look for verified reviews, proper licensing, transparent pricing, and availability during your preferred hours. The {} directory makes it easy to compare {} providers side by side.", esc_dir, esc_svc_low);
-    let during_time_str = if has_time { format!(" during {}", esc_time) } else { String::new() };
-    let on_day_str = if has_day { format!(" on {}", esc_day) } else { String::new() };
+    let during_time_str = if has_time {
+        format!(" during {}", esc_time)
+    } else {
+        String::new()
+    };
+    let on_day_str = if has_day {
+        format!(" on {}", esc_day)
+    } else {
+        String::new()
+    };
     let a_open_hours = format!("Yes! Our directory lists {} providers in {} available{}{}. Browse our listings to find businesses with hours that match your schedule.", esc_svc_low, esc_city, during_time_str, on_day_str);
-    let q_book_ahead = format!("Do I need to book ahead for {} in {}?", esc_svc_low, esc_city);
+    let q_book_ahead = format!(
+        "Do I need to book ahead for {} in {}?",
+        esc_svc_low, esc_city
+    );
     let a_book_ahead = format!("It depends on the provider and time of day. For {} services in {} during {} hours, booking ahead is recommended. Search our directory to find providers with online booking or call-ahead options.", esc_svc_low, esc_city, if has_time { &esc_time } else { "busy" });
 
     items.push(format!(
@@ -718,7 +768,10 @@ fn generate_faq_accordion(
     ));
 
     if has_time || has_day {
-        let q_open_hours = format!("Are {} open{} in {}?", esc_svc_low, during_time_str, esc_city);
+        let q_open_hours = format!(
+            "Are {} open{} in {}?",
+            esc_svc_low, during_time_str, esc_city
+        );
         items.push(format!(
             r##"<div class="faq-item">
     <button class="faq-q" onclick="toggleFaq(3)">{} <span class="faq-arrow">&#9660;</span></button>
@@ -742,7 +795,12 @@ fn generate_faq_accordion(
     }
 
     if is_plumbing {
-        let q_plumbing_extra = format!("Do {} charge extra for {} calls in {}?", esc_svc_low, if has_time { &esc_time } else { "emergency" }, esc_city);
+        let q_plumbing_extra = format!(
+            "Do {} charge extra for {} calls in {}?",
+            esc_svc_low,
+            if has_time { &esc_time } else { "emergency" },
+            esc_city
+        );
         let a_plumbing_extra = format!("Some {} providers in {} may charge premium rates for {}{} calls. We recommend checking business listings in the {} directory for upfront pricing information before booking.", esc_svc_low, esc_city, if has_time { &esc_time } else { "after-hours" }, on_day_str, esc_dir);
         let idx = items.len() + 1;
         items.push(format!(
@@ -785,7 +843,9 @@ function toggleFaq(id){var el=document.getElementById('faq-'+id);if(!el)return;v
 {}
 {}
 {}</div>"##,
-        accordion_style, accordion_js, items.join("\n")
+        accordion_style,
+        accordion_js,
+        items.join("\n")
     )
 }
 
@@ -798,7 +858,7 @@ pub async fn serve_trap_door_page(
          FROM programmatic_pages pp \
          JOIN directories d ON d.id = pp.directory_id \
          WHERE pp.slug = $1 \
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(&slug)
     .fetch_optional(&s.db)
@@ -808,32 +868,67 @@ pub async fn serve_trap_door_page(
     use sqlx::Row;
     let page_id: Uuid = page.try_get("id").unwrap_or_default();
     let dir_id: Uuid = page.try_get("directory_id").unwrap_or_default();
-    let dir_name: String = page.try_get::<String,_>("directory_name").unwrap_or_default();
-    let dir_slug: String = page.try_get::<String,_>("directory_slug").unwrap_or_default();
-    let meta_title: String = page.try_get::<Option<String>, _>("meta_title").ok().flatten()
-        .unwrap_or_else(|| slug.clone());
-    let meta_description: String = page.try_get::<Option<String>, _>("meta_description").ok().flatten()
+    let dir_name: String = page
+        .try_get::<String, _>("directory_name")
         .unwrap_or_default();
-    let h1: String = page.try_get::<Option<String>, _>("h1").ok().flatten().unwrap_or_default();
-    let content: String = page.try_get::<Option<String>, _>("content").ok().flatten().unwrap_or_default();
-    let title: String = page.try_get::<Option<String>, _>("title").ok().flatten().unwrap_or_default();
-    let day_tags: Vec<String> = page.try_get::<Option<Vec<String>>, _>("day_tags").ok().flatten().unwrap_or_default();
-    let time_tags: Vec<String> = page.try_get::<Option<Vec<String>>, _>("time_tags").ok().flatten().unwrap_or_default();
+    let dir_slug: String = page
+        .try_get::<String, _>("directory_slug")
+        .unwrap_or_default();
+    let meta_title: String = page
+        .try_get::<Option<String>, _>("meta_title")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| slug.clone());
+    let meta_description: String = page
+        .try_get::<Option<String>, _>("meta_description")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let h1: String = page
+        .try_get::<Option<String>, _>("h1")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let content: String = page
+        .try_get::<Option<String>, _>("content")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let title: String = page
+        .try_get::<Option<String>, _>("title")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let day_tags: Vec<String> = page
+        .try_get::<Option<Vec<String>>, _>("day_tags")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let time_tags: Vec<String> = page
+        .try_get::<Option<Vec<String>>, _>("time_tags")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
 
     // Track impression asynchronously (fire-and-forget)
     let db = s.db.clone();
     let page_id_track = page_id;
     tokio::spawn(async move {
-        let _ = sqlx::query("UPDATE programmatic_pages SET impressions = impressions + 1 WHERE id=$1")
-            .bind(page_id_track)
-            .execute(&db)
-            .await;
+        let _ =
+            sqlx::query("UPDATE programmatic_pages SET impressions = impressions + 1 WHERE id=$1")
+                .bind(page_id_track)
+                .execute(&db)
+                .await;
     });
 
-    let day_str = if day_tags.is_empty() { String::new() } else {
+    let day_str = if day_tags.is_empty() {
+        String::new()
+    } else {
         format!(" on <strong>{}</strong>", day_tags.join(", "))
     };
-    let time_str = if time_tags.is_empty() { String::new() } else {
+    let time_str = if time_tags.is_empty() {
+        String::new()
+    } else {
         format!(" during <strong>{}</strong>", time_tags.join(", "))
     };
 
@@ -882,7 +977,10 @@ pub async fn serve_trap_door_page(
     // Determine domain for OG image URL
     let og_page_id_str = &page_id.to_string();
     let base_domain = &s.config.base_domain;
-    let og_image_url = format!("https://{}/public/og/trapdoor/{}", base_domain, og_page_id_str);
+    let og_image_url = format!(
+        "https://{}/public/og/trapdoor/{}",
+        base_domain, og_page_id_str
+    );
 
     let mt = htmlesc(&meta_title);
     let md = htmlesc(&meta_description);
@@ -946,17 +1044,20 @@ pub async fn serve_trap_door_page(
         og_img = og_img,
     );
 
-    Ok((StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html))
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    ))
 }
 
 pub async fn scheduled_generate_trap_doors(
     State(s): State<AppState>,
     Path(dir_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-
     // Fetch services, cities, day tags, time tags
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND is_active=true"
+        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND is_active=true",
     )
     .bind(dir_id)
     .fetch_all(&s.db)
@@ -1007,7 +1108,10 @@ pub async fn scheduled_generate_trap_doors(
 
                     let slug = format!(
                         "{}-in-{}-open-{}-on-{}",
-                        service_slug.replace(" ", "-").replace("&", "and").to_lowercase(),
+                        service_slug
+                            .replace(" ", "-")
+                            .replace("&", "and")
+                            .to_lowercase(),
                         city.to_lowercase().replace(" ", "-"),
                         time,
                         day
@@ -1045,7 +1149,7 @@ pub async fn scheduled_generate_trap_doors(
 
                     // Check for existing slug
                     let existing = sqlx::query_scalar::<_, i64>(
-                        "SELECT COUNT(*) FROM programmatic_pages WHERE directory_id=$1 AND slug=$2"
+                        "SELECT COUNT(*) FROM programmatic_pages WHERE directory_id=$1 AND slug=$2",
                     )
                     .bind(dir_id)
                     .bind(&slug)

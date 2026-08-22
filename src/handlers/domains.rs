@@ -9,9 +9,9 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::models::*;
+use crate::AppState;
 
 /// POST /api/v1/admin/domains
 pub async fn register_domain(
@@ -22,15 +22,17 @@ pub async fn register_domain(
     validate_domain_safe(&req.domain)?;
 
     // Check if domain already registered
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM domain_mappings WHERE domain = $1 "
-    )
-    .bind(&req.domain)
-    .fetch_one(&s.db)
-    .await?;
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domain_mappings WHERE domain = $1 ")
+            .bind(&req.domain)
+            .fetch_one(&s.db)
+            .await?;
 
     if existing > 0 {
-        return Err(AppError::Duplicate(format!("Domain '{}' is already registered", req.domain)));
+        return Err(AppError::Duplicate(format!(
+            "Domain '{}' is already registered",
+            req.domain
+        )));
     }
 
     let domain_type = req.domain_type.unwrap_or_else(|| "subfolder".to_string());
@@ -42,7 +44,7 @@ pub async fn register_domain(
            VALUES ($1, $2, $3, $4)
            RETURNING id, directory_id, domain, type as domain_type, status, ssl_enabled,
                      cloudflare_record_id, dns_records, verification_token, auto_configured,
-                     created_at, updated_at"#
+                     created_at, updated_at"#,
     )
     .bind(&req.domain)
     .bind(&domain_type)
@@ -55,14 +57,12 @@ pub async fn register_domain(
 }
 
 /// GET /api/v1/admin/domains
-pub async fn list_domains(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_domains(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let domains = sqlx::query_as::<_, DomainMapping>(
         r#"SELECT id, directory_id, domain, type as domain_type, status, ssl_enabled,
                   cloudflare_record_id, dns_records, verification_token, auto_configured,
                   created_at, updated_at
-           FROM domain_mappings ORDER BY created_at DESC"#
+           FROM domain_mappings ORDER BY created_at DESC"#,
     )
     .fetch_all(&s.db)
     .await?;
@@ -96,7 +96,7 @@ pub async fn verify_domain(
         r#"SELECT id, directory_id, domain, type as domain_type, status, ssl_enabled,
                   cloudflare_record_id, dns_records, verification_token, auto_configured,
                   created_at, updated_at
-           FROM domain_mappings WHERE id = $1"#
+           FROM domain_mappings WHERE id = $1"#,
     )
     .bind(domain_id)
     .fetch_optional(&s.db)
@@ -119,7 +119,7 @@ pub async fn verify_domain(
            WHERE id = $1
            RETURNING id, directory_id, domain, type as domain_type, status, ssl_enabled,
                      cloudflare_record_id, dns_records, verification_token, auto_configured,
-                     created_at, updated_at"#
+                     created_at, updated_at"#,
     )
     .bind(domain_id)
     .fetch_one(&s.db)
@@ -133,7 +133,8 @@ pub async fn verify_domain(
         tracing::warn!("Nginx provisioning for {} failed: {}", mapping.domain, e);
     }
 
-    let ssl_result = provision_ssl_certificate(&mapping.domain, &s.config.admin_email, &upstream_addr).await;
+    let ssl_result =
+        provision_ssl_certificate(&mapping.domain, &s.config.admin_email, &upstream_addr).await;
     let ssl_ok = ssl_result.is_ok();
     if let Err(e) = ssl_result {
         tracing::warn!("SSL provisioning for {} failed: {}", mapping.domain, e);
@@ -153,20 +154,18 @@ pub async fn check_plan_domains(
     State(s): State<AppState>,
     Path(plan_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM domain_mappings "
-    )
-    .fetch_one(&s.db)
-    .await?;
+    let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domain_mappings ")
+        .fetch_one(&s.db)
+        .await?;
 
     let active = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM domain_mappings WHERE status = 'active'"
+        "SELECT COUNT(*) FROM domain_mappings WHERE status = 'active'",
     )
     .fetch_one(&s.db)
     .await?;
 
     let pending = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM domain_mappings WHERE status = 'pending'"
+        "SELECT COUNT(*) FROM domain_mappings WHERE status = 'pending'",
     )
     .fetch_one(&s.db)
     .await?;
@@ -190,10 +189,14 @@ fn validate_domain_safe(domain: &str) -> Result<(), AppError> {
             return Err(AppError::Validation("Invalid domain label".to_string()));
         }
         if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-            return Err(AppError::Validation("Invalid characters in domain".to_string()));
+            return Err(AppError::Validation(
+                "Invalid characters in domain".to_string(),
+            ));
         }
         if label.starts_with('-') || label.ends_with('-') {
-            return Err(AppError::Validation("Domain label cannot start/end with hyphen".to_string()));
+            return Err(AppError::Validation(
+                "Domain label cannot start/end with hyphen".to_string(),
+            ));
         }
     }
     Ok(())
@@ -236,8 +239,8 @@ async fn check_dns_verification(domain: &str, token: &str) -> bool {
 /// Provision nginx site config for a custom domain.
 /// Domain is validated before use. Paths use validated domain only.
 async fn provision_nginx_site(domain: &str, upstream_addr: &str) -> Result<(), String> {
-    use std::process::Command;
     use std::fs;
+    use std::process::Command;
 
     if let Err(e) = validate_domain_safe(domain) {
         return Err(format!("Invalid domain: {}", e.to_string()));
@@ -295,7 +298,11 @@ async fn provision_nginx_site(domain: &str, upstream_addr: &str) -> Result<(), S
 
 /// Provision SSL certificate via certbot or self-signed.
 /// Domain is validated before use. Certbot -d arg uses single validated argument only.
-async fn provision_ssl_certificate(domain: &str, admin_email: &str, upstream_addr: &str) -> Result<(), String> {
+async fn provision_ssl_certificate(
+    domain: &str,
+    admin_email: &str,
+    upstream_addr: &str,
+) -> Result<(), String> {
     use std::process::Command;
 
     if let Err(e) = validate_domain_safe(domain) {
@@ -304,7 +311,15 @@ async fn provision_ssl_certificate(domain: &str, admin_email: &str, upstream_add
 
     // Try certbot first - domain is validated so -d argument is safe
     let certbot = Command::new("certbot")
-        .args(["--nginx", "-d", domain, "--non-interactive", "--agree-tos", "-m", admin_email])
+        .args([
+            "--nginx",
+            "-d",
+            domain,
+            "--non-interactive",
+            "--agree-tos",
+            "-m",
+            admin_email,
+        ])
         .output();
 
     match certbot {
@@ -313,7 +328,11 @@ async fn provision_ssl_certificate(domain: &str, admin_email: &str, upstream_add
             return Ok(());
         }
         Ok(out) => {
-            tracing::warn!("Certbot failed for {}: {}", domain, String::from_utf8_lossy(&out.stderr));
+            tracing::warn!(
+                "Certbot failed for {}: {}",
+                domain,
+                String::from_utf8_lossy(&out.stderr)
+            );
         }
         Err(_) => {
             tracing::warn!("Certbot not available for {}", domain);
@@ -351,9 +370,7 @@ server {{
     std::fs::write(&config_path, &ssl_config)
         .map_err(|e| format!("Failed to write SSL nginx config: {}", e))?;
 
-    let _ = Command::new("systemctl")
-        .args(["reload", "nginx"])
-        .output();
+    let _ = Command::new("systemctl").args(["reload", "nginx"]).output();
 
     Ok(())
 }

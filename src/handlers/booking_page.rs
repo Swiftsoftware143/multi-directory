@@ -8,15 +8,15 @@
 
 use axum::{
     extract::{Path, State},
-    response::IntoResponse,
     http::StatusCode,
+    response::IntoResponse,
 };
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
 use crate::coreswift::coreswift_url;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 lazy_static::lazy_static! {
     static ref HTTP: reqwest::Client = reqwest::Client::builder()
@@ -45,10 +45,10 @@ pub async fn booking_page(
 
     let (dir_id, tenant_id_opt, calendar_slug_opt, dir_name) = directory;
 
-    let tenant_id = tenant_id_opt
-        .ok_or(AppError::BadRequest(format!(
-            "Directory '{}' has no CoreSwift tenant configured", slug
-        )))?;
+    let tenant_id = tenant_id_opt.ok_or(AppError::BadRequest(format!(
+        "Directory '{}' has no CoreSwift tenant configured",
+        slug
+    )))?;
 
     // 2. Look up business by UUID or slug
     let business = if let Ok(bid) = Uuid::parse_str(&business_id_or_slug) {
@@ -69,13 +69,16 @@ pub async fn booking_page(
         .await?
     };
 
-    let (business_id, business_name, description, website) = business
-        .ok_or(AppError::NotFound("Business not found".to_string()))?;
+    let (business_id, business_name, description, website) =
+        business.ok_or(AppError::NotFound("Business not found".to_string()))?;
 
     // 3. Fetch available slots from CoreSwift
     let base = coreswift_url();
     let slots_json = match HTTP
-        .get(format!("{}/api/public/bookings/public/slots/available/{}", base, tenant_id))
+        .get(format!(
+            "{}/api/public/bookings/public/slots/available/{}",
+            base, tenant_id
+        ))
         .timeout(std::time::Duration::from_secs(10))
         .send()
         .await
@@ -83,7 +86,9 @@ pub async fn booking_page(
         Ok(resp) => {
             let status = resp.status();
             if status.is_success() {
-                resp.json::<Value>().await.unwrap_or_else(|_| serde_json::json!({"error": "parse failed"}))
+                resp.json::<Value>()
+                    .await
+                    .unwrap_or_else(|_| serde_json::json!({"error": "parse failed"}))
             } else {
                 serde_json::json!({"error": format!("CoreSwift returned {}", status)})
             }
@@ -117,7 +122,10 @@ pub async fn booking_page(
     };
 
     // 6. Build the booking endpoint URL for the form action
-    let booking_endpoint = format!("/api/v1/directories/{}/businesses/{}/book", slug, business_id);
+    let booking_endpoint = format!(
+        "/api/v1/directories/{}/businesses/{}/book",
+        slug, business_id
+    );
 
     // 7. Render the complete HTML page
     let html = format!(
@@ -482,7 +490,11 @@ pub async fn booking_page(
         booking_endpoint,
     );
 
-    Ok((StatusCode::OK, [("Content-Type", "text/html; charset=utf-8")], html))
+    Ok((
+        StatusCode::OK,
+        [("Content-Type", "text/html; charset=utf-8")],
+        html,
+    ))
 }
 
 /// Format the available slots JSON into a human-readable display string
@@ -493,15 +505,18 @@ fn format_slots_for_display(slots: &Value) -> String {
         }
         let mut lines = Vec::new();
         for slot in slots_array {
-            let name = slot.get("name")
+            let name = slot
+                .get("name")
                 .or_else(|| slot.get("slot_name"))
                 .or_else(|| slot.get("title"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("Appointment");
-            let duration = slot.get("default_duration_days")
+            let duration = slot
+                .get("default_duration_days")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-            let total = slot.get("total_slots")
+            let total = slot
+                .get("total_slots")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
             let note = if duration > 0 {
@@ -526,7 +541,8 @@ fn format_slots_for_display(slots: &Value) -> String {
             return format_slots_for_display(&Value::Array(slots_array.clone()));
         }
         // Show raw JSON for debugging
-        serde_json::to_string_pretty(obj).unwrap_or_else(|_| "Unable to parse slot data".to_string())
+        serde_json::to_string_pretty(obj)
+            .unwrap_or_else(|_| "Unable to parse slot data".to_string())
     } else {
         "No slot information available.".to_string()
     }
@@ -534,7 +550,11 @@ fn format_slots_for_display(slots: &Value) -> String {
 
 /// Pluralize a word
 fn pluralize(word: &str, count: usize) -> String {
-    if count == 1 { word.to_string() } else { format!("{}s", word) }
+    if count == 1 {
+        word.to_string()
+    } else {
+        format!("{}s", word)
+    }
 }
 
 /// Simple HTML escaping
@@ -550,7 +570,8 @@ fn html_escape(s: &str) -> String {
 fn website_link(website: Option<&str>) -> String {
     match website {
         Some(url) if !url.trim().is_empty() => {
-            let display = url.trim_start_matches("https://")
+            let display = url
+                .trim_start_matches("https://")
                 .trim_start_matches("http://")
                 .trim_end_matches('/');
             format!(

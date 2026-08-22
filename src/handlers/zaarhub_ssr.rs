@@ -29,7 +29,11 @@ async fn footer_html(pool: &sqlx::PgPool) -> String {
     for r in &rows {
         let slug: String = r.try_get("slug").unwrap_or_default();
         let title: String = r.try_get("title").unwrap_or_default();
-        links.push_str(&format!("<a href=\"/legal/{}\">{}</a>", h(&slug), h(&title)));
+        links.push_str(&format!(
+            "<a href=\"/legal/{}\">{}</a>",
+            h(&slug),
+            h(&title)
+        ));
     }
 
     format!(
@@ -77,8 +81,14 @@ pub async fn render_city_page(
     let meta_desc: Option<String> = r.try_get("meta_description").unwrap_or(None);
     let city_page_id: Uuid = r.try_get("id").unwrap_or_default();
 
-    let page_title = meta_title.unwrap_or_else(|| format!("Best Businesses in {} | ZaarHub", city_name));
-    let page_desc = meta_desc.unwrap_or_else(|| format!("Find top-rated local businesses in {}. Browse reviews, deals, and more.", city_name));
+    let page_title =
+        meta_title.unwrap_or_else(|| format!("Best Businesses in {} | ZaarHub", city_name));
+    let page_desc = meta_desc.unwrap_or_else(|| {
+        format!(
+            "Find top-rated local businesses in {}. Browse reviews, deals, and more.",
+            city_name
+        )
+    });
 
     // Editor's Picks for this city
     let city_picks = sqlx::query(
@@ -119,10 +129,14 @@ pub async fn render_city_page(
             logo = plogo_html,
             name = h(&pname),
             cat = h(&pcat.unwrap_or_default()),
-            stars = String::from("\u{2605}".repeat(pr as usize)) + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize)),
+            stars = String::from("\u{2605}".repeat(pr as usize))
+                + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize)),
             rating = pr,
             reviews = previews,
-            note_html = pnote.as_ref().map(|n| format!("<p class=\"pick-note\">\u{1f525} {}</p>", h(n))).unwrap_or_default(),
+            note_html = pnote
+                .as_ref()
+                .map(|n| format!("<p class=\"pick-note\">\u{1f525} {}</p>", h(n)))
+                .unwrap_or_default(),
         ));
     }
 
@@ -164,9 +178,14 @@ pub async fn render_city_page(
              WHERE b.name = $1 AND bv.status = 'approved' AND (bv.expires_at IS NULL OR bv.expires_at > now()) \
              LIMIT 1"
         ).bind(&name).fetch_optional(&state.db).await.unwrap_or(None).is_some();
-        let verified_icon = if is_verified { "<span class=\"verified-icon\" title=\"Verified Business\">\u{2714}</span>" } else { "" };
+        let verified_icon = if is_verified {
+            "<span class=\"verified-icon\" title=\"Verified Business\">\u{2714}</span>"
+        } else {
+            ""
+        };
         let r = rating.unwrap_or(0.0);
-        let stars = String::from("★".repeat(r as usize)) + &"☆".repeat(5usize.saturating_sub(r as usize));
+        let stars =
+            String::from("★".repeat(r as usize)) + &"☆".repeat(5usize.saturating_sub(r as usize));
 
         let logo_html = match &logo {
             Some(img) if !img.is_empty() => format!(
@@ -233,7 +252,9 @@ pub async fn render_city_page(
     // Schema.org JSON-LD for SEO
     let schema = format!(
         r#"{{"@context":"https://schema.org","@type":"LocalBusiness","name":"{}","description":"{}","address":{{"@type":"PostalAddress","addressRegion":"FL"}},"aggregateRating":{{"@type":"AggregateRating","bestRating":"5"}},"url":"https://zaarhub.com/{}"}}"#,
-        h(&city_name), h(&page_desc), h(&slug)
+        h(&city_name),
+        h(&page_desc),
+        h(&slug)
     );
 
     let footer = footer_html(&state.db).await;
@@ -366,7 +387,8 @@ pub async fn render_cities_index(
         let puname: String = p.try_get("city_name").unwrap_or_default();
         let pid: Uuid = p.try_get("id").unwrap_or_default();
         let pr = prating.unwrap_or(0.0);
-        let pstars = String::from("\u{2605}".repeat(pr as usize)) + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize));
+        let pstars = String::from("\u{2605}".repeat(pr as usize))
+            + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize));
 
         let plogo_html = match &plogo {
             Some(img) if !img.is_empty() => format!("<img src=\"{}\" alt=\"{}\" class=\"pick-logo\" loading=\"lazy\" onerror=\"this.style.display='none'\">", h(img), h(&pname)),
@@ -392,7 +414,10 @@ pub async fn render_cities_index(
             stars = pstars,
             rating = pr,
             reviews = previews,
-            note_html = pnote.as_ref().map(|n| format!("<p class=\"pick-note\">\u{1f525} {}</p>", h(n))).unwrap_or_default(),
+            note_html = pnote
+                .as_ref()
+                .map(|n| format!("<p class=\"pick-note\">\u{1f525} {}</p>", h(n)))
+                .unwrap_or_default(),
             city = h(&puname),
         ));
     }
@@ -474,9 +499,13 @@ pub async fn render_listing_page(
         "SELECT bl.*, cp.city_name \
          FROM business_listings bl \
          JOIN city_pages cp ON bl.city_page_id = cp.id \
-         WHERE cp.city_slug = $1 AND bl.id = $2"
-    ).bind(&slug).bind(listing_id)
-     .fetch_optional(&state.db).await.unwrap_or(None);
+         WHERE cp.city_slug = $1 AND bl.id = $2",
+    )
+    .bind(&slug)
+    .bind(listing_id)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None);
 
     if row.is_none() {
         return axum::response::Html(format!(
@@ -501,18 +530,50 @@ pub async fn render_listing_page(
     let city_name: String = r.try_get("city_name").unwrap_or_default();
 
     let rv = rating.unwrap_or(0.0);
-    let stars = String::from("★".repeat(rv as usize)) + &"☆".repeat(5usize.saturating_sub(rv as usize));
-    let page_title = format!("{} — {} | ZaarHub", name, cat.as_deref().unwrap_or("Business"));
+    let stars =
+        String::from("★".repeat(rv as usize)) + &"☆".repeat(5usize.saturating_sub(rv as usize));
+    let page_title = format!(
+        "{} — {} | ZaarHub",
+        name,
+        cat.as_deref().unwrap_or("Business")
+    );
 
     let logo_html = match &logo {
         Some(img) if !img.is_empty() => format!("<img src=\"{}\" alt=\"{}\" class=\"detail-logo\" onerror=\"this.style.display='none'\">", h(img), h(&name)),
         _ => format!("<div class='detail-logo-placeholder'>{}</div>", h(&name[..1.min(name.len())])),
     };
-    let fb = if is_featured { "<span class=\"featured-badge\">⭐ Featured</span>" } else { "" };
-    let cat_html = cat.as_ref().map(|c| format!("<span class=\"category-tag\">{}</span>", h(c))).unwrap_or_default();
-    let desc_html = desc.as_ref().map(|d| format!("<p class=\"desc\">{}</p>", h(d))).unwrap_or_default();
-    let addr_html = addr.as_ref().map(|a| format!("<div class='meta-row'><span class='icon'>📍</span><span>{}</span></div>", h(a))).unwrap_or_default();
-    let phone_html = phone.as_ref().map(|p| format!("<div class='meta-row'><span class='icon'>📞</span><a href='tel:{}'>{}</a></div>", h(p), h(p))).unwrap_or_default();
+    let fb = if is_featured {
+        "<span class=\"featured-badge\">⭐ Featured</span>"
+    } else {
+        ""
+    };
+    let cat_html = cat
+        .as_ref()
+        .map(|c| format!("<span class=\"category-tag\">{}</span>", h(c)))
+        .unwrap_or_default();
+    let desc_html = desc
+        .as_ref()
+        .map(|d| format!("<p class=\"desc\">{}</p>", h(d)))
+        .unwrap_or_default();
+    let addr_html = addr
+        .as_ref()
+        .map(|a| {
+            format!(
+                "<div class='meta-row'><span class='icon'>📍</span><span>{}</span></div>",
+                h(a)
+            )
+        })
+        .unwrap_or_default();
+    let phone_html = phone
+        .as_ref()
+        .map(|p| {
+            format!(
+                "<div class='meta-row'><span class='icon'>📞</span><a href='tel:{}'>{}</a></div>",
+                h(p),
+                h(p)
+            )
+        })
+        .unwrap_or_default();
     let web_html = web.as_ref().map(|w| {
         let (clean_url, display_label) = crate::utils::url_cleaner::clean_url_pair(w);
         format!("<div class='meta-row'><span class='icon'>🌐</span><a href='{}' target='_blank' rel='noopener'>{}</a></div>", h(&clean_url), h(&display_label))
@@ -542,8 +603,13 @@ pub async fn render_listing_page(
         let ver_date: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
             "SELECT MAX(bv.created_at)::timestamp FROM business_verifications bv \
              JOIN businesses b ON bv.business_id = b.id \
-             WHERE b.name = $1 AND bv.status = 'approved'"
-        ).bind(&name).fetch_optional(&state.db).await.unwrap_or(None).flatten();
+             WHERE b.name = $1 AND bv.status = 'approved'",
+        )
+        .bind(&name)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None)
+        .flatten();
 
         let updated: Option<chrono::NaiveDateTime> = r.try_get("updated_at").unwrap_or(None);
         let latest = match (ver_date, updated) {
@@ -566,10 +632,16 @@ pub async fn render_listing_page(
     // Offers
     let offers = sqlx::query(
         "SELECT offer_title, offer_type, discount_value, offer_description \
-         FROM claim_offers WHERE listing_id = $1 AND is_active = true"
-    ).bind(listing_id).fetch_all(&state.db).await.unwrap_or_default();
+         FROM claim_offers WHERE listing_id = $1 AND is_active = true",
+    )
+    .bind(listing_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
 
-    let offers_html = if offers.is_empty() { String::new() } else {
+    let offers_html = if offers.is_empty() {
+        String::new()
+    } else {
         let mut htm = String::new();
         for o in &offers {
             let ot: String = o.try_get("offer_title").unwrap_or_default();
@@ -590,7 +662,13 @@ pub async fn render_listing_page(
     // JSON-LD
     let schema = format!(
         r#"{{"@context":"https://schema.org","@type":"LocalBusiness","name":"{}","description":"{}","address":{{"@type":"PostalAddress","streetAddress":"{}"}},"aggregateRating":{{"@type":"AggregateRating","ratingValue":"{}","reviewCount":"{}"}},"url":"https://zaarhub.com/zaarhub/{}/{}"}}"#,
-        h(&name), h(&desc.clone().unwrap_or_default()), h(&addr.unwrap_or_default()), rv, reviews, h(&slug), listing_id,
+        h(&name),
+        h(&desc.clone().unwrap_or_default()),
+        h(&addr.unwrap_or_default()),
+        rv,
+        reviews,
+        h(&slug),
+        listing_id,
     );
     let footer = footer_html(&state.db).await;
 
@@ -655,14 +733,27 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 {footer}
 {cookie_banner}
 </body></html>"#,
-        title = h(&page_title), desc = h(&desc.unwrap_or_default()),
-        slug = h(&slug), id = listing_id, schema = schema,
-        name = h(&name), city_name = h(&city_name),
-        logo_html = logo_html, fb = fb, verified_html = verified_html, cat_html = cat_html,
-        stars = stars, rating = rv, reviews = reviews,
-        desc_html = desc_html, freshness_html = freshness_html, addr_html = addr_html,
-        phone_html = phone_html, web_html = web_html,
-        maps_html = maps_html, offers_html = offers_html,
+        title = h(&page_title),
+        desc = h(&desc.unwrap_or_default()),
+        slug = h(&slug),
+        id = listing_id,
+        schema = schema,
+        name = h(&name),
+        city_name = h(&city_name),
+        logo_html = logo_html,
+        fb = fb,
+        verified_html = verified_html,
+        cat_html = cat_html,
+        stars = stars,
+        rating = rv,
+        reviews = reviews,
+        desc_html = desc_html,
+        freshness_html = freshness_html,
+        addr_html = addr_html,
+        phone_html = phone_html,
+        web_html = web_html,
+        maps_html = maps_html,
+        offers_html = offers_html,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
     ))
@@ -674,13 +765,17 @@ pub async fn render_legal_page(
     State(state): State<AppState>,
 ) -> impl axum::response::IntoResponse {
     let row = sqlx::query(
-        "SELECT title, content FROM zaarhub_legal_pages WHERE slug = $1 AND is_published = true"
-    ).bind(&slug).fetch_optional(&state.db).await.unwrap_or(None);
+        "SELECT title, content FROM zaarhub_legal_pages WHERE slug = $1 AND is_published = true",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None);
 
     let (title, content) = match row {
         Some(r) => (
-            r.try_get::<String,_>("title").unwrap_or_default(),
-            r.try_get::<String,_>("content").unwrap_or_default(),
+            r.try_get::<String, _>("title").unwrap_or_default(),
+            r.try_get::<String, _>("content").unwrap_or_default(),
         ),
         None => {
             return axum::response::Html(format!(
@@ -725,7 +820,9 @@ footer a{{color:#f27f2f;text-decoration:none}}
 {footer}
 {cookie_banner}
 </body></html>"#,
-        title = h(&title), slug = h(&slug), content = content,
+        title = h(&title),
+        slug = h(&slug),
+        content = content,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
     ))

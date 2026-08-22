@@ -7,17 +7,14 @@
 //!
 //! Both calls are fire-and-forget with 5s timeouts. Errors are logged, not returned.
 
-use axum::{
-    extract::State,
-    Json,
-};
+use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::coreswift::{coreswift_url, internal_key};
 use crate::error::ApiResult;
-use crate::coreswift::{internal_key, coreswift_url};
+use crate::AppState;
 
 lazy_static::lazy_static! {
     static ref SYNC_CLIENT: reqwest::Client = reqwest::Client::builder()
@@ -34,11 +31,11 @@ pub struct TagSyncEvent {
     pub last_name: Option<String>,
     pub phone: Option<String>,
     pub tags: Vec<String>,
-    pub city_list: Option<String>,      // CoreSwift list name to add to
-    pub list_type: Option<String>,       // businesses|sponsors|subscribers
+    pub city_list: Option<String>, // CoreSwift list name to add to
+    pub list_type: Option<String>, // businesses|sponsors|subscribers
     pub directory_slug: Option<String>,
     pub source: Option<String>,
-    pub tenant_id: Option<String>,       // CoreSwift tenant UUID (resolved by caller if known)
+    pub tenant_id: Option<String>, // CoreSwift tenant UUID (resolved by caller if known)
     pub coreswift_list_id: Option<String>, // Pre-resolved list UUID
 }
 
@@ -46,13 +43,18 @@ pub struct TagSyncEvent {
 async fn perform_tag_sync(event: TagSyncEvent) {
     tracing::info!(
         "[tag-sync] Performing sync: email={} tags={:?} source={:?}",
-        event.email, event.tags, event.source
+        event.email,
+        event.tags,
+        event.source
     );
 
     let first_name = event.first_name.clone().unwrap_or_default();
     let last_name = event.last_name.clone().unwrap_or_default();
     let phone = event.phone.clone().unwrap_or_default();
-    let source = event.source.clone().unwrap_or_else(|| "multidirectory".to_string());
+    let source = event
+        .source
+        .clone()
+        .unwrap_or_else(|| "multidirectory".to_string());
     let directory_slug = event.directory_slug.clone().unwrap_or_default();
     let coreswift_list_id = event.coreswift_list_id.clone();
 
@@ -120,19 +122,16 @@ async fn perform_tag_sync(event: TagSyncEvent) {
         });
 
         tokio::spawn(async move {
-            match SYNC_CLIENT
-                .post(&is_url)
-                .json(&is_payload)
-                .send()
-                .await
-            {
+            match SYNC_CLIENT.post(&is_url).json(&is_payload).send().await {
                 Ok(resp) => {
                     if resp.status().is_success() {
                         tracing::info!("[tag-sync] IncentiveSwift sync OK for {}", email_is);
                     } else {
                         let status = resp.status();
                         let body_text = resp.text().await.unwrap_or_default();
-                        tracing::warn!("[tag-sync] IncentiveSwift sync returned {status}: {body_text}");
+                        tracing::warn!(
+                            "[tag-sync] IncentiveSwift sync returned {status}: {body_text}"
+                        );
                     }
                 }
                 Err(e) => {
@@ -149,7 +148,8 @@ async fn perform_tag_sync(event: TagSyncEvent) {
             let cs_url_c = cs_url.clone();
             let cs_key_c = cs_key.clone();
             tokio::spawn(async move {
-                let _ = add_contact_to_coreswift_list(cs_url_c, cs_key_c, list_uuid, email_cs).await;
+                let _ =
+                    add_contact_to_coreswift_list(cs_url_c, cs_key_c, list_uuid, email_cs).await;
             });
         }
     }
@@ -196,7 +196,10 @@ async fn add_contact_to_coreswift_list(
         })?;
 
     if !resp.status().is_success() {
-        tracing::warn!("[tag-sync] CoreSwift contact create returned {}", resp.status());
+        tracing::warn!(
+            "[tag-sync] CoreSwift contact create returned {}",
+            resp.status()
+        );
         return Err(());
     }
 
@@ -208,7 +211,10 @@ async fn add_contact_to_coreswift_list(
     }
 
     let _ = SYNC_CLIENT
-        .post(format!("{}/api/internal/lists/{}/members", coreswift_url, list_id))
+        .post(format!(
+            "{}/api/internal/lists/{}/members",
+            coreswift_url, list_id
+        ))
         .header("x-internal-key", &internal_key)
         .json(&json!({
             "contact_id": contact_id_str,
@@ -288,31 +294,32 @@ pub async fn register_member_in_is(
     let member_type_for_log = member_type.to_string();
 
     tokio::spawn(async move {
-        match SYNC_CLIENT
-            .post(&is_url)
-            .json(&payload)
-            .send()
-            .await
-        {
+        match SYNC_CLIENT.post(&is_url).json(&payload).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
                     tracing::info!(
                         "[register-member] IS enrollment OK for {} ({})",
-                        email_for_log, member_type_for_log
+                        email_for_log,
+                        member_type_for_log
                     );
                 } else {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
                     tracing::warn!(
                         "[register-member] IS enrollment FAILED for {} ({}): {} {}",
-                        email_for_log, member_type_for_log, status, body
+                        email_for_log,
+                        member_type_for_log,
+                        status,
+                        body
                     );
                 }
             }
             Err(e) => {
                 tracing::warn!(
                     "[register-member] IS enrollment request failed for {} ({}): {}",
-                    email_for_log, member_type_for_log, e
+                    email_for_log,
+                    member_type_for_log,
+                    e
                 );
             }
         }

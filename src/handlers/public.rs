@@ -6,16 +6,16 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use uuid::Uuid;
 
-use crate::auth::models::Claims;
 use crate::auth::middleware::verify_token;
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
+use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
 use crate::utils;
+use crate::AppState;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PublicPage {
@@ -85,9 +85,7 @@ pub struct UpdatePublicPageRequest {
 }
 
 /// GET /api/v1/public_pages — list all public_pages
-pub async fn list_public_pages(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_public_pages(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let public_pages = sqlx::query_as::<_, PublicPage>(
         "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages ORDER BY created_at DESC "
     )
@@ -98,9 +96,7 @@ pub async fn list_public_pages(
 }
 
 /// GET /api/v1/public_pages/featured — featured public_pages across all directories
-pub async fn list_featured_public_pages(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_featured_public_pages(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let public_pages = sqlx::query_as::<_, PublicPage>(
         "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
     )
@@ -249,7 +245,9 @@ pub async fn claim_public_page(
     if let Some(limit) = public_page.redemption_limit {
         let count = public_page.redemption_count.unwrap_or(0);
         if count >= limit {
-            return Err(AppError::BadRequest("Redemption limit reached for this public_page".into()));
+            return Err(AppError::BadRequest(
+                "Redemption limit reached for this public_page".into(),
+            ));
         }
     }
 
@@ -268,13 +266,11 @@ pub async fn list_directory_public_pages(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let public_pages = sqlx::query_as::<_, PublicPage>(
         "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE directory_id = \x241 ORDER BY created_at DESC "
@@ -291,13 +287,11 @@ pub async fn list_business_public_pages(
     State(s): State<AppState>,
     Path((slug, business_id)): Path<(String, Uuid)>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let public_pages = sqlx::query_as::<_, PublicPage>(
         "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
@@ -310,35 +304,28 @@ pub async fn list_business_public_pages(
     Ok(Json(public_pages))
 }
 
-
 // ── Landing Pages (re-exported from public_pages) ────────────────
 pub use crate::handlers::public_pages::{
-    list_landing_pages,
-    create_landing_page,
-    get_landing_page,
-    update_landing_page,
-    delete_landing_page,
-    toggle_publish,
-    list_public_themes,
-    create_public_theme,
-    get_public_theme,
-    update_public_theme,
-    delete_public_theme,
+    create_landing_page, create_public_theme, delete_landing_page, delete_public_theme,
+    get_landing_page, get_public_theme, list_landing_pages, list_public_themes, toggle_publish,
+    update_landing_page, update_public_theme,
 };
 
 // ── Homepage / Directory / Business data endpoints ──────────────
 
-pub async fn homepage_data(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Value>> {
-    Ok(Json(json!({"status": "ok", "message": "Homepage data endpoint"})))
+pub async fn homepage_data(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    Ok(Json(
+        json!({"status": "ok", "message": "Homepage data endpoint"}),
+    ))
 }
 
 pub async fn directory_data(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    Ok(Json(json!({"slug": slug, "message": "Directory data endpoint"})))
+    Ok(Json(
+        json!({"slug": slug, "message": "Directory data endpoint"}),
+    ))
 }
 
 pub async fn business_data(
@@ -347,17 +334,20 @@ pub async fn business_data(
 ) -> ApiResult<impl IntoResponse> {
     // 1. Look up directory by slug
     let directory = sqlx::query_as::<_, crate::models::Directory>(
-        "SELECT * FROM directories WHERE slug = \x241 "
+        "SELECT * FROM directories WHERE slug = \x241 ",
     )
     .bind(&slug)
     .fetch_optional(&s.db)
     .await?
-    .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    .ok_or(AppError::NotFound(format!(
+        "Directory '{}' not found",
+        slug
+    )))?;
 
     // 2. Look up business by ID (try UUID first, then slug)
     let business = if let Ok(bid) = Uuid::parse_str(&business_id) {
         sqlx::query_as::<_, crate::models::Business>(
-            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 "
+            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 ",
         )
         .bind(bid)
         .bind(directory.id)
@@ -365,7 +355,7 @@ pub async fn business_data(
         .await?
     } else {
         sqlx::query_as::<_, crate::models::Business>(
-            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 "
+            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 ",
         )
         .bind(&business_id)
         .bind(directory.id)
@@ -376,7 +366,7 @@ pub async fn business_data(
 
     // 3. Look up business meta (AI-optimized fields from business_meta table)
     let meta = sqlx::query_as::<_, crate::models::BusinessMeta>(
-        "SELECT * FROM business_meta WHERE business_id = \x241 AND template = \x242 "
+        "SELECT * FROM business_meta WHERE business_id = \x241 AND template = \x242 ",
     )
     .bind(business.id)
     .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
@@ -397,7 +387,11 @@ pub async fn business_data(
     let mut business_obj = serde_json::to_value(&business).unwrap_or_else(|_| json!({}));
 
     // ── CTA Button Data (computed before mutable borrow) ────────────
-    let cta_type_val = meta.get("cta_type").and_then(|v| v.as_str()).unwrap_or("none").to_string();
+    let cta_type_val = meta
+        .get("cta_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("none")
+        .to_string();
     let cta_url = if cta_type_val != "none" {
         utils::resolve_cta_url(&cta_type_val, &business_obj, &meta)
     } else {
@@ -410,7 +404,7 @@ pub async fn business_data(
         // Add category name if business has a category_id
         if let Some(cat_id) = business.category_id {
             let cat = sqlx::query_scalar::<_, Option<String>>(
-                "SELECT name FROM directory_categories WHERE id = \x241 "
+                "SELECT name FROM directory_categories WHERE id = \x241 ",
             )
             .bind(cat_id)
             .fetch_optional(&s.db)
@@ -429,17 +423,25 @@ pub async fn business_data(
         }
 
         // Provide sensible defaults where template expects data
-        obj.entry("schema_type").or_insert_with(|| json!("LocalBusiness"));
+        obj.entry("schema_type")
+            .or_insert_with(|| json!("LocalBusiness"));
         obj.entry("description_plain").or_insert_with(|| {
-            business.description.clone().map(|d| {
-                // Strip HTML tags for plain-text description
-                d.replace("<p>", "").replace("</p>", " ")
-                 .replace("<br>", " ")
-                 .replace("<br/>", " ")
-                 .replace('<', "")
-                 .replace('>', "")
-                 .trim().to_string()
-            }).unwrap_or_default().into()
+            business
+                .description
+                .clone()
+                .map(|d| {
+                    // Strip HTML tags for plain-text description
+                    d.replace("<p>", "")
+                        .replace("</p>", " ")
+                        .replace("<br>", " ")
+                        .replace("<br/>", " ")
+                        .replace('<', "")
+                        .replace('>', "")
+                        .trim()
+                        .to_string()
+                })
+                .unwrap_or_default()
+                .into()
         });
         obj.entry("image_url").or_insert_with(|| json!(""));
         obj.entry("price_range").or_insert_with(|| json!("$$"));
@@ -464,15 +466,18 @@ pub async fn business_data(
         obj.entry("flat_rate").or_insert_with(|| json!(""));
         obj.entry("booking_method").or_insert_with(|| json!(""));
         obj.entry("typical_wait").or_insert_with(|| json!(""));
-        obj.entry("license_info").or_insert_with(|| json!("licensed"));
-        obj.entry("insurance_info").or_insert_with(|| json!("general liability insurance"));
+        obj.entry("license_info")
+            .or_insert_with(|| json!("licensed"));
+        obj.entry("insurance_info")
+            .or_insert_with(|| json!("general liability insurance"));
         obj.entry("certifications").or_insert_with(|| json!(""));
 
         // ── CTA Button Data ───────────────────────────────────────────
         // Values computed above before the mutable borrow; insert them now.
         obj.entry("cta_type").or_insert_with(|| json!(cta_type_val));
         obj.entry("cta_url").or_insert_with(|| json!(cta_url));
-        obj.entry("cta_label").or_insert_with(|| json!(cta_label_text));
+        obj.entry("cta_label")
+            .or_insert_with(|| json!(cta_label_text));
         obj.entry("cta_icon").or_insert_with(|| json!(cta_icon));
     }
 
@@ -509,11 +514,9 @@ pub async fn business_data(
 
     // 6. Render template
     let engine = s.template_engine.lock().unwrap();
-    let html = engine.render_directory_page(
-        crate::template_engine::TEMPLATE_BUSINESS_DETAIL,
-        &context,
-    )
-    .map_err(|e| AppError::Internal(e))?;
+    let html = engine
+        .render_directory_page(crate::template_engine::TEMPLATE_BUSINESS_DETAIL, &context)
+        .map_err(|e| AppError::Internal(e))?;
 
     Ok(axum::response::Html(html))
 }
@@ -527,10 +530,8 @@ pub async fn saved_places_page(
     headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     // Manually verify visitor JWT from Authorization header
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
-    
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
+
     let visitor_id = match auth_header {
         Some(header) if header.starts_with("Bearer ") => {
             let token = header.strip_prefix("Bearer ").unwrap_or("");
@@ -577,37 +578,42 @@ pub async fn saved_places_page(
         LEFT JOIN directory_categories dc ON dc.id = b.category_id
         JOIN directories d ON d.id = vf.directory_id
         WHERE vf.visitor_account_id = $1
-        ORDER BY vf.created_at DESC"#
+        ORDER BY vf.created_at DESC"#,
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
     .await?;
 
     // Enhance with image_url from images JSON array
-    let saved_places: Vec<serde_json::Value> = favorites.into_iter().map(|f| {
-        let image_url = f.images.as_ref()
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let description = None::<String>; // Could fetch from business.description if needed
-        json!({
-            "id": f.id,
-            "saved_at": f.saved_at,
-            "business_id": f.business_id,
-            "business_name": f.business_name,
-            "business_slug": f.business_slug,
-            "city": f.city,
-            "state": f.state,
-            "category_name": f.category_name,
-            "image_url": image_url,
-            "rating": f.rating,
-            "review_count": f.review_count,
-            "phone": f.phone,
-            "directory_slug": f.directory_slug,
-            "description": description,
+    let saved_places: Vec<serde_json::Value> = favorites
+        .into_iter()
+        .map(|f| {
+            let image_url = f
+                .images
+                .as_ref()
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let description = None::<String>; // Could fetch from business.description if needed
+            json!({
+                "id": f.id,
+                "saved_at": f.saved_at,
+                "business_id": f.business_id,
+                "business_name": f.business_name,
+                "business_slug": f.business_slug,
+                "city": f.city,
+                "state": f.state,
+                "category_name": f.category_name,
+                "image_url": image_url,
+                "rating": f.rating,
+                "review_count": f.review_count,
+                "phone": f.phone,
+                "directory_slug": f.directory_slug,
+                "description": description,
+            })
         })
-    }).collect();
+        .collect();
 
     // Build context — use a default directory for nav
     let dir_val = json!({
@@ -624,11 +630,9 @@ pub async fn saved_places_page(
     });
 
     let engine = s.template_engine.lock().unwrap();
-    let html = engine.render_directory_page(
-        crate::template_engine::TEMPLATE_SAVED_PLACES,
-        &context,
-    )
-    .map_err(|e| AppError::Internal(e))?;
+    let html = engine
+        .render_directory_page(crate::template_engine::TEMPLATE_SAVED_PLACES, &context)
+        .map_err(|e| AppError::Internal(e))?;
 
     Ok(axum::response::Html(html).into_response())
 }
@@ -639,22 +643,18 @@ pub async fn my_bookings_page(
     headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     // Manually verify visitor JWT from Authorization header
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
-    
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
+
     let visitor_id = match auth_header {
         Some(header) if header.starts_with("Bearer ") => {
             let token = header.strip_prefix("Bearer ").unwrap_or("");
             match verify_token(token, &s.config.jwt_secret) {
-                Ok(claims) => {
-                    match Uuid::parse_str(&claims.sub) {
-                        Ok(id) => id,
-                        Err(_) => {
-                            return Ok(axum::response::Redirect::to("/visitor").into_response());
-                        }
+                Ok(claims) => match Uuid::parse_str(&claims.sub) {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return Ok(axum::response::Redirect::to("/visitor").into_response());
                     }
-                }
+                },
                 Err(_) => {
                     return Ok(axum::response::Redirect::to("/visitor").into_response());
                 }
@@ -666,35 +666,64 @@ pub async fn my_bookings_page(
     };
 
     // Fetch visitor's bookings
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, Uuid, Option<String>, Option<String>,
-        Option<chrono::DateTime<chrono::Utc>>, Option<String>,
-        String, Option<String>, chrono::DateTime<chrono::Utc>, String)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Uuid,
+            Option<String>,
+            Option<String>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<String>,
+            String,
+            Option<String>,
+            chrono::DateTime<chrono::Utc>,
+            String,
+        ),
+    >(
         r#"SELECT sb.id, sb.directory_id, sb.business_id, sb.service_name, sb.description,
                   sb.preferred_date, sb.preferred_time, sb.status, sb.notes, sb.created_at,
                   b.name as business_name
            FROM service_bookings sb
            JOIN businesses b ON b.id = sb.business_id
            WHERE sb.visitor_account_id = $1
-           ORDER BY sb.created_at DESC"#
+           ORDER BY sb.created_at DESC"#,
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
     .await?;
 
-    let bookings: Vec<Value> = rows.into_iter().map(|(id, dir_id, biz_id, svc_name, desc,
-        pref_date, pref_time, status, notes, created_at, biz_name)| {
-        json!({
-            "id": id,
-            "business_name": biz_name,
-            "service_name": svc_name,
-            "description": desc,
-            "preferred_date": pref_date,
-            "preferred_time": pref_time,
-            "status": status,
-            "notes": notes,
-            "created_at": created_at,
-        })
-    }).collect();
+    let bookings: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(
+                id,
+                dir_id,
+                biz_id,
+                svc_name,
+                desc,
+                pref_date,
+                pref_time,
+                status,
+                notes,
+                created_at,
+                biz_name,
+            )| {
+                json!({
+                    "id": id,
+                    "business_name": biz_name,
+                    "service_name": svc_name,
+                    "description": desc,
+                    "preferred_date": pref_date,
+                    "preferred_time": pref_time,
+                    "status": status,
+                    "notes": notes,
+                    "created_at": created_at,
+                })
+            },
+        )
+        .collect();
 
     // Build context
     let dir_val = json!({
@@ -711,12 +740,9 @@ pub async fn my_bookings_page(
     });
 
     let engine = s.template_engine.lock().unwrap();
-    let html = engine.render_directory_page(
-        crate::template_engine::TEMPLATE_MY_BOOKINGS,
-        &context,
-    )
-    .map_err(|e| AppError::Internal(e))?;
+    let html = engine
+        .render_directory_page(crate::template_engine::TEMPLATE_MY_BOOKINGS, &context)
+        .map_err(|e| AppError::Internal(e))?;
 
     Ok(axum::response::Html(html).into_response())
 }
-

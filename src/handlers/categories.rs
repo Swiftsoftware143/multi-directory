@@ -3,8 +3,8 @@ use serde::Serialize;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::error::ApiResult;
+use crate::AppState;
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct Category {
@@ -16,7 +16,7 @@ pub struct Category {
 
 pub async fn list_all_categories(State(s): State<AppState>) -> ApiResult<Json<Vec<Category>>> {
     let cats = sqlx::query_as::<_, Category>(
-        "SELECT id, name, slug, directory_id FROM directory_categories ORDER BY name"
+        "SELECT id, name, slug, directory_id FROM directory_categories ORDER BY name",
     )
     .fetch_all(&s.db)
     .await?;

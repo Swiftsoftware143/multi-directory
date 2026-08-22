@@ -28,7 +28,11 @@ async fn footer_html(pool: &sqlx::PgPool) -> String {
     for r in &rows {
         let slug: String = r.try_get("slug").unwrap_or_default();
         let title: String = r.try_get("title").unwrap_or_default();
-        links.push_str(&format!("<a href=\"/legal/{}\">{}</a>", h(&slug), h(&title)));
+        links.push_str(&format!(
+            "<a href=\"/legal/{}\">{}</a>",
+            h(&slug),
+            h(&title)
+        ));
     }
 
     format!(
@@ -99,8 +103,11 @@ pub async fn render_rfq_marketplace(
          FROM rfqs r \
          LEFT JOIN businesses b ON r.poster_business_id = b.id \
          WHERE r.is_public = true \
-         ORDER BY r.created_at DESC LIMIT 50"
-    ).fetch_all(&state.db).await.unwrap_or_default();
+         ORDER BY r.created_at DESC LIMIT 50",
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
 
     let mut cards_html = String::new();
     for r in &rows {
@@ -116,7 +123,11 @@ pub async fn render_rfq_marketplace(
         let bid_count: i64 = r.try_get("bid_count").unwrap_or(0);
         let poster: String = r.try_get("poster_name").unwrap_or_default();
 
-        let status_class = if status == "open" { "tag-open" } else { "tag-closed" };
+        let status_class = if status == "open" {
+            "tag-open"
+        } else {
+            "tag-closed"
+        };
         let budget_str = match (budget_min, budget_max) {
             (Some(min), Some(max)) => format!("${:.0} – ${:.0}", min, max),
             (Some(min), None) => format!("From ${:.0}", min),
@@ -139,14 +150,30 @@ pub async fn render_rfq_marketplace(
   </a>"#,
             id = rid,
             title = h(&title),
-            cat_html = cat.as_ref().map(|c| format!("<span class=\"cat-tag\">{}</span>", h(c))).unwrap_or_default(),
-            desc_html = desc.as_ref().map(|d| format!("<p class=\"desc\">{}</p>", h(d))).unwrap_or_default(),
+            cat_html = cat
+                .as_ref()
+                .map(|c| format!("<span class=\"cat-tag\">{}</span>", h(c)))
+                .unwrap_or_default(),
+            desc_html = desc
+                .as_ref()
+                .map(|d| format!("<p class=\"desc\">{}</p>", h(d)))
+                .unwrap_or_default(),
             status_class = status_class,
             status = h(&status),
-            budget_span = if !budget_str.is_empty() { format!("<span>💰 {}</span>", h(&budget_str)) } else { String::new() },
-            qty_span = quantity.as_ref().map(|q| format!("<span>📏 {}</span>", h(q))).unwrap_or_default(),
+            budget_span = if !budget_str.is_empty() {
+                format!("<span>💰 {}</span>", h(&budget_str))
+            } else {
+                String::new()
+            },
+            qty_span = quantity
+                .as_ref()
+                .map(|q| format!("<span>📏 {}</span>", h(q)))
+                .unwrap_or_default(),
             bid_count = bid_count,
-            deadline_span = deadline.as_ref().map(|d| format!("<span>⏰ {}</span>", h(d))).unwrap_or_default(),
+            deadline_span = deadline
+                .as_ref()
+                .map(|d| format!("<span>⏰ {}</span>", h(d)))
+                .unwrap_or_default(),
             poster = h(&poster),
         ));
     }
@@ -193,9 +220,7 @@ pub async fn render_rfq_marketplace(
 }
 
 /// Render Co-op Buying Groups page (public SSR)
-pub async fn render_coop_hub(
-    State(state): State<AppState>,
-) -> impl axum::response::IntoResponse {
+pub async fn render_coop_hub(State(state): State<AppState>) -> impl axum::response::IntoResponse {
     let rows = sqlx::query(
         "SELECT g.id, g.name, g.description, g.category, g.status, g.member_count, \
                 g.min_members, g.max_members, \
@@ -241,8 +266,14 @@ pub async fn render_coop_hub(
   </a>"#,
             id = gid,
             name = h(&name),
-            cat_html = cat.as_ref().map(|c| format!("<span class=\"cat-tag\">{}</span>", h(c))).unwrap_or_default(),
-            desc_html = desc.as_ref().map(|d| format!("<p class=\"desc\">{}</p>", h(d))).unwrap_or_default(),
+            cat_html = cat
+                .as_ref()
+                .map(|c| format!("<span class=\"cat-tag\">{}</span>", h(c)))
+                .unwrap_or_default(),
+            desc_html = desc
+                .as_ref()
+                .map(|d| format!("<p class=\"desc\">{}</p>", h(d)))
+                .unwrap_or_default(),
             status_span = format!("<span class=\"tag {}\">{}</span>", status_class, h(&status)),
             members = member_count,
             max = max_members,
@@ -304,8 +335,11 @@ pub async fn render_lead_exchange(
          FROM shared_leads l \
          LEFT JOIN businesses b ON l.poster_business_id = b.id \
          WHERE l.status = 'available' \
-         ORDER BY l.created_at DESC LIMIT 50"
-    ).fetch_all(&state.db).await.unwrap_or_default();
+         ORDER BY l.created_at DESC LIMIT 50",
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
 
     let mut cards_html = String::new();
     for r in &rows {
@@ -314,7 +348,8 @@ pub async fn render_lead_exchange(
         let desc: Option<String> = r.try_get("description").unwrap_or(None);
         let cat: Option<String> = r.try_get("category").unwrap_or(None);
         let location: Option<String> = r.try_get("location").unwrap_or(None);
-        let est_value: Option<rust_decimal::Decimal> = r.try_get("estimated_value").unwrap_or_default();
+        let est_value: Option<rust_decimal::Decimal> =
+            r.try_get("estimated_value").unwrap_or_default();
         let source: Option<String> = r.try_get("source").unwrap_or(None);
         let poster: String = r.try_get("poster_name").unwrap_or_default();
         let expires_at: Option<String> = r.try_get("expires_at").unwrap_or(None);
@@ -335,12 +370,29 @@ pub async fn render_lead_exchange(
   </a>"#,
             id = lid,
             title = h(&title),
-            cat_html = cat.as_ref().map(|c| format!("<span class=\"cat-tag\">{}</span>", h(c))).unwrap_or_default(),
-            desc_html = desc.as_ref().map(|d| format!("<p class=\"desc\">{}</p>", h(d))).unwrap_or_default(),
-            value_span = est_value.map(|v| format!("<span>💵 ${:.0}</span>", v)).unwrap_or_default(),
-            loc_span = location.as_ref().map(|l| format!("<span>📍 {}</span>", h(l))).unwrap_or_default(),
-            source_span = source.as_ref().map(|s| format!("<span>📬 {}</span>", h(s))).unwrap_or_default(),
-            expires_span = expires_at.as_ref().map(|e| format!("<span>⏰ Expires {}</span>", h(e))).unwrap_or_default(),
+            cat_html = cat
+                .as_ref()
+                .map(|c| format!("<span class=\"cat-tag\">{}</span>", h(c)))
+                .unwrap_or_default(),
+            desc_html = desc
+                .as_ref()
+                .map(|d| format!("<p class=\"desc\">{}</p>", h(d)))
+                .unwrap_or_default(),
+            value_span = est_value
+                .map(|v| format!("<span>💵 ${:.0}</span>", v))
+                .unwrap_or_default(),
+            loc_span = location
+                .as_ref()
+                .map(|l| format!("<span>📍 {}</span>", h(l)))
+                .unwrap_or_default(),
+            source_span = source
+                .as_ref()
+                .map(|s| format!("<span>📬 {}</span>", h(s)))
+                .unwrap_or_default(),
+            expires_span = expires_at
+                .as_ref()
+                .map(|e| format!("<span>⏰ Expires {}</span>", h(e)))
+                .unwrap_or_default(),
             poster = h(&poster),
         ));
     }

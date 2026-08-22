@@ -3,7 +3,7 @@
 //! demand volume, trend, and engagement by zip/city, category, and time-of-day.
 
 use axum::{
-    extract::{State, Query},
+    extract::{Query, State},
     response::IntoResponse,
     Json,
 };
@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Query Parameters ─────────────────────────────────────────────────────────
 

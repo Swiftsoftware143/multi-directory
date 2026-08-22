@@ -10,8 +10,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::AppState;
 use crate::error::ApiResult;
+use crate::AppState;
 
 // ── News Sitemap Helpers ─────────────────────────────────────────────────────
 
@@ -38,16 +38,14 @@ pub async fn news_sitemap(
         name: String,
         slug: String,
     }
-    let dir = sqlx::query_as::<_, DirInfo>(
-        "SELECT id, name, slug FROM tenants WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
     let description: Option<String> = sqlx::query_scalar(
-        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1"
+        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1",
     )
     .bind(dir.id)
     .fetch_optional(&s.db)
@@ -112,11 +110,20 @@ pub async fn news_sitemap(
         xml.push_str(&format!("    <loc>{}</loc>\n", esc_xml(&link)));
         xml.push_str("    <news:news>\n");
         xml.push_str("      <news:publication>\n");
-        xml.push_str(&format!("        <news:name>{}</news:name>\n", esc_xml(&dir.name)));
+        xml.push_str(&format!(
+            "        <news:name>{}</news:name>\n",
+            esc_xml(&dir.name)
+        ));
         xml.push_str("        <news:language>en</news:language>\n");
         xml.push_str("      </news:publication>\n");
-        xml.push_str(&format!("      <news:publication_date>{}</news:publication_date>\n", pub_date));
-        xml.push_str(&format!("      <news:title>{}</news:title>\n", esc_xml(&item.title)));
+        xml.push_str(&format!(
+            "      <news:publication_date>{}</news:publication_date>\n",
+            pub_date
+        ));
+        xml.push_str(&format!(
+            "      <news:title>{}</news:title>\n",
+            esc_xml(&item.title)
+        ));
         xml.push_str("    </news:news>\n");
         xml.push_str("  </url>\n");
     }
@@ -155,16 +162,14 @@ pub async fn blog_rss_feed(
         name: String,
         slug: String,
     }
-    let dir = sqlx::query_as::<_, DirInfo>(
-        "SELECT id, name, slug FROM tenants WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
     let description: Option<String> = sqlx::query_scalar(
-        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1"
+        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1",
     )
     .bind(dir.id)
     .fetch_optional(&s.db)
@@ -220,18 +225,21 @@ pub async fn blog_rss_feed(
     xml.push_str("<channel>\n");
 
     // Channel metadata
-    xml.push_str(&format!(
-        "  <title>{} Blog</title>\n",
-        esc_xml(&dir.name)
-    ));
+    xml.push_str(&format!("  <title>{} Blog</title>\n", esc_xml(&dir.name)));
     xml.push_str(&format!(
         "  <link>https://{domain}/api/v1/d/{slug}/blog</link>\n",
         domain = domain,
         slug = dir.slug,
     ));
-    xml.push_str(&format!("  <description>{}</description>\n", channel_description));
+    xml.push_str(&format!(
+        "  <description>{}</description>\n",
+        channel_description
+    ));
     xml.push_str("  <language>en-us</language>\n");
-    xml.push_str(&format!("  <lastBuildDate>{}</lastBuildDate>\n", now_rfc2822));
+    xml.push_str(&format!(
+        "  <lastBuildDate>{}</lastBuildDate>\n",
+        now_rfc2822
+    ));
     xml.push_str(&format!(
         "  <atom:link href=\"{}\" rel=\"self\" type=\"application/rss+xml\"/>\n",
         esc_xml(&feed_url)
@@ -312,7 +320,10 @@ pub async fn blog_rss_feed(
     xml.push_str("</channel>\n");
     xml.push_str("</rss>\n");
 
-    Ok(([("content-type", "application/rss+xml; charset=utf-8")], xml))
+    Ok((
+        [("content-type", "application/rss+xml; charset=utf-8")],
+        xml,
+    ))
 }
 
 // ── Helper Functions ─────────────────────────────────────────────────────────

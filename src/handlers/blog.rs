@@ -6,13 +6,13 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct BlogPost {
@@ -49,9 +49,7 @@ pub struct UpdateBlogPostRequest {
 }
 
 /// GET /api/v1/blog-posts — list all blog posts
-pub async fn list_blog_posts(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_blog_posts(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let posts = sqlx::query_as::<_, BlogPost>(
         "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at FROM blog_posts ORDER BY created_at DESC "
     )
@@ -66,13 +64,11 @@ pub async fn list_directory_blog_posts(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let posts = sqlx::query_as::<_, BlogPost>(
         "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at FROM blog_posts WHERE directory_id = \x241 ORDER BY created_at DESC "
@@ -137,7 +133,9 @@ pub async fn update_blog_post(
     .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?;
 
     let title = req.title.unwrap_or(existing.title);
-    let slug = req.slug.unwrap_or_else(|| existing.slug.unwrap_or_else(|| slugify(&title)));
+    let slug = req
+        .slug
+        .unwrap_or_else(|| existing.slug.unwrap_or_else(|| slugify(&title)));
     let excerpt = req.excerpt.or(existing.excerpt);
     let content = req.content.unwrap_or(existing.content);
     let published = req.published.unwrap_or(existing.published.unwrap_or(true));
@@ -177,12 +175,17 @@ pub async fn delete_blog_post(
 fn slugify(s: &str) -> String {
     s.to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Blog Automation — Templates, Scheduling, Multi-City Distribution
@@ -312,7 +315,10 @@ pub async fn list_templates(State(s): State<AppState>) -> ApiResult<impl IntoRes
 }
 
 /// GET /api/v1/blog-templates/:id
-pub async fn get_template(State(s): State<AppState>, Path(id): Path<Uuid>) -> ApiResult<impl IntoResponse> {
+pub async fn get_template(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
     let template = sqlx::query_as::<_, BlogTemplate>(
         "SELECT id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at FROM blog_templates WHERE id = $1"
     ).bind(id).fetch_optional(&s.db).await?
@@ -321,7 +327,10 @@ pub async fn get_template(State(s): State<AppState>, Path(id): Path<Uuid>) -> Ap
 }
 
 /// POST /api/v1/blog-templates
-pub async fn create_template(State(s): State<AppState>, Json(req): Json<CreateTemplateRequest>) -> ApiResult<impl IntoResponse> {
+pub async fn create_template(
+    State(s): State<AppState>,
+    Json(req): Json<CreateTemplateRequest>,
+) -> ApiResult<impl IntoResponse> {
     let mf = req.merge_fields.unwrap_or_else(|| serde_json::json!([]));
     let template = sqlx::query_as::<_, BlogTemplate>(
         "INSERT INTO blog_templates (name, slug, description, category, content_template, merge_fields, is_global, directory_id) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8) RETURNING id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at"
@@ -333,7 +342,11 @@ pub async fn create_template(State(s): State<AppState>, Json(req): Json<CreateTe
 }
 
 /// PUT /api/v1/blog-templates/:id
-pub async fn update_template(State(s): State<AppState>, Path(id): Path<Uuid>, Json(req): Json<UpdateTemplateRequest>) -> ApiResult<impl IntoResponse> {
+pub async fn update_template(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateTemplateRequest>,
+) -> ApiResult<impl IntoResponse> {
     let existing = sqlx::query_as::<_, BlogTemplate>(
         "SELECT id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at FROM blog_templates WHERE id = $1"
     ).bind(id).fetch_optional(&s.db).await?
@@ -350,14 +363,25 @@ pub async fn update_template(State(s): State<AppState>, Path(id): Path<Uuid>, Js
 }
 
 /// DELETE /api/v1/blog-templates/:id
-pub async fn delete_template(State(s): State<AppState>, Path(id): Path<Uuid>) -> ApiResult<impl IntoResponse> {
-    let r = sqlx::query("DELETE FROM blog_templates WHERE id = $1").bind(id).execute(&s.db).await?;
-    if r.rows_affected() == 0 { return Err(AppError::NotFound("Template not found".into())); }
+pub async fn delete_template(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let r = sqlx::query("DELETE FROM blog_templates WHERE id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+    if r.rows_affected() == 0 {
+        return Err(AppError::NotFound("Template not found".into()));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /api/v1/blog-posts/ext — create blog post with extended fields
-pub async fn create_blog_post_ext(State(s): State<AppState>, Json(req): Json<CreateBlogPostExtRequest>) -> ApiResult<impl IntoResponse> {
+pub async fn create_blog_post_ext(
+    State(s): State<AppState>,
+    Json(req): Json<CreateBlogPostExtRequest>,
+) -> ApiResult<impl IntoResponse> {
     let slug = req.slug.unwrap_or_else(|| slugify(&req.title));
     let tags = req.tags.unwrap_or_default();
     let post = sqlx::query_as::<_, BlogPostExt>(
@@ -371,12 +395,18 @@ pub async fn create_blog_post_ext(State(s): State<AppState>, Json(req): Json<Cre
 }
 
 /// PUT /api/v1/blog-posts/:id/ext — update blog post with extended fields
-pub async fn update_blog_post_ext(State(s): State<AppState>, Path(id): Path<Uuid>, Json(req): Json<UpdateBlogPostExtRequest>) -> ApiResult<impl IntoResponse> {
+pub async fn update_blog_post_ext(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateBlogPostExtRequest>,
+) -> ApiResult<impl IntoResponse> {
     let existing = sqlx::query_as::<_, BlogPostExt>(
         "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE id = $1"
     ).bind(id).fetch_optional(&s.db).await?
     .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?;
-    let tags = req.tags.unwrap_or_else(|| existing.tags.unwrap_or_default());
+    let tags = req
+        .tags
+        .unwrap_or_else(|| existing.tags.unwrap_or_default());
     let post = sqlx::query_as::<_, BlogPostExt>(
         "UPDATE blog_posts SET title=$1, slug=$2, excerpt=$3, content=$4, published=$5, scheduled_at=$6, template_id=$7, template_data=$8::jsonb, blog_category=$9, tags=$10::text[], meta_description=$11, feature_image=$12, updated_at=NOW() WHERE id=$13 RETURNING id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at"
     ).bind(req.title.clone().unwrap_or(existing.title.clone()))
@@ -400,9 +430,15 @@ pub async fn list_blog_posts_ext(State(s): State<AppState>) -> ApiResult<impl In
 }
 
 /// GET /api/v1/directories/:slug/blog-posts/ext — list posts for directory (extended)
-pub async fn list_directory_blog_posts_ext(State(s): State<AppState>, Path(slug): Path<String>) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1").bind(&slug)
-        .fetch_optional(&s.db).await?.ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+pub async fn list_directory_blog_posts_ext(
+    State(s): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let posts = sqlx::query_as::<_, BlogPostExt>(
         "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE directory_id = $1 ORDER BY created_at DESC"
     ).bind(dir.0).fetch_all(&s.db).await?;
@@ -418,7 +454,11 @@ pub async fn list_scheduled_posts(State(s): State<AppState>) -> ApiResult<impl I
 }
 
 /// POST /api/v1/blog-posts/:id/publish — publish/unpublish
-pub async fn publish_blog_post_handler(State(s): State<AppState>, Path(id): Path<Uuid>, Json(req): Json<PublishRequest>) -> ApiResult<impl IntoResponse> {
+pub async fn publish_blog_post_handler(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<PublishRequest>,
+) -> ApiResult<impl IntoResponse> {
     let post = if req.publish_now.unwrap_or(true) {
         sqlx::query_as::<_, BlogPostExt>(
             "UPDATE blog_posts SET published = true, scheduled_at = NULL, updated_at = NOW() WHERE id = $1 RETURNING id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at"
@@ -440,7 +480,10 @@ pub struct PublishRequest {
 }
 
 /// POST /api/v1/blog/distribute — multi-city distribution
-pub async fn distribute_blog_post(State(s): State<AppState>, Json(req): Json<DistributeRequest>) -> ApiResult<impl IntoResponse> {
+pub async fn distribute_blog_post(
+    State(s): State<AppState>,
+    Json(req): Json<DistributeRequest>,
+) -> ApiResult<impl IntoResponse> {
     let template = sqlx::query_as::<_, BlogTemplate>(
         "SELECT id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at FROM blog_templates WHERE id = $1"
     ).bind(req.template_id).fetch_optional(&s.db).await?
@@ -450,15 +493,22 @@ pub async fn distribute_blog_post(State(s): State<AppState>, Json(req): Json<Dis
         sqlx::query_as::<_, (Uuid, String, String)>("SELECT id, name, COALESCE(location, '') FROM directories WHERE id = ANY($1) ORDER BY name")
             .bind(ids).fetch_all(&s.db).await?
     } else {
-        sqlx::query_as::<_, (Uuid, String, String)>("SELECT id, name, COALESCE(location, '') FROM directories ORDER BY name")
-            .fetch_all(&s.db).await?
+        sqlx::query_as::<_, (Uuid, String, String)>(
+            "SELECT id, name, COALESCE(location, '') FROM directories ORDER BY name",
+        )
+        .fetch_all(&s.db)
+        .await?
     };
 
     if directories.is_empty() {
         return Err(AppError::BadRequest("No target directories found".into()));
     }
 
-    let mut result = DistributeResult { total: directories.len(), created: 0, skipped: Vec::new() };
+    let mut result = DistributeResult {
+        total: directories.len(),
+        created: 0,
+        skipped: Vec::new(),
+    };
     let category = req.category.unwrap_or_else(|| "general".to_string());
     let tags = req.tags.unwrap_or_default();
     let published = req.published.unwrap_or(false);
@@ -470,18 +520,32 @@ pub async fn distribute_blog_post(State(s): State<AppState>, Json(req): Json<Dis
             if !obj.contains_key("city") || obj["city"].as_str().map_or(true, |s| s.is_empty()) {
                 obj.insert("city".to_string(), Value::String(dir_location.clone()));
             }
-            if !obj.contains_key("directory_name") || obj["directory_name"].as_str().map_or(true, |s| s.is_empty()) {
-                obj.insert("directory_name".to_string(), Value::String(dir_name.clone()));
+            if !obj.contains_key("directory_name")
+                || obj["directory_name"]
+                    .as_str()
+                    .map_or(true, |s| s.is_empty())
+            {
+                obj.insert(
+                    "directory_name".to_string(),
+                    Value::String(dir_name.clone()),
+                );
             }
         }
         let content = render_template_str(&template.content_template, &data);
         let title = render_template_str(&req.title, &data);
         let slug = slugify(&title);
 
-        let existing = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM blog_posts WHERE directory_id = $1 AND slug = $2")
-            .bind(dir_id).bind(&slug).fetch_optional(&s.db).await?;
+        let existing = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM blog_posts WHERE directory_id = $1 AND slug = $2",
+        )
+        .bind(dir_id)
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?;
         if existing.is_some() {
-            result.skipped.push(format!("{} (duplicate slug)", dir_name));
+            result
+                .skipped
+                .push(format!("{} (duplicate slug)", dir_name));
             continue;
         }
 
@@ -497,7 +561,9 @@ pub async fn distribute_blog_post(State(s): State<AppState>, Json(req): Json<Dis
 }
 
 /// POST /api/v1/blog/process-scheduled — publish due scheduled posts
-pub async fn process_scheduled_posts_handler(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+pub async fn process_scheduled_posts_handler(
+    State(s): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
     let r = sqlx::query("UPDATE blog_posts SET published = true, scheduled_at = NULL, updated_at = NOW() WHERE scheduled_at IS NOT NULL AND scheduled_at <= NOW() AND published = false")
         .execute(&s.db).await?;
     Ok(Json(serde_json::json!({"published": r.rows_affected()})))
@@ -515,20 +581,33 @@ fn render_template_str(template: &str, data: &Value) -> String {
 }
 
 /// GET /api/v1/community/posts — list community posts
-pub async fn list_community_posts(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let posts = sqlx::query_as::<_, (Uuid, String, String, Option<String>, String, Option<chrono::DateTime<chrono::Utc>>)>(
+pub async fn list_community_posts(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let posts = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            String,
+            Option<chrono::DateTime<chrono::Utc>>,
+        ),
+    >(
         r#"SELECT id, title, slug, excerpt, post_type, created_at
            FROM blog_posts WHERE post_type = 'community' AND status = 'published'
-           ORDER BY created_at DESC LIMIT 50"#
+           ORDER BY created_at DESC LIMIT 50"#,
     )
     .fetch_all(&s.db)
     .await?;
 
-    let result: Vec<serde_json::Value> = posts.into_iter().map(|p| json!({
-        "id": p.0, "title": p.1, "slug": p.2, "excerpt": p.3, "type": p.4, "created_at": p.5
-    })).collect();
+    let result: Vec<serde_json::Value> = posts
+        .into_iter()
+        .map(|p| {
+            json!({
+                "id": p.0, "title": p.1, "slug": p.2, "excerpt": p.3, "type": p.4, "created_at": p.5
+            })
+        })
+        .collect();
 
     Ok(Json(json!({"posts": result})))
 }
@@ -539,9 +618,13 @@ pub async fn create_community_post(
     Json(req): Json<CreateBlogPostRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let id = Uuid::new_v4();
-    let slug = req.title.to_lowercase()
+    let slug = req
+        .title
+        .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")
-        .chars().take(100).collect::<String>();
+        .chars()
+        .take(100)
+        .collect::<String>();
 
     sqlx::query(
         "INSERT INTO blog_posts (id, title, slug, content, excerpt, directory_id, post_type, status, author_name, published)
@@ -557,7 +640,9 @@ pub async fn create_community_post(
     .execute(&s.db)
     .await?;
 
-    Ok(Json(json!({"id": id, "slug": slug, "status": "pending_review"})))
+    Ok(Json(
+        json!({"id": id, "slug": slug, "status": "pending_review"}),
+    ))
 }
 
 /// PUT /api/v1/community/posts/:id — update a community post

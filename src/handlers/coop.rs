@@ -3,7 +3,7 @@
 //! Group purchasing + collective bargaining = a marketplace Google can't touch.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::HeaderMap,
     response::IntoResponse,
     Json,
@@ -15,9 +15,9 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::auth::middleware::verify_token;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 // ── Auth helpers ──
 
@@ -29,8 +29,8 @@ fn extract_user_id(headers: &HeaderMap, state: &AppState) -> ApiResult<Uuid> {
     let token = auth
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
-    let claims = verify_token(token, &state.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims =
+        verify_token(token, &state.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 
@@ -324,12 +324,11 @@ pub async fn join_group(
     let user_id = extract_user_id(&headers, &state)?;
     let biz_id = resolve_business_id(&state.db, user_id).await?;
 
-    let group_status: Option<String> = sqlx::query_scalar(
-        "SELECT status FROM buying_groups WHERE id = $1",
-    )
-    .bind(group_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let group_status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM buying_groups WHERE id = $1")
+            .bind(group_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     match group_status {
         Some(s) if s == "recruiting" || s == "active" => {}

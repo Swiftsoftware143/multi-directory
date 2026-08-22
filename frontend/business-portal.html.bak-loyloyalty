@@ -1,0 +1,3109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Portal - ZaarHub</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;--secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;--dark:#2b3255;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Auth screens */
+.auth-container{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%)}
+.auth-card{background:var(--card);border-radius:16px;padding:40px;width:420px;max-width:90vw;box-shadow:0 25px 50px -12px rgba(0,0,0,.4)}
+.auth-card h1{font-size:1.75rem;color:var(--primary);text-align:center;margin-bottom:4px}
+.auth-card .tagline{text-align:center;color:var(--text-secondary);font-size:.9rem;margin-bottom:28px}
+.auth-card .error{background:#fef2f2;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.auth-card .success-msg{background:#f0fdf4;color:#16a34a;padding:10px 14px;border-radius:8px;font-size:.85rem;margin-bottom:16px;display:none}
+.tab-bar{display:flex;margin-bottom:24px;border-bottom:2px solid var(--border)}
+.tab{flex:1;text-align:center;padding:10px;cursor:pointer;font-weight:600;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* Dashboard */
+.dashboard{display:none;max-width:1200px;margin:0 auto;padding:24px}
+.dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.dashboard-header h1{font-size:1.5rem;color:var(--text)}
+.dashboard-header .user-info{font-size:.85rem;color:var(--text-secondary)}
+.logout-btn{background:none;border:1px solid var(--border);color:var(--text-secondary);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:.85rem;transition:all .2s}
+.logout-btn:hover{background:#f1f5f9;color:var(--danger);border-color:var(--danger)}
+
+/* Cards */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s}
+.card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.card h3{font-size:1rem;margin-bottom:4px;color:var(--text)}
+.card p{font-size:.85rem;color:var(--text-secondary);margin-bottom:8px}
+.card .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge.active{background:#dcfce7;color:#16a34a}
+.badge.inactive{background:#f1f5f9;color:#64748b}
+.badge.warning{background:#fef3c7;color:#d97706}
+.card .meta{font-size:.8rem;color:var(--text-secondary);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.card-actions{display:flex;gap:8px;margin-top:12px}
+.card-actions .btn{flex:1}
+
+/* Plan cards */
+.plan-card{border:2px solid var(--border);overflow:hidden}.plan-card.featured{border-color:var(--primary);box-shadow:0 4px 20px rgba(242,127,47,.15)}.plan-card .plan-header{text-align:center;padding:16px;border-bottom:1px solid var(--border)}.plan-card .plan-name{font-size:1rem;font-weight:700}.plan-card .plan-price{font-size:1.8rem;font-weight:800;color:var(--primary);margin:4px 0}.plan-card .plan-period{font-size:.78rem;color:var(--text-secondary)}.plan-card .plan-body{padding:16px}.plan-card .plan-features{list-style:none;padding:0;margin:0 0 12px}.plan-card .plan-features li{padding:6px 0;font-size:.82rem;color:var(--text);border-bottom:1px solid var(--border)}.plan-card .plan-features li:last-child{border-bottom:none}.plan-card .plan-features li .check{color:var(--success);font-weight:700;margin-right:6px}.plan-card .plan-subscribe{margin-top:8px}.plan-select{display:none}
+
+/* Coming soon */
+.coming-soon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:16px}
+.coming-soon-card{background:var(--card);border:1px dashed var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:all .2s}
+.coming-soon-card:hover{border-color:var(--primary);background:var(--primary-light)}
+.coming-soon-card .icon{font-size:2rem;margin-bottom:8px}
+.coming-soon-card h4{font-size:.9rem;margin-bottom:4px}
+.coming-soon-card p{font-size:.8rem;color:var(--text-secondary)}
+
+/* Scanner styles */
+#scannerVideo{transform:scaleX(-1)}
+
+/* Loading */
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:#e06e1a}
+.btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#cbd5e1}
+.btn-sm{padding:5px 12px;font-size:.8rem}
+.btn-danger{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.btn-danger:hover{background:#fee2e2}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;font-family:inherit}
+.form-group input:focus,.form-group select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.15)}
+
+/* Section headers */
+.section-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+
+/* Responsive */
+@media(max-width:768px){
+  .dashboard{padding:16px}
+  .card-grid{grid-template-columns:1fr}
+  .coming-soon-grid{grid-template-columns:repeat(2,1fr)}
+  .loyalty-tabs{flex-wrap:wrap}.loyalty-tabs .tab{flex:0 0 auto;padding:8px 14px;font-size:.8rem}
+  .loy-stats-grid{grid-template-columns:repeat(2,1fr)}
+}
+/* Loyalty */
+.loyalty-panel{animation:fadeIn .3s}
+.loy-stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:box-shadow .2s;text-align:center}
+.stat-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.stat-card .stat-icon{font-size:2rem;margin-bottom:6px}
+.stat-card .stat-value{font-size:1.6rem;font-weight:700;color:var(--primary)}
+.stat-card .stat-label{font-size:.82rem;color:var(--text-secondary)}
+.code-display{background:#f1f5f9;padding:10px 16px;border-radius:8px;font-family:monospace;font-size:1.1rem;font-weight:700;letter-spacing:2px;color:var(--primary);display:inline-block;margin:8px 0;cursor:pointer}
+.code-display:hover{background:#e2e8f0}
+.tx-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.tx-row:last-child{border-bottom:none}
+.tx-amount{font-weight:700}.tx-amount.positive{color:var(--success)}.tx-amount.negative{color:var(--danger)}
+.voucher-card{border-left:4px solid var(--primary);margin-bottom:8px}
+.voucher-card h4{font-size:.9rem}.voucher-card .v-meta{font-size:.78rem;color:var(--text-secondary);display:flex;gap:8px;flex-wrap:wrap}
+.legal-section{max-width:800px;margin:0 auto;background:var(--card);border-radius:12px;padding:32px 40px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.legal-section h2{font-size:1.3rem;color:var(--text);margin-bottom:4px}
+.legal-clause{margin-top:20px}
+.legal-clause h4{font-size:.95rem;color:var(--text);margin-bottom:4px}
+.legal-clause p{font-size:.85rem;color:var(--text-secondary);line-height:1.6}
+
+/* Advertising */
+#adSubmissionForm .form-group{margin-bottom:12px}
+#adSubmissionForm .form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+#adSubmissionForm .form-group input,#adSubmissionForm .form-group select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;transition:border-color .2s}
+#adSubmissionForm .form-group input:focus,#adSubmissionForm .form-group select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.1)}
+
+#legalRoleTabs .tab{font-size:.85rem;padding:8px 12px}
+
+/* Walkthrough Overlay */
+.walkthrough-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.walkthrough-card{background:#fff;border-radius:16px;padding:32px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideUp .3s}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.walkthrough-card .icon{font-size:3rem;margin-bottom:12px}
+.walkthrough-card h3{font-size:1.2rem;color:#0f172a;margin-bottom:8px}
+.walkthrough-card p{font-size:.9rem;color:#475569;line-height:1.6;margin-bottom:20px}
+.walkthrough-card .btn{background:#f27f2f;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+.walkthrough-card .btn:hover{background:#e06e1a}
+.walkthrough-help-icon{position:fixed;bottom:20px;right:20px;width:44px;height:44px;background:#f27f2f;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;box-shadow:0 4px 12px rgba(242,127,47,.3);z-index:9998;border:none;transition:all .2s}
+.walkthrough-help-icon:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(242,127,47,.4)}
+</style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="authScreen" class="auth-container">
+  <div class="auth-card">
+    <h1>🏪 ZaarHub</h1>
+    <p class="tagline">Business Owner Portal</p>
+    <div id="authError" class="error"></div>
+    <div id="authSuccess" class="success-msg"></div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchAuthTab('login')" id="loginTab">Login</div>
+      <div class="tab" onclick="switchAuthTab('register')" id="registerTab">Register</div>
+    </div>
+
+    <!-- Login Form -->
+    <div id="loginForm">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter your password">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="doLogin()">Sign In</button>
+      <p style="text-align:center;margin-top:12px;font-size:.8rem;color:var(--text-secondary)">
+        Forgot your password? <a href="/admin/login">Reset here</a>
+      </p>
+    </div>
+
+    <!-- Register Form -->
+    <div id="registerForm" style="display:none">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="regName" placeholder="Your full name">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="regPassword" placeholder="At least 6 characters">
+      </div>
+      <div class="form-group">
+        <label>Directory Slug</label>
+        <input type="text" id="regSlug" placeholder="my-business-directory">
+        <p style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">Leave blank to auto-generate</p>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="doRegister()">Create Account</button>
+      <p style="text-align:center;margin-top:12px;font-size:.8rem;color:var(--text-secondary)">
+        Already have an account? <a href="#" onclick="switchAuthTab('login');return false">Sign in</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="dashboard">
+  <div class="dashboard-header">
+    <div>
+      <h1>🏪 My Business Portal</h1>
+      <div class="user-info" id="userInfo">Loading...</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/guides/index.html" target="_blank" style="color:var(--primary);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="Help &amp; Guides">❓</a>
+      <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingState" style="text-align:center;padding:40px">
+    <div class="spinner"></div>
+    <p style="margin-top:12px;color:var(--text-secondary)">Loading your businesses...</p>
+  </div>
+
+  <!-- Content (shown after load) -->
+  <div id="dashboardContent" style="display:none">
+
+    <!-- My Businesses -->
+    <div id="businessList"></div>
+
+    <!-- Upgrade Plans -->
+    <div id="upgradePlans" style="display:none">
+      <div class="section-title">⬆️ Upgrade Plan</div>
+      <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Choose a plan to boost your listing visibility and access premium features.</div>
+      <div id="plansGrid" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))"></div>
+    </div>
+
+    <!-- Advertising Section -->
+    <div class="section-title" style="margin-top:32px">📢 Promote Your Business</div>
+    <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Submit and manage ads to get more visibility in your community directory.</div>
+    
+    <!-- Ad Submission Form (shown when a business is selected) -->
+    <div id="adSubmissionForm" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+      <h3 style="font-size:1rem;margin-bottom:12px">📤 Submit a New Ad</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>Ad Name</label>
+          <input type="text" id="adName" placeholder="e.g. Summer Special" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+        </div>
+        <div class="form-group">
+          <label>Slot Size (Ad Zone)</label>
+          <select id="adZoneSelect" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            <option value="">Select a slot...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Image URL</label>
+          <input type="url" id="adImageUrl" placeholder="https://example.com/ad.png" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+        </div>
+        <div class="form-group">
+          <label>Target URL (click link)</label>
+          <input type="url" id="adTargetUrl" placeholder="https://example.com/offer" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="submitBusinessAd()" style="margin-top:12px">Submit Ad for Review</button>
+      <div id="adSubmitResult" style="margin-top:8px;font-size:.8rem"></div>
+    </div>
+    
+    <!-- My Ads List -->
+    <div id="myAdsSection" style="margin-bottom:16px">
+      <div id="adListHeader" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="font-size:.95rem">My Ads</h3>
+        <button class="btn btn-sm" onclick="showAdForm()" style="background:var(--primary);color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.8rem">+ New Ad</button>
+      </div>
+      <div id="myAdsList">
+        <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:.85rem">Select a business to see your ads</div>
+      </div>
+    </div>
+    
+    <!-- Ad Earnings -->
+    <div id="adEarningsSection" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
+      <h3 style="font-size:.95rem;margin-bottom:8px">💰 Ad Earnings</h3>
+      <div id="adEarningsContent" style="font-size:.85rem;color:var(--text-secondary)"></div>
+    </div>
+
+    <!-- Integration Features (shown when services connected) -->
+    <div id="integrationFeatures" style="display:none;margin-bottom:24px">
+      <div class="section-title">🔗 Integration Features</div>
+      <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Extra features unlocked by your connected services.</div>
+
+      <!-- Campaign Integration (IncentiveSwift) -->
+      <div id="campaignIntegration" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px">
+        <h3 style="font-size:1rem;margin-bottom:8px">🎯 Campaign Linking</h3>
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Link a loyalty campaign to your business listing for automated rewards.</p>
+        <div class="form-group">
+          <label>Campaign Type</label>
+          <select id="listingCampaignType" onchange="onCampaignTypeChange()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            <option value="">None — don't link a campaign</option>
+            <option value="sms">SMS Funnel</option>
+            <option value="spin">Spin-to-Win</option>
+            <option value="raffle">Raffle</option>
+            <option value="quiz">Quiz</option>
+          </select>
+        </div>
+        <div class="form-group" id="campaignPicker" style="display:none">
+          <label>Select Campaign</label>
+          <select id="listingCampaignId" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            <option value="">Loading campaigns...</option>
+          </select>
+        </div>
+        <div id="campaignLinkResult" style="margin-top:8px;font-size:.8rem"></div>
+      </div>
+
+      <!-- Booking Integration (CoreSwift) -->
+      <div id="bookingIntegration" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px">
+        <h3 style="font-size:1rem;margin-bottom:8px">📅 Booking Integration</h3>
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Enable a "Book Now" button on your business listing powered by CoreSwift CRM.</p>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="listingEnableBooking" onchange="toggleBookingFields()">
+            <span>Enable "Book Now" on my listing</span>
+          </label>
+          <span style="font-size:.8rem;color:var(--text-secondary)">Customers can request appointments directly from your directory listing</span>
+        </div>
+        <div id="bookingFields" style="display:none">
+          <div class="form-group">
+            <label>Booking Type</label>
+            <select id="listingBookingType" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+              <option value="appointment">Appointment</option>
+              <option value="reservation">Reservation</option>
+              <option value="consultation">Consultation</option>
+              <option value="estimate">Estimate / Quote</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Duration (minutes)</label>
+            <input type="number" id="listingBookingDuration" min="5" max="480" value="30" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div class="form-group">
+            <label>Buffer Time (minutes)</label>
+            <input type="number" id="listingBookingBuffer" min="0" max="120" value="0" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+        </div>
+        <div id="bookingConfigResult" style="margin-top:8px;font-size:.8rem"></div>
+      </div>
+    </div>
+
+    <!-- CTA Button Selector -->
+    <div id="ctaButtonSection" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+      <h3 style="font-size:1rem;margin-bottom:4px">🔘 Call-to-Action Button</h3>
+      <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Choose what visitors see as the primary action button on your listing.</p>
+      <div class="form-group">
+        <label>Button Type</label>
+        <select id="listingCtaType" onchange="onCtaTypeChange()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          <option value="none">— No CTA —</option>
+          <optgroup label="──────── 🔒 Requires CoreSwift">
+            <option value="book_now" data-requires="coreswift">📅 Book Now</option>
+            <option value="book_call" data-requires="coreswift">📞 Book a Call</option>
+          </optgroup>
+          <optgroup label="──────── ✅ Always Available">
+            <option value="get_quote">💬 Get a Quote</option>
+            <option value="learn_more">🔍 Learn More</option>
+            <option value="visit_website">🌐 Visit Website</option>
+            <option value="call_now">📱 Call Now</option>
+            <option value="send_message">✉️ Send a Message</option>
+            <option value="view_menu">📋 View Menu</option>
+            <option value="view_catalog">📦 View Catalog</option>
+          </optgroup>
+          <optgroup label="──────── 🔒 Requires IncentiveSwift">
+            <option value="claim_deal" data-requires="incentiveswift">🎁 Claim This Deal</option>
+            <option value="join_rewards" data-requires="incentiveswift">⭐ Join Rewards</option>
+            <option value="rsvp" data-requires="incentiveswift">🎟️ RSVP Now</option>
+          </optgroup>
+        </select>
+      </div>
+      <div id="ctaPreview" style="margin-top:12px">
+        <span style="font-size:.8rem;color:var(--text-secondary)">Preview: </span>
+        <span id="ctaPreviewBtn" style="display:inline-block;padding:8px 20px;background:var(--primary);color:#fff;border-radius:8px;font-size:.85rem;font-weight:600">— No CTA —</span>
+      </div>
+      <div id="ctaWarnings" style="margin-top:8px;font-size:.8rem"></div>
+      <button onclick="saveCtaType()" class="btn btn-primary btn-sm" style="margin-top:8px">💾 Save CTA</button>
+      <span id="ctaSaveResult" style="margin-left:8px;font-size:.8rem"></span>
+    </div>
+
+    <!-- Loyalty Plan Selector (shown when not yet enrolled) -->
+    <div id="loyaltyPlanSelector" style="display:none;margin:24px 0">
+      <h3 style="font-size:1.2rem;margin:0 0 8px 0">🎯 Join ZaarCash Rewards</h3>
+      <p style="font-size:.85rem;color:var(--text-secondary);margin:0 0 16px 0">Choose a plan to add your business to the loyalty network. Your customers earn 1% back in ZaarCash on every purchase — redeemable at any participating business in the community.</p>
+      <div id="planCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+        <div class="spinner" style="width:30px;height:30px;margin:20px auto"></div>
+      </div>
+      <div id="planStatus" style="margin-top:12px;font-size:.85rem;display:none"></div>
+    </div>
+
+    <!-- ZaarCash Business Guide -->
+    <details id="zaarcashBizGuide" style="margin:24px 0 8px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <summary style="padding:14px 20px;cursor:pointer;font-weight:700;font-size:.95rem;display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#fef3e7,#fff7ed)">
+        💡 How ZaarCash Rewards Work — Quick Guide
+        <span style="margin-left:auto;font-size:.75rem;color:#64748b">click to expand</span>
+      </summary>
+      <div style="padding:16px 20px;font-size:.85rem;line-height:1.6">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
+          <div style="background:#f0fdf4;border-radius:8px;padding:14px">
+            <h4 style="margin:0 0 8px;font-size:.9rem;color:#166534">📦 The Loyalty Program</h4>
+            <ul style="margin:0;padding-left:18px">
+              <li><strong>Paid subscription</strong> — plans start at $19/mo with a monthly ZC pool</li>
+              <li>Customers earn <strong>1% back in ZaarCash</strong> — drawn from your monthly pool</li>
+              <li>Redeem cap: <strong>10% of bill</strong> — $50 bill → max $5 in ZaarCash off</li>
+              <li><strong>ZC pool refills monthly</strong> — unused ZC rolls over 1 month</li>
+              <li>Your subscription <strong>funds the rewards</strong> — no surprise costs</li>
+            </ul>
+          </div>
+          <div style="background:#eff6ff;border-radius:8px;padding:14px">
+            <h4 style="margin:0 0 8px;font-size:.9rem;color:#1e40af">🔍 Scanner Steps</h4>
+            <ol style="margin:0;padding-left:18px">
+              <li>📷 Scanner tab → scan QR</li>
+              <li>Enter <strong>Total Receipt</strong></li>
+              <li>Enter <strong>Earnable Subtotal</strong> (exclude free items)</li>
+              <li>Add <strong>Deal Note</strong> if needed</li>
+              <li>Enter PIN → Verify</li>
+            </ol>
+          </div>
+          <div style="background:#fef3c7;border-radius:8px;padding:14px">
+            <h4 style="margin:0 0 8px;font-size:.9rem;color:#92400e">🏆 Perks You Can Unlock</h4>
+            <ul style="margin:0;padding-left:18px">
+              <li>Complete your profile 100% → <strong>earn bonus ZC</strong></li>
+              <li>Reply to customer reviews → <strong>earn engagement points</strong></li>
+              <li>Promote the directory on your storefront → <strong>earn referral ZC</strong></li>
+              <li>Redeem for: <strong>featured placement</strong>, verified badge, ad credits, subscription discount</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- Loyalty Dashboard -->
+    <div class="section-title" style="margin-top:32px">🎯 Loyalty Program</div>
+    <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Credits, vouchers, referrals & rewards powered by IncentiveSwift</div>
+    
+    <!-- Loyalty Tab Navigation -->
+    <div class="tab-bar loyalty-tabs">
+      <div class="tab active" onclick="switchLoyaltyTab('dashboard')" id="loyDashTab">📊 Dashboard</div>
+      <div class="tab" onclick="switchLoyaltyTab('credits')" id="loyCreditsTab">💰 Credits</div>
+      <div class="tab" onclick="switchLoyaltyTab('vouchers')" id="loyVouchersTab">🎟️ Vouchers</div>
+      <div class="tab" onclick="switchLoyaltyTab('referrals')" id="loyReferralsTab">👥 Referrals</div>
+      <div class="tab" onclick="switchLoyaltyTab('rewards')" id="loyRewardsTab">🏆 Rewards</div>
+      <div class="tab" onclick="switchLoyaltyTab('pin')" id="loyPinTab">🔐 PIN</div>
+      <div class="tab" onclick="switchLoyaltyTab('scanner')" id="loyScannerTab">📷 Scanner</div>
+      <div class="tab" onclick="switchLoyaltyTab('pledges')" id="loyPledgesTab">🤝 Pledges</div>
+      <div class="tab" onclick="switchLoyaltyTab('offers')" id="loyOffersTab">🏷️ Offers</div>
+      <div class="tab" onclick="switchLoyaltyTab('legal')" id="loyLegalTab">⚖️ Legal</div>
+      <div class="tab" onclick="switchLoyaltyTab('settings')" id="loySettingsTab">⚙️ Settings</div>
+      <div class="tab" onclick="switchLoyaltyTab('iqs')" id="loyIqsTab">🧠 Surveys</div>
+      <div class="tab" onclick="switchLoyaltyTab('deals')" id="loyDealsTab">🎁 Deals</div>
+    </div>
+    
+    <!-- Loading -->
+    <div id="loyaltyLoading" style="text-align:center;padding:20px">
+      <div class="spinner" style="width:24px;height:24px"></div>
+    </div>
+    
+    <!-- Loyalty Tab Panels -->
+    <div id="loyaltyContent" style="display:none">
+      
+      <!-- Dashboard Panel -->
+      <div id="loyDashPanel" class="loyalty-panel">
+        <div id="loyDashboardCards" class="card-grid">
+          <div class="stat-card">
+            <div class="stat-icon">💰</div>
+            <div class="stat-value" id="loyTotalCredits">-</div>
+            <div class="stat-label">Total Credits</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🎟️</div>
+            <div class="stat-value" id="loyActiveVouchers">-</div>
+            <div class="stat-label">Active Vouchers</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-value" id="loyReferralCount">-</div>
+            <div class="stat-label">Referrals</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-value" id="loyRewardsAvail">-</div>
+            <div class="stat-label">Available Rewards</div>
+          </div>
+        </div>
+        <div id="loyDashboardDetail"></div>
+      </div>
+      
+      <!-- Credits Panel -->
+      <div id="loyCreditsPanel" class="loyalty-panel" style="display:none">
+        <!-- ZC Pool Status Bar -->
+        <div id="zcPoolStatus" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;display:none">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <span style="font-size:.85rem;font-weight:600">📦 Monthly ZC Pool</span>
+            <span id="zcPoolLabel" style="font-size:.85rem;color:var(--text-secondary)"></span>
+          </div>
+          <div style="background:#e2e8f0;border-radius:4px;height:10px;overflow:hidden">
+            <div id="zcPoolBar" style="background:#f27f2f;height:100%;width:0%;border-radius:4px;transition:width .3s"></div>
+          </div>
+          <div id="zcPoolDetail" style="font-size:.75rem;color:var(--text-secondary);margin-top:4px"></div>
+        </div>
+        <div class="section-title">💰 Credits Overview</div>
+        <div id="creditsOverview" class="card-grid"></div>
+        <div class="section-title" style="margin-top:16px">📋 Credit History</div>
+        <div id="creditsHistory">
+          <div class="empty-state"><p>No credit history available.</p></div>
+        </div>
+      </div>
+      
+      <!-- Vouchers Panel -->
+      <div id="loyVouchersPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🎟️ My Vouchers</div>
+        <div id="vouchersList">
+          <div class="empty-state"><p>No vouchers yet.</p></div>
+        </div>
+      </div>
+      
+      <!-- Referrals Panel -->
+      <div id="loyReferralsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">👥 Referral Program</div>
+        <div id="referralCodeDisplay" class="card" style="text-align:center;padding:24px"></div>
+        <div class="section-title" style="margin-top:16px">Referral History</div>
+        <div id="referralsList">
+          <div class="empty-state"><p>No referrals yet. Share your code to earn credits!</p></div>
+        </div>
+      </div>
+      
+      <!-- Rewards Panel -->
+      <div id="loyRewardsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🏆 Available Rewards</div>
+        <div id="rewardsList">
+          <div class="empty-state"><p>No rewards available.</p></div>
+        </div>
+      </div>
+      
+      <!-- PIN Panel -->
+      <div id="loyPinPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🔐 Purchase Verification PIN</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Generate PIN</h3>
+            <p>Create a new PIN for purchase verification.</p>
+            <div id="pinGenerateResult" style="margin:12px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="generatePin()">🔐 Generate New PIN</button>
+          </div>
+          <div class="card">
+            <h3>Verify Purchase</h3>
+            <p>Enter a PIN to verify a customer purchase.</p>
+            <div class="form-group" style="margin-top:8px">
+              <label>PIN Code</label>
+              <input type="text" id="verifyPinInput" placeholder="Enter PIN">
+            </div>
+            <div class="form-group">
+              <label>Amount ($)</label>
+              <input type="number" id="verifyPinAmount" placeholder="0.00" step="0.01">
+            </div>
+            <div id="pinVerifyResult" style="margin:12px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="verifyPurchase()">✓ Verify Purchase</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Scanner Panel -->
+      <div id="loyScannerPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">📷 Customer QR Scanner <a href="/guides/merchant-guide.html#scanning" target="_blank" style="font-size:.75rem;color:var(--primary);text-decoration:none;margin-left:8px">❓ Help</a></div>
+        <div class="section-subtitle">Scan a customer's loyalty QR code at checkout to verify their purchase and auto-credit their account.</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>📸 Camera Scanner</h3>
+            <div id="scannerViewport" style="position:relative;width:100%;max-width:400px;margin:12px auto;border-radius:12px;overflow:hidden;background:#000">
+              <video id="scannerVideo" style="width:100%;height:auto;display:block" autoplay playsinline muted></video>
+              <canvas id="scannerCanvas" style="display:none"></canvas>
+              <div id="scannerOverlay" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.5);border-radius:16px;width:200px;height:200px;pointer-events:none"></div>
+            </div>
+            <div style="text-align:center;margin:8px 0">
+              <button class="btn btn-primary" onclick="startScanner()">📷 Start Scanner</button>
+              <button class="btn btn-secondary" onclick="stopScanner()" style="margin-left:8px">⏹ Stop</button>
+            </div>
+            <div id="scanResult" style="display:none;margin-top:12px"></div>
+          </div>
+          <div class="card">
+            <h3>🔐 Verify & Credit</h3>
+            <div id="scanCustomerInfo" style="margin-bottom:12px">
+              <p style="font-size:.85rem;color:var(--text-secondary)">Scan a QR code to start.</p>
+            </div>
+            <div class="form-group">
+              <label>Customer ID</label>
+              <input type="text" id="scannerContactId" placeholder="Scanned ID will appear here" readonly>
+            </div>
+            <div class="form-group">
+              <label>Total Receipt ($) <span style="font-size:.75rem;color:var(--text-secondary)">— full amount before deals</span></label>
+              <input type="number" id="scannerAmount" placeholder="0.00" step="0.01">
+            </div>
+            <div class="form-group">
+              <label>Earnable Subtotal ($) <span style="font-size:.75rem;color:var(--text-secondary)">— points earned on this portion only</span></label>
+              <input type="number" id="scannerSubtotal" placeholder="Same as total" step="0.01">
+              <small style="color:var(--text-secondary);font-size:.75rem">Leave blank to earn on full receipt. Subtract deal items (free dessert, discounted item) here.</small>
+            </div>
+            <div class="form-group">
+              <label>Deal Note <span style="font-size:.75rem;color:var(--text-secondary)">— what was on the house?</span></label>
+              <input type="text" id="scannerDealDesc" placeholder="e.g. Free dessert — rest of meal earns">
+            </div>
+            <div class="form-group">
+              <label>Business PIN</label>
+              <input type="password" id="scannerPin" placeholder="Enter your PIN" value="0000">
+            </div>
+            <div class="form-group">
+              <label>Apply Offer (optional)</label>
+              <select id="scannerOffer">
+                <option value="">No offer — just earn credits</option>
+              </select>
+            </div>
+            <div id="scannerVerifyResult" style="margin:12px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="scannerVerifyPurchase()">✅ Verify & Credit</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pledges Panel -->
+      <div id="loyPledgesPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🤝 Business Pledges</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Create Pledge</h3>
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" id="pledgeTitle" placeholder="Pledge title">
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input type="text" id="pledgeDesc" placeholder="What you're pledging">
+            </div>
+            <div class="form-group">
+              <label>Value ($)</label>
+              <input type="number" id="pledgeValue" placeholder="0.00" step="0.01">
+            </div>
+            <div id="pledgeCreateResult" style="margin:8px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="createPledge()">🤝 Create Pledge</button>
+          </div>
+          <div class="card">
+            <h3>My Pledges</h3>
+            <div id="pledgesList"><div class="empty-state"><p>No pledges yet.</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Offers Panel -->
+      <div id="loyOffersPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🏷️ Redemption Offers <a href="/guides/merchant-guide.html#create-offers" target="_blank" style="font-size:.75rem;color:var(--primary);text-decoration:none;margin-left:8px">❓ Help</a></div>
+        <div class="section-subtitle">Create offers that control how customers can redeem their credits at your business.</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Create Offer</h3>
+            <div class="form-group">
+              <label>Offer Name</label>
+              <input type="text" id="offerName" placeholder="e.g. 25% off up to $6">
+            </div>
+            <div class="form-group">
+              <label>Discount %</label>
+              <input type="number" id="offerDiscount" placeholder="25" min="1" max="100">
+            </div>
+            <div class="form-group">
+              <label>Max Discount ($)</label>
+              <input type="number" id="offerCap" placeholder="6.00" min="1" step="0.01">
+            </div>
+            <div id="offerCreateResult" style="margin:8px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="createOffer()">🏷️ Create Offer</button>
+          </div>
+          <div class="card">
+            <h3>Your Offers</h3>
+            <div id="offersList"><div class="empty-state"><p>No offers yet. Create one to let customers redeem credits!</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legal Panel -->
+      <div id="loyLegalPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">⚖️ Program Legal Terms</div>
+        <div class="section-subtitle">Legal terms governing use of the loyalty and rewards program. Your role determines which terms apply to you.</div>
+        <div id="legalRoleTabs" class="tab-bar" style="margin:16px 0">
+          <div class="tab active" onclick="switchLegalTab('participant')" id="legalTabParticipant">👤 Participant</div>
+          <div class="tab" onclick="switchLegalTab('merchant')" id="legalTabMerchant">🏪 Merchant</div>
+          <div class="tab" onclick="switchLegalTab('supplier')" id="legalTabSupplier">📦 Supplier</div>
+          <div class="tab" onclick="switchLegalTab('admin')" id="legalTabAdmin">🛡️ Admin</div>
+        </div>
+        <div id="legalContent"><!-- legal content rendered here --></div>
+      </div>
+
+      <!-- IQS / Surveys Panel -->
+      <div id="loyIqsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🧠 Smart Surveys</div>
+        <div class="section-subtitle">Create qualification funnels for visitors and customers.</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Create Funnel</h3>
+            <div class="form-group">
+              <label>Funnel Name</label>
+              <input type="text" id="iqsFunnelName" placeholder="e.g. Customer Feedback">
+            </div>
+            <div class="form-group">
+              <label>Type</label>
+              <select id="iqsFunnelType">
+                <option value="survey">Survey</option>
+                <option value="quiz">Quiz</option>
+                <option value="questionnaire">Questionnaire</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input type="text" id="iqsFunnelDesc" placeholder="Optional description">
+            </div>
+            <div id="iqsCreateResult" style="margin:8px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="iqsCreateFunnel()">🧠 Create Funnel</button>
+          </div>
+          <div class="card">
+            <h3>Your Funnels</h3>
+            <div id="iqsFunnelsList"><div class="empty-state"><p>No funnels yet. Create one to start collecting survey responses!</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deals Panel -->
+      <div id="loyDealsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">🎁 Deals &amp; Coupons</div>
+        <div class="section-subtitle">Create deals, discounts, and coupons for your business. Visitors can browse and claim them from the directory.</div>
+        
+        <!-- Create/Edit Deal Form -->
+        <div id="dealFormCard" class="card" style="display:none;margin-bottom:16px">
+          <h3 id="dealFormTitle">Create New Deal</h3>
+          <div class="form-group">
+            <label>Deal Title *</label>
+            <input type="text" id="dealTitle" placeholder="e.g. 20% Off Your First Visit" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="dealDesc" rows="2" placeholder="What does this deal include?" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></textarea>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Original Price</label>
+              <input type="text" id="dealOrigPrice" placeholder="$50" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Deal Price</label>
+              <input type="text" id="dealPrice" placeholder="$40" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Discount %</label>
+              <input type="number" id="dealDiscount" min="1" max="99" placeholder="20" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Coupon Code (optional)</label>
+            <input type="text" id="dealCouponCode" placeholder="e.g. SAVE20" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Start Date</label>
+              <input type="date" id="dealStartDate" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>End Date</label>
+              <input type="date" id="dealEndDate" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Redemption Limit</label>
+              <input type="number" id="dealLimit" min="1" placeholder="100" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+            <div class="form-group" style="flex:1;min-width:140px">
+              <label>Max Claims Per User</label>
+              <input type="number" id="dealPerUserLimit" min="1" placeholder="Unlimited" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Image URL (optional)</label>
+            <input type="url" id="dealImage" placeholder="https://example.com/deal-image.jpg" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div class="form-group">
+            <label>Terms (optional)</label>
+            <input type="text" id="dealTerms" placeholder="e.g. One per customer. Not combinable." style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <hr style="margin:16px 0;border-color:var(--border)">
+          <div class="section-subtitle" style="margin-bottom:12px">🎨 Deal Page Customization</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:180px">
+              <label>Template Style</label>
+              <select id="dealPageTemplate" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+                <option value="">Default (Classic)</option>
+                <option value="classic">📄 Classic</option>
+                <option value="modern">✨ Modern</option>
+                <option value="bold">🔥 Bold</option>
+                <option value="minimal">🤍 Minimal</option>
+                <option value="service">⭐ Service/Experience</option>
+                <option value="ecommerce">🛒 E-Commerce/Digital</option>
+                <option value="event">🎪 Event/Ticket</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:0 0 auto;min-width:100px">
+              <label>Accent Color</label>
+              <input type="color" id="dealAccentColor" value="#f27f2f" style="width:60px;height:38px;border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:2px">
+            </div>
+            <div class="form-group" style="flex:0 0 auto;min-width:100px">
+              <label>CTA Color</label>
+              <input type="color" id="dealCtaColor" value="#f27f2f" style="width:60px;height:38px;border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:2px">
+            </div>
+            <div class="form-group" style="flex:1;min-width:180px">
+              <label>CTA Button Text</label>
+              <input type="text" id="dealCtaText" placeholder="Claim This Deal" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+            <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="dealShowTimer" style="width:18px;height:18px">
+              <span style="font-size:.85rem;font-weight:500">Show Countdown Timer</span>
+            </label>
+            <span style="font-size:.75rem;color:var(--text-muted)">(only shown if end date is set)</span>
+          </div>
+          <div class="form-group">
+            <label>Gallery Images <span style="font-size:.75rem;color:var(--text-muted)">— click + to add more (max 10)</span></label>
+            <div id="dealGalleryEditor">
+              <div class="gallery-urls" id="galleryUrls">
+                <div class="gallery-row" style="display:flex;gap:8px;margin-bottom:6px">
+                  <input type="url" class="gallery-input" placeholder="https://example.com/image1.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace">
+                  <button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>
+                </div>
+              </div>
+              <button type="button" onclick="addGalleryRow()" style="margin-top:6px;padding:6px 14px;border:1px dashed var(--border);border-radius:8px;background:transparent;cursor:pointer;font-size:.82rem;color:var(--primary);font-weight:600">+ Add Image</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Highlights <span style="font-size:.75rem;color:var(--text-muted)">— bullet points shown on deal page (3-8 items)</span></label>
+            <div id="highlightsEditor">
+              <div class="highlights-list" id="highlightsList">
+                <div class="highlight-row" style="display:flex;gap:8px;margin-bottom:6px">
+                  <input type="text" class="highlight-input" placeholder="e.g. 20% off your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+                </div>
+              </div>
+              <button type="button" onclick="addHighlight()" style="margin-top:6px;padding:6px 14px;border:1px dashed var(--border);border-radius:8px;background:transparent;cursor:pointer;font-size:.82rem;color:var(--primary);font-weight:600">+ Add Highlight</button>
+            </div>
+          </div>
+          <hr style="margin:16px 0;border-color:var(--border)">
+          <div class="section-subtitle" style="margin-bottom:12px">⭐ Premium Features '+(typeof dealPageObj!=="undefined"&&dealPageObj.premium_features?'<span style="font-size:.75rem;color:var(--green);margin-left:6px">Enabled</span>':'<span style="font-size:.75rem;color:var(--text-muted);margin-left:6px">🔒 Upgrade Required</span>')+'</div>
+          <div id="premiumFeaturesSection" style="background:var(--bg-teal);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">'+
+            '<div class="form-group">'+
+              '<label>Redemption Type</label>'+
+              '<select id="dealRedemptionType" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">'+
+                '<option value="code">📝 Coupon Code</option>'+
+                '<option value="qr">📱 QR Code</option>'+
+                '<option value="booking">🔗 Booking Link</option>'+
+                '<option value="wallet">💳 Wallet Pass</option>'+
+              '</select>'+
+            '</div>'+
+            '<div class="form-group">'+
+              '<label>Booking URL <span style="font-size:.75rem;color:var(--text-muted)">— for booking type redemptions</span></label>'+
+              '<input type="text" id="dealBookingUrl" placeholder="https://your-booking-link.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">'+
+            '</div>'+
+            '<label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
+              '<input type="checkbox" id="dealShowQR" style="width:18px;height:18px">'+
+              '<span style="font-size:.85rem;font-weight:500">Show QR Code on Deal Page</span>'+
+            '</label>'+
+            '<label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
+              '<input type="checkbox" id="dealPremiumFeatures" style="width:18px;height:18px">'+
+              '<span style="font-size:.85rem;font-weight:500">Enable Premium Features</span>'+
+              '<span style="font-size:.75rem;color:var(--text-muted);margin-left:4px">(QR codes, template variants, social sharing, booking links)</span>'+
+            '</label>'+
+          '</div>'+
+          <div id="dealFormResult" style="margin:8px 0;font-size:.8rem"></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" id="dealSubmitBtn" onclick="submitDeal()">💾 Save Deal</button>
+            <button class="btn btn-secondary" onclick="cancelDealForm()">Cancel</button>
+          </div>
+        </div>
+        
+        <!-- Deals Toolbar -->
+        <div id="dealsToolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-primary" onclick="showDealForm()">+ New Deal</button>
+          <div id="dealsStats" style="font-size:.85rem;color:var(--text-secondary)"></div>
+        </div>
+        
+        <!-- Deals List -->
+        <div id="dealsList" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+          <div class="empty-state"><p>Loading deals...</p></div>
+        </div>
+        
+        <!-- Claims/Redemptions Panel -->
+        <div id="dealsClaimsSection" style="display:none;margin-top:24px">
+          <div class="section-title" style="font-size:1rem">📋 Recent Claims</div>
+          <div id="dealsClaimsList"></div>
+        </div>
+      </div>
+
+      <!-- Settings Panel -->
+      <div id="loySettingsPanel" class="loyalty-panel" style="display:none">
+        <div class="section-title">⚙️ Loyalty Settings <a href="/guides/merchant-guide.html#credit-rate" target="_blank" style="font-size:.75rem;color:var(--primary);text-decoration:none;margin-left:8px">❓ Help</a></div>
+        <div class="section-subtitle">Configure your credit rate and purchase PIN for the loyalty program.</div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>💰 Credit Rate</h3>
+            <p style="font-size:.85rem;color:var(--text-secondary);margin:8px 0">How many credits customers earn per $1 spent.</p>
+            <div class="form-group">
+              <label>Credits per Dollar</label>
+              <input type="number" id="loyCreditRate" min="1" max="1000" placeholder="10">
+            </div>
+            <div id="creditRateStatus" style="margin:8px 0"></div>
+            <button class="btn btn-primary btn-block" onclick="saveCreditRate()">💾 Save Credit Rate</button>
+          </div>
+          <div class="card">
+            <h3>🔐 Purchase PIN</h3>
+            <p style="font-size:.85rem;color:var(--text-secondary);margin:8px 0">The PIN businesses must enter to verify purchases. Auto-generated for each tenant on signup.</p>
+            <div class="form-group">
+              <label>Current PIN</label>
+              <input type="text" id="loyPurchasePin" readonly style="background:var(--bg);font-family:monospace;font-size:1.1rem;text-align:center;letter-spacing:4px">
+            </div>
+            <div id="purchasePinStatus" style="margin:8px 0"></div>
+          </div>
+        </div>
+
+        <!-- Connected Services -->
+        <div class="section-title" style="margin-top:24px">🔗 Connected Services</div>
+        <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Connect your other SwiftSoftware accounts to unlock features in your listings.</div>
+        <div class="card-grid">
+          <!-- IncentiveSwift -->
+          <div class="card connected-service" id="svcIncentiveSwift">
+            <h3>🎯 IncentiveSwift</h3>
+            <p>Loyalty campaigns, SMS funnels, rewards, and smart surveys.</p>
+            <div id="isStatus" style="margin-top:10px">
+              <span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>
+            </div>
+            <div id="isConnectForm" style="display:none;margin-top:8px">
+              <div class="form-group">
+                <label>API Key</label>
+                <input type="password" id="isApiKey" placeholder="Paste your IncentiveSwift API key">
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm" onclick="connectService('incentiveswift')">✅ Connect</button>
+                <button class="btn btn-secondary btn-sm" onclick="cancelConnectForm('incentiveswift')">Cancel</button>
+              </div>
+              <div id="isConnectResult" style="margin-top:6px;font-size:.8rem"></div>
+            </div>
+          </div>
+          <!-- CoreSwift CRM -->
+          <div class="card connected-service" id="svcCoreSwift">
+            <h3>📋 CoreSwift CRM</h3>
+            <p>Calendar, bookings, contact sync, and customer management.</p>
+            <div id="csStatus" style="margin-top:10px">
+              <span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+const API = '/api/v1';
+
+// ── Helpers ──
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+// ── Auth Tab Switching ──
+function switchAuthTab(tab) {
+  if (tab === 'login') {
+    $('loginTab').classList.add('active');
+    $('registerTab').classList.remove('active');
+    show('loginForm');
+    hide('registerForm');
+  } else {
+    $('registerTab').classList.add('active');
+    $('loginTab').classList.remove('active');
+    hide('loginForm');
+    show('registerForm');
+  }
+  hide('authError');
+  hide('authSuccess');
+}
+
+function showError(msg) {
+  var el = $('authError');
+  el.textContent = msg;
+  el.style.display = '';
+}
+function showSuccess(msg) {
+  var el = $('authSuccess');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── API Calls ──
+async function g(path) {
+  var token = localStorage.getItem('bizToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { headers: h });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+async function po(path, body) {
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { method: 'POST', headers: h, body: JSON.stringify(body) });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+async function pu(path, body) {
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var r = await fetch(API + path, { method: 'PUT', headers: h, body: JSON.stringify(body) });
+  if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
+  return r.json();
+}
+
+// ── Auth ──
+async function doLogin() {
+  var email = $('loginEmail').value.trim();
+  var password = $('loginPassword').value;
+  if (!email || !password) { showError('Please enter email and password'); return; }
+  hide('authError');
+  try {
+    var r = await po('/auth/login', { email, password });
+    localStorage.setItem('bizToken', r.access_token);
+    localStorage.setItem('bizUser', JSON.stringify(r.user));
+    // Check if user is a business owner — if not, try to find claimed businesses
+    loadDashboard();
+  } catch(e) {
+    showError(e.message);
+  }
+}
+
+async function doRegister() {
+  var name = $('regName').value.trim();
+  var email = $('regEmail').value.trim();
+  var password = $('regPassword').value;
+  var slug = $('regSlug').value.trim() || undefined;
+  if (!name || !email || !password) { showError('Please fill in all fields'); return; }
+  if (password.length < 6) { showError('Password must be at least 6 characters'); return; }
+  hide('authError');
+  try {
+    var r = await po('/auth/register', { name, email, password, tenant_name: name + "'s Directory", tenant_slug: slug });
+    localStorage.setItem('bizToken', r.access_token);
+    localStorage.setItem('bizUser', JSON.stringify(r.user));
+    showSuccess('Account created successfully! Loading dashboard...');
+    setTimeout(loadDashboard, 500);
+  } catch(e) {
+    showError(e.message);
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('bizToken');
+  localStorage.removeItem('bizUser');
+  hide('dashboard');
+  show('authScreen');
+  show('loginForm');
+  hide('registerForm');
+  $('loginTab').classList.add('active');
+  $('registerTab').classList.remove('active');
+}
+
+// ── Dashboard ──
+async function loadDashboard() {
+  var token = localStorage.getItem('bizToken');
+  if (!token) { show('authScreen'); hide('dashboard'); return; }
+  
+  hide('authScreen');
+  show('dashboard');
+  show('loadingState');
+  hide('dashboardContent');
+  
+  try {
+    var data = await g('/portal/business/profile');
+    $('userInfo').textContent = 'You have ' + (data.claimed_businesses || []).length + ' claimed business(es)';
+    renderBusinesses(data.claimed_businesses || []);
+    hide('loadingState');
+    show('dashboardContent');
+    loadPlans();
+  } catch(e) {
+    // If portal endpoint fails, try /auth/me to see if token is valid
+    try {
+      var me = await g('/auth/me');
+      $('userInfo').textContent = 'Welcome, ' + (me.user?.name || 'Owner');
+      $('businessList').innerHTML = '<div class="card"><p>No claimed businesses yet. <a href="/">Browse directories</a> to claim your business listing.</p></div>';
+      hide('loadingState');
+      show('dashboardContent');
+    } catch(e2) {
+      // Token invalid, go back to login
+      doLogout();
+    }
+  }
+}
+
+function renderBusinesses(businesses) {
+  if (!businesses || businesses.length === 0) {
+    $('businessList').innerHTML = '<div class="section-title">🏢 My Businesses</div>' +
+      '<div class="card" style="text-align:center;padding:32px">' +
+      '<div class="icon" style="font-size:2.5rem;margin-bottom:12px">🏪</div>' +
+      '<h3>No claimed businesses yet</h3>' +
+      '<p style="margin:8px 0 16px">Claim your business listing to access the owner dashboard.</p>' +
+      '<a href="/" class="btn btn-primary">Browse Directories</a>' +
+      '</div>';
+    return;
+  }
+
+  var html = '<div class="section-title">🏢 My Businesses (' + businesses.length + ')</div>';
+  html += '<div class="card-grid">';
+  
+  for (var b of businesses) {
+    var biz = b.business || {};
+    var claim = b.claim || {};
+    var sub = b.subscription || {};
+    
+    var statusClass = sub.status === 'active' ? 'active' : 'inactive';
+    var statusLabel = sub.status || 'No subscription';
+    var tierLabel = sub.tier_name || 'Basic';
+    var priceDisplay = sub.price_paid ? '$' + parseFloat(sub.price_paid).toFixed(2) + '/' + (sub.billing_cycle || 'mo') : 'Free';
+    
+    // Verification status
+    var v = b.verification || {};
+    var vStatus = v.status || 'pending';
+    var vClass = vStatus === 'approved' ? 'active' : (vStatus === 'rejected' ? 'badge' : 'warning');
+    var vLabel = vStatus === 'approved' ? '✅ Verified' : (vStatus === 'rejected' ? '❌ Rejected' : '⏳ Pending Verification');
+    
+    html += '<div class="card">';
+    html += '<h3>' + esc(biz.name) + '</h3>';
+    html += '<p>';
+    if (biz.city) html += '📍 ' + esc(biz.city);
+    if (biz.state) html += ', ' + esc(biz.state);
+    if (!biz.city) html += '📍 Location not set';
+    html += '</p>';
+    
+    html += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
+    html += '<span class="badge ' + statusClass + '">' + esc(statusLabel) + '</span>';
+    html += '<span class="badge warning">' + esc(tierLabel) + '</span>';
+    html += '<span class="badge ' + vClass + '">' + vLabel + '</span>';
+    html += '</div>';
+    
+    html += '<div class="meta">';
+    if (sub.start_date) html += 'Started: ' + new Date(sub.start_date).toLocaleDateString() + ' | ';
+    html += priceDisplay;
+    html += '</div>';
+    
+    html += '<div class="card-actions">';
+    html += '<button class="btn btn-sm btn-secondary" onclick="switchLoyaltyTab(\'dashboard\')">🎯 Loyalty</button>';
+    html += '<button class="btn btn-sm btn-secondary" onclick="switchLoyaltyTab(\'credits\')">💰 Credits</button>';
+    html += '</div>';
+    
+    html += '</div>';
+  }
+  
+  html += '</div>';
+  $('businessList').innerHTML = html;
+}
+
+// ── Coming Soon ──
+function showComingSoon(feature) {
+  var msg = '🔜 ' + feature + ' is coming soon!';
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;font-size:.9rem;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:fadeIn .3s';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; setTimeout(function() { toast.remove(); }, 300); }, 3000);
+}
+
+// ── Plans / Upgrade ──
+var _currentPlanBizId = null;
+
+function loadPlans() {
+  fetch(API + '/subscriptions/plans')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var plans = data.plans || [];
+      if (plans.length === 0) { renderHardcodedPlans(); return; }
+      renderPlans(plans);
+    })
+    .catch(function() {
+      renderHardcodedPlans();
+    });
+}
+
+function renderHardcodedPlans() {
+  renderPlans([
+    { id: 'listed', name: 'Listed', price_monthly: '0', price_yearly: '0', description: 'Free basic listing on the directory.', features: { listings: '1', photos: '3', support: 'Email' }, max_listings: 1 },
+    { id: 'featured', name: 'Featured', price_monthly: '29.99', price_yearly: '299.99', description: 'Featured placement with more photos and priority.', features: { listings: '3', photos: '10', support: 'Priority Email', badge: 'Featured Badge', analytics: 'Basic' }, max_listings: 3 },
+    { id: 'premium', name: 'Premium', price_monthly: '99.99', price_yearly: '999.99', description: 'Top priority placement with full feature access.', features: { listings: 'Unlimited', photos: 'Unlimited', support: '24/7 Priority', badge: 'Premium Badge', analytics: 'Advanced', deals: 'Deals & Coupons', spotlight: 'Spotlight Eligible' }, max_listings: 999 }
+  ]);
+}
+
+function renderPlans(plans) {
+  window._cachedPlans = plans;
+  var container = $('plansGrid');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  var featuredIdx = -1;
+  for (var i = 0; i < plans.length; i++) {
+    if (plans[i].name && plans[i].name.toLowerCase() === 'featured') featuredIdx = i;
+  }
+  
+  for (var i = 0; i < plans.length; i++) {
+    var p = plans[i];
+    var price = parseFloat(p.price_monthly || 0).toFixed(2);
+    
+    // Build features list
+    var features = p.features || {};
+    var featureKeys = Object.keys(features);
+    var featureHtml = '';
+    if (featureKeys.length > 0) {
+      featureHtml = '<ul class="plan-features">';
+      for (var k = 0; k < featureKeys.length; k++) {
+        var val = features[featureKeys[k]];
+        featureHtml += '<li><span class="check">✓</span> ' + esc(featureKeys[k].charAt(0).toUpperCase() + featureKeys[k].slice(1).replace(/_/g,' ')) + ': <strong>' + esc(String(val)) + '</strong></li>';
+      }
+      featureHtml += '</ul>';
+    } else {
+      // Default feature list based on plan name
+      var defaultFeatures = [];
+      var pname = (p.name || '').toLowerCase();
+      if (pname === 'listed') defaultFeatures = ['Basic listing', 'Up to 3 photos', 'Email support'];
+      else if (pname === 'featured') defaultFeatures = ['Featured placement', 'Up to 10 photos', 'Priority support', 'Featured badge', 'Basic analytics'];
+      else defaultFeatures = ['Top priority placement', 'Unlimited photos', '24/7 priority support', 'Premium badge', 'Advanced analytics', 'Deals & coupons', 'Blog & articles'];
+      featureHtml = '<ul class="plan-features">';
+      for (var f = 0; f < defaultFeatures.length; f++) {
+        featureHtml += '<li><span class="check">✓</span> ' + defaultFeatures[f] + '</li>';
+      }
+      featureHtml += '</ul>';
+    }
+    
+    var isFeatured = i === featuredIdx;
+    var featuredClass = isFeatured ? ' plan-card featured' : '';
+    
+    container.innerHTML +=
+      '<div class="plan-card card' + featuredClass + '">' +
+        '<div class="plan-header">' +
+          '<div class="plan-name">' + esc(p.name || 'Plan') + '</div>' +
+          (isFeatured ? '<div style="font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--primary);font-weight:700;margin-top:2px">Best Value</div>' : '') +
+          '<div class="plan-price">$' + price + '</div>' +
+          '<div class="plan-period">per month</div>' +
+          (p.description ? '<div style="font-size:.8rem;color:var(--text-secondary);margin-top:6px">' + esc(p.description) + '</div>' : '') +
+        '</div>' +
+        '<div class="plan-body">' +
+          featureHtml +
+          '<div class="plan-subscribe">' +
+            '<button class="btn btn-block ' + (isFeatured ? 'btn-primary' : 'btn-secondary') + '" onclick="showSubscribe(' + i + ')">' +
+              (isFeatured ? 'Subscribe' : 'Choose') +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+  
+  show('upgradePlans');
+}
+
+function showSubscribe(planIdx) {
+  var plans = window._cachedPlans || [];
+  // For now show the subscribe interaction as coming soon
+  showComingSoon('Subscription upgrade — plan: ' + (plans[planIdx] ? plans[planIdx].name : 'Plan #' + (planIdx+1)));
+}
+
+// ════════════════════════════════════════════
+// ── Loyalty / IncentiveSwift Integration ──
+// ════════════════════════════════════════════
+
+var _loyData = {};
+
+function loyalty(path) {
+  var token = localStorage.getItem('bizToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  return fetch('/api/v1/loyalty' + path, { headers: h }).then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || e.message || 'Request failed'); });
+    return r.json();
+  });
+}
+
+function switchLoyaltyTab(tab) {
+  var tabs = ['dash','credits','vouchers','referrals','rewards','pin','scanner','pledges','offers','iqs','deals','settings'];
+  for (var i = 0; i < tabs.length; i++) {
+    var t = tabs[i];
+    var tabEl = document.getElementById('loy' + t.charAt(0).toUpperCase() + t.slice(1) + 'Tab');
+    var panel = document.getElementById('loy' + t.charAt(0).toUpperCase() + t.slice(1) + 'Panel');
+    if (t === tab) {
+      if (tabEl) tabEl.classList.add('active');
+      if (panel) panel.style.display = '';
+    } else {
+      if (tabEl) tabEl.classList.remove('active');
+      if (panel) panel.style.display = 'none';
+    }
+  }
+  // Load data on first visit to a tab
+  if (tab === 'credits') loadCreditsTab();
+  else if (tab === 'vouchers') loadVouchersTab();
+  else if (tab === 'referrals') loadReferralsTab();
+  else if (tab === 'rewards') loadRewardsTab();
+  else if (tab === 'pledges') loadPledgesTab();
+  else if (tab === 'offers') loadOffersTab();
+  else if (tab === 'legal') loadLegalTab();
+  else if (tab === 'settings') loadSettingsTab();
+  else if (tab === 'iqs') loadIqsTab();
+  else if (tab === 'deals') loadDealsTab();
+}
+
+// ── Load Loyalty Dashboard ──
+function loadLoyaltyData() {
+  var loading = document.getElementById('loyaltyLoading');
+  var content = document.getElementById('loyaltyContent');
+  if (!loading || !content) return;
+  loading.style.display = '';
+  content.style.display = 'none';
+  
+  loyalty('/portal/dashboard')
+    .then(function(d) {
+      _loyData = d;
+      renderLoyaltyDashboard(d);
+      loading.style.display = 'none';
+      content.style.display = '';
+      // Also load plan status for ZC pool bar
+      loadPlanStatus();
+    })
+    .catch(function(e) {
+      loading.style.display = 'none';
+      // Show loyalty plan selector if user has no IS account
+      loadLoyaltyPlans();
+      content.style.display = 'none';
+    });
+}
+
+function renderLoyaltyDashboard(d) {
+  document.getElementById('loyTotalCredits').textContent = '$' + (d.total_credits || 0).toLocaleString();
+  document.getElementById('loyActiveVouchers').textContent = d.active_vouchers || 0;
+  document.getElementById('loyReferralCount').textContent = d.referral_count || 0;
+  document.getElementById('loyRewardsAvail').textContent = d.available_rewards || 0;
+  
+  var detail = document.getElementById('loyDashboardDetail');
+  if (d.referrer_code) {
+    detail.innerHTML = '<div class="card" style="margin-top:12px">' +
+      '<h3>Your Referral Code</h3>' +
+      '<div class="code-display" onclick="copyCode(\'' + esc(d.referrer_code) + '\')" title="Click to copy">' + esc(d.referrer_code) + '</div>' +
+      '<p style="font-size:.8rem;color:var(--text-secondary)">Click to copy — share with other businesses!</p>' +
+      '</div>';
+  }
+  if (d.subscription_tier) {
+    detail.innerHTML += '<div class="card" style="margin-top:12px">' +
+      '<h3>Subscription</h3>' +
+      '<p><strong>' + esc(d.subscription_tier) + '</strong>' +
+      (d.subscription_status ? ' &middot; <span class="badge ' + (d.subscription_status === 'active' ? 'active' : 'warning') + '">' + esc(d.subscription_status) + '</span>' : '') +
+      '</p></div>';
+  }
+}
+
+// ── Plan Status (ZC Pool Bar) ──
+function loadPlanStatus() {
+  var token = localStorage.getItem('bizToken');
+  if (!token) return;
+  fetch('/api/v1/business/loyalty/status', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function(r) { return r.json(); })
+    .then(function(s) {
+      if (!s.is_subscribed) return;
+      var bar = document.getElementById('zcPoolStatus');
+      if (!bar) return;
+      bar.style.display = '';
+      var pct = s.zc_pool_total > 0 ? Math.round((s.zc_pool_remaining / s.zc_pool_total) * 100) : 0;
+      document.getElementById('zcPoolBar').style.width = pct + '%';
+      document.getElementById('zcPoolLabel').textContent = s.zc_pool_remaining.toLocaleString() + ' / ' + s.zc_pool_total.toLocaleString() + ' ZC';
+      document.getElementById('zcPoolDetail').textContent = 
+        'Plan: ' + (s.plan || 'N/A') + ' • Resets: ' + (s.pool_reset_date || '1st of month') + ' • ' + pct + '% remaining';
+    });
+}
+
+// ── Credits Tab ──
+function loadCreditsTab() {
+  var overview = document.getElementById('creditsOverview');
+  var history = document.getElementById('creditsHistory');
+  if (!overview) return;
+  overview.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  Promise.all([
+    loyalty('/credits/balance'),
+    loyalty('/credits/history')
+  ]).then(function(results) {
+    var bal = results[0] || {};
+    var hist = results[1] || { transactions: [] };
+    
+    overview.innerHTML = '' +
+      '<div class="stat-card"><div class="stat-icon">💰</div><div class="stat-value">' + (bal.balance || 0).toLocaleString() + '</div><div class="stat-label">Available Credits</div></div>' +
+      '<div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value">' + (bal.credits_monthly || 0).toLocaleString() + '</div><div class="stat-label">Monthly Limit</div></div>' +
+      '<div class="stat-card"><div class="stat-icon">🔄</div><div class="stat-value">' + (bal.credits_overdraft || 0).toLocaleString() + '</div><div class="stat-label">Overdraft Protection</div></div>' +
+      '<div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">' + (bal.lifetime_used || 0).toLocaleString() + '</div><div class="stat-label">Lifetime Used</div></div>';
+    
+    var tx = hist.transactions || [];
+    if (tx.length === 0) {
+      history.innerHTML = '<div class="empty-state"><p>No transactions yet.</p></div>';
+    } else {
+      var h = '<div class="card">';
+      for (var i = 0; i < tx.length; i++) {
+        var t = tx[i];
+        var amt = parseFloat(t.amount || 0);
+        var cls = amt >= 0 ? 'positive' : 'negative';
+        h += '<div class="tx-row">' +
+          '<span>' + esc(t.description || 'Transaction') + '<br><small style="color:var(--text-secondary)">' + (t.created_at ? new Date(t.created_at).toLocaleString() : '') + '</small></span>' +
+          '<span class="tx-amount ' + cls + '">' + (amt >= 0 ? '+' : '') + amt.toFixed(2) + '</span>' +
+          '</div>';
+      }
+      h += '</div>';
+      history.innerHTML = h;
+    }
+  }).catch(function(e) {
+    overview.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+  });
+}
+
+// ── Vouchers Tab ──
+function loadVouchersTab() {
+  var el = document.getElementById('vouchersList');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  loyalty('/vouchers')
+    .then(function(d) {
+      var vouchers = d.vouchers || [];
+      if (vouchers.length === 0) {
+        el.innerHTML = '<div class="empty-state"><p>No vouchers yet.</p></div>';
+        return;
+      }
+      var h = '';
+      for (var i = 0; i < vouchers.length; i++) {
+        var v = vouchers[i];
+        var statusClass = v.status === 'active' ? 'active' : (v.status === 'redeemed' ? 'inactive' : 'warning');
+        h += '<div class="card voucher-card">' +
+          '<h4>' + esc(v.title || 'Voucher') + '</h4>' +
+          '<p>' + esc(v.description || '') + '</p>' +
+          '<div class="v-meta">' +
+          '<span class="badge ' + statusClass + '">' + esc(v.status || 'active') + '</span>' +
+          (v.value ? '<span><strong>$' + parseFloat(v.value).toFixed(2) + '</strong></span>' : '') +
+          (v.expires_at ? '<span>Expires: ' + new Date(v.expires_at).toLocaleDateString() + '</span>' : '') +
+          '</div>' +
+          (v.status === 'active' ? '<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="redeemVoucher(\'' + esc(v.id) + '\')">🎟️ Redeem</button>' : '') +
+          '</div>';
+      }
+      el.innerHTML = h;
+    })
+    .catch(function(e) {
+      el.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function redeemVoucher(id) {
+  loyalty('/vouchers/redeem', { method: 'POST', body: JSON.stringify({ voucher_id: id }) })
+    .then(function(r) {
+      toast('✅ Voucher redeemed!', 'success');
+      loadVouchersTab();
+    })
+    .catch(function(e) {
+      toast('❌ ' + e.message, 'error');
+    });
+}
+
+// ── Referrals Tab ──
+function loadReferralsTab() {
+  var codeEl = document.getElementById('referralCodeDisplay');
+  var listEl = document.getElementById('referralsList');
+  if (!codeEl) return;
+  codeEl.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:10px auto"></div>';
+  listEl.innerHTML = '';
+  
+  loyalty('/referrals')
+    .then(function(d) {
+      var code = d.code || '';
+      var referrals = d.referrals || [];
+      
+      if (code) {
+        codeEl.innerHTML = '<h3>Your Referral Code</h3>' +
+          '<div class="code-display" onclick="copyCode(\'' + esc(code) + '\')" title="Click to copy">' + esc(code) + '</div>' +
+          '<p style="font-size:.8rem;color:var(--text-secondary)">Click to copy — share this code to earn credits for every new signup!</p>';
+      } else {
+        codeEl.innerHTML = '<h3>No Referral Code Yet</h3>' +
+          '<p style="margin:8px 0">Generate a referral code to start earning.</p>' +
+          '<button class="btn btn-primary" onclick="createReferralCode()">🔗 Generate Referral Code</button>';
+      }
+      
+      if (referrals.length > 0) {
+        var h = '<div class="card">';
+        for (var i = 0; i < referrals.length; i++) {
+          var r = referrals[i];
+          h += '<div class="tx-row">' +
+            '<span>' + esc(r.email || 'Referred user') + '</span>' +
+            '<span class="badge ' + (r.status === 'active' ? 'active' : 'inactive') + '">' + esc(r.status || 'pending') + '</span>' +
+            '</div>';
+        }
+        h += '</div>';
+        listEl.innerHTML = h;
+      }
+    })
+    .catch(function(e) {
+      codeEl.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function createReferralCode() {
+  var btn = document.querySelector('#referralCodeDisplay .btn');
+  if (btn) btn.disabled = true;
+  loyalty('/referrals/create', { method: 'POST', body: '{}' })
+    .then(function(d) {
+      toast('✅ Referral code created!', 'success');
+      loadReferralsTab();
+    })
+    .catch(function(e) {
+      toast('❌ ' + e.message, 'error');
+      if (btn) btn.disabled = false;
+    });
+}
+
+function copyCode(code) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(code).then(function() {
+      toast('📋 Copied referral code!', 'success');
+    }).catch(function() {
+      fallbackCopy(code);
+    });
+  } else {
+    fallbackCopy(code);
+  }
+}
+function fallbackCopy(code) {
+  var ta = document.createElement('textarea');
+  ta.value = code;
+  ta.style.position = 'fixed'; ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  toast('📋 Copied!', 'success');
+}
+
+// ── Rewards Tab ──
+function loadRewardsTab() {
+  var el = document.getElementById('rewardsList');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  loyalty('/rewards')
+    .then(function(d) {
+      var rewards = d.rewards || [];
+      if (rewards.length === 0) {
+        el.innerHTML = '<div class="empty-state"><p>No rewards available yet.</p></div>';
+        return;
+      }
+      var h = '<div class="loy-stats-grid">';
+      for (var i = 0; i < rewards.length; i++) {
+        var r = rewards[i];
+        h += '<div class="card" style="text-align:center">' +
+          '<div style="font-size:2rem;margin-bottom:6px">🏆</div>' +
+          '<h4>' + esc(r.name || r.title || 'Reward') + '</h4>' +
+          (r.description ? '<p>' + esc(r.description) + '</p>' : '') +
+          (r.cost ? '<p style="margin:8px 0"><strong>' + r.cost + ' credits</strong></p>' : '') +
+          '<button class="btn btn-sm btn-primary" onclick="claimReward(\'' + esc(r.id) + '\')">Claim</button>' +
+          '</div>';
+      }
+      h += '</div>';
+      el.innerHTML = h;
+    })
+    .catch(function(e) {
+      el.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function claimReward(id) {
+  loyalty('/rewards/claim', { method: 'POST', body: JSON.stringify({ reward_id: id }) })
+    .then(function(r) {
+      toast('✅ Reward claimed!', 'success');
+      loadRewardsTab();
+    })
+    .catch(function(e) {
+      toast('❌ ' + e.message, 'error');
+    });
+}
+
+// ── Loyalty Plan Selector ──
+function loadLoyaltyPlans() {
+  var selector = document.getElementById('loyaltyPlanSelector');
+  var cards = document.getElementById('planCards');
+  var token = localStorage.getItem('bizToken');
+  if (!token || !selector) return;
+  
+  selector.style.display = '';
+  cards.innerHTML = '<div class="spinner" style="width:30px;height:30px;margin:20px auto"></div>';
+  
+  // Load available plans from IS
+  fetch('/api/v1/loyalty/plans?via=md', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(plans) {
+      if (!plans || !plans.length) {
+        cards.innerHTML = '<p style="color:var(--text-secondary);padding:20px;text-align:center">No plans available. Check back soon.</p>';
+        return;
+      }
+      cards.innerHTML = '';
+      plans.forEach(function(p) {
+        var zcDollars = (p.monthly_zc_pool / 100).toFixed(0);
+        var card = document.createElement('div');
+        card.style.cssText = 'background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:24px;text-align:center;transition:border-color .2s';
+        card.innerHTML = 
+          '<h4 style="font-size:1.1rem;margin:0 0 4px">' + esc(p.name) + '</h4>' +
+          '<div style="font-size:2rem;font-weight:800;color:#f27f2f;margin:8px 0">$' + (p.monthly_price / 100).toFixed(0) + '<span style="font-size:.85rem;font-weight:400;color:#64748b">/mo</span></div>' +
+          '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 12px">' + (p.description || '') + '</p>' +
+          '<div style="background:#f8fafc;border-radius:8px;padding:10px;margin:12px 0;font-size:.8rem;color:var(--text-secondary)">' +
+            '<strong>' + p.monthly_zc_pool.toLocaleString() + ' ZC</strong> monthly pool (worth $' + zcDollars + ' in rewards)<br>' +
+            (p.how_it_works || '') +
+          '</div>' +
+          '<button onclick="subscribeToPlan(\'' + escAttr(p.slug) + '\')" style="width:100%;background:#f27f2f;color:#fff;border:none;padding:12px;border-radius:8px;font-size:.95rem;font-weight:700;cursor:pointer">Choose ' + esc(p.name) + '</button>';
+        cards.appendChild(card);
+      });
+      // Hide if already enrolled
+      fetch('/api/v1/business/loyalty/status', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(r) { return r.json(); })
+        .then(function(s) {
+          if (s.is_subscribed) {
+            selector.style.display = 'none';
+            loadLoyaltyData();
+          }
+        });
+    })
+    .catch(function(e) {
+      cards.innerHTML = '<p style="color:var(--danger);padding:20px;text-align:center">Could not load plans: ' + esc(e.message) + '</p>';
+    });
+}
+
+function subscribeToPlan(planSlug) {
+  var status = document.getElementById('planStatus');
+  var token = localStorage.getItem('bizToken');
+  if (!token) return;
+  status.style.display = '';
+  status.innerHTML = '<p style="color:var(--text-secondary);font-size:.85rem">⏳ Preparing checkout...</p>';
+  
+  fetch('/api/v1/business/loyalty/subscribe', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan_slug: planSlug })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.checkout_url) {
+        // Redirect to Stripe checkout
+        window.location.href = d.checkout_url;
+      } else if (d.status === 'subscribed') {
+        status.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ You\'re enrolled! Reloading loyalty dashboard...</p>';
+        var selector = document.getElementById('loyaltyPlanSelector');
+        if (selector) selector.style.display = 'none';
+        setTimeout(function() { loadLoyaltyData(); }, 1500);
+      } else {
+        status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + (d.error || d.message || 'Subscription failed. Please try again.') + '</p>';
+      }
+    })
+    .catch(function(e) {
+      status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Network error: ' + esc(e.message) + '</p>';
+    });
+}
+
+// ── PIN Tab ──
+function generatePin() {
+  var result = document.getElementById('pinGenerateResult');
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  var btn = result.parentElement.querySelector('.btn');
+  if (btn) btn.disabled = true;
+  
+  loyalty('/pin/generate', { method: 'POST', body: '{}' })
+    .then(function(d) {
+      result.innerHTML = '<div style="background:#f0fdf4;padding:10px;border-radius:8px;text-align:center">' +
+        '<strong>PIN generated!</strong><br>' +
+        '<span style="font-family:monospace;font-size:1.2rem;letter-spacing:3px">' + esc(d.pin || '') + '</span></div>';
+      if (btn) btn.disabled = false;
+    })
+    .catch(function(e) {
+      result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+      if (btn) btn.disabled = false;
+    });
+}
+
+function verifyPurchase() {
+  var pin = document.getElementById('verifyPinInput').value.trim();
+  var amount = document.getElementById('verifyPinAmount').value;
+  var result = document.getElementById('pinVerifyResult');
+  if (!pin) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">Please enter a PIN</p>'; return; }
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  
+  loyalty('/pin/verify', { method: 'POST', body: JSON.stringify({ pin: pin, amount: amount }) })
+    .then(function(d) {
+      result.innerHTML = '<div style="background:#f0fdf4;padding:10px;border-radius:8px;text-align:center;color:var(--success);font-weight:600">✅ Purchase verified!</div>';
+    })
+    .catch(function(e) {
+      result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+    });
+}
+
+// ── Pledges Tab ──
+function loadPledgesTab() {
+  var el = document.getElementById('pledgesList');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+  
+  loyalty('/pledges')
+    .then(function(d) {
+      var pledges = d.pledges || [];
+      if (pledges.length === 0) {
+        el.innerHTML = '<div class="empty-state"><p>No pledges yet. Create one above!</p></div>';
+        return;
+      }
+      var h = '';
+      for (var i = 0; i < pledges.length; i++) {
+        var p = pledges[i];
+        h += '<div class="tx-row">' +
+          '<span><strong>' + esc(p.title || 'Pledge') + '</strong><br><small>' + esc(p.description || '') + '</small></span>' +
+          '<span style="font-weight:700;color:var(--primary)">$' + parseFloat(p.value || 0).toFixed(2) + '</span>' +
+          '</div>';
+      }
+      el.innerHTML = h;
+    })
+    .catch(function(e) {
+      el.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+}
+
+function createPledge() {
+  var title = document.getElementById('pledgeTitle').value.trim();
+  var desc = document.getElementById('pledgeDesc').value.trim();
+  var val = document.getElementById('pledgeValue').value;
+  var result = document.getElementById('pledgeCreateResult');
+  if (!title || !val) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">Title and value required</p>'; return; }
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  
+  loyalty('/pledges/create', { method: 'POST', body: JSON.stringify({ title: title, description: desc, value: val }) })
+    .then(function(d) {
+      result.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Pledge created!</p>';
+      document.getElementById('pledgeTitle').value = '';
+      document.getElementById('pledgeDesc').value = '';
+      document.getElementById('pledgeValue').value = '';
+      loadPledgesTab();
+    })
+    .catch(function(e) {
+      result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+    });
+}
+
+// ── Offers Tab ──
+function loadOffersTab() {
+  var listEl = document.getElementById('offersList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="spinner" style="width:24px;height:24px;margin:20px auto"></div>';
+
+  loyalty('/admin/offers')
+    .then(function(d) {
+      var offers = d.offers || [];
+      if (offers.length === 0) {
+        listEl.innerHTML = '<div class="empty-state"><p>No offers yet. Create one above!</p></div>';
+        return;
+      }
+      var h = '';
+      for (var i = 0; i < offers.length; i++) {
+        var o = offers[i];
+        var statusClass = o.active ? 'active' : 'inactive';
+        var statusLabel = o.active ? 'Active' : 'Inactive';
+        h += '<div class="card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:start">' +
+          '<div>' +
+          '<h3>' + esc(o.name) + '</h3>' +
+          '<p><strong>' + o.discount_percent + '% off</strong> &middot; up to $' + parseFloat(o.cap_dollars).toFixed(2) + '</p>' +
+          '</div>' +
+          '<span class="badge ' + statusClass + '">' + statusLabel + '</span>' +
+          '</div>' +
+          '<div class="meta">Created ' + (o.created_at ? new Date(o.created_at).toLocaleDateString() : '') + '</div>' +
+          '<div class="card-actions">' +
+          '<button class="btn btn-sm btn-secondary" onclick="toggleOffer(\'' + esc(o.id) + '\', ' + (!o.active) + ')">' +
+          (o.active ? '🔴 Deactivate' : '🟢 Activate') + '</button>' +
+          '</div>' +
+          '</div>';
+      }
+      listEl.innerHTML = h;
+    })
+    .catch(function(e) {
+      listEl.innerHTML = '<p style="color:var(--text-secondary)">⚠️ ' + esc(e.message) + '</p>';
+    });
+
+  // Also load offers for scanner dropdown
+  loadScannerOffers();
+}
+
+function createOffer() {
+  var name = document.getElementById('offerName').value.trim();
+  var discount = parseInt(document.getElementById('offerDiscount').value, 10);
+  var cap = parseFloat(document.getElementById('offerCap').value);
+  var result = document.getElementById('offerCreateResult');
+
+  if (!name) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Offer name required</p>'; return; }
+  if (isNaN(discount) || discount < 1 || discount > 100) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Discount must be 1-100%</p>'; return; }
+  if (isNaN(cap) || cap <= 0) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Cap must be > $0</p>'; return; }
+
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/v1/loyalty/admin/offers', {
+    method: 'POST',
+    headers: h,
+    body: JSON.stringify({
+      name: name,
+      discount_percent: discount,
+      cap_dollars: Math.round(cap)
+    })
+  })
+  .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || d.message || 'Failed'); return d; }); })
+  .then(function(d) {
+    result.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Offer created!</p>';
+    document.getElementById('offerName').value = '';
+    document.getElementById('offerDiscount').value = '';
+    document.getElementById('offerCap').value = '';
+    toast('✅ Offer created!', 'success');
+    loadOffersTab();
+  })
+  .catch(function(e) {
+    result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+  });
+}
+
+function toggleOffer(id, newState) {
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/v1/loyalty/admin/offers/' + id, {
+    method: 'PUT',
+    headers: h,
+    body: JSON.stringify({ active: newState })
+  })
+  .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || d.message || 'Failed'); return d; }); })
+  .then(function(d) {
+    toast(newState ? '🟢 Offer activated!' : '🔴 Offer deactivated', 'success');
+    loadOffersTab();
+  })
+  .catch(function(e) {
+    toast('❌ ' + e.message, 'error');
+  });
+}
+
+// Load offers into the scanner dropdown
+function loadScannerOffers() {
+  var select = document.getElementById('scannerOffer');
+  if (!select) return;
+  select.innerHTML = '<option value="">No offer — just earn credits</option>';
+
+  var token = localStorage.getItem('bizToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/v1/loyalty/admin/offers', { headers: h })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var offers = d.offers || [];
+      var activeOffers = offers.filter(function(o) { return o.active; });
+      for (var i = 0; i < activeOffers.length; i++) {
+        var o = activeOffers[i];
+        var opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.name + ' (' + o.discount_percent + '% off, up to $' + parseFloat(o.cap_dollars).toFixed(2) + ')';
+        select.appendChild(opt);
+      }
+    })
+    .catch(function(e) {
+      console.error('Failed to load offers for scanner:', e);
+    });
+}
+
+// ── Settings Tab ──
+function loadSettingsTab() {
+  var creditInput = document.getElementById('loyCreditRate');
+  var pinInput = document.getElementById('loyPurchasePin');
+
+  // Load connected services status
+  loadConnectedServices();
+
+  if (!creditInput || !pinInput) return;
+
+  // Fetch current credit rate
+  g('/loyalty/admin/credit-rate')
+    .then(function(r) {
+      if (r && r.credit_rate !== undefined) {
+        creditInput.value = r.credit_rate;
+      }
+    })
+    .catch(function(e) {
+      console.error('Failed to load credit rate:', e);
+    });
+
+  // Fetch current purchase PIN
+  g('/loyalty/admin/purchase-pin')
+    .then(function(r) {
+      if (r && r.pin !== undefined) {
+        pinInput.value = r.pin;
+      }
+    })
+    .catch(function(e) {
+      console.error('Failed to load purchase PIN:', e);
+    });
+}
+
+function saveCreditRate() {
+  var input = document.getElementById('loyCreditRate');
+  var status = document.getElementById('creditRateStatus');
+  if (!input || !status) return;
+  var val = parseInt(input.value, 10);
+  if (isNaN(val) || val < 0) {
+    status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Please enter a valid number (0 or more).</p>';
+    return;
+  }
+  status.innerHTML = '<p style="color:var(--text-secondary);font-size:.85rem">⏳ Saving...</p>';
+  pu('/loyalty/admin/credit-rate', { credit_rate: val })
+    .then(function(r) {
+      if (r && r.credit_rate !== undefined) {
+        status.innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Credit rate saved: 1 credit per $' + (1 / r.credit_rate).toFixed(2) + '</p>';
+        toast('Credit rate updated to ' + r.credit_rate, 'success');
+      }
+    })
+    .catch(function(e) {
+      status.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message || 'Failed to save') + '</p>';
+    });
+}
+
+// ════════════════════════════════════════════
+// ── Connected Services ──
+// ════════════════════════════════════════════
+
+var connectedServices = {};
+
+function loadConnectedServices() {
+  var isEl = document.getElementById('isStatus');
+  var csEl = document.getElementById('csStatus');
+  if (isEl) isEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>';
+  if (csEl) csEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>';
+
+  g('/connected-services')
+    .then(function(r) {
+      connectedServices = r;
+      renderConnectedServiceStatus(r);
+    })
+    .catch(function(e) {
+      console.error('Failed to load connected services:', e);
+      if (isEl) isEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⚠️ Unavailable</span>';
+      if (csEl) csEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⚠️ Unavailable</span>';
+    });
+}
+
+function renderConnectedServiceStatus(data) {
+  var dataObj = data || {};
+  connectedServices = dataObj;
+
+  // IncentiveSwift
+  var isEl = document.getElementById('isStatus');
+  if (isEl && dataObj.incentiveswift) {
+    if (dataObj.incentiveswift.connected) {
+      isEl.innerHTML = '<span style="font-size:.82rem;color:var(--success);font-weight:600">✅ Connected</span>' +
+        (dataObj.incentiveswift.expires_at ? '<br><small style="color:var(--text-secondary)">Expires ' + new Date(dataObj.incentiveswift.expires_at).toLocaleDateString() + '</small>' : '') +
+        ' <button class="btn btn-danger btn-sm" style="margin-left:8px" onclick="disconnectService(\'incentiveswift\')">Disconnect</button>';
+    } else {
+      isEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="showConnectForm(\'incentiveswift\')">Connect</button>';
+    }
+  }
+
+  // CoreSwift
+  var csEl = document.getElementById('csStatus');
+  if (csEl && dataObj.coreswift) {
+    if (dataObj.coreswift.connected) {
+      csEl.innerHTML = '<span style="font-size:.82rem;color:var(--success);font-weight:600">✅ Connected</span>' +
+        ' <button class="btn btn-danger btn-sm" style="margin-left:8px" onclick="disconnectService(\'coreswift\')">Disconnect</button>';
+    } else {
+      csEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="connectCoreSwift()">Connect</button>';
+    }
+  }
+}
+
+function showConnectForm(service) {
+  if (service === 'incentiveswift') {
+    var form = document.getElementById('isConnectForm');
+    if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
+  }
+}
+
+function cancelConnectForm(service) {
+  if (service === 'incentiveswift') {
+    var form = document.getElementById('isConnectForm');
+    if (form) form.style.display = 'none';
+    var input = document.getElementById('isApiKey');
+    if (input) input.value = '';
+    var result = document.getElementById('isConnectResult');
+    if (result) result.innerHTML = '';
+  }
+}
+
+function connectService(service) {
+  if (service !== 'incentiveswift') return;
+  var apiKey = document.getElementById('isApiKey').value.trim();
+  var result = document.getElementById('isConnectResult');
+  if (!apiKey) {
+    if (result) result.innerHTML = '<span style="color:var(--danger)">❌ Please enter an API key</span>';
+    return;
+  }
+  if (result) result.innerHTML = '<span style="color:var(--text-secondary)">⏳ Verifying and connecting...</span>';
+
+  po('/connected-services/connect', { service: 'incentiveswift', api_key: apiKey })
+    .then(function(r) {
+      if (result) result.innerHTML = '<span style="color:var(--success)">✅ Connected to IncentiveSwift</span>';
+      var input = document.getElementById('isApiKey');
+      if (input) input.value = '';
+      // Refresh status
+      loadConnectedServices();
+      toast('Connected to IncentiveSwift successfully!', 'success');
+    })
+    .catch(function(e) {
+      if (result) result.innerHTML = '<span style="color:var(--danger)">❌ ' + esc(e.message || 'Connection failed') + '</span>';
+    });
+}
+
+function connectCoreSwift() {
+  var csEl = document.getElementById('csStatus');
+  if (csEl) csEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⏳ Connecting...</span>';
+
+  po('/connected-services/connect', { service: 'coreswift', api_key: '' })
+    .then(function(r) {
+      toast('Connected to CoreSwift CRM!', 'success');
+      loadConnectedServices();
+    })
+    .catch(function(e) {
+      if (csEl) csEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="connectCoreSwift()">Connect</button>' +
+        '<br><small style="color:var(--danger)">' + esc(e.message) + '</small>';
+    });
+}
+
+function disconnectService(service) {
+  if (!confirm('Disconnect from ' + service + '? Integration features will be hidden.')) return;
+
+  var token = localStorage.getItem('bizToken');
+  var h = {};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/v1/connected-services/' + service, {
+    method: 'DELETE',
+    headers: h
+  })
+  .then(function(r) { return r.json(); })
+  .then(function() {
+    toast('Disconnected from ' + service, 'success');
+    loadConnectedServices();
+  })
+  .catch(function(e) {
+    toast('Disconnect failed: ' + e.message, 'error');
+  });
+}
+
+// ── Integration Feature Visibility ──
+function updateIntegrationVisibility() {
+  var cs = connectedServices || {};
+
+  // IncentiveSwift campaigns
+  var campaignDiv = document.getElementById('campaignIntegration');
+  if (campaignDiv) {
+    campaignDiv.style.display = (cs.incentiveswift && cs.incentiveswift.connected) ? '' : 'none';
+  }
+
+  // CoreSwift booking
+  var bookingDiv = document.getElementById('bookingIntegration');
+  if (bookingDiv) {
+    bookingDiv.style.display = (cs.coreswift && cs.coreswift.connected) ? '' : 'none';
+  }
+
+  // Show/hide the entire integration section
+  var integrationSection = document.getElementById('integrationFeatures');
+  if (integrationSection) {
+    var isConnected = (cs.incentiveswift && cs.incentiveswift.connected) ||
+                      (cs.coreswift && cs.coreswift.connected);
+    integrationSection.style.display = isConnected ? '' : 'none';
+  }
+}
+
+// ── Campaign Picker ──
+function onCampaignTypeChange() {
+  var type = document.getElementById('listingCampaignType').value;
+  var picker = document.getElementById('campaignPicker');
+  var campaignSelect = document.getElementById('listingCampaignId');
+
+  if (!type) {
+    if (picker) picker.style.display = 'none';
+    return;
+  }
+
+  if (picker) picker.style.display = '';
+  if (campaignSelect) {
+    campaignSelect.innerHTML = '<option value="">⏳ Loading campaigns...</option>';
+
+    g('/connected-services/incentiveswift/campaigns')
+      .then(function(data) {
+        var campaigns = Array.isArray(data) ? data : (data.campaigns || []);
+        var options = '<option value="">— Select a campaign —</option>';
+        for (var i = 0; i < campaigns.length; i++) {
+          var c = campaigns[i];
+          options += '<option value="' + c.id + '">' + esc(c.name || 'Campaign ' + (i+1)) +
+            (c.status ? ' (' + c.status + ')' : '') + '</option>';
+        }
+        campaignSelect.innerHTML = options;
+      })
+      .catch(function(e) {
+        campaignSelect.innerHTML = '<option value="">⚠ Failed to load campaigns</option>';
+        console.error('Failed to load IS campaigns:', e);
+      });
+  }
+}
+
+// ── Booking Field Toggle ──
+function toggleBookingFields() {
+  var checked = document.getElementById('listingEnableBooking').checked;
+  var fields = document.getElementById('bookingFields');
+  if (fields) fields.style.display = checked ? '' : 'none';
+}
+
+// ── CTA Button Functions ──
+var CTA_LABELS = {
+  book_now: '📅 Book Now', book_call: '📞 Book a Call', claim_deal: '🎁 Claim This Deal',
+  get_quote: '💬 Get a Quote', learn_more: '🔍 Learn More', visit_website: '🌐 Visit Website',
+  call_now: '📱 Call Now', send_message: '✉️ Send a Message', view_menu: '📋 View Menu',
+  view_catalog: '📦 View Catalog', join_rewards: '⭐ Join Rewards', rsvp: '🎟️ RSVP Now',
+  none: '— No CTA —'
+};
+
+function onCtaTypeChange() {
+  var sel = document.getElementById('listingCtaType');
+  var val = sel.value;
+  var preview = document.getElementById('ctaPreviewBtn');
+  var warnings = document.getElementById('ctaWarnings');
+  var opt = sel.options[sel.selectedIndex];
+  var requires = opt.getAttribute('data-requires');
+
+  preview.textContent = CTA_LABELS[val] || val;
+  preview.style.display = val === 'none' ? 'none' : 'inline-block';
+
+  warnings.innerHTML = '';
+  if (requires === 'coreswift' && !(connectedServices && connectedServices.coreswift && connectedServices.coreswift.connected)) {
+    warnings.innerHTML = '<div style="background:#fff3cd;color:#856404;padding:8px 12px;border-radius:6px">⚠️ Requires <b>CoreSwift CRM</b> — <a href="#" onclick="switchTab(\'settings\');return false" style="color:var(--primary);text-decoration:underline">connect in Settings</a></div>';
+  } else if (requires === 'incentiveswift' && !(connectedServices && connectedServices.incentiveswift && connectedServices.incentiveswift.connected)) {
+    warnings.innerHTML = '<div style="background:#fff3cd;color:#856404;padding:8px 12px;border-radius:6px">⚠️ Requires <b>IncentiveSwift</b> — <a href="#" onclick="switchTab(\'settings\');return false" style="color:var(--primary);text-decoration:underline">connect in Settings</a></div>';
+  } else if (val === 'visit_website') {
+    warnings.innerHTML = '<div style="background:#fff3cd;color:#856404;padding:8px 12px;border-radius:6px">⚠️ Make sure your business has a website URL in its profile</div>';
+  } else if (val === 'call_now') {
+    warnings.innerHTML = '<div style="background:#fff3cd;color:#856404;padding:8px 12px;border-radius:6px">⚠️ Make sure your business has a phone number in its profile</div>';
+  }
+  document.getElementById('ctaSaveResult').textContent = '';
+}
+
+async function saveCtaType() {
+  if (!_selectedBizId) return;
+  var val = document.getElementById('listingCtaType').value;
+  try {
+    await pu('/biz/' + _selectedBizId + '/meta', { cta_type: val === 'none' ? null : val });
+    document.getElementById('ctaSaveResult').textContent = '✅ Saved';
+    setTimeout(function(){ document.getElementById('ctaSaveResult').textContent = ''; }, 2000);
+  } catch(e) {
+    document.getElementById('ctaSaveResult').textContent = '❌ ' + e.message;
+  }
+}
+
+// ── Legal Tab ──
+function switchLegalTab(tab) {
+  var tabs = ['participant','merchant','supplier','admin'];
+  tabs.forEach(function(t) {
+    document.getElementById('legalTab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.remove('active');
+  });
+  document.getElementById('legalTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  renderLegalContent(tab);
+}
+
+function loadLegalTab() {
+  var roleMap = {
+    'company_admin': 'merchant',
+    'admin': 'admin',
+    'super_admin': 'admin',
+    'portfolio_company': 'supplier',
+    'supplier': 'supplier'
+  };
+  var userRole = 'participant';
+  if (typeof _loyData !== 'undefined' && _loyData && _loyData.role) {
+    userRole = roleMap[_loyData.role] || 'participant';
+  }
+  switchLegalTab(userRole);
+}
+
+function renderLegalContent(tab) {
+  var content = document.getElementById('legalContent');
+  if (!content) return;
+  var html = '';
+  
+  if (tab === 'participant') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; PARTICIPANT TERMS OF USE</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Acceptance</h4><p>By participating in the ZaarHub Loyalty Program ("Program"), you agree to these Participant Terms. If you do not agree, do not participate.</p></div>' +
+      '<div class="legal-clause"><h4>2. Eligibility</h4><p>Open to individuals 18+ with a valid account. One account per person. Employees of SwiftSoftware and its affiliates may participate but are subject to additional restrictions.</p></div>' +
+      '<div class="legal-clause"><h4>3. Earning Credits</h4><p>Participants earn credits by: (a) scanning the QR code at participating merchants and verifying a purchase, (b) referring new participants who join the Program, (c) participating in promotional campaigns. Credits are awarded at the rate set by each merchant. No cash value. Credits never expire as long as the account remains active.</p></div>' +
+      '<div class="legal-clause"><h4>4. Redeeming Credits</h4><p>Credits can be redeemed for rewards, vouchers, or discounts offered by participating merchants. Redemption is subject to offer terms (minimum credits, expiration, caps). All redemptions are final &mdash; no returns, exchanges, or cash refunds for redeemed credits.</p></div>' +
+      '<div class="legal-clause"><h4>5. Purchase Verification</h4><p>When a merchant scans your QR code and you verify a purchase amount, you authorize that merchant to view your name and participant ID for verification purposes. You must present your QR code or account identifier at time of purchase. Credits are awarded after successful verification.</p></div>' +
+      '<div class="legal-clause"><h4>6. Referrals</h4><p>You may share your referral code. You earn credits when a new participant signs up through your code and completes their first purchase verification. Fraudulent or self-referral activity will result in forfeiture of credits and account termination.</p></div>' +
+      '<div class="legal-clause"><h4>7. Prohibited Conduct</h4><p>You may not: manipulate or abuse the Program mechanics, create multiple accounts, use bots or automated scripts, resell credits or rewards, engage in fraudulent purchase verification, or violate any applicable law.</p></div>' +
+      '<div class="legal-clause"><h4>8. Account Security</h4><p>You are responsible for maintaining the confidentiality of your login credentials. Notify us immediately of unauthorized use. We are not liable for losses from unauthorized account access.</p></div>' +
+      '<div class="legal-clause"><h4>9. Privacy</h4><p>Personal data collected through the Program is governed by the ZaarHub Privacy Policy. Purchase verification data is shared with the merchant only for Program purposes.</p></div>' +
+      '<div class="legal-clause"><h4>10. Modification &amp; Termination</h4><p>We reserve the right to modify, suspend, or terminate the Program or these terms at any time with 30 days\' notice. We may terminate or suspend your participation immediately for violations. Upon termination, unused credits are forfeited unless prohibited by law.</p></div>' +
+      '<div class="legal-clause"><h4>11. Limitation of Liability</h4><p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, SwiftSoftware, ZaarHub, and participating merchants are not liable for indirect, incidental, or consequential damages arising from your participation in the Program. Total liability is limited to the value of unredeemed credits in your account at the time of the claim.</p></div>' +
+      '<div class="legal-clause"><h4>12. Governing Law</h4><p>These terms are governed by the laws of the State of Delaware, USA, without regard to conflict of law principles. Any disputes shall be resolved in the state or federal courts located in Delaware.</p></div>' +
+    '</div>';
+  } else if (tab === 'merchant') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; MERCHANT TERMS OF SERVICE</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Acceptance</h4><p>By enrolling as a Merchant in the ZaarHub Loyalty Program, you agree to these Merchant Terms. "Merchant" means the business entity that owns the enrolled account.</p></div>' +
+      '<div class="legal-clause"><h4>2. Enrollment &amp; Account</h4><p>You must have a valid ZaarHub Business account. You are responsible for all activity under your account. You may set your credit rate (credits earned per $1 spent, minimum 1, maximum 1,000), which applies to all purchase verifications at your business.</p></div>' +
+      '<div class="legal-clause"><h4>3. Purchase Verification</h4><p>When a Participant presents their QR code, you must: (a) scan or enter the participant\'s ID, (b) verify the purchase amount in good faith, (c) accept the Program\'s automated credit award. You may not verify false purchases, inflate amounts, or collude with participants. Fraudulent verification is grounds for immediate termination and forfeiture of all fees.</p></div>' +
+      '<div class="legal-clause"><h4>4. Offers &amp; Redemptions</h4><p>You may create offers (time-limited or standing) that participants can redeem credits against. Offers must: represent genuine value, not exceed the discount cap you set, be honored when presented. You may deactivate offers at any time, but must honor redemptions initiated before deactivation.</p></div>' +
+      '<div class="legal-clause"><h4>5. Fees &amp; Payouts</h4><p>Merchant pricing is governed by your separate Subscription Agreement. No per-transaction fees for purchase verifications. Redemption payouts (if any) are governed by your specific offer terms. We reserve the right to adjust Program economics with 30 days\' notice.</p></div>' +
+      '<div class="legal-clause"><h4>6. Participant Data</h4><p>You may access participant names and verification records solely for Program operations. You may not use this data for marketing, resale, or any purpose beyond the Program. You must comply with all applicable data protection laws.</p></div>' +
+      '<div class="legal-clause"><h4>7. Brand &amp; Marketing</h4><p>You may display the "ZaarHub Loyalty" badge at your location and in your marketing. You may not imply endorsement or partnership beyond the Program. We may use your business name and logo in Program materials.</p></div>' +
+      '<div class="legal-clause"><h4>8. Prohibited Conduct</h4><p>You may not: discriminate against participants based on their Program participation, impose surcharges on Program transactions, manipulate credit rates or offers to evade Program rules, engage in any activity that harms Program integrity.</p></div>' +
+      '<div class="legal-clause"><h4>9. Indemnification</h4><p>You agree to indemnify and hold harmless SwiftSoftware, its affiliates, officers, and employees from claims arising from: your breach of these terms, your violation of law, your fraudulent verification, or your misuse of participant data.</p></div>' +
+      '<div class="legal-clause"><h4>10. Suspension &amp; Termination</h4><p>We may suspend or terminate your participation immediately for breach, fraud, or illegal activity. Either party may terminate with 30 days\' written notice. Upon termination, outstanding offers are deactivated. Accrued participant credits earned at your business remain valid for 90 days post-termination.</p></div>' +
+      '<div class="legal-clause"><h4>11. Limitation of Liability</h4><p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, SwiftSoftware\'s total liability under these terms is limited to the fees paid by you in the 12 months preceding the claim. No liability for indirect, consequential, or incidental damages.</p></div>' +
+      '<div class="legal-clause"><h4>12. Governing Law</h4><p>Same as Participant Terms &mdash; Delaware law, Delaware courts.</p></div>' +
+    '</div>';
+  } else if (tab === 'supplier') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; SUPPLIER TERMS OF SERVICE</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Acceptance</h4><p>By enrolling as a Supplier ("you") in the ZaarHub Loyalty Program, you agree to these Supplier Terms. "Supplier" means an entity that provides rewards, vouchers, products, or services that participants can redeem using their credits.</p></div>' +
+      '<div class="legal-clause"><h4>2. Enrollment</h4><p>Suppliers must have a valid ZaarHub Supplier account. You represent that you have the legal authority to offer the rewards, products, or services you list in the Program.</p></div>' +
+      '<div class="legal-clause"><h4>3. Reward Listings</h4><p>You may list rewards that participants can redeem. Each listing must include: name, description, credit cost, terms (expiration, quantity limits, geographic restrictions). You must honor redemptions at the listed credit cost until you deactivate or update the listing. You may not list illegal, counterfeit, or misrepresented items.</p></div>' +
+      '<div class="legal-clause"><h4>4. Fulfillment</h4><p>Upon a participant\'s redemption: you must fulfill within the timeframe stated in your listing (default: 14 business days). Failure to fulfill is grounds for removal from the Program. Participants may contact support if fulfillment is not completed.</p></div>' +
+      '<div class="legal-clause"><h4>5. Fees &amp; Settlement</h4><p>Supplier pricing is governed by your separate Subscription Agreement. Settlement of credit values is handled per your agreement. We may deduct platform fees from settlements as specified.</p></div>' +
+      '<div class="legal-clause"><h4>6. Quality Standards</h4><p>You must maintain reasonable quality standards for all rewards, products, and services. Participants are entitled to remedies consistent with standard return/exchange policies in your industry. We may remove listings that generate excessive complaints.</p></div>' +
+      '<div class="legal-clause"><h4>7. Prohibited Conduct</h4><p>You may not: list rewards that you cannot or will not fulfill, misrepresent the value or nature of rewards, discriminate against participants, use the Program to collect participant data for unrelated purposes.</p></div>' +
+      '<div class="legal-clause"><h4>8. Modification &amp; Termination</h4><p>We may modify these terms with 30 days\' notice. We may suspend or terminate your participation immediately for breach. You may terminate with 30 days\' notice. Upon termination, outstanding unfulfilled redemptions must still be fulfilled.</p></div>' +
+      '<div class="legal-clause"><h4>9. Indemnification &amp; Liability</h4><p>Same structure as Merchant Terms &mdash; indemnification for breach/misrepresentation. Liability limited to fees paid in preceding 12 months. No consequential damages.</p></div>' +
+      '<div class="legal-clause"><h4>10. Governing Law</h4><p>Delaware.</p></div>' +
+    '</div>';
+  } else if (tab === 'admin') {
+    html = '<div class="legal-section">' +
+      '<h2>ZAARHUB LOYALTY PROGRAM &mdash; ADMINISTRATOR TERMS</h2>' +
+      '<p style="color:var(--text-secondary);font-size:.85rem">Last Updated: July 21, 2026</p>' +
+      '<div class="legal-clause"><h4>1. Scope</h4><p>These Administrator Terms apply to SwiftSoftware administrators, ZaarHub administrators, and any individual granted admin-level access to the Program backend ("Admin").</p></div>' +
+      '<div class="legal-clause"><h4>2. Access &amp; Authority</h4><p>Admin accounts are granted at the discretion of SwiftSoftware. You may only access systems and data necessary for your admin function. You must maintain confidentiality of admin credentials. Multi-factor authentication is required.</p></div>' +
+      '<div class="legal-clause"><h4>3. Tenant Management</h4><p>As an Admin, you may: view and manage tenant accounts (merchants, suppliers, participants), adjust tenant configurations when authorized, assist with account recovery and support, monitor Program activity for fraud and abuse.</p></div>' +
+      '<div class="legal-clause"><h4>4. Data Access</h4><p>You may access all Program data necessary for your role, including: participant personal information (email, name, account history), merchant transaction records, credit balances and redemption history, referral network data. You must comply with all applicable data protection laws and internal data handling policies.</p></div>' +
+      '<div class="legal-clause"><h4>5. Privacy &amp; Confidentiality</h4><p>You must: access only the minimum data needed, never share or export data except for authorized Program operations, never access your own personal account through admin tools for personal benefit, report any data breach or security incident immediately.</p></div>' +
+      '<div class="legal-clause"><h4>6. Oversight Responsibilities</h4><p>You are responsible for: reviewing flagged transactions for fraud, responding to support tickets within SLAs, maintaining system integrity, escalating security issues. You must document any manual adjustments (credit corrections, account modifications) with a clear audit trail.</p></div>' +
+      '<div class="legal-clause"><h4>7. Prohibited Conduct</h4><p>You may not: use admin access for personal financial gain, grant yourself or others unauthorized credits, modify transaction records without proper authorization, access accounts of known individuals for personal reasons, bypass Program rules for favored accounts.</p></div>' +
+      '<div class="legal-clause"><h4>8. Conflicts of Interest</h4><p>You must disclose any relationship with a tenant (merchant or supplier) that could create a conflict. You may not administer your own account or accounts of immediate family members.</p></div>' +
+      '<div class="legal-clause"><h4>9. Audit &amp; Monitoring</h4><p>All admin actions are logged and subject to audit. We may review any admin action without notice. Violations of these terms are grounds for immediate revocation of admin access, termination of employment/contract, and legal action.</p></div>' +
+      '<div class="legal-clause"><h4>10. Accountability &amp; Liability</h4><p>You are personally accountable for your actions under these terms. SwiftSoftware reserves the right to pursue recovery of losses caused by intentional misconduct or gross negligence. Admin access is a privilege, not a right &mdash; revocable at any time for any reason.</p></div>' +
+      '<div class="legal-clause"><h4>11. Governing Law</h4><p>Delaware.</p></div>' +
+    '</div>';
+  }
+  
+  content.innerHTML = html;
+}
+
+function toast(msg, type) {
+  type = type || 'info';
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-size:.9rem;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,.2);color:#fff;transition:opacity .3s;' +
+    (type === 'success' ? 'background:#22c55e' : type === 'error' ? 'background:#ef4444' : 'background:#1e293b');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+}
+
+// Modify loadDashboard to also load loyalty data
+var _origLoadDashboard = loadDashboard;
+loadDashboard = function() {
+  _origLoadDashboard.call(this);
+  // Also load loyalty data and connected services when dashboard is ready
+  var check = setInterval(function() {
+    if (document.getElementById('dashboardContent').style.display !== 'none') {
+      clearInterval(check);
+      loadLoyaltyData();
+      g('/connected-services')
+        .then(function(r) {
+          connectedServices = r;
+          updateIntegrationVisibility();
+        })
+        .catch(function() {
+          // Connected services unavailable — hide integration features
+          connectedServices = {};
+          updateIntegrationVisibility();
+        });
+    }
+  }, 200);
+};
+
+// ── Override po to support JSON body string ──
+var _origPo = po;
+po = function(path, opts) {
+  if (opts && opts.body) {
+    var token = localStorage.getItem('bizToken');
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    return fetch('/api/v1/loyalty' + path, { method: opts.method || 'POST', headers: h, body: opts.body }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || e.message || 'Request failed'); });
+      return r.json();
+    });
+  }
+  return _origPo(path, opts);
+};
+
+// ════════════════════════════════════════════
+// ── Scanner (jsQR) ──
+// ════════════════════════════════════════════
+
+var _scannerStream = null;
+var _scannerInterval = null;
+
+function startScanner() {
+  var video = document.getElementById('scannerVideo');
+  var result = document.getElementById('scanResult');
+  if (!video) return;
+  
+  result.style.display = 'none';
+  result.innerHTML = '';
+  
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(function(stream) {
+        _scannerStream = stream;
+        video.srcObject = stream;
+        video.play();
+        scanFrame();
+        toast('📷 Scanner started', 'success');
+      })
+      .catch(function(err) {
+        result.style.display = '';
+        result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Camera access denied: ' + esc(err.message) + '</p>';
+      });
+  } else {
+    result.style.display = '';
+    result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Camera not supported on this device</p>';
+  }
+}
+
+function stopScanner() {
+  if (_scannerStream) {
+    _scannerStream.getTracks().forEach(function(t) { t.stop(); });
+    _scannerStream = null;
+  }
+  if (_scannerInterval) {
+    clearInterval(_scannerInterval);
+    _scannerInterval = null;
+  }
+  var video = document.getElementById('scannerVideo');
+  if (video) video.srcObject = null;
+}
+
+function scanFrame() {
+  if (_scannerInterval) return;
+  _scannerInterval = setInterval(function() {
+    var video = document.getElementById('scannerVideo');
+    var canvas = document.getElementById('scannerCanvas');
+    if (!video || !canvas || !video.videoWidth) return;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert'
+    });
+    
+    if (code && code.data) {
+      // QR detected!
+      var qrData = code.data;
+      var customerId = null;
+      
+      // Parse loyalty URI or raw UUID
+      if (qrData.indexOf('loyalty://customer/') === 0) {
+        customerId = qrData.substring('loyalty://customer/'.length);
+      } else {
+        // Assume it's a raw UUID
+        customerId = qrData;
+      }
+      
+      // Validate UUID format
+      if (customerId && customerId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+        document.getElementById('scannerContactId').value = customerId;
+        document.getElementById('scanCustomerInfo').innerHTML = '<p style="color:var(--success);font-weight:600">✅ Customer scanned: ' + customerId.substring(0,8) + '...</p>';
+        toast('✅ QR scanned! Enter amount and PIN to credit.', 'success');
+        
+        // Auto-focus amount field
+        document.getElementById('scannerAmount').focus();
+        
+        // Pause scanning briefly to prevent re-scans
+        stopScanner();
+        
+        // Show result
+        document.getElementById('scanResult').style.display = '';
+        document.getElementById('scanResult').innerHTML = '<p style="color:var(--success);font-size:.85rem">✅ Scanned! Enter purchase amount and click Verify.</p>';
+      }
+    }
+  }, 500);
+}
+
+function scannerVerifyPurchase() {
+  var contactId = document.getElementById('scannerContactId').value.trim();
+  var amount = document.getElementById('scannerAmount').value;
+  var subtotal = document.getElementById('scannerSubtotal').value;
+  var pin = document.getElementById('scannerPin').value.trim();
+  var offerId = document.getElementById('scannerOffer').value;
+  var dealDesc = document.getElementById('scannerDealDesc').value.trim();
+  var result = document.getElementById('scannerVerifyResult');
+  
+  if (!contactId) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ No customer scanned</p>'; return; }
+  if (!amount || parseFloat(amount) <= 0) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Enter a valid total receipt amount</p>'; return; }
+  if (!pin) { result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ Enter your PIN</p>'; return; }
+  
+  result.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:10px auto"></div>';
+  
+  var body = { contact_id: contactId, amount: parseFloat(amount), pin: pin };
+  if (offerId) { body.offer_id = offerId; }
+  if (subtotal && parseFloat(subtotal) >= 0) { body.subtotal_amount = parseFloat(subtotal); }
+  if (dealDesc) { body.deal_description = dealDesc; }
+  
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  
+  fetch('/api/v1/loyalty/purchase/verify', {
+    method: 'POST',
+    headers: h,
+    body: JSON.stringify(body)
+  })
+  .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || d.message || 'Request failed'); return d; }); })
+  .then(function(d) {
+    var dealHtml = '';
+    if (d.deal_discount > 0) {
+      dealHtml = '<p style="font-size:.85rem;color:var(--text-secondary)">🎁 Deal discount excluded: <strong>$' + (d.deal_discount || 0).toFixed(2) + '</strong>' + (d.deal_description ? ' (' + esc(d.deal_description) + ')' : '') + '</p>';
+    }
+    var offerHtml = '';
+    if (d.offer_applied) {
+      offerHtml = '<p style="font-size:.85rem;color:var(--text-secondary)">🏷️ Offer used: <strong>' + esc(d.offer_applied) + '</strong> &middot; Credits redeemed: <strong>' + (d.credits_redeemed || 0) + '</strong></p>';
+    }
+    result.innerHTML = '<div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center">' +
+      '<p style="color:var(--success);font-weight:700;margin-bottom:4px">✅ Verified & Credited!</p>' +
+      '<p style="font-size:.85rem;color:var(--text-secondary)">' + esc(d.message || 'Purchase verified successfully') + '</p>' +
+      '<p style="font-size:.85rem;color:var(--text-secondary)">📦 Credits earned: <strong>' + (d.credits_earned || 0) + '</strong> on $' + (d.earnable_amount || 0).toFixed(2) + '</p>' +
+      dealHtml +
+      offerHtml +
+      '</div>';
+    
+    // Clear for next scan
+    document.getElementById('scannerContactId').value = '';
+    document.getElementById('scannerAmount').value = '';
+    document.getElementById('scannerSubtotal').value = '';
+    document.getElementById('scannerDealDesc').value = '';
+    document.getElementById('scannerOffer').value = '';
+    document.getElementById('scanCustomerInfo').innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Ready to scan next customer.</p>';
+  })
+  .catch(function(e) {
+    result.innerHTML = '<p style="color:var(--danger);font-size:.85rem">❌ ' + esc(e.message) + '</p>';
+  });
+}
+
+// Cleanup scanner on page unload
+window.addEventListener('beforeunload', function() {
+  stopScanner();
+});
+
+// Inject fade-in animation
+var style = document.createElement('style');
+style.textContent = '@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+document.head.appendChild(style);
+
+// ── Deals Functions ──
+
+var _editingDealId = null;
+
+function loadDealsTab() {
+  if (!_selectedBizId) {
+    document.getElementById('dealsList').innerHTML = '<div class="empty-state"><p>Select a business first to manage deals.</p></div>';
+    return;
+  }
+  document.getElementById('dealsList').innerHTML = '<div class="empty-state"><div class="spinner"></div><p>Loading deals...</p></div>';
+  var token = localStorage.getItem('bizToken');
+  fetch(API + '/deals?business_id=' + _selectedBizId, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(deals) {
+    var list = Array.isArray(deals) ? deals : (deals.deals || []);
+    renderDealsList(list);
+    updateDealsStats(list);
+  })
+  .catch(function(e) {
+    document.getElementById('dealsList').innerHTML = '<div class="empty-state"><p style="color:var(--danger)">Failed to load deals: ' + esc(e.message) + '</p></div>';
+  });
+}
+
+function renderDealsList(deals) {
+  var container = document.getElementById('dealsList');
+  if (!container) return;
+  if (!deals || deals.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div style="font-size:2.5rem;margin-bottom:8px">🎁</div><p>No deals yet. Create your first deal to attract customers!</p><button class="btn btn-primary" onclick="showDealForm()">+ Create Deal</button></div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < deals.length; i++) {
+    var d = deals[i];
+    var statusColor = d.status === 'active' ? 'var(--green)' : (d.status === 'paused' ? 'var(--warm)' : 'var(--text-muted)');
+    var statusLabel = (d.status || 'active').charAt(0).toUpperCase() + (d.status || 'active').slice(1);
+    var priceInfo = '';
+    if (d.deal_price) {
+      priceInfo = '<div class="deal-price-row" style="font-size:1.05rem;font-weight:700;color:var(--primary);margin:4px 0">$' + esc(d.deal_price);
+      if (d.original_price) priceInfo += ' <s style="font-size:.8rem;color:var(--text-muted);font-weight:400">$' + esc(d.original_price) + '</s>';
+      if (d.discount_percent) priceInfo += ' <span style="font-size:.75rem;background:var(--warm-light);color:var(--warm);padding:2px 8px;border-radius:100px;margin-left:6px">-' + d.discount_percent + '%</span>';
+      priceInfo += '</div>';
+    }
+    var claimed = (d.redemption_count || 0);
+    // Template icon mapping
+    var templateIcons = { 'automotive':'🚗', 'education':'📚', 'farm':'🌾', 'fitness':'💪', 'hospitality':'🏨', 'restaurant':'🍽️', 'service':'🛠️', 'medical':'🏥', 'real-estate':'🏠' };
+    var templateLabel = d.page_template || 'default';
+    var templateIcon = templateIcons[templateLabel] || '🎁';
+    var accentSwatch = d.accent_color ? '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + esc(d.accent_color) + ';border:1px solid var(--border);vertical-align:middle;margin-left:4px" title="' + esc(d.accent_color) + '"></span>' : '';
+    var styleBadges = '';
+    if (templateLabel !== 'default' || d.accent_color) {
+      styleBadges = '<div style="margin-top:4px;font-size:.72rem;color:var(--text-muted)">' + templateIcon + ' ' + esc(templateLabel) + accentSwatch + (d.show_timer ? ' ⏱️ timer' : '') + '</div>';
+    }
+    html += '<div class="card" style="position:relative">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">' +
+        '<h4 style="font-size:.95rem;font-weight:700;margin:0;padding-right:80px">' + esc(d.title) + '</h4>' +
+        '<span style="font-size:.7rem;font-weight:600;color:' + statusColor + ';background:' + statusColor + '15;padding:2px 10px;border-radius:100px;white-space:nowrap">' + statusLabel + '</span>' +
+      '</div>' +
+      (d.description ? '<p style="font-size:.82rem;color:var(--text-secondary);margin:4px 0">' + esc(d.description.length > 100 ? d.description.slice(0,100) + '...' : d.description) + '</p>' : '') +
+      priceInfo +
+      '<div style="display:flex;gap:12px;font-size:.75rem;color:var(--text-muted);margin:6px 0">' +
+        '<span>🎟️ ' + claimed + ' claimed</span>' +
+        (d.redemption_limit ? '<span>📊 Limit: ' + d.redemption_limit + '</span>' : '') +
+        (d.coupon_code ? '<span>🏷️ ' + esc(d.coupon_code) + '</span>' : '') +
+      '</div>' +
+      styleBadges +
+      (d.end_date ? '<div style="font-size:.72rem;color:var(--text-muted)">Expires: ' + new Date(d.end_date).toLocaleDateString() + '</div>' : '') +
+      '<div style="display:flex;gap:6px;margin-top:10px">' +
+        '<button class="btn btn-sm btn-secondary" onclick="editDeal(\'' + d.id + '\')">✏️ Edit</button>' +
+        '<button class="btn btn-sm btn-secondary" onclick="deleteDeal(\'' + d.id + '\', \'' + esc(d.title.replace(/'/g, "\\'")).replace(/&/g, '&amp;') + '\')" style="color:var(--danger)">🗑️ Delete</button>' +
+      '</div>' +
+    '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function updateDealsStats(deals) {
+  var el = document.getElementById('dealsStats');
+  if (!el) return;
+  var active = 0, total = deals.length, claimed = 0;
+  for (var i = 0; i < deals.length; i++) {
+    if (deals[i].status === 'active') active++;
+    claimed += (deals[i].redemption_count || 0);
+  }
+  el.innerHTML = active + ' active / ' + total + ' total &nbsp;|&nbsp; ' + claimed + ' claims';
+}
+
+function showDealForm(deal) {
+  _editingDealId = null;
+  var form = document.getElementById('dealFormCard');
+  document.getElementById('dealFormResult').innerHTML = '';
+  if (deal) {
+    _editingDealId = deal.id;
+    document.getElementById('dealFormTitle').textContent = 'Edit Deal';
+    document.getElementById('dealSubmitBtn').textContent = '💾 Update Deal';
+    document.getElementById('dealTitle').value = deal.title || '';
+    document.getElementById('dealDesc').value = deal.description || '';
+    document.getElementById('dealOrigPrice').value = deal.original_price || '';
+    document.getElementById('dealPrice').value = deal.deal_price || '';
+    document.getElementById('dealDiscount').value = deal.discount_percent || '';
+    document.getElementById('dealCouponCode').value = deal.coupon_code || '';
+    document.getElementById('dealLimit').value = deal.redemption_limit || '';
+    document.getElementById('dealPerUserLimit').value = deal.per_user_limit || '';
+    document.getElementById('dealImage').value = deal.image_url || '';
+    document.getElementById('dealTerms').value = deal.terms || '';
+    document.getElementById('dealStartDate').value = deal.start_date ? deal.start_date.slice(0,10) : '';
+    document.getElementById('dealEndDate').value = deal.end_date ? deal.end_date.slice(0,10) : '';
+    document.getElementById('dealPageTemplate').value = deal.page_template || '';
+    document.getElementById('dealAccentColor').value = deal.accent_color || '#f27f2f';
+    document.getElementById('dealCtaColor').value = deal.cta_color || '#f27f2f';
+    document.getElementById('dealCtaText').value = deal.cta_text || '';
+    document.getElementById('dealShowTimer').checked = deal.show_timer === true;
+    document.getElementById('dealRedemptionType').value = deal.redemption_type || 'code';
+    document.getElementById('dealBookingUrl').value = deal.booking_url || '';
+    document.getElementById('dealShowQR').checked = deal.show_qr === true;
+    document.getElementById('dealPremiumFeatures').checked = deal.premium_features === true;
+    var galImages = deal.gallery_images;
+    loadGalleryRows(galImages);
+    var highlights = deal.highlights;
+    loadHighlights(highlights);
+  } else {
+    document.getElementById('dealFormTitle').textContent = 'Create New Deal';
+    document.getElementById('dealSubmitBtn').textContent = '💾 Save Deal';
+    ['dealTitle','dealDesc','dealOrigPrice','dealPrice','dealDiscount','dealCouponCode','dealLimit','dealImage','dealTerms','dealStartDate','dealEndDate'].forEach(function(id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('dealPageTemplate').value = '';
+    document.getElementById('dealAccentColor').value = '#f27f2f';
+    document.getElementById('dealCtaColor').value = '#f27f2f';
+    document.getElementById('dealCtaText').value = '';
+    document.getElementById('dealShowTimer').checked = false;
+    document.getElementById('dealPerUserLimit').value = '';
+    resetGalleryRows();
+    resetHighlights();
+    document.getElementById('dealRedemptionType').value = 'code';
+    document.getElementById('dealBookingUrl').value = '';
+    document.getElementById('dealShowQR').checked = false;
+    document.getElementById('dealPremiumFeatures').checked = false;
+  }
+  form.style.display = '';
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelDealForm() {
+  _editingDealId = null;
+  document.getElementById('dealFormCard').style.display = 'none';
+  document.getElementById('dealFormResult').innerHTML = '';
+}
+
+async function submitDeal() {
+  if (!_selectedBizId) { alert('Select a business first'); return; }
+  var title = document.getElementById('dealTitle').value.trim();
+  if (!title) { alert('Deal title is required'); return; }
+  
+  var token = localStorage.getItem('bizToken');
+  var galleryImages = collectGalleryUrls();
+  var highlights = collectHighlights();
+  var body = {
+    title: title,
+    description: document.getElementById('dealDesc').value.trim() || null,
+    original_price: document.getElementById('dealOrigPrice').value.trim() || null,
+    deal_price: document.getElementById('dealPrice').value.trim() || null,
+    discount_percent: parseInt(document.getElementById('dealDiscount').value) || null,
+    coupon_code: document.getElementById('dealCouponCode').value.trim() || null,
+    redemption_limit: parseInt(document.getElementById('dealLimit').value) || null,
+    per_user_limit: parseInt(document.getElementById('dealPerUserLimit').value) || null,
+    image_url: document.getElementById('dealImage').value.trim() || null,
+    terms: document.getElementById('dealTerms').value.trim() || null,
+    business_id: _selectedBizId,
+    page_template: document.getElementById('dealPageTemplate').value || null,
+    accent_color: document.getElementById('dealAccentColor').value || null,
+    cta_color: document.getElementById('dealCtaColor').value || null,
+    cta_text: document.getElementById('dealCtaText').value.trim() || null,
+    show_timer: document.getElementById('dealShowTimer').checked,
+    gallery_images: galleryImages,
+    highlights: highlights,
+    redemption_type: document.getElementById('dealRedemptionType').value || 'code',
+    booking_url: document.getElementById('dealBookingUrl').value.trim() || null,
+    show_qr: document.getElementById('dealShowQR').checked,
+    premium_features: document.getElementById('dealPremiumFeatures').checked
+  };
+  var sd = document.getElementById('dealStartDate').value;
+  var ed = document.getElementById('dealEndDate').value;
+  if (sd) body.start_date = sd + 'T00:00:00Z';
+  if (ed) body.end_date = ed + 'T23:59:59Z';
+  
+  var resultEl = document.getElementById('dealFormResult');
+  resultEl.innerHTML = '<span style="color:var(--text-secondary)">Saving...</span>';
+  
+  try {
+    var url = _editingDealId ? (API + '/deals/' + _editingDealId) : (API + '/deals');
+    var method = _editingDealId ? 'PUT' : 'POST';
+    var resp = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      var err = await resp.json().catch(function() { return { message: 'Request failed' }; });
+      throw new Error(err.message || err.error || 'Request failed');
+    }
+    resultEl.innerHTML = '<span style="color:var(--green)">✅ Deal ' + (_editingDealId ? 'updated' : 'created') + '!</span>';
+    _editingDealId = null;
+    setTimeout(function() {
+      document.getElementById('dealFormCard').style.display = 'none';
+      resultEl.innerHTML = '';
+    }, 1500);
+    loadDealsTab();
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:var(--danger)">❌ ' + esc(e.message) + '</span>';
+  }
+}
+
+async function editDeal(id) {
+  var token = localStorage.getItem('bizToken');
+  try {
+    var resp = await fetch(API + '/deals/' + id, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!resp.ok) throw new Error('Failed to load deal');
+    var deal = await resp.json();
+    showDealForm(deal);
+  } catch(e) {
+    alert('Could not load deal: ' + e.message);
+  }
+}
+
+async function deleteDeal(id, title) {
+  if (!confirm('Delete "' + title + '"? This cannot be undone.')) return;
+  var token = localStorage.getItem('bizToken');
+  try {
+    var resp = await fetch(API + '/deals/' + id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!resp.ok) {
+      var err = await resp.json().catch(function() { return { message: 'Delete failed' }; });
+      throw new Error(err.message || 'Delete failed');
+    }
+    loadDealsTab();
+  } catch(e) {
+    alert('Failed to delete: ' + e.message);
+  }
+}
+
+// ── Advertising Functions ──
+
+var _selectedBizId = null;
+var _adZones = [];
+
+function showAdForm() {
+  var form = document.getElementById('adSubmissionForm');
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+  if (form.style.display !== 'none') {
+    loadAdZones();
+  }
+}
+
+async function loadAdZones() {
+  if (_adZones.length) return populateAdZoneSelect();
+  try {
+    var resp = await fetch('/api/v1/ad-zones');
+    var data = await resp.json();
+    _adZones = Array.isArray(data) ? data : [];
+    populateAdZoneSelect();
+  } catch(e) {
+    console.warn('Failed to load ad zones:', e);
+  }
+}
+
+function populateAdZoneSelect() {
+  var sel = document.getElementById('adZoneSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Select a slot...</option>';
+  for (var i = 0; i < _adZones.length; i++) {
+    var z = _adZones[i];
+    sel.innerHTML += '<option value="' + z.id + '">' + esc(z.name) + ' (' + z.width + 'x' + z.height + ') $' + (z.price_monthly || 0) + '/mo</option>';
+  }
+}
+
+async function submitBusinessAd() {
+  if (!_selectedBizId) {
+    document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Please select a business first</span>';
+    return;
+  }
+  var name = document.getElementById('adName').value.trim();
+  var zoneId = document.getElementById('adZoneSelect').value;
+  var imageUrl = document.getElementById('adImageUrl').value.trim();
+  var targetUrl = document.getElementById('adTargetUrl').value.trim();
+  
+  if (!name) { document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Ad name required</span>'; return; }
+  if (!zoneId) { document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Please select a slot size</span>'; return; }
+  if (!imageUrl) { document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ Image URL required</span>'; return; }
+  
+  document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--text-secondary)">⏳ Submitting...</span>';
+  
+  try {
+    var result = await po('/businesses/' + _selectedBizId + '/ads/submit', {
+      name: name,
+      zone_id: zoneId,
+      image_url: imageUrl,
+      target_url: targetUrl
+    });
+    document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--success)">✅ Ad submitted for review!</span>';
+    // Clear form
+    document.getElementById('adName').value = '';
+    document.getElementById('adImageUrl').value = '';
+    document.getElementById('adTargetUrl').value = '';
+    document.getElementById('adZoneSelect').value = '';
+    // Refresh ads list
+    loadMyAds();
+  } catch(e) {
+    document.getElementById('adSubmitResult').innerHTML = '<span style="color:var(--danger)">❌ ' + esc(e.message) + '</span>';
+  }
+}
+
+async function loadMyAds() {
+  if (!_selectedBizId) return;
+  var listEl = document.getElementById('myAdsList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-secondary)">⏳ Loading...</div>';
+  
+  try {
+    var resp = await fetch('/api/v1/businesses/' + _selectedBizId + '/ads', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('bizToken') }
+    });
+    if (!resp.ok) {
+      listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-secondary)">Auth required</div>';
+      return;
+    }
+    var ads = await resp.json();
+    if (!ads || !ads.length) {
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:.85rem">No ads yet. Click "+ New Ad" to create your first one.</div>';
+      return;
+    }
+    var h = '';
+    for (var i = 0; i < ads.length; i++) {
+      var a = ads[i];
+      var statusClass = a.status === 'approved' ? 'success' : a.status === 'rejected' ? 'danger' : 'warning';
+      var statusLabel = a.status === 'approved' ? '✅ Approved' : a.status === 'rejected' ? '❌ '+esc(a.rejection_reason||'Rejected') : '⏳ Pending Review';
+      var zoneInfo = a.zone_name ? esc(a.zone_name) : (a.width+'x'+a.height);
+      h += '<div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--card)">' +
+        '<img src="'+esc(a.image_url)+'" style="width:60px;height:auto;border-radius:6px;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">' +
+        '<div style="flex:1">' +
+          '<div style="font-weight:600;font-size:.85rem">'+esc(a.name)+'</div>' +
+          '<div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px">'+zoneInfo+' | <span style="color:var(--'+statusClass+')">'+statusLabel+'</span></div>' +
+          '<div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">Created '+new Date(a.created_at).toLocaleDateString()+'</div>' +
+        '</div></div>';
+    }
+    listEl.innerHTML = h;
+  } catch(e) {
+    listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--danger)">❌ '+esc(e.message)+'</div>';
+  }
+}
+
+async function loadAdEarnings() {
+  if (!_selectedBizId) return;
+  var section = document.getElementById('adEarningsSection');
+  var content = document.getElementById('adEarningsContent');
+  if (!section || !content) return;
+  
+  try {
+    var resp = await fetch('/api/v1/businesses/' + _selectedBizId + '/ads/earnings', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('bizToken') }
+    });
+    if (!resp.ok) { section.style.display = 'none'; return; }
+    var data = await resp.json();
+    if (data.total_schedules === 0 && data.total_earned === '0') {
+      section.style.display = 'none';
+      return;
+    }
+    content.innerHTML = '<div style="display:flex;gap:16px;align-items:center">' +
+      '<div><strong>Total Earned:</strong> $' + data.total_earned + '</div>' +
+      '<div><strong>Active Schedules:</strong> ' + data.total_schedules + '</div>' +
+    '</div>';
+    section.style.display = '';
+  } catch(e) {
+    section.style.display = 'none';
+  }
+}
+
+// Wire into business selection
+// Patch renderBusinesses to set selected biz ID
+var _origRenderBusinesses = renderBusinesses;
+renderBusinesses = function(biz) {
+  _origRenderBusinesses(biz);
+  // Select first business for ads
+  if (Array.isArray(biz) && biz.length) {
+    _selectedBizId = biz[0].id;
+    document.getElementById('adSubmissionForm').style.display = 'none';
+    loadMyAds();
+    loadAdEarnings();
+  }
+};
+
+// ── Walkthrough System (Business Portal) ──
+var BWT={
+  dashboard:{i:"📊",t:"Dashboard",x:"Your business dashboard. See profile views, review counts, subscription status, and recent activity at a glance."},
+  businesses:{i:"🏪",t:"My Businesses",x:"All the businesses you've claimed. Switch between them or add a new listing."},
+  plans:{i:"💎",t:"Plans & Billing",x:"Choose a plan that fits your needs. Upgrade to unlock more features like advertising, analytics, and priority support."},
+  reviews:{i:"⭐",t:"Reviews",x:"See what customers are saying. Respond to reviews publicly to show you care about feedback."},
+  advertising:{i:"📢",t:"Advertising",x:"Promote your business with paid ads. Choose a slot size, upload your creative, and submit for admin approval. Track earnings from approved ads."},
+  referrals:{i:"👥",t:"Refer & Earn",x:"Refer other businesses to earn Zaarcash credits. Share your referral link and earn when they sign up."},
+  settings:{i:"⚙️",t:"Settings",x:"Update your business profile, contact info, and account preferences."}
+};
+function showBWalkthrough(p){
+  var w=BWT[p];if(!w)return;
+  var k="bwt_"+p+"_dismissed";
+  if(localStorage.getItem(k))return;
+  var ov=document.createElement("div");ov.className="walkthrough-overlay";ov.id="bwtOverlay";
+  ov.innerHTML='<div class="walkthrough-card"><div class="icon">'+w.i+'</div><h3>'+w.t+'</h3><p>'+w.x+'</p><button class="btn" onclick="document.getElementById(\'bwtOverlay\').remove();localStorage.setItem(\'bwt_'+p+'\',\'true\')">Got it</button></div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){if(e.target===ov){ov.remove();localStorage.setItem("bwt_"+p,"true");}};
+}
+
+// ── Help icon ──
+(function(){
+  var helpIcon=document.createElement("button");helpIcon.className="walkthrough-help-icon";helpIcon.innerHTML="❓";
+  helpIcon.title="Page guide";
+  helpIcon.onclick=function(){
+    localStorage.removeItem("bwt_dashboard");
+    showBWalkthrough("dashboard");
+  };
+  document.body.appendChild(helpIcon);
+})();
+
+// ── Init ──
+// ── IQS Helper ────────────────────────────────────────────────────────────
+function iqsAPI(path, opts) {
+  var token = localStorage.getItem('bizToken');
+  var h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  var fetchOpts = { headers: h, method: opts && opts.method ? opts.method : 'GET' };
+  if (opts && opts.body) fetchOpts.body = JSON.stringify(opts.body);
+  return fetch('/api/v1/iqs' + path, fetchOpts).then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || e.message || 'Request failed'); });
+    return r.json();
+  });
+}
+
+var _iqsFunnels = [];
+
+function loadIqsTab() {
+  iqsAPI('/funnels').then(function(d) {
+    _iqsFunnels = Array.isArray(d) ? d : (d.funnels || []);
+    renderIqsFunnels();
+  }).catch(function(e) {
+    document.getElementById('iqsFunnelsList').innerHTML = '<div class="empty-state"><p>Unable to load funnels. IncentiveSwift may not be running.</p></div>';
+  });
+}
+
+function renderIqsFunnels() {
+  var el = document.getElementById('iqsFunnelsList');
+  if (!_iqsFunnels.length) {
+    el.innerHTML = '<div class="empty-state"><p>No funnels yet. Create one to start collecting survey responses!</p></div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < _iqsFunnels.length; i++) {
+    var f = _iqsFunnels[i];
+    var statusBadge = f.status === 'active' ? 'active' : 'inactive';
+    html += '<div class="card"><h3>' + esc(f.name) + '</h3>' +
+      '<span class="badge ' + statusBadge + '">' + esc(f.status) + '</span> ' +
+      '<span style="font-size:.8rem;color:var(--text-secondary)">' + (f.response_count || 0) + ' responses</span>' +
+      '<div class="card-actions"><button class="btn btn-sm" onclick="iqsViewFunnel(\'' + f.id + '\')">📋 View</button>' +
+      '<button class="btn btn-sm btn-danger" onclick="iqsDeleteFunnel(\'' + f.id + '\')">🗑️</button></div></div>';
+  }
+  el.innerHTML = html;
+}
+
+// ── Gallery Editor Helpers ──
+function addGalleryRow() {
+  var container = document.getElementById('galleryUrls');
+  var rows = container.querySelectorAll('.gallery-row');
+  if (rows.length >= 10) { alert('Maximum 10 images'); return; }
+  var row = document.createElement('div');
+  row.className = 'gallery-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+  row.innerHTML = '<input type="url" class="gallery-input" placeholder="https://example.com/image'+(rows.length+1)+'.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"><button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+  container.appendChild(row);
+}
+function removeGalleryRow(btn) {
+  var row = btn.parentNode;
+  var container = document.getElementById('galleryUrls');
+  if (container.querySelectorAll('.gallery-row').length <= 1) return;
+  row.remove();
+}
+function collectGalleryUrls() {
+  var inputs = document.querySelectorAll('.gallery-input');
+  var urls = [];
+  for (var i = 0; i < inputs.length; i++) {
+    var v = inputs[i].value.trim();
+    if (v) urls.push(v);
+  }
+  return urls.length > 0 ? urls : null;
+}
+function loadGalleryRows(images) {
+  var container = document.getElementById('galleryUrls');
+  container.innerHTML = '';
+  var list = Array.isArray(images) ? images : [];
+  if (list.length === 0) list = [''];
+  for (var i = 0; i < list.length; i++) {
+    var row = document.createElement('div');
+    row.className = 'gallery-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+    row.innerHTML = '<input type="url" class="gallery-input" value="' + esc(list[i] || '') + '" placeholder="https://example.com/image'+(i+1)+'.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"><button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+    container.appendChild(row);
+  }
+}
+function resetGalleryRows() {
+  var container = document.getElementById('galleryUrls');
+  container.innerHTML = '<div class="gallery-row" style="display:flex;gap:8px;margin-bottom:6px"><input type="url" class="gallery-input" placeholder="https://example.com/image1.jpg" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace"><button type="button" onclick="removeGalleryRow(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button></div>';
+}
+
+// ── Highlights Editor Helpers ──
+function addHighlight() {
+  var container = document.getElementById('highlightsList');
+  var rows = container.querySelectorAll('.highlight-row');
+  if (rows.length >= 8) { alert('Maximum 8 highlights'); return; }
+  var row = document.createElement('div');
+  row.className = 'highlight-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+  row.innerHTML = '<input type="text" class="highlight-input" placeholder="e.g. Save 20% on your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"><button type="button" onclick="removeHighlight(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+  container.appendChild(row);
+}
+function removeHighlight(btn) {
+  var row = btn.parentNode;
+  var container = document.getElementById('highlightsList');
+  if (container.querySelectorAll('.highlight-row').length <= 1) return;
+  row.remove();
+}
+function collectHighlights() {
+  var inputs = document.querySelectorAll('.highlight-input');
+  var items = [];
+  for (var i = 0; i < inputs.length; i++) {
+    var v = inputs[i].value.trim();
+    if (v) items.push(v);
+  }
+  return items.length > 0 ? items : null;
+}
+function loadHighlights(highlights) {
+  var container = document.getElementById('highlightsList');
+  container.innerHTML = '';
+  var list = Array.isArray(highlights) ? highlights : [];
+  if (list.length === 0) list = [''];
+  for (var i = 0; i < list.length; i++) {
+    var row = document.createElement('div');
+    row.className = 'highlight-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+    row.innerHTML = '<input type="text" class="highlight-input" value="' + esc(list[i] || '') + '" placeholder="e.g. Save 20% on your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"><button type="button" onclick="removeHighlight(this)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-size:.85rem;color:var(--text-light)" title="Remove">✕</button>';
+    container.appendChild(row);
+  }
+}
+function resetHighlights() {
+  var container = document.getElementById('highlightsList');
+  container.innerHTML = '<div class="highlight-row" style="display:flex;gap:8px;margin-bottom:6px"><input type="text" class="highlight-input" placeholder="e.g. Save 20% on your first visit" maxlength="200" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>';
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function iqsCreateFunnel() {
+  var name = document.getElementById('iqsFunnelName').value.trim();
+  if (!name) { alert('Please enter a funnel name'); return; }
+  var body = {
+    name: name,
+    funnel_type: document.getElementById('iqsFunnelType').value,
+    description: document.getElementById('iqsFunnelDesc').value.trim()
+  };
+  iqsAPI('/funnels', { method: 'POST', body: body }).then(function(d) {
+    document.getElementById('iqsCreateResult').innerHTML = '<span style="color:#22c55e">✅ Funnel created!</span>';
+    document.getElementById('iqsFunnelName').value = '';
+    document.getElementById('iqsFunnelDesc').value = '';
+    loadIqsTab();
+  }).catch(function(e) {
+    document.getElementById('iqsCreateResult').innerHTML = '<span style="color:#ef4444">❌ ' + esc(e.message) + '</span>';
+  });
+}
+
+function iqsViewFunnel(id) {
+  iqsAPI('/funnels/' + id).then(function(f) {
+    var qs = '';
+    iqsAPI('/funnels/' + id + '/questions').then(function(qlist) {
+      var questions = Array.isArray(qlist) ? qlist : (qlist.questions || []);
+      for (var i = 0; i < questions.length; i++) {
+        qs += '<li>' + esc(questions[i].question_text) + ' <span style="font-size:.75rem;color:var(--text-secondary)">(' + esc(questions[i].question_type) + ')</span></li>';
+      }
+      var sub = '';
+      iqsAPI('/funnels/' + id + '/submissions').then(function(slist) {
+        var subs = Array.isArray(slist) ? slist : (slist.submissions || []);
+        sub = '<p style="font-size:.85rem;color:var(--text-secondary);margin-top:8px">' + subs.length + ' submissions</p>';
+        var html = '<div class="card"><h3>' + esc(f.name) + '</h3>' +
+          '<p>' + esc(f.description || '') + '</p>' +
+          '<p style="font-size:.85rem">Status: <span class="badge ' + (f.status === 'active' ? 'active' : 'inactive') + '">' + esc(f.status) + '</span> | Responses: ' + (f.response_count || 0) + '</p>' +
+          '<h4 style="font-size:.9rem;margin-top:12px">Questions</h4>' +
+          '<ul style="padding-left:18px;font-size:.85rem">' + (qs || '<li>No questions added</li>') + '</ul>' +
+          sub +
+          '<button class="btn btn-sm" style="margin-top:8px" onclick="loadIqsTab()">← Back</button></div>';
+        document.getElementById('iqsFunnelsList').innerHTML = html;
+      });
+    });
+  });
+}
+
+function iqsDeleteFunnel(id) {
+  if (!confirm('Delete this funnel and all its questions/submissions?')) return;
+  iqsAPI('/funnels/' + id, { method: 'DELETE' }).then(function() {
+    loadIqsTab();
+  }).catch(function(e) {
+    alert('Delete failed: ' + e.message);
+  });
+}
+
+(function init() {
+  if (localStorage.getItem('bizToken')) {
+    loadDashboard();
+    // Auto-show walkthrough on first visit
+    setTimeout(function(){
+      showBWalkthrough("dashboard");
+    },800);
+  }
+})();
+</script>
+</body>
+</html>

@@ -6,12 +6,12 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct LegalPage {
@@ -44,9 +44,7 @@ pub struct UpdateLegalPageRequest {
 }
 
 /// GET /api/v1/legal-pages — list all legal pages
-pub async fn list_legal_pages(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_legal_pages(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let pages = sqlx::query_as::<_, LegalPage>(
         "SELECT id, title, page_type, content, published, is_global, created_at, updated_at FROM legal_pages ORDER BY created_at DESC "
     )

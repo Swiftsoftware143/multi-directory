@@ -1,18 +1,18 @@
 //! Deal CRUD handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Deal {
@@ -157,9 +157,7 @@ pub async fn list_deals(
 }
 
 /// GET /api/v1/deals/featured — featured deals across all directories
-pub async fn list_featured_deals(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_featured_deals(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let deals = sqlx::query_as::<_, Deal>(
         "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
     )
@@ -344,7 +342,9 @@ pub async fn claim_deal(
     if let Some(limit) = deal.redemption_limit {
         let count = deal.redemption_count.unwrap_or(0);
         if count >= limit {
-            return Err(AppError::BadRequest("Redemption limit reached for this deal".into()));
+            return Err(AppError::BadRequest(
+                "Redemption limit reached for this deal".into(),
+            ));
         }
     }
 
@@ -352,15 +352,14 @@ pub async fn claim_deal(
     if let Some(per_user_limit) = deal.per_user_limit {
         // Count existing redemptions for this deal (check by visitor/anonymous context)
         // For now, check total redemptions — full user-tracking requires auth session
-        let user_claims: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM deal_redemptions WHERE deal_id = \x241"
-        )
-        .bind(id)
-        .fetch_one(&s.db)
-        .await?;
+        let user_claims: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM deal_redemptions WHERE deal_id = \x241")
+                .bind(id)
+                .fetch_one(&s.db)
+                .await?;
         if user_claims.0 as i32 >= per_user_limit {
             return Err(AppError::BadRequest(
-                "You have already claimed this deal the maximum number of times".into()
+                "You have already claimed this deal the maximum number of times".into(),
             ));
         }
     }
@@ -380,13 +379,11 @@ pub async fn list_directory_deals(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let deals = sqlx::query_as::<_, Deal>(
         "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE directory_id = \x241 ORDER BY created_at DESC "
@@ -403,13 +400,11 @@ pub async fn list_business_deals(
     State(s): State<AppState>,
     Path((slug, business_id)): Path<(String, Uuid)>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = \x241 "
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let deals = sqlx::query_as::<_, Deal>(
         "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
@@ -437,7 +432,7 @@ pub async fn redeem_deal(
 
     let redemption = sqlx::query_as::<_, (Uuid, String)>(
         "INSERT INTO deal_redemptions (id, deal_id, redemption_code, status)
-         VALUES ($1, $2, $3, 'active') RETURNING id, redemption_code"
+         VALUES ($1, $2, $3, 'active') RETURNING id, redemption_code",
     )
     .bind(Uuid::new_v4())
     .bind(id)
@@ -445,11 +440,13 @@ pub async fn redeem_deal(
     .fetch_one(&s.db)
     .await?;
 
-    sqlx::query("UPDATE deals SET redemption_count = COALESCE(redemption_count, 0) + 1 WHERE id = $1")
-        .bind(id)
-        .execute(&s.db)
-        .await
-        .ok();
+    sqlx::query(
+        "UPDATE deals SET redemption_count = COALESCE(redemption_count, 0) + 1 WHERE id = $1",
+    )
+    .bind(id)
+    .execute(&s.db)
+    .await
+    .ok();
 
     Ok(Json(json!({
         "redemption_id": redemption.0,
@@ -468,7 +465,7 @@ pub async fn lookup_redemption(
                   COALESCE(d.title, '') as deal_title
            FROM deal_redemptions dr
            LEFT JOIN deals d ON d.id = dr.deal_id
-           WHERE dr.redemption_code = $1"#
+           WHERE dr.redemption_code = $1"#,
     )
     .bind(&code)
     .fetch_optional(&s.db)
@@ -497,7 +494,9 @@ pub async fn use_redemption(
     .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Redemption not found or already used".into()));
+        return Err(AppError::NotFound(
+            "Redemption not found or already used".into(),
+        ));
     }
 
     Ok(Json(json!({"status": "used"})))
@@ -508,22 +507,28 @@ pub async fn list_deal_redemptions(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let redemptions = sqlx::query_as::<_, (Uuid, String, String, Option<DateTime<Utc>>, DateTime<Utc>)>(
-        r#"SELECT id, redemption_code, status, used_at, created_at
+    let redemptions =
+        sqlx::query_as::<_, (Uuid, String, String, Option<DateTime<Utc>>, DateTime<Utc>)>(
+            r#"SELECT id, redemption_code, status, used_at, created_at
            FROM deal_redemptions WHERE deal_id = $1
-           ORDER BY created_at DESC"#
-    )
-    .bind(id)
-    .fetch_all(&s.db)
-    .await?;
+           ORDER BY created_at DESC"#,
+        )
+        .bind(id)
+        .fetch_all(&s.db)
+        .await?;
 
-    let result: Vec<serde_json::Value> = redemptions.into_iter().map(|r| json!({
-        "id": r.0,
-        "code": r.1,
-        "status": r.2,
-        "used_at": r.3,
-        "created_at": r.4
-    })).collect();
+    let result: Vec<serde_json::Value> = redemptions
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.0,
+                "code": r.1,
+                "status": r.2,
+                "used_at": r.3,
+                "created_at": r.4
+            })
+        })
+        .collect();
 
     Ok(Json(json!({"redemptions": result, "total": result.len()})))
 }
@@ -590,7 +595,7 @@ pub async fn get_deal_page(
         LEFT JOIN directory_categories dc ON dc.id = b.category_id
         JOIN directories dir ON dir.id = d.directory_id
         LEFT JOIN business_verifications bv ON bv.business_id = b.id
-        WHERE d.id = $1"#
+        WHERE d.id = $1"#,
     )
     .bind(id)
     .fetch_optional(&s.db)

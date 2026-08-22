@@ -12,15 +12,15 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use chrono::{DateTime, Utc, Timelike};
+use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
-use crate::error::{AppError, ApiResult};
-use crate::AppState;
+use crate::error::{ApiResult, AppError};
 use crate::template_engine;
+use crate::AppState;
 
 // ── Data Types ───────────────────────────────────────────────────────────────
 
@@ -112,17 +112,14 @@ pub fn extract_visitor_account_id(headers: &HeaderMap, jwt_secret: &str) -> Resu
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let claims = verify_token(token, jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 
 /// Extract visitor ID optionally (no error if missing).
 pub fn extract_visitor_id_optional(headers: &HeaderMap, jwt_secret: &str) -> Option<Uuid> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())?;
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok())?;
 
     let token = auth_header.strip_prefix("Bearer ")?;
 
@@ -154,20 +151,20 @@ pub async fn get_feed(
     let visitor_id = extract_visitor_account_id(&headers, &s.config.jwt_secret)?;
 
     // ── 1. Get visitor account info ──
-    let visitor = sqlx::query_as::<_, VisitorAccount>(
-        "SELECT * FROM visitor_accounts WHERE id = $1"
-    )
-    .bind(visitor_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Visitor not found".to_string()))?;
+    let visitor =
+        sqlx::query_as::<_, VisitorAccount>("SELECT * FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Visitor not found".to_string()))?;
 
-    let directory_id = visitor.directory_id
+    let directory_id = visitor
+        .directory_id
         .ok_or_else(|| AppError::NotFound("Visitor has no directory assigned".to_string()))?;
 
     // ── 2. Get directory info ──
     let dir_row = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, name, slug FROM directories WHERE id = $1"
+        "SELECT id, name, slug FROM directories WHERE id = $1",
     )
     .bind(directory_id)
     .fetch_optional(&s.db)
@@ -194,22 +191,44 @@ pub async fn get_feed(
     .fetch_all(&s.db)
     .await?;
 
-    let saved_businesses: Vec<SavedBusiness> = saved_raw.into_iter().map(|(id, name, slug, category, images, bookmarked_at)| {
-        let image_url = images.as_ref()
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        SavedBusiness { id, name, slug, category, image_url, bookmarked_at }
-    }).collect();
+    let saved_businesses: Vec<SavedBusiness> = saved_raw
+        .into_iter()
+        .map(|(id, name, slug, category, images, bookmarked_at)| {
+            let image_url = images
+                .as_ref()
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            SavedBusiness {
+                id,
+                name,
+                slug,
+                category,
+                image_url,
+                bookmarked_at,
+            }
+        })
+        .collect();
 
     // Collect categories from bookmarked businesses for suggestions
-    let bookmarked_categories: Vec<String> = saved_businesses.iter()
+    let bookmarked_categories: Vec<String> = saved_businesses
+        .iter()
         .filter_map(|b| b.category.clone())
         .collect();
 
     // ── 4. Fetch upcoming RSVP'd events ──
-    let events_raw = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Option<String>, String, Option<serde_json::Value>)>(
+    let events_raw = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            DateTime<Utc>,
+            Option<String>,
+            String,
+            Option<serde_json::Value>,
+        ),
+    >(
         r#"SELECT ce.id, ce.title, ce.event_date, ce.location, er.status, ce.image_url
            FROM event_rsvps er
            JOIN community_events ce ON ce.id = er.event_id
@@ -218,7 +237,7 @@ pub async fn get_feed(
              AND ce.event_date > NOW()
              AND ce.status = 'active'
            ORDER BY ce.event_date ASC
-           LIMIT 5"#
+           LIMIT 5"#,
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
@@ -227,14 +246,15 @@ pub async fn get_feed(
     let mut upcoming_events: Vec<UpcomingEvent> = Vec::new();
     for (id, title, event_date, location, rsvp_status, image_url) in events_raw {
         let attendee_count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')"
+            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')",
         )
         .bind(id)
         .fetch_one(&s.db)
         .await
         .unwrap_or(0);
 
-        let img = image_url.as_ref()
+        let img = image_url
+            .as_ref()
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -255,7 +275,7 @@ pub async fn get_feed(
            FROM polls
            WHERE directory_id = $1 AND status = 'active'
            ORDER BY created_at DESC
-           LIMIT 3"#
+           LIMIT 3"#,
     )
     .bind(directory_id)
     .fetch_all(&s.db)
@@ -263,13 +283,12 @@ pub async fn get_feed(
 
     let mut active_polls: Vec<ActivePoll> = Vec::new();
     for (poll_id, question, options, _) in polls_raw {
-        let total_votes = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1"
-        )
-        .bind(poll_id)
-        .fetch_one(&s.db)
-        .await
-        .unwrap_or(0);
+        let total_votes =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1")
+                .bind(poll_id)
+                .fetch_one(&s.db)
+                .await
+                .unwrap_or(0);
 
         let mut option_votes: Vec<i64> = vec![0i64; options.len()];
         let vote_rows = sqlx::query_as::<_, (i32, i64)>(
@@ -287,7 +306,7 @@ pub async fn get_feed(
         }
 
         let user_vote: Option<i32> = sqlx::query_scalar::<_, i32>(
-            "SELECT option_index FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2"
+            "SELECT option_index FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2",
         )
         .bind(poll_id)
         .bind(visitor_id)
@@ -320,7 +339,7 @@ pub async fn get_feed(
                     WHEN answers ? 'business_type' THEN jsonb_build_array(answers->>'business_type')
                     ELSE '[]'::jsonb
                END
-           ) FROM survey_responses WHERE visitor_account_id = $1"#
+           ) FROM survey_responses WHERE visitor_account_id = $1"#,
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
@@ -329,14 +348,18 @@ pub async fn get_feed(
 
     for interest in survey_interests {
         let trimmed = interest.trim().to_lowercase();
-        if !trimmed.is_empty() && !interest_categories.iter().any(|c| c.to_lowercase() == trimmed) {
+        if !trimmed.is_empty()
+            && !interest_categories
+                .iter()
+                .any(|c| c.to_lowercase() == trimmed)
+        {
             interest_categories.push(interest.trim().to_string());
         }
     }
 
     // Get already-bookmarked business IDs to exclude
     let bookmarked_ids: Vec<Uuid> = sqlx::query_scalar::<_, Uuid>(
-        "SELECT business_id FROM visitor_favorites WHERE visitor_account_id = $1"
+        "SELECT business_id FROM visitor_favorites WHERE visitor_account_id = $1",
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
@@ -358,15 +381,33 @@ pub async fn get_feed(
         .fetch_all(&s.db)
         .await?;
 
-        raw.into_iter().filter_map(|(id, name, slug, category, images, city, state, rating, review_count)| {
-            if bookmarked_ids.contains(&id) { return None; }
-            let image_url = images.as_ref()
-                .and_then(|v| v.as_array())
-                .and_then(|arr| arr.first())
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            Some(FeedBusiness { id, name, slug, category, category_id: None, image_url, city, state, rating, review_count })
-        }).collect()
+        raw.into_iter()
+            .filter_map(
+                |(id, name, slug, category, images, city, state, rating, review_count)| {
+                    if bookmarked_ids.contains(&id) {
+                        return None;
+                    }
+                    let image_url = images
+                        .as_ref()
+                        .and_then(|v| v.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    Some(FeedBusiness {
+                        id,
+                        name,
+                        slug,
+                        category,
+                        category_id: None,
+                        image_url,
+                        city,
+                        state,
+                        rating,
+                        review_count,
+                    })
+                },
+            )
+            .collect()
     } else {
         // Match businesses by category name matching our interest categories
         let raw = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<serde_json::Value>, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<Uuid>)>(
@@ -383,19 +424,50 @@ pub async fn get_feed(
         .fetch_all(&s.db)
         .await?;
 
-        raw.into_iter().filter_map(|(id, name, slug, category, images, city, state, rating, review_count, category_id)| {
-            if bookmarked_ids.contains(&id) { return None; }
-            let image_url = images.as_ref()
-                .and_then(|v| v.as_array())
-                .and_then(|arr| arr.first())
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            Some(FeedBusiness { id, name, slug, category, category_id, image_url, city, state, rating, review_count })
-        }).take(6).collect()
+        raw.into_iter()
+            .filter_map(
+                |(
+                    id,
+                    name,
+                    slug,
+                    category,
+                    images,
+                    city,
+                    state,
+                    rating,
+                    review_count,
+                    category_id,
+                )| {
+                    if bookmarked_ids.contains(&id) {
+                        return None;
+                    }
+                    let image_url = images
+                        .as_ref()
+                        .and_then(|v| v.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    Some(FeedBusiness {
+                        id,
+                        name,
+                        slug,
+                        category,
+                        category_id,
+                        image_url,
+                        city,
+                        state,
+                        rating,
+                        review_count,
+                    })
+                },
+            )
+            .take(6)
+            .collect()
     };
 
     // ── 7. Build greeting ──
-    let first_name = visitor.name
+    let first_name = visitor
+        .name
         .as_deref()
         .and_then(|n| n.split_whitespace().next())
         .unwrap_or("there");
@@ -429,13 +501,12 @@ pub async fn feed_page(
     };
 
     // ── Get visitor info ──
-    let visitor = sqlx::query_as::<_, VisitorAccount>(
-        "SELECT * FROM visitor_accounts WHERE id = $1"
-    )
-    .bind(visitor_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Visitor not found".to_string()))?;
+    let visitor =
+        sqlx::query_as::<_, VisitorAccount>("SELECT * FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Visitor not found".to_string()))?;
 
     let directory_id = match visitor.directory_id {
         Some(id) => id,
@@ -445,8 +516,17 @@ pub async fn feed_page(
     };
 
     // ── Get directory info ──
-    let dir_row = sqlx::query_as::<_, (Uuid, String, Option<String>, String, Option<serde_json::Value>)>(
-        r#"SELECT id, name, description, slug, color_scheme FROM directories WHERE id = $1"#
+    let dir_row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            Option<serde_json::Value>,
+        ),
+    >(
+        r#"SELECT id, name, description, slug, color_scheme FROM directories WHERE id = $1"#,
     )
     .bind(directory_id)
     .fetch_optional(&s.db)
@@ -471,24 +551,38 @@ pub async fn feed_page(
     .fetch_all(&s.db)
     .await?;
 
-    let saved_places: Vec<serde_json::Value> = saved_raw.into_iter().map(|(id, name, slug, category, images, bookmarked_at)| {
-        let image_url = images.as_ref()
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        json!({
-            "id": id,
-            "name": name,
-            "slug": slug,
-            "category_name": category,
-            "image_url": image_url,
-            "bookmarked_at": bookmarked_at,
+    let saved_places: Vec<serde_json::Value> = saved_raw
+        .into_iter()
+        .map(|(id, name, slug, category, images, bookmarked_at)| {
+            let image_url = images
+                .as_ref()
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            json!({
+                "id": id,
+                "name": name,
+                "slug": slug,
+                "category_name": category,
+                "image_url": image_url,
+                "bookmarked_at": bookmarked_at,
+            })
         })
-    }).collect();
+        .collect();
 
     // Upcoming events
-    let events_raw = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Option<String>, String, Option<serde_json::Value>)>(
+    let events_raw = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            DateTime<Utc>,
+            Option<String>,
+            String,
+            Option<serde_json::Value>,
+        ),
+    >(
         r#"SELECT ce.id, ce.title, ce.event_date, ce.location, er.status, ce.image_url
            FROM event_rsvps er
            JOIN community_events ce ON ce.id = er.event_id
@@ -497,7 +591,7 @@ pub async fn feed_page(
              AND ce.event_date > NOW()
              AND ce.status = 'active'
            ORDER BY ce.event_date ASC
-           LIMIT 5"#
+           LIMIT 5"#,
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
@@ -506,14 +600,15 @@ pub async fn feed_page(
     let mut events_list: Vec<serde_json::Value> = Vec::new();
     for (id, title, event_date, location, rsvp_status, image_url) in events_raw {
         let attendee_count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')"
+            "SELECT COUNT(*) FROM event_rsvps WHERE event_id = $1 AND status IN ('going', 'maybe')",
         )
         .bind(id)
         .fetch_one(&s.db)
         .await
         .unwrap_or(0);
 
-        let img = image_url.as_ref()
+        let img = image_url
+            .as_ref()
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -538,13 +633,12 @@ pub async fn feed_page(
 
     let mut polls_list: Vec<serde_json::Value> = Vec::new();
     for (poll_id, question, options) in polls_raw {
-        let total_votes = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1"
-        )
-        .bind(poll_id)
-        .fetch_one(&s.db)
-        .await
-        .unwrap_or(0);
+        let total_votes =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM poll_votes WHERE poll_id = $1")
+                .bind(poll_id)
+                .fetch_one(&s.db)
+                .await
+                .unwrap_or(0);
 
         let mut option_votes: Vec<i64> = vec![0i64; options.len()];
         let vote_rows = sqlx::query_as::<_, (i32, i64)>(
@@ -562,7 +656,7 @@ pub async fn feed_page(
         }
 
         let user_vote: Option<i32> = sqlx::query_scalar::<_, i32>(
-            "SELECT option_index FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2"
+            "SELECT option_index FROM poll_votes WHERE poll_id = $1 AND visitor_account_id = $2",
         )
         .bind(poll_id)
         .bind(visitor_id)
@@ -582,8 +676,13 @@ pub async fn feed_page(
     }
 
     // Suggested businesses
-    let bookmarked_categories: Vec<String> = saved_places.iter()
-        .filter_map(|b| b.get("category_name").and_then(|c| c.as_str()).map(|s| s.to_lowercase()))
+    let bookmarked_categories: Vec<String> = saved_places
+        .iter()
+        .filter_map(|b| {
+            b.get("category_name")
+                .and_then(|c| c.as_str())
+                .map(|s| s.to_lowercase())
+        })
         .collect();
 
     let survey_interests: Vec<String> = sqlx::query_scalar::<_, String>(
@@ -593,7 +692,7 @@ pub async fn feed_page(
                     WHEN answers ? 'business_type' THEN jsonb_build_array(answers->>'business_type')
                     ELSE '[]'::jsonb
                END
-           ) FROM survey_responses WHERE visitor_account_id = $1"#
+           ) FROM survey_responses WHERE visitor_account_id = $1"#,
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
@@ -609,7 +708,7 @@ pub async fn feed_page(
     }
 
     let bookmarked_ids: Vec<Uuid> = sqlx::query_scalar::<_, Uuid>(
-        "SELECT business_id FROM visitor_favorites WHERE visitor_account_id = $1"
+        "SELECT business_id FROM visitor_favorites WHERE visitor_account_id = $1",
     )
     .bind(visitor_id)
     .fetch_all(&s.db)
@@ -617,21 +716,35 @@ pub async fn feed_page(
     .unwrap_or_default();
 
     let suggestions: Vec<serde_json::Value> = if interest_categories.is_empty() {
-        sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<serde_json::Value>, Option<String>, Option<String>)>(
+        sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<serde_json::Value>,
+                Option<String>,
+                Option<String>,
+            ),
+        >(
             r#"SELECT b.id, b.name, b.slug, dc.name as category, b.images, b.city, b.state
                FROM businesses b
                LEFT JOIN directory_categories dc ON dc.id = b.category_id
                WHERE b.directory_id = $1
                ORDER BY b.rating DESC NULLS LAST
-               LIMIT 10"#
+               LIMIT 10"#,
         )
         .bind(directory_id)
         .fetch_all(&s.db)
         .await?
         .into_iter()
         .filter_map(|(id, name, slug, category, images, city, state)| {
-            if bookmarked_ids.contains(&id) { return None; }
-            let image_url = images.as_ref()
+            if bookmarked_ids.contains(&id) {
+                return None;
+            }
+            let image_url = images
+                .as_ref()
                 .and_then(|v| v.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|v| v.as_str())
@@ -645,23 +758,42 @@ pub async fn feed_page(
         .take(6)
         .collect()
     } else {
-        sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<serde_json::Value>, Option<String>, Option<String>)>(
+        sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<serde_json::Value>,
+                Option<String>,
+                Option<String>,
+            ),
+        >(
             r#"SELECT b.id, b.name, b.slug, dc.name as category, b.images, b.city, b.state
                FROM businesses b
                LEFT JOIN directory_categories dc ON dc.id = b.category_id
                WHERE b.directory_id = $1
                  AND LOWER(dc.name) = ANY($2)
                ORDER BY b.rating DESC NULLS LAST
-               LIMIT 10"#
+               LIMIT 10"#,
         )
         .bind(directory_id)
-        .bind(&interest_categories.iter().map(|c| c.to_lowercase()).collect::<Vec<_>>())
+        .bind(
+            &interest_categories
+                .iter()
+                .map(|c| c.to_lowercase())
+                .collect::<Vec<_>>(),
+        )
         .fetch_all(&s.db)
         .await?
         .into_iter()
         .filter_map(|(id, name, slug, category, images, city, state)| {
-            if bookmarked_ids.contains(&id) { return None; }
-            let image_url = images.as_ref()
+            if bookmarked_ids.contains(&id) {
+                return None;
+            }
+            let image_url = images
+                .as_ref()
                 .and_then(|v| v.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|v| v.as_str())
@@ -677,7 +809,8 @@ pub async fn feed_page(
     };
 
     // ── Greeting ──
-    let first_name = visitor.name
+    let first_name = visitor
+        .name
         .as_deref()
         .and_then(|n| n.split_whitespace().next())
         .unwrap_or("there");
@@ -719,13 +852,12 @@ async fn get_visitor_referral_context(
     visitor_id: Uuid,
 ) -> Result<serde_json::Value, sqlx::Error> {
     // Get the visitor's email for looking up referrals
-    let email: Option<String> = sqlx::query_scalar(
-        "SELECT email FROM visitor_accounts WHERE id = $1"
-    )
-    .bind(visitor_id)
-    .fetch_optional(db)
-    .await?
-    .flatten();
+    let email: Option<String> =
+        sqlx::query_scalar("SELECT email FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_optional(db)
+            .await?
+            .flatten();
 
     // If no email found, return empty referral context
     let email = match email {

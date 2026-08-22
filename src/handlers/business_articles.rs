@@ -5,19 +5,19 @@
 //! Each article targets a specific keyword and links back to the business/directory.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
-use chrono::{DateTime, Utc, Duration};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Models ──
 
@@ -97,13 +97,16 @@ fn generate_article_content(
     business_name: Option<&str>,
     business_slug: Option<&str>,
 ) -> String {
-    let business_link = business_name.zip(business_slug)
-        .map(|(name, slug)| format!(
-            r#"<a href="/{}/{}">{}</a>"#,
-            htmlesc(dir_slug),
-            htmlesc(slug),
-            htmlesc(name)
-        ))
+    let business_link = business_name
+        .zip(business_slug)
+        .map(|(name, slug)| {
+            format!(
+                r#"<a href="/{}/{}">{}</a>"#,
+                htmlesc(dir_slug),
+                htmlesc(slug),
+                htmlesc(name)
+            )
+        })
         .unwrap_or_else(|| format!("{} in {}", htmlesc(service), htmlesc(city)));
 
     let dir_link = format!(
@@ -157,26 +160,27 @@ pub async fn generate_article(
     Json(req): Json<GenerateArticleReq>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate directory
-    let dir_info = sqlx::query_as::<_, (String, String)>(
-        "SELECT name, slug FROM directories WHERE id=$1"
-    )
-    .bind(dir_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Directory not found".into()))?;
+    let dir_info =
+        sqlx::query_as::<_, (String, String)>("SELECT name, slug FROM directories WHERE id=$1")
+            .bind(dir_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound("Directory not found".into()))?;
 
     let (dir_name, dir_slug) = dir_info;
 
     // Get business info if provided
     let (business_name, business_slug) = if let Some(biz_id) = req.business_id {
         let biz = sqlx::query_as::<_, (String, String)>(
-            "SELECT name, slug FROM businesses WHERE id=$1 AND directory_id=$2"
+            "SELECT name, slug FROM businesses WHERE id=$1 AND directory_id=$2",
         )
         .bind(biz_id)
         .bind(dir_id)
         .fetch_optional(&s.db)
         .await?
-        .ok_or(AppError::NotFound("Business not found in this directory".into()))?;
+        .ok_or(AppError::NotFound(
+            "Business not found in this directory".into(),
+        ))?;
         (Some(biz.0), Some(biz.1))
     } else {
         (None, None)
@@ -206,7 +210,7 @@ pub async fn generate_article(
 
     // Check for duplicate slug
     let existing: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM business_articles WHERE directory_id=$1 AND slug=$2"
+        "SELECT COUNT(*) FROM business_articles WHERE directory_id=$1 AND slug=$2",
     )
     .bind(dir_id)
     .bind(&slug)
@@ -226,7 +230,7 @@ pub async fn generate_article(
          (directory_id, business_id, title, slug, keyword, meta_description, content, status, \
           is_owner_article, subscription_active) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8, $9) \
-         RETURNING *"
+         RETURNING *",
     )
     .bind(dir_id)
     .bind(req.business_id)
@@ -235,8 +239,8 @@ pub async fn generate_article(
     .bind(&req.keyword)
     .bind(&meta_description)
     .bind(&content)
-    .bind(req.business_id.is_none())  // is_owner_article = true if no business_id
-    .bind(req.business_id.is_some())  // subscription_active = true if paid (has business)
+    .bind(req.business_id.is_none()) // is_owner_article = true if no business_id
+    .bind(req.business_id.is_some()) // subscription_active = true if paid (has business)
     .fetch_one(&s.db)
     .await?;
 
@@ -274,7 +278,9 @@ pub async fn list_articles(
     if let Some(ref search) = params.search {
         conditions.push(format!(
             "(ba.title ILIKE ${} OR ba.keyword ILIKE ${} OR ba.slug ILIKE ${})",
-            idx, idx + 1, idx + 2
+            idx,
+            idx + 1,
+            idx + 2
         ));
         idx += 3;
     }
@@ -288,7 +294,9 @@ pub async fn list_articles(
          WHERE {} \
          ORDER BY ba.updated_at DESC \
          LIMIT ${} OFFSET ${}",
-        where_clause, idx, idx + 1
+        where_clause,
+        idx,
+        idx + 1
     );
 
     let status_filter = params.status.clone();
@@ -380,25 +388,26 @@ pub async fn update_article(
     Json(req): Json<UpdateArticleReq>,
 ) -> ApiResult<impl IntoResponse> {
     // Verify article exists
-    let existing = sqlx::query_as::<_, BusinessArticle>(
-        "SELECT * FROM business_articles WHERE id=$1"
-    )
-    .bind(article_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Article not found".into()))?;
+    let existing =
+        sqlx::query_as::<_, BusinessArticle>("SELECT * FROM business_articles WHERE id=$1")
+            .bind(article_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound("Article not found".into()))?;
 
     let title = req.title.unwrap_or(existing.title);
     let slug = req.slug.unwrap_or(existing.slug);
     let meta_description = req.meta_description.or(existing.meta_description);
     let content = req.content.or(existing.content);
-    let status = req.status.or(Some(existing.status.clone().unwrap_or("draft".to_string())));
+    let status = req
+        .status
+        .or(Some(existing.status.clone().unwrap_or("draft".to_string())));
 
     let article = sqlx::query_as::<_, BusinessArticle>(
         "UPDATE business_articles \
          SET title=$1, slug=$2, meta_description=$3, content=$4, status=$5, updated_at=NOW() \
          WHERE id=$6 \
-         RETURNING *"
+         RETURNING *",
     )
     .bind(&title)
     .bind(&slug)
@@ -427,7 +436,9 @@ pub async fn delete_article(
     .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Article not found or already archived".into()));
+        return Err(AppError::NotFound(
+            "Article not found or already archived".into(),
+        ));
     }
 
     Ok(Json(json!({"deleted": true, "id": article_id})))
@@ -441,45 +452,51 @@ pub async fn generate_weekly(
     State(s): State<AppState>,
     Path(article_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let article = sqlx::query_as::<_, BusinessArticle>(
-        "SELECT * FROM business_articles WHERE id=$1"
-    )
-    .bind(article_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Article not found".into()))?;
+    let article =
+        sqlx::query_as::<_, BusinessArticle>("SELECT * FROM business_articles WHERE id=$1")
+            .bind(article_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound("Article not found".into()))?;
 
     // Verify it has a business (paid article)
     if article.business_id.is_none() {
-        return Err(AppError::BadRequest("Cannot regenerate owner articles via weekly subscription".into()));
+        return Err(AppError::BadRequest(
+            "Cannot regenerate owner articles via weekly subscription".into(),
+        ));
     }
 
     // Get directory info
-    let dir_info = sqlx::query_as::<_, (String, String)>(
-        "SELECT name, slug FROM directories WHERE id=$1"
-    )
-    .bind(article.directory_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Directory not found".into()))?;
+    let dir_info =
+        sqlx::query_as::<_, (String, String)>("SELECT name, slug FROM directories WHERE id=$1")
+            .bind(article.directory_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound("Directory not found".into()))?;
 
     let (dir_name, dir_slug) = dir_info;
 
     // Get business info
-    let biz_id = article.business_id.ok_or_else(|| AppError::BadRequest("Business ID required".into()))?;
-    let biz_info = sqlx::query_as::<_, (String, String)>(
-        "SELECT name, slug FROM businesses WHERE id=$1"
-    )
-    .bind(biz_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Business not found".into()))?;
+    let biz_id = article
+        .business_id
+        .ok_or_else(|| AppError::BadRequest("Business ID required".into()))?;
+    let biz_info =
+        sqlx::query_as::<_, (String, String)>("SELECT name, slug FROM businesses WHERE id=$1")
+            .bind(biz_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound("Business not found".into()))?;
 
     let (biz_name, biz_slug) = biz_info;
 
     // Parse city and service from keyword or fallback
-    let service = capitalize_first(&article.keyword.split_whitespace()
-        .last().unwrap_or(&article.keyword));
+    let service = capitalize_first(
+        &article
+            .keyword
+            .split_whitespace()
+            .last()
+            .unwrap_or(&article.keyword),
+    );
     let city = "your area"; // fallback
 
     // Generate fresh slug
@@ -487,10 +504,7 @@ pub async fn generate_weekly(
     let fresh_slug = format!("{}-{}", slugify(&article.keyword), ts);
 
     // Generate fresh content
-    let title = format!(
-        "{} – Updated Guide",
-        &article.title
-    );
+    let title = format!("{} – Updated Guide", &article.title);
 
     let fresh_content = generate_article_content(
         &article.keyword,
@@ -544,7 +558,7 @@ pub async fn serve_article(
          JOIN directories d ON d.id = ba.directory_id \
          LEFT JOIN businesses b ON b.id = ba.business_id \
          WHERE ba.slug = $1 AND ba.status IN ('published', 'draft') \
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(&slug)
     .fetch_optional(&s.db)
@@ -553,29 +567,61 @@ pub async fn serve_article(
 
     let article_id: Uuid = row.try_get("id").unwrap_or_default();
     let dir_id: Uuid = row.try_get("directory_id").unwrap_or_default();
-    let dir_name: String = row.try_get::<String,_>("directory_name").unwrap_or_default();
-    let dir_slug: String = row.try_get::<String,_>("directory_slug").unwrap_or_default();
-    let biz_name: Option<String> = row.try_get::<Option<String>,_>("business_name").ok().flatten();
-    let biz_slug: Option<String> = row.try_get::<Option<String>,_>("business_slug").ok().flatten();
-    let title: String = row.try_get::<String,_>("title").unwrap_or_default();
-    let meta_description: String = row.try_get::<Option<String>,_>("meta_description").ok().flatten().unwrap_or_default();
-    let content: String = row.try_get::<Option<String>,_>("content").ok().flatten().unwrap_or_default();
-    let keyword: String = row.try_get::<String,_>("keyword").unwrap_or_default();
-    let status: String = row.try_get::<Option<String>,_>("status").ok().flatten().unwrap_or_default();
-    let is_owner: bool = row.try_get::<Option<bool>,_>("is_owner_article").ok().flatten().unwrap_or(false);
-    let created_at: Option<DateTime<Utc>> = row.try_get::<Option<DateTime<Utc>>,_>("created_at").ok().flatten();
+    let dir_name: String = row
+        .try_get::<String, _>("directory_name")
+        .unwrap_or_default();
+    let dir_slug: String = row
+        .try_get::<String, _>("directory_slug")
+        .unwrap_or_default();
+    let biz_name: Option<String> = row
+        .try_get::<Option<String>, _>("business_name")
+        .ok()
+        .flatten();
+    let biz_slug: Option<String> = row
+        .try_get::<Option<String>, _>("business_slug")
+        .ok()
+        .flatten();
+    let title: String = row.try_get::<String, _>("title").unwrap_or_default();
+    let meta_description: String = row
+        .try_get::<Option<String>, _>("meta_description")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let content: String = row
+        .try_get::<Option<String>, _>("content")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let keyword: String = row.try_get::<String, _>("keyword").unwrap_or_default();
+    let status: String = row
+        .try_get::<Option<String>, _>("status")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let is_owner: bool = row
+        .try_get::<Option<bool>, _>("is_owner_article")
+        .ok()
+        .flatten()
+        .unwrap_or(false);
+    let created_at: Option<DateTime<Utc>> = row
+        .try_get::<Option<DateTime<Utc>>, _>("created_at")
+        .ok()
+        .flatten();
 
     // Track impression asynchronously
     let db = s.db.clone();
     let aid = article_id;
     tokio::spawn(async move {
-        let _ = sqlx::query("UPDATE business_articles SET impressions = impressions + 1 WHERE id=$1")
-            .bind(aid)
-            .execute(&db)
-            .await;
+        let _ =
+            sqlx::query("UPDATE business_articles SET impressions = impressions + 1 WHERE id=$1")
+                .bind(aid)
+                .execute(&db)
+                .await;
     });
 
-    let date_str = created_at.map(|dt| dt.format("%B %d, %Y").to_string()).unwrap_or_default();
+    let date_str = created_at
+        .map(|dt| dt.format("%B %d, %Y").to_string())
+        .unwrap_or_default();
     let author_label = if is_owner {
         format!("Published by {}", htmlesc(&dir_name))
     } else if let Some(ref bn) = biz_name {
@@ -595,7 +641,8 @@ pub async fn serve_article(
         .unwrap_or_else(|| "Sponsored".to_string());
 
     let escaped_label = htmlesc(&sponsored_label);
-    let sponsored_badge = if !is_owner && biz_name.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
+    let sponsored_badge = if !is_owner && biz_name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+    {
         format!(
             r#"<div style="margin-bottom:16px"><span class="sponsored-badge">{}</span></div>"#,
             escaped_label
@@ -613,7 +660,6 @@ pub async fn serve_article(
             htmlesc(&dir_name),
         ))
         .unwrap_or_default();
-
 
     let dir_link = format!(
         r#"<p style="margin-bottom:16px">Browse the full <a href="/{}" style="color:#0d9488;font-weight:600">{}</a> directory for more {}-related services.</p>"#,
@@ -694,7 +740,8 @@ pub async fn serve_article(
         sl = sl,
         sponsored_badge = sponsored_badge,
         status_badge = if status == "published" {
-            r#"<div style="margin-bottom:16px"><span class="status-badge">Published</span></div>"#.to_string()
+            r#"<div style="margin-bottom:16px"><span class="status-badge">Published</span></div>"#
+                .to_string()
         } else {
             String::new()
         },
@@ -708,10 +755,7 @@ pub async fn serve_article(
         article_id_str = article_id.to_string(),
     );
 
-    Ok((
-        [("Content-Type", "text/html; charset=utf-8")],
-        html,
-    ))
+    Ok(([("Content-Type", "text/html; charset=utf-8")], html))
 }
 
 /// POST /business-articles/:id/track
@@ -735,12 +779,17 @@ pub async fn track_article_event(
                 .execute(&s.db)
                 .await?;
         }
-        _ => return Err(AppError::Validation(format!(
-            "Unknown event type '{}'. Valid: impression, click", req.event
-        ))),
+        _ => {
+            return Err(AppError::Validation(format!(
+                "Unknown event type '{}'. Valid: impression, click",
+                req.event
+            )))
+        }
     }
 
-    Ok(Json(json!({"tracked": req.event, "article_id": article_id})))
+    Ok(Json(
+        json!({"tracked": req.event, "article_id": article_id}),
+    ))
 }
 
 fn capitalize_first(s: &str) -> String {

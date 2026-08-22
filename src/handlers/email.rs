@@ -10,12 +10,12 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct EmailTemplate {
@@ -50,7 +50,7 @@ pub struct EmailCampaign {
 pub struct CreateTemplateRequest {
     pub name: String,
     pub subject: String,
-    pub body: String,           // HTML
+    pub body: String,              // HTML
     pub body_text: Option<String>, // plain-text fallback
     pub variables: Option<Vec<String>>,
     pub category: Option<String>,
@@ -97,14 +97,13 @@ pub struct EmailSignature {
 
 // ==================== Template Handlers ====================
 
-const TEMPLATE_COLS: &str = "id, name, subject, body, body_text, variables, category, directory_id, created_at, updated_at";
+const TEMPLATE_COLS: &str =
+    "id, name, subject, body, body_text, variables, category, directory_id, created_at, updated_at";
 
-pub async fn list_templates(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let templates = sqlx::query_as::<_, EmailTemplate>(
-        &format!("SELECT {TEMPLATE_COLS} FROM email_templates ORDER BY created_at DESC")
-    )
+pub async fn list_templates(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let templates = sqlx::query_as::<_, EmailTemplate>(&format!(
+        "SELECT {TEMPLATE_COLS} FROM email_templates ORDER BY created_at DESC"
+    ))
     .fetch_all(&state.db)
     .await?;
     Ok((StatusCode::OK, Json(templates)))
@@ -114,9 +113,9 @@ pub async fn get_template(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let template = sqlx::query_as::<_, EmailTemplate>(
-        &format!("SELECT {TEMPLATE_COLS} FROM email_templates WHERE id = $1")
-    )
+    let template = sqlx::query_as::<_, EmailTemplate>(&format!(
+        "SELECT {TEMPLATE_COLS} FROM email_templates WHERE id = $1"
+    ))
     .bind(id)
     .fetch_optional(&state.db)
     .await?
@@ -143,19 +142,16 @@ pub async fn update_template(
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateTemplateRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let _existing = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM email_templates WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(String::from("Email template not found")))?;
+    let _existing = sqlx::query_scalar::<_, Uuid>("SELECT id FROM email_templates WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(String::from("Email template not found")))?;
 
     // Build dynamic UPDATE — only include fields that were actually sent
     // Use COALESCE so unset fields keep their current value
-    let updated = sqlx::query_as::<_, EmailTemplate>(
-        &format!(
-            "UPDATE email_templates SET \
+    let updated = sqlx::query_as::<_, EmailTemplate>(&format!(
+        "UPDATE email_templates SET \
              name       = COALESCE($1, name), \
              subject    = COALESCE($2, subject), \
              body       = COALESCE($3, body), \
@@ -164,10 +160,14 @@ pub async fn update_template(
              category   = COALESCE($6, category), \
              directory_id = COALESCE($7, directory_id) \
              WHERE id = $8 RETURNING {TEMPLATE_COLS}"
-        )
-    )
-    .bind(&body.name).bind(&body.subject).bind(&body.body).bind(&body.body_text)
-    .bind(&body.variables).bind(&body.category).bind(body.directory_id)
+    ))
+    .bind(&body.name)
+    .bind(&body.subject)
+    .bind(&body.body)
+    .bind(&body.body_text)
+    .bind(&body.variables)
+    .bind(&body.category)
+    .bind(body.directory_id)
     .bind(id)
     .fetch_one(&state.db)
     .await?;
@@ -179,9 +179,9 @@ pub async fn delete_template(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let result = sqlx::query("DELETE FROM email_templates WHERE id = $1")
-    .bind(id)
-    .execute(&state.db)
-    .await?;
+        .bind(id)
+        .execute(&state.db)
+        .await?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound(String::from("Email template not found")));
     }
@@ -192,12 +192,10 @@ pub async fn delete_template(
 
 const CAMP_COLS: &str = "id, name, template_id, recipient_filter, sent_count, opened_count, status, scheduled_at, sent_at, directory_id, created_at";
 
-pub async fn list_campaigns(
-    State(state): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
-    let campaigns = sqlx::query_as::<_, EmailCampaign>(
-        &format!("SELECT {CAMP_COLS} FROM email_campaigns ORDER BY created_at DESC")
-    )
+pub async fn list_campaigns(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let campaigns = sqlx::query_as::<_, EmailCampaign>(&format!(
+        "SELECT {CAMP_COLS} FROM email_campaigns ORDER BY created_at DESC"
+    ))
     .fetch_all(&state.db)
     .await?;
     Ok((StatusCode::OK, Json(campaigns)))
@@ -207,9 +205,9 @@ pub async fn get_campaign(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let campaign = sqlx::query_as::<_, EmailCampaign>(
-        &format!("SELECT {CAMP_COLS} FROM email_campaigns WHERE id = $1")
-    )
+    let campaign = sqlx::query_as::<_, EmailCampaign>(&format!(
+        "SELECT {CAMP_COLS} FROM email_campaigns WHERE id = $1"
+    ))
     .bind(id)
     .fetch_optional(&state.db)
     .await?
@@ -236,17 +234,14 @@ pub async fn update_campaign(
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateCampaignRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let _existing = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM email_campaigns WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(String::from("Email campaign not found")))?;
+    let _existing = sqlx::query_scalar::<_, Uuid>("SELECT id FROM email_campaigns WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(String::from("Email campaign not found")))?;
 
-    let updated = sqlx::query_as::<_, EmailCampaign>(
-        &format!(
-            "UPDATE email_campaigns SET \
+    let updated = sqlx::query_as::<_, EmailCampaign>(&format!(
+        "UPDATE email_campaigns SET \
              name = COALESCE($1, name), \
              template_id = COALESCE($2, template_id), \
              recipient_filter = COALESCE($3, recipient_filter), \
@@ -254,10 +249,13 @@ pub async fn update_campaign(
              scheduled_at = COALESCE($5, scheduled_at), \
              directory_id = COALESCE($6, directory_id) \
              WHERE id = $7 RETURNING {CAMP_COLS}"
-        )
-    )
-    .bind(&body.name).bind(body.template_id).bind(&body.recipient_filter)
-    .bind(&body.status).bind(body.scheduled_at).bind(body.directory_id)
+    ))
+    .bind(&body.name)
+    .bind(body.template_id)
+    .bind(&body.recipient_filter)
+    .bind(&body.status)
+    .bind(body.scheduled_at)
+    .bind(body.directory_id)
     .bind(id)
     .fetch_one(&state.db)
     .await?;
@@ -269,9 +267,9 @@ pub async fn delete_campaign(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let result = sqlx::query("DELETE FROM email_campaigns WHERE id = $1")
-    .bind(id)
-    .execute(&state.db)
-    .await?;
+        .bind(id)
+        .execute(&state.db)
+        .await?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound(String::from("Email campaign not found")));
     }
@@ -282,19 +280,23 @@ pub async fn send_campaign(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let campaign = sqlx::query_as::<_, EmailCampaign>(
-        &format!("SELECT {CAMP_COLS} FROM email_campaigns WHERE id = $1")
-    )
+    let campaign = sqlx::query_as::<_, EmailCampaign>(&format!(
+        "SELECT {CAMP_COLS} FROM email_campaigns WHERE id = $1"
+    ))
     .bind(id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound(String::from("Email campaign not found")))?;
 
     if campaign.status.as_deref() == Some("sent") {
-        return Err(AppError::BadRequest(String::from("Campaign has already been sent")));
+        return Err(AppError::BadRequest(String::from(
+            "Campaign has already been sent",
+        )));
     }
     if campaign.status.as_deref() == Some("sending") {
-        return Err(AppError::BadRequest(String::from("Campaign is currently being sent")));
+        return Err(AppError::BadRequest(String::from(
+            "Campaign is currently being sent",
+        )));
     }
 
     let updated = sqlx::query_as::<_, EmailCampaign>(
@@ -309,20 +311,23 @@ pub async fn send_campaign(
 // ==================== Signature Helper ====================
 
 /// Fetch the email signature for a directory
-pub async fn get_directory_signature(
-    state: &AppState,
-    dir_id: Uuid,
-) -> EmailSignature {
+pub async fn get_directory_signature(state: &AppState, dir_id: Uuid) -> EmailSignature {
     let row = sqlx::query_as::<_, (Option<String>, Option<String>)>(
-        "SELECT email_signature_html, email_signature_text FROM directories WHERE id = $1"
+        "SELECT email_signature_html, email_signature_text FROM directories WHERE id = $1",
     )
     .bind(dir_id)
     .fetch_optional(&state.db)
     .await;
 
     match row {
-        Ok(Some((html, text))) => EmailSignature { email_signature_html: html, email_signature_text: text },
-        _ => EmailSignature { email_signature_html: None, email_signature_text: None },
+        Ok(Some((html, text))) => EmailSignature {
+            email_signature_html: html,
+            email_signature_text: text,
+        },
+        _ => EmailSignature {
+            email_signature_html: None,
+            email_signature_text: None,
+        },
     }
 }
 

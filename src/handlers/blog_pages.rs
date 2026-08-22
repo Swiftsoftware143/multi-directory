@@ -7,25 +7,23 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::models::directory::Directory;
-use crate::models::directory::{BlogPost, AuthorProfile};
+use crate::models::directory::{AuthorProfile, BlogPost};
 use crate::template_engine;
 use crate::tracking_script;
+use crate::AppState;
 
 /// GET /api/v1/directories/:slug/blog — public blog listing page
 pub async fn render_blog_list(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM tenants WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let posts = sqlx::query_as::<_, BlogPost>(
         "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at,
@@ -60,7 +58,10 @@ pub async fn render_blog_list(
         )
     }).collect();
 
-    let template_id = directory.template.as_deref().unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
+    let template_id = directory
+        .template
+        .as_deref()
+        .unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
     let engine = s.template_engine.lock().unwrap();
 
     let dir_val = serde_json::to_value(&directory).unwrap_or_default();
@@ -84,7 +85,8 @@ pub async fn render_blog_list(
         posts = posts_html.join("\n"),
     );
 
-    let full_html = engine.render_blog_page(template_id, &ctx, &blog_section)
+    let full_html = engine
+        .render_blog_page(template_id, &ctx, &blog_section)
         .map_err(|e| AppError::Internal(e))?;
 
     let mut output = crate::tracking_script::inject_tracking_script(&full_html);
@@ -92,22 +94,35 @@ pub async fn render_blog_list(
     let dir = &directory;
     if let Some(ref hi) = dir.head_injection {
         if !hi.trim().is_empty() {
-            output = output.replace("</head>", &format!("\n{}\n</head>", crate::template_engine::sanitize_html(hi)));
+            output = output.replace(
+                "</head>",
+                &format!("\n{}\n</head>", crate::template_engine::sanitize_html(hi)),
+            );
         }
     }
     if let Some(ref bi) = dir.body_injection {
         if !bi.trim().is_empty() {
-            output = output.replace("<body", &format!("\n{}\n<body", crate::template_engine::sanitize_html(bi)));
+            output = output.replace(
+                "<body",
+                &format!("\n{}\n<body", crate::template_engine::sanitize_html(bi)),
+            );
         }
     }
     if let Some(ref fi) = dir.footer_injection {
         if !fi.trim().is_empty() {
-            output = output.replace("</body>", &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)));
+            output = output.replace(
+                "</body>",
+                &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)),
+            );
         }
     }
     // Inject survey widget if onboarding_survey is enabled
     if let Some(ref fc) = dir.feature_config {
-        if fc.get("onboarding_survey").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if fc
+            .get("onboarding_survey")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             let survey_tag = "<script src=\"/survey-widget.js\"></script>";
             output = output.replace("</head>", &format!("\n{}\n</head>", survey_tag));
         }
@@ -120,13 +135,11 @@ pub async fn render_blog_post(
     State(s): State<AppState>,
     Path((slug, post_slug)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM tenants WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let post = sqlx::query_as::<_, BlogPost>(
         "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at,
@@ -233,7 +246,7 @@ pub async fn render_blog_post(
            CASE WHEN $3::text[] && COALESCE(tags, '{}'::text[]) THEN 0 ELSE 1 END,
            CASE WHEN $4::text = COALESCE(blog_category, '') THEN 0 ELSE 1 END,
            COALESCE(scheduled_at, created_at) DESC
-         LIMIT 4"
+         LIMIT 4",
     )
     .bind(directory.id)
     .bind(&post_slug)
@@ -247,10 +260,17 @@ pub async fn render_blog_post(
         let mut cards = Vec::new();
         for rp in &related_posts {
             let rp_slug = rp.slug.as_deref().unwrap_or("post");
-            let rp_date = rp.scheduled_at
+            let rp_date = rp
+                .scheduled_at
                 .map(|d| d.format("%b %d, %Y").to_string())
-                .unwrap_or_else(|| rp.created_at.map(|d| d.format("%b %d, %Y").to_string()).unwrap_or_default());
-            let rp_excerpt = rp.excerpt.as_deref()
+                .unwrap_or_else(|| {
+                    rp.created_at
+                        .map(|d| d.format("%b %d, %Y").to_string())
+                        .unwrap_or_default()
+                });
+            let rp_excerpt = rp
+                .excerpt
+                .as_deref()
                 .unwrap_or("")
                 .chars()
                 .take(120)
@@ -323,7 +343,7 @@ n             <h3>Related Articles</h3>\n\
                 if let Some(cid) = conn_id {
                     // Get directory name and slug
                     if let Ok(Some(conn_dir)) = sqlx::query_as::<_, (uuid::Uuid, String, String)>(
-                        "SELECT id, name, slug FROM tenants WHERE id = $1"
+                        "SELECT id, name, slug FROM tenants WHERE id = $1",
                     )
                     .bind(cid)
                     .fetch_optional(&s.db)
@@ -382,7 +402,10 @@ n             <h3>Related Articles</h3>\n\
     }
 
     // ── Assemble the article HTML ──
-    let template_id = directory.template.as_deref().unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
+    let template_id = directory
+        .template
+        .as_deref()
+        .unwrap_or(template_engine::TEMPLATE_LOCAL_BUSINESS);
     let engine = s.template_engine.lock().unwrap();
 
     let dir_val = serde_json::to_value(&directory).unwrap_or_default();
@@ -396,9 +419,14 @@ n             <h3>Related Articles</h3>\n\
 
     let content = strip_blockquote(&post.content);
 
-    let date_str = post.scheduled_at
+    let date_str = post
+        .scheduled_at
         .map(|d| d.format("%B %d, %Y").to_string())
-        .unwrap_or_else(|| post.created_at.map(|d| d.format("%B %d, %Y").to_string()).unwrap_or_default());
+        .unwrap_or_else(|| {
+            post.created_at
+                .map(|d| d.format("%B %d, %Y").to_string())
+                .unwrap_or_default()
+        });
 
     let back_link = format!(
         "<p><a href=\"/api/v1/d/{slug}/blog\">&larr; Back to {name} Blog</a> | <a href=\"/api/v1/directories/{slug}/render\">Back to {name}</a></p>",
@@ -430,29 +458,43 @@ n             <h3>Related Articles</h3>\n\
         back = back_link,
     );
 
-    let full_html = engine.render_blog_page(template_id, &ctx, &article_html)
+    let full_html = engine
+        .render_blog_page(template_id, &ctx, &article_html)
         .map_err(|e| AppError::Internal(e))?;
 
     let mut output = crate::tracking_script::inject_tracking_script(&full_html);
     // Apply custom head/body/footer injections
     if let Some(ref hi) = directory.head_injection {
         if !hi.trim().is_empty() {
-            output = output.replace("</head>", &format!("\n{}\n</head>", crate::template_engine::sanitize_html(hi)));
+            output = output.replace(
+                "</head>",
+                &format!("\n{}\n</head>", crate::template_engine::sanitize_html(hi)),
+            );
         }
     }
     if let Some(ref bi) = directory.body_injection {
         if !bi.trim().is_empty() {
-            output = output.replace("<body", &format!("\n{}\n<body", crate::template_engine::sanitize_html(bi)));
+            output = output.replace(
+                "<body",
+                &format!("\n{}\n<body", crate::template_engine::sanitize_html(bi)),
+            );
         }
     }
     if let Some(ref fi) = directory.footer_injection {
         if !fi.trim().is_empty() {
-            output = output.replace("</body>", &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)));
+            output = output.replace(
+                "</body>",
+                &format!("\n{}\n</body>", crate::template_engine::sanitize_html(fi)),
+            );
         }
     }
     // Inject survey widget if onboarding_survey is enabled in feature_config
     if let Some(ref fc) = directory.feature_config {
-        if fc.get("onboarding_survey").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if fc
+            .get("onboarding_survey")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             let survey_tag = "<script src=\"/survey-widget.js\"></script>";
             output = output.replace("</head>", &format!("\n{}\n</head>", survey_tag));
         }
@@ -483,7 +525,7 @@ fn url_encode(s: &str) -> String {
 fn strip_blockquote(content: &str) -> String {
     let trimmed = content.trim();
     if trimmed.starts_with("<blockquote>") && trimmed.ends_with("</blockquote>") {
-        let inner = &trimmed[12..trimmed.len()-13];
+        let inner = &trimmed[12..trimmed.len() - 13];
         inner.trim().to_string()
     } else {
         content.to_string()

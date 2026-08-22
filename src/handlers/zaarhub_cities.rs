@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 // ── Query parameters ───────────────────────────────────────────
@@ -37,9 +37,15 @@ pub struct FeaturedQuery {
 
 // ── Helper ─────────────────────────────────────────────────────
 
-fn default_page(page: Option<i32>) -> i32 { page.unwrap_or(1).max(1) }
-fn default_per_page(per_page: Option<i32>) -> i32 { per_page.unwrap_or(20).clamp(1, 100) }
-fn offset(page: i32, per_page: i32) -> i32 { (page - 1) * per_page }
+fn default_page(page: Option<i32>) -> i32 {
+    page.unwrap_or(1).max(1)
+}
+fn default_per_page(per_page: Option<i32>) -> i32 {
+    per_page.unwrap_or(20).clamp(1, 100)
+}
+fn offset(page: i32, per_page: i32) -> i32 {
+    (page - 1) * per_page
+}
 
 /// Utility: build listing JSON from a sqlx::Row
 fn listing_json(r: &sqlx::postgres::PgRow) -> Value {
@@ -103,7 +109,10 @@ pub async fn list_cities(State(state): State<AppState>) -> ApiResult<Json<Value>
 }
 
 /// Get a single city page by slug (with listing count)
-pub async fn get_city(State(state): State<AppState>, Path(slug): Path<String>) -> ApiResult<Json<Value>> {
+pub async fn get_city(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiResult<Json<Value>> {
     let row = sqlx::query(
         "SELECT cp.*, (SELECT COUNT(*) FROM business_listings bl WHERE bl.city_page_id = cp.id) AS listing_count \
          FROM city_pages cp \
@@ -140,11 +149,12 @@ pub async fn list_city_listings(
     Path(slug): Path<String>,
     Query(params): Query<ListingQuery>,
 ) -> ApiResult<Json<Value>> {
-    let city_row = sqlx::query("SELECT id FROM city_pages WHERE city_slug = $1 AND is_active = true")
-        .bind(&slug)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("City page not found: {}", slug)))?;
+    let city_row =
+        sqlx::query("SELECT id FROM city_pages WHERE city_slug = $1 AND is_active = true")
+            .bind(&slug)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("City page not found: {}", slug)))?;
 
     let city_page_id: Uuid = city_row.get("id");
     let page = default_page(params.page);
@@ -155,9 +165,12 @@ pub async fn list_city_listings(
 
     let (rows, total): (Vec<sqlx::postgres::PgRow>, i64) = match (has_cat, has_search) {
         (false, false) => {
-            let count = sqlx::query("SELECT COUNT(*) AS cnt FROM business_listings WHERE city_page_id = $1")
-                .bind(city_page_id)
-                .fetch_one(&state.db).await?;
+            let count = sqlx::query(
+                "SELECT COUNT(*) AS cnt FROM business_listings WHERE city_page_id = $1",
+            )
+            .bind(city_page_id)
+            .fetch_one(&state.db)
+            .await?;
             let order = match params.sort.as_deref() {
                 Some("rating") => "bl.rating DESC NULLS LAST, bl.review_count DESC",
                 Some("name") => "bl.business_name ASC",
@@ -233,7 +246,11 @@ pub async fn list_city_listings(
     };
 
     let listings: Vec<Value> = rows.iter().map(listing_json).collect();
-    let total_pages = if total == 0 { 0 } else { ((total as f64) / (per_page as f64)).ceil() as i32 };
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total as f64) / (per_page as f64)).ceil() as i32
+    };
 
     Ok(Json(json!({
         "listings": listings,
@@ -247,9 +264,12 @@ pub async fn list_city_listings(
 }
 
 /// Get single listing detail by id
-pub async fn get_listing(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
-    let listing_uuid = Uuid::parse_str(&id)
-        .map_err(|_| AppError::BadRequest("Invalid listing ID".into()))?;
+pub async fn get_listing(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    let listing_uuid =
+        Uuid::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid listing ID".into()))?;
 
     let row = sqlx::query("SELECT bl.* FROM business_listings bl WHERE bl.id = $1")
         .bind(listing_uuid)
@@ -263,21 +283,37 @@ pub async fn get_listing(State(state): State<AppState>, Path(id): Path<String>) 
 /// List all unique categories across all city listings
 pub async fn list_categories(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let rows = sqlx::query(
-        "SELECT DISTINCT category, COUNT(*) AS cnt \
-         FROM business_listings \
-         WHERE category IS NOT NULL \
-         GROUP BY category \
-         ORDER BY cnt DESC"
+        "SELECT category, cnt FROM ( \
+           SELECT category, COUNT(*) AS cnt \
+           FROM business_listings \
+           WHERE category IS NOT NULL \
+           GROUP BY category \
+         ) t \
+         ORDER BY \
+           CASE t.category \
+             WHEN 'Restaurant' THEN 1 WHEN 'Fitness Studio' THEN 2 WHEN 'Day Spa' THEN 3 \
+             WHEN 'Dentist' THEN 4 WHEN 'Real Estate Agent' THEN 5 WHEN 'Hair Salon' THEN 6 \
+             WHEN 'Auto Repair' THEN 7 WHEN 'Plumber' THEN 8 \
+             ELSE 100 \
+           END ASC,\
+           t.cnt DESC",
     )
     .fetch_all(&state.db)
     .await?;
 
-    let categories: Vec<Value> = rows.iter().map(|r| json!({
-        "name": r.try_get::<String, _>("category").unwrap_or_default(),
-        "count": r.try_get::<i64, _>("cnt").unwrap_or(0),
-    })).collect();
+    let categories: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "name": r.try_get::<String, _>("category").unwrap_or_default(),
+                "count": r.try_get::<i64, _>("cnt").unwrap_or(0),
+            })
+        })
+        .collect();
 
-    Ok(Json(json!({"categories": categories, "total": categories.len()})))
+    Ok(Json(
+        json!({"categories": categories, "total": categories.len()}),
+    ))
 }
 
 /// Search listings across all cities
@@ -290,7 +326,9 @@ pub async fn search_listings(
     let search_term = params.q.unwrap_or_default();
 
     if search_term.is_empty() {
-        return Ok(Json(json!({"listings": [], "pagination": {"page": 1, "per_page": per_page, "total": 0, "total_pages": 0}})));
+        return Ok(Json(
+            json!({"listings": [], "pagination": {"page": 1, "per_page": per_page, "total": 0, "total_pages": 0}}),
+        ));
     }
 
     let has_city = params.city.is_some();
@@ -329,7 +367,11 @@ pub async fn search_listings(
     };
 
     let listings: Vec<Value> = rows.iter().map(listing_json).collect();
-    let total_pages = if total == 0 { 0 } else { ((total as f64) / (per_page as f64)).ceil() as i32 };
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total as f64) / (per_page as f64)).ceil() as i32
+    };
 
     Ok(Json(json!({
         "listings": listings,
@@ -366,7 +408,7 @@ pub async fn listing_offers(
          WHERE co.listing_id = $1 AND co.is_active = true \
          AND (co.max_claims IS NULL OR co.current_claims < co.max_claims) \
          AND (co.expires_at IS NULL OR co.expires_at > now()) \
-         ORDER BY co.created_at DESC"
+         ORDER BY co.created_at DESC",
     )
     .bind(listing_uuid)
     .fetch_all(&state.db)
@@ -381,8 +423,8 @@ pub async fn get_offer(
     State(state): State<AppState>,
     Path(offer_id): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    let offer_uuid = Uuid::parse_str(&offer_id)
-        .map_err(|_| AppError::BadRequest("Invalid offer ID".into()))?;
+    let offer_uuid =
+        Uuid::parse_str(&offer_id).map_err(|_| AppError::BadRequest("Invalid offer ID".into()))?;
 
     let row = sqlx::query("SELECT co.* FROM claim_offers co WHERE co.id = $1")
         .bind(offer_uuid)
@@ -399,10 +441,14 @@ pub async fn claim_offer(
     Path(offer_id): Path<String>,
     Json(body): Json<ClaimOfferBody>,
 ) -> ApiResult<Json<Value>> {
-    let offer_uuid = Uuid::parse_str(&offer_id)
-        .map_err(|_| AppError::BadRequest("Invalid offer ID".into()))?;
+    let offer_uuid =
+        Uuid::parse_str(&offer_id).map_err(|_| AppError::BadRequest("Invalid offer ID".into()))?;
 
-    let visitor_id = body.visitor_id.as_deref().unwrap_or("anonymous").to_string();
+    let visitor_id = body
+        .visitor_id
+        .as_deref()
+        .unwrap_or("anonymous")
+        .to_string();
 
     // 🔒 Auth gate — reject anonymous claims
     if visitor_id == "anonymous" || visitor_id.is_empty() || visitor_id.starts_with("v_") {
@@ -415,14 +461,12 @@ pub async fn claim_offer(
          WHERE co.id = $1 AND co.is_active = true \
          AND (co.max_claims IS NULL OR co.current_claims < co.max_claims) \
          AND (co.expires_at IS NULL OR co.expires_at > now()) \
-         FOR UPDATE OF co"
+         FOR UPDATE OF co",
     )
     .bind(offer_uuid)
     .fetch_optional(&state.db)
     .await?
-    .ok_or_else(|| AppError::NotFound(
-        "Offer not found, expired, or fully claimed".into()
-    ))?;
+    .ok_or_else(|| AppError::NotFound("Offer not found, expired, or fully claimed".into()))?;
 
     // Increment current_claims
     sqlx::query("UPDATE claim_offers SET current_claims = current_claims + 1, updated_at = now() WHERE id = $1")
@@ -468,7 +512,7 @@ pub async fn visitor_claims(
          JOIN business_listings bl ON co.listing_id = bl.id \
          WHERE oc.visitor_id = $1 \
          ORDER BY oc.claimed_at DESC \
-         LIMIT 50"
+         LIMIT 50",
     )
     .bind(&visitor_id)
     .fetch_all(&state.db)
@@ -523,18 +567,17 @@ pub async fn featured_listings(
     let page = default_page(q.page);
     let per_page = default_per_page(q.per_page);
 
-    let count_row = sqlx::query(
-        "SELECT COUNT(*) AS cnt FROM business_listings WHERE is_featured = true"
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let count_row =
+        sqlx::query("SELECT COUNT(*) AS cnt FROM business_listings WHERE is_featured = true")
+            .fetch_one(&state.db)
+            .await?;
     let total: i64 = count_row.get("cnt");
 
     let rows = sqlx::query(
         "SELECT bl.* FROM business_listings bl \
          WHERE bl.is_featured = true \
          ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC \
-         LIMIT $1 OFFSET $2"
+         LIMIT $1 OFFSET $2",
     )
     .bind(per_page as i64)
     .bind(offset(page, per_page) as i64)
@@ -542,7 +585,11 @@ pub async fn featured_listings(
     .await?;
 
     let listings: Vec<Value> = rows.iter().map(listing_json).collect();
-    let total_pages = if total == 0 { 0 } else { ((total as f64) / (per_page as f64)).ceil() as i32 };
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total as f64) / (per_page as f64)).ceil() as i32
+    };
 
     Ok(Json(json!({
         "listings": listings,
@@ -579,8 +626,11 @@ pub async fn list_editors_picks(
              FROM business_listings bl \
              JOIN city_pages cp ON bl.city_page_id = cp.id \
              WHERE bl.is_editors_pick = true AND cp.city_slug = $1 \
-             ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC"
-        ).bind(city_slug).fetch_all(&state.db).await?;
+             ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC",
+        )
+        .bind(city_slug)
+        .fetch_all(&state.db)
+        .await?;
         let cnt = rows.len() as i64;
         (rows, cnt)
     } else {
@@ -589,22 +639,27 @@ pub async fn list_editors_picks(
              FROM business_listings bl \
              JOIN city_pages cp ON bl.city_page_id = cp.id \
              WHERE bl.is_editors_pick = true \
-             ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC"
-        ).fetch_all(&state.db).await?;
+             ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC",
+        )
+        .fetch_all(&state.db)
+        .await?;
         let cnt = rows.len() as i64;
         (rows, cnt)
     };
 
-    let picks: Vec<Value> = rows.iter().map(|r| {
-        let mut j = listing_json(r);
-        let city_name: String = r.try_get("city_name").unwrap_or_default();
-        let city_slug: String = r.try_get("city_slug").unwrap_or_default();
-        if let Some(obj) = j.as_object_mut() {
-            obj.insert("city_name".into(), json!(city_name));
-            obj.insert("city_slug".into(), json!(city_slug));
-        }
-        j
-    }).collect();
+    let picks: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            let mut j = listing_json(r);
+            let city_name: String = r.try_get("city_name").unwrap_or_default();
+            let city_slug: String = r.try_get("city_slug").unwrap_or_default();
+            if let Some(obj) = j.as_object_mut() {
+                obj.insert("city_name".into(), json!(city_name));
+                obj.insert("city_slug".into(), json!(city_slug));
+            }
+            j
+        })
+        .collect();
 
     Ok(Json(json!({
         "editor_picks": picks,

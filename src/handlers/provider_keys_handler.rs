@@ -14,12 +14,12 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use uuid::Uuid;
 use sqlx::Row;
+use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
 use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct UpsertProviderKeyRequest {
@@ -36,7 +36,7 @@ pub struct ProviderKeyResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub provider: String,
-    pub api_key: String,  // masked in response
+    pub api_key: String, // masked in response
     pub base_url: Option<String>,
     pub metadata: Value,
     pub is_active: bool,
@@ -61,22 +61,22 @@ fn mask_key(key: &str) -> String {
         "****".to_string()
     } else {
         let first4 = &key[..4];
-        let last4 = &key[key.len()-4..];
+        let last4 = &key[key.len() - 4..];
         format!("{}...{}", first4, last4)
     }
 }
 
 async fn validate_provider_exists(db: &sqlx::PgPool, provider: &str) -> Result<(), AppError> {
-    let exists = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM available_providers WHERE key = $1"
-    )
-    .bind(provider)
-    .fetch_one(db)
-    .await?;
+    let exists =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM available_providers WHERE key = $1")
+            .bind(provider)
+            .fetch_one(db)
+            .await?;
 
     if exists == 0 {
         return Err(AppError::NotFound(format!(
-            "Provider '{}' is not supported", provider
+            "Provider '{}' is not supported",
+            provider
         )));
     }
     Ok(())
@@ -87,8 +87,7 @@ pub async fn list_provider_keys(
     Extension(claims): Extension<Claims>,
     State(s): State<AppState>,
 ) -> ApiResult<impl IntoResponse> {
-    let tenant_id = Uuid::parse_str(&claims.tid)
-        .map_err(|_| AppError::Unauthorized)?;
+    let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
 
     let rows = sqlx::query(
         r#"SELECT id, tenant_id, provider, 
@@ -100,14 +99,15 @@ pub async fn list_provider_keys(
                 created_at::text, updated_at::text
          FROM provider_keys 
          WHERE tenant_id = $1 
-         ORDER BY provider ASC"#
+         ORDER BY provider ASC"#,
     )
     .bind(tenant_id)
     .fetch_all(&s.db)
     .await?;
 
-    let keys: Vec<ProviderKeyResponse> = rows.iter().map(|row| {
-        ProviderKeyResponse {
+    let keys: Vec<ProviderKeyResponse> = rows
+        .iter()
+        .map(|row| ProviderKeyResponse {
             id: row.get("id"),
             tenant_id: row.get("tenant_id"),
             provider: row.get("provider"),
@@ -118,8 +118,8 @@ pub async fn list_provider_keys(
             scope: row.get("scope"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(Json(json!({
         "success": true,
@@ -133,8 +133,7 @@ pub async fn upsert_provider_key(
     State(s): State<AppState>,
     Json(req): Json<UpsertProviderKeyRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let tenant_id = Uuid::parse_str(&claims.tid)
-        .map_err(|_| AppError::Unauthorized)?;
+    let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
 
     // Validate that the provider is in the available list
     validate_provider_exists(&s.db, &req.provider).await?;
@@ -185,10 +184,13 @@ pub async fn upsert_provider_key(
         updated_at: row.get("updated_at"),
     };
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "success": true,
-        "data": resp
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "success": true,
+            "data": resp
+        })),
+    ))
 }
 
 /// DELETE /api/v1/admin/provider-keys/:provider
@@ -197,20 +199,18 @@ pub async fn delete_provider_key(
     State(s): State<AppState>,
     Path(provider): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let tenant_id = Uuid::parse_str(&claims.tid)
-        .map_err(|_| AppError::Unauthorized)?;
+    let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
 
-    let result = sqlx::query(
-        "DELETE FROM provider_keys WHERE tenant_id = $1 AND provider = $2"
-    )
-    .bind(tenant_id)
-    .bind(&provider)
-    .execute(&s.db)
-    .await?;
+    let result = sqlx::query("DELETE FROM provider_keys WHERE tenant_id = $1 AND provider = $2")
+        .bind(tenant_id)
+        .bind(&provider)
+        .execute(&s.db)
+        .await?;
 
     if result.rows_affected() == 0 {
-		return Err(AppError::NotFound(format!(
-            "No provider key found for '{}'", provider
+        return Err(AppError::NotFound(format!(
+            "No provider key found for '{}'",
+            provider
         )));
     }
 
@@ -221,34 +221,32 @@ pub async fn delete_provider_key(
 }
 
 /// GET /api/v1/available-providers
-pub async fn list_available_providers(
-    State(s): State<AppState>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_available_providers(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let rows = sqlx::query(
         "SELECT key, name, description, requires_base_url, requires_metadata, icon \
          FROM available_providers \
-         ORDER BY name ASC"
+         ORDER BY name ASC",
     )
     .fetch_all(&s.db)
     .await?;
 
-    let providers: Vec<AvailableProviderResponse> = rows.iter().map(|row| {
-        AvailableProviderResponse {
+    let providers: Vec<AvailableProviderResponse> = rows
+        .iter()
+        .map(|row| AvailableProviderResponse {
             key: row.get("key"),
             name: row.get("name"),
             description: row.get("description"),
             requires_base_url: row.get("requires_base_url"),
             requires_metadata: row.get("requires_metadata"),
             icon: row.get("icon"),
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(Json(json!({
         "success": true,
         "data": providers
     })))
 }
-
 
 /// GET /api/v1/provider-keys/:provider/test — test if a provider key is configured
 pub async fn test_provider_key(
@@ -257,7 +255,7 @@ pub async fn test_provider_key(
 ) -> ApiResult<impl IntoResponse> {
     let key = sqlx::query_scalar::<_, String>(
         r#"SELECT decrypt_provider_key(api_key_encrypted) FROM provider_keys 
-         WHERE provider = $1 AND is_active = true LIMIT 1"#
+         WHERE provider = $1 AND is_active = true LIMIT 1"#,
     )
     .bind(&provider)
     .fetch_optional(&s.db)
@@ -265,7 +263,7 @@ pub async fn test_provider_key(
     .ok_or_else(|| AppError::NotFound(format!("No API key found for provider '{}'", provider)))?;
 
     let preview = if key.len() > 8 {
-        format!("{}...{}", &key[..4], &key[key.len()-4..])
+        format!("{}...{}", &key[..4], &key[key.len() - 4..])
     } else {
         "****".to_string()
     };

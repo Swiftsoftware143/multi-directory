@@ -15,8 +15,8 @@ use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct SendMessageRequest {
-    pub name: Option<String>,   // visitor name (guest mode)
-    pub email: Option<String>,  // visitor email (guest mode)
+    pub name: Option<String>,  // visitor name (guest mode)
+    pub email: Option<String>, // visitor email (guest mode)
     pub subject: Option<String>,
     pub message: String,
 }
@@ -36,7 +36,7 @@ pub struct MessageResponse {
 /// Helper: fetch the email for a user by their UUID sub claim.
 async fn get_user_email(db: &PgPool, user_id: &str) -> Option<String> {
     sqlx::query_scalar::<_, String>(
-        "SELECT email FROM users WHERE id = $1::uuid AND is_active = true"
+        "SELECT email FROM users WHERE id = $1::uuid AND is_active = true",
     )
     .bind(user_id)
     .fetch_optional(db)
@@ -76,7 +76,7 @@ pub async fn send_message(
 
     // Validate business exists and is active
     let biz_exists: (bool,) = sqlx::query_as(
-        "SELECT EXISTS(SELECT 1 FROM businesses WHERE id = $1 AND is_active = true)"
+        "SELECT EXISTS(SELECT 1 FROM businesses WHERE id = $1 AND is_active = true)",
     )
     .bind(business_id)
     .fetch_one(db)
@@ -90,7 +90,7 @@ pub async fn send_message(
     // Get sender info from auth if available, else use form fields
     let (sender_name, sender_email) = if let Some(Extension(c)) = claims {
         let user_info = sqlx::query_as::<_, (String, String)>(
-            "SELECT name, email FROM users WHERE id = $1::uuid AND is_active = true"
+            "SELECT name, email FROM users WHERE id = $1::uuid AND is_active = true",
         )
         .bind(&c.sub)
         .fetch_optional(db)
@@ -107,7 +107,7 @@ pub async fn send_message(
     let msg_id: Uuid = sqlx::query_scalar(
         r#"INSERT INTO business_messages (business_id, sender_name, sender_email, subject, message)
            VALUES ($1, $2, $3, $4, $5)
-           RETURNING id"#
+           RETURNING id"#,
     )
     .bind(business_id)
     .bind(&sender_name)
@@ -119,7 +119,7 @@ pub async fn send_message(
 
     let msg = sqlx::query_as::<_, MessageResponse>(
         r#"SELECT id, business_id, sender_name, sender_email, subject, message, is_read, created_at
-           FROM business_messages WHERE id = $1"#
+           FROM business_messages WHERE id = $1"#,
     )
     .bind(msg_id)
     .fetch_one(db)
@@ -173,16 +173,10 @@ async fn forward_to_coreswift(
         Err(_) => return,
     };
 
-    let urls = [
-        "http://localhost:8084/api/messages/webhook",
-    ];
+    let urls = ["http://localhost:8084/api/messages/webhook"];
 
     for url in &urls {
-        let _ = client
-            .post(*url)
-            .json(&payload)
-            .send()
-            .await;
+        let _ = client.post(*url).json(&payload).send().await;
     }
 }
 
@@ -195,14 +189,16 @@ pub async fn list_messages(
     let db = &s.db;
 
     if !is_owner_of(db, &claims.sub, business_id).await? && claims.role != "admin" {
-        return Err(AppError::Forbidden("Not authorized to view messages".into()));
+        return Err(AppError::Forbidden(
+            "Not authorized to view messages".into(),
+        ));
     }
 
     let messages = sqlx::query_as::<_, MessageResponse>(
         r#"SELECT id, business_id, sender_name, sender_email, subject, message, is_read, created_at
            FROM business_messages
            WHERE business_id = $1
-           ORDER BY created_at DESC"#
+           ORDER BY created_at DESC"#,
     )
     .bind(business_id)
     .fetch_all(db)
@@ -219,12 +215,11 @@ pub async fn mark_read(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let db = &s.db;
 
-    let biz_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT business_id FROM business_messages WHERE id = $1"
-    )
-    .bind(msg_id)
-    .fetch_optional(db)
-    .await?;
+    let biz_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT business_id FROM business_messages WHERE id = $1")
+            .bind(msg_id)
+            .fetch_optional(db)
+            .await?;
 
     let biz_id = biz_id.ok_or_else(|| AppError::NotFound("Message not found".into()))?;
 
@@ -253,7 +248,7 @@ pub async fn unread_count(
     }
 
     let count: i64 = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM business_messages WHERE business_id = $1 AND is_read = false"
+        "SELECT COUNT(*) FROM business_messages WHERE business_id = $1 AND is_read = false",
     )
     .bind(business_id)
     .fetch_one(db)

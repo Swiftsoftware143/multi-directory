@@ -1,18 +1,27 @@
 /// Analytics & Dashboard handlers for ZaarHub deal performance
-use axum::{extract::{Query, State}, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::error::ApiResult;
+use crate::AppState;
 
 /// Default pagination helpers
-fn default_page(p: Option<i32>) -> i32 { p.unwrap_or(1).max(1) }
-fn default_per_page(pp: Option<i32>) -> i32 { pp.unwrap_or(20).min(100).max(1) }
-fn offset(page: i32, per_page: i32) -> i32 { (page - 1) * per_page }
+fn default_page(p: Option<i32>) -> i32 {
+    p.unwrap_or(1).max(1)
+}
+fn default_per_page(pp: Option<i32>) -> i32 {
+    pp.unwrap_or(20).min(100).max(1)
+}
+fn offset(page: i32, per_page: i32) -> i32 {
+    (page - 1) * per_page
+}
 
 #[derive(Deserialize)]
 pub struct DateRangeQuery {
@@ -28,39 +37,50 @@ pub struct CityStatsQuery {
 }
 
 /// GET /api/v1/zaarhub/analytics/overview — overall performance summary
-pub async fn overview(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Value>> {
+pub async fn overview(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     // Total metrics
     let cities_row = sqlx::query("SELECT COUNT(*) AS cnt FROM city_pages WHERE is_active = true")
-        .fetch_one(&state.db).await?;
+        .fetch_one(&state.db)
+        .await?;
     let listings_row = sqlx::query("SELECT COUNT(*) AS cnt FROM business_listings")
-        .fetch_one(&state.db).await?;
+        .fetch_one(&state.db)
+        .await?;
     let offers_row = sqlx::query("SELECT COUNT(*) AS cnt FROM claim_offers WHERE is_active = true")
-        .fetch_one(&state.db).await?;
+        .fetch_one(&state.db)
+        .await?;
     let claims_row = sqlx::query("SELECT COUNT(*) AS cnt FROM offer_claims")
-        .fetch_one(&state.db).await?;
-    let redeemed_row = sqlx::query("SELECT COUNT(*) AS cnt FROM offer_claims WHERE redeemed = true")
-        .fetch_one(&state.db).await?;
+        .fetch_one(&state.db)
+        .await?;
+    let redeemed_row =
+        sqlx::query("SELECT COUNT(*) AS cnt FROM offer_claims WHERE redeemed = true")
+            .fetch_one(&state.db)
+            .await?;
 
     // Claims today
     let today_claims_row = sqlx::query(
-        "SELECT COUNT(*) AS cnt FROM offer_claims WHERE claimed_at::date = CURRENT_DATE"
-    ).fetch_one(&state.db).await?;
+        "SELECT COUNT(*) AS cnt FROM offer_claims WHERE claimed_at::date = CURRENT_DATE",
+    )
+    .fetch_one(&state.db)
+    .await?;
 
     // Weekly claims trend
     let weekly = sqlx::query(
         "SELECT claimed_at::date AS day, COUNT(*) AS cnt \
          FROM offer_claims \
          WHERE claimed_at >= CURRENT_DATE - INTERVAL '7 days' \
-         GROUP BY day ORDER BY day"
-    ).fetch_all(&state.db).await?;
+         GROUP BY day ORDER BY day",
+    )
+    .fetch_all(&state.db)
+    .await?;
 
-    let weekly_trend: Vec<Value> = weekly.iter().map(|r| {
-        let day: NaiveDate = r.try_get("day").unwrap_or(Utc::now().date_naive());
-        let cnt: i64 = r.try_get("cnt").unwrap_or(0);
-        json!({ "date": day.to_string(), "claims": cnt })
-    }).collect();
+    let weekly_trend: Vec<Value> = weekly
+        .iter()
+        .map(|r| {
+            let day: NaiveDate = r.try_get("day").unwrap_or(Utc::now().date_naive());
+            let cnt: i64 = r.try_get("cnt").unwrap_or(0);
+            json!({ "date": day.to_string(), "claims": cnt })
+        })
+        .collect();
 
     Ok(Json(json!({
         "totals": {
@@ -81,9 +101,7 @@ pub async fn overview(
 }
 
 /// GET /api/v1/zaarhub/analytics/cities — per-city performance
-pub async fn city_performance(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Value>> {
+pub async fn city_performance(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let rows = sqlx::query(
         "SELECT cp.city_slug, cp.city_name, \
                 COUNT(DISTINCT bl.id) AS listing_count, \
@@ -96,24 +114,29 @@ pub async fn city_performance(
          LEFT JOIN offer_claims oc ON oc.offer_id = co.id \
          WHERE cp.is_active = true \
          GROUP BY cp.id, cp.city_slug, cp.city_name \
-         ORDER BY claim_count DESC"
-    ).fetch_all(&state.db).await?;
+         ORDER BY claim_count DESC",
+    )
+    .fetch_all(&state.db)
+    .await?;
 
-    let cities: Vec<Value> = rows.iter().map(|r| {
-        let claims: i64 = r.try_get("claim_count").unwrap_or(0);
-        let redeemed: i64 = r.try_get("redeemed_count").unwrap_or(0);
-        json!({
-            "city_slug": r.try_get::<String,_>("city_slug").unwrap_or_default(),
-            "city_name": r.try_get::<String,_>("city_name").unwrap_or_default(),
-            "listing_count": r.try_get::<i64,_>("listing_count").unwrap_or(0),
-            "offer_count": r.try_get::<i64,_>("offer_count").unwrap_or(0),
-            "claim_count": claims,
-            "redeemed_count": redeemed,
-            "redemption_rate": if claims > 0 {
-                format!("{:.1}%", (redeemed as f64 / claims as f64) * 100.0)
-            } else { "0%".to_string() },
+    let cities: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            let claims: i64 = r.try_get("claim_count").unwrap_or(0);
+            let redeemed: i64 = r.try_get("redeemed_count").unwrap_or(0);
+            json!({
+                "city_slug": r.try_get::<String,_>("city_slug").unwrap_or_default(),
+                "city_name": r.try_get::<String,_>("city_name").unwrap_or_default(),
+                "listing_count": r.try_get::<i64,_>("listing_count").unwrap_or(0),
+                "offer_count": r.try_get::<i64,_>("offer_count").unwrap_or(0),
+                "claim_count": claims,
+                "redeemed_count": redeemed,
+                "redemption_rate": if claims > 0 {
+                    format!("{:.1}%", (redeemed as f64 / claims as f64) * 100.0)
+                } else { "0%".to_string() },
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!({ "cities": cities })))
 }
@@ -129,8 +152,10 @@ pub async fn top_offers(
     let total_row = sqlx::query(
         "SELECT COUNT(*) AS cnt FROM claim_offers co \
          JOIN business_listings bl ON co.listing_id = bl.id \
-         WHERE co.is_active = true"
-    ).fetch_one(&state.db).await?;
+         WHERE co.is_active = true",
+    )
+    .fetch_one(&state.db)
+    .await?;
 
     let rows = sqlx::query(
         "SELECT co.id, co.offer_title, co.offer_type, co.discount_value, \
@@ -170,7 +195,11 @@ pub async fn top_offers(
         })
     }).collect();
 
-    let total_pages = if total == 0 { 0 } else { ((total as f64) / (per_page as f64)).ceil() as i32 };
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total as f64) / (per_page as f64)).ceil() as i32
+    };
 
     Ok(Json(json!({
         "offers": offers,
@@ -187,7 +216,8 @@ pub async fn recent_claims(
     let per_page = default_per_page(q.per_page);
 
     let total_row = sqlx::query("SELECT COUNT(*) AS cnt FROM offer_claims")
-        .fetch_one(&state.db).await?;
+        .fetch_one(&state.db)
+        .await?;
 
     let rows = sqlx::query(
         "SELECT oc.id, oc.visitor_id, oc.email, oc.phone, \
@@ -198,9 +228,12 @@ pub async fn recent_claims(
          JOIN claim_offers co ON oc.offer_id = co.id \
          JOIN business_listings bl ON co.listing_id = bl.id \
          ORDER BY oc.claimed_at DESC \
-         LIMIT $1 OFFSET $2"
-    ).bind(per_page as i64).bind(offset(page, per_page) as i64)
-     .fetch_all(&state.db).await?;
+         LIMIT $1 OFFSET $2",
+    )
+    .bind(per_page as i64)
+    .bind(offset(page, per_page) as i64)
+    .fetch_all(&state.db)
+    .await?;
 
     let total: i64 = total_row.try_get("cnt").unwrap_or(0);
 
@@ -219,7 +252,11 @@ pub async fn recent_claims(
         })
     }).collect();
 
-    let total_pages = if total == 0 { 0 } else { ((total as f64) / (per_page as f64)).ceil() as i32 };
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total as f64) / (per_page as f64)).ceil() as i32
+    };
 
     Ok(Json(json!({
         "claims": claims,
@@ -228,9 +265,7 @@ pub async fn recent_claims(
 }
 
 /// GET /api/v1/zaarhub/analytics/categories — category performance
-pub async fn category_breakdown(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Value>> {
+pub async fn category_breakdown(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let rows = sqlx::query(
         "SELECT bl.category, \
                 COUNT(DISTINCT bl.id) AS listing_count, \
@@ -242,17 +277,22 @@ pub async fn category_breakdown(
          WHERE bl.category IS NOT NULL \
          GROUP BY bl.category \
          ORDER BY claim_count DESC, listing_count DESC \
-         LIMIT 30"
-    ).fetch_all(&state.db).await?;
+         LIMIT 30",
+    )
+    .fetch_all(&state.db)
+    .await?;
 
-    let categories: Vec<Value> = rows.iter().map(|r| {
-        json!({
-            "category": r.try_get::<String,_>("category").unwrap_or_default(),
-            "listing_count": r.try_get::<i64,_>("listing_count").unwrap_or(0),
-            "offer_count": r.try_get::<i64,_>("offer_count").unwrap_or(0),
-            "claim_count": r.try_get::<i64,_>("claim_count").unwrap_or(0),
+    let categories: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "category": r.try_get::<String,_>("category").unwrap_or_default(),
+                "listing_count": r.try_get::<i64,_>("listing_count").unwrap_or(0),
+                "offer_count": r.try_get::<i64,_>("offer_count").unwrap_or(0),
+                "claim_count": r.try_get::<i64,_>("claim_count").unwrap_or(0),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!({ "categories": categories })))
 }

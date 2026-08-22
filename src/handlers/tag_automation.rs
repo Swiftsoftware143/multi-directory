@@ -5,20 +5,20 @@
 //! Tracked links provide short URLs with UTM tracking and click analytics.
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect},
     Json,
 };
+use chrono::{DateTime, Utc};
+use rand::Rng;
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use rand::Rng;
 
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
-use crate::error::{AppError, ApiResult};
 
 // ── Models ──
 
@@ -201,8 +201,12 @@ pub struct DeviceBucket {
 
 fn generate_short_code() -> String {
     let mut rng = rand::thread_rng();
-    let chars: Vec<char> = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".chars().collect();
-    (0..8).map(|_| chars[rng.gen_range(0..chars.len())]).collect()
+    let chars: Vec<char> = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        .chars()
+        .collect();
+    (0..8)
+        .map(|_| chars[rng.gen_range(0..chars.len())])
+        .collect()
 }
 
 // ── Tag Rules CRUD ──
@@ -217,13 +221,11 @@ pub async fn list_rules(
     let offset = (page - 1) * per_page;
 
     let (total, items) = if let Some(tenant_id) = q.tenant_id {
-        let total: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tag_rules WHERE tenant_id = $1"
-        )
-        .bind(tenant_id)
-        .fetch_one(&s.db)
-        .await
-        .map_err(AppError::from)?;
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tag_rules WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&s.db)
+            .await
+            .map_err(AppError::from)?;
 
         let items = sqlx::query_as::<_, TagRule>(
             "SELECT * FROM tag_rules WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
@@ -243,7 +245,7 @@ pub async fn list_rules(
             .map_err(AppError::from)?;
 
         let items = sqlx::query_as::<_, TagRule>(
-            "SELECT * FROM tag_rules ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+            "SELECT * FROM tag_rules ORDER BY created_at DESC LIMIT $1 OFFSET $2",
         )
         .bind(per_page)
         .bind(offset)
@@ -303,7 +305,7 @@ pub async fn update_rule(
             action_config = COALESCE($5, action_config),
             is_active = COALESCE($6, is_active),
             updated_at = NOW()
-           WHERE id = $7 RETURNING *"#
+           WHERE id = $7 RETURNING *"#,
     )
     .bind(&req.name)
     .bind(req.tag_id)
@@ -347,7 +349,7 @@ pub async fn execute_rules_for_contact(
 ) -> ApiResult<Json<Value>> {
     let rules = sqlx::query_as::<_, TagRule>(
         r#"SELECT * FROM tag_rules
-           WHERE tenant_id = $1 AND tag_id = $2 AND trigger_type = $3 AND is_active = true"#
+           WHERE tenant_id = $1 AND tag_id = $2 AND trigger_type = $3 AND is_active = true"#,
     )
     .bind(payload.tenant_id)
     .bind(payload.tag_id)
@@ -361,7 +363,9 @@ pub async fn execute_rules_for_contact(
     for rule in &rules {
         match rule.action_type.as_str() {
             "add_tag" => {
-                if let Some(target_tag_id) = rule.action_config.get("tag_id").and_then(|v| v.as_str()) {
+                if let Some(target_tag_id) =
+                    rule.action_config.get("tag_id").and_then(|v| v.as_str())
+                {
                     // Add tag to contact (log action, actual tag assignment happens in CRM)
                     results.push(json!({
                         "rule_id": rule.id,
@@ -372,7 +376,9 @@ pub async fn execute_rules_for_contact(
                 }
             }
             "remove_tag" => {
-                if let Some(target_tag_id) = rule.action_config.get("tag_id").and_then(|v| v.as_str()) {
+                if let Some(target_tag_id) =
+                    rule.action_config.get("tag_id").and_then(|v| v.as_str())
+                {
                     results.push(json!({
                         "rule_id": rule.id,
                         "action": "remove_tag",
@@ -408,7 +414,11 @@ pub async fn execute_rules_for_contact(
                 }
             }
             "pipeline_move" => {
-                if let Some(pipeline_id) = rule.action_config.get("pipeline_id").and_then(|v| v.as_str()) {
+                if let Some(pipeline_id) = rule
+                    .action_config
+                    .get("pipeline_id")
+                    .and_then(|v| v.as_str())
+                {
                     results.push(json!({
                         "rule_id": rule.id,
                         "action": "pipeline_move",
@@ -418,7 +428,11 @@ pub async fn execute_rules_for_contact(
                 }
             }
             "scoring_update" => {
-                if let Some(score_change) = rule.action_config.get("score_change").and_then(|v| v.as_i64()) {
+                if let Some(score_change) = rule
+                    .action_config
+                    .get("score_change")
+                    .and_then(|v| v.as_i64())
+                {
                     results.push(json!({
                         "rule_id": rule.id,
                         "action": "scoring_update",
@@ -427,21 +441,15 @@ pub async fn execute_rules_for_contact(
                     }));
                 }
             }
-            "issue_voucher" => {
-                match execute_voucher_action(
-                    &s,
-                    rule,
-                    payload.contact_id,
-                ).await {
-                    Ok(res) => results.push(res),
-                    Err(e) => results.push(json!({
-                        "rule_id": rule.id,
-                        "action": "issue_voucher",
-                        "error": e.to_string(),
-                        "status": "failed"
-                    })),
-                }
-            }
+            "issue_voucher" => match execute_voucher_action(&s, rule, payload.contact_id).await {
+                Ok(res) => results.push(res),
+                Err(e) => results.push(json!({
+                    "rule_id": rule.id,
+                    "action": "issue_voucher",
+                    "error": e.to_string(),
+                    "status": "failed"
+                })),
+            },
             _ => {
                 results.push(json!({
                     "rule_id": rule.id,
@@ -474,23 +482,35 @@ async fn execute_voucher_action(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let contact_id = contact_id.ok_or("contact_id required for issue_voucher action")?;
 
-    let campaign_slug = rule.action_config
-        .get("campaign_slug").and_then(|v| v.as_str())
+    let campaign_slug = rule
+        .action_config
+        .get("campaign_slug")
+        .and_then(|v| v.as_str())
         .ok_or("action_config.campaign_slug is required")?;
-    let discount_value = rule.action_config
-        .get("discount_value").and_then(|v| v.as_str())
+    let discount_value = rule
+        .action_config
+        .get("discount_value")
+        .and_then(|v| v.as_str())
         .ok_or("action_config.discount_value is required")?;
-    let source_business_id = rule.action_config
-        .get("source_business_id").and_then(|v| v.as_str())
+    let source_business_id = rule
+        .action_config
+        .get("source_business_id")
+        .and_then(|v| v.as_str())
         .ok_or("action_config.source_business_id is required")?;
-    let target_business_id = rule.action_config
-        .get("target_business_id").and_then(|v| v.as_str())
+    let target_business_id = rule
+        .action_config
+        .get("target_business_id")
+        .and_then(|v| v.as_str())
         .ok_or("action_config.target_business_id is required")?;
-    let voucher_type = rule.action_config
-        .get("voucher_type").and_then(|v| v.as_str())
+    let voucher_type = rule
+        .action_config
+        .get("voucher_type")
+        .and_then(|v| v.as_str())
         .unwrap_or("discount");
-    let expires_in_days = rule.action_config
-        .get("expires_in_days").and_then(|v| v.as_i64())
+    let expires_in_days = rule
+        .action_config
+        .get("expires_in_days")
+        .and_then(|v| v.as_i64())
         .unwrap_or(30);
 
     let client = HttpClient::new();
@@ -532,13 +552,12 @@ pub async fn list_tracked_links(
     let offset = (page - 1) * per_page;
 
     let (total, items) = if let Some(tid) = q.tenant_id {
-        let total: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tracked_links WHERE tenant_id = $1"
-        )
-        .bind(tid)
-        .fetch_one(&s.db)
-        .await
-        .map_err(AppError::from)?;
+        let total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tracked_links WHERE tenant_id = $1")
+                .bind(tid)
+                .fetch_one(&s.db)
+                .await
+                .map_err(AppError::from)?;
 
         let items = sqlx::query_as::<_, TrackedLink>(
             "SELECT * FROM tracked_links WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
@@ -558,7 +577,7 @@ pub async fn list_tracked_links(
             .map_err(AppError::from)?;
 
         let items = sqlx::query_as::<_, TrackedLink>(
-            "SELECT * FROM tracked_links ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+            "SELECT * FROM tracked_links ORDER BY created_at DESC LIMIT $1 OFFSET $2",
         )
         .bind(per_page)
         .bind(offset)
@@ -588,13 +607,12 @@ pub async fn create_tracked_link(
     // Generate a unique short code
     let short_code = loop {
         let code = generate_short_code();
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT short_code FROM tracked_links WHERE short_code = $1"
-        )
-        .bind(&code)
-        .fetch_optional(&s.db)
-        .await
-        .map_err(AppError::from)?;
+        let existing: Option<(String,)> =
+            sqlx::query_as("SELECT short_code FROM tracked_links WHERE short_code = $1")
+                .bind(&code)
+                .fetch_optional(&s.db)
+                .await
+                .map_err(AppError::from)?;
         if existing.is_none() {
             break code;
         }
@@ -635,7 +653,7 @@ pub async fn update_tracked_link(
             utm_content = COALESCE($6, utm_content),
             is_active = COALESCE($7, is_active),
             updated_at = NOW()
-           WHERE id = $8 RETURNING *"#
+           WHERE id = $8 RETURNING *"#,
     )
     .bind(&req.name)
     .bind(&req.url)
@@ -687,7 +705,10 @@ pub async fn bulk_create_tracked_links(
 ) -> ApiResult<(StatusCode, Json<BulkCreateLinksResponse>)> {
     let max_batch = 100;
     if req.links.len() > max_batch {
-        return Err(AppError::BadRequest(format!("Maximum {} links per batch", max_batch)));
+        return Err(AppError::BadRequest(format!(
+            "Maximum {} links per batch",
+            max_batch
+        )));
     }
     if req.links.is_empty() {
         return Err(AppError::BadRequest("At least one link is required".into()));
@@ -730,7 +751,10 @@ pub async fn bulk_create_tracked_links(
         }
     }
 
-    Ok((StatusCode::CREATED, Json(BulkCreateLinksResponse { created, errors })))
+    Ok((
+        StatusCode::CREATED,
+        Json(BulkCreateLinksResponse { created, errors }),
+    ))
 }
 
 /// GET /l/:short_code — track click and redirect (public)
@@ -740,7 +764,7 @@ pub async fn track_link_click(
     req: axum::http::Request<axum::body::Body>,
 ) -> ApiResult<impl IntoResponse> {
     let link = sqlx::query_as::<_, TrackedLink>(
-        "SELECT * FROM tracked_links WHERE short_code = $1 AND is_active = true"
+        "SELECT * FROM tracked_links WHERE short_code = $1 AND is_active = true",
     )
     .bind(&short_code)
     .fetch_optional(&s.db)
@@ -749,7 +773,8 @@ pub async fn track_link_click(
     .ok_or_else(|| AppError::NotFound("Link not found".into()))?;
 
     // Log the click
-    let ip = req.headers()
+    let ip = req
+        .headers()
         .get("X-Forwarded-For")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("0.0.0.0")
@@ -758,11 +783,13 @@ pub async fn track_link_click(
         .unwrap_or("0.0.0.0")
         .trim()
         .to_string();
-    let user_agent = req.headers()
+    let user_agent = req
+        .headers()
         .get("User-Agent")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let referer = req.headers()
+    let referer = req
+        .headers()
         .get("Referer")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
@@ -770,7 +797,7 @@ pub async fn track_link_click(
     let ip_inet: Option<sqlx::postgres::types::PgInterval> = None; // simplified
     let _ = sqlx::query(
         r#"INSERT INTO link_clicks (link_id, ip_address, user_agent, referer)
-           VALUES ($1, $2::inet, $3, $4)"#
+           VALUES ($1, $2::inet, $3, $4)"#,
     )
     .bind(link.id)
     .bind(&ip)
@@ -780,12 +807,10 @@ pub async fn track_link_click(
     .await;
 
     // Increment click count
-    let _ = sqlx::query(
-        "UPDATE tracked_links SET total_clicks = total_clicks + 1 WHERE id = $1"
-    )
-    .bind(link.id)
-    .execute(&s.db)
-    .await;
+    let _ = sqlx::query("UPDATE tracked_links SET total_clicks = total_clicks + 1 WHERE id = $1")
+        .bind(link.id)
+        .execute(&s.db)
+        .await;
 
     // Build final URL with UTM params
     let mut final_url = link.url.clone();
@@ -814,11 +839,13 @@ pub async fn track_link_click(
 }
 
 fn urlencoding(s: &str) -> String {
-    s.chars().map(|c| match c {
-        'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-        ' ' => "+".to_string(),
-        _ => format!("%{:02X}", c as u8),
-    }).collect()
+    s.chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            ' ' => "+".to_string(),
+            _ => format!("%{:02X}", c as u8),
+        })
+        .collect()
 }
 
 /// GET /admin/tracked-links/stats/:id — click analytics for a link
@@ -827,22 +854,19 @@ pub async fn get_link_stats(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<LinkStats>> {
     // Verify link exists
-    let _link = sqlx::query_as::<_, TrackedLink>(
-        "SELECT * FROM tracked_links WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await
-    .map_err(AppError::from)?
-    .ok_or_else(|| AppError::NotFound("Tracked link not found".into()))?;
+    let _link = sqlx::query_as::<_, TrackedLink>("SELECT * FROM tracked_links WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await
+        .map_err(AppError::from)?
+        .ok_or_else(|| AppError::NotFound("Tracked link not found".into()))?;
 
-    let total_clicks: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM link_clicks WHERE link_id = $1"
-    )
-    .bind(id)
-    .fetch_one(&s.db)
-    .await
-    .map_err(AppError::from)?;
+    let total_clicks: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM link_clicks WHERE link_id = $1")
+            .bind(id)
+            .fetch_one(&s.db)
+            .await
+            .map_err(AppError::from)?;
 
     let unique_contacts: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(DISTINCT contact_id) FROM link_clicks WHERE link_id = $1 AND contact_id IS NOT NULL"#
@@ -856,7 +880,7 @@ pub async fn get_link_stats(
         r#"SELECT TO_CHAR(clicked_at, 'YYYY-MM-DD') AS date, COUNT(*)::bigint AS count
            FROM link_clicks WHERE link_id = $1
            GROUP BY TO_CHAR(clicked_at, 'YYYY-MM-DD')
-           ORDER BY date DESC LIMIT 30"#
+           ORDER BY date DESC LIMIT 30"#,
     )
     .bind(id)
     .fetch_all(&s.db)
@@ -867,7 +891,7 @@ pub async fn get_link_stats(
         r#"SELECT COALESCE(referer, '(direct)') AS referer, COUNT(*)::bigint AS count
            FROM link_clicks WHERE link_id = $1
            GROUP BY referer
-           ORDER BY count DESC LIMIT 10"#
+           ORDER BY count DESC LIMIT 10"#,
     )
     .bind(id)
     .fetch_all(&s.db)
@@ -878,7 +902,7 @@ pub async fn get_link_stats(
         r#"SELECT COALESCE(device_type, 'unknown') AS device_type, COUNT(*)::bigint AS count
            FROM link_clicks WHERE link_id = $1
            GROUP BY device_type
-           ORDER BY count DESC LIMIT 5"#
+           ORDER BY count DESC LIMIT 5"#,
     )
     .bind(id)
     .fetch_all(&s.db)

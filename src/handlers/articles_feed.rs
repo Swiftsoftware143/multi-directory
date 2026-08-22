@@ -9,8 +9,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::AppState;
 use crate::error::ApiResult;
+use crate::AppState;
 
 /// Combined feed item from a UNION of blog_posts and business_articles.
 #[derive(Debug, Deserialize, sqlx::FromRow)]
@@ -39,17 +39,15 @@ pub async fn articles_xml_feed(
         name: String,
         slug: String,
     }
-    let dir = sqlx::query_as::<_, DirInfo>(
-        "SELECT id, name, slug FROM tenants WHERE slug = $1"
-    )
-    .bind(&slug)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
+    let dir = sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
     // Get description from seo_meta
     let description: Option<String> = sqlx::query_scalar(
-        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1"
+        "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1",
     )
     .bind(dir.id)
     .fetch_optional(&s.db)
@@ -124,7 +122,10 @@ pub async fn articles_xml_feed(
         domain = domain,
         slug = dir.slug,
     ));
-    xml.push_str(&format!("  <lastBuildDate>{}</lastBuildDate>\n", now_rfc2822));
+    xml.push_str(&format!(
+        "  <lastBuildDate>{}</lastBuildDate>\n",
+        now_rfc2822
+    ));
 
     // Items
     for item in &items {
@@ -170,7 +171,10 @@ pub async fn articles_xml_feed(
         xml.push_str(&format!("    <link>{}</link>\n", esc_xml(&link)));
         xml.push_str(&format!("    <guid>{}</guid>\n", esc_xml(&link)));
         xml.push_str(&format!("    <pubDate>{}</pubDate>\n", pub_date));
-        xml.push_str(&format!("    <description>{}</description>\n", esc_xml(&description)));
+        xml.push_str(&format!(
+            "    <description>{}</description>\n",
+            esc_xml(&description)
+        ));
         if !author.is_empty() {
             xml.push_str(&format!("    <author>{}</author>\n", esc_xml(author)));
         }
@@ -183,7 +187,10 @@ pub async fn articles_xml_feed(
     xml.push_str("</channel>\n");
     xml.push_str("</rss>\n");
 
-    Ok(([("content-type", "application/rss+xml; charset=utf-8")], xml))
+    Ok((
+        [("content-type", "application/rss+xml; charset=utf-8")],
+        xml,
+    ))
 }
 
 /// Simple HTML tag stripper for RSS descriptions.

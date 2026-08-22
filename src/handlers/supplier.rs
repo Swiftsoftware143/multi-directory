@@ -4,16 +4,21 @@
 //! All handlers require auth (JWT via auth_guard middleware). Each handler resolves
 //! the supplier's claimed businesses and scopes operations to their own records.
 
-use axum::{extract::{Path, State}, http::HeaderMap, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::HeaderMap,
+    response::IntoResponse,
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::auth::{models::Claims, middleware::verify_token};
-use crate::error::{AppError, ApiResult};
-use crate::handlers::b2b::{get_b2b_config, require_b2b_feature, get_first_directory_id};
+use crate::auth::{middleware::verify_token, models::Claims};
+use crate::error::{ApiResult, AppError};
+use crate::handlers::b2b::{get_b2b_config, get_first_directory_id, require_b2b_feature};
 use crate::utils;
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateSupplierProfileRequest {
@@ -45,12 +50,22 @@ pub async fn get_supplier_profile(
     // Resolve the supplier business this user has claimed
     let biz_id = resolve_supplier_business(&s.db, user_id).await?;
 
-    let profile = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<String>)>(
+    let profile = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
         r#"SELECT b.id, b.name, b.email, b.phone, b.website, b.description
            FROM businesses b
            WHERE b.id = $1
              AND b.business_type IN ('supplier','distributor','wholesaler','farm','association')
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(biz_id)
     .fetch_optional(&s.db)
@@ -60,19 +75,22 @@ pub async fn get_supplier_profile(
     let (id, name, email, phone, website, desc) = profile;
 
     // Fetch delivery_areas and min_order from supplier_fields jsonb
-    let supplier_fields: Option<serde_json::Value> = sqlx::query_scalar(
-        "SELECT supplier_fields FROM businesses WHERE id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
+    let supplier_fields: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT supplier_fields FROM businesses WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
 
     let delivery_areas = supplier_fields
         .as_ref()
         .and_then(|v| v.get("delivery_areas"))
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect::<Vec<_>>())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
 
     let min_order = supplier_fields
@@ -140,7 +158,7 @@ pub async fn update_supplier_profile(
                VALUES ($1, $2, $3::jsonb)
                ON CONFLICT (business_id, template)
                DO UPDATE SET meta_data = business_meta.meta_data || $3::jsonb,
-                             updated_at = NOW()"#
+                             updated_at = NOW()"#,
         )
         .bind(biz_id)
         .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
@@ -215,7 +233,7 @@ pub async fn set_featured_product(
         "UPDATE businesses SET featured_product_id = $1, \
          featured_product_cta = COALESCE($2, featured_product_cta, 'Featured Product'), \
          updated_at = NOW() WHERE id = $3 \
-         AND business_type IN ('supplier','distributor','wholesaler','farm','association')"
+         AND business_type IN ('supplier','distributor','wholesaler','farm','association')",
     )
     .bind(req.product_id)
     .bind(&req.cta_text)
@@ -237,10 +255,22 @@ pub async fn supplier_stats(
     let user_id = extract_user_id_for_supplier(&headers, &s)?;
     let biz_id = resolve_supplier_business(&s.db, user_id).await?;
 
-    let row = sqlx::query_as::<_, (i64, i64, i64, i64, i64, i64, rust_decimal::Decimal, rust_decimal::Decimal)>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            rust_decimal::Decimal,
+            rust_decimal::Decimal,
+        ),
+    >(
         "SELECT total_orders, pending_orders, confirmed_orders, shipped_orders, \
                 delivered_orders, cancelled_orders, total_revenue, avg_rating \
-         FROM supplier_order_stats WHERE supplier_business_id = $1"
+         FROM supplier_order_stats WHERE supplier_business_id = $1",
     )
     .bind(biz_id)
     .fetch_optional(&s.db)
@@ -296,7 +326,7 @@ pub async fn fulfill_order(
 
     // Verify the order belongs to this supplier's business
     let order = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT supplier_business_id, status FROM b2b_orders WHERE id = $1"
+        "SELECT supplier_business_id, status FROM b2b_orders WHERE id = $1",
     )
     .bind(order_id)
     .fetch_optional(&s.db)
@@ -304,11 +334,14 @@ pub async fn fulfill_order(
     .ok_or_else(|| AppError::NotFound("Order not found".into()))?;
 
     if order.0 != biz_id {
-        return Err(AppError::Forbidden("Only the supplier can fulfill this order".into()));
+        return Err(AppError::Forbidden(
+            "Only the supplier can fulfill this order".into(),
+        ));
     }
 
     // Parse estimated_delivery as Option<chrono::NaiveDate> if provided
-    let est_delivery = req.estimated_delivery
+    let est_delivery = req
+        .estimated_delivery
         .as_deref()
         .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
 
@@ -318,7 +351,7 @@ pub async fn fulfill_order(
              carrier = COALESCE($2, carrier), \
              estimated_delivery = COALESCE($3, estimated_delivery), \
              updated_at = NOW() \
-         WHERE id = $4"
+         WHERE id = $4",
     )
     .bind(&req.tracking_number)
     .bind(&req.carrier)
@@ -357,12 +390,14 @@ pub async fn supplier_review_buyer(
 
     // Validate rating range
     if req.rating < 1 || req.rating > 5 {
-        return Err(AppError::Validation("Rating must be between 1 and 5".into()));
+        return Err(AppError::Validation(
+            "Rating must be between 1 and 5".into(),
+        ));
     }
 
     // Verify the order belongs to this supplier and is delivered
     let order = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT supplier_business_id, status FROM b2b_orders WHERE id = $1"
+        "SELECT supplier_business_id, status FROM b2b_orders WHERE id = $1",
     )
     .bind(order_id)
     .fetch_optional(&s.db)
@@ -370,11 +405,15 @@ pub async fn supplier_review_buyer(
     .ok_or_else(|| AppError::NotFound("Order not found".into()))?;
 
     if order.0 != biz_id {
-        return Err(AppError::Forbidden("Only the supplier can review this order".into()));
+        return Err(AppError::Forbidden(
+            "Only the supplier can review this order".into(),
+        ));
     }
 
     if order.1 != "delivered" {
-        return Err(AppError::Validation("Can only review delivered orders".into()));
+        return Err(AppError::Validation(
+            "Can only review delivered orders".into(),
+        ));
     }
 
     sqlx::query(
@@ -382,7 +421,7 @@ pub async fn supplier_review_buyer(
          SET supplier_rating = $1, \
              supplier_review = $2, \
              updated_at = NOW() \
-         WHERE id = $3"
+         WHERE id = $3",
     )
     .bind(req.rating)
     .bind(&req.review)
@@ -399,13 +438,15 @@ pub async fn supplier_review_buyer(
 
 // Extract user_id from Authorization header (used by handlers outside auth_guard)
 fn extract_user_id_for_supplier(headers: &HeaderMap, state: &AppState) -> ApiResult<Uuid> {
-    let auth = headers.get("Authorization")
+    let auth = headers
+        .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
-    let token = auth.strip_prefix("Bearer ")
+    let token = auth
+        .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
-    let claims = verify_token(token, &state.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims =
+        verify_token(token, &state.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
     Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
 }
 

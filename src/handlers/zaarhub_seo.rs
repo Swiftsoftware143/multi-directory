@@ -6,12 +6,11 @@ use crate::AppState;
 
 /// Serve sitemap.xml — all city pages + individual listing pages
 pub async fn sitemap_xml(State(state): State<AppState>) -> impl axum::response::IntoResponse {
-    let cities = sqlx::query(
-        "SELECT city_slug FROM city_pages WHERE is_active = true ORDER BY city_name",
-    )
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let cities =
+        sqlx::query("SELECT city_slug FROM city_pages WHERE is_active = true ORDER BY city_name")
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
 
     let listings = sqlx::query(
         "SELECT bl.id, cp.city_slug FROM business_listings bl \
@@ -71,8 +70,11 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> impl axum::response::
 
     // Legal pages
     let legal = sqlx::query(
-        "SELECT slug FROM zaarhub_legal_pages WHERE is_published = true ORDER BY display_order"
-    ).fetch_all(&state.db).await.unwrap_or_default();
+        "SELECT slug FROM zaarhub_legal_pages WHERE is_published = true ORDER BY display_order",
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
     for page in &legal {
         let slug: String = page.try_get("slug").unwrap_or_default();
         xml.push_str(&format!(

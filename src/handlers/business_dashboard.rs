@@ -13,10 +13,10 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::auth::models::Claims;
-use crate::error::{AppError, ApiResult};
+use crate::error::{ApiResult, AppError};
 use crate::handlers::portal::{BusinessProfile, BusinessSubscriptionInfo};
+use crate::AppState;
 
 // ── Response Types ──
 
@@ -86,7 +86,14 @@ pub async fn business_dashboard(
 
         let business_profile = match biz {
             Some((id, name, category, city, state, phone, website, images)) => BusinessProfile {
-                id, name, category, city, state, phone, website, images,
+                id,
+                name,
+                category,
+                city,
+                state,
+                phone,
+                website,
+                images,
             },
             None => continue,
         };
@@ -142,12 +149,31 @@ pub async fn business_dashboard(
         .fetch_optional(&s.db)
         .await?;
 
-        let subscription = sub.map(|(id, tier_id, tier_name, status, billing_cycle, price_paid, start_date, end_date, auto_renew)| {
-            BusinessSubscriptionInfo {
-                id, tier_id, tier_name,
-                status, billing_cycle, price_paid, start_date, end_date, auto_renew,
-            }
-        });
+        let subscription = sub.map(
+            |(
+                id,
+                tier_id,
+                tier_name,
+                status,
+                billing_cycle,
+                price_paid,
+                start_date,
+                end_date,
+                auto_renew,
+            )| {
+                BusinessSubscriptionInfo {
+                    id,
+                    tier_id,
+                    tier_name,
+                    status,
+                    billing_cycle,
+                    price_paid,
+                    start_date,
+                    end_date,
+                    auto_renew,
+                }
+            },
+        );
 
         dashboard_items.push(ClaimedBusinessDashboard {
             business: business_profile,
@@ -163,7 +189,11 @@ pub async fn business_dashboard(
 
 // ── Helper query functions ──
 
-async fn count_blog_mentions(db: &sqlx::PgPool, business_id: Uuid, interval: Option<&str>) -> ApiResult<i64> {
+async fn count_blog_mentions(
+    db: &sqlx::PgPool,
+    business_id: Uuid,
+    interval: Option<&str>,
+) -> ApiResult<i64> {
     let (sql, bind_interval) = match interval {
         Some(days) => (
             format!(
@@ -199,7 +229,11 @@ async fn count_blog_mentions(db: &sqlx::PgPool, business_id: Uuid, interval: Opt
     Ok(count.0)
 }
 
-async fn count_article_mentions(db: &sqlx::PgPool, business_id: Uuid, interval: Option<&str>) -> ApiResult<i64> {
+async fn count_article_mentions(
+    db: &sqlx::PgPool,
+    business_id: Uuid,
+    interval: Option<&str>,
+) -> ApiResult<i64> {
     let (sql, bind_interval) = match interval {
         Some(days) => (
             format!(
@@ -235,7 +269,11 @@ async fn count_article_mentions(db: &sqlx::PgPool, business_id: Uuid, interval: 
     Ok(count.0)
 }
 
-async fn count_trapdoor_mentions(db: &sqlx::PgPool, business_id: Uuid, interval: Option<&str>) -> ApiResult<i64> {
+async fn count_trapdoor_mentions(
+    db: &sqlx::PgPool,
+    business_id: Uuid,
+    interval: Option<&str>,
+) -> ApiResult<i64> {
     let (sql, bind_interval) = match interval {
         Some(days) => (
             format!(

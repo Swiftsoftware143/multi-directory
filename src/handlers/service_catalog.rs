@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::auth::models::Claims;
 use crate::auth::middleware::{is_admin, is_business_owner};
-use crate::error::{AppError, ApiResult};
+use crate::auth::models::Claims;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct ServicesQuery {
@@ -138,7 +138,7 @@ pub async fn get_service(
     let service = sqlx::query_as::<_, BusinessServiceRow>(
         "SELECT id, business_id, directory_id, name, description, price, currency, \
          duration_minutes, category, is_active, sort_order, created_at, updated_at \
-         FROM business_services WHERE id = $1"
+         FROM business_services WHERE id = $1",
     )
     .bind(service_id)
     .fetch_optional(&s.db)
@@ -161,8 +161,7 @@ pub async fn create_service(
     }
 
     // Verify authorization
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     let is_authorized = if is_admin(&claims) {
         true
@@ -180,17 +179,18 @@ pub async fn create_service(
     };
 
     if !is_authorized {
-        return Err(AppError::Forbidden("Not authorized to manage this business's services".to_string()));
+        return Err(AppError::Forbidden(
+            "Not authorized to manage this business's services".to_string(),
+        ));
     }
 
     // Get directory_id from business
-    let directory_id: Uuid = sqlx::query_scalar(
-        "SELECT directory_id FROM businesses WHERE id = $1"
-    )
-    .bind(req.business_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Business not found".to_string()))?;
+    let directory_id: Uuid =
+        sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(req.business_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or(AppError::NotFound("Business not found".to_string()))?;
 
     let row = sqlx::query_as::<_, BusinessServiceRow>(
         r#"INSERT INTO business_services (business_id, directory_id, name, description, price, currency, duration_minutes, category, sort_order)
@@ -210,7 +210,10 @@ pub async fn create_service(
     .fetch_one(&s.db)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({ "success": true, "service": row }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "success": true, "service": row })),
+    ))
 }
 
 /// PUT /api/v1/services/:id — update a service
@@ -220,16 +223,14 @@ pub async fn update_service(
     Path(service_id): Path<Uuid>,
     Json(req): Json<UpdateServiceRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Get business_id for verification
-    let biz_id: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT business_id FROM business_services WHERE id = $1"
-    )
-    .bind(service_id)
-    .fetch_optional(&s.db)
-    .await?;
+    let biz_id: Option<(Uuid,)> =
+        sqlx::query_as("SELECT business_id FROM business_services WHERE id = $1")
+            .bind(service_id)
+            .fetch_optional(&s.db)
+            .await?;
 
     let (business_id,) = biz_id.ok_or(AppError::NotFound("Service not found".to_string()))?;
 
@@ -249,7 +250,9 @@ pub async fn update_service(
     };
 
     if !is_authorized {
-        return Err(AppError::Forbidden("Not authorized to update this service".to_string()));
+        return Err(AppError::Forbidden(
+            "Not authorized to update this service".to_string(),
+        ));
     }
 
     sqlx::query(
@@ -262,7 +265,7 @@ pub async fn update_service(
                category = COALESCE($6, category),
                is_active = COALESCE($7, is_active),
                sort_order = COALESCE($8, sort_order)
-           WHERE id = $9"#
+           WHERE id = $9"#,
     )
     .bind(&req.name)
     .bind(&req.description)
@@ -279,7 +282,7 @@ pub async fn update_service(
     let updated = sqlx::query_as::<_, BusinessServiceRow>(
         "SELECT id, business_id, directory_id, name, description, price, currency, \
          duration_minutes, category, is_active, sort_order, created_at, updated_at \
-         FROM business_services WHERE id = $1"
+         FROM business_services WHERE id = $1",
     )
     .bind(service_id)
     .fetch_one(&s.db)
@@ -294,15 +297,13 @@ pub async fn delete_service(
     Extension(claims): Extension<Claims>,
     Path(service_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
-    let biz_id: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT business_id FROM business_services WHERE id = $1"
-    )
-    .bind(service_id)
-    .fetch_optional(&s.db)
-    .await?;
+    let biz_id: Option<(Uuid,)> =
+        sqlx::query_as("SELECT business_id FROM business_services WHERE id = $1")
+            .bind(service_id)
+            .fetch_optional(&s.db)
+            .await?;
 
     let (business_id,) = biz_id.ok_or(AppError::NotFound("Service not found".to_string()))?;
 
@@ -322,7 +323,9 @@ pub async fn delete_service(
     };
 
     if !is_authorized {
-        return Err(AppError::Forbidden("Not authorized to delete this service".to_string()));
+        return Err(AppError::Forbidden(
+            "Not authorized to delete this service".to_string(),
+        ));
     }
 
     sqlx::query("UPDATE business_services SET is_active = false WHERE id = $1")
@@ -330,7 +333,9 @@ pub async fn delete_service(
         .execute(&s.db)
         .await?;
 
-    Ok(Json(json!({ "success": true, "message": "Service deleted" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Service deleted" }),
+    ))
 }
 
 /// GET /api/v1/businesses/:business_id/services — list services for a business
@@ -345,7 +350,7 @@ pub async fn list_services_for_business(
                   duration_minutes, category, is_active, sort_order, created_at, updated_at
            FROM business_services
            WHERE business_id = $1 AND is_active = true
-           ORDER BY sort_order, name"#
+           ORDER BY sort_order, name"#,
     )
     .bind(business_id)
     .fetch_all(&s.db)
