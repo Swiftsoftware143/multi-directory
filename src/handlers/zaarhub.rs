@@ -864,13 +864,6 @@ pub async fn get_city_page(
     // Categories for filtering
     // Always include the pinned featured 8 even if a city has 0 businesses in them,
     // then append any remaining categories that have active businesses in this city.
-    //
-    // NOTE on dining: the 'fine-dining' parent category and its cuisine children
-    // (american, mexican, italian, chinese, indian, japanese, french, mediterranean,
-    // steakhouse) are the real dining categories. They're pinned below so they always show
-    // as pills on every city; businesses get populated into the cuisine children via the
-    // /scraper/populate-category search tool. The parent pill aggregates its cuisine children
-    // (see dining_slugs + fine_dining_id below).",
     let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>, Option<String>, Option<String>)>(
         r#"SELECT c.id, c.name, c.slug,
                   (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true) as biz_count,
@@ -916,20 +909,25 @@ pub async fn get_city_page(
     .await?
     .unwrap_or(Uuid::nil());
 
-    // Dining set: the categories the "Fine Dining" pill should match. We derive it from the
-    // Fine Dining group children present in this city (Italian, Mexican, American, Chinese,
-    // etc.). Slug list is exposed to the frontend so filterCity resolves the parent pill to
-    // all its cuisine children (businesses are stored on the cuisine children).
+    // Dining set: the categories the "Find Places to Eat" pill should match. We aggregate
+    // every leaf dining category from BOTH the Fine Dining group (cuisines) AND the
+    // Food & Drink group (pizza, coffee-shop, catering, seafood, breakfast, etc.), but
+    // exclude the two aggregate parent rows themselves. This ensures the pill resolves to
+    // real browsable businesses per city (the Fine Dining cuisines were empty in practice;
+    // the real dining businesses live in the Food & Drink leaf categories). Slug list is
+    // exposed to the frontend so filterCity resolves the parent pill to the full dining set.
     let dining_slugs: Vec<String> = category_pills
         .iter()
         .filter(|c| {
             let g = c.group_name.as_deref().unwrap_or("");
-            g == "Fine Dining" && c.slug != "fine-dining"
+            (g == "Fine Dining" || g == "Food & Drink")
+                && c.slug != "fine-dining"
+                && c.slug != "food-drink"
         })
         .map(|c| c.slug.clone())
         .collect();
 
-    // Aggregate business count across all Fine Dining cuisines for this city.
+    // Aggregate business count across all dining leaf categories for this city.
     let dining_count: i64 = if dining_slugs.is_empty() {
         0
     } else {
@@ -948,11 +946,12 @@ pub async fn get_city_page(
     };
 
     // Remove the raw parent entry (returned by the query) so we don't render it twice; we'll
-    // re-insert an aggregate "Fine Dining" parent pill at the front below.
+    // re-insert the aggregate "Fine Dining" parent pill at the front below.
     category_pills.retain(|c| c.slug != "fine-dining");
 
-    // Insert the real "Fine Dining" parent pill as the #1 pinned pill. It aggregates its
-    // cuisine children so users can find places to eat (every type) in one click.
+    // Insert the aggregate pill as the #1 pinned pill. It aggregates every dining leaf
+    // category (Fine Dining cuisines + Food & Drink children) so users can find places to
+    // eat (every type) in one click on every city.
     category_pills.insert(
         0,
         CategoryPill {
