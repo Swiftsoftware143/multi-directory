@@ -1,6 +1,8 @@
 # Gamification Engine — Blueprint
 
 > ⚠️ **BLUEPRINT ONLY — NOT IMPLEMENTED.** This document describes planned future functionality. None of the endpoints or database tables described here exist in the codebase. See `ARCHITECTURE.md` for current system design.
+>
+> 🔄 **SUPERSEDED AS OF Aug 2026.** The IncentiveSwift-based loyalty engine described here was removed. Loyalty is now **native** (`loyalty_native.rs`): tables `loyalty_programs`, `loyalty_tiers`, `loyalty_reward_tiers`, `loyalty_milestones`, `loyalty_members`; routes under `/api/v1/directories/:slug/loyalty/*` plus the native clearinghouse `/api/v1/networks/:slug/clear/*`. See `ARCHITECTURE.md`.
 
 ## Overview
 Dual-sided earning system where **visitors** earn 1% back in ZaarCash on purchases,
@@ -320,16 +322,24 @@ not a cost center. Businesses pay for customer retention tools they'd pay for an
 
 ---
 
-## Immediate Next Step: Gate Enrollment Behind Paid Subscription
+## (Superseded) Gate Enrollment Behind Paid Subscription
+
+> 🟡 **Updated for native loyalty:** This section referenced the retired IncentiveSwift
+> `POST /loyalty/enroll` and an IS `loyalty_plans` table. Loyalty is now native to the
+> directory: gating is handled per program via `max_checkins_per_day` / feature config,
+> and enrollment is `POST /api/v1/directories/:slug/loyalty/programs/:program_id/enroll`.
+> The IS-based steps below are retained only for historical reference.
+
 
 Before building profile scoring, referrals, or certs — gate the existing
-`POST /loyalty/enroll` behind a subscription check. No paid plan = no enrollment.
+native enrollment (`POST /api/v1/directories/:slug/loyalty/programs/:program_id/enroll`)
+behind program feature config. No paid plan = no enrollment.
 
 Steps:
-1. Create `loyalty_plans` table in IS with 3 tiers
+1. (Historical) Create `loyalty_plans` table in IS with 3 tiers — superseded by native `loyalty_programs`
 2. Add Stripe columns to `accounts` table
 3. Wire Stripe checkout → webhook → activation in IS
 4. Update `purchase_verify` to check `loyalty_plan_status = 'active'`
-5. Update `POST /loyalty/enroll` in MD to check subscription status first
+5. (Historical) Update directory eligibility check for native enrollment — superseded
 6. Add `GET /business/loyalty/status` + `POST /business/loyalty/subscribe` endpoints
 7. Update portal CTAs: "Enroll Now" → "Start Free Trial" → Stripe checkout

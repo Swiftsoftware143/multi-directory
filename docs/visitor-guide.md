@@ -83,7 +83,7 @@ When you view a business listing, you may see buttons that let you take action r
 | **Call Now** | Taps to call the business directly from your phone |
 | **Visit Website** | Opens the business's website in a new tab |
 | **Message Us** | Opens the messaging form to contact the business |
-| **Join Rewards** | Links to the business's loyalty or rewards program (if they use IncentiveSwift) |
+| **Join Rewards** | Links to the business's loyalty or rewards program (native to the directory) |
 | **Claim Deal** | Takes you to an active deal or special offer |
 | **View Menu** | Opens the business's menu (for restaurants and food services) |
 | **Get Directions** | Opens a map with directions to the business location |

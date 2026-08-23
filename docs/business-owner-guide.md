@@ -16,7 +16,7 @@ Your portal can connect to two SwiftSoftware products that add powerful features
 
 | Service | Sign Up At | What You Get |
 |---------|-----------|-------------|
-| **IncentiveSwift** | `https://incentiveswift.com` | Loyalty campaigns, SMS funnels, smart surveys, rewards |
+| **IncentiveSwift** | `https://incentiveswift.com` | Connected campaign/IQS funnel linking and smart surveys (loyalty points engine is now native to the directory) |
 | **CoreSwift CRM** | `https://coreswiftcrm.com` | Calendar, bookings, contact management, CRM pipeline |
 
 Use the same email as your directory account so the system auto-detects you. If emails don't match, the service connection won't work and you won't be able to link services. Both sites have a "Get Started" / "Free Trial" button — the signup form is on the app login page.
@@ -64,7 +64,7 @@ The campaign builder, calendar manager, and booking dashboard are managed in Inc
 
 | Task | Where |
 |------|-------|
-| Create a loyalty campaign | IncentiveSwift (sign in at `app.incentiveswift.com`) |
+| Create a loyalty campaign | Your directory (native loyalty engine) |
 | Build SMS funnels | IncentiveSwift |
 | Manage your calendar & bookings | CoreSwift CRM (sign in at `app.coreswiftcrm.com`) |
 | View/respond to bookings | CoreSwift CRM |
@@ -228,7 +228,7 @@ You choose one CTA type for each listing. Here's what each option does when a vi
 | **Call Now** | Taps to call your business phone number — works on mobile |
 | **Visit Website** | Opens your website in a new browser tab |
 | **Message Us** | Opens the messaging form — the message lands in your dashboard inbox |
-| **Join Rewards** | Links to your loyalty or rewards campaign — synced from IncentiveSwift if connected |
+| **Join Rewards** | Links to your directory's native loyalty/rewards program |
 | **Claim Deal** | Takes visitors to your active deal or special offer |
 | **View Menu** | Opens your menu page (great for restaurants) |
 | **Get Directions** | Opens a map with driving directions to your business |

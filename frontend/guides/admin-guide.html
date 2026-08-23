@@ -71,7 +71,7 @@ a:hover{text-decoration:underline}
 </div>
 
 <div style="background:#fef3c7;border-bottom:2px solid #f59e0b;text-align:center;padding:8px 16px;font-size:0.85rem;color:#92400e;">
-  ⚠️ <strong>Loyalty Program</strong> — Powered by the MultiDirectory loyalty engine. These features are available through the MultiDirectory loyalty proxy.
+  ⚠️ <strong>Loyalty Program</strong> — Powered by the native MultiDirectory loyalty engine + clearinghouse (no separate incentive engine).
 </div>
 <div class="hero">
   <h2>🛡️ Admin Guide — Managing the Loyalty Platform</h2>
@@ -289,36 +289,66 @@ a:hover{text-decoration:underline}
 
 <!-- 12. Loyalty Program Architecture (NEW) -->
 <div class="card">
-  <h3><span class="emoji">🏆</span> 12. Loyalty Proxy &amp; Scanner Architecture</h3>
-  <p>The ZaarHub Loyalty Program is powered by <strong>IncentiveSwift</strong> (IS) — a separate loyalty engine handling points, tiers, QR codes, and clearinghouse billing. The Multi-Directory platform proxies all loyalty requests through to IS:8083.</p>
-  
-  <p><strong>API Proxy Routes (all live on Multi-Directory → IncentiveSwift):</strong></p>
+  <h3><span class="emoji">🏆</span> 12. Native Loyalty &amp; Clearinghouse Architecture</h3>
+  <p>The ZaarHub Loyalty Program is now <strong>native to the Multi-Directory platform</strong>. Loyalty capability is built into every directory — there is no separate IncentiveSwift engine. Each directory admin creates and configures their own loyalty programs, and members are <code>visitor_accounts</code> of the directory. The native <strong>clearinghouse</strong> handles ZaarCash billing, reimbursement, and point expiry.</p>
+
+  <p><strong>Loyalty Programs (per-directory):</strong></p>
   <ul>
-    <li><code>GET /api/v1/loyalty/programs</code> → IS programs list</li>
-    <li><code>GET /api/v1/loyalty/tiers</code> → IS tier definitions</li>
-    <li><code>GET /api/v1/loyalty/member/:id</code> → IS member profile</li>
-    <li><code>GET /api/v1/loyalty/badge/member/:contact_id</code> → IS member badge</li>
-    <li><code>POST /api/v1/loyalty/scan</code> → IS scan processing (check-in/purchase/redeem)</li>
-    <li><code>POST /api/v1/loyalty/enroll</code> → IS program enrollment</li>
-    <li><code>GET /api/v1/loyalty/scans/business/:id</code> → IS scan history</li>
-    <li><code>GET /api/v1/loyalty/dashboard/member/:id</code> → IS member dashboard</li>
+    <li><code>GET /api/v1/directories/:slug/loyalty/programs</code> — list programs</li>
+    <li><code>POST /api/v1/directories/:slug/loyalty/programs</code> — create a program (name, <code>points_per_checkin</code>, <code>max_checkins_per_day</code>=1, <code>points_expire_days</code>=365, currency name/icon/color, tier/milestone/streak/referral/birthday/social bonuses, is_active)</li>
+    <li><code>GET /api/v1/directories/:slug/loyalty/programs/:program_id</code> — program detail</li>
+    <li><code>PUT /api/v1/directories/:slug/loyalty/programs/:program_id</code> — update program</li>
+    <li><code>DELETE /api/v1/directories/:slug/loyalty/programs/:program_id</code> — delete program</li>
+    <li><code>POST /api/v1/directories/:slug/loyalty/programs/:program_id/enroll</code> — enroll a member (visitor)</li>
+    <li><code>POST /api/v1/directories/:slug/loyalty/programs/:program_id/checkin</code> — daily check-in (awards <code>points_per_checkin</code>; daily cap enforced)</li>
+    <li><code>GET /api/v1/directories/:slug/loyalty/members/:visitor_account_id</code> — member profile</li>
+  </ul>
+
+  <p><strong>Tiers (membership levels):</strong></p>
+  <ul>
+    <li><code>GET/POST /api/v1/directories/:slug/loyalty/programs/:program_id/tiers</code> — list / create a tier (name, <code>min_points</code>, color, perks, <code>multiplier</code>)</li>
+    <li><code>DELETE /api/v1/directories/:slug/loyalty/programs/:program_id/tiers/:tier_id</code> — delete a tier</li>
+  </ul>
+
+  <p><strong>Rewards (catalog + earn + approval):</strong></p>
+  <ul>
+    <li><code>GET/POST /api/v1/directories/:slug/loyalty/programs/:program_id/rewards</code> — list / create a reward (<code>points_required</code>, <code>requires_approval</code>, <code>reward_tag</code>, sort_order)</li>
+    <li><code>DELETE /api/v1/directories/:slug/loyalty/programs/:program_id/rewards/:reward_id</code> — delete a reward</li>
+    <li><code>POST /api/v1/directories/:slug/loyalty/programs/:program_id/rewards/earn</code> — member redeems a reward (deducts points, creates an earned record)</li>
+    <li><code>GET /api/v1/directories/:slug/loyalty/members/:member_id/rewards</code> — member's earned rewards</li>
+    <li><code>POST /api/v1/directories/:slug/loyalty/rewards/earned/:earned_id/approve</code> — admin approves a pending earned reward</li>
+  </ul>
+
+  <p><strong>Milestones (trigger-based bonuses):</strong></p>
+  <ul>
+    <li><code>GET/POST /api/v1/directories/:slug/loyalty/programs/:program_id/milestones</code> — list / create a milestone (trigger_type, trigger_value, bonus_points, once_per_member)</li>
+  </ul>
+
+  <p><strong>Clearinghouse (ZaarCash billing, <code>/networks/:slug/clear</code>):</strong></p>
+  <ul>
+    <li><code>POST /networks/:slug/clear/scan</code> — process a scan (check-in/purchase/redeem) through the clearinghouse</li>
+    <li><code>GET /networks/:slug/clear/treasury</code> — treasury summary</li>
+    <li><code>GET /networks/:slug/clear/ledgers</code> — business ledgers</li>
+    <li><code>GET /networks/:slug/clear/caps</code>, <code>PUT /networks/:slug/clear/caps</code> — category caps (10% bill cap)</li>
+    <li><code>POST /networks/:slug/clear/expire</code> — run point expiry (365-day rolling)</li>
+    <li><code>GET /networks/:slug/clear/logs</code> — clearing logs</li>
   </ul>
 
   <p><strong>Scanner PWA (<code>/scanner</code>):</strong></p>
   <ul>
     <li>Camera-based QR scanning using jsQR (250ms interval, CDN-loaded)</li>
-    <li>Three scan types: Check-in (10pts), Purchase (earn rate × amount), Redeem (deduction with caps)</li>
+    <li>Three scan types: Check-in (<code>points_per_checkin</code>), Purchase (earn rate × amount), Redeem (deduction with caps)</li>
     <li>Business auth via existing login/register → JWT stored in localStorage</li>
     <li>PWA: standalone mode, manifest, service worker for offline caching</li>
     <li>URLs: <code>/scanner</code>, <code>/scanner-manifest.json</code>, <code>/sw-scanner.js</code></li>
   </ul>
 
-  <p><strong>Business Profile Loyalty Section:</strong> Every business detail page (<code>/biz/:slug/:id</code>) fetches program & tier data and, if the visitor is logged in, displays their personal tier badge, ZaarCash balance, and scannable QR code. Non-enrolled visitors see a "Join" button that calls <code>POST /loyalty/enroll</code>.</p>
-  
+  <p><strong>Business Profile Loyalty Section:</strong> Every business detail page (<code>/biz/:slug/:id</code>) fetches program &amp; tier data and, if the visitor is logged in, displays their personal tier badge, ZaarCash balance, and scannable QR code. Non-enrolled visitors see a <strong>Join</strong> button that calls <code>POST .../loyalty/programs/:program_id/enroll</code>.</p>
+
   <p><strong>Per-Directory Feature Toggle:</strong> The <code>feature_config</code> JSONB column on directories controls whether loyalty features render. Set <code>{"loyalty_enabled": true}</code> to enable the loyalty section on business profiles for a given directory.</p>
-  
+
   <div class="tip-box">
-    <strong>💡 Tip:</strong> All loyalty endpoints require auth. Test with a valid JWT from <code>POST /auth/login</code> using the <code>Authorization: Bearer &lt;token&gt;</code> header. Bad tokens return 401.
+    <strong>💡 Tip:</strong> All loyalty &amp; clearinghouse endpoints require auth (JWT). Test with a valid token from <code>POST /auth/login</code> using the <code>Authorization: Bearer &lt;token&gt;</code> header. Bad tokens return 401. Loyalty program defaults: <code>max_checkins_per_day=1</code>, <code>points_per_checkin=10</code>, <code>points_expire_days=365</code>.
   </div>
 </div>
 

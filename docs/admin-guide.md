@@ -161,7 +161,7 @@ All guides available at `zaarhub.com/guides/`.
 ## Cross-Platform Tag Sync
 
 ### Overview
-When a user signs up or submits a survey in MultiDirectory, their role and preference tags propagate to IncentiveSwift (loyalty engine) and CoreSwift (contact CRM). This enables campaign eligibility filtering, newsletter segmentation, and CRM contact management.
+When a user signs up or submits a survey in MultiDirectory, their role and preference tags propagate to CoreSwift CRM (contact management, newsletter segmentation). A legacy tag-sync leg to the IncentiveSwift loyalty endpoint was retired when loyalty went native; CoreSwift remains the active sync target.
 
 ### Tag Naming Convention (ZaarHub)
 Newsletter tags follow the format `{city-code}-zh-newsletter`:
@@ -192,23 +192,12 @@ Newsletter tags follow the format `{city-code}-zh-newsletter`:
    - "Importer / Exporter" → `Importer / Exporter`
    - "Logistics & Freight Provider" → `Logistics Provider`
    - "Raw Material Supplier" → `Raw Material Supplier`
-4. **IncentiveSwift** — Contact created/updated with tags via `/api/v1/loyalty/external/tag-contact`.
-5. **CoreSwift** — Contact created via `push_newsletter_signup` with city tag from `_city_tags` table, plus tag sync via `/api/v1/webhooks/cross-app/tag-sync`.
+4. **CoreSwift** (active) — Contact created/updated via `push_newsletter_signup` and tag sync.
+5. **CoreSwift list membership** — Contact created via `push_newsletter_signup` with city tag from `_city_tags` table, plus tag sync via `/api/v1/webhooks/cross-app/tag-sync`.
 
 ### Manual Testing
 ```bash
-# Test IncentiveSwift endpoint directly
-curl -X POST http://localhost:8083/api/v1/loyalty/external/tag-contact \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "first_name": "Test",
-    "last_name": "User",
-    "tags": ["Subscriber", "pc-zh-newsletter"],
-    "source": "test"
-  }'
-
-# Test newsletter signup API
+# Test newsletter signup API (tags flow to CoreSwift CRM via tag-sync)
 curl -X POST http://localhost:3001/api/v1/directories/palm-coast/subscribers \
   -H "Content-Type: application/json" \
   -d '{"email": "test@example.com", "name": "Test User"}'

@@ -189,7 +189,7 @@ CTAs (Call-to-Action buttons) appear on every business and supplier listing. You
 | **Call Now** | Businesses that want phone leads |
 | **Visit Website** | Businesses with a strong website presence |
 | **Message Us** | Any business — opens the messaging form |
-| **Join Rewards** | Businesses using IncentiveSwift loyalty programs |
+| **Join Rewards** | Businesses running the directory's native loyalty program |
 | **Claim Deal** | Businesses running active deals |
 | **View Menu** | Restaurants and food services |
 | **Get Directions** | Physical locations (retail, restaurants, offices) |
