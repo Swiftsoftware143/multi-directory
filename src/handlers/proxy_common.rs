@@ -1,7 +1,7 @@
 //! Shared proxy utilities for forwarding MultiDirectory API requests
-//! to IncentiveSwift backend services (loyalty, IQS, badges, etc.).
+//! to IncentiveSwift backend services (IQS funnels, campaigns, etc.).
 //!
-//! Used by loyalty_proxy and iqs_proxy modules.
+//! Used by the iqs_proxy and connected_services modules.
 
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::Value;
@@ -171,31 +171,6 @@ pub(crate) async fn proxy_delete(
     let resp = http()
         .delete(&url)
         .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
-
-    resp.json::<Value>()
-        .await
-        .map_err(|e| AppError::Internal(format!("IS parse failed: {}", e)))
-}
-
-/// Proxy a PATCH request to IncentiveSwift.
-pub(crate) async fn proxy_patch(
-    path: &str,
-    body: &Value,
-    account_id: &str,
-    email: &str,
-    role: &str,
-) -> Result<Value, AppError> {
-    let secret = is_jwt_secret();
-    let token = make_is_jwt(account_id, email, role, &secret)?;
-    let url = format!("{}{}", is_base_url(), path);
-
-    let resp = http()
-        .patch(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .json(body)
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
