@@ -862,25 +862,31 @@ pub async fn get_city_page(
         .collect();
 
     // Categories for filtering
-    // Always include the pinned featured 8 even if a city has 0 businesses in them,
-    // then append any remaining categories that have active businesses in this city.
+    // Always include the pinned featured 7 (non-dining) even if a city has 0 businesses in
+    // them, then append any remaining categories that have active businesses in this city.
+    //
+    // Dining note: the 'fine-dining' parent (id 8ad7286b) holds cuisine children
+    // (american, italian, chinese, indian, japanese, french, mediterranean, mexican,
+    // steakhouse) and the 'Food & Drink' parent (id 3f44c007) holds pizza, seafood,
+    // coffee-shop, catering, breakfast, food-trucks, bars-breweries. The real, browsable
+    // restaurant businesses are stored on these LEAF children (pizza=121, coffee-shop=96,
+    // catering=63, seafood=29 today; the Fine Dining cuisines are unpopulated). We pull all
+    // children of both families so the synthetic "Places to Eat" pill (built below) always
+    // resolves to the per-city dining set on every city — count-independent, all cities.
     let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>, Option<String>, Option<String>)>(
         r#"SELECT c.id, c.name, c.slug,
                   (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true) as biz_count,
                   c.icon, c.group_name
            FROM directory_categories c
-           WHERE c.slug IN ('fine-dining','american','mexican','italian','chinese','indian','japanese','french','mediterranean','steakhouse')
-              OR c.slug IN ('fitness-studio','day-spa','dentist','real-estate-agent','hair-salon','auto-repair','plumber')
+           WHERE c.slug IN ('fitness-studio','day-spa','dentist','real-estate-agent','hair-salon','auto-repair','plumber')
+              OR c.parent_id = '8ad7286b-8be1-4224-b1d6-04dec038ac81'   -- Fine Dining children
+              OR c.parent_id = '3f44c007-771d-42a9-940d-227f46171cbf'   -- Food & Drink children
               OR EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true)
            ORDER BY
              CASE c.slug
-               WHEN 'fine-dining' THEN 0 WHEN 'american' THEN 1 WHEN 'mexican' THEN 2
-               WHEN 'italian' THEN 3 WHEN 'chinese' THEN 4 WHEN 'indian' THEN 5
-               WHEN 'japanese' THEN 6 WHEN 'french' THEN 7 WHEN 'mediterranean' THEN 8
-               WHEN 'steakhouse' THEN 9
-               WHEN 'fitness-studio' THEN 10 WHEN 'day-spa' THEN 11 WHEN 'dentist' THEN 12
-               WHEN 'real-estate-agent' THEN 13 WHEN 'hair-salon' THEN 14 WHEN 'auto-repair' THEN 15
-               WHEN 'plumber' THEN 16
+               WHEN 'fitness-studio' THEN 0 WHEN 'day-spa' THEN 1 WHEN 'dentist' THEN 2
+               WHEN 'real-estate-agent' THEN 3 WHEN 'hair-salon' THEN 4 WHEN 'auto-repair' THEN 5
+               WHEN 'plumber' THEN 6
                ELSE 100
              END ASC,
              c.group_name, c.name"#
@@ -901,15 +907,7 @@ pub async fn get_city_page(
         })
         .collect();
 
-    // Fine Dining parent category id — used for the aggregate pill's identity.
-    let fine_dining_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM directory_categories WHERE slug = 'fine-dining' LIMIT 1",
-    )
-    .fetch_optional(&s.db)
-    .await?
-    .unwrap_or(Uuid::nil());
-
-    // Dining set: the categories the "Find Places to Eat" pill should match. We aggregate
+    // Dining set: the categories the "Places to Eat" pill should match. We aggregate
     // every leaf dining category from BOTH the Fine Dining group (cuisines) AND the
     // Food & Drink group (pizza, coffee-shop, catering, seafood, breakfast, etc.), but
     // exclude the two aggregate parent rows themselves. This ensures the pill resolves to
@@ -945,22 +943,27 @@ pub async fn get_city_page(
         cnt
     };
 
-    // Remove the raw parent entry (returned by the query) so we don't render it twice; we'll
-    // re-insert the aggregate "Fine Dining" parent pill at the front below.
-    category_pills.retain(|c| c.slug != "fine-dining");
+    // Remove raw dining parent rows (fine-dining / food-drink) that the pills query may have
+    // returned so they don't render as dead pills; the synthetic "Places to Eat" pill below
+    // replaces them.
+    category_pills.retain(|c| {
+        c.slug != "fine-dining"
+            && c.slug != "food-drink"
+            && c.slug != "dining"
+    });
 
-    // Insert the aggregate pill as the #1 pinned pill. It aggregates every dining leaf
-    // category (Fine Dining cuisines + Food & Drink children) so users can find places to
-    // eat (every type) in one click on every city.
+    // Insert the synthetic "Places to Eat" pill as the #1 pinned pill. It aggregates every
+    // dining leaf category in this city (Fine Dining cuisines + Food & Drink children) so
+    // users can find places to eat (every type) in one click on any city page.
     category_pills.insert(
         0,
         CategoryPill {
-            id: fine_dining_id,
-            name: "Fine Dining".to_string(),
-            slug: "fine-dining".to_string(),
+            id: Uuid::nil(),
+            name: "Places to Eat".to_string(),
+            slug: "dining".to_string(),
             business_count: dining_count,
             icon: Some("🍽️".to_string()),
-            group_name: Some("Fine Dining".to_string()),
+            group_name: Some("Dining".to_string()),
         },
     );
 
