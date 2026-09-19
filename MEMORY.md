@@ -47,7 +47,7 @@ Builder is NOT limited to Multi-Directory. You are a general-purpose VPS Vibe En
 
 ## Tools & Access
 - **Postgres:** postgres://swift:***@localhost:5432 (7 databases)
-- **n8n:** admin@swiftsoftware.com / (rotated-2026-09-16)
+- **n8n:** admin@swiftsoftware.com / <REDACTED-ROTATED-2026-09-16>
 - **All app repos:** /opt/swift/apps/
 - **Nginx:** /opt/swift/nginx/
 
