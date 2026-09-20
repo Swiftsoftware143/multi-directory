@@ -184,7 +184,11 @@ impl EventProvider for EventbriteProvider {
                 .map_err(|e| format!("HTTP request for page {} failed: {}", page, e))?;
 
             if !resp.status().is_success() {
-                tracing::warn!("Eventbrite page {} returned non-success: {}", page, resp.status());
+                tracing::warn!(
+                    "Eventbrite page {} returned non-success: {}",
+                    page,
+                    resp.status()
+                );
                 continue;
             }
 
@@ -206,26 +210,23 @@ fn map_events(eb_events: Vec<EventbriteEvent>) -> Vec<RawEvent> {
 }
 
 fn map_one(e: EventbriteEvent) -> RawEvent {
-    let price_text = e
-        .ticket_availability
-        .as_ref()
-        .and_then(|t| {
-            let lo = t
-                .minimum_ticket_price
-                .as_ref()
-                .and_then(|p| p.major_value.as_deref());
-            let hi = t
-                .maximum_ticket_price
-                .as_ref()
-                .and_then(|p| p.major_value.as_deref());
-            match (lo, hi) {
-                (Some(l), Some(h)) if l == h => Some(format!("${}", l)),
-                (Some(l), Some(h)) => Some(format!("${} - ${}", l, h)),
-                (Some(l), None) => Some(format!("From ${}", l)),
-                (None, Some(h)) => Some(format!("Up to ${}", h)),
-                (None, None) => None,
-            }
-        });
+    let price_text = e.ticket_availability.as_ref().and_then(|t| {
+        let lo = t
+            .minimum_ticket_price
+            .as_ref()
+            .and_then(|p| p.major_value.as_deref());
+        let hi = t
+            .maximum_ticket_price
+            .as_ref()
+            .and_then(|p| p.major_value.as_deref());
+        match (lo, hi) {
+            (Some(l), Some(h)) if l == h => Some(format!("${}", l)),
+            (Some(l), Some(h)) => Some(format!("${} - ${}", l, h)),
+            (Some(l), None) => Some(format!("From ${}", l)),
+            (None, Some(h)) => Some(format!("Up to ${}", h)),
+            (None, None) => None,
+        }
+    });
 
     let description = e
         .description
@@ -331,18 +332,12 @@ mod tests {
         assert_eq!(raw.venue_address.as_deref(), Some("123 Main St"));
         assert_eq!(raw.venue_city.as_deref(), Some("Melbourne"));
         assert_eq!(raw.venue_state.as_deref(), Some("FL"));
-        assert_eq!(
-            raw.url.as_deref(),
-            Some("https://eventbrite.com/e/evt-123")
-        );
+        assert_eq!(raw.url.as_deref(), Some("https://eventbrite.com/e/evt-123"));
         assert_eq!(raw.image_url.as_deref(), Some("https://img.com/logo.png"));
         assert!(!raw.is_free);
         assert_eq!(raw.price_text.as_deref(), Some("$25 - $50"));
         assert_eq!(raw.category.as_deref(), Some("Music"));
-        assert_eq!(
-            raw.organizer_name.as_deref(),
-            Some("Jazz Productions Inc")
-        );
+        assert_eq!(raw.organizer_name.as_deref(), Some("Jazz Productions Inc"));
     }
 
     /// Free event with no venue → all optional fields should be None.
@@ -377,10 +372,7 @@ mod tests {
         assert_eq!(raw.source_id, "evt-free");
         assert_eq!(raw.title, "Park Yoga");
         // Summary is used as fallback when description is missing
-        assert_eq!(
-            raw.description.as_deref(),
-            Some("Morning yoga in the park")
-        );
+        assert_eq!(raw.description.as_deref(), Some("Morning yoga in the park"));
         assert!(raw.is_free);
         assert!(raw.price_text.is_none());
         assert!(raw.venue_name.is_none());

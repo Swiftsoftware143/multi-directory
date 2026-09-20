@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,   // user id
-    pub tid: String,   // tenant id
+    pub sub: String, // user id
+    pub tid: String, // tenant id
     pub role: String,
     pub exp: usize,
     pub iat: usize,

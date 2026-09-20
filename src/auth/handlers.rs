@@ -2,7 +2,7 @@ use crate::email::send_reset_email;
 // Auth handler functions.
 
 use axum::{
-    extract::{State, Extension},
+    extract::{Extension, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -11,10 +11,10 @@ use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::error::{AppError, ApiResult};
-use super::models::*;
 use super::middleware::{create_token, verify_token};
+use super::models::*;
+use crate::error::{ApiResult, AppError};
+use crate::AppState;
 
 /// POST /api/v1/auth/register
 pub async fn register(
@@ -22,23 +22,27 @@ pub async fn register(
     Json(req): Json<RegisterRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.email.is_empty() || req.password.is_empty() || req.name.is_empty() {
-        return Err(AppError::Validation("Name, email, and password are required".to_string()));
+        return Err(AppError::Validation(
+            "Name, email, and password are required".to_string(),
+        ));
     }
     if req.password.len() < 6 {
-        return Err(AppError::Validation("Password must be at least 6 characters".to_string()));
+        return Err(AppError::Validation(
+            "Password must be at least 6 characters".to_string(),
+        ));
     }
 
     // Check if user already exists
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM users WHERE email = \x241"
-    )
-    .bind(&req.email)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(0);
+    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = \x241")
+        .bind(&req.email)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
     if existing > 0 {
-        return Err(AppError::Duplicate("A user with this email already exists".to_string()));
+        return Err(AppError::Duplicate(
+            "A user with this email already exists".to_string(),
+        ));
     }
 
     // Hash password
@@ -54,9 +58,16 @@ pub async fn register(
         .to_string();
 
     // Create tenant
-    let tenant_name = req.tenant_name.unwrap_or_else(|| format!("{}'s Directory", req.name));
+    let tenant_name = req
+        .tenant_name
+        .unwrap_or_else(|| format!("{}'s Directory", req.name));
     let tenant_slug = req.tenant_slug.unwrap_or_else(|| {
-        req.name.to_lowercase().replace(' ', "-").chars().take(30).collect()
+        req.name
+            .to_lowercase()
+            .replace(' ', "-")
+            .chars()
+            .take(30)
+            .collect()
     });
 
     let tenant_id = Uuid::new_v4();
@@ -98,7 +109,8 @@ pub async fn register(
                 None,
                 Some("zaarhub".to_string()),
                 Some(vec!["zaarhub_business".to_string()]),
-            ).await;
+            )
+            .await;
         });
     }
 
@@ -160,20 +172,18 @@ pub async fn login(
     State(s): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    use argon2::{
-        Argon2, PasswordHash, PasswordVerifier,
-    };
+    use argon2::{Argon2, PasswordHash, PasswordVerifier};
 
     // Try users table first, then fall back to visitor_accounts
     use sqlx::Row;
-    
+
     let row = sqlx::query(
         "SELECT id, tenant_id, email, password_hash, name, role, is_active, last_login_at, created_at, updated_at FROM users WHERE email = \x241"
     )
     .bind(&req.email)
     .fetch_optional(&s.db)
     .await?;
-    
+
     let (user, is_visitor) = if let Some(r) = row {
         (
             User {
@@ -233,16 +243,23 @@ pub async fn login(
     }
 
     // Verify password
-    let parsed_hash = PasswordHash::new(&user.password_hash)
-        .map_err(|e| AppError::Hash(e.to_string()))?;
+    let parsed_hash =
+        PasswordHash::new(&user.password_hash).map_err(|e| AppError::Hash(e.to_string()))?;
     let argon2 = Argon2::default();
     argon2
         .verify_password(req.password.as_bytes(), &parsed_hash)
         .map_err(|_| AppError::InvalidCredentials)?;
 
     // Update last_login
-    let table = if is_visitor { "visitor_accounts" } else { "users" };
-    let update_query = format!("UPDATE {} SET last_login_at = NOW() WHERE id = \x241", table);
+    let table = if is_visitor {
+        "visitor_accounts"
+    } else {
+        "users"
+    };
+    let update_query = format!(
+        "UPDATE {} SET last_login_at = NOW() WHERE id = \x241",
+        table
+    );
     sqlx::query(&update_query)
         .bind(user.id)
         .execute(&s.db)
@@ -252,18 +269,21 @@ pub async fn login(
     let tenant = if is_visitor {
         None
     } else {
-        let tenant_row = sqlx::query("SELECT id, name, slug, is_active FROM tenants WHERE id = \x241")
-            .bind(user.tenant_id)
-            .fetch_optional(&s.db)
-            .await?;
-        tenant_row.map(|r| -> Result<TenantResponse, sqlx::Error> {
-            Ok(TenantResponse {
-                id: r.try_get("id")?,
-                name: r.try_get("name")?,
-                slug: r.try_get("slug")?,
-                is_active: r.try_get("is_active")?,
+        let tenant_row =
+            sqlx::query("SELECT id, name, slug, is_active FROM tenants WHERE id = \x241")
+                .bind(user.tenant_id)
+                .fetch_optional(&s.db)
+                .await?;
+        tenant_row
+            .map(|r| -> Result<TenantResponse, sqlx::Error> {
+                Ok(TenantResponse {
+                    id: r.try_get("id")?,
+                    name: r.try_get("name")?,
+                    slug: r.try_get("slug")?,
+                    is_active: r.try_get("is_active")?,
+                })
             })
-        }).transpose()?
+            .transpose()?
     };
 
     // Generate JWT
@@ -340,29 +360,29 @@ pub async fn change_password(
 ) -> ApiResult<impl IntoResponse> {
     use argon2::{
         password_hash::{rand_core::OsRng, SaltString},
-        Argon2, PasswordHasher, PasswordHash, PasswordVerifier,
+        Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
     };
 
     if req.new_password.len() < 6 {
-        return Err(AppError::Validation("New password must be at least 6 characters".to_string()));
+        return Err(AppError::Validation(
+            "New password must be at least 6 characters".to_string(),
+        ));
     }
 
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
-    let row = sqlx::query(
-        "SELECT password_hash FROM users WHERE id = \x241"
-    )
-    .bind(user_id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::Unauthorized)?;
+    let row = sqlx::query("SELECT password_hash FROM users WHERE id = \x241")
+        .bind(user_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
 
     use sqlx::Row;
     let password_hash: String = row.try_get("password_hash")?;
 
     // Verify current password
-    let parsed_hash = PasswordHash::new(&password_hash)
-        .map_err(|e| AppError::Hash(e.to_string()))?;
+    let parsed_hash =
+        PasswordHash::new(&password_hash).map_err(|e| AppError::Hash(e.to_string()))?;
     let argon2 = Argon2::default();
     argon2
         .verify_password(req.current_password.as_bytes(), &parsed_hash)
@@ -381,7 +401,10 @@ pub async fn change_password(
         .execute(&s.db)
         .await?;
 
-    Ok((StatusCode::OK, Json(json!({"message": "Password updated successfully"}))))
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Password updated successfully"})),
+    ))
 }
 
 /// POST /api/v1/auth/forgot-password
@@ -400,10 +423,13 @@ pub async fn forgot_password(
         let token = Uuid::new_v4().to_string();
         let expires_at = Utc::now() + chrono::Duration::hours(24);
 
-        sqlx::query("UPDATE password_resets SET used = true WHERE user_id = \x241 AND used = false")
-            .bind(user_id)
-            .execute(&s.db)
-            .await.ok();
+        sqlx::query(
+            "UPDATE password_resets SET used = true WHERE user_id = \x241 AND used = false",
+        )
+        .bind(user_id)
+        .execute(&s.db)
+        .await
+        .ok();
 
         sqlx::query(
             "INSERT INTO password_resets (user_id, token, expires_at) VALUES (\x241, \x242, \x243)",
@@ -416,12 +442,19 @@ pub async fn forgot_password(
 
         match send_reset_email(&s.db, &req.email, &token).await {
             Ok(_) => tracing::info!("Password reset email sent to {}", req.email),
-            Err(e) => tracing::error!("Failed to send password reset email to {}: {}", req.email, e),
+            Err(e) => tracing::error!(
+                "Failed to send password reset email to {}: {}",
+                req.email,
+                e
+            ),
         }
         // Send password reset email via SMTP
     }
 
-    Ok((StatusCode::OK, Json(json!({"message": "If the email exists, a password reset link has been sent"}))))
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "If the email exists, a password reset link has been sent"})),
+    ))
 }
 
 /// POST /api/v1/auth/reset-password
@@ -435,7 +468,9 @@ pub async fn reset_password(
     };
 
     if req.new_password.len() < 6 {
-        return Err(AppError::Validation("New password must be at least 6 characters".to_string()));
+        return Err(AppError::Validation(
+            "New password must be at least 6 characters".to_string(),
+        ));
     }
 
     let reset_row = sqlx::query(
@@ -467,5 +502,8 @@ pub async fn reset_password(
         .execute(&s.db)
         .await?;
 
-    Ok((StatusCode::OK, Json(json!({"message": "Password has been reset successfully"}))))
+    Ok((
+        StatusCode::OK,
+        Json(json!({"message": "Password has been reset successfully"})),
+    ))
 }

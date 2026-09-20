@@ -158,7 +158,7 @@ pub struct CreateDirectoryRequestV2 {
     /// Used when network_mode="connect" — network_id to join
     pub parent_network_id: Option<Uuid>,
     /// URL config — only meaningful when connecting to a network
-    pub url_type: Option<String>,      // "subdomain" | "subfolder" | "custom"
-    pub url_value: Option<String>,     // the slug for subdomain/subfolder
+    pub url_type: Option<String>, // "subdomain" | "subfolder" | "custom"
+    pub url_value: Option<String>, // the slug for subdomain/subfolder
     pub custom_domain: Option<String>, // only for url_type="custom"
 }

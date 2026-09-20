@@ -7,12 +7,12 @@
 //! - Brand colors come from directory's color_scheme JSON (or network_branding)
 //! - If no custom template exists, one is auto-created with the directory's brand
 
-use chrono::{Utc, Duration};
+use chrono::{Duration, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use sqlx::PgPool;
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 const REMINDER_CATEGORY: &str = "dashboard_reminder";
 
@@ -115,15 +115,23 @@ async fn run_reminder_check(db: &PgPool) -> Result<(), Box<dyn std::error::Error
 
     for c in &candidates {
         if !brand_cache.contains_key(&c.directory_id) {
-            brand_cache.insert(c.directory_id, resolve_brand_colors(db, c.directory_id).await);
+            brand_cache.insert(
+                c.directory_id,
+                resolve_brand_colors(db, c.directory_id).await,
+            );
         }
         let brand = &brand_cache[&c.directory_id];
 
         if !template_cache.contains_key(&c.directory_id) {
             match load_or_create_template(db, c.directory_id, brand).await {
-                Ok(t) => { template_cache.insert(c.directory_id, t); }
+                Ok(t) => {
+                    template_cache.insert(c.directory_id, t);
+                }
                 Err(e) => {
-                    tracing::error!("[reminders] Template resolution failed for {}: {e}", c.directory_slug);
+                    tracing::error!(
+                        "[reminders] Template resolution failed for {}: {e}",
+                        c.directory_slug
+                    );
                     failed += 1;
                     continue;
                 }
@@ -190,7 +198,8 @@ async fn run_reminder_check(db: &PgPool) -> Result<(), Box<dyn std::error::Error
         };
 
         let client = reqwest::Client::new();
-        match client.post("http://localhost:3456/send-email")
+        match client
+            .post("http://localhost:3456/send-email")
             .json(&smtp)
             .send()
             .await
@@ -205,7 +214,11 @@ async fn run_reminder_check(db: &PgPool) -> Result<(), Box<dyn std::error::Error
                     .execute(db)
                     .await;
                     sent += 1;
-                    tracing::info!("[reminders] Sent to {} ({})", c.owner_email, c.business_name);
+                    tracing::info!(
+                        "[reminders] Sent to {} ({})",
+                        c.owner_email,
+                        c.business_name
+                    );
                 } else {
                     let body = resp.text().await.unwrap_or_default();
                     tracing::warn!("[reminders] SMTP {st} for {}: {body}", c.owner_email);
@@ -234,18 +247,42 @@ async fn resolve_brand_colors(db: &PgPool, dir_id: Uuid) -> BrandColors {
     };
 
     let Ok(Some((Some(scheme), network_id))) = sqlx::query_as::<_, (Option<Value>, Option<Uuid>)>(
-        "SELECT d.color_scheme, d.network_id FROM directories d WHERE d.id = $1"
+        "SELECT d.color_scheme, d.network_id FROM directories d WHERE d.id = $1",
     )
     .bind(dir_id)
     .fetch_optional(db)
-    .await else { return default; };
+    .await
+    else {
+        return default;
+    };
 
-    let primary = scheme.get("primary").and_then(Value::as_str).unwrap_or(&default.primary).to_string();
-    let accent   = scheme.get("accent").and_then(Value::as_str).unwrap_or(&default.accent).to_string();
-    let bg       = scheme.get("background").and_then(Value::as_str).unwrap_or(&default.background).to_string();
-    let text     = scheme.get("text").and_then(Value::as_str).unwrap_or(&default.text).to_string();
+    let primary = scheme
+        .get("primary")
+        .and_then(Value::as_str)
+        .unwrap_or(&default.primary)
+        .to_string();
+    let accent = scheme
+        .get("accent")
+        .and_then(Value::as_str)
+        .unwrap_or(&default.accent)
+        .to_string();
+    let bg = scheme
+        .get("background")
+        .and_then(Value::as_str)
+        .unwrap_or(&default.background)
+        .to_string();
+    let text = scheme
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or(&default.text)
+        .to_string();
 
-    return BrandColors { primary, accent, background: bg, text };
+    return BrandColors {
+        primary,
+        accent,
+        background: bg,
+        text,
+    };
 
     // Fallback: network branding
     if let Some(nid) = network_id {
@@ -275,18 +312,25 @@ async fn load_or_create_template(
     // Try directory-specific template first
     if let Some(t) = sqlx::query_as::<_, EmailTemplate>(
         "SELECT id, name, subject, body, body_text, variables FROM email_templates \
-         WHERE directory_id = $1 AND category = $2 ORDER BY created_at DESC LIMIT 1"
+         WHERE directory_id = $1 AND category = $2 ORDER BY created_at DESC LIMIT 1",
     )
-    .bind(dir_id).bind(REMINDER_CATEGORY).fetch_optional(db).await? {
+    .bind(dir_id)
+    .bind(REMINDER_CATEGORY)
+    .fetch_optional(db)
+    .await?
+    {
         return Ok(t);
     }
 
     // Fall back to global template (no directory_id)
     if let Some(t) = sqlx::query_as::<_, EmailTemplate>(
         "SELECT id, name, subject, body, body_text, variables FROM email_templates \
-         WHERE directory_id IS NULL AND category = $1 ORDER BY created_at DESC LIMIT 1"
+         WHERE directory_id IS NULL AND category = $1 ORDER BY created_at DESC LIMIT 1",
     )
-    .bind(REMINDER_CATEGORY).fetch_optional(db).await? {
+    .bind(REMINDER_CATEGORY)
+    .fetch_optional(db)
+    .await?
+    {
         return Ok(t);
     }
 
@@ -336,7 +380,9 @@ async fn load_or_create_template(
   <p style="color:#94a3b8;font-size:12px;margin:0;">{{{{directory_name}}}} — Powered by SwiftSoftware</p>
 </td></tr></table>
 </body></html>"#,
-        p = p, b = b, tc = tc
+        p = p,
+        b = b,
+        tc = tc
     );
 
     let variables: Vec<String> = vec![
@@ -353,7 +399,7 @@ async fn load_or_create_template(
     let created = sqlx::query_as::<_, EmailTemplate>(
         "INSERT INTO email_templates (name, subject, body, variables, category, directory_id) \
          VALUES ($1, $2, $3, $4, $5, $6) \
-         RETURNING id, name, subject, body, body_text, variables"
+         RETURNING id, name, subject, body, body_text, variables",
     )
     .bind(format!("Dashboard Reminder — {dir_id}"))
     .bind(&subject)
@@ -380,7 +426,7 @@ fn substitute(text: &str, vars: &HashMap<&str, String>) -> String {
 /// Look up the email signature for a directory.
 async fn lookup_signature(db: &PgPool, dir_id: Uuid) -> (Option<String>, Option<String>) {
     sqlx::query_as::<_, (Option<String>, Option<String>)>(
-        "SELECT email_signature_html, email_signature_text FROM directories WHERE id = $1"
+        "SELECT email_signature_html, email_signature_text FROM directories WHERE id = $1",
     )
     .bind(dir_id)
     .fetch_optional(db)

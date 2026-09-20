@@ -189,7 +189,7 @@ pub async fn get_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Va
         "SELECT id, tenant_id, provider, label, is_default, is_active, scope, metadata, \
                 COALESCE(decrypt_provider_key(api_key_encrypted), api_key) AS api_key \
          FROM provider_keys WHERE provider = 'google_places' \
-         ORDER BY is_default DESC, updated_at DESC LIMIT 1"
+         ORDER BY is_default DESC, updated_at DESC LIMIT 1",
     )
     .fetch_optional(&state.db)
     .await?;
@@ -237,18 +237,21 @@ pub async fn save_gplaces_key(
         return Err(AppError::BadRequest("API key cannot be empty".into()));
     }
     if !key.starts_with("AIza") {
-        return Err(AppError::BadRequest("Google Places API keys start with AIza".into()));
+        return Err(AppError::BadRequest(
+            "Google Places API keys start with AIza".into(),
+        ));
     }
 
     // provider_keys has an INSERT/UPDATE trigger that encrypts api_key -> api_key_encrypted.
     // Bind a real tenant_id (must exist in tenants FK). Reuse an existing provider key's tenant,
     // else fall back to the super-admin seed tenant.
     let tenant_id: Uuid = sqlx::query_scalar::<_, Uuid>(
-        "SELECT tenant_id FROM provider_keys WHERE provider = $1 LIMIT 1")
-        .bind("google_places")
-        .fetch_optional(&state.db)
-        .await?
-        .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+        "SELECT tenant_id FROM provider_keys WHERE provider = $1 LIMIT 1",
+    )
+    .bind("google_places")
+    .fetch_optional(&state.db)
+    .await?
+    .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
 
     let label = payload
         .label
@@ -289,14 +292,18 @@ pub async fn test_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<V
     let row = sqlx::query(
         "SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys \
          WHERE provider = 'google_places' AND is_active = true \
-         ORDER BY is_default DESC, updated_at DESC LIMIT 1"
+         ORDER BY is_default DESC, updated_at DESC LIMIT 1",
     )
     .fetch_optional(&state.db)
     .await?;
 
     let key: String = match row {
         Some(r) => r.try_get("api_key").unwrap_or_default(),
-        None => return Err(AppError::BadRequest("No Google Places API key saved yet".into())),
+        None => {
+            return Err(AppError::BadRequest(
+                "No Google Places API key saved yet".into(),
+            ))
+        }
     };
 
     let url = format!(
@@ -304,14 +311,21 @@ pub async fn test_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<V
         key
     );
     let client = reqwest::Client::new();
-    let resp = client.get(&url).send().await.map_err(|e| {
-        AppError::BadRequest(format!("Network error testing key: {e}"))
-    })?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Network error testing key: {e}")))?;
     let body: Value = resp.json().await.unwrap_or_else(|_| json!({}));
-    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("UKNOWN");
+    let status = body
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("UKNOWN");
 
     if status == "OK" || status == "ZERO_RESULTS" {
-        Ok(Json(json!({"ok": true, "status": status, "message": "Key is valid — Google accepts it"})))
+        Ok(Json(
+            json!({"ok": true, "status": status, "message": "Key is valid — Google accepts it"}),
+        ))
     } else {
         Ok(Json(json!({
             "ok": false,
@@ -359,13 +373,17 @@ pub async fn places_text_search(
     let row = sqlx::query(
         "SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys \
          WHERE provider = 'google_places' AND is_active = true \
-         ORDER BY is_default DESC, updated_at DESC LIMIT 1"
+         ORDER BY is_default DESC, updated_at DESC LIMIT 1",
     )
     .fetch_optional(&state.db)
     .await?;
     let key: String = match row {
         Some(r) => r.try_get("api_key").unwrap_or_default(),
-        None => return Err(AppError::BadRequest("No Google Places API key saved yet — save one above".into())),
+        None => {
+            return Err(AppError::BadRequest(
+                "No Google Places API key saved yet — save one above".into(),
+            ))
+        }
     };
 
     let mut query = q.query.trim().to_string();
@@ -381,17 +399,29 @@ pub async fn places_text_search(
         key
     );
     let client = reqwest::Client::new();
-    let resp = client.get(&url).send().await.map_err(|e| {
-        AppError::BadRequest(format!("Google Places API error: {e}"))
-    })?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Google Places API error: {e}")))?;
     let body: Value = resp.json().await.unwrap_or_else(|_| json!({}));
-    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+    let status = body
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("UNKNOWN");
     if status == "REQUEST_DENIED" {
-        let msg = body.get("error_message").and_then(|v| v.as_str()).unwrap_or("Key REQUEST_DENIED by Google");
+        let msg = body
+            .get("error_message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Key REQUEST_DENIED by Google");
         return Err(AppError::BadRequest(msg.to_string()));
     }
 
-    let results: Vec<Value> = body.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+    let results: Vec<Value> = body
+        .get("results")
+        .and_then(|r| r.as_array())
+        .cloned()
+        .unwrap_or_default();
     let out: Vec<Value> = results.into_iter().map(|r| json!({
         "name": r.get("name").and_then(|v| v.as_str()).unwrap_or(""),
         "address": r.get("formatted_address").and_then(|v| v.as_str()).unwrap_or(""),
@@ -406,7 +436,9 @@ pub async fn places_text_search(
         "types": r.get("types").and_then(|v| v.as_array()).cloned().unwrap_or_default(),
     })).collect();
 
-    Ok(Json(json!({ "status": status, "count": out.len(), "results": out })))
+    Ok(Json(
+        json!({ "status": status, "count": out.len(), "results": out }),
+    ))
 }
 
 fn urlencoding(s: &str) -> String {
@@ -476,30 +508,90 @@ pub async fn update_site_config(
 fn mock_places_results() -> Vec<Value> {
     let mut out: Vec<Value> = Vec::new();
     let fixtures: [(&str, &str, f64, i64, &[&str]); 12] = [
-        ("McDonald's", "100 Malabar Rd, Palm Bay, FL 32907", 3.6, 812,
-         &["restaurant", "food", "point_of_interest", "establishment"]),
-        ("Starbucks", "4700 Babcock St NE, Palm Bay, FL 32908", 4.2, 640,
-         &["cafe", "food", "point_of_interest", "establishment"]),
-        ("Subway", "1155 Malabar Rd, Palm Bay, FL 32907", 3.9, 402,
-         &["restaurant", "food", "point_of_interest", "establishment"]),
-        ("Test Restaurant", "123 Main St, Palm Bay, FL 32905", 4.0, 12,
-         &["restaurant", "food"]),
-        ("J&C Automotive", "1715 Agora Cir SE, Palm Bay, FL 32909, USA", 4.7, 58,
-         &["car_repair", "point_of_interest"]),
-        ("W&J Gold Star Automotive", "4570 S Babcock St ste20, Palm Bay, FL 32905, USA", 4.6, 44,
-         &["car_repair", "point_of_interest"]),
-        ("Palm Bay Family Dental", "2190 Port Malabar Blvd NE, Palm Bay, FL 32905", 4.8, 213,
-         &["dentist", "health", "point_of_interest"]),
-        ("Space Coast Coffee Roasters", "605 Palm Bay Rd NE, Palm Bay, FL 32905", 4.9, 118,
-         &["cafe", "food", "point_of_interest"]),
-        ("Bayside Auto Repair", "3301 Bayside Lakes Blvd, Palm Bay, FL 32909", 4.5, 76,
-         &["car_repair", "point_of_interest"]),
-        ("Harbor City Plumbing", "880 Jupiter Blvd SE, Palm Bay, FL 32909", 4.4, 39,
-         &["plumber", "point_of_interest"]),
-        ("Malabar Lawn Care", "1940 Malabar Rd SE, Palm Bay, FL 32909", 4.3, 21,
-         &["point_of_interest", "establishment"]),
-        ("The Yoga Loft", "1420 Palm Bay Rd NE, Palm Bay, FL 32905", 4.9, 96,
-         &["gym", "health", "point_of_interest"]),
+        (
+            "McDonald's",
+            "100 Malabar Rd, Palm Bay, FL 32907",
+            3.6,
+            812,
+            &["restaurant", "food", "point_of_interest", "establishment"],
+        ),
+        (
+            "Starbucks",
+            "4700 Babcock St NE, Palm Bay, FL 32908",
+            4.2,
+            640,
+            &["cafe", "food", "point_of_interest", "establishment"],
+        ),
+        (
+            "Subway",
+            "1155 Malabar Rd, Palm Bay, FL 32907",
+            3.9,
+            402,
+            &["restaurant", "food", "point_of_interest", "establishment"],
+        ),
+        (
+            "Test Restaurant",
+            "123 Main St, Palm Bay, FL 32905",
+            4.0,
+            12,
+            &["restaurant", "food"],
+        ),
+        (
+            "J&C Automotive",
+            "1715 Agora Cir SE, Palm Bay, FL 32909, USA",
+            4.7,
+            58,
+            &["car_repair", "point_of_interest"],
+        ),
+        (
+            "W&J Gold Star Automotive",
+            "4570 S Babcock St ste20, Palm Bay, FL 32905, USA",
+            4.6,
+            44,
+            &["car_repair", "point_of_interest"],
+        ),
+        (
+            "Palm Bay Family Dental",
+            "2190 Port Malabar Blvd NE, Palm Bay, FL 32905",
+            4.8,
+            213,
+            &["dentist", "health", "point_of_interest"],
+        ),
+        (
+            "Space Coast Coffee Roasters",
+            "605 Palm Bay Rd NE, Palm Bay, FL 32905",
+            4.9,
+            118,
+            &["cafe", "food", "point_of_interest"],
+        ),
+        (
+            "Bayside Auto Repair",
+            "3301 Bayside Lakes Blvd, Palm Bay, FL 32909",
+            4.5,
+            76,
+            &["car_repair", "point_of_interest"],
+        ),
+        (
+            "Harbor City Plumbing",
+            "880 Jupiter Blvd SE, Palm Bay, FL 32909",
+            4.4,
+            39,
+            &["plumber", "point_of_interest"],
+        ),
+        (
+            "Malabar Lawn Care",
+            "1940 Malabar Rd SE, Palm Bay, FL 32909",
+            4.3,
+            21,
+            &["point_of_interest", "establishment"],
+        ),
+        (
+            "The Yoga Loft",
+            "1420 Palm Bay Rd NE, Palm Bay, FL 32905",
+            4.9,
+            96,
+            &["gym", "health", "point_of_interest"],
+        ),
     ];
     for (i, (name, address, rating, reviews, types)) in fixtures.iter().enumerate() {
         out.push(json!({

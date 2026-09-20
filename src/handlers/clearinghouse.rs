@@ -19,9 +19,9 @@ use axum::{
 };
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
-use sqlx::PgPool;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -33,26 +33,21 @@ use uuid::Uuid;
 /// a network; loyalty is network-wide. Returns None only if the directory has no
 /// network (falls back to directory-scoped behavior).
 async fn directory_network(db: &PgPool, directory_id: Uuid) -> Result<Option<Uuid>, AppError> {
-    let net: Option<Uuid> = sqlx::query_scalar(
-        "SELECT network_id FROM directories WHERE id = $1",
-    )
-    .bind(directory_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| {
-        eprintln!("[clearinghouse] error resolving network: {e}");
-        AppError::Database(e)
-    })?
-    .flatten();
+    let net: Option<Uuid> = sqlx::query_scalar("SELECT network_id FROM directories WHERE id = $1")
+        .bind(directory_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| {
+            eprintln!("[clearinghouse] error resolving network: {e}");
+            AppError::Database(e)
+        })?
+        .flatten();
     Ok(net)
 }
 
 /// Find the network-wide loyalty program for a network. If none exists, create one
 /// lazily so a network is always demoable end-to-end.
-async fn find_or_create_network_program(
-    db: &PgPool,
-    network_id: Uuid,
-) -> Result<Uuid, AppError> {
+async fn find_or_create_network_program(db: &PgPool, network_id: Uuid) -> Result<Uuid, AppError> {
     // A program is network-wide when network_id IS NOT NULL.
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM loyalty_programs WHERE network_id = $1 ORDER BY created_at LIMIT 1",
@@ -119,12 +114,14 @@ async fn find_or_create_network_member(
     })?;
     if let Some(id) = existing {
         // ensure network_id is backfilled so the wallet is network-wide
-        sqlx::query("UPDATE loyalty_members SET network_id = $1 WHERE id = $2 AND network_id IS NULL")
-            .bind(network_id)
-            .bind(id)
-            .execute(db)
-            .await
-            .ok();
+        sqlx::query(
+            "UPDATE loyalty_members SET network_id = $1 WHERE id = $2 AND network_id IS NULL",
+        )
+        .bind(network_id)
+        .bind(id)
+        .execute(db)
+        .await
+        .ok();
         return Ok(id);
     }
 
@@ -174,7 +171,7 @@ async fn update_business_ledger(
     points_redeemed: i32,
 ) -> Result<(), AppError> {
     // Billed = points issued x $0.01; Reimbursed = points redeemed x $0.008
-    let billed = Decimal::new((points_issued * 1) as i64, 2);        // $x.xx
+    let billed = Decimal::new((points_issued * 1) as i64, 2); // $x.xx
     let reimbursed = Decimal::new((points_redeemed * 8) as i64, 3); // $x.xxx
 
     sqlx::query(
@@ -219,9 +216,9 @@ pub struct CssScanRequest {
     pub business_id: Uuid,
     pub business_name: Option<String>,
     pub business_category: Option<String>,
-    pub scan_type: String,             // purchase | redeem | checkin | visit
+    pub scan_type: String, // purchase | redeem | checkin | visit
     pub transaction_amount: Option<Decimal>,
-    pub points: Option<i32>,           // for manual redeem; required for redeem
+    pub points: Option<i32>, // for manual redeem; required for redeem
     pub transaction_id: Option<String>,
 }
 
@@ -244,20 +241,42 @@ pub async fn clearhouse_scan(
     ensure_treasury(&state.db, network_id).await?;
 
     let program_id = find_or_create_network_program(&state.db, network_id).await?;
-    let member_id = find_or_create_network_member(&state.db, program_id, req.visitor_account_id, network_id).await?;
+    let member_id =
+        find_or_create_network_member(&state.db, program_id, req.visitor_account_id, network_id)
+            .await?;
 
-    let business_name = req.business_name.clone().unwrap_or_else(|| "Business".to_string());
+    let business_name = req
+        .business_name
+        .clone()
+        .unwrap_or_else(|| "Business".to_string());
 
     match req.scan_type.as_str() {
         "redeem" => {
-            let points = req.points.ok_or_else(|| {
-                AppError::BadRequest("points required for redemption".into())
-            })?;
-            redeem(&state, network_id, program_id, member_id, &req, business_name, points).await
+            let points = req
+                .points
+                .ok_or_else(|| AppError::BadRequest("points required for redemption".into()))?;
+            redeem(
+                &state,
+                network_id,
+                program_id,
+                member_id,
+                &req,
+                business_name,
+                points,
+            )
+            .await
         }
         _ => {
             // purchase / checkin / visit => issuance (bill issuing business)
-            issue(&state, network_id, program_id, member_id, &req, business_name).await
+            issue(
+                &state,
+                network_id,
+                program_id,
+                member_id,
+                &req,
+                business_name,
+            )
+            .await
         }
     }
 }
@@ -378,15 +397,16 @@ async fn redeem(
     let sqlx = &state.db;
 
     // Check balance
-    let balance: i32 = sqlx::query_scalar("SELECT points_balance FROM loyalty_members WHERE id = $1")
-        .bind(member_id)
-        .fetch_one(sqlx)
-        .await
-        .map_err(|e| AppError::Database(e))?;
+    let balance: i32 =
+        sqlx::query_scalar("SELECT points_balance FROM loyalty_members WHERE id = $1")
+            .bind(member_id)
+            .fetch_one(sqlx)
+            .await
+            .map_err(|e| AppError::Database(e))?;
     if balance < points {
-        return Err(AppError::BadRequest(
-            format!("Insufficient points: have {balance}, need {points}"),
-        ));
+        return Err(AppError::BadRequest(format!(
+            "Insufficient points: have {balance}, need {points}"
+        )));
     }
 
     // Category cap
@@ -406,8 +426,8 @@ async fn redeem(
     // Enforce cap vs transaction amount. 1 point = 1 cent ($0.01).
     // points_value_cents must be <= max_pct% of the invoice amount in cents.
     if let Some(amount) = req.transaction_amount {
-        let amount_cents = (amount * Decimal::ONE_HUNDRED).floor();       // invoice in cents
-        let points_value_cents = Decimal::from(points);               // 1 pt = 1 cent
+        let amount_cents = (amount * Decimal::ONE_HUNDRED).floor(); // invoice in cents
+        let points_value_cents = Decimal::from(points); // 1 pt = 1 cent
         let max_allowed_cents = (amount_cents * Decimal::from(max_pct)) / Decimal::ONE_HUNDRED;
         if points_value_cents > max_allowed_cents && max_pct < 100 {
             return Err(AppError::BadRequest(format!(
@@ -490,7 +510,10 @@ async fn redeem(
          VALUES ($1, 'redemption', $2, -$3)",
     )
     .bind(member_id)
-    .bind(format!("Redeemed {points} {} at {business_name}", "ZaarCash"))
+    .bind(format!(
+        "Redeemed {points} {} at {business_name}",
+        "ZaarCash"
+    ))
     .bind(points)
     .execute(sqlx)
     .await
@@ -653,7 +676,9 @@ pub async fn upsert_category_cap(
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let network_id = directory_network(&state.db, directory_id).await?;
     let Some(network_id) = network_id else {
-        return Err(AppError::BadRequest("Directory not part of a network".into()));
+        return Err(AppError::BadRequest(
+            "Directory not part of a network".into(),
+        ));
     };
 
     if req.max_redeem_percent < 0 || req.max_redeem_percent > 100 {
@@ -673,7 +698,9 @@ pub async fn upsert_category_cap(
     .await
     .map_err(|e| AppError::Database(e))?;
 
-    Ok(Json(json!({ "success": true, "category": req.category, "max_redeem_percent": req.max_redeem_percent })))
+    Ok(Json(
+        json!({ "success": true, "category": req.category, "max_redeem_percent": req.max_redeem_percent }),
+    ))
 }
 
 /// POST /api/v1/networks/:slug/clear/expire   (rolling 12-month expiry)
@@ -753,7 +780,10 @@ pub async fn clearing_logs(
     let Some(network_id) = network_id else {
         return Ok(Json(json!({ "items": [], "count": 0 })));
     };
-    let limit: i64 = params.get("limit").and_then(|l| l.parse().ok()).unwrap_or(50);
+    let limit: i64 = params
+        .get("limit")
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(50);
 
     let issued: Vec<(Uuid, i32, i32, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         "SELECT member_id, points_issued, total_billed_cents, business_name, created_at FROM point_issuance_log WHERE network_id = $1 ORDER BY created_at DESC LIMIT $2",

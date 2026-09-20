@@ -1,8 +1,8 @@
 //! Shared application state.
 
-use sqlx::PgPool;
 use crate::config::AppConfig;
 use crate::template_engine::TemplateEngine;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct AppState {

@@ -9,11 +9,11 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
-use crate::handlers::provider_keys_handler::resolve_provider_key;
 use crate::handlers::pipeline::{
     find_existing_by_phone, find_existing_by_website, pipeline_ingest, IngestBusiness,
     IngestRequest,
 };
+use crate::handlers::provider_keys_handler::resolve_provider_key;
 use crate::AppState;
 
 // ── Scraper Configuration ──
@@ -403,7 +403,8 @@ pub async fn populate_category(
         .unwrap_or_else(|| format!("{} restaurants in {}", cat_name, req.location));
     let max_results = req.max_results.unwrap_or(20).min(60);
 
-    let api_key = crate::handlers::data_company::get_google_api_key(&s, Some(&dir_id.to_string())).await?;
+    let api_key =
+        crate::handlers::data_company::get_google_api_key(&s, Some(&dir_id.to_string())).await?;
 
     let url = format!(
         "https://maps.googleapis.com/maps/api/place/textsearch/json?query={}&key={}&maxresults={}",
@@ -446,13 +447,7 @@ pub async fn populate_category(
         let slug: String = name
             .to_lowercase()
             .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() {
-                    c
-                } else {
-                    '-'
-                }
-            })
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
             .collect::<String>()
             .split('-') // collapse runs
             .filter(|p| !p.is_empty())

@@ -3,16 +3,40 @@
 
 /// Known tracking/UTM parameters that should be stripped from URLs.
 const TRACKING_PARAMS: &[&str] = &[
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "utm_id", "utm_name", "utm_cid",
-    "utm-source", "utm-medium", "utm-campaign",  // hyphen variants
-    "fbclid", "gclid", "gclsrc", "dclid", "msclkid", "twclid",
-    "y_source", "yclid",
-    "igshid", "ref", "ref_src", "ref_url",
-    "source", "mc_cid", "mc_eid",
-    "_ga", "_gl",
-    "campaign_id", "adgroup_id", "ad_id",
-    "wickedid", "wbraid", "gbraid",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "utm_id",
+    "utm_name",
+    "utm_cid",
+    "utm-source",
+    "utm-medium",
+    "utm-campaign", // hyphen variants
+    "fbclid",
+    "gclid",
+    "gclsrc",
+    "dclid",
+    "msclkid",
+    "twclid",
+    "y_source",
+    "yclid",
+    "igshid",
+    "ref",
+    "ref_src",
+    "ref_url",
+    "source",
+    "mc_cid",
+    "mc_eid",
+    "_ga",
+    "_gl",
+    "campaign_id",
+    "adgroup_id",
+    "ad_id",
+    "wickedid",
+    "wbraid",
+    "gbraid",
     "hsCtaTracking",
 ];
 
@@ -94,7 +118,10 @@ mod tests {
     fn test_strip_utm_params() {
         let dirty = "https://www.aspendental.com/providers/Duy-Truong/1134614878/?utm_source=googleplaces&utm_medium=lociqgoogleplaces&utm_campaign=&utm_content=listing";
         let clean = strip_tracking_params(dirty);
-        assert_eq!(clean, "https://www.aspendental.com/providers/Duy-Truong/1134614878/");
+        assert_eq!(
+            clean,
+            "https://www.aspendental.com/providers/Duy-Truong/1134614878/"
+        );
     }
 
     #[test]
@@ -106,7 +133,10 @@ mod tests {
 
     #[test]
     fn test_no_params() {
-        assert_eq!(strip_tracking_params("https://example.com"), "https://example.com");
+        assert_eq!(
+            strip_tracking_params("https://example.com"),
+            "https://example.com"
+        );
     }
 
     #[test]
@@ -125,15 +155,22 @@ mod tests {
 
     #[test]
     fn test_display_domain() {
-        assert_eq!(display_domain("https://www.aspendental.com/providers/Duy-Truong/"), "aspendental.com");
-        assert_eq!(display_domain("http://frankgayservices.com/service-area/orlando/"), "frankgayservices.com");
+        assert_eq!(
+            display_domain("https://www.aspendental.com/providers/Duy-Truong/"),
+            "aspendental.com"
+        );
+        assert_eq!(
+            display_domain("http://frankgayservices.com/service-area/orlando/"),
+            "frankgayservices.com"
+        );
         assert_eq!(display_domain("https://example.com"), "example.com");
         assert_eq!(display_domain("https://www.example.com"), "example.com");
     }
 
     #[test]
     fn test_clean_url_pair() {
-        let (clean, display) = clean_url_pair("https://www.example.com/page?utm_source=g&ref=abc&good=1");
+        let (clean, display) =
+            clean_url_pair("https://www.example.com/page?utm_source=g&ref=abc&good=1");
         assert_eq!(clean, "https://www.example.com/page?good=1");
         assert_eq!(display, "example.com");
     }

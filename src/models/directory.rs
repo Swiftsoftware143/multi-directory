@@ -159,8 +159,6 @@ pub struct CategoryBulkResult {
     pub affected_categories: usize,
 }
 
-
-
 // ── Business ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -478,7 +476,6 @@ pub struct PaginatedResponse<T: Serialize> {
     pub total: i64,
     pub total_pages: i64,
 }
-
 
 // ── BlogPost ─────────────────────────────────────────────────────────────────
 

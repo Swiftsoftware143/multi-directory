@@ -26,11 +26,7 @@ pub const VALID_CTA_TYPES: &[&str] = &[
 /// * `business` — the business JSON object (must contain id, city/slug if available, website, phone).
 /// * `meta_data` — the business_meta.meta_data JSONB, which may contain overrides like `book_url`.
 /// * `base_path` — directory base path (e.g. "/atlanta"); used for booking links.
-pub fn resolve_cta_url(
-    cta_type: &str,
-    business: &Value,
-    meta_data: &Value,
-) -> String {
+pub fn resolve_cta_url(cta_type: &str, business: &Value, meta_data: &Value) -> String {
     let business_id = business.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let city_slug = business
         .get("city")
@@ -41,10 +37,7 @@ pub fn resolve_cta_url(
         .get("website")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let phone = business
-        .get("phone")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let phone = business.get("phone").and_then(|v| v.as_str()).unwrap_or("");
 
     match cta_type {
         "book_now" => format!("/book/{}/{}", city_slug, business_id),

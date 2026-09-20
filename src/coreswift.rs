@@ -72,7 +72,9 @@ pub async fn resolve_config(
         }
     }
 
-    Err(format!("No CoreSwift tenant provisioned for directory {directory_id}"))
+    Err(format!(
+        "No CoreSwift tenant provisioned for directory {directory_id}"
+    ))
 }
 
 fn cs_url(path: &str) -> String {
@@ -112,7 +114,9 @@ pub async fn provision_tenant(
         return Err(format!("CoreSwift register returned {status}: {body}"));
     }
 
-    let body: Value = resp.json().await
+    let body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift register parse failed: {e}"))?;
 
     let tenant_id = body["account"]["id"]
@@ -215,10 +219,13 @@ async fn create_list(token: &str, _name: &str, list_name: &str) -> Result<Uuid, 
         return Err(format!("CoreSwift list create returned {status}: {body}"));
     }
 
-    let body: Value = resp.json().await
+    let body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift create list '{list_name}' response parse: {e}"))?;
 
-    body["id"].as_str()
+    body["id"]
+        .as_str()
         .or_else(|| body["list"]["id"].as_str())
         .ok_or_else(|| format!("Missing list id: {body}"))
         .and_then(|s| Uuid::parse_str(s).map_err(|e| format!("Bad list UUID: {e}")))
@@ -253,20 +260,20 @@ pub async fn create_tag_internal(
         return Err(format!("CoreSwift tag create returned {status}: {body}"));
     }
 
-    let body: Value = resp.json().await
+    let body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift create tag '{tag_name}' response parse: {e}"))?;
 
-    body["id"].as_str()
+    body["id"]
+        .as_str()
         .ok_or_else(|| format!("Missing tag id: {body}"))
         .and_then(|s| Uuid::parse_str(s).map_err(|e| format!("Bad tag UUID: {e}")))
 }
 
 /// Look up a tag by name on a specific CoreSwift tenant via the internal API.
 /// Uses POST /api/internal/tags/list which returns all tags for a tenant.
-pub async fn find_tag_by_name(
-    tenant_id: Uuid,
-    tag_name: &str,
-) -> Result<Option<Uuid>, String> {
+pub async fn find_tag_by_name(tenant_id: Uuid, tag_name: &str) -> Result<Option<Uuid>, String> {
     let base = coreswift_url();
     let key = internal_key();
     let resp = HTTP
@@ -285,7 +292,9 @@ pub async fn find_tag_by_name(
         return Err(format!("CoreSwift list tags returned {status}: {body}"));
     }
 
-    let body: Value = resp.json().await
+    let body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift list tags response parse: {e}"))?;
 
     if let Some(tags) = body["tags"].as_array() {
@@ -329,11 +338,12 @@ pub async fn find_tenant_by_slug(slug: &str) -> Result<Option<Uuid>, String> {
         return Err(format!("CoreSwift tenant lookup returned {status}: {body}"));
     }
 
-    let body: Value = resp.json().await
+    let body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift tenant lookup response parse: {e}"))?;
 
-    Ok(body["id"].as_str()
-        .and_then(|s| Uuid::parse_str(s).ok()))
+    Ok(body["id"].as_str().and_then(|s| Uuid::parse_str(s).ok()))
 }
 
 /// Push a business owner to the CRM — creates a contact and adds to "Claimed Businesses" list.
@@ -344,14 +354,12 @@ pub async fn push_claimed_business(
     owner_name: Option<&str>,
     owner_phone: Option<&str>,
 ) -> Result<(), String> {
-    let dir_id = sqlx::query_scalar::<_, Uuid>(
-        "SELECT directory_id FROM businesses WHERE id = $1"
-    )
-    .bind(business_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| format!("DB error: {e}"))?
-    .ok_or_else(|| format!("Business {business_id} not found"))?;
+    let dir_id = sqlx::query_scalar::<_, Uuid>("SELECT directory_id FROM businesses WHERE id = $1")
+        .bind(business_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| format!("DB error: {e}"))?
+        .ok_or_else(|| format!("Business {business_id} not found"))?;
 
     let (tenant_id, claimed_list_id, _, _) = resolve_config(db, dir_id).await?;
     let base = coreswift_url();
@@ -376,10 +384,14 @@ pub async fn push_claimed_business(
     let c_status = resp.status();
     if !c_status.is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("CoreSwift contact create returned {c_status}: {body}"));
+        return Err(format!(
+            "CoreSwift contact create returned {c_status}: {body}"
+        ));
     }
 
-    let contact_body: Value = resp.json().await
+    let contact_body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift contact response parse: {e}"))?;
 
     let contact_id_str = contact_body["id"]
@@ -388,7 +400,9 @@ pub async fn push_claimed_business(
 
     // Add to claimed businesses list
     let resp = HTTP
-        .post(format!("{base}/api/internal/lists/{claimed_list_id}/members"))
+        .post(format!(
+            "{base}/api/internal/lists/{claimed_list_id}/members"
+        ))
         .header("x-internal-key", &key)
         .json(&json!({
             "tenant_id": tenant_id.to_string(),
@@ -405,15 +419,14 @@ pub async fn push_claimed_business(
     }
 
     // Assign biz-zaarhub-interested tag on the ZaarHub parent tenant
-    let dir_slug: String = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT slug FROM directories WHERE id = $1"
-    )
-    .bind(dir_id)
-    .fetch_optional(db)
-    .await
-    .unwrap_or(None)
-    .flatten()
-    .unwrap_or_default();
+    let dir_slug: String =
+        sqlx::query_scalar::<_, Option<String>>("SELECT slug FROM directories WHERE id = $1")
+            .bind(dir_id)
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None)
+            .flatten()
+            .unwrap_or_default();
 
     if !dir_slug.is_empty() {
         // Derive short prefix (palm-bay → pb)
@@ -440,7 +453,9 @@ pub async fn push_claimed_business(
                 Ok(None) => {
                     tracing::warn!("[coreswift] Tag '{interested_tag_name}' not found on ZaarHub parent tenant — creating it");
                     // Create it on the fly so assignment still works
-                    if let Ok(tag_id) = create_tag_internal(zh_tid, &interested_tag_name, "#3b82f6").await {
+                    if let Ok(tag_id) =
+                        create_tag_internal(zh_tid, &interested_tag_name, "#3b82f6").await
+                    {
                         if let Ok(contact_uuid) = Uuid::parse_str(contact_id_str) {
                             let _ = assign_contact_tag(zh_tid, contact_uuid, tag_id).await;
                             tracing::info!("[coreswift] Created + assigned '{interested_tag_name}' tag to claimed business contact");
@@ -448,7 +463,9 @@ pub async fn push_claimed_business(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("[coreswift] Failed to look up tag '{interested_tag_name}': {e}");
+                    tracing::warn!(
+                        "[coreswift] Failed to look up tag '{interested_tag_name}': {e}"
+                    );
                 }
             }
         }
@@ -486,21 +503,27 @@ pub async fn push_newsletter_signup(
     let c_status = resp.status();
     if !c_status.is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("CoreSwift contact create returned {c_status}: {body}"));
+        return Err(format!(
+            "CoreSwift contact create returned {c_status}: {body}"
+        ));
     }
 
-    let contact_body: Value = resp.json().await
+    let contact_body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift contact response parse: {e}"))?;
 
     let contact_id_str = contact_body["id"]
         .as_str()
         .ok_or_else(|| format!("Missing contact id: {contact_body}"))?;
-    
-    let contact_id = Uuid::parse_str(contact_id_str)
-        .map_err(|e| format!("Bad contact UUID: {e}"))?;
+
+    let contact_id =
+        Uuid::parse_str(contact_id_str).map_err(|e| format!("Bad contact UUID: {e}"))?;
 
     let resp = HTTP
-        .post(format!("{base}/api/internal/lists/{newsletter_list_id}/members"))
+        .post(format!(
+            "{base}/api/internal/lists/{newsletter_list_id}/members"
+        ))
         .header("x-internal-key", &key)
         .json(&json!({
             "tenant_id": tenant_id.to_string(),
@@ -518,7 +541,7 @@ pub async fn push_newsletter_signup(
 
     // If there's a city tag, assign it
     if let Ok(Some((tag_id,))) = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT tag_id FROM _city_tags WHERE directory_id = $1 LIMIT 1"
+        "SELECT tag_id FROM _city_tags WHERE directory_id = $1 LIMIT 1",
     )
     .bind(directory_id)
     .fetch_optional(db)
@@ -580,14 +603,18 @@ pub async fn add_to_claimed_list(
         .await
         .map_err(|e| format!("CoreSwift search failed: {e}"))?;
 
-    let body: Value = resp.json().await
+    let body: Value = resp
+        .json()
+        .await
         .map_err(|e| format!("CoreSwift search response parse: {e}"))?;
 
     if let Some(contacts) = body["contacts"].as_array() {
         if let Some(contact) = contacts.first() {
             if let Some(cid) = contact["id"].as_str() {
                 let resp = HTTP
-                    .post(format!("{base}/api/internal/lists/{claimed_list_id}/members"))
+                    .post(format!(
+                        "{base}/api/internal/lists/{claimed_list_id}/members"
+                    ))
                     .header("x-internal-key", &key)
                     .json(&json!({
                         "tenant_id": tenant_id.to_string(),
@@ -697,14 +724,12 @@ pub async fn provision_directory_resources(
     let prefix = format!("{}-", prefix);
 
     // Step 1: Set booking_calendar_slug
-    sqlx::query(
-        "UPDATE directories SET booking_calendar_slug = $1 WHERE id = $2"
-    )
-    .bind(&prefix)
-    .bind(directory_id)
-    .execute(db)
-    .await
-    .map_err(|e| format!("Failed to set booking_calendar_slug: {e}"))?;
+    sqlx::query("UPDATE directories SET booking_calendar_slug = $1 WHERE id = $2")
+        .bind(&prefix)
+        .bind(directory_id)
+        .execute(db)
+        .await
+        .map_err(|e| format!("Failed to set booking_calendar_slug: {e}"))?;
 
     tracing::info!("[provision] Set booking_calendar_slug='{prefix}' for directory {directory_id}");
 
@@ -713,7 +738,7 @@ pub async fn provision_directory_resources(
         r#"SELECT COALESCE(d.coreswift_tenant_id, n.coreswift_tenant_id)
            FROM directories d
            LEFT JOIN networks n ON n.id = d.network_id
-           WHERE d.id = $1"#
+           WHERE d.id = $1"#,
     )
     .bind(directory_id)
     .fetch_optional(db)
@@ -727,7 +752,9 @@ pub async fn provision_directory_resources(
         let key = internal_key();
 
         // Derive city name for display
-        let city_name = directory_slug.replace('-', " ").split(' ')
+        let city_name = directory_slug
+            .replace('-', " ")
+            .split(' ')
             .map(|w| {
                 let mut c = w.chars();
                 match c.next() {
@@ -769,7 +796,9 @@ pub async fn provision_directory_resources(
             .send()
             .await;
 
-        tracing::info!("[provision] Booking calendar '{prefix}' + default slot ready for tenant {tenant_id}");
+        tracing::info!(
+            "[provision] Booking calendar '{prefix}' + default slot ready for tenant {tenant_id}"
+        );
 
         // Step 2b: Create city-prefixed tags on the directory's tenant
         // Listing tags — these define the business tiers available in the directory
@@ -784,7 +813,11 @@ pub async fn provision_directory_resources(
         let city_name_used = city_name.clone();
 
         for (tag_type, color) in &listing_tags {
-            let full_name = format!("{}-{}", city_name_used.to_lowercase().replace(' ', "-"), tag_type);
+            let full_name = format!(
+                "{}-{}",
+                city_name_used.to_lowercase().replace(' ', "-"),
+                tag_type
+            );
             let _ = HTTP
                 .post(format!("{}/api/internal/tags", base))
                 .header("x-internal-key", &key)
@@ -828,7 +861,9 @@ pub async fn provision_directory_resources(
                     .await;
             }
 
-            tracing::info!("[provision] ZaarHub tracking tags created for '{prefix}' on parent tenant");
+            tracing::info!(
+                "[provision] ZaarHub tracking tags created for '{prefix}' on parent tenant"
+            );
         }
 
         tracing::info!("[provision] All city tags created for '{prefix}'");
@@ -900,19 +935,48 @@ pub async fn resolve_cs_conn(db: &PgPool, directory_id: Uuid) -> Result<CoreSwif
     .map_err(|e| format!("DB error resolving CoreSwift conn: {e}"))?
     .ok_or_else(|| format!("Directory {directory_id} not found"))?;
 
-    let (dir_tid, _net, dir_key, dir_base, dir_ul, dir_bl, dir_sl, net_tid, net_key, net_base, net_ul, net_bl, net_sl) = row;
+    let (
+        dir_tid,
+        _net,
+        dir_key,
+        dir_base,
+        dir_ul,
+        dir_bl,
+        dir_sl,
+        net_tid,
+        net_key,
+        net_base,
+        net_ul,
+        net_bl,
+        net_sl,
+    ) = row;
 
     // Tenant: dir first, then net
-    let tenant_id = dir_tid.or(net_tid).ok_or_else(|| {
-        format!("No CoreSwift tenant provisioned for directory {directory_id}")
-    })?;
+    let tenant_id = dir_tid
+        .or(net_tid)
+        .ok_or_else(|| format!("No CoreSwift tenant provisioned for directory {directory_id}"))?;
 
     // Key: dir first, then net
     let (enc_key, base_url) = match (&dir_key, &dir_base) {
-        (Some(k), b) => (k.clone(), b.clone().filter(|s| !s.is_empty()).unwrap_or_else(coreswift_url)),
+        (Some(k), b) => (
+            k.clone(),
+            b.clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(coreswift_url),
+        ),
         (None, _) => match &net_key {
-            Some(k) => (k.clone(), net_base.clone().filter(|s| !s.is_empty()).unwrap_or_else(coreswift_url)),
-            None => return Err(format!("No CoreSwift personal key configured for directory {directory_id}")),
+            Some(k) => (
+                k.clone(),
+                net_base
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(coreswift_url),
+            ),
+            None => {
+                return Err(format!(
+                    "No CoreSwift personal key configured for directory {directory_id}"
+                ))
+            }
         },
     };
 
@@ -979,7 +1043,9 @@ async fn push_external_contact(
     let status = resp.status();
     if !status.is_success() {
         let rbody = resp.text().await.unwrap_or_default();
-        return Err(format!("CoreSwift external contact returned {status}: {rbody}"));
+        return Err(format!(
+            "CoreSwift external contact returned {status}: {rbody}"
+        ));
     }
 
     Ok(())
@@ -1052,7 +1118,22 @@ pub async fn push_loyalty_member(
     .map_err(|e| format!("DB error loading loyalty member: {e}"))?
     .ok_or_else(|| format!("Loyalty member {member_id} not found"))?;
 
-    let (name, email, phone, points_balance, lifetime_points, tier_name, member_since, last_checkin_at, total_checkins, current_streak, referral_code, total_referrals, birthday, program_name) = row;
+    let (
+        name,
+        email,
+        phone,
+        points_balance,
+        lifetime_points,
+        tier_name,
+        member_since,
+        last_checkin_at,
+        total_checkins,
+        current_streak,
+        referral_code,
+        total_referrals,
+        birthday,
+        program_name,
+    ) = row;
     let (first_name, last_name) = split_name(&name);
 
     let conn = resolve_cs_conn(db, directory_id).await?;
@@ -1063,22 +1144,35 @@ pub async fn push_loyalty_member(
     fields.insert("total_checkins".into(), serde_json::json!(total_checkins));
     fields.insert("current_streak".into(), serde_json::json!(current_streak));
     fields.insert("total_referrals".into(), serde_json::json!(total_referrals));
-    fields.insert("member_since".into(), serde_json::json!(member_since.format("%Y-%m-%d").to_string()));
+    fields.insert(
+        "member_since".into(),
+        serde_json::json!(member_since.format("%Y-%m-%d").to_string()),
+    );
     if let Some(t) = &tier_name {
         fields.insert("tier".into(), serde_json::json!(t));
     }
     if let Some(lc) = &last_checkin_at {
-        fields.insert("last_checkin_at".into(), serde_json::json!(lc.format("%Y-%m-%d").to_string()));
+        fields.insert(
+            "last_checkin_at".into(),
+            serde_json::json!(lc.format("%Y-%m-%d").to_string()),
+        );
     }
     if let Some(rc) = &referral_code {
         fields.insert("referral_code".into(), serde_json::json!(rc));
     }
     if let Some(bd) = &birthday {
-        fields.insert("birthday".into(), serde_json::json!(bd.format("%Y-%m-%d").to_string()));
+        fields.insert(
+            "birthday".into(),
+            serde_json::json!(bd.format("%Y-%m-%d").to_string()),
+        );
     }
     fields.insert("loyalty_program".into(), serde_json::json!(program_name));
 
-    let mut body = build_contact_body(&conn, ParticipantType::User, &["loyalty-member".to_string()]);
+    let mut body = build_contact_body(
+        &conn,
+        ParticipantType::User,
+        &["loyalty-member".to_string()],
+    );
     body.insert("first_name".into(), serde_json::json!(first_name));
     body.insert("last_name".into(), serde_json::json!(last_name));
     body.insert("email".into(), serde_json::json!(email));
@@ -1097,17 +1191,20 @@ pub async fn push_loyalty_business(
     directory_id: Uuid,
     business_id: Uuid,
 ) -> Result<(), String> {
-    let row = sqlx::query_as::<_, (
-        String, // business name
-        Option<String>, // email
-        Option<String>, // phone
-        Option<String>, // website
-        Option<String>, // city
-        Option<String>, // state
-        Option<String>, // business_type
-        i64,    // deals count
-        i64,    // events count
-    )>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,         // business name
+            Option<String>, // email
+            Option<String>, // phone
+            Option<String>, // website
+            Option<String>, // city
+            Option<String>, // state
+            Option<String>, // business_type
+            i64,            // deals count
+            i64,            // events count
+        ),
+    >(
         r#"SELECT
              b.name,
              b.email,
@@ -1133,13 +1230,20 @@ pub async fn push_loyalty_business(
 
     let mut fields = serde_json::Map::new();
     fields.insert("loyalty_deals_count".into(), serde_json::json!(deals_count));
-    fields.insert("loyalty_events_count".into(), serde_json::json!(events_count));
+    fields.insert(
+        "loyalty_events_count".into(),
+        serde_json::json!(events_count),
+    );
     fields.insert("loyalty_participant".into(), serde_json::json!("business"));
     if let Some(bt) = &business_type {
         fields.insert("business_type".into(), serde_json::json!(bt));
     }
 
-    let mut body = build_contact_body(&conn, ParticipantType::Business, &["loyalty-business".to_string()]);
+    let mut body = build_contact_body(
+        &conn,
+        ParticipantType::Business,
+        &["loyalty-business".to_string()],
+    );
     body.insert("first_name".into(), serde_json::json!(name));
     body.insert("last_name".into(), serde_json::json!(""));
     body.insert("email".into(), serde_json::json!(email));

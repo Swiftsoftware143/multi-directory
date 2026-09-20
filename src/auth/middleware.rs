@@ -4,9 +4,9 @@ use axum::{
     response::Response,
 };
 
-use crate::AppState;
-use crate::error::AppError;
 use super::models::Claims;
+use crate::error::AppError;
+use crate::AppState;
 
 pub async fn auth_middleware(
     State(s): State<AppState>,
@@ -19,11 +19,11 @@ pub async fn auth_middleware(
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let token = auth_header.strip_prefix("Bearer ")
+    let token = auth_header
+        .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let claims = verify_token(token, &s.config.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     let mut req = req;
     req.extensions_mut().insert(claims);
@@ -32,7 +32,7 @@ pub async fn auth_middleware(
 }
 
 pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
-    use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+    use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 
     let decoding_key = DecodingKey::from_secret(secret.as_bytes());
     let mut validation = Validation::new(Algorithm::HS256);
@@ -46,7 +46,7 @@ pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::e
 }
 
 pub fn create_token(claims: &Claims, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
-    use jsonwebtoken::{encode, Header, EncodingKey};
+    use jsonwebtoken::{encode, EncodingKey, Header};
 
     let encoding_key = EncodingKey::from_secret(secret.as_bytes());
     Ok(encode(&Header::default(), claims, &encoding_key)?)

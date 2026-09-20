@@ -39,7 +39,10 @@ const DEFAULT_BG: &str = "#ffffff";
 const DEFAULT_TEXT: &str = "#1f2937";
 
 fn clean_css(value: &Option<String>) -> Option<String> {
-    value.as_ref().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    value
+        .as_ref()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// Build the branded `<head>` fragment for a directory (or empty string if no branding).
@@ -144,11 +147,16 @@ pub fn inject_branding(raw: &str, branding: Option<&DirectoryBranding>) -> Strin
 }
 
 fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn escape_css_url(s: &str) -> String {
-    s.replace("\\", "\\\\").replace('"', "\\22").replace('\'', "\\27")
+    s.replace("\\", "\\\\")
+        .replace('"', "\\22")
+        .replace('\'', "\\27")
 }
 
 /// Fetch a directory's branding row by directory id, if one exists.
@@ -175,14 +183,13 @@ pub fn slug_from_dir_path(path: &str) -> Option<String> {
 
 /// Fetch branding by directory slug (resolved through the directories table).
 pub async fn fetch_branding_by_slug(pool: &PgPool, slug: &str) -> Option<DirectoryBranding> {
-    let row: Option<(Uuid,)> = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM directories WHERE slug = $1 LIMIT 1",
-    )
-    .bind(slug)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let row: Option<(Uuid,)> =
+        sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1 LIMIT 1")
+            .bind(slug)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
     match row {
         Some((id,)) => fetch_branding(pool, id).await,
         None => None,

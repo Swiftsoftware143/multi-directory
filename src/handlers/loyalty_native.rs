@@ -586,15 +586,13 @@ pub struct MilestoneInput {
     pub once_per_member: Option<bool>,
 }
 
-async fn owned_program_id(
-    pool: &PgPool,
-    slug: &str,
-    program_id: &Uuid,
-) -> Result<Uuid, AppError> {
+async fn owned_program_id(pool: &PgPool, slug: &str, program_id: &Uuid) -> Result<Uuid, AppError> {
     let directory_id = resolve_directory_id(pool, slug).await?;
     let program = get_program(pool, program_id).await?;
     if program.directory_id != directory_id {
-        return Err(AppError::NotFound("Program not found in this directory".into()));
+        return Err(AppError::NotFound(
+            "Program not found in this directory".into(),
+        ));
     }
     Ok(directory_id)
 }
@@ -687,7 +685,9 @@ pub async fn create_reward(
 ) -> Result<Json<Value>, AppError> {
     owned_program_id(&state.db, &slug, &program_id).await?;
     if body.name.trim().is_empty() || body.reward_tag.trim().is_empty() {
-        return Err(AppError::Validation("Reward name and tag are required".into()));
+        return Err(AppError::Validation(
+            "Reward name and tag are required".into(),
+        ));
     }
     let id = Uuid::new_v4();
     sqlx::query(
@@ -754,8 +754,8 @@ pub async fn earn_reward(
     .bind(program_id)
     .fetch_optional(&state.db)
     .await?;
-    let (member_id, balance) = member_bal
-        .ok_or_else(|| AppError::NotFound("Member not found in this program".into()))?;
+    let (member_id, balance) =
+        member_bal.ok_or_else(|| AppError::NotFound("Member not found in this program".into()))?;
 
     if balance < reward.points_required {
         return Err(AppError::Validation("Insufficient points".into()));
@@ -769,7 +769,11 @@ pub async fn earn_reward(
         .await?;
 
     let earned_id = Uuid::new_v4();
-    let status = if reward.requires_approval { "pending" } else { "approved" };
+    let status = if reward.requires_approval {
+        "pending"
+    } else {
+        "approved"
+    };
     sqlx::query(
         "INSERT INTO loyalty_rewards_earned (id, member_id, tier_id, status) VALUES ($1,$2,$3,$4)",
     )
@@ -780,7 +784,9 @@ pub async fn earn_reward(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({ "earned": { "id": earned_id, "reward": reward.name, "status": status, "points_spent": reward.points_required } })))
+    Ok(Json(
+        json!({ "earned": { "id": earned_id, "reward": reward.name, "status": status, "points_spent": reward.points_required } }),
+    ))
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -816,7 +822,11 @@ pub async fn approve_reward(
     Json(body): Json<RewardApproveInput>,
 ) -> Result<Json<Value>, AppError> {
     resolve_directory_id(&state.db, &slug).await?;
-    let status = if body.approved { "approved" } else { "rejected" };
+    let status = if body.approved {
+        "approved"
+    } else {
+        "rejected"
+    };
     sqlx::query(
         "UPDATE loyalty_rewards_earned SET status = $1, approved_by = NULL, fulfilled_at = CASE WHEN $1 = 'approved' THEN now() ELSE fulfilled_at END WHERE id = $2",
     )
@@ -851,7 +861,9 @@ pub async fn create_milestone(
 ) -> Result<Json<Value>, AppError> {
     owned_program_id(&state.db, &slug, &program_id).await?;
     if body.name.trim().is_empty() || body.trigger_type.trim().is_empty() {
-        return Err(AppError::Validation("Milestone name and trigger_type are required".into()));
+        return Err(AppError::Validation(
+            "Milestone name and trigger_type are required".into(),
+        ));
     }
     let id = Uuid::new_v4();
     sqlx::query(

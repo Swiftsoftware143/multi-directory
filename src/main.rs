@@ -1,23 +1,23 @@
 #![allow(clippy::all)]
 #![allow(unused)]
 #![recursion_limit = "256"]
+mod coreswift;
 mod email;
 mod reminders;
-mod coreswift;
 
+mod auth;
+mod branding_injector;
 mod config;
 mod db;
 mod error;
-mod state;
-mod models;
 mod handlers;
-mod auth;
-mod routes;
+mod models;
 mod providers;
+mod routes;
+mod state;
 mod template_engine;
 pub mod tracking_script;
 mod utils;
-mod branding_injector;
 
 use axum::Router;
 use std::time::Duration;
@@ -25,8 +25,8 @@ use tokio::signal;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::EnvFilter;
 
-pub use state::AppState;
 pub use error::AppError;
+pub use state::AppState;
 
 #[tokio::main]
 async fn main() {
@@ -37,12 +37,22 @@ async fn main() {
         .init();
 
     let config = config::AppConfig::from_env();
-    let pool = db::connect(&config.database_url, config.db_min_connections, config.db_max_connections).await;
+    let pool = db::connect(
+        &config.database_url,
+        config.db_min_connections,
+        config.db_max_connections,
+    )
+    .await;
 
     // Connect to IncentiveSwift database as well
     let is_db_url = std::env::var("IS_DATABASE_URL")
         .expect("IS_DATABASE_URL must be set (IncentiveSwift DB for loyalty integration)");
-    let is_db = db::connect(&is_db_url, config.db_min_connections, config.db_max_connections).await;
+    let is_db = db::connect(
+        &is_db_url,
+        config.db_min_connections,
+        config.db_max_connections,
+    )
+    .await;
 
     // Run migrations
     tracing::info!("Running database migrations...");
@@ -60,7 +70,9 @@ async fn main() {
     let addr = format!("{}:{}", config.host, config.port);
     tracing::info!("Starting Multi-Directory API server on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.expect("Failed to bind address");
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Failed to bind address");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

@@ -56,17 +56,62 @@ pub fn is_valid_template(template_id: &str) -> bool {
 /// Get all available template IDs and their display names
 pub fn get_available_templates() -> Vec<TemplateInfo> {
     vec![
-        TemplateInfo { id: TEMPLATE_LOCAL_BUSINESS.to_string(), name: "Local Business".to_string(), description: "Standard business directory with search, categories, and ratings".to_string() },
-        TemplateInfo { id: TEMPLATE_FARM.to_string(), name: "Farm / Farmers Market".to_string(), description: "Farmers market, produce, pick-your-own, seasonal listings".to_string() },
-        TemplateInfo { id: TEMPLATE_RESTAURANT.to_string(), name: "Restaurant".to_string(), description: "Restaurant directory with menus, hours, delivery info".to_string() },
-        TemplateInfo { id: TEMPLATE_REAL_ESTATE.to_string(), name: "Real Estate".to_string(), description: "Property listings with agents, open houses, maps".to_string() },
-        TemplateInfo { id: TEMPLATE_MEDICAL.to_string(), name: "Medical / Healthcare".to_string(), description: "Medical providers, specialties, insurance accepted".to_string() },
-        TemplateInfo { id: TEMPLATE_SERVICE.to_string(), name: "Service Professionals".to_string(), description: "Plumbers, electricians, contractors with service areas".to_string() },
-        TemplateInfo { id: TEMPLATE_EDUCATION.to_string(), name: "Education".to_string(), description: "Schools, tutoring, colleges, and training centers".to_string() },
-        TemplateInfo { id: TEMPLATE_AUTOMOTIVE.to_string(), name: "Automotive".to_string(), description: "Auto dealers, repair shops, body shops, parts stores".to_string() },
-        TemplateInfo { id: TEMPLATE_FITNESS.to_string(), name: "Fitness &amp; Wellness".to_string(), description: "Gyms, studios, trainers, and wellness centers".to_string() },
-        TemplateInfo { id: TEMPLATE_HOSPITALITY.to_string(), name: "Hospitality".to_string(), description: "Hotels, B&amp;Bs, vacation rentals, event venues".to_string() },
-        TemplateInfo { id: TEMPLATE_BUSINESS_DETAIL.to_string(), name: "Business Detail".to_string(), description: "Individual business listing page with booking".to_string() },
+        TemplateInfo {
+            id: TEMPLATE_LOCAL_BUSINESS.to_string(),
+            name: "Local Business".to_string(),
+            description: "Standard business directory with search, categories, and ratings"
+                .to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_FARM.to_string(),
+            name: "Farm / Farmers Market".to_string(),
+            description: "Farmers market, produce, pick-your-own, seasonal listings".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_RESTAURANT.to_string(),
+            name: "Restaurant".to_string(),
+            description: "Restaurant directory with menus, hours, delivery info".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_REAL_ESTATE.to_string(),
+            name: "Real Estate".to_string(),
+            description: "Property listings with agents, open houses, maps".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_MEDICAL.to_string(),
+            name: "Medical / Healthcare".to_string(),
+            description: "Medical providers, specialties, insurance accepted".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_SERVICE.to_string(),
+            name: "Service Professionals".to_string(),
+            description: "Plumbers, electricians, contractors with service areas".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_EDUCATION.to_string(),
+            name: "Education".to_string(),
+            description: "Schools, tutoring, colleges, and training centers".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_AUTOMOTIVE.to_string(),
+            name: "Automotive".to_string(),
+            description: "Auto dealers, repair shops, body shops, parts stores".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_FITNESS.to_string(),
+            name: "Fitness &amp; Wellness".to_string(),
+            description: "Gyms, studios, trainers, and wellness centers".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_HOSPITALITY.to_string(),
+            name: "Hospitality".to_string(),
+            description: "Hotels, B&amp;Bs, vacation rentals, event venues".to_string(),
+        },
+        TemplateInfo {
+            id: TEMPLATE_BUSINESS_DETAIL.to_string(),
+            name: "Business Detail".to_string(),
+            description: "Individual business listing page with booking".to_string(),
+        },
     ]
 }
 
@@ -121,7 +166,7 @@ impl TemplateEngine {
         registry.set_strict_mode(false);
         // Allow raw HTML in templates (don't escape &, <, >, etc.)
         registry.register_escape_fn(handlebars::no_escape);
-        
+
         // Register all directory templates + business detail + saved places
         let templates = [
             (TEMPLATE_LOCAL_BUSINESS, "directory-local-business.hbs"),
@@ -143,7 +188,9 @@ impl TemplateEngine {
 
         for (id, _filename) in &templates {
             let content = match *id {
-                TEMPLATE_LOCAL_BUSINESS => include_str!("../templates/directory-local-business.hbs"),
+                TEMPLATE_LOCAL_BUSINESS => {
+                    include_str!("../templates/directory-local-business.hbs")
+                }
                 TEMPLATE_FARM => include_str!("../templates/directory-farm.hbs"),
                 TEMPLATE_RESTAURANT => include_str!("../templates/directory-restaurant.hbs"),
                 TEMPLATE_REAL_ESTATE => include_str!("../templates/directory-real-estate.hbs"),
@@ -209,14 +256,20 @@ impl TemplateEngine {
     ///
     /// Renders the directory template normally (hero, header, footer), then replaces
     /// the inner container content with the blog listing or blog post HTML.
-    pub fn render_blog_page(&self, template_id: &str, data: &Value, blog_content: &str) -> Result<String, String> {
+    pub fn render_blog_page(
+        &self,
+        template_id: &str,
+        data: &Value,
+        blog_content: &str,
+    ) -> Result<String, String> {
         let tid = if is_valid_template(template_id) {
             template_id
         } else {
             TEMPLATE_LOCAL_BUSINESS
         };
 
-        let mut html = self.registry
+        let mut html = self
+            .registry
             .render(tid, data)
             .map_err(|e| format!("Render error for template '{}': {}", tid, e))?;
 
@@ -235,23 +288,26 @@ impl TemplateEngine {
                 let mut cleaned = before.trim_end().to_string();
                 // Remove trailing </div> tags that would be the container close
                 while cleaned.ends_with("</div>") {
-                    cleaned = cleaned[..cleaned.len()-6].trim_end().to_string();
+                    cleaned = cleaned[..cleaned.len() - 6].trim_end().to_string();
                 }
-                let blog_section = format!(
-                    "{}",
-                    blog_content
-                );
+                let blog_section = format!("{}", blog_content);
                 html = format!(
                     "<div class=\x22container\x22 style=\x22padding-top:30px;padding-bottom:30px\x22>\n{}\n</div>",
                     blog_section
                 );
                 html = format!("{}\n{}\n{}", cleaned, html, after);
             } else {
-                let inner = format!("<div style=\x22max-width:1100px;margin:0 auto;padding:20px\x22>\n{}\n</div>", blog_content);
+                let inner = format!(
+                    "<div style=\x22max-width:1100px;margin:0 auto;padding:20px\x22>\n{}\n</div>",
+                    blog_content
+                );
                 html = format!("{}\n{}\n{}", before, inner, after);
             }
         } else {
-            let inner = format!("<div style=\x22max-width:1100px;margin:0 auto;padding:20px\x22>\n{}\n</div>", blog_content);
+            let inner = format!(
+                "<div style=\x22max-width:1100px;margin:0 auto;padding:20px\x22>\n{}\n</div>",
+                blog_content
+            );
             html = format!("{}\n{}", rendered, inner);
         }
 
@@ -282,18 +338,19 @@ impl Default for TemplateEngine {
 /// - `color_scheme`: optional color scheme (will be normalized)
 /// - `query`: optional search query parameters
 
-
 // -- HTML sanitization ------------------------------------------------
 
 /// Escape HTML special characters to prevent XSS
 pub fn html_escape(s: &str) -> String {
-    s.chars().map(|c| match c {
-        '<' => "&lt;".to_string(),
-        '>' => "&gt;".to_string(),
-        '"' => "&quot;".to_string(),
-        '\'' => "&#x27;".to_string(),
-        _ => c.to_string(),
-    }).collect()
+    s.chars()
+        .map(|c| match c {
+            '<' => "&lt;".to_string(),
+            '>' => "&gt;".to_string(),
+            '"' => "&quot;".to_string(),
+            '\'' => "&#x27;".to_string(),
+            _ => c.to_string(),
+        })
+        .collect()
 }
 
 /// Sanitize HTML by removing dangerous tags/attributes
@@ -317,12 +374,22 @@ pub fn sanitize_html(input: &str) -> String {
     }
     // Remove on* event handlers
     let dangerous = [
-        "onclick", "onload", "onerror", "onmouseover", "onmouseout",
-        "onkeydown", "onkeyup", "onfocus", "onblur", "onsubmit", "onchange",
+        "onclick",
+        "onload",
+        "onerror",
+        "onmouseover",
+        "onmouseout",
+        "onkeydown",
+        "onkeyup",
+        "onfocus",
+        "onblur",
+        "onsubmit",
+        "onchange",
     ];
     for attr in &dangerous {
         while let Some(pos) = output.to_lowercase().find(attr) {
-            let end = output[pos..].find(|c: char| !c.is_alphanumeric() && c != '-' && c != ':')
+            let end = output[pos..]
+                .find(|c: char| !c.is_alphanumeric() && c != '-' && c != ':')
                 .map(|p| pos + p)
                 .unwrap_or(output.len());
             let val_start = end;
@@ -330,12 +397,14 @@ pub fn sanitize_html(input: &str) -> String {
                 let quote = output[val_start + 1..].chars().next();
                 if let Some(q) = quote {
                     if q == '"' || q == '\'' {
-                        let close_quote = output[val_start + 2..].find(q)
+                        let close_quote = output[val_start + 2..]
+                            .find(q)
                             .map(|p| val_start + 2 + p + 1)
                             .unwrap_or(val_start + 2);
                         output.drain(pos..close_quote);
                     } else {
-                        let space = output[val_start..].find(|c: char| c.is_whitespace() || c == '>')
+                        let space = output[val_start..]
+                            .find(|c: char| c.is_whitespace() || c == '>')
                             .map(|p| val_start + p)
                             .unwrap_or(output.len());
                         output.drain(pos..space);

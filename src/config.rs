@@ -25,11 +25,11 @@ impl AppConfig {
             .parse::<u16>()
             .expect("Invalid APP_PORT");
 
-        let database_url = std::env::var("DATABASE_URL")
-            .expect("DATABASE_URL environment variable is required");
+        let database_url =
+            std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable is required");
 
-        let jwt_secret = std::env::var("JWT_SECRET")
-            .expect("JWT_SECRET environment variable is required");
+        let jwt_secret =
+            std::env::var("JWT_SECRET").expect("JWT_SECRET environment variable is required");
 
         let jwt_access_expiry = std::env::var("JWT_ACCESS_TOKEN_EXPIRY")
             .unwrap_or_else(|_| "86400".to_string())
@@ -51,14 +51,14 @@ impl AppConfig {
             .parse::<u32>()
             .expect("Invalid DB_MAX_CONNECTIONS");
 
-        let template_dir = std::env::var("TEMPLATE_DIR")
-            .unwrap_or_else(|_| "./templates".to_string());
+        let template_dir =
+            std::env::var("TEMPLATE_DIR").unwrap_or_else(|_| "./templates".to_string());
 
         let base_domain = std::env::var("BASE_DOMAIN")
             .unwrap_or_else(|_| "directory.swiftsoftware.net".to_string());
 
-        let admin_email = std::env::var("ADMIN_EMAIL")
-            .unwrap_or_else(|_| "admin@example.com".to_string());
+        let admin_email =
+            std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@example.com".to_string());
 
         Self {
             host,
