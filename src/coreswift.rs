@@ -1271,3 +1271,316 @@ fn split_name(full: &str) -> (String, String) {
     let last = parts.collect::<Vec<_>>().join(" ");
     (first, last)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inbound lead push — fleet standard R2: data flows DOWNWARD into CoreSwift
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// MultiDirectory is CAPTURE software: a directory enquiry, a visitor booking
+// request or an enrichment-created lead IS a lead. CoreSwift is the hub and the
+// single home for every lead, so the real capture events push their lead into the
+// tenant's CoreSwift account through the hub's external API
+// (`POST /api/external/contacts`, `Authorization: Bearer csk_…`).
+//
+// This reuses THIS module's connection + HTTP layer ([`push_external_contact`]) —
+// there is deliberately no second CoreSwift client in the app.
+//
+// Connection resolution (tenant BYOK first, never env-only):
+//   1. `provider_keys` row for provider `coreswift` belonging to the tenant that
+//      owns the capture (the row the Integration Center writes): explicit tenant
+//      → directory owner → parent-network owner → MultiDirectory platform tenant.
+//   2. the pre-existing directory/network-level key
+//      (`directories.coreswift_personal_key_encrypted` via [`resolve_cs_conn`]) so
+//      loyalty / claim / newsletter pushes keep working unchanged.
+//   3. nothing → the capture SUCCEEDS locally and the push is skipped quietly
+//      (log lines only, never a user-visible error).
+//
+// Base-URL resolution order (fleet standard, never hardcode-only):
+//   provider_keys.base_url → integration_provider_presets.base_url → CORESWIFT_URL → default.
+
+/// A lead captured by MultiDirectory, on its way to the CoreSwift hub.
+#[derive(Debug, Clone, Default)]
+pub struct LeadPayload {
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    /// Full name — split into first/last when those are not given.
+    pub name: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub company: Option<String>,
+    pub title: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub postal_code: Option<String>,
+    pub address_line1: Option<String>,
+    pub notes: Option<String>,
+    /// Hub list to put the contact in (optional).
+    pub list_id: Option<Uuid>,
+    /// Hub tags (idempotent; auto-created on the hub side).
+    pub tags: Vec<String>,
+    /// Extra key/values — the hub auto-provisions them as per-tenant custom fields.
+    pub fields: serde_json::Map<String, Value>,
+}
+
+impl LeadPayload {
+    /// The hub rejects a body with none of first_name / email / phone, so a lead
+    /// with no way to be identified is skipped rather than sent to fail.
+    fn has_identity(&self) -> bool {
+        fn nonempty(v: &Option<String>) -> bool {
+            v.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+        }
+        nonempty(&self.email) || nonempty(&self.phone) || nonempty(&self.name)
+    }
+}
+
+/// Step 2 of the base-URL resolution order.
+async fn preset_base_url(db: &PgPool, provider: &str) -> Option<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT base_url FROM integration_provider_presets \
+         WHERE key = $1 AND is_active = true AND base_url <> '' LIMIT 1",
+    )
+    .bind(provider)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+}
+
+/// The typed CoreSwift lists already recorded for a directory (informational).
+async fn directory_lists(
+    db: &PgPool,
+    directory_id: Option<Uuid>,
+) -> (Option<Uuid>, Option<Uuid>, Option<Uuid>, Option<Uuid>) {
+    let Some(dir) = directory_id else {
+        return (None, None, None, None);
+    };
+    sqlx::query_as::<_, (Option<Uuid>, Option<Uuid>, Option<Uuid>, Option<Uuid>)>(
+        "SELECT coreswift_list_id_users, coreswift_list_id_businesses, \
+                coreswift_list_id_suppliers, coreswift_tenant_id \
+         FROM directories WHERE id = $1",
+    )
+    .bind(dir)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or((None, None, None, None))
+}
+
+/// Tenant candidates for a capture, in priority order.
+async fn lead_tenant_candidates(
+    db: &PgPool,
+    tenant_id: Option<Uuid>,
+    directory_id: Option<Uuid>,
+) -> Vec<Uuid> {
+    let mut out: Vec<Uuid> = Vec::new();
+    fn add(cand: Option<Uuid>, out: &mut Vec<Uuid>) {
+        if let Some(c) = cand {
+            if !out.contains(&c) {
+                out.push(c);
+            }
+        }
+    }
+
+    add(tenant_id, &mut out);
+
+    if let Some(dir) = directory_id {
+        let row = sqlx::query_as::<_, (Option<Uuid>, Option<Uuid>)>(
+            r#"SELECT u.tenant_id, nu.tenant_id
+               FROM directories d
+               LEFT JOIN users u ON u.id = d.owner_id
+               LEFT JOIN networks n ON n.id = d.network_id
+               LEFT JOIN users nu ON nu.id = n.owner_id
+               WHERE d.id = $1"#,
+        )
+        .bind(dir)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+        if let Some((owner_tid, net_tid)) = row {
+            add(owner_tid, &mut out);
+            add(net_tid, &mut out);
+        }
+    }
+
+    // MultiDirectory is platform-operated: the Admin Panel Integration Center
+    // writes provider_keys under the platform tenant (the same place the
+    // google_places / mailgun rows live), so it is a real tenant candidate.
+    if let Ok(platform) = Uuid::parse_str("00000000-0000-0000-0000-000000000001") {
+        add(Some(platform), &mut out);
+    }
+    add(Some(Uuid::nil()), &mut out);
+    out
+}
+
+/// Resolve the CoreSwift hub connection a capture event must push through.
+/// `Ok(None)` = the tenant has not connected CoreSwift → capture proceeds locally.
+pub async fn resolve_lead_conn(
+    db: &PgPool,
+    tenant_id: Option<Uuid>,
+    directory_id: Option<Uuid>,
+) -> Result<Option<CoreSwiftConn>, String> {
+    for cand in lead_tenant_candidates(db, tenant_id, directory_id).await {
+        let row = sqlx::query_as::<_, (String, Option<String>)>(
+            r#"SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) AS api_key,
+                      CASE WHEN base_url_encrypted IS NOT NULL
+                           THEN decrypt_provider_key(base_url_encrypted)
+                           ELSE base_url END AS base_url
+               FROM provider_keys
+               WHERE tenant_id = $1 AND provider = 'coreswift' AND is_active = true
+               ORDER BY is_default DESC, updated_at DESC
+               LIMIT 1"#,
+        )
+        .bind(cand)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| format!("DB error resolving CoreSwift key: {e}"))?;
+
+        if let Some((api_key, base_url)) = row {
+            let base = base_url
+                .filter(|s| !s.trim().is_empty())
+                .or(preset_base_url(db, "coreswift").await)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(coreswift_url);
+            let (ul, bl, sl, hub_tenant) = directory_lists(db, directory_id).await;
+            return Ok(Some(CoreSwiftConn {
+                tenant_id: hub_tenant.unwrap_or(cand),
+                api_key,
+                base_url: base,
+                users_list_id: ul,
+                businesses_list_id: bl,
+                suppliers_list_id: sl,
+            }));
+        }
+    }
+
+    // Legacy path: directory/network-level key already on the directories row.
+    if let Some(dir) = directory_id {
+        if let Ok(conn) = resolve_cs_conn(db, dir).await {
+            return Ok(Some(conn));
+        }
+    }
+
+    Ok(None)
+}
+
+/// `GET {hub}/api/external/lists` — the tenant's CoreSwift lists (picker proxy).
+pub async fn hub_lists(conn: &CoreSwiftConn) -> Result<Value, String> {
+    let resp = HTTP
+        .get(format!("{}/api/external/lists", conn.base_url))
+        .header("Authorization", format!("Bearer {}", conn.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("CoreSwift lists request failed: {e}"))?;
+
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("CoreSwift lists returned {status}: {text}"));
+    }
+    serde_json::from_str::<Value>(&text).map_err(|e| format!("CoreSwift lists: bad JSON: {e}"))
+}
+
+/// Build the hub contact body from a captured lead.
+fn lead_body(conn: &CoreSwiftConn, lead: &LeadPayload) -> Value {
+    let mut body = serde_json::Map::new();
+
+    let explicit_first = lead
+        .first_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let (first, last) = match explicit_first {
+        Some(f) => (
+            f,
+            lead.last_name
+                .clone()
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+        ),
+        None => match lead
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(full) => split_name(full),
+            None => ("Lead".to_string(), String::new()),
+        },
+    };
+    body.insert("first_name".into(), json!(first));
+    body.insert("last_name".into(), json!(last));
+
+    let mut put = |k: &str, v: &Option<String>| {
+        if let Some(val) = v.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            body.insert(k.to_string(), json!(val));
+        }
+    };
+    put("email", &lead.email);
+    put("phone", &lead.phone);
+    put("company", &lead.company);
+    put("title", &lead.title);
+    put("city", &lead.city);
+    put("state", &lead.state);
+    put("postal_code", &lead.postal_code);
+    put("address_line1", &lead.address_line1);
+    put("notes", &lead.notes);
+
+    if let Some(lid) = lead.list_id.or(conn.users_list_id) {
+        body.insert("list_id".into(), json!(lid.to_string()));
+    }
+
+    let mut tags: Vec<String> = vec!["source:multidirectory".to_string()];
+    for t in &lead.tags {
+        if !t.trim().is_empty() && !tags.contains(t) {
+            tags.push(t.trim().to_string());
+        }
+    }
+    body.insert("tags".into(), json!(tags));
+    body.insert("source_app".into(), json!("multidirectory"));
+    if !lead.fields.is_empty() {
+        body.insert("fields".into(), Value::Object(lead.fields.clone()));
+    }
+
+    Value::Object(body)
+}
+
+/// THE INBOUND PATH — push one captured lead into the tenant's CoreSwift account.
+///
+/// `Ok(true)`  = pushed (a contact row now exists on the hub)
+/// `Ok(false)` = nothing to push / no CoreSwift connection for this capture
+///               (quiet skip — the capture already succeeded locally)
+/// `Err(_)`    = a real hub/gateway failure worth surfacing in another layer
+pub async fn push_lead_to_coreswift(
+    db: &PgPool,
+    tenant_id: Option<Uuid>,
+    directory_id: Option<Uuid>,
+    lead: LeadPayload,
+) -> Result<bool, String> {
+    if !lead.has_identity() {
+        tracing::debug!("[coreswift] lead push skipped: no email/phone/name to identify it");
+        return Ok(false);
+    }
+
+    let Some(conn) = resolve_lead_conn(db, tenant_id, directory_id).await? else {
+        tracing::debug!(
+            "[coreswift] lead push skipped: CoreSwift not connected (tenant {:?}, directory {:?})",
+            tenant_id,
+            directory_id
+        );
+        return Ok(false);
+    };
+
+    let body = lead_body(&conn, &lead);
+    push_external_contact(&conn, body).await?;
+    tracing::info!(
+        "[coreswift] lead pushed to CoreSwift hub ({}) for tenant {:?} / directory {:?}",
+        conn.base_url,
+        tenant_id,
+        directory_id
+    );
+    Ok(true)
+}

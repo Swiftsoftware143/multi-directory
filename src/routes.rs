@@ -1308,7 +1308,25 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route(
             "/provider-keys/:provider/test",
-            get(provider_keys_handler::test_provider_key),
+            get(provider_keys_handler::test_provider_key)
+                // Fleet standard: a REAL probe (coreswift hits the hub), so a
+                // revoked key cannot report "configured: true".
+                .post(coreswift_integration_handler::test_provider_key_live),
+        )
+        // ── Integration Center: canonical CoreSwift spoke endpoints ──
+        // Fleet standard /opt/swift/docs/integration-center-standard-2026-09-20.md
+        // THE INBOUND PATH: MultiDirectory captures the lead, CoreSwift is the hub.
+        .route(
+            "/integrations/coreswift/status",
+            get(coreswift_integration_handler::coreswift_status),
+        )
+        .route(
+            "/integrations/coreswift/lists",
+            get(coreswift_integration_handler::coreswift_lists),
+        )
+        .route(
+            "/integrations/coreswift/push",
+            post(coreswift_integration_handler::coreswift_push),
         )
         // Round 5 T0 — named keys: delete ONE key by id, and promote one key to default.
         .route(

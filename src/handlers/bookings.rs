@@ -545,6 +545,74 @@ pub async fn create_service_booking(
     // Notify business owner(s) — async, non-blocking
     let _ = notify_business_owners(&s, business_id_row, &service_name, &notes).await;
 
+    // ── THE INBOUND PATH (fleet standard R2) ──────────────────────────────────
+    // A visitor booking request IS a captured lead; CoreSwift is the hub and the
+    // single home for it. Pushed on the real capture event, fire-and-forget:
+    // not connected (or hub down) never fails the booking the visitor just made.
+    {
+        let cs_db = s.db.clone();
+        let lead_tenant = Some(Uuid::parse_str(&claims.tid).unwrap_or_else(|_| Uuid::nil()));
+        let lead_dir = Some(directory_id);
+        let biz_name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM businesses WHERE id = $1")
+                .bind(business_id_row)
+                .fetch_optional(&s.db)
+                .await
+                .ok()
+                .flatten();
+        let mut fields = serde_json::Map::new();
+        fields.insert("capture_event".into(), serde_json::json!("visitor_booking"));
+        fields.insert(
+            "service_booking_id".into(),
+            serde_json::json!(id.to_string()),
+        );
+        fields.insert(
+            "service_name".into(),
+            serde_json::json!(service_name.clone()),
+        );
+        if let Some(pref) = preferred_date_r {
+            fields.insert(
+                "preferred_date".into(),
+                serde_json::json!(pref.to_rfc3339()),
+            );
+        }
+        if let Some(t) = preferred_time.clone() {
+            fields.insert("preferred_time".into(), serde_json::json!(t));
+        }
+        let mut lead_tags = vec!["directory-booking".to_string()];
+        if let Some(svc) = service_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            lead_tags.push(svc.to_string());
+        }
+        let lead = crate::coreswift::LeadPayload {
+            email: contact_email_r.clone(),
+            phone: contact_phone.clone(),
+            company: biz_name,
+            title: Some("Booking request".to_string()),
+            notes: notes.clone(),
+            tags: lead_tags,
+            fields,
+            ..Default::default()
+        };
+        tokio::spawn(async move {
+            match crate::coreswift::push_lead_to_coreswift(&cs_db, lead_tenant, lead_dir, lead)
+                .await
+            {
+                Ok(true) => tracing::info!(
+                    "[bookings] booking lead pushed into CoreSwift ({:?})",
+                    lead_dir
+                ),
+                Ok(false) => {
+                    tracing::debug!("[bookings] CoreSwift not connected — booking kept locally")
+                }
+                Err(e) => tracing::warn!("[bookings] CoreSwift lead push failed: {e}"),
+            }
+        });
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!(ServiceBookingResponse {

@@ -55,6 +55,11 @@ pub use automation::*;
 pub use data_company::*;
 pub mod provider_keys_handler;
 pub use provider_keys_handler::*;
+
+// Integration Center — canonical CoreSwift spoke endpoints (fleet standard
+// /opt/swift/docs/integration-center-standard-2026-09-20.md).
+pub mod coreswift_integration_handler;
+pub use coreswift_integration_handler::*;
 pub mod content_seo;
 pub mod industries;
 pub mod seo_config;

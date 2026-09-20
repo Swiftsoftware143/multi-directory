@@ -9,6 +9,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::models::Claims;
@@ -180,6 +181,63 @@ pub async fn create_submission(
     .bind(req.directory_id)
     .fetch_one(&s.db)
     .await?;
+
+    // ── THE INBOUND PATH (fleet standard R2) ──────────────────────────────────
+    // A directory enquiry IS a captured lead and CoreSwift is the hub / single
+    // home for leads, so it is pushed on the real capture event — not from a
+    // manual button. Fire-and-forget and fully decoupled: no CoreSwift key, or a
+    // dead hub, never fails the enquiry the visitor just submitted.
+    {
+        let cs_db = s.db.clone();
+        let lead_tenant: Option<Uuid> = None;
+        let lead_dir = submission.directory_id;
+        let mut fields = serde_json::Map::new();
+        fields.insert("capture_event".into(), json!("directory_enquiry"));
+        fields.insert("submission_id".into(), json!(submission.id.to_string()));
+        if let Some(d) = lead_dir {
+            fields.insert("directory_id".into(), json!(d.to_string()));
+        }
+        let mut tags = vec!["directory-enquiry".to_string()];
+        if let Some(cat) = submission
+            .category
+            .as_deref()
+            .filter(|c| !c.trim().is_empty())
+        {
+            tags.push(cat.trim().to_string());
+        }
+        if let Some(city) = submission.city.as_deref().filter(|c| !c.trim().is_empty()) {
+            tags.push(city.trim().to_string());
+        }
+        let lead = crate::coreswift::LeadPayload {
+            email: submission.submitter_email.clone(),
+            phone: submission.phone.clone(),
+            name: submission.submitted_by.clone(),
+            company: Some(submission.business_name.clone()),
+            title: Some("Directory enquiry".to_string()),
+            city: submission.city.clone(),
+            state: submission.state.clone(),
+            postal_code: submission.zip.clone(),
+            address_line1: submission.address.clone(),
+            notes: submission.description.clone(),
+            tags,
+            fields,
+            ..Default::default()
+        };
+        tokio::spawn(async move {
+            match crate::coreswift::push_lead_to_coreswift(&cs_db, lead_tenant, lead_dir, lead)
+                .await
+            {
+                Ok(true) => tracing::info!(
+                    "[submissions] enquiry lead pushed into CoreSwift ({:?})",
+                    lead_dir
+                ),
+                Ok(false) => {
+                    tracing::debug!("[submissions] CoreSwift not connected — enquiry kept locally")
+                }
+                Err(e) => tracing::warn!("[submissions] CoreSwift lead push failed: {e}"),
+            }
+        });
+    }
 
     Ok((StatusCode::CREATED, Json(submission)))
 }

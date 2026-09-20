@@ -78,6 +78,12 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 /* Section headers */
 .section-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
 
+/* Integration Center nav (view id: integrations) */
+.integration-nav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.integration-nav a{font-size:.83rem;font-weight:600;color:var(--text-secondary);padding:6px 12px;border:1px solid var(--border);border-radius:999px;text-decoration:none}
+.integration-nav a:hover{color:var(--primary);border-color:var(--primary);text-decoration:none}
+.integration-nav a.active{color:var(--primary);border-color:var(--primary);background:var(--primary-light)}
+
 /* Responsive */
 @media(max-width:768px){
   .dashboard{padding:16px}
@@ -208,6 +214,15 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
   <!-- Content (shown after load) -->
   <div id="dashboardContent" style="display:none">
 
+    <!-- 🔌 App shell nav. "Integrations" opens the Integration Center (view id
+         "integrations"); the card list below it is rendered from the LIVE
+         available_providers table — never a hardcoded array in this page. -->
+    <nav class="integration-nav" id="integrationNav">
+      <a href="#businessList" id="navBusinesses" class="active" onclick="showPortalView('businesses');return false;">🏪 My Businesses</a>
+      <a href="#transfersSection" id="navTransfers" onclick="showPortalView('transfers');return false;">🔄 Ownership Transfers</a>
+      <a href="#integrations" id="navIntegrations" onclick="showPortalView('integrations');return false;">🔌 Integrations</a>
+    </nav>
+
     <!-- My Businesses -->
     <div id="businessList"></div>
 
@@ -234,6 +249,24 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 
       <div id="trIncoming"></div>
       <div id="trOutgoing"></div>
+    </div>
+
+    <!-- 🔌 Integration Center (view id: integrations)
+         Fleet standard 2026-09-20 (R1/R2): every app has an Integration Center, and
+         every app integrates natively with CoreSwift — data flows DOWNWARD into it.
+         MultiDirectory captures directory leads; CoreSwift is the hub and the single
+         home for them. The cards are rendered from the LIVE available_providers
+         catalogue (GET /api/v1/available-providers) with credentials stored per
+         tenant (BYOK, provider_keys) — nothing about the catalogue is hardcoded here. -->
+    <div id="integrations" style="margin-top:32px">
+      <div class="section-title">🔌 Integrations</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">
+        Bring your own API keys (BYOK) for the services this directory uses. Every key is stored
+        against your own account and never shared. CoreSwift CRM is the native integration: the
+        leads your directory captures — enquiries, booking requests and claimed listings — are
+        pushed into it automatically once connected.
+      </div>
+      <div class="card-grid" id="integrationCenter"></div>
     </div>
 
     <!-- Upgrade Plans -->
@@ -1099,6 +1132,187 @@ function updateIntegrationVisibility() {
   }
 }
 
+// ════════════════════════════════════════════
+// ── Integration Center (view id: integrations) ──
+// Fleet standard 2026-09-20: every app has an Integration Center listing ITS OWN
+// integrations, CoreSwift pinned first with the cross-sell CTA. The catalogue is
+// the LIVE available_providers table (GET /api/v1/available-providers) — there is
+// deliberately NO hardcoded provider array in this page. Credentials are BYOK and
+// tenant-scoped through the app's own provider_keys surface
+// (POST/DELETE /api/v1/provider-keys), and a GET never returns the raw key.
+// ════════════════════════════════════════════
+
+var _icProviders = [];
+var _icKeys = {};
+var _icCoreStatus = { connected: false };
+
+function showPortalView(view) {
+  var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations' };
+  var id = map[view] || 'businessList';
+  var el = document.getElementById(id);
+  if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations' };
+  Object.keys(links).forEach(function(k) {
+    var a = document.getElementById(links[k]);
+    if (a) a.className = (k === view) ? 'active' : '';
+  });
+  if (view === 'integrations') loadIntegrationCenter();
+}
+
+function icKeyInputId(p) { return 'icKey_' + p; }
+function icBaseInputId(p) { return 'icBase_' + p; }
+function icResultId(p) { return 'icResult_' + p; }
+
+function icCoreCrossSell() {
+  return '<div style="background:#fef3e7;border:1px solid #fcd9b6;border-radius:10px;padding:12px 14px;margin-top:12px;font-size:.83rem;line-height:1.6">' +
+    '<b>One CRM for every tool you connect.</b> Your directory is already capturing these leads — ' +
+    'CoreSwift CRM keeps them all in one place, scores them and follows up automatically. ' +
+    '<a href="https://coreswiftcrm.com" target="_blank" rel="noopener"><b>Open CoreSwift CRM →</b></a>' +
+    '<div style="margin-top:4px"><a href="https://coreswiftcrm.com/pricing" target="_blank" rel="noopener">See plans &amp; upgrade →</a></div>' +
+    '</div>';
+}
+
+async function loadIntegrationCenter() {
+  var box = document.getElementById('integrationCenter');
+  if (!box) return;
+  box.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="spinner"></div><p>Loading integrations…</p></div>';
+  try {
+    var prov = await g('/available-providers');
+    _icProviders = (prov && (prov.data || prov.providers)) || [];
+
+    var keys = { data: [] };
+    try { keys = await g('/provider-keys'); } catch (e) { keys = { data: [] }; }
+    _icKeys = {};
+    ((keys && keys.data) || []).forEach(function(k) {
+      if (!_icKeys[k.provider]) _icKeys[k.provider] = [];
+      _icKeys[k.provider].push(k);
+    });
+
+    try { _icCoreStatus = await g('/integrations/coreswift/status'); }
+    catch (e) { _icCoreStatus = { connected: false }; }
+
+    renderIntegrationCenter();
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><p style="color:var(--danger)">Failed to load integrations: ' + esc(e.message) + '</p>' +
+      '<button class="btn btn-sm" onclick="loadIntegrationCenter()">Retry</button></div>';
+  }
+}
+
+function icIsConnected(key) {
+  if (key === 'coreswift') return !!(_icCoreStatus && _icCoreStatus.connected);
+  var rows = _icKeys[key] || [];
+  for (var i = 0; i < rows.length; i++) { if (rows[i].is_active) return true; }
+  return false;
+}
+
+function icCard(p) {
+  var key = p.key;
+  var connected = icIsConnected(key);
+  var rows = _icKeys[key] || [];
+  var preview = (rows.length && rows[0].api_key) ? rows[0].api_key : '';
+  var isCore = (key === 'coreswift');
+  var style = isCore ? 'border:2px solid var(--primary);box-shadow:0 4px 14px rgba(242,127,47,.12)' : '';
+
+  var h = '<div class="card" id="iccard_' + esc(key) + '" style="' + style + '">';
+  h += '<h3>' + (isCore ? '⭐ ' : '') + esc(p.name || key) + ' ';
+  h += connected ? '<span class="badge active">Connected</span>' : '<span class="badge inactive">Not connected</span>';
+  h += '</h3>';
+  h += '<p>' + esc(p.description || '') + '</p>';
+  if (preview) h += '<p style="font-size:.78rem;color:var(--text-secondary)">Stored key: <code>' + esc(preview) + '</code></p>';
+
+  if (!connected) {
+    h += '<div class="form-group" style="margin-bottom:8px"><label style="font-size:.8rem">API key (your own — BYOK)</label>' +
+      '<input id="' + icKeyInputId(key) + '" type="password" placeholder="' + (isCore ? 'csk_…  from CoreSwift → Integration Center' : 'Paste your API key') + '" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>';
+    if (p.requires_base_url) {
+      h += '<div class="form-group" style="margin-bottom:8px"><label style="font-size:.8rem">Base URL (required)</label>' +
+        '<input id="' + icBaseInputId(key) + '" type="text" placeholder="https://…" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>';
+    }
+  }
+
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
+  if (connected) {
+    h += '<button class="btn btn-sm" onclick="icTest(\'' + esc(key) + '\')">Test connection</button>';
+    h += '<button class="btn btn-danger btn-sm" onclick="icDisconnect(\'' + esc(key) + '\')">Disconnect</button>';
+  } else {
+    h += '<button class="btn btn-primary btn-sm" onclick="icConnect(\'' + esc(key) + '\')">Connect</button>';
+    h += '<button class="btn btn-sm" onclick="icTest(\'' + esc(key) + '\')">Test connection</button>';
+  }
+  h += '</div><div id="' + icResultId(key) + '" style="margin-top:8px;font-size:.8rem"></div>';
+
+  if (isCore) h += icCoreCrossSell();
+  h += '</div>';
+  return h;
+}
+
+function renderIntegrationCenter() {
+  var box = document.getElementById('integrationCenter');
+  if (!box) return;
+  if (!_icProviders.length) {
+    box.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><p>No integrations are available right now.</p></div>';
+    return;
+  }
+  var list = _icProviders.slice();
+  // CoreSwift pinned first (the native hub integration + upsell path); the rest
+  // keep the catalogue's own order.
+  list.sort(function(a, b) {
+    if (a.key === 'coreswift') return -1;
+    if (b.key === 'coreswift') return 1;
+    return 0;
+  });
+  box.innerHTML = list.map(icCard).join('');
+}
+
+async function icConnect(provider) {
+  var out = document.getElementById(icResultId(provider));
+  var keyEl = document.getElementById(icKeyInputId(provider));
+  var baseEl = document.getElementById(icBaseInputId(provider));
+  var apiKey = keyEl ? keyEl.value.trim() : '';
+  if (!apiKey) { if (out) out.innerHTML = '⚠️ Paste your API key first.'; return; }
+  if (out) out.innerHTML = '⏳ Saving…';
+  try {
+    var body = { provider: provider, api_key: apiKey, label: 'default', is_default: true };
+    if (baseEl && baseEl.value.trim()) body.base_url = baseEl.value.trim();
+    await po('/provider-keys', body);
+    if (out) out.innerHTML = '✅ Connected';
+    await loadIntegrationCenter();
+    if (typeof loadConnectedServices === 'function') loadConnectedServices();
+  } catch (e) {
+    if (out) out.innerHTML = '❌ ' + esc(e.message);
+  }
+}
+
+async function icDisconnect(provider) {
+  if (!window.confirm('Disconnect ' + provider + ' and delete its stored key?')) return;
+  var out = document.getElementById(icResultId(provider));
+  if (out) out.innerHTML = '⏳ Removing…';
+  try {
+    var token = localStorage.getItem('bizToken');
+    var r = await fetch(API + '/provider-keys/' + encodeURIComponent(provider), {
+      method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) {
+      var e = await r.json().catch(function() { return {}; });
+      throw new Error(e.message || 'Request failed');
+    }
+    await loadIntegrationCenter();
+    if (typeof loadConnectedServices === 'function') loadConnectedServices();
+  } catch (e) {
+    if (out) out.innerHTML = '❌ ' + esc(e.message);
+  }
+}
+
+async function icTest(provider) {
+  var out = document.getElementById(icResultId(provider));
+  if (out) out.innerHTML = '⏳ Testing connection…';
+  try {
+    var r = await po('/provider-keys/' + encodeURIComponent(provider) + '/test', {});
+    var icon = r.valid === true ? '✅ ' : (r.valid === false ? '❌ ' : 'ℹ️ ');
+    if (out) out.innerHTML = icon + esc(r.message || (r.valid ? 'OK' : 'No live probe available'));
+  } catch (e) {
+    if (out) out.innerHTML = '❌ ' + esc(e.message) + ' (is the key stored?)';
+  }
+}
+
 // ── Campaign Picker ──
 function onCampaignTypeChange() {
   var type = document.getElementById('listingCampaignType').value;
@@ -1205,6 +1419,8 @@ loadDashboard = function() {
         loadDealsTab();
         loadIqsTab();
       }
+      // Integration Center (view id: integrations) — live available_providers.
+      loadIntegrationCenter();
     }
   }, 200);
 };
