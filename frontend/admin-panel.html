@@ -688,6 +688,22 @@
         </div>
         <div class="em-out" id="em-result"></div>
         <div class="feature-status" id="em-status"></div>
+
+        <!-- Round 7: email signature (directories.email_signature_html/text) — backend existed, had no UI -->
+        <div style="margin-top:16px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px">
+          <label style="font-size:.82rem;font-weight:600;display:block">✍️ Email signature
+            <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html#email-transport" target="_blank" rel="noopener">📘 guide →</a>
+          </label>
+          <p class="feature-subtitle" style="margin:4px 0 8px">Appended to mail this directory sends. Stored on the directory itself (separate from the SMTP settings above). HTML renders in rich mail; the text version is the plain-text fallback.</p>
+          <div class="em-grid">
+            <div class="em-field"><label>Signature HTML</label><textarea id="em-signature-html" rows="3" placeholder="&lt;p&gt;— The ZaarHub Team&lt;br&gt;&lt;a href=&quot;https://zaarhub.com&quot;&gt;zaarhub.com&lt;/a&gt;&lt;/p&gt;"></textarea></div>
+            <div class="em-field"><label>Signature text</label><textarea id="em-signature-text" rows="3" placeholder="— The ZaarHub Team · zaarhub.com"></textarea></div>
+          </div>
+          <div class="pk-controls" style="margin-top:8px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__emSaveSignature()">Save signature</button>
+            <span class="feature-status" id="em-signature-status">signature not loaded yet</span>
+          </div>
+        </div>
       </div>
 
       <!-- Ad Zones -->
@@ -1044,6 +1060,7 @@
       var slug = emSlug();
       if (!slug) return;
       emOut('', null);
+      loadEmailSignature();
       apiGet('/directories/' + encodeURIComponent(slug) + '/email-settings')
         .then(function (s) {
           document.getElementById('em-transport').value = s.transport || 'smtp';
@@ -1069,6 +1086,44 @@
           emStatus(slug + ': no email settings saved yet — fill the form and Save', false);
         });
     }
+
+    // ── Round 7: email signature (directories.email_signature_html / _text) ──
+    function emSigStatus(msg, ok) {
+      var el = document.getElementById('em-signature-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.classList.add('show');
+      el.style.color = ok ? 'var(--ok,#3ddc97)' : 'var(--warn,#ffb454)';
+    }
+
+    function loadEmailSignature() {
+      var slug = emSlug();
+      if (!slug) return;
+      apiGet('/directories/' + encodeURIComponent(slug))
+        .then(function (d) {
+          var h = document.getElementById('em-signature-html');
+          var t = document.getElementById('em-signature-text');
+          if (h) h.value = (d && d.email_signature_html) || '';
+          if (t) t.value = (d && d.email_signature_text) || '';
+          emSigStatus((d && d.email_signature_html) ? 'signature loaded' : 'no signature saved yet', true);
+        })
+        .catch(function (e) { emSigStatus('could not load signature: ' + e.message, false); });
+    }
+
+    function emSaveSignature() {
+      var slug = emSlug();
+      if (!slug) { emSigStatus('Pick a directory first', false); return; }
+      var h = document.getElementById('em-signature-html');
+      var t = document.getElementById('em-signature-text');
+      emSigStatus('Saving…', true);
+      apiFetch('PUT', '/directories/' + encodeURIComponent(slug), {
+        email_signature_html: h ? h.value : '',
+        email_signature_text: t ? t.value : ''
+      }).then(function () {
+        emSigStatus('✓ Signature saved for ' + slug, true);
+      }).catch(function (e) { emSigStatus('Save failed: ' + e.message, false); });
+    }
+    window.__emSaveSignature = emSaveSignature;
 
     function emBody() {
       return {

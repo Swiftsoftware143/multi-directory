@@ -142,8 +142,12 @@ function init(){
   var user=localStorage.getItem('user');
   if(!token||!user){render();return;}
   try{user=JSON.parse(user);}catch(e){localStorage.removeItem('token');localStorage.removeItem('user');render();return;}
-  g('/admin/directories',function(dirs){
-    DIRS=dirs||[];
+  // Round 7 fix: this used to call /admin/directories, which is NOT a registered route —
+  // it soft-404s (HTTP 200 + text/html), so r.json() threw, the success callback never ran and
+  // CUR_DIR stayed null, leaving the whole owner portal without a current directory.
+  // /directories?per_page=100 is the real endpoint and returns {data:[...]}.
+  g('/directories?per_page=100',function(r){
+    DIRS=(r&&r.data)||[];
     if(DIRS.length>0){CUR_DIR=DIRS[0];}
     else{CUR_DIR={id:0,slug:'default',name:'My Directory',tier:'free'};}
     renderApp();
@@ -184,8 +188,12 @@ function doLogin(){
   if(!email||!pass){document.getElementById('loginError').textContent='Please enter email and password.';document.getElementById('loginError').style.display='block';return;}
   document.getElementById('loginError').style.display='none';
   po('/auth/login',{email:email,password:pass},function(r){
-    localStorage.setItem('token',r.token);
-    localStorage.setItem('user',JSON.stringify(r.user||{}));
+    // Round 7 fix: the API returns `access_token`; this stored `r.token` (undefined),
+    // so every later request went out unauthenticated and the portal could never load.
+    var tok=(r&&(r.access_token||r.token))||'';
+    if(!tok){document.getElementById('loginError').textContent='Login response had no token';document.getElementById('loginError').style.display='block';return;}
+    localStorage.setItem('token',tok);
+    localStorage.setItem('user',JSON.stringify((r&&r.user)||{}));
     init();
   },function(e){
     e.text().then(function(t){document.getElementById('loginError').textContent=t||'Login failed';document.getElementById('loginError').style.display='block';});
@@ -1004,34 +1012,44 @@ function renderAnalytics(){
 }
 
 // ── SEO ────────────────────────────────────────────────
+// Round 7 fix: this page used to call /admin/seo-meta — a route that does not exist,
+// so it could never load or save. Meta fields now use the real seo_meta endpoint
+// (GET/PUT /seo/directory/:id) and the head HTML uses directories.head_injection
+// (PUT /directories/:slug), which are the endpoints the backend actually serves.
+function drawSEO(seo){
+  seo=seo||{};
+  var el=document.getElementById('pageContent');
+  el.innerHTML=
+  '<div class="card"><div class="card-header"><h3>🔍 SEO Settings</h3><button class="btn btn-primary btn-sm" onclick="saveSEO()">💾 Save</button></div>'+
+  '<div class="form-group"><label>Meta Title</label><input id="seo_title" value="'+esc(seo.title||'')+'" placeholder="My Directory - Find Local Businesses"></div>'+
+  '<div class="form-group"><label>Meta Description</label><textarea id="seo_desc" rows="3" placeholder="Description for search engines">'+esc(seo.description||'')+'</textarea></div>'+
+  '<div class="form-group"><label>Meta Keywords</label><input id="seo_kw" value="'+esc(seo.keywords||'')+'" placeholder="local, businesses, directory"></div>'+
+  '<div class="form-group"><label>Custom Header HTML (head)</label><textarea id="seo_head" rows="3" placeholder="&lt;script type=&quot;application/ld+json&quot;&gt;...&lt;/script&gt;"></textarea><div style="font-size:.75rem;color:var(--text-secondary);margin-top:4px">Injected into &lt;head&gt; on this directory\'s pages.</div></div>'+
+  '</div>'+
+  '<div class="card"><div class="card-header"><h3>🗺️ Sitemap</h3></div>'+
+    '<p>Your sitemap is available at:</p>'+
+    '<div class="code-block"><a href="/sitemap.xml" target="_blank">https://directory.swiftsoftware.net/sitemap.xml</a></div>'+
+  '</div>';
+  // head_injection lives on the directory, not in seo_meta.
+  g('/directories/'+encodeURIComponent(CUR_DIR.slug),function(dir){
+    var h=document.getElementById('seo_head');
+    if(h&&dir) h.value=dir.head_injection||'';
+  },function(){});
+}
 function renderSEO(){
   var el=document.getElementById('pageContent');
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
-  g('/admin/seo-meta?directory_id='+CUR_DIR.id,function(seo){
-    seo=seo||{};
-    el.innerHTML=
-    '<div class="card"><div class="card-header"><h3>🔍 SEO Settings</h3><button class="btn btn-primary btn-sm" onclick="saveSEO()">💾 Save</button></div>'+
-    '<div class="form-group"><label>Meta Title</label><input id="seo_title" value="'+esc(seo.meta_title||'')+'" placeholder="My Directory - Find Local Businesses"></div>'+
-    '<div class="form-group"><label>Meta Description</label><textarea id="seo_desc" rows="3" placeholder="Description for search engines">'+esc(seo.meta_description||'')+'</textarea></div>'+
-    '<div class="form-group"><label>Meta Keywords</label><input id="seo_kw" value="'+esc(seo.meta_keywords||'')+'" placeholder="local, businesses, directory"></div>'+
-    '<div class="form-group"><label>Custom Header HTML (head)</label><textarea id="seo_head" rows="3" placeholder="&lt;script type=&quot;application/ld+json&quot;&gt;...&lt;/script&gt;">'+esc(seo.custom_head||'')+'</textarea></div>'+
-    '<div class="form-group"><label>Google Analytics ID</label><input id="seo_ga" value="'+esc(seo.google_analytics_id||'')+'" placeholder="G-XXXXXXXXXX"></div>'+
-    '</div>'+
-    '<div class="card"><div class="card-header"><h3>🗺️ Sitemap</h3></div>'+
-      '<p>Your sitemap is available at:</p>'+
-      '<div class="code-block"><a href="/sitemap.xml" target="_blank">https://directory.swiftsoftware.net/sitemap.xml</a></div>'+
-    '</div>';
-  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load SEO settings.</p></div>';});
+  g('/seo/directory/'+CUR_DIR.id,drawSEO,function(){drawSEO({});});
 }
 function saveSEO(){
   var data={
-    meta_title:document.getElementById('seo_title').value,
-    meta_description:document.getElementById('seo_desc').value,
-    meta_keywords:document.getElementById('seo_kw').value,
-    custom_head:document.getElementById('seo_head').value,
-    google_analytics_id:document.getElementById('seo_ga').value
+    title:document.getElementById('seo_title').value,
+    description:document.getElementById('seo_desc').value,
+    keywords:document.getElementById('seo_kw').value
   };
-  pu('/admin/seo-meta?directory_id='+CUR_DIR.id,data,function(){toast('SEO settings saved','success');},function(){toast('Failed','error');});
+  pu('/seo/directory/'+CUR_DIR.id,data,function(){toast('SEO settings saved','success');},function(){toast('SEO save failed','error');});
+  pu('/directories/'+encodeURIComponent(CUR_DIR.slug),{head_injection:document.getElementById('seo_head').value},
+     function(){toast('Header HTML saved','success');},function(){toast('Header HTML save failed','error');});
 }
 
 // ── Blog ───────────────────────────────────────────────
