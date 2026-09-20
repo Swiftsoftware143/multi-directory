@@ -215,16 +215,26 @@ pub async fn fetch_keywords(
 // ── AnswerThePublic Integration ──
 async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Value>, AppError> {
     // Get configured API key from integration_configs or provider_keys
-    let api_key = sqlx::query_scalar::<_, String>(
-        r#"SELECT decrypt_provider_key(api_key_encrypted) 
-         FROM provider_keys WHERE provider = 'answer_the_public' AND is_active = true
-         UNION
-         SELECT config->>'api_key' FROM integration_configs WHERE provider = 'answer_the_public' AND enabled = true
-         LIMIT 1"#
+    let api_key = match crate::handlers::provider_keys_handler::resolve_provider_key(
+        &state.db,
+        "answer_the_public",
     )
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("AnswerThePublic API key not configured. Set it in Integrations page.".into()))?;
+    .await
+    {
+        Some(k) => k,
+        None => sqlx::query_scalar::<_, String>(
+            r#"SELECT config->>'api_key' FROM integration_configs
+               WHERE provider = 'answer_the_public' AND enabled = true LIMIT 1"#,
+        )
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(
+                "AnswerThePublic API key not configured. Paste it in the admin panel → 🔑 Provider API Keys."
+                    .into(),
+            )
+        })?,
+    };
 
     let query = seeds.join(" ");
     let url = format!(
@@ -305,6 +315,7 @@ async fn fetch_dataforseo_keywords(
         r#"SELECT decrypt_provider_key(api_key_encrypted) as api_key, 
                 decrypt_provider_key(base_url_encrypted) as login
          FROM provider_keys WHERE provider = 'dataforseo' AND is_active = true
+         ORDER BY is_default DESC, updated_at DESC
          LIMIT 1"#,
     )
     .fetch_optional(&state.db)

@@ -1,6 +1,7 @@
 //! Handler re-exports.
 
 pub mod directories;
+pub mod discovery_queue;
 pub mod businesses;
 pub mod reviews;
 pub mod domains;

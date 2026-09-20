@@ -186,24 +186,26 @@ pub async fn get_site_config(State(state): State<AppState>) -> ApiResult<Json<Va
 /// GET /api/v1/zaarhub/admin/provider-keys/google-places — get masked key + loaded state
 pub async fn get_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let row = sqlx::query(
-        "SELECT id, tenant_id, provider, api_key, is_active, scope, metadata \
-         FROM provider_keys WHERE provider = 'google_places' LIMIT 1"
+        "SELECT id, tenant_id, provider, label, is_default, is_active, scope, metadata, \
+                COALESCE(decrypt_provider_key(api_key_encrypted), api_key) AS api_key \
+         FROM provider_keys WHERE provider = 'google_places' \
+         ORDER BY is_default DESC, updated_at DESC LIMIT 1"
     )
     .fetch_optional(&state.db)
     .await?;
 
     match row {
         Some(r) => {
-            let api_key: String = r.try_get("api_key").unwrap_or_default();
-            let full_key = api_key.clone();
-            let masked = if full_key.len() >= 8 {
-                format!("{}...{}", &full_key[..4], &full_key[full_key.len()-4..])
-            } else {
-                "••••".to_string()
-            };
+            let full_key: String = r
+                .try_get::<Option<String>, _>("api_key")
+                .unwrap_or(None)
+                .unwrap_or_default();
+            let masked = crate::handlers::provider_keys_handler::mask_key(&full_key);
             Ok(Json(json!({
                 "configured": !full_key.is_empty(),
-                "masked": masked,
+                "masked": if full_key.is_empty() { String::new() } else { masked },
+                "label": r.try_get::<String, _>("label").unwrap_or_else(|_| "default".to_string()),
+                "is_default": r.try_get::<bool, _>("is_default").unwrap_or(true),
                 "is_active": r.try_get::<bool,_>("is_active").unwrap_or(false),
                 "scope": r.try_get::<String,_>("scope").unwrap_or_else(|_| "global".to_string()),
             })))
@@ -220,6 +222,9 @@ pub async fn get_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Va
 #[derive(Deserialize)]
 pub struct GplacesKeyPayload {
     pub api_key: String,
+    /// Optional human name for this key (“Palm Bay project”, “Test account”).
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 /// POST /api/v1/zaarhub/admin/provider-keys/google-places — upsert (encrypt via trigger)
@@ -245,25 +250,46 @@ pub async fn save_gplaces_key(
         .await?
         .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
 
+    let label = payload
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .unwrap_or("default")
+        .to_string();
+
+    // Exactly one default per provider: demote the others, then save this one as default.
     sqlx::query(
-        "INSERT INTO provider_keys (tenant_id, provider, api_key, is_active, scope) \
-         VALUES ($1, $2, $3, true, 'global') \
-         ON CONFLICT (tenant_id, provider) DO UPDATE \
-         SET api_key = EXCLUDED.api_key, is_active = true, scope = 'global', updated_at = NOW()"
+        "UPDATE provider_keys SET is_default = false \
+         WHERE tenant_id = $1 AND provider = 'google_places' AND is_default = true",
+    )
+    .bind(tenant_id)
+    .execute(&state.db)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO provider_keys (tenant_id, provider, label, api_key, is_active, scope, is_default) \
+         VALUES ($1, $2, $3, $4, true, 'global', true) \
+         ON CONFLICT (tenant_id, provider, label) DO UPDATE \
+         SET api_key = EXCLUDED.api_key, is_active = true, scope = 'global', \
+             is_default = true, updated_at = NOW()"
     )
     .bind(tenant_id)
     .bind("google_places")
+    .bind(&label)
     .bind(&key)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(json!({"saved": true})))
+    Ok(Json(json!({"saved": true, "label": label})))
 }
 
 /// POST /api/v1/zaarhub/admin/provider-keys/google-places/test — validate via Autocomplete
 pub async fn test_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let row = sqlx::query(
-        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND is_active = true LIMIT 1"
+        "SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys \
+         WHERE provider = 'google_places' AND is_active = true \
+         ORDER BY is_default DESC, updated_at DESC LIMIT 1"
     )
     .fetch_optional(&state.db)
     .await?;
@@ -304,6 +330,11 @@ pub struct PlacesSearchQuery {
     pub lat: Option<f64>,
     pub lng: Option<f64>,
     pub radius: Option<i32>,
+    /// TEST-ONLY stub: `?mock=true` returns a fixed fixture so the queue flow can be
+    /// exercised while David's Google Places key is still invalid. The response is
+    /// flagged `"stub": true` and the panel shows a warning banner.
+    #[serde(default)]
+    pub mock: Option<bool>,
 }
 
 pub async fn places_text_search(
@@ -314,8 +345,21 @@ pub async fn places_text_search(
         return Err(AppError::BadRequest("query is required".into()));
     }
 
+    if q.mock == Some(true) {
+        let out = mock_places_results();
+        tracing::warn!("[places] STUB results returned (mock=true) - not live Google data");
+        return Ok(Json(json!({
+            "status": "MOCK",
+            "stub": true,
+            "count": out.len(),
+            "results": out
+        })));
+    }
+
     let row = sqlx::query(
-        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND is_active = true ORDER BY updated_at DESC LIMIT 1"
+        "SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys \
+         WHERE provider = 'google_places' AND is_active = true \
+         ORDER BY is_default DESC, updated_at DESC LIMIT 1"
     )
     .fetch_optional(&state.db)
     .await?;
@@ -358,6 +402,8 @@ pub async fn places_text_search(
         "lng": r.pointer("/geometry/location/lng").and_then(|v| v.as_f64()).unwrap_or(0.0),
         "website": r.pointer("/website").and_then(|v| v.as_str()).unwrap_or(""),
         "phone": r.pointer("/formatted_phone_number").and_then(|v| v.as_str()).unwrap_or(""),
+        // `types` power the auto category mapping (T3) and the franchise filter.
+        "types": r.get("types").and_then(|v| v.as_array()).cloned().unwrap_or_default(),
     })).collect();
 
     Ok(Json(json!({ "status": status, "count": out.len(), "results": out })))
@@ -419,4 +465,55 @@ pub async fn update_site_config(
             Ok(Json(json!({ "created": true })))
         }
     }
+}
+
+/// TEST-ONLY fixture for `?mock=true` on the places search.
+///
+/// Deliberately mixed so the queue can be proven end to end:
+///  * 3 known big chains (franchise filter must flag + auto-uncheck them)
+///  * 3 businesses that already exist in the palm-bay directory (dedup must flag them)
+///  * 6 local businesses, each carrying real Google-style `types` for category mapping
+fn mock_places_results() -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    let fixtures: [(&str, &str, f64, i64, &[&str]); 12] = [
+        ("McDonald's", "100 Malabar Rd, Palm Bay, FL 32907", 3.6, 812,
+         &["restaurant", "food", "point_of_interest", "establishment"]),
+        ("Starbucks", "4700 Babcock St NE, Palm Bay, FL 32908", 4.2, 640,
+         &["cafe", "food", "point_of_interest", "establishment"]),
+        ("Subway", "1155 Malabar Rd, Palm Bay, FL 32907", 3.9, 402,
+         &["restaurant", "food", "point_of_interest", "establishment"]),
+        ("Test Restaurant", "123 Main St, Palm Bay, FL 32905", 4.0, 12,
+         &["restaurant", "food"]),
+        ("J&C Automotive", "1715 Agora Cir SE, Palm Bay, FL 32909, USA", 4.7, 58,
+         &["car_repair", "point_of_interest"]),
+        ("W&J Gold Star Automotive", "4570 S Babcock St ste20, Palm Bay, FL 32905, USA", 4.6, 44,
+         &["car_repair", "point_of_interest"]),
+        ("Palm Bay Family Dental", "2190 Port Malabar Blvd NE, Palm Bay, FL 32905", 4.8, 213,
+         &["dentist", "health", "point_of_interest"]),
+        ("Space Coast Coffee Roasters", "605 Palm Bay Rd NE, Palm Bay, FL 32905", 4.9, 118,
+         &["cafe", "food", "point_of_interest"]),
+        ("Bayside Auto Repair", "3301 Bayside Lakes Blvd, Palm Bay, FL 32909", 4.5, 76,
+         &["car_repair", "point_of_interest"]),
+        ("Harbor City Plumbing", "880 Jupiter Blvd SE, Palm Bay, FL 32909", 4.4, 39,
+         &["plumber", "point_of_interest"]),
+        ("Malabar Lawn Care", "1940 Malabar Rd SE, Palm Bay, FL 32909", 4.3, 21,
+         &["point_of_interest", "establishment"]),
+        ("The Yoga Loft", "1420 Palm Bay Rd NE, Palm Bay, FL 32905", 4.9, 96,
+         &["gym", "health", "point_of_interest"]),
+    ];
+    for (i, (name, address, rating, reviews, types)) in fixtures.iter().enumerate() {
+        out.push(json!({
+            "name": name,
+            "address": address,
+            "place_id": format!("MOCK_PLACE_{:02}", i + 1),
+            "rating": rating,
+            "user_ratings_total": reviews,
+            "lat": 28.0 + (i as f64) * 0.001,
+            "lng": -80.6 - (i as f64) * 0.001,
+            "website": "",
+            "phone": "",
+            "types": types,
+        }));
+    }
+    out
 }

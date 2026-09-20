@@ -436,6 +436,12 @@ pub fn create_router(s: AppState) -> Router {
         .route("/provider-keys", get(provider_keys_handler::list_provider_keys).post(provider_keys_handler::upsert_provider_key))
         .route("/provider-keys/:provider", put(provider_keys_handler::upsert_provider_key).delete(provider_keys_handler::delete_provider_key))
         .route("/provider-keys/:provider/test", get(provider_keys_handler::test_provider_key))
+        // Round 5 T0 — named keys: delete ONE key by id, and promote one key to default.
+        .route("/provider-keys/id/:id", delete(provider_keys_handler::delete_provider_key_by_id))
+        .route(
+            "/provider-keys/id/:id/default",
+            post(provider_keys_handler::set_default_provider_key),
+        )
         // ??? Payment provider management
         .route("/payment-providers", get(checkout_handler::list_payment_providers).post(checkout_handler::upsert_payment_provider))
         .route("/payment-providers/:provider_type", delete(checkout_handler::delete_payment_provider))
@@ -555,6 +561,18 @@ pub fn create_router(s: AppState) -> Router {
         .route("/zaarhub/admin/provider-keys/google-places", get(zaarhub_admin::get_gplaces_key).post(zaarhub_admin::save_gplaces_key))
         .route("/zaarhub/admin/provider-keys/google-places/test", post(zaarhub_admin::test_gplaces_key))
         .route("/zaarhub/admin/places/search", get(zaarhub_admin::places_text_search))
+        // Round 5 T3 - discovery queue: persisted per directory, franchise-filtered,
+        // deduped against the directory's own businesses.
+        .route(
+            "/zaarhub/admin/discovery/queue",
+            get(crate::handlers::discovery_queue::list_queue)
+                .post(crate::handlers::discovery_queue::push_results)
+                .delete(crate::handlers::discovery_queue::clear_queue),
+        )
+        .route(
+            "/zaarhub/admin/discovery/queue/add-selected",
+            post(crate::handlers::discovery_queue::add_selected),
+        )
         .route("/ads/active/:directory_id", get(monetization::get_active_ads))
         // ??? Public Spotlight & Notifications endpoints (Phase 4)
         .route("/spotlight/:directory_id", get(monetization::get_spotlight_businesses))
@@ -1292,8 +1310,8 @@ async fn auth_guard(
         || (path == "/b2b/co-op/deals/active" && req.method() == "GET")
         // Public scraper provider list (read-only)
         || path == "/scraper/providers"
-        // Public provider key test
-        || (path.starts_with("/provider-keys/") && path.ends_with("/test"))
+        // Round 5 T6 — key-metadata read; must not be anonymous.
+        // (was: path.starts_with("/provider-keys/") && path.ends_with("/test"))
         // Public subscription plans + features
         || path == "/subscriptions/plans"
         || path == "/subscriptions/features"
@@ -1358,10 +1376,13 @@ async fn auth_guard(
         || path == "/places/details"
         || path == "/api/v1/places/autocomplete"
         || path == "/api/v1/places/details"
-        // ZaarHub community frontend API (public)
-        || path.starts_with("/zaarhub/")
+        // ZaarHub community frontend API (public) — T6: the /admin/ namespace is
+        // NOT public. It used to ride in on this prefix, which left
+        // /zaarhub/admin/places/search and /zaarhub/admin/provider-keys/* reachable
+        // anonymously (quota burn + key-metadata read).
+        || (path.starts_with("/zaarhub/") && !path.contains("/admin/"))
         || path.starts_with("/zaarhub-sitemap.xml")
-        || path.starts_with("/api/v1/zaarhub/")
+        || (path.starts_with("/api/v1/zaarhub/") && !path.contains("/admin/"))
         || path.starts_with("/legal/")
         // Public B2B SSR pages (RFQ marketplace, co-op hub, lead exchange)
         || path == "/rfq-marketplace" || path == "/rfq-marketplace/"

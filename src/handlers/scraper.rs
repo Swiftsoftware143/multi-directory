@@ -9,6 +9,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
+use crate::handlers::provider_keys_handler::resolve_provider_key;
 use crate::handlers::pipeline::{
     find_existing_by_phone, find_existing_by_website, pipeline_ingest, IngestBusiness,
     IngestRequest,
@@ -130,12 +131,9 @@ async fn google_places_import(
     req: DataImportRequest,
 ) -> ApiResult<impl IntoResponse> {
     // Get Google Places API key
-    let api_key = sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND tenant_id = '00000000-0000-0000-0000-000000000000' LIMIT 1"
-    )
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Add it in Settings > API Keys.".into()))?;
+    let api_key = resolve_provider_key(&s.db, "google_places")
+        .await
+        .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Paste it in the admin panel > Provider API Keys.".into()))?;
 
     let query = match (&req.keyword, req.business_type.as_str()) {
         (Some(kw), _) if !kw.is_empty() => format!("{} in {}", kw, req.location),
@@ -599,14 +597,8 @@ pub async fn run_scraper(
         )));
     }
 
-    // Get API key for the source
-    let api_key: Option<String> = sqlx::query_scalar(
-        "SELECT api_key FROM provider_keys WHERE provider = $1 AND tenant_id = '00000000-0000-0000-0000-000000000000' LIMIT 1"
-    )
-    .bind(&cfg.source)
-    .fetch_optional(&s.db)
-    .await?
-    .flatten();
+    // Get API key for the source - shared resolver: default key first, then most recent.
+    let api_key: Option<String> = resolve_provider_key(&s.db, &cfg.source).await;
 
     // For now, return available sources + key status
     // Actual scraping logic is source-specific and will be added per-source
@@ -625,12 +617,9 @@ pub async fn scrape_google_places(
     Json(cfg): Json<ScraperConfig>,
 ) -> ApiResult<impl IntoResponse> {
     // Get Google Places API key
-    let api_key = sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND tenant_id = '00000000-0000-0000-0000-000000000000' LIMIT 1"
-    )
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Add it in Settings > API Keys.".into()))?;
+    let api_key = resolve_provider_key(&s.db, "google_places")
+        .await
+        .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Paste it in the admin panel > Provider API Keys.".into()))?;
 
     let location = cfg.location.as_deref().unwrap_or("Tampa, FL");
     let query = cfg.query.as_deref().unwrap_or("restaurants");

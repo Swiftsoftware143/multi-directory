@@ -453,13 +453,9 @@ pub(crate) async fn get_yelp_api_key(
         }
     }
 
-    // Fallback: check provider_keys table
-    let from_db: Option<String> = sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = 'yelp' AND is_active = true LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| AppError::Internal("DB error reading provider keys".to_string()))?;
+    // Fallback: named provider keys — default key first, then most recently updated.
+    let from_db: Option<String> =
+        crate::handlers::provider_keys_handler::resolve_provider_key(&state.db, "yelp").await;
 
     if let Some(ref key) = from_db {
         return Ok(key.clone());
@@ -500,13 +496,10 @@ pub(crate) async fn get_google_api_key(
         }
     }
 
-    // Fallback: check provider_keys table
-    let from_db: Option<String> = sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = 'google_places' AND is_active = true LIMIT 1"
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| AppError::Internal("DB error reading provider keys".to_string()))?;
+    // Fallback: named provider keys — default key first, then most recently updated.
+    let from_db: Option<String> =
+        crate::handlers::provider_keys_handler::resolve_provider_key(&state.db, "google_places")
+            .await;
 
     if let Some(ref key) = from_db {
         return Ok(key.clone());

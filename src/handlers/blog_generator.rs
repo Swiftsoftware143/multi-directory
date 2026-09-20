@@ -832,16 +832,9 @@ fn slugify(s: &str) -> String {
     result.trim_matches('-').to_string()
 }
 
-/// Fetch the first active API key for a provider from the provider_keys table.
+/// Fetch the API key for a provider — shared resolver (default key first, then most recent).
 async fn fetch_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<String> {
-    sqlx::query_scalar::<_, String>(
-        "SELECT api_key FROM provider_keys WHERE provider = $1 AND is_active = true LIMIT 1",
-    )
-    .bind(provider)
-    .fetch_optional(db)
-    .await
-    .ok()
-    .flatten()
+    crate::handlers::provider_keys_handler::resolve_provider_key(db, provider).await
 }
 
 // ── Shared public helpers used by blog_qa ──

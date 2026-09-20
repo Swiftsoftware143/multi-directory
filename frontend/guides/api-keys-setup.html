@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Keys Setup Guide &mdash; where each key goes &amp; how to get it</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .sidebar { width: 300px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; z-index: 10; }
+  .sidebar h2 { color: #10b981; font-size: 1.05rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sidebar nav a { display: block; padding: 7px 20px; color: #94a3b8; font-size: 0.84rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+  .sidebar .section-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 4px; }
+
+  .main { margin-left: 300px; flex: 1; padding: 40px 48px 80px; max-width: 1000px; }
+  .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
+  .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main h4 { font-size: 0.95rem; color: #93c5fd; margin-top: 18px; margin-bottom: 6px; letter-spacing: 0.02em; }
+  .main p, .main li { line-height: 1.7; color: #cbd5e1; }
+  .main p { margin-bottom: 12px; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; }
+  .main li { margin-bottom: 6px; }
+
+  .lead { font-size: 0.95rem; color: #94a3b8 !important; margin-bottom: 20px !important; }
+
+  .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .card h3 { margin-top: 0; color: #10b981; }
+  .card p { color: #cbd5e1; }
+  .card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .card td, .card th { padding: 7px 12px; border-bottom: 1px solid #334155; vertical-align: top; font-size: 0.88rem; }
+  .card th { color: #94a3b8; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .card td:first-child { color: #94a3b8; }
+  .card table.quick td:first-child { color: #e2e8f0; font-weight: 600; white-space: normal; }
+  .card td.ok { color: #a7f3d0; }
+
+  .prov h2 { margin-top: 0; border-bottom: none; padding-bottom: 0; font-size: 1.3rem; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .prov-desc { font-size: 0.88rem; color: #94a3b8 !important; margin-bottom: 6px !important; }
+  .keyid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; color: #64748b; font-weight: 400; }
+  .steps li { margin-bottom: 8px; }
+  .note { background: rgba(59,130,246,0.08); border-left: 3px solid #3b82f6; padding: 10px 14px; border-radius: 6px; font-size: 0.88rem; }
+  .warn { background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.45); color: #fecaca; padding: 12px 16px; border-radius: 8px; font-size: 0.9rem; margin: 10px 0 4px; line-height: 1.65; }
+  .warn code { color: #fca5a5; background: rgba(0,0,0,0.3); }
+  .anchor-note { font-size: 0.78rem !important; color: #64748b !important; margin-top: 18px !important; }
+
+  code { background: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 0.88em; color: #10b981; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #e2e8f0; }
+
+  details { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+  details summary { cursor: pointer; font-weight: 600; color: #10b981; }
+  details[open] summary { margin-bottom: 10px; }
+  details p { margin: 0; color: #cbd5e1; padding-top: 8px; }
+
+  .badge { display: inline-block; background: #065f46; color: #a7f3d0; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge-req { background: #7f1d1d; color: #fca5a5; }
+  .badge-rec { background: #713f12; color: #fde68a; }
+  .badge-opt { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+
+  .checklist { counter-reset: step; list-style: none; margin-left: 0 !important; }
+  .checklist li { counter-increment: step; position: relative; padding-left: 40px; margin-bottom: 14px; }
+  .checklist li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; background: #065f46; color: #a7f3d0; font-weight: 700; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; }
+
+  .top-link { display: inline-block; margin-top: 20px; font-size: 0.85rem; }
+  hr { border: none; border-top: 1px solid #334155; margin: 24px 0; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+  }
+</style>
+</head>
+<body>
+<a id="top"></a>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>&#x1F511; API Keys Setup</h2>
+  <nav>
+    <a href="#start-here">&#x1F680; Start here (checklist)</a><a href="#quick-map">&#x1F5C2; Which key for what?</a><div class="section-label">Discovery &amp; Listings</div><a href="#provider-bing">🅱️ Bing Web Search</a><a href="#provider-brightlocal">⭐ BrightLocal</a><a href="#provider-google_cse">🔍 Google Custom Search</a><a href="#provider-google_places">🗺️ Google Places</a><a href="#provider-serpapi">🔎 SerpAPI</a><a href="#provider-uberall">📍 Uberall</a><a href="#provider-yext">🗺️ Yext</a><div class="section-label">AI &amp; Content</div><a href="#provider-anthropic">🧠 Anthropic (Claude)</a><a href="#provider-deepseek">🧠 DeepSeek</a><a href="#provider-letterman">newspaper Letterman</a><a href="#provider-mintbird">📧 Mintbird</a><a href="#provider-nexweave">video Nexweave</a><a href="#provider-openai">🤖 OpenAI</a><div class="section-label">Email</div><a href="#provider-mailgun">✉️ Mailgun</a><a href="#provider-sendgrid">✉️ SendGrid</a><a href="#provider-sendiio">mail Sendiio</a><div class="section-label">Payments</div><a href="#provider-groovesell">🛒 GrooveSell</a><a href="#provider-stripe">💳 Stripe</a><div class="section-label">SMS &amp; Voice</div><a href="#provider-telnyx">phone Telnyx</a><a href="#provider-twilio">📞 Twilio</a><div class="section-label">CRM &amp; Federal Data</div><a href="#provider-coreswift">crm CoreSwift CRM</a><a href="#provider-sam_gov">shield SAM.gov</a><a href="#provider-usaspending">dollar-sign USAspending</a><div class="section-label">Reference</div><a href="#related-creds">&#x26A0; Credentials not in this table</a><a href="index.html">&#x2190; All guides</a>
+  </nav>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <h1>&#x1F511; API Keys Setup Guide</h1>
+  <p class="lead">Everything a VA needs: <b>which key goes where, how to get each one, and how to prove it works.</b>
+  This page is generated from the platform's live provider table (<code>available_providers</code>) &mdash; <b>23 providers</b> at the time of generation &mdash;
+  and every provider has its own section with a stable anchor you can deep-link to (<code>#provider-&lt;key&gt;</code>).<br>
+  <span style="font-size:0.82rem">Generated 2026-09-20 10:24 from <code>SELECT key, name, description, requires_base_url, requires_metadata, icon FROM available_providers ORDER BY name;</code> &mdash; 23 rows.</span></p>
+
+  <div class="card">
+    <h3>How keys are stored (read this once)</h3>
+    <ul>
+      <li>All keys are pasted in <b>one place</b>: the Admin Panel (<code>admin-panel.html</code>), card <b>&#x1F511; Provider API Keys</b>. Each provider gets its own row with a <b>&ldquo;Paste API key&rdquo;</b> field, a <b>Save</b> button, and &mdash; once a key exists &mdash; <b>Test</b> and <b>Delete</b> buttons.</li>
+      <li>Keys are saved <b>per tenant</b>, <b>encrypted at rest</b>, and always displayed <b>masked</b>. Nobody &mdash; including you after saving &mdash; can read a key back out of the panel.</li>
+      <li>The row badge tells you the state at a glance: <span class="badge" style="background:#065f46;color:#a7f3d0">Configured</span> vs <span class="badge badge-opt">Not set</span>.</li>
+      <li>Where a provider needs more than the key itself (a <b>Base URL</b>, or a <b>Search Engine ID</b>), the row grows an <b>extra input field</b> &mdash; don't skip it, the integration will not work without it.</li>
+      <li>Never put a real key in a ticket, chat, email or screenshot. If a key leaks, rotate it in the provider's console and paste the new one.</li>
+    </ul>
+  </div>
+
+  <h2 id="start-here">&#x1F680; Start here &mdash; VA checklist</h2>
+  <p>Work top to bottom. After every save, click <b>Test</b> on that row and confirm it reports the key as configured before moving on.</p>
+  <div class="card">
+    <ol class="checklist">
+      <li><b>Get admin access.</b> Log into the Admin Panel at <code>admin-panel.html</code> with the admin account (not a business/portal account).</li>
+      <li><b>Open the key card.</b> Find the card titled <b>&#x1F511; Provider API Keys</b>. It lists every provider below with a live Configured / Not set badge.</li>
+      <li><b>Google Places first</b> &mdash; it is the one that is actually broken right now. Create a <b>Google Maps Platform &rarr; Places API</b> key and paste it (see <a href="#provider-google_places">Google Places</a>). This unblocks Populate / business discovery.</li>
+      <li><b>AI drafting.</b> Paste a <b>DeepSeek</b> key (the default AI provider) or an <b>OpenAI</b> / <b>Anthropic</b> key. Without one of these, AI blog/content drafting cannot run.</li>
+      <li><b>System email.</b> If the directory sends newsletters, notifications or receipts, paste <b>Mailgun</b>, <b>SendGrid</b> or <b>Sendiio</b> &mdash; then choose that provider as the directory's email transport in its email settings.</li>
+      <li><b>Card payments.</b> If the directory takes card payments or pays out, paste the <b>Stripe</b> <i>secret</i> key.</li>
+      <li><b>SMS.</b> If the directory texts customers, paste the <b>Twilio</b> credentials (and complete carrier/A2P registration).</li>
+      <li><b>CRM sync.</b> For CoreSwift, paste the <code>csk_…</code> key <b>and</b> the Base URL &mdash; both fields.</li>
+      <li><b>Optionals.</b> Add BrightLocal / Yext / Uberall / SerpAPI / Google Custom Search / Bing / Telnyx / GrooveSell / SAM.gov / USAspending only if the client actually uses them.</li>
+      <li><b>Verify.</b> Click <b>Test</b> on every configured row (it calls <code>GET /api/v1/admin/provider-keys/&lt;provider&gt;/test</code> and returns the masked key preview), then run one real end-to-end action per feature: one Populate search, one AI draft, one test email, one test payment, one test SMS.</li>
+    </ol>
+  </div>
+
+  <h2 id="quick-map">&#x1F5C2; Which key do I need for X?</h2>
+  <div class="card">
+    <table class="quick">
+      <tr><th>If the goal is&hellip;</th><th>You must have</th><th>Nice-to-have / alternate</th></tr>
+      <tr><td>Populate businesses / discovery &amp; business search</td><td class="ok"><b>Google Places</b> (required)</td><td>BrightLocal, Yext, Uberall, SerpAPI, Google Custom Search, Bing</td></tr><tr><td>Sending system email (newsletters, notifications, receipts)</td><td class="ok"><b>One email transport:</b> Mailgun <i>or</i> SendGrid <i>or</i> Sendiio (SMTP also works)</td><td>The other email providers, Letterman, Mintbird</td></tr><tr><td>Card payments / payouts (checkout, subscriptions, paid placement)</td><td class="ok"><b>Stripe</b> (required for card payments)</td><td>GrooveSell (alternate checkout platform)</td></tr><tr><td>AI drafting (blogs, articles, AI keyword/question generation)</td><td class="ok"><b>DeepSeek</b> (the default AI provider) <i>or</i> OpenAI <i>or</i> Anthropic</td><td>The other two AI providers, Nexweave</td></tr><tr><td>SMS &amp; voice messaging, call tracking</td><td class="ok"><b>Twilio</b> (required for SMS/call tracking)</td><td>Telnyx (alternate messaging provider)</td></tr><tr><td>Loyalty / participant CRM sync</td><td class="ok"><b>CoreSwift CRM</b> (key <i>and</i> Base URL)</td><td>&mdash;</td></tr><tr><td>Federal contracting / spending data</td><td class="ok">&mdash; (optional data feeds)</td><td>SAM.gov, USAspending</td></tr>
+    </table>
+    <p class="anchor-note">Only <b>one</b> provider is needed per row unless stated. Providers marked Optional can stay empty without breaking anything else.</p>
+  </div>
+
+  <h2 id="all-providers">&#x1F4CB; All 23 providers at a glance</h2>
+  <div class="card">
+    <table>
+      <tr><th></th><th>Provider</th><th>Key (anchor)</th><th>Need</th><th>What it is</th></tr>
+      <tr><td>🧠</td><td><a href="#provider-anthropic">Anthropic (Claude)</a></td><td><code>anthropic</code></td><td>Optional</td><td>Claude models for long-form AI content</td></tr><tr><td>🅱️</td><td><a href="#provider-bing">Bing Web Search</a></td><td><code>bing</code></td><td>Optional</td><td>Bing Web Search API (Azure Cognitive Services)</td></tr><tr><td>⭐</td><td><a href="#provider-brightlocal">BrightLocal</a></td><td><code>brightlocal</code></td><td>Optional</td><td>Citation building + local rank grid</td></tr><tr><td>crm</td><td><a href="#provider-coreswift">CoreSwift CRM</a></td><td><code>coreswift</code></td><td>Optional</td><td>Drill loyalty members and business participants into your CoreSwift CRM. Connect with a personal API key (csk_...) from CoreSwift Integration Center.</td></tr><tr><td>🧠</td><td><a href="#provider-deepseek">DeepSeek</a></td><td><code>deepseek</code></td><td>Recommended</td><td>DeepSeek LLM API</td></tr><tr><td>🔍</td><td><a href="#provider-google_cse">Google Custom Search</a></td><td><code>google_cse</code></td><td>Optional</td><td>Programmable Search Engine JSON API</td></tr><tr><td>🗺️</td><td><a href="#provider-google_places">Google Places</a></td><td><code>google_places</code></td><td>Required</td><td>Local business data API — listings, reviews, citations</td></tr><tr><td>🛒</td><td><a href="#provider-groovesell">GrooveSell</a></td><td><code>groovesell</code></td><td>Optional</td><td>Checkout, affiliate and upsell platform</td></tr><tr><td>newspaper</td><td><a href="#provider-letterman">Letterman</a></td><td><code>letterman</code></td><td>Optional</td><td>Newsletter content delivery</td></tr><tr><td>✉️</td><td><a href="#provider-mailgun">Mailgun</a></td><td><code>mailgun</code></td><td>Optional</td><td>Transactional + campaign email</td></tr><tr><td>📧</td><td><a href="#provider-mintbird">Mintbird</a></td><td><code>mintbird</code></td><td>Optional</td><td>Cold-email outreach + warmup automation</td></tr><tr><td>video</td><td><a href="#provider-nexweave">Nexweave</a></td><td><code>nexweave</code></td><td>Optional</td><td>Personalized video/image generation</td></tr><tr><td>🤖</td><td><a href="#provider-openai">OpenAI</a></td><td><code>openai</code></td><td>Optional</td><td>GPT models for AI copy, summaries and drafts</td></tr><tr><td>shield</td><td><a href="#provider-sam_gov">SAM.gov</a></td><td><code>sam_gov</code></td><td>Optional</td><td>Federal contracting opportunities</td></tr><tr><td>✉️</td><td><a href="#provider-sendgrid">SendGrid</a></td><td><code>sendgrid</code></td><td>Optional</td><td>Transactional + campaign email</td></tr><tr><td>mail</td><td><a href="#provider-sendiio">Sendiio</a></td><td><code>sendiio</code></td><td>Optional</td><td>Email/SMS campaign delivery</td></tr><tr><td>🔎</td><td><a href="#provider-serpapi">SerpAPI</a></td><td><code>serpapi</code></td><td>Optional</td><td>Google/Bing SERP scraping for rank tracking</td></tr><tr><td>💳</td><td><a href="#provider-stripe">Stripe</a></td><td><code>stripe</code></td><td>Required</td><td>Card payments, subscriptions, invoices and payouts</td></tr><tr><td>phone</td><td><a href="#provider-telnyx">Telnyx</a></td><td><code>telnyx</code></td><td>Optional</td><td>SMS/Voice API</td></tr><tr><td>📞</td><td><a href="#provider-twilio">Twilio</a></td><td><code>twilio</code></td><td>Required</td><td>SMS + voice messaging</td></tr><tr><td>dollar-sign</td><td><a href="#provider-usaspending">USAspending</a></td><td><code>usaspending</code></td><td>Optional</td><td>Federal spending data</td></tr><tr><td>📍</td><td><a href="#provider-uberall">Uberall</a></td><td><code>uberall</code></td><td>Optional</td><td>Listings management + local SEO</td></tr><tr><td>🗺️</td><td><a href="#provider-yext">Yext</a></td><td><code>yext</code></td><td>Optional</td><td>Listings sync + knowledge graph</td></tr>
+    </table>
+  </div>
+
+  <h2 class="group" id="group-discovery">Discovery &amp; Listings</h2>
+  <section class="card prov" id="provider-bing">
+    <h2>🅱️ Bing Web Search <span class="badge badge-opt">Optional</span> <span class="keyid">bing</span></h2>
+    <p class="prov-desc">Bing Web Search API (Azure Cognitive Services)</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Content Research &rarr; <b>Bing Search API</b> integration.</li><li>Alternate search/discovery source.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to the <a href="https://portal.azure.com" target="_blank" rel="noopener">Azure Portal</a>.</li><li>Create a <b>Bing Search</b> resource under <i>Cognitive Services</i> (Bing Search v7) — this requires the Azure subscription to have a payment method attached.</li><li>Open the new resource and go to <b>Keys and Endpoint</b>.</li><li>Copy <b>Key 1</b> (either key works).</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Bing Web Search</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b>. Note that Microsoft has been retiring Bing Search API tiers, so confirm the resource type is still offered in the Azure region you pick before buying anything.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Azure bills per transaction for the Bing Search resource; a free/low-cost tier may be offered depending on region and offer. A credit card is required to create the resource. Verify on the Azure pricing page.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/bing/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-bing</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-brightlocal">
+    <h2>⭐ BrightLocal <span class="badge badge-opt">Optional</span> <span class="keyid">brightlocal</span></h2>
+    <p class="prov-desc">Citation building + local rank grid</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Scraper/discovery source (<code>brightlocal</code>) in the Scraper provider list.</li><li>Citation building and local rank-grid data.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to <a href="https://app.brightlocal.com" target="_blank" rel="noopener">app.brightlocal.com</a>.</li><li>Open the account/profile area and go to the API / integrations settings (BrightLocal exposes API access from the account settings area).</li><li>Generate an API key for the account and copy it to a password manager.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>BrightLocal</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b>. It is an alternate discovery/citation source alongside Google Places — leave it empty if you don't have a BrightLocal plan.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>BrightLocal is a paid subscription product with no meaningful free tier; API access comes with the plan. Check their pricing page for current plans.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/brightlocal/test</code>) and confirm it reports the key is configured with the masked preview.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-brightlocal</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-google_cse">
+    <h2>🔍 Google Custom Search <span class="badge badge-opt">Optional</span> <span class="keyid">google_cse</span></h2>
+    <p class="prov-desc">Programmable Search Engine JSON API</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Content Research &rarr; <b>Google Custom Search</b> integration (Programmable Search Engine JSON API).</li><li>Alternate search/discovery source.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to <a href="https://console.cloud.google.com" target="_blank" rel="noopener">Google Cloud Console</a> and pick (or create) a project.</li><li>Go to <b>APIs &amp; Services &rarr; Library</b>, search for <b>Custom Search API</b> and click <b>Enable</b>.</li><li>Go to <b>APIs &amp; Services &rarr; Credentials &rarr; Create credentials &rarr; API key</b> and copy it.</li><li>Create the search engine itself at <a href="https://programmablesearchengine.google.com" target="_blank" rel="noopener">programmablesearchengine.google.com</a> (<b>Add</b> / <b>Create</b> a Programmable Search Engine).</li><li>Open the engine's <b>Setup</b> / overview and copy its <b>Search engine ID</b> — this is the <code>cx</code> value.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p><b>Two values go in.</b> Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Google Custom Search</b> row: paste the API key into <b>&ldquo;Paste API key&rdquo;</b> and the Programmable Search Engine ID into the extra field labelled <b>&ldquo;Search Engine ID (cx)&rdquo;</b> &rarr; <b>Save</b>.</p>
+    <p class="note"><b>Extra field:</b> this provider also needs <b>&ldquo;Search Engine ID (cx)&rdquo;</b> — paste it into the extra input on its row, not into the key field.</p>
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b>. This provider is one of the few that needs <b>two</b> values — the API key <i>and</i> the <code>cx</code> Search Engine ID. A key without the <code>cx</code> will not work.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>The Custom Search API is free up to a daily query quota, then billed per 1,000 queries; the Programmable Search Engine itself is free. Check the current quota on the Google Cloud Custom Search pricing page.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/google_cse/test</code>) and confirm the masked key preview comes back.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-google_cse</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-google_places">
+    <h2>🗺️ Google Places <span class="badge badge-req">Required</span> <span class="keyid">google_places</span></h2>
+    <p class="prov-desc">Local business data API — listings, reviews, citations</p>
+    <div class="warn"><b>&#x26A0; The key currently stored is INVALID.</b> Google replies <code>400 The provided API key is invalid.</code> for <code>search?query=dental&amp;city=palm-bay</code>. This key <b>must be replaced</b> by a fresh Google Maps Platform &rarr; Places API key created with the steps above. Until then, business discovery is broken.</div>
+    <h4>1. What it powers</h4>
+    <ul><li>ZaarHub Admin &rarr; <b>Populate</b> tab &rarr; <b>Search Places</b> — the city + category + radius business search that finds businesses and publishes them to the directory.</li><li>Place <b>autocomplete</b> and <b>place details</b> lookups when adding a business by hand.</li><li>Business <b>enrichment</b> in the Data Company module (phone, website, hours, reviews).</li><li>The scraper/discovery source list as the <code>google_places</code> source.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to <a href="https://console.cloud.google.com" target="_blank" rel="noopener">Google Cloud Console</a> with the Google account that owns (or will own) the billing.</li><li>Create a project (or pick an existing one) for this directory — e.g. <i>Multi-Directory Places</i>.</li><li>Enable billing on that project. Google Maps Platform keys are <b>free-tier-with-credit-card</b>: you must attach a card, you get a recurring free credit, and usage above it is billed per request.</li><li>Go to <b>APIs &amp; Services &rarr; Library</b>, search for <b>Places API</b> and click <b>Enable</b> (enable <b>Places API (New)</b> too if it is offered — the search uses the Places endpoints).</li><li>Go to <b>APIs &amp; Services &rarr; Credentials &rarr; Create credentials &rarr; API key</b>.</li><li>(Recommended) Click <b>Edit API key</b> and add an <b>Application restriction</b> (HTTP referrers for your admin domains, or the server IP) and an <b>API restriction</b> limited to <b>Places API</b>. This limits the damage if the key leaks.</li><li>Copy the key — it starts with <code>AIza…</code>. Never paste it into a ticket, chat or email.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel (<code>admin-panel.html</code>) &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; the <b>Google Places</b> row &rarr; paste into the <b>&ldquo;Paste API key&rdquo;</b> field &rarr; <b>Save</b>. The same key can also be pasted from <b>ZaarHub Admin</b> (<code>zaarhub-admin.html</code>) &rarr; <b>Populate</b> tab &rarr; <b>&ldquo;Google Places API Key&rdquo;</b> field &rarr; <b>Save Key</b>. Both write the same stored key.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Required</b> for Populate / discovery. Without a valid key the Populate search and place details return nothing and the Data Company enrichment cannot resolve a provider.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Google Maps Platform requires a <b>billing account with a credit card</b>. A recurring monthly free credit is applied, then requests are billed pay-as-you-go. See the current credit and per-request rates on Google's <i>Maps Platform pricing</i> page — do not rely on remembered numbers.</p>
+    <h4>6. How to verify it</h4>
+    <p>On the Google Places row click <b>Test</b> &rarr; <code>GET /api/v1/admin/provider-keys/&lt;provider&gt;/test</code> returns the <b>masked</b> key preview, never the raw key. For a real end-to-end check open <b>ZaarHub Admin &rarr; Populate &rarr; Test Key</b>, which actually calls Google Autocomplete (<code>POST /api/v1/zaarhub/admin/provider-keys/google-places/test</code>) and fails loudly if the key is invalid.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-google_places</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-serpapi">
+    <h2>🔎 SerpAPI <span class="badge badge-opt">Optional</span> <span class="keyid">serpapi</span></h2>
+    <p class="prov-desc">Google/Bing SERP scraping for rank tracking</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Content Research &rarr; search integration (<b>SerpAPI</b> — the recommended SERP option in <code>content-research.html</code>).</li><li>SERP scraping for rank tracking / discovery.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign up / sign in at <a href="https://serpapi.com" target="_blank" rel="noopener">serpapi.com</a>.</li><li>Open <b>Dashboard</b> &rarr; your <b>API Key</b> panel.</li><li>Copy the key shown there.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>SerpAPI</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>. It can also be added from the Content Research page's integration form.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — only needed if you want SERP/rank data in Content Research.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>SerpAPI offers a free plan with a limited monthly search allowance, then paid plans. See their pricing page for current limits.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/serpapi/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-serpapi</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-uberall">
+    <h2>📍 Uberall <span class="badge badge-opt">Optional</span> <span class="keyid">uberall</span></h2>
+    <p class="prov-desc">Listings management + local SEO</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Listings management and local SEO data.</li><li>Scraper/discovery source (<code>uberall</code>) in the Scraper provider list.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to your Uberall account (<a href="https://uberall.com" target="_blank" rel="noopener">uberall.com</a> &rarr; login).</li><li>In the dashboard, open the API / integrations settings and create an API key (Uberall issues keys per account/location group).</li><li>Copy the key.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Uberall</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b>. Alternate listings/SEO source; not needed for the core Populate flow.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Uberall is a paid listings-management platform; API access requires an Uberall plan. Check with the client whether one exists.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/uberall/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-uberall</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-yext">
+    <h2>🗺️ Yext <span class="badge badge-opt">Optional</span> <span class="keyid">yext</span></h2>
+    <p class="prov-desc">Listings sync + knowledge graph</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Listings sync and knowledge-graph data.</li><li>Scraper/discovery source (<code>yext</code>) in the Scraper provider list.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to your Yext account (<a href="https://www.yext.com" target="_blank" rel="noopener">yext.com</a> &rarr; sign in).</li><li>Open the account settings / developer area and create an API key (Yext issues API keys tied to the account).</li><li>Copy the key.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Yext</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b>. Only useful if the client already runs listings through Yext.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Yext is an enterprise subscription platform — API access requires a Yext contract. Confirm with the client whether an account exists before pursuing this.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/yext/test</code>) and confirm the configured/masked response.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-yext</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <h2 class="group" id="group-ai">AI &amp; Content</h2>
+  <section class="card prov" id="provider-anthropic">
+    <h2>🧠 Anthropic (Claude) <span class="badge badge-opt">Optional</span> <span class="keyid">anthropic</span></h2>
+    <p class="prov-desc">Claude models for long-form AI content</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>AI content drafting — Claude is selectable as the drafting model (<code>blog_generator.rs</code> provider switch).</li><li>Content Research &rarr; content-drafting integration option.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in at <a href="https://dashboard.anthropic.com" target="_blank" rel="noopener">dashboard.anthropic.com</a>.</li><li>Open <b>API Keys</b> and click <b>Create Key</b>.</li><li>Copy the key (<code>sk-ant-…</code>) — it is shown once.</li><li>Add credit under <b>Billing</b> before use.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Anthropic (Claude)</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — a third AI drafting option alongside DeepSeek and OpenAI.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Pay-as-you-go with prepaid credits; a credit card is required. See Anthropic's pricing page for current model rates.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/anthropic/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-anthropic</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-deepseek">
+    <h2>🧠 DeepSeek <span class="badge badge-rec">Recommended</span> <span class="keyid">deepseek</span></h2>
+    <p class="prov-desc">DeepSeek LLM API</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li><b>The default AI drafting provider.</b> The blog generator defaults <code>llm_provider</code> to <code>deepseek</code>, so blog drafts, article copy and AI keyword/question generation run through DeepSeek unless a different provider is selected.</li><li>AI blog + content drafting via <code>blog_generator.rs</code> (<code>call_llm_json</code>).</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign up / sign in at <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a>.</li><li>Open <b>API Keys</b> in the left nav and click <b>Create new API key</b>.</li><li>Copy the key immediately (<code>sk-…</code>) — some consoles only show it once.</li><li>Top up the account balance: the DeepSeek API is prepaid, so a funded balance is required before any call succeeds.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>DeepSeek</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Recommended</b> — set this first if you use AI drafting, because it is the default provider. Without <i>any</i> AI provider key, blog generation and AI content drafting fail.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Pay-as-you-go, prepaid balance; a credit card is needed to top up. Per-token pricing is set by DeepSeek — check their pricing page for current rates.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/deepseek/test</code>), then run a short draft in the blog generator to confirm real output.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-deepseek</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-letterman">
+    <h2>newspaper Letterman <span class="badge badge-opt">Optional</span> <span class="keyid">letterman</span></h2>
+    <p class="prov-desc">Newsletter content delivery</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Newsletter content delivery.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>In the provider's dashboard, open <b>Settings &rarr; API Keys</b> (or <b>Integrations</b>) and create a key.</li><li>Copy the key to a password manager.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Letterman</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b>. Only configure if the client's newsletter flow actually uses Letterman.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Vendor-run pricing — confirm with the client whether a Letterman account exists and what it costs.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/letterman/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-letterman</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-mintbird">
+    <h2>📧 Mintbird <span class="badge badge-opt">Optional</span> <span class="keyid">mintbird</span></h2>
+    <p class="prov-desc">Cold-email outreach + warmup automation</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Cold-email outreach and warmup automation.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>In the provider's dashboard, open <b>Settings &rarr; API Keys / Integrations</b> and generate a key.</li><li>Copy it.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Mintbird</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — outreach automation only.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Vendor-run pricing; check the client's account before configuring.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/mintbird/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-mintbird</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-nexweave">
+    <h2>video Nexweave <span class="badge badge-opt">Optional</span> <span class="keyid">nexweave</span></h2>
+    <p class="prov-desc">Personalized video/image generation</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Personalized video / image generation.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>In the provider's dashboard, open <b>Settings &rarr; API / Integrations</b> and create an API key.</li><li>Copy it.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Nexweave</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — personalized media only.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Vendor-run pricing; confirm an account exists before configuring.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/nexweave/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-nexweave</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-openai">
+    <h2>🤖 OpenAI <span class="badge badge-opt">Optional</span> <span class="keyid">openai</span></h2>
+    <p class="prov-desc">GPT models for AI copy, summaries and drafts</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>AI blog + content drafting (<code>blog_generator.rs</code> &rarr; <code>call_openai</code> / <code>call_llm_json</code>) when OpenAI is the selected provider.</li><li>AI copy, summaries and drafts elsewhere in the app.</li><li>Fallback AI keyword/question generation for keyword research.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign up / sign in at <a href="https://platform.openai.com" target="_blank" rel="noopener">platform.openai.com</a>.</li><li>Open <b>API keys</b> (under your account / dashboard) and click <b>Create new secret key</b>.</li><li>Name it (e.g. <i>multi-directory export</i>) and copy the <code>sk-…</code> value — it is shown only once.</li><li>Add a payment method and credit under <b>Billing</b> so requests are not rejected.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>OpenAI</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — an alternative to (or addition to) DeepSeek. Only one AI provider key is required for AI drafting to work.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Pay-as-you-go with prepaid credits; a credit card is required. Rate/price details live on OpenAI's pricing page.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/openai/test</code>), then generate a short draft with OpenAI selected.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-openai</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <h2 class="group" id="group-email">Email</h2>
+  <section class="card prov" id="provider-mailgun">
+    <h2>✉️ Mailgun <span class="badge badge-opt">Optional</span> <span class="keyid">mailgun</span></h2>
+    <p class="prov-desc">Transactional + campaign email</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Transactional + campaign email delivery.</li><li>One of the selectable per-directory email <b>transports</b> for the in-house email service on <code>127.0.0.1:3456</code> (the directory's transport can be SMTP, Mailgun, SendGrid or Sendiio — the choice is stored per directory and read at send time).</li><li>System mail: newsletter sends, notifications and receipts routed through the email service.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in at <a href="https://app.mailgun.com" target="_blank" rel="noopener">app.mailgun.com</a> (create an account if the client has none).</li><li>Add and verify the <b>sending domain</b>, then add the DNS records Mailgun gives you — delivery will not work until the domain shows as verified.</li><li>Open <b>Settings &rarr; API Keys</b> and create (or copy) an API key.</li><li>Copy the key and keep it in a password manager.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Mailgun</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>. Then, <b>per directory</b>, set the email transport to <b>Mailgun</b> in the directory's email settings so the email service actually uses it.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional as a provider, required as a transport choice:</b> if a directory's email transport is set to Mailgun, this key must be present or that directory's system email will not send. (SMTP is the default transport, so nothing breaks until you deliberately switch.)</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Mailgun has a free tier for low monthly volume, then paid plans; a card is required for higher tiers and some verification. Check app.mailgun.com pricing for current limits.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/mailgun/test</code>) for the masked key preview, then send a real test email through the directory (newsletter test send) to confirm the transport works end to end.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-mailgun</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-sendgrid">
+    <h2>✉️ SendGrid <span class="badge badge-opt">Optional</span> <span class="keyid">sendgrid</span></h2>
+    <p class="prov-desc">Transactional + campaign email</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Transactional + campaign email delivery.</li><li>One of the selectable per-directory email <b>transports</b> for the in-house email service on <code>127.0.0.1:3456</code>.</li><li>System mail: newsletter sends, notifications and receipts routed through the email service.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in at <a href="https://app.sendgrid.com" target="_blank" rel="noopener">app.sendgrid.com</a> (create an account if needed).</li><li>Complete <b>Sender Authentication</b> (verify the sending domain and add the DNS records SendGrid provides).</li><li>Open <b>Settings &rarr; API Keys</b> &rarr; <b>Create API Key</b>.</li><li>Give it a name and grant at least the <b>Mail Send</b> permission (a restricted key is safer than full access).</li><li>Copy the key (<code>SG.…</code>) immediately — SendGrid shows it once.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>SendGrid</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>. Then set the directory's email transport to <b>SendGrid</b> in its email settings.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional as a provider, required as a transport choice:</b> if a directory's transport is SendGrid, this key must exist or that directory's system email will not send.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>SendGrid has a free tier for low monthly volume, then paid plans; paid tiers need a card. Check app.sendgrid.com pricing for current limits.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/sendgrid/test</code>), then send a test email through the directory to confirm the transport.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-sendgrid</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-sendiio">
+    <h2>mail Sendiio <span class="badge badge-opt">Optional</span> <span class="keyid">sendiio</span></h2>
+    <p class="prov-desc">Email/SMS campaign delivery</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Email / SMS campaign delivery.</li><li>One of the selectable per-directory email <b>transports</b> for the in-house email service on <code>127.0.0.1:3456</code>.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to the Sendiio dashboard.</li><li>Open <b>Settings &rarr; API / Integrations</b> and generate an API key (Sendiio exposes API access from the account settings).</li><li>Copy the key.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Sendiio</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>. Then set the directory's email transport to <b>Sendiio</b> in its email settings.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional as a provider, required as a transport choice:</b> if a directory's transport is Sendiio, this key must exist or that directory's system email will not send.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Sendiio is a paid subscription product. Confirm the plan/pricing in the Sendiio dashboard before choosing it as a transport.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/sendiio/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-sendiio</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <h2 class="group" id="group-payments">Payments</h2>
+  <section class="card prov" id="provider-groovesell">
+    <h2>🛒 GrooveSell <span class="badge badge-opt">Optional</span> <span class="keyid">groovesell</span></h2>
+    <p class="prov-desc">Checkout, affiliate and upsell platform</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Checkout, affiliate and upsell platform — an alternate checkout provider.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to the GrooveSell dashboard.</li><li>Open <b>Settings &rarr; API / Integrations</b> and copy (or generate) the API key for the account.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>GrooveSell</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — only if the client sells through GrooveSell instead of Stripe.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Vendor-run pricing (checkout platforms usually charge per transaction rather than a flat API fee). Confirm with the client.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/groovesell/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-groovesell</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-stripe">
+    <h2>💳 Stripe <span class="badge badge-req">Required</span> <span class="keyid">stripe</span></h2>
+    <p class="prov-desc">Card payments, subscriptions, invoices and payouts</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li><b>Card payments at checkout</b> (<code>checkout_handler.rs</code> resolves the active provider <code>stripe</code> and stores its credentials as the active payment provider).</li><li>Subscriptions, invoices and payouts.</li><li>Marketplace / listing upgrades and any paid placement flow that goes through checkout.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Create or sign in to an account at <a href="https://dashboard.stripe.com" target="_blank" rel="noopener">dashboard.stripe.com</a>.</li><li>Complete the business/identity verification so payouts can be enabled (Stripe needs business details and a bank account — this is more than just a credit card).</li><li>Open <b>Developers &rarr; API keys</b> (in Test mode first if you want to dry-run).</li><li>Copy the <b>Secret key</b> (<code>sk_live_…</code> for live, <code>sk_test_…</code> for testing). The <b>publishable</b> key (<code>pk_…</code>) is <i>not</i> the one you paste here.</li><li>(Recommended) Use a <b>restricted key</b> scoped to the payment endpoints instead of the full secret key.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Stripe</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b> (paste the <b>secret</b> key).</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Required</b> if the directory takes card payments or pays out. Without it, checkout fails and paid placements cannot be charged. Payments are simply unavailable if you never enable them.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>No monthly fee; Stripe charges a per-transaction fee and holds the funds. Live keys require a verified Stripe account with bank details. Check Stripe's pricing page for current rates.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/stripe/test</code>) to confirm the masked key, then run a real test-mode checkout end to end before switching to live keys.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-stripe</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <h2 class="group" id="group-sms">SMS &amp; Voice</h2>
+  <section class="card prov" id="provider-telnyx">
+    <h2>phone Telnyx <span class="badge badge-opt">Optional</span> <span class="keyid">telnyx</span></h2>
+    <p class="prov-desc">SMS/Voice API</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>SMS / voice API — an alternate messaging provider to Twilio.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in at <a href="https://portal.telnyx.com" target="_blank" rel="noopener">portal.telnyx.com</a>.</li><li>Open <b>API Keys</b> and click <b>Create API Key</b>.</li><li>Copy the key (shown once) and buy the number you will send from.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Telnyx</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — use instead of Twilio if the client already runs Telnyx. Do not configure both unless you intend to.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Pay-as-you-go with a card on file; check portal.telnyx.com pricing for current rates.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/telnyx/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-telnyx</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-twilio">
+    <h2>📞 Twilio <span class="badge badge-req">Required</span> <span class="keyid">twilio</span></h2>
+    <p class="prov-desc">SMS + voice messaging</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li><b>SMS and voice messaging.</b></li><li>Call-tracking numbers (the <code>twilio_numbers</code> records power call tracking).</li><li>Phone-number intelligence / lookups (the Contact Intelligence module calls the Twilio Lookups API).</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Create or sign in to an account at <a href="https://console.twilio.com" target="_blank" rel="noopener">console.twilio.com</a>.</li><li>Complete phone/identity verification — carriers require a verified sender before you can send SMS.</li><li>Open <b>Account &rarr; API keys &amp; tokens</b> and create a <b>Standard</b> API key.</li><li>Copy the <b>SID</b> and the <b>Secret</b> (the secret is shown once) — and note your <b>Account SID</b> from the console home.</li><li>Buy (or port) the phone number you will send from, and if you are messaging US numbers, complete the required A2P 10DLC brand/campaign registration or your messages will be blocked.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>Twilio</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>. Paste the credential the app expects for Twilio (API key secret / auth token as documented by the integration).</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Required for SMS/voice and call tracking.</b> Without it, no text messages send and call-tracking number provisioning fails. Everything else works fine without it.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Pay-as-you-go: a trial credit is included and a credit card is required to upgrade to sending at volume. A2P registration may have its own fees. Check console.twilio.com pricing for current rates.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/twilio/test</code>), then send one real SMS to a phone you control.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-twilio</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <h2 class="group" id="group-crm">CRM &amp; Federal Data</h2>
+  <section class="card prov" id="provider-coreswift">
+    <h2>crm CoreSwift CRM <span class="badge badge-opt">Optional</span> <span class="keyid">coreswift</span></h2>
+    <p class="prov-desc">Drill loyalty members and business participants into your CoreSwift CRM. Connect with a personal API key (csk_...) from CoreSwift Integration Center.</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Drill loyalty members and business participants into your <b>CoreSwift CRM</b> (native integration in <code>connected_services.rs</code>).</li><li>The Integrations panel &rarr; CoreSwift connection.</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in to CoreSwift and open the <b>Integration Center</b>.</li><li>Generate a <b>personal API key</b> — CoreSwift keys start with <code>csk_</code>.</li><li>Also note the <b>base URL</b> of the CoreSwift instance you are connecting to (e.g. <code>https://your-org.coreswift…</code>).</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>CoreSwift CRM</b> row. This row has an <b>extra field</b>: paste the <code>csk_…</code> key into <b>&ldquo;Paste API key&rdquo;</b> and the instance URL into the <b>&ldquo;Base URL (required)&rdquo;</b> field, then <b>Save</b>.</p>
+    <p class="note"><b>Extra field:</b> this provider also requires a <b>Base URL</b>, so its row shows an additional <b>&ldquo;Base URL (required)&rdquo;</b> input next to the key field.</p>
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b>, but <b>this provider requires a Base URL</b> in addition to the key — a key alone will not connect. It is the only provider in the table with that requirement.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Internal/first-party product — there is no per-call API fee. Licensing is handled separately.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/coreswift/test</code>), then open the Integrations panel and confirm the CoreSwift connection shows as connected.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-coreswift</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-sam_gov">
+    <h2>shield SAM.gov <span class="badge badge-opt">Optional</span> <span class="keyid">sam_gov</span></h2>
+    <p class="prov-desc">Federal contracting opportunities</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Federal contracting opportunities data (SAM.gov listings).</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>Sign in at <a href="https://sam.gov" target="_blank" rel="noopener">sam.gov</a> with a registered account (registration is free but requires identity verification, which can take time).</li><li>Open your <b>Account Details</b> and use the <b>API key</b> section (the &ldquo;Get API Key&rdquo; action) to request/rotate your key.</li><li>Copy the key from the account page.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>SAM.gov</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional</b> — only relevant if the directory surfaces federal contracting opportunities.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Free — SAM.gov API keys are issued to registered users at no charge.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/sam_gov/test</code>).</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-sam_gov</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+  <section class="card prov" id="provider-usaspending">
+    <h2>dollar-sign USAspending <span class="badge badge-opt">Optional</span> <span class="keyid">usaspending</span></h2>
+    <p class="prov-desc">Federal spending data</p>
+    
+    <h4>1. What it powers</h4>
+    <ul><li>Federal spending data (USAspending).</li></ul>
+    <h4>2. How to get the key</h4>
+    <ol class="steps"><li>The USAspending data API (<a href="https://api.usaspending.gov" target="_blank" rel="noopener">api.usaspending.gov</a>) is <b>public and does not require a key</b> for normal use.</li><li>If you want a registered key for higher rate limits, request one from the USAspending API documentation/registration page.</li><li>Paste the issued key if you were given one.</li></ol>
+    <h4>3. Where to paste it</h4>
+    <p>Admin Panel &rarr; card <b>&#x1F511; Provider API Keys</b> &rarr; <b>USAspending</b> row &rarr; <b>&ldquo;Paste API key&rdquo;</b> &rarr; <b>Save</b>. Leave it empty if you are using the public API unauthenticated.</p>
+    
+    <h4>4. Required or optional — and what breaks without it</h4>
+    <p><b>Optional / usually unnecessary</b> — the public API works without a key, so this row can stay empty.</p>
+    <h4>5. Cost &amp; plan notes</h4>
+    <p>Free / public data.</p>
+    <h4>6. How to verify it</h4>
+    <p>Click <b>Test</b> on the row (<code>GET /api/v1/admin/provider-keys/usaspending/test</code>) if a key was entered.</p>
+    <p class="anchor-note">Deep-link to this section with <code>#provider-usaspending</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
+  </section>
+
+  <h2 id="related-creds">&#x26A0; Credentials that are <i>not</i> in this provider table</h2>
+  <div class="card">
+    <p>Some parts of the app read credentials that are <b>not</b> listed in the 23-row provider catalogue above, so they do not appear as rows in the Provider API Keys card. Don't hunt for them in the panel:</p>
+    <ul>
+      <li><b>Yelp</b> &mdash; business data. Read from the provider-keys store / <code>YELP_API_KEY</code> environment variable by the Data Company module, but Yelp is not a row in <code>available_providers</code>.</li>
+      <li><b>DataForSEO</b> and <b>AnswerThePublic</b> &mdash; keyword research (the blog Q&amp;A / keyword fetcher). They read a <code>provider_keys</code> row directly and are <b>not</b> listed in the availability catalogue, so they are not pasteable from this card.</li>
+      <li><b>Gemini</b> &mdash; selectable inside the blog generator's model routing, but likewise not a row in this table.</li>
+      <li><b>SMTP</b> &mdash; host/port/username/password live in each directory's own email settings, not in the provider keys card.</li>
+    </ul>
+    <p>If you need one of these, tell the developer &mdash; they are configured outside the VA-facing panel on purpose.</p>
+  </div>
+
+  <hr>
+  <p class="anchor-note">Section anchors are stable and safe to deep-link: <code>#provider-&lt;provider_key&gt;</code> for a provider, <code>#start-here</code>, <code>#quick-map</code>, <code>#all-providers</code>. This page is generated from the live <code>available_providers</code> table &mdash; if a provider is added there, it must be given a section here (the generator refuses to build otherwise).</p>
+  <p class="top-link"><a href="index.html">&#x2190; Back to all guides</a></p>
+</div>
+</body>
+</html>
