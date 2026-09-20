@@ -79,13 +79,24 @@ window.addEventListener("scroll",function(){
   }
 });
 var pt = Date.now();
+// sendBeacon with a plain string sends Content-Type: text/plain, which the API rejects with 415,
+// so session-end and batched events never recorded. A Blob with an explicit JSON type fixes it.
+function beaconJson(url, obj){
+  try{
+    if(navigator.sendBeacon){
+      navigator.sendBeacon(url, new Blob([JSON.stringify(obj)], {type:"application/json"}));
+    }else{
+      fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj),keepalive:true});
+    }
+  }catch(e){}
+}
 window.addEventListener("beforeunload",function(){
   var dur = Math.round((Date.now()-pt)/1000);
   try{var s = JSON.parse(localStorage.getItem("_vs")||"{}");
     if(s.s){
-      navigator.sendBeacon("/api/v1/visitors/session/"+s.s+"/end",JSON.stringify({
+      beaconJson("/api/v1/visitors/session/"+s.s+"/end",{
         exit_page:location.href,pages_viewed:1,scroll_depth_pct:sc,duration_secs:dur,is_bounce:sc<25
-      }));
+      });
     }
   }catch(e){}
 },false);
@@ -97,7 +108,7 @@ function trackEvt(et,ev){
       localStorage.setItem("_vs",JSON.stringify(s));
       if(s.e.length >= 10){
         var b = s.e.splice(0,10);
-        navigator.sendBeacon("/api/v1/visitors/event",JSON.stringify({session_id:s.s,events:b}));
+        beaconJson("/api/v1/visitors/event",{session_id:s.s,events:b});
         localStorage.setItem("_vs",JSON.stringify(s));
       }
     }

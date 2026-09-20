@@ -175,7 +175,7 @@ pub async fn create_deal(
     Json(req): Json<CreateDealRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let deal = sqlx::query_as::<_, Deal>(
-        "INSERT INTO deals (title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417, \x2418, \x2419, \x2420, \x2421, \x2422, \x2423, \x2424, \x2425, \x2426, \x2427, \x2428, \x2429) RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
+        "INSERT INTO deals (title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, gallery_images, rotation_schedule) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417, \x2418, \x2419, \x2420, \x2421, \x2422, \x2423, \x2424, \x2425, \x2426, \x2427, \x2428, \x2429, \x2430, \x2431) RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )
     .bind(&req.title)
     .bind(&req.description)
@@ -206,6 +206,10 @@ pub async fn create_deal(
     .bind(req.show_qr.unwrap_or(false))
     .bind(req.per_user_limit)
     .bind(serde_json::to_value(req.highlights.unwrap_or_default()).ok())
+    // gallery_images is a jsonb array of image URLs (portal gallery editor).
+    .bind(serde_json::to_value(req.gallery_images.unwrap_or_default()).ok())
+    // rotation_schedule: one of none|daily|weekly|biweekly|monthly (schema CHECK) or NULL.
+    .bind(req.rotation_schedule.as_deref())
     .fetch_one(&s.db)
     .await?;
 
@@ -273,9 +277,17 @@ pub async fn update_deal(
     let booking_url = req.booking_url.or(existing.booking_url);
     let show_qr = req.show_qr.or(existing.show_qr);
     let rotation_schedule = req.rotation_schedule.or(existing.rotation_schedule);
+    // Keep the stored gallery when the field is absent so a partial PUT cannot wipe it;
+    // an explicit [] clears it. The portal always sends the full list.
+    let gallery_images = req
+        .gallery_images
+        .as_ref()
+        .and_then(|v| serde_json::to_value(v).ok())
+        .or_else(|| existing.gallery_images.clone());
+    let rotation_order = req.rotation_order.or(existing.rotation_order);
 
     let deal = sqlx::query_as::<_, Deal>(
-        "UPDATE deals SET title = \x241, description = \x242, original_price = \x243, deal_price = \x244, discount_percent = \x245, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, zaarhub_featured = \x2416, deal_type = \x2417, coupon_code = \x2418, page_template = \x2419, accent_color = \x2420, cta_color = \x2421, cta_text = \x2422, show_timer = \x2423, premium_features = \x2424, redemption_type = \x2425, booking_url = \x2426, show_qr = \x2427, per_user_limit = \x2428, highlights = \x2429, rotation_schedule = \x2430, updated_at = NOW() WHERE id = \x2431 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
+        "UPDATE deals SET title = \x241, description = \x242, original_price = \x243, deal_price = \x244, discount_percent = \x245, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, zaarhub_featured = \x2416, deal_type = \x2417, coupon_code = \x2418, page_template = \x2419, accent_color = \x2420, cta_color = \x2421, cta_text = \x2422, show_timer = \x2423, premium_features = \x2424, redemption_type = \x2425, booking_url = \x2426, show_qr = \x2427, per_user_limit = \x2428, highlights = \x2429, rotation_schedule = \x2430, gallery_images = \x2431, rotation_order = \x2432, updated_at = NOW() WHERE id = \x2433 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )
     .bind(&title)
     .bind(&description)
@@ -307,6 +319,8 @@ pub async fn update_deal(
     .bind(req.per_user_limit.or(existing.per_user_limit))
     .bind(serde_json::to_value(req.highlights.unwrap_or_default()).ok())
     .bind(&rotation_schedule)
+    .bind(gallery_images)
+    .bind(rotation_order)
     .bind(id)
     .fetch_one(&s.db)
     .await?;
