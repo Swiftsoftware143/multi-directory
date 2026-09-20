@@ -726,6 +726,65 @@
         <div class="feature-status" id="sub-status"></div>
       </div>
 
+      <!-- Round 8: Email templates — backend GET/POST /email/templates, PUT/DELETE /email/templates/:id existed with zero UI -->
+      <div class="feature-card" id="email-templates-section">
+        <h3>📧 Email Templates</h3>
+        <p class="feature-subtitle">The mail this directory sends (password reset, welcome, review requests…). The HTML body and the plain-text fallback are stored separately; <b>variables</b> are the merge fields the body may use (e.g. <code>directory_name</code>, <code>reset_link</code>).</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__etNew()">+ New template</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__etLoad()">Reload</button>
+          <span class="feature-status" id="et-status"></span>
+        </div>
+        <div id="et-list"></div>
+        <div id="et-editor" style="display:none;margin-top:14px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px">
+          <label style="font-size:.82rem;font-weight:600" id="et-editor-title">New template</label>
+          <div class="em-grid" style="margin-top:8px">
+            <div class="em-field"><label>Name</label><input id="et-f-name" placeholder="password_reset"></div>
+            <div class="em-field"><label>Subject</label><input id="et-f-subject" placeholder="Reset your password — {{directory_name}}"></div>
+            <div class="em-field"><label>Category</label><input id="et-f-category" placeholder="transactional"></div>
+            <div class="em-field"><label>Directory (blank = global)</label><select id="et-f-dir"></select></div>
+            <div class="em-field"><label>Variables / merge fields (comma separated)</label><input id="et-f-vars" placeholder="directory_name, reset_link"></div>
+          </div>
+          <div class="em-grid" style="margin-top:8px">
+            <div class="em-field"><label>Body (HTML)</label><textarea id="et-f-body" rows="6" placeholder="&lt;p&gt;Hello {{name}},&lt;/p&gt;"></textarea></div>
+            <div class="em-field"><label>Body (plain text fallback)</label><textarea id="et-f-body-text" rows="6" placeholder="Hello {{name}} — plain text version"></textarea></div>
+          </div>
+          <div class="pk-controls" style="margin-top:8px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__etSave()">Save template</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="window.__etCancel()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Round 8: Email campaigns — GET/POST /email/campaigns, /:id/send existed with zero UI -->
+      <div class="feature-card" id="email-campaigns-section">
+        <h3>📨 Email Campaigns</h3>
+        <p class="feature-subtitle">Bulk sends built on one of the templates above. Create a campaign, schedule it, or send it now — the sent / opened counters come from the campaign record itself.</p>
+        <div class="em-grid">
+          <div class="em-field"><label>Campaign name</label><input id="ec-name" placeholder="September newsletter"></div>
+          <div class="em-field"><label>Template</label><select id="ec-template"></select></div>
+          <div class="em-field"><label>Directory (blank = global)</label><select id="ec-dir"></select></div>
+          <div class="em-field"><label>Schedule (blank = draft)</label><input id="ec-when" type="datetime-local"></div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__ecCreate()">+ Create campaign</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__ecLoad()">Reload</button>
+          <span class="feature-status" id="ec-status"></span>
+        </div>
+        <div id="ec-list"></div>
+      </div>
+
+      <!-- Round 8: Scrape sources — GET /scraper/providers reported status with no UI -->
+      <div class="feature-card" id="scraper-providers-section">
+        <h3>🕸 Scrape Sources</h3>
+        <p class="feature-subtitle">Which business-data sources this install can actually pull from. The credentials themselves live in <b>Provider API Keys</b> above — this card only reports whether each source has a key, nothing is hardcoded.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__spLoad()">Refresh status</button>
+          <span class="feature-status" id="sp-status"></span>
+        </div>
+        <div id="sp-list"></div>
+      </div>
+
       <!-- Directory Cards -->
       <div class="section-label">All Directories</div>
       <div id="directory-grid" class="directory-grid">
@@ -1249,6 +1308,11 @@
       loadEmailSettingsDirectories();
       loadAdZones();
       loadSubmissions();
+      // Round 8: the three capabilities that had a live backend and no UI.
+      // loadEmailTemplates() also populates the campaign template picker, so run it first.
+      loadEmailTemplates();
+      loadEmailCampaigns();
+      loadScraperProviders();
     }
 
     // ===== Login Handler =====
@@ -1632,6 +1696,264 @@
         .then(function () { showToast('Submission deleted'); loadSubmissions(); })
         .catch(function (e) { subStatus('Delete failed: ' + e.message, false); });
     };
+
+    // ===== Round 8: Email templates / Email campaigns / Scrape sources =====
+    // Three capabilities whose backends were already live but had no control on any page.
+    function r8Status(id, msg, ok) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = msg || '';
+      el.classList.add('show');
+      el.style.color = ok ? '#22c55e' : 'var(--warn,#ffb454)';
+    }
+
+    function r8DirSelect(sel, selected) {
+      if (!sel) return;
+      var opts = '<option value="">— all directories —</option>';
+      opts += (directories || []).map(function (d) {
+        return '<option value="' + pkEsc(d.id) + '"' +
+          (String(selected || '') === String(d.id) ? ' selected' : '') + '>' +
+          pkEsc(d.name || d.slug) + '</option>';
+      }).join('');
+      sel.innerHTML = opts;
+    }
+
+    // ---- Email templates (GET/POST /email/templates, PUT/DELETE /email/templates/:id) ----
+    var etRows = [];
+    var etEditingId = null;
+
+    function etFillEditor(t) {
+      t = t || {};
+      document.getElementById('et-editor-title').textContent = t.id ? ('Edit: ' + (t.name || t.id)) : 'New template';
+      document.getElementById('et-f-name').value = t.name || '';
+      document.getElementById('et-f-subject').value = t.subject || '';
+      document.getElementById('et-f-category').value = t.category || '';
+      document.getElementById('et-f-vars').value = (t.variables || []).join(', ');
+      document.getElementById('et-f-body').value = t.body || '';
+      document.getElementById('et-f-body-text').value = t.body_text || '';
+      r8DirSelect(document.getElementById('et-f-dir'), t.directory_id);
+      document.getElementById('et-editor').style.display = 'block';
+    }
+
+    function loadEmailTemplates() {
+      var box = document.getElementById('et-list');
+      if (!box) return;
+      apiGet('/email/templates').then(function (r) {
+        etRows = Array.isArray(r) ? r : ((r && r.data) || []);
+        if (!etRows.length) {
+          box.innerHTML = '<p class="feature-subtitle">No templates yet — “+ New template” creates the first one.</p>';
+          r8Status('et-status', '0 templates', false);
+          return;
+        }
+        box.innerHTML = etRows.map(function (t) {
+          return '<div class="pk-row" data-et-row="' + pkEsc(t.id) + '">' +
+            '<div class="pk-keyline"><b>' + pkEsc(t.name) + '</b>' +
+              '<span style="margin-left:8px;font-size:.72rem;padding:2px 8px;border-radius:100px;background:rgba(96,165,250,.15);color:#60a5fa">' + pkEsc(t.category || 'uncategorised') + '</span>' +
+              '<span style="margin-left:6px;font-size:.72rem;color:var(--text-muted,#8aa0b8)">' + (t.directory_id ? 'directory-scoped' : 'global') + '</span>' +
+            '</div>' +
+            '<div style="font-size:.8rem;color:var(--text-muted,#8aa0b8);margin:2px 0 6px">' + pkEsc(t.subject) + '</div>' +
+            '<div class="pk-controls">' +
+              '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__etEdit(\'' + t.id + '\')">Edit</button>' +
+              '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__etDelete(\'' + t.id + '\')">Delete</button>' +
+            '</div></div>';
+        }).join('');
+        r8Status('et-status', etRows.length + ' template(s)', true);
+        var sel = document.getElementById('ec-template');
+        if (sel) {
+          sel.innerHTML = '<option value="">— pick a template —</option>' + etRows.map(function (t) {
+            return '<option value="' + pkEsc(t.id) + '">' + pkEsc(t.name) + '</option>';
+          }).join('');
+        }
+      }).catch(function (e) {
+        box.innerHTML = '';
+        r8Status('et-status', 'Could not load templates: ' + e.message, false);
+      });
+    }
+
+    window.__etLoad = loadEmailTemplates;
+
+    window.__etNew = function () {
+      etEditingId = null;
+      etFillEditor(null);
+    };
+
+    window.__etEdit = function (id) {
+      var t = etRows.filter(function (x) { return x.id === id; })[0];
+      if (!t) return;
+      etEditingId = id;
+      etFillEditor(t);
+    };
+
+    window.__etCancel = function () {
+      document.getElementById('et-editor').style.display = 'none';
+      etEditingId = null;
+    };
+
+    window.__etSave = function () {
+      var name = document.getElementById('et-f-name').value.trim();
+      var subject = document.getElementById('et-f-subject').value.trim();
+      var body = document.getElementById('et-f-body').value;
+      if (!name || !subject || !body) {
+        r8Status('et-status', 'Name, subject and the HTML body are required', false);
+        return;
+      }
+      var vars = document.getElementById('et-f-vars').value.split(',')
+        .map(function (s) { return s.trim(); })
+        .filter(function (s) { return !!s; });
+      var payload = {
+        name: name,
+        subject: subject,
+        body: body,
+        body_text: document.getElementById('et-f-body-text').value,
+        category: document.getElementById('et-f-category').value.trim() || null,
+        variables: vars,
+        directory_id: document.getElementById('et-f-dir').value || null
+      };
+      var req = etEditingId
+        ? apiFetch('PUT', '/email/templates/' + etEditingId, payload)
+        : apiPost('/email/templates', payload);
+      r8Status('et-status', 'Saving…', true);
+      req.then(function (saved) {
+        r8Status('et-status', 'Saved “' + (saved && saved.name ? saved.name : name) + '”' + (etEditingId ? ' (updated)' : ' (created)'), true);
+        showToast('Email template saved');
+        document.getElementById('et-editor').style.display = 'none';
+        etEditingId = null;
+        loadEmailTemplates();
+      }).catch(function (e) {
+        r8Status('et-status', 'Save failed: ' + e.message, false);
+      });
+    };
+
+    window.__etDelete = function (id) {
+      if (!confirm('Delete this email template?')) return;
+      apiFetch('DELETE', '/email/templates/' + id)
+        .then(function () { showToast('Email template deleted'); loadEmailTemplates(); })
+        .catch(function (e) { r8Status('et-status', 'Delete failed: ' + e.message, false); });
+    };
+
+    // ---- Email campaigns (GET/POST /email/campaigns, /:id/send, DELETE /:id) ----
+    var ecRows = [];
+
+    function loadEmailCampaigns() {
+      var box = document.getElementById('ec-list');
+      if (!box) return;
+      r8DirSelect(document.getElementById('ec-dir'), null);
+      apiGet('/email/campaigns').then(function (r) {
+        ecRows = Array.isArray(r) ? r : ((r && r.data) || []);
+        if (!ecRows.length) {
+          box.innerHTML = '<p class="feature-subtitle">No campaigns yet.</p>';
+          r8Status('ec-status', '0 campaigns', false);
+          return;
+        }
+        box.innerHTML = ecRows.map(function (c) {
+          var tpl = etRows.filter(function (t) { return t.id === c.template_id; })[0];
+          var when = c.sent_at ? ('sent ' + c.sent_at) : (c.scheduled_at ? ('scheduled ' + c.scheduled_at) : 'not scheduled');
+          return '<div class="pk-row" data-ec-row="' + pkEsc(c.id) + '">' +
+            '<div class="pk-keyline"><b>' + pkEsc(c.name) + '</b>' +
+              '<span style="margin-left:8px;font-size:.72rem;padding:2px 8px;border-radius:100px;background:rgba(96,165,250,.15);color:#60a5fa">' + pkEsc(c.status || 'draft') + '</span>' +
+            '</div>' +
+            '<div style="font-size:.8rem;color:var(--text-muted,#8aa0b8);margin:2px 0 6px">' +
+              'template: ' + pkEsc(tpl ? tpl.name : (c.template_id || 'none')) +
+              ' · sent ' + (c.sent_count || 0) + ' · opened ' + (c.opened_count || 0) +
+              ' · ' + pkEsc(when) +
+            '</div>' +
+            '<div class="pk-controls">' +
+              '<button class="btn btn-accent btn-sm" type="button" onclick="window.__ecSend(\'' + c.id + '\')">Send now</button>' +
+              '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__ecDelete(\'' + c.id + '\')">Delete</button>' +
+            '</div></div>';
+        }).join('');
+        r8Status('ec-status', ecRows.length + ' campaign(s)', true);
+      }).catch(function (e) {
+        box.innerHTML = '';
+        r8Status('ec-status', 'Could not load campaigns: ' + e.message, false);
+      });
+    }
+
+    window.__ecLoad = function () {
+      loadEmailTemplates();
+      loadEmailCampaigns();
+    };
+
+    window.__ecCreate = function () {
+      var name = document.getElementById('ec-name').value.trim();
+      if (!name) { r8Status('ec-status', 'Give the campaign a name first', false); return; }
+      var whenRaw = document.getElementById('ec-when').value;
+      var scheduled = null;
+      if (whenRaw) {
+        var d = new Date(whenRaw);
+        if (isNaN(d.getTime())) { r8Status('ec-status', 'Schedule date is not valid', false); return; }
+        scheduled = d.toISOString();
+      }
+      var payload = {
+        name: name,
+        template_id: document.getElementById('ec-template').value || null,
+        directory_id: document.getElementById('ec-dir').value || null,
+        scheduled_at: scheduled,
+        status: scheduled ? 'scheduled' : 'draft'
+      };
+      r8Status('ec-status', 'Creating…', true);
+      apiPost('/email/campaigns', payload).then(function (c) {
+        r8Status('ec-status', 'Created “' + ((c && c.name) || name) + '” (' + payload.status + ')', true);
+        showToast('Campaign created');
+        document.getElementById('ec-name').value = '';
+        document.getElementById('ec-when').value = '';
+        loadEmailCampaigns();
+      }).catch(function (e) {
+        r8Status('ec-status', 'Create failed: ' + e.message, false);
+      });
+    };
+
+    window.__ecSend = function (id) {
+      if (!confirm('Send this campaign now?')) return;
+      r8Status('ec-status', 'Sending…', true);
+      apiPost('/email/campaigns/' + id + '/send', {})
+        .then(function (c) {
+          r8Status('ec-status', 'Campaign “' + ((c && c.name) || id) + '” → ' + ((c && c.status) || 'sent'), true);
+          showToast('Campaign sent');
+          loadEmailCampaigns();
+        })
+        .catch(function (e) { r8Status('ec-status', 'Send failed: ' + e.message, false); });
+    };
+
+    window.__ecDelete = function (id) {
+      if (!confirm('Delete this campaign?')) return;
+      apiFetch('DELETE', '/email/campaigns/' + id)
+        .then(function () { showToast('Campaign deleted'); loadEmailCampaigns(); })
+        .catch(function (e) { r8Status('ec-status', 'Delete failed: ' + e.message, false); });
+    };
+
+    // ---- Scrape sources (GET /scraper/providers) ----
+    function loadScraperProviders() {
+      var box = document.getElementById('sp-list');
+      if (!box) return;
+      apiGet('/scraper/providers').then(function (r) {
+        var rows = (r && r.providers) || [];
+        if (!rows.length) {
+          box.innerHTML = '<p class="feature-subtitle">No scrape sources registered.</p>';
+          return;
+        }
+        var live = rows.filter(function (p) { return p.configured; }).length;
+        box.innerHTML = rows.map(function (p) {
+          return '<div class="pk-row">' +
+            '<div class="pk-keyline"><b>' + pkEsc(p.name || p.key) + '</b>' +
+              '<span style="margin-left:8px;font-size:.72rem;padding:2px 8px;border-radius:100px;' +
+                (p.configured ? 'background:rgba(34,197,94,.15);color:#22c55e">configured'
+                              : 'background:rgba(248,113,113,.15);color:#f87171">not configured') +
+              '</span>' +
+              '<span style="margin-left:6px;font-size:.72rem;color:var(--text-muted,#8aa0b8)">' + pkEsc(p.key) + '</span>' +
+            '</div>' +
+            '<div class="pk-controls">' +
+              '<a class="btn btn-ghost btn-sm" href="#provider-keys-section">Configure the key →</a>' +
+            '</div></div>';
+        }).join('');
+        r8Status('sp-status', live + ' of ' + rows.length + ' scrape sources configured', live > 0);
+      }).catch(function (e) {
+        box.innerHTML = '';
+        r8Status('sp-status', 'Could not read scrape sources: ' + e.message, false);
+      });
+    }
+
+    window.__spLoad = loadScraperProviders;
 
     // ===== Init =====
     if (token && user) {

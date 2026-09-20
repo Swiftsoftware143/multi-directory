@@ -161,7 +161,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/search/config/:directory_id", get(search::get_search_config).put(search::update_search_config))
         .route("/search", get(search::search_businesses))
         .route("/search/suppliers", get(search::search_suppliers))
-        .route("/api/v1/search", get(blog_qa::search_all))
+        .route("/blog-qa/search-all", get(blog_qa::search_all))
         .route("/cities", get(zaarhub_cities::list_cities))
         .route("/categories", get(categories::list_all_categories))
         // Public aliases for frontend
@@ -180,19 +180,19 @@ pub fn create_router(s: AppState) -> Router {
         .route("/community/posts", get(blog::list_community_posts).post(blog::create_community_post))
         .route("/community/posts/:id", get(blog::get_blog_post).put(blog::update_community_post).delete(blog::delete_blog_post))
         // Q&A Automation
-        .route("/api/v1/blog-qa/fetch-keywords", post(blog_qa::fetch_keywords))
-        .route("/api/v1/blog-qa/generate-posts", post(blog_qa::generate_posts))
-        .route("/api/v1/blog-qa/keywords", get(blog_qa::list_keywords))
-        .route("/api/v1/blog-qa/generate-digest", post(blog_qa::generate_digest))
-        .route("/api/v1/blog-qa/send-digest", post(blog_qa::send_digest))
-        .route("/api/v1/blog-qa/schedule-weekly", post(blog_qa::schedule_weekly))
-        .route("/api/v1/integration-configs", get(blog_qa::list_configs).post(blog_qa::save_config))
-        .route("/api/v1/integration-configs/:provider", get(blog_qa::get_config).delete(blog_qa::delete_config))
+        .route("/blog-qa/fetch-keywords", post(blog_qa::fetch_keywords))
+        .route("/blog-qa/generate-posts", post(blog_qa::generate_posts))
+        .route("/blog-qa/keywords", get(blog_qa::list_keywords))
+        .route("/blog-qa/generate-digest", post(blog_qa::generate_digest))
+        .route("/blog-qa/send-digest", post(blog_qa::send_digest))
+        .route("/blog-qa/schedule-weekly", post(blog_qa::schedule_weekly))
+        .route("/integration-configs", get(blog_qa::list_configs).post(blog_qa::save_config))
+        .route("/integration-configs/:provider", get(blog_qa::get_config).delete(blog_qa::delete_config))
         // ??? Answer-First article generator + CoreSwift tenant setup
-        .route("/api/v1/admin/articles/generate-answer-first", post(answer_first::generate_answer_first))
-        .route("/api/v1/admin/articles/suggest-competitors", post(answer_first::suggest_competitors))
-        .route("/api/v1/admin/core-swift/setup-tenant", post(answer_first::setup_core_swift_tenant))
-        .route("/api/v1/admin/core-swift/test-connection", post(answer_first::test_core_swift_connection))
+        .route("/admin/articles/generate-answer-first", post(answer_first::generate_answer_first))
+        .route("/admin/articles/suggest-competitors", post(answer_first::suggest_competitors))
+        .route("/admin/core-swift/setup-tenant", post(answer_first::setup_core_swift_tenant))
+        .route("/admin/core-swift/test-connection", post(answer_first::test_core_swift_connection))
         // RFQ Marketplace (BL24)
         .route("/b2b/rfqs/stats", get(rfq::rfq_stats))
         .route("/b2b/rfqs/my", get(rfq::my_rfqs))
@@ -727,6 +727,23 @@ pub fn create_router(s: AppState) -> Router {
                         .map(|h| h.trim().to_lowercase());
 
                     let path = req.uri().path().to_string();
+
+                    // ── Hard 404 for unknown API routes ──
+                    // Unmatched /api/* used to fall through to the SPA fallback and come
+                    // back as 200 text/html, so a dead frontend→backend call looked like
+                    // success and failed silently. API misses are now an explicit 404 JSON.
+                    // Non-API paths are untouched (SPA fallback further down).
+                    if path == "/api" || path.starts_with("/api/") {
+                        return Ok::<_, std::convert::Infallible>(
+                            axum::response::Response::builder()
+                                .status(axum::http::StatusCode::NOT_FOUND)
+                                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                                .body(axum::body::Body::from(
+                                    r#"{"code":404,"error":true,"message":"Unknown API route"}"#,
+                                ))
+                                .unwrap(),
+                        );
+                    }
 
                     if let Some(ref host) = host {
                         let app_domain = _base_domain.to_lowercase();

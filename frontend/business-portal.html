@@ -519,31 +519,38 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
           </div>
         </div>
         <hr style="margin:16px 0;border-color:var(--border)">
-        <div class="section-subtitle" style="margin-bottom:12px">⭐ Premium Features '+(typeof dealPageObj!=="undefined"&&dealPageObj.premium_features?'<span style="font-size:.75rem;color:var(--green);margin-left:6px">Enabled</span>':'<span style="font-size:.75rem;color:var(--text-muted);margin-left:6px">🔒 Upgrade Required</span>')+'</div>
-        <div id="premiumFeaturesSection" style="background:var(--bg-teal);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">'+
-          '<div class="form-group">'+
-            '<label>Redemption Type</label>'+
-            '<select id="dealRedemptionType" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">'+
-              '<option value="code">📝 Coupon Code</option>'+
-              '<option value="qr">📱 QR Code</option>'+
-              '<option value="booking">🔗 Booking Link</option>'+
-              '<option value="wallet">💳 Wallet Pass</option>'+
-            '</select>'+
-          '</div>'+
-          '<div class="form-group">'+
-            '<label>Booking URL <span style="font-size:.75rem;color:var(--text-muted)">— for booking type redemptions</span></label>'+
-            '<input type="text" id="dealBookingUrl" placeholder="https://your-booking-link.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">'+
-          '</div>'+
-          '<label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
-            '<input type="checkbox" id="dealShowQR" style="width:18px;height:18px">'+
-            '<span style="font-size:.85rem;font-weight:500">Show QR Code on Deal Page</span>'+
-          '</label>'+
-          '<label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">'+
-            '<input type="checkbox" id="dealPremiumFeatures" style="width:18px;height:18px">'+
-            '<span style="font-size:.85rem;font-weight:500">Enable Premium Features</span>'+
-            '<span style="font-size:.75rem;color:var(--text-muted);margin-left:4px">(QR codes, template variants, social sharing, booking links)</span>'+
-          '</label>'+
-        '</div>'+
+        <div class="section-subtitle" style="margin-bottom:12px">⭐ Premium Features <span id="premiumEnabledBadge" style="font-size:.75rem;color:var(--text-muted);margin-left:6px"></span></div>
+        <div id="premiumFeaturesSection" style="background:var(--bg-teal);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+          <div class="form-group">
+            <label>Redemption Type</label>
+            <select id="dealRedemptionType" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+              <option value="code">📝 Coupon Code</option>
+              <option value="qr">📱 QR Code</option>
+              <option value="booking">🔗 Booking Link</option>
+              <option value="wallet">💳 Wallet Pass</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Booking URL <span style="font-size:.75rem;color:var(--text-muted)">— for booking type redemptions</span></label>
+            <input type="text" id="dealBookingUrl" placeholder="https://your-booking-link.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="dealShowQR" style="width:18px;height:18px">
+            <span style="font-size:.85rem;font-weight:500">Show QR Code on Deal Page</span>
+          </label>
+          <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="dealPremiumFeatures" style="width:18px;height:18px">
+            <span style="font-size:.85rem;font-weight:500">Enable Premium Features</span>
+            <span style="font-size:.75rem;color:var(--text-muted);margin-left:4px">(QR codes, template variants, social sharing, booking links)</span>
+          </label>
+          <!-- Round 8: the `featured` column and the /deals/featured spotlight feed
+               existed with nothing in the UI able to set it. -->
+          <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;border-top:1px dashed var(--border);padding-top:10px">
+            <input type="checkbox" id="dealFeatured" style="width:18px;height:18px">
+            <span style="font-size:.85rem;font-weight:500">⭐ Feature this deal</span>
+            <span style="font-size:.75rem;color:var(--text-muted);margin-left:4px">(puts it in the featured-deals spotlight feed, <code>/deals/featured</code>)</span>
+          </label>
+        </div>
         <div id="dealFormResult" style="margin:8px 0;font-size:.8rem"></div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-primary" id="dealSubmitBtn" onclick="submitDeal()">💾 Save Deal</button>
@@ -1294,6 +1301,10 @@ function showDealForm(deal) {
     document.getElementById('dealBookingUrl').value = deal.booking_url || '';
     document.getElementById('dealShowQR').checked = deal.show_qr === true;
     document.getElementById('dealPremiumFeatures').checked = deal.premium_features === true;
+    var featEl = document.getElementById('dealFeatured');
+    if (featEl) featEl.checked = deal.featured === true;
+    var peb = document.getElementById('premiumEnabledBadge');
+    if (peb) peb.textContent = deal.premium_features ? 'Enabled' : '🔒 Upgrade Required';
     var galImages = deal.gallery_images;
     loadGalleryRows(galImages);
     var highlights = deal.highlights;
@@ -1316,6 +1327,8 @@ function showDealForm(deal) {
     document.getElementById('dealBookingUrl').value = '';
     document.getElementById('dealShowQR').checked = false;
     document.getElementById('dealPremiumFeatures').checked = false;
+    if (document.getElementById('dealFeatured')) document.getElementById('dealFeatured').checked = false;
+    if (document.getElementById('premiumEnabledBadge')) document.getElementById('premiumEnabledBadge').textContent = '';
   }
   form.style.display = '';
   form.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1357,7 +1370,8 @@ async function submitDeal() {
     redemption_type: document.getElementById('dealRedemptionType').value || 'code',
     booking_url: document.getElementById('dealBookingUrl').value.trim() || null,
     show_qr: document.getElementById('dealShowQR').checked,
-    premium_features: document.getElementById('dealPremiumFeatures').checked
+    premium_features: document.getElementById('dealPremiumFeatures').checked,
+    featured: document.getElementById('dealFeatured').checked
   };
   var sd = document.getElementById('dealStartDate').value;
   var ed = document.getElementById('dealEndDate').value;

@@ -782,6 +782,7 @@ function renderMonetization(){
       '<div id="sponsoredContent"><p style="color:var(--text-secondary)">Loading sponsored listings...</p></div>'+
     '</div>'+
     '<div id="tiersContent"></div>'+
+    '<div id="dirTiersContent"></div>'+
     '</div>';
     g('/monetization/sponsored-listings',function(sponsors){
       var slist=sponsors||[];
@@ -808,10 +809,110 @@ function renderMonetization(){
         '<button class="btn btn-primary" onclick="createSponsor()">Create</button>';
       document.getElementById('sponsoredContent').innerHTML=html;
       renderTierPlans();
+      renderDirectoryTiers(did);
     },function(){
       document.getElementById('sponsoredContent').innerHTML='<p style="color:var(--danger)">Could not load sponsored listings.</p>';
     });
   },function(){el.innerHTML='<div class="empty-state"><p>Failed to load monetization data.</p></div>';});
+}
+
+// ── Round 8: Directory Plans ────────────────────────────────────────────────
+// /monetization/directory-tiers had full CRUD and zero UI. These are the plans a
+// DIRECTORY itself is on (plan_tier_id links to a Plan Tier above), not the tiers
+// a listing buys. POST upserts on directory_id, so this is an assign/edit control.
+function renderDirectoryTiers(did){
+  g('/monetization/directory-tiers',function(rows){
+    var list=rows||[];
+    window._dirTierList=list;
+    var mine=list.filter(function(t){return t.directory_id===did;});
+    var html='<div class="card" style="margin-top:16px"><div class="card-header"><h3>🏷 Directory Plans</h3>'+
+      '<button class="btn btn-primary btn-sm" onclick="showDirectoryTierForm()">+ Assign / edit plan</button></div>'+
+      '<p style="color:var(--text-secondary);font-size:.85rem;padding:0 12px">The plan <b>this directory itself</b> is on — separate from <b>Plan Tiers</b> above, which are what a listing buys. Links to a Plan Tier when you sell directory subscriptions.</p>'+
+      renderDirectoryTierTable(mine)+'</div>';
+    document.getElementById('dirTiersContent').innerHTML=html;
+  },function(){
+    document.getElementById('dirTiersContent').innerHTML='<div class="card" style="margin-top:16px"><p style="color:var(--danger);padding:12px">Could not load directory plans.</p></div>';
+  });
+}
+
+function renderDirectoryTierTable(list){
+  if(!list||list.length===0)return'<p style="padding:12px;color:var(--text-secondary)">No directory plan assigned. Use “+ Assign / edit plan”.</p>';
+  var tiers=window._tierList||[];
+  return'<table class="data-table" style="width:100%;border-collapse:collapse"><tr><th>Tier</th><th>Slug</th><th>Plan tier</th><th>Active</th><th>Expires</th><th>External plan</th><th></th></tr>'+
+    list.map(function(t){
+      var pt=tiers.filter(function(x){return x.id===t.plan_tier_id;})[0];
+      return'<tr><td><strong>'+esc(t.tier_name||'')+'</strong></td><td>'+esc(t.tier_slug||'')+'</td>'+
+        '<td>'+(pt?esc(pt.name):(t.plan_tier_id?'<span style="color:var(--text-secondary)">linked</span>':'<span style="color:var(--text-secondary)">—</span>'))+'</td>'+
+        '<td>'+(t.is_active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</td>'+
+        '<td>'+(t.expires_at?esc(String(t.expires_at).substring(0,10)):'—')+'</td>'+
+        '<td>'+(t.external_plan_id?esc(t.external_plan_id)+(t.external_checkout_url?' <a href="'+esc(t.external_checkout_url)+'" target="_blank" rel="noopener">checkout</a>':''):'—')+'</td>'+
+        '<td><button class="btn btn-sm" onclick="editDirectoryTier(\''+t.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteDirectoryTier(\''+t.id+'\')">🗑️</button></td></tr>';
+    }).join('')+'</table>';
+}
+
+var _dirTierFormId=null;
+function showDirectoryTierForm(t){
+  t=t||{};
+  var tiers=window._tierList||[];
+  var planOpts='<option value="">— not linked —</option>'+tiers.map(function(x){
+    return'<option value="'+esc(String(x.id))+'"'+(String(t.plan_tier_id||'')===String(x.id)?' selected':'')+'>'+esc(x.name||x.slug)+'</option>';
+  }).join('');
+  document.getElementById('modalContent').innerHTML='<div style="max-width:520px"><h3 style="margin-bottom:16px">'+(t.id?'Edit directory plan':'Assign directory plan')+'</h3>'+
+    '<div class="form-row"><label>Directory</label><select id="dt-dir" style="width:100%"></select></div>'+
+    '<div class="form-row"><label>Tier name</label><input type="text" id="dt-name" value="'+esc(t.tier_name||'Free')+'" style="width:100%" placeholder="Pro"></div>'+
+    '<div class="form-row"><label>Tier slug</label><input type="text" id="dt-slug" value="'+esc(t.tier_slug||'')+'" style="width:100%" placeholder="pro"></div>'+
+    '<div class="form-row"><label>Plan tier (what it sells)</label><select id="dt-plan" style="width:100%">'+planOpts+'</select></div>'+
+    '<div class="form-row"><label>External plan ID</label><input type="text" id="dt-extplan" value="'+esc(t.external_plan_id||'')+'" style="width:100%" placeholder="price_123 (optional)"></div>'+
+    '<div class="form-row"><label>External checkout URL</label><input type="text" id="dt-checkout" value="'+esc(t.external_checkout_url||'')+'" style="width:100%" placeholder="https://... (optional)"></div>'+
+    '<div class="form-row"><label>Expires</label><input type="datetime-local" id="dt-expires" value="'+(t.expires_at?esc(String(t.expires_at).substring(0,16)):'')+'"></div>'+
+    '<div class="form-row"><label><input type="checkbox" id="dt-active" '+(t.is_active!==false?'checked':'')+'> Active</label></div>'+
+    '<div style="margin-top:24px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeForm()">Cancel</button><button class="btn btn-primary" onclick="saveDirectoryTier()">Save</button></div></div>';
+  document.getElementById('modalOverlay').style.display='flex';
+  _dirTierFormId=t.id||null;
+  var sel=document.getElementById('dt-dir');
+  g('/directories?per_page=100',function(r){
+    var dirs=(r&&r.data)||[];
+    var want=t.directory_id||(CUR_DIR?CUR_DIR.id:'');
+    sel.innerHTML=dirs.map(function(d){
+      return'<option value="'+esc(String(d.id))+'"'+(String(want)===String(d.id)?' selected':'')+'>'+esc(d.name||d.slug)+'</option>';
+    }).join('')||'<option value="">No directories</option>';
+  },function(){ sel.innerHTML='<option value="'+esc(String((CUR_DIR||{}).id||''))+'">'+esc((CUR_DIR||{}).name||'current')+'</option>'; });
+}
+
+function editDirectoryTier(id){
+  var list=window._dirTierList||[];
+  var t=list.filter(function(x){return x.id===id;})[0];
+  if(t)showDirectoryTierForm(t);
+}
+
+function saveDirectoryTier(){
+  var dirId=document.getElementById('dt-dir').value;
+  var slug=document.getElementById('dt-slug').value.trim();
+  var name=document.getElementById('dt-name').value.trim();
+  if(!dirId){toast('Pick a directory','error');return;}
+  if(!slug){toast('Tier slug required','error');return;}
+  var exp=document.getElementById('dt-expires').value;
+  var data={
+    directory_id:dirId,
+    tier_slug:slug,
+    tier_name:name||'Free',
+    plan_tier_id:document.getElementById('dt-plan').value||null,
+    external_plan_id:document.getElementById('dt-extplan').value||null,
+    external_checkout_url:document.getElementById('dt-checkout').value||null,
+    expires_at:exp?new Date(exp).toISOString():null,
+    is_active:document.getElementById('dt-active').checked
+  };
+  fetch('/api/v1/monetization/directory-tiers',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+localStorage.token},body:JSON.stringify(data)})
+    .then(function(r){if(!r.ok)throw new Error('Request failed ('+r.status+')');return r.json();})
+    .then(function(){closeForm();toast('Directory plan saved','success');renderMonetization();})
+    .catch(function(e){toast(e.message||'Failed to save','error');});
+}
+
+function deleteDirectoryTier(id){
+  if(!confirm('Remove this directory plan assignment?'))return;
+  fetch('/api/v1/monetization/directory-tiers/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+localStorage.token}})
+    .then(function(r){if(!r.ok)throw new Error('Delete failed');renderMonetization();})
+    .catch(function(e){toast(e.message||'Failed to delete','error');});
 }
 
 function renderTierPlans(){
