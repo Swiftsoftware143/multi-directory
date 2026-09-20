@@ -322,6 +322,102 @@ pub async fn track_visitor_event(
     Ok(StatusCode::CREATED)
 }
 
+/// GET /api/v1/visitor/wallet — the signed-in visitor's own loyalty wallet.
+/// Backs the wallet card in visitor-portal.html: points balance per program,
+/// the member QR payload, and recent point activity.
+pub async fn get_my_wallet(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    let visitor_account_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    #[allow(clippy::type_complexity)]
+    let members = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Option<i32>,
+            Option<i32>,
+            Option<i32>,
+            Option<String>,
+            Option<DateTime<Utc>>,
+            Option<DateTime<Utc>>,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
+        r#"SELECT m.id, m.points_balance, m.lifetime_points, m.current_streak, m.qr_code,
+                  m.member_since, m.last_checkin_at,
+                  p.name, p.currency_name, p.currency_icon, p.currency_color, d.slug
+           FROM loyalty_members m
+           JOIN loyalty_programs p ON p.id = m.program_id
+           LEFT JOIN directories d ON d.id = p.directory_id
+           WHERE m.visitor_account_id = $1
+           ORDER BY m.member_since DESC"#,
+    )
+    .bind(visitor_account_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    #[allow(clippy::type_complexity)]
+    let activity = sqlx::query_as::<_, (String, Option<String>, i64, DateTime<Utc>, Option<String>)>(
+        r#"SELECT a.activity_type, a.description, a.points_earned, a.created_at, p.name
+           FROM loyalty_activity a
+           JOIN loyalty_members m ON m.id = a.member_id
+           JOIN loyalty_programs p ON p.id = m.program_id
+           WHERE m.visitor_account_id = $1
+           ORDER BY a.created_at DESC
+           LIMIT 15"#,
+    )
+    .bind(visitor_account_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let total_points: i64 = members.iter().map(|m| m.1.unwrap_or(0) as i64).sum();
+
+    let wallets: Vec<serde_json::Value> = members
+        .iter()
+        .map(|m| {
+            json!({
+                "member_id": m.0,
+                "points_balance": m.1.unwrap_or(0),
+                "lifetime_points": m.2.unwrap_or(0),
+                "current_streak": m.3.unwrap_or(0),
+                "qr_payload": m.4.clone().unwrap_or_else(|| m.0.to_string()),
+                "member_since": m.5,
+                "last_checkin_at": m.6,
+                "program_name": m.7,
+                "currency_name": m.8.clone().unwrap_or_else(|| "Points".to_string()),
+                "currency_icon": m.9.clone().unwrap_or_else(|| "⭐".to_string()),
+                "currency_color": m.10.clone().unwrap_or_else(|| "#0d9488".to_string()),
+                "directory_slug": m.11,
+            })
+        })
+        .collect();
+
+    let recent: Vec<serde_json::Value> = activity
+        .iter()
+        .map(|a| {
+            json!({
+                "activity_type": a.0,
+                "description": a.1,
+                "points_earned": a.2,
+                "created_at": a.3,
+                "program_name": a.4,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "wallet": wallets,
+        "recent_activity": recent,
+        "total_points": total_points,
+    })))
+}
+
 /// POST /api/v1/visitors/session/:id/end — end a session
 pub async fn end_session(
     State(s): State<AppState>,

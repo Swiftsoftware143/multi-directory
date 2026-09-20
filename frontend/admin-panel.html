@@ -605,6 +605,26 @@
         <div class="feature-status" id="pk-status"></div>
       </div>
 
+      <!-- Ad Zones -->
+      <div class="feature-card" id="ad-zones-section">
+        <h3>📢 Ad Zones</h3>
+        <p class="feature-subtitle">The 6 standard ad slots per directory. Create, edit, price and rotate each slot; the public pages render slots through <code>/ads/active/:directory</code>.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="pk-input" id="az-directory" onchange="window.__azLoad()"></select>
+          <button class="btn btn-accent btn-sm" onclick="window.__azCreate()">+ Add Zone</button>
+        </div>
+        <div id="az-list"></div>
+        <div class="feature-status" id="az-status"></div>
+      </div>
+
+      <!-- Submission Queue -->
+      <div class="feature-card" id="submissions-section">
+        <h3>📥 Submission Queue</h3>
+        <p class="feature-subtitle">Businesses submitted from the public "Add your business" form. Approving a submission creates the business record.</p>
+        <div id="sub-list"></div>
+        <div class="feature-status" id="sub-status"></div>
+      </div>
+
       <!-- Directory Cards -->
       <div class="section-label">All Directories</div>
       <div id="directory-grid" class="directory-grid">
@@ -826,6 +846,8 @@
       headerUser.textContent = user ? (user.email || user.name || 'User') : 'User';
       loadDirectories();
       loadProviderKeys();
+      loadAdZones();
+      loadSubmissions();
     }
 
     // ===== Login Handler =====
@@ -877,6 +899,7 @@
           if (!Array.isArray(directories)) directories = [];
           renderDirectories(directories);
           loadB2bFeatures();
+          loadAdZones();
         })
         .catch(function (err) {
           dirLoading.classList.add('hidden');
@@ -1015,6 +1038,199 @@
           text.textContent = 'Save B2B Toggles';
         });
     });
+
+    // ===== Ad Zones (6 standard slots per directory) =====
+    var AZ_SLOTS = [
+      { key: 'sidebar_top', name: 'Sidebar Top', w: 300, h: 250, price: 75 },
+      { key: 'sidebar_bottom', name: 'Sidebar Bottom', w: 300, h: 600, price: 50 },
+      { key: 'header_banner', name: 'Header Banner', w: 728, h: 90, price: 150 },
+      { key: 'between_listings', name: 'Between Listings', w: 468, h: 60, price: 40 },
+      { key: 'footer_banner', name: 'Footer Banner', w: 728, h: 90, price: 60 },
+      { key: 'mobile_interstitial', name: 'Mobile Interstitial', w: 320, h: 100, price: 100 }
+    ];
+    var adZones = [];
+
+    function azStatus(msg, ok) {
+      var el = document.getElementById('az-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+
+    function fillAzDirectories() {
+      var sel = document.getElementById('az-directory');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '';
+      (directories || []).forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d.id;
+        o.textContent = (d.name || 'Directory') + ' (' + (d.slug || '') + ')';
+        sel.appendChild(o);
+      });
+      if (current) sel.value = current;
+    }
+
+    function loadAdZones() {
+      fillAzDirectories();
+      var sel = document.getElementById('az-directory');
+      var list = document.getElementById('az-list');
+      if (!sel || !list) return;
+      var did = sel.value;
+      // Directories load asynchronously — don't render another tenant's zones.
+      if (!did) {
+        list.innerHTML = '<div class="empty-state"><p>Select a directory.</p></div>';
+        azStatus('Waiting for the directory list…', false);
+        return;
+      }
+      apiGet('/ad-zones')
+        .then(function (data) {
+          var all = (data && data.data) || data || [];
+          all = Array.isArray(all) ? all : [];
+          adZones = all.filter(function (z) { return z.directory_id === did; });
+          renderAdZones();
+          azStatus(adZones.length + ' zone(s) for this directory', true);
+        })
+        .catch(function (e) { azStatus('Could not load ad zones: ' + e.message, false); });
+    }
+
+    function renderAdZones() {
+      var list = document.getElementById('az-list');
+      if (!list) return;
+      if (!adZones.length) {
+        list.innerHTML = '<div class="empty-state"><p>No ad zones for this directory yet — use “+ Add Zone”.</p></div>';
+        return;
+      }
+      list.innerHTML = adZones.map(function (z) {
+        var id = pkEsc(z.id);
+        return '<div class="pk-row">' +
+            '<div class="pk-head">' +
+              '<div class="pk-title">' + pkEsc(z.name) + ' <span class="pk-badge pk-missing">' + pkEsc(z.zone_key) + '</span>' +
+              ' <span class="pk-badge ' + (z.status === 'available' ? 'pk-missing' : 'pk-ok') + '">' + pkEsc(z.status || 'available') + '</span></div>' +
+              '<div class="pk-desc">' + (z.width || '?') + '×' + (z.height || '?') + ' · $' + (z.price_monthly || 0) + '/mo' +
+                (z.current_ad_url ? ' · current ad: <code>' + pkEsc(z.current_ad_url) + '</code>' : '') + '</div>' +
+            '</div>' +
+            '<div class="pk-controls">' +
+              '<input class="pk-input" id="az-price-' + id + '" type="number" step="0.01" style="flex:0 1 110px" value="' + (z.price_monthly || 0) + '" title="Monthly price">' +
+              '<select class="pk-input" id="az-status-' + id + '" style="flex:0 1 140px">' +
+                ['available', 'occupied', 'paused'].map(function (s) {
+                  return '<option value="' + s + '"' + ((z.status || 'available') === s ? ' selected' : '') + '>' + s + '</option>';
+                }).join('') +
+              '</select>' +
+              '<input class="pk-input" id="az-url-' + id + '" placeholder="Ad click URL" value="' + pkEsc(z.current_ad_url || '') + '">' +
+              '<input class="pk-input" id="az-img-' + id + '" placeholder="Ad image URL" value="' + pkEsc(z.current_ad_image || '') + '">' +
+              '<button class="btn btn-accent btn-sm" onclick="window.__azSave(\'' + id + '\')">Save</button>' +
+              '<button class="btn btn-ghost btn-sm" onclick="window.__azClear(\'' + id + '\')">Unsell</button>' +
+              '<button class="btn btn-ghost btn-sm" onclick="window.__azDelete(\'' + id + '\')">Delete</button>' +
+            '</div>' +
+          '</div>';
+      }).join('');
+    }
+
+    window.__azLoad = loadAdZones;
+
+    window.__azCreate = function () {
+      var sel = document.getElementById('az-directory');
+      var did = sel ? sel.value : null;
+      if (!did) { azStatus('No directory selected', false); return; }
+      var have = {};
+      adZones.forEach(function (z) { have[z.zone_key] = true; });
+      var missing = AZ_SLOTS.filter(function (s) { return !have[s.key]; });
+      if (!missing.length) { azStatus('All 6 standard slots already exist for this directory', false); return; }
+      var s = missing[0];
+      apiPost('/ad-zones', {
+        name: s.name, zone_key: s.key, width: s.w, height: s.h,
+        price_monthly: s.price, directory_id: did, status: 'available'
+      })
+        .then(function () { showToast('Added ' + s.name); loadAdZones(); })
+        .catch(function (e) { azStatus('Create failed: ' + e.message, false); });
+    };
+
+    window.__azSave = function (id) {
+      var body = {
+        price_monthly: parseFloat((document.getElementById('az-price-' + id) || {}).value) || 0,
+        status: (document.getElementById('az-status-' + id) || {}).value || 'available',
+        current_ad_url: (document.getElementById('az-url-' + id) || {}).value || null,
+        current_ad_image: (document.getElementById('az-img-' + id) || {}).value || null
+      };
+      apiFetch('PUT', '/ad-zones/' + id, body)
+        .then(function () { showToast('Ad zone saved'); loadAdZones(); })
+        .catch(function (e) { azStatus('Save failed: ' + e.message, false); });
+    };
+
+    window.__azClear = function (id) {
+      apiFetch('PUT', '/ad-zones/' + id, { status: 'available', current_ad_url: null, current_ad_image: null })
+        .then(function () { showToast('Zone released'); loadAdZones(); })
+        .catch(function (e) { azStatus('Update failed: ' + e.message, false); });
+    };
+
+    window.__azDelete = function (id) {
+      if (!confirm('Delete this ad zone?')) return;
+      apiFetch('DELETE', '/ad-zones/' + id)
+        .then(function () { showToast('Ad zone deleted'); loadAdZones(); })
+        .catch(function (e) { azStatus('Delete failed: ' + e.message, false); });
+    };
+
+    // ===== Submission Queue (public submit-a-business form) =====
+    function subStatus(msg, ok) {
+      var el = document.getElementById('sub-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+
+    function loadSubmissions() {
+      var list = document.getElementById('sub-list');
+      if (!list) return;
+      apiGet('/submissions')
+        .then(function (data) {
+          var subs = (data && data.data) || data || [];
+          subs = Array.isArray(subs) ? subs : [];
+          if (!subs.length) {
+            list.innerHTML = '<div class="empty-state"><p>No submissions yet.</p></div>';
+            subStatus('0 submissions', true);
+            return;
+          }
+          list.innerHTML = subs.slice(0, 50).map(function (s) {
+            var id = pkEsc(s.id);
+            var pending = (s.status || 'pending') === 'pending';
+            return '<div class="pk-row">' +
+                '<div class="pk-head">' +
+                  '<div class="pk-title">' + pkEsc(s.business_name) +
+                    ' <span class="pk-badge ' + (pending ? 'pk-missing' : 'pk-ok') + '">' + pkEsc(s.status || 'pending') + '</span></div>' +
+                  '<div class="pk-desc">' + pkEsc([s.city, s.state, s.phone, s.email].filter(Boolean).join(' · ') || 'no contact details') +
+                    (s.submitter_email ? ' · from <code>' + pkEsc(s.submitter_email) + '</code>' : '') + '</div>' +
+                '</div>' +
+                '<div class="pk-controls">' +
+                  (pending ? '<button class="btn btn-accent btn-sm" onclick="window.__subApprove(\'' + id + '\')">Approve → create business</button>' +
+                             '<button class="btn btn-ghost btn-sm" onclick="window.__subReject(\'' + id + '\')">Reject</button>' : '') +
+                  '<button class="btn btn-ghost btn-sm" onclick="window.__subDelete(\'' + id + '\')">Delete</button>' +
+                '</div>' +
+              '</div>';
+          }).join('');
+          subStatus(subs.length + ' submission(s)', true);
+        })
+        .catch(function (e) { subStatus('Could not load submissions: ' + e.message, false); });
+    }
+
+    window.__subApprove = function (id) {
+      apiPost('/submissions/' + id + '/approve', {})
+        .then(function () { showToast('Submission approved'); loadSubmissions(); })
+        .catch(function (e) { subStatus('Approve failed: ' + e.message, false); });
+    };
+
+    window.__subReject = function (id) {
+      apiPost('/submissions/' + id + '/reject', { admin_notes: 'Rejected from admin panel' })
+        .then(function () { showToast('Submission rejected'); loadSubmissions(); })
+        .catch(function (e) { subStatus('Reject failed: ' + e.message, false); });
+    };
+
+    window.__subDelete = function (id) {
+      if (!confirm('Delete this submission?')) return;
+      apiFetch('DELETE', '/submissions/' + id)
+        .then(function () { showToast('Submission deleted'); loadSubmissions(); })
+        .catch(function (e) { subStatus('Delete failed: ' + e.message, false); });
+    };
 
     // ===== Init =====
     if (token && user) {

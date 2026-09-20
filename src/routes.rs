@@ -449,6 +449,13 @@ pub fn create_router(s: AppState) -> Router {
         .route("/visitor/register", post(portal::visitor_register))
         .route("/visitor/login", post(portal::visitor_login))
         .route("/visitor/profile", get(portal::visitor_profile))
+        // ? Visitor wallet — the signed-in visitor's own loyalty wallet
+        .route("/visitor/wallet", get(visitors::get_my_wallet))
+        // ? Anonymous tracking beacon (page views, sessions, events)
+        .route("/visitors/track", post(visitors::track_visitor))
+        .route("/visitors/page-view", post(visitors::track_page_view))
+        .route("/visitors/event", post(visitors::track_visitor_event))
+        .route("/visitors/session/:id/end", post(visitors::end_session))
         .route("/visitor/favorites", get(visitors::list_favorites))
         .route("/visitor/favorites/check/:business_id", get(visitors::check_favorite))
         .route("/visitor/favorites/:business_id", post(visitors::toggle_favorite))
@@ -1245,6 +1252,15 @@ async fn auth_guard(
         // Public visitor account routes
         || path == "/visitor/register"
         || path == "/visitor/login"
+        // Anonymous tracking beacon — write-only telemetry for visitor_sessions/visitor_events
+        || path == "/visitors/track"
+        || path == "/visitors/page-view"
+        || path == "/visitors/event"
+        || (path.starts_with("/visitors/session/") && path.ends_with("/end"))
+        // Public review reading — GET only (write/approve/reject stay authenticated)
+        || (path == "/reviews" && req.method() == "GET")
+        // Public submit-a-business form — POST only, rate-limited inside the handler
+        || (path == "/submissions" && req.method() == "POST")
         // Public B2B register (distributor/supplier signup)
         || (path == "/b2b/register" && req.method() == "POST")
         // Public pricing endpoint

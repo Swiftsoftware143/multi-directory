@@ -14,6 +14,44 @@ use uuid::Uuid;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
+// ── Rate limiter for the anonymous public submit-a-business form ─────────────
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+lazy_static::lazy_static! {
+    static ref SUBMIT_LIMITER: Mutex<HashMap<String, Vec<Instant>>> = Mutex::new(HashMap::new());
+}
+
+const SUBMIT_MAX_PER_HOUR_PER_KEY: usize = 3;
+const SUBMIT_MAX_PER_HOUR_GLOBAL: usize = 60;
+
+/// Sliding-window guard for `POST /submissions` (the only anonymous write in
+/// the visitor flow). Keyed by submitter email, with a global hourly ceiling.
+fn check_submission_rate(key: &str) -> Result<(), AppError> {
+    let now = Instant::now();
+    let window = Duration::from_secs(3600);
+    let mut map = SUBMIT_LIMITER
+        .lock()
+        .map_err(|_| AppError::Internal("submission rate limiter unavailable".into()))?;
+
+    for v in map.values_mut() {
+        v.retain(|t| now.duration_since(*t) < window);
+    }
+
+    let global = map.get("__global__").map(|v| v.len()).unwrap_or(0);
+    let per_key = map.get(key).map(|v| v.len()).unwrap_or(0);
+    if global >= SUBMIT_MAX_PER_HOUR_GLOBAL || per_key >= SUBMIT_MAX_PER_HOUR_PER_KEY {
+        return Err(AppError::TooManyRequests(
+            "submission rate limit exceeded — try again later".into(),
+        ));
+    }
+
+    map.entry(key.to_string()).or_default().push(now);
+    map.entry("__global__".to_string()).or_default().push(now);
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Submission {
     pub id: Uuid,
@@ -91,6 +129,15 @@ pub async fn create_submission(
     if req.business_name.trim().is_empty() {
         return Err(AppError::Validation("business_name is required".into()));
     }
+
+    // Anonymous write path — throttle per submitter email + global ceiling.
+    let rate_key = req
+        .submitter_email
+        .as_deref()
+        .map(|e| e.trim().to_lowercase())
+        .filter(|e| !e.is_empty())
+        .unwrap_or_else(|| "anon".to_string());
+    check_submission_rate(&rate_key)?;
 
     let submission = sqlx::query_as::<_, Submission>(
         "INSERT INTO submissions (business_name, category, address, city, state, zip, phone, email, website, description, submitted_by, submitter_email, directory_id) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413) RETURNING id, business_name, category, address, city, state, zip, phone, email, website, description, submitted_by, submitter_email, directory_id, status, admin_notes, created_at, updated_at "

@@ -183,6 +183,20 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
     </div>
 
+    <!-- Loyalty Wallet -->
+    <div class="section">
+      <div class="section-title">💳 Loyalty Wallet</div>
+      <div class="section-subtitle">Points, your check-in QR and recent activity across the loyalty programs you joined</div>
+      <div id="walletSummary" style="font-size:1.05rem;font-weight:800;margin-bottom:12px;color:#0d9488"></div>
+      <div id="walletList">
+        <div class="empty-state">
+          <div class="icon">💳</div>
+          <h3>No wallet yet</h3>
+          <p>Join a loyalty program at a local business to start earning points.</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Saved Deals -->
     <div class="section">
       <div class="section-title">🎟️ Saved Deals</div>
@@ -351,6 +365,9 @@ async function loadDashboard() {
     // Badges
     renderBadges(data.badges || []);
 
+    // Loyalty wallet (points + QR + activity)
+    loadWallet();
+
     hide('loadingState');
     show('dashboardContent');
   } catch(e) {
@@ -392,6 +409,93 @@ function renderBadges(badges) {
   }
   html += '</div>';
   $('badgesList').innerHTML = html;
+}
+
+/* === Loyalty Wallet === */
+async function loadWallet() {
+  var el = $('walletList');
+  if (!el) return;
+  var data;
+  try {
+    data = await g('/visitor/wallet');
+  } catch (e) {
+    return; // wallet is additive — never break the dashboard
+  }
+  var wallets = (data && data.wallet) || [];
+  var sum = $('walletSummary');
+  if (sum) sum.textContent = wallets.length ? ('⭐ ' + (data.total_points || 0) + ' points total') : '';
+  if (!wallets.length) return;
+
+  var html = '<div class="card-grid">';
+  for (var i = 0; i < wallets.length; i++) {
+    var m = wallets[i];
+    var colour = esc(m.currency_color || '#0d9488');
+    html += '<div class="card" style="text-align:center">';
+    html += '<h4>' + esc(m.program_name || 'Loyalty Program') + '</h4>';
+    html += '<div style="font-size:2rem;font-weight:800;color:' + colour + '">' + (m.points_balance || 0) + '</div>';
+    html += '<div style="font-size:.78rem;color:#6b7280">' + esc(m.currency_name || 'Points') +
+            ' · lifetime ' + (m.lifetime_points || 0) + '</div>';
+    html += '<div class="wallet-qr" data-qr="' + esc(m.qr_payload || '') +
+            '" style="width:158px;height:158px;margin:10px auto;background:#fff;padding:6px;border-radius:8px;border:1px solid #e5e7eb"></div>';
+    html += '<div style="font-size:.68rem;font-family:monospace;word-break:break-all;color:#6b7280">' +
+            esc(m.qr_payload || '') + '</div>';
+    if (m.current_streak) {
+      html += '<div style="font-size:.75rem;margin-top:6px">🔥 ' + m.current_streak + ' visit streak</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  var act = (data && data.recent_activity) || [];
+  if (act.length) {
+    html += '<div style="margin-top:18px"><div class="section-subtitle">Recent activity</div>' +
+            '<table style="width:100%;font-size:.85rem;border-collapse:collapse">';
+    for (var j = 0; j < act.length; j++) {
+      var a = act[j];
+      var pts = a.points_earned || 0;
+      html += '<tr style="border-bottom:1px solid #e5e7eb">' +
+              '<td style="padding:6px 0">' + esc(a.description || a.activity_type || 'Activity') +
+              (a.program_name ? ' <span style="color:#6b7280;font-size:.75rem">· ' + esc(a.program_name) + '</span>' : '') +
+              '</td><td style="text-align:right;white-space:nowrap;font-weight:600">' +
+              (pts > 0 ? '+' : '') + pts + ' pts</td></tr>';
+    }
+    html += '</table></div>';
+  }
+  el.innerHTML = html;
+  renderWalletQRCodes(0);
+}
+
+// Draw a real (scannable) QR per wallet card using the vendored qrcodejs library.
+// Falls back to the plain member code if the library is unavailable.
+function renderWalletQRCodes(attempt) {
+  var nodes = document.querySelectorAll('.wallet-qr');
+  for (var i = 0; i < nodes.length; i++) {
+    var el = nodes[i];
+    if (el.getAttribute('data-drawn') === '1') continue;
+    var payload = el.getAttribute('data-qr') || '';
+    if (typeof QRCode === 'function') {
+      try {
+        el.innerHTML = '';
+        new QRCode(el, {
+          text: payload,
+          width: 146,
+          height: 146,
+          colorDark: '#111827',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+        el.setAttribute('data-drawn', '1');
+      } catch (e) {
+        el.textContent = payload;
+        el.setAttribute('data-drawn', '1');
+      }
+    } else {
+      el.textContent = payload;
+      el.style.font = '11px monospace';
+      el.style.wordBreak = 'break-all';
+      if (attempt < 10) { setTimeout(function () { renderWalletQRCodes(attempt + 1); }, 300); return; }
+    }
+  }
 }
 
 /* === Referral Section === */
@@ -527,6 +631,10 @@ document.body.appendChild(helpIcon);
 })();
 </script>
   <div data-directory-slug="visitor" style="display:none"></div>
-  <script src="/public/directories/survey-widget.js" defer></script>
+  <script src="/survey-widget.js" defer></script>
+  <!-- Real scannable QR encoder for the loyalty wallet (vendored, no CDN dependency) -->
+  <script src="/qrcode.min.js" defer></script>
+  <!-- Visitor tracking beacon: writes visitor_sessions + visitor_events -->
+  <script src="/tracking-beacon.js" defer></script>
 </body>
 </html>

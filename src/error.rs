@@ -33,6 +33,9 @@ pub enum AppError {
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
+    #[error("Too many requests: {0}")]
+    TooManyRequests(String),
+
     #[error("Hashing error: {0}")]
     Hash(String),
 
@@ -53,6 +56,7 @@ impl IntoResponse for AppError {
             AppError::Duplicate(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, msg.clone()),
             AppError::Hash(msg) => {
                 tracing::error!("Password hashing error: {}", msg);
                 (StatusCode::INTERNAL_SERVER_ERROR, "Password hashing error".to_string())
