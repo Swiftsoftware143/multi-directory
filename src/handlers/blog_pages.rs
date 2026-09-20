@@ -19,7 +19,7 @@ pub async fn render_blog_list(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM tenants WHERE slug = $1")
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&s.db)
         .await?
@@ -135,7 +135,7 @@ pub async fn render_blog_post(
     State(s): State<AppState>,
     Path((slug, post_slug)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM tenants WHERE slug = $1")
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&s.db)
         .await?

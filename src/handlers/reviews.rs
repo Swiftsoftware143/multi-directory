@@ -244,7 +244,7 @@ pub async fn get_review_stats(
            COUNT(*) FILTER (WHERE rating = 3) as r3,
            COUNT(*) FILTER (WHERE rating = 4) as r4,
            COUNT(*) FILTER (WHERE rating = 5) as r5
-           FROM reviews WHERE business_id = \x241 AND status = 'approved'"#,
+           FROM reviews WHERE business_id = $1 AND status = 'approved'"#,
     )
     .bind(business_id)
     .fetch_optional(&s.db)

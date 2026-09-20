@@ -319,7 +319,7 @@ pub async fn draft_post_from_question(
 
     let business_context = if let Some(did) = dir_id {
         sqlx::query_as::<_, (String, Option<String>)>(
-            "SELECT name, description FROM tenants WHERE id = $1",
+            "SELECT name, description FROM directories WHERE id = $1",
         )
         .bind(did)
         .fetch_optional(&s.db)

@@ -179,11 +179,12 @@ pub async fn generate_sitemap(
     let site_name = dir.0;
 
     // Get the directory domain
-    let domains: Vec<String> =
-        sqlx::query_scalar("SELECT domain FROM domains WHERE directory_id=$1 AND verified=true")
-            .bind(dir_id)
-            .fetch_all(&s.db)
-            .await?;
+    let domains: Vec<String> = sqlx::query_scalar(
+        "SELECT domain FROM domain_mappings WHERE directory_id=$1 AND status='active'",
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await?;
     let base_url = domains
         .first()
         .map(|d| format!("https://{}", d))
