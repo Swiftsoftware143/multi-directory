@@ -2505,7 +2505,13 @@ pub fn create_router(s: AppState) -> Router {
                 }
             },
         ))
-        .with_state(s);
+        .with_state(s)
+        // Instrument every public HTML page (static pages, SPA fallback, renders) with the
+        // visitor-tracking script. Blog and directory pages already do this themselves; this
+        // covers everything else so a new page cannot ship untracked.
+        .layer(axum::middleware::from_fn(
+            crate::beacon_middleware::inject_tracking_beacon,
+        ));
 
     app
 }

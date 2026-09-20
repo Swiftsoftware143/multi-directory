@@ -6,6 +6,7 @@ mod email;
 mod reminders;
 
 mod auth;
+mod beacon_middleware;
 mod branding_injector;
 mod config;
 mod db;
