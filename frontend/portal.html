@@ -764,7 +764,7 @@ function renderMonetization(){
       '<div class="stat-card"><div class="icon">💰</div><span class="num">'+(CUR_DIR.plan||tier)+'</span><div class="label">Current Plan</div></div>'+
       '<div class="stat-card"><div class="icon">📢</div><span class="num">'+data.length+'</span><div class="label">Ad Zones</div></div>'+
     '</div>'+
-    '<div class="card"><div class="card-header"><h3>📢 Ad Zones</h3></div>'+}
+    '<div class="card"><div class="card-header"><h3>📢 Ad Zones</h3></div>'+
       (data.length===0?'<p style="color:var(--text-secondary)">No ad zones configured.</p>':
       data.map(function(z){
         return '<p><strong>'+esc(z.name||'Zone')+'</strong> — '+esc(z.position||'')+' — '+(z.active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</p>';

@@ -1040,7 +1040,16 @@ async function loadDashboard() {
 
     $('loadingState').style.display = 'none';
     $('dashboardContent').style.display = '';
-    
+
+  } catch(e) {
+    $('loadingState').style.display = 'none';
+    $('dashboardContent').style.display = '';
+    toast('Failed to load dashboard: ' + e.message, 'error');
+  }
+}
+
+var SWT = {
+  dashboard:{i:"📊",t:"Supplier Dashboard",x:"Your supplier overview: profile, product count and connected services. Use the tabs above to manage your catalog, orders and settings."},
   catalog:{i:"ðŸ“¦",t:"Product Catalog",x:"List the products or services you supply. Add descriptions, pricing, and images."},
   orders:{i:"ðŸ“‹",t:"Orders",x:"Incoming orders from businesses. Mark as fulfilled, track shipping, and manage your order queue."},
   earnings:{i:"ðŸ’°",t:"Earnings",x:"Track your revenue from fulfilled orders. View payout history and pending balances."},
@@ -1209,7 +1218,7 @@ async function disconnectSupplierService(service) {
 }
 
 function authHeaders() {
-  var token = getAuthToken();
+  var token = localStorage.getItem('supplierToken');
   return token ? { 'Authorization': 'Bearer ' + token } : {};
 }
 

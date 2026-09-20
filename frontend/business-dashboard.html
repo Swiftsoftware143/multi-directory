@@ -111,7 +111,7 @@ async function loadBusinessDashboard() {
       } catch(e) {}
     }
     if (!data || data.total_views === undefined) {
-      el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>No data yet</h3><p>We haven't collected enough visitor data for your business yet. Check back after customers start finding your listing.</p></div>';
+      el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>No data yet</h3><p>We haven\'t collected enough visitor data for your business yet. Check back after customers start finding your listing.</p></div>';
       return;
     }
     
@@ -174,7 +174,7 @@ async function loadBusinessDashboard() {
 
 function renderSubscriptionSection(subData, planInfo){
   if (!subData) {
-    return '<div class="card"><h3>💳 Subscription & Plan</h3><p style="color:var(--text-secondary);font-size:.85rem">No active subscription. <a href="#" onclick="alert('Contact admin to upgrade or use the checkout link from your plan.')">Upgrade your plan</a> to unlock more features.</p></div>';
+    return '<div class="card"><h3>💳 Subscription & Plan</h3><p style="color:var(--text-secondary);font-size:.85rem">No active subscription. <a href="#" onclick="alert(\'Contact admin to upgrade or use the checkout link from your plan.\')">Upgrade your plan</a> to unlock more features.</p></div>';
   }
   var statusBadge = subData.status;
   var statusClass = subData.status === "active" || subData.status === "trial" ? "up" : "down";
@@ -197,7 +197,7 @@ function renderSubscriptionSection(subData, planInfo){
   if (subData.status === "active" && checkoutUrl) {
     h += '<div style="margin-top:12px"><a href="' + esc(checkoutUrl) + '" target="_blank" class="btn btn-primary">Manage Subscription</a></div>';
   } else if (!subData || subData.status !== "active") {
-    h += '<div style="margin-top:12px"><a href="' + (checkoutUrl ? esc(checkoutUrl) : "#") + '" target="_blank" class="btn btn-primary" onclick="if(!''+(checkoutUrl||"")+''){alert('No checkout URL configured. Contact admin.');return false}">Upgrade Plan</a></div>';
+    h += '<div style="margin-top:12px"><a href="' + (checkoutUrl ? esc(checkoutUrl) : "#") + '" target="_blank" class="btn btn-primary" "' + (checkoutUrl ? '' : ' onclick="alert(&quot;No checkout URL configured. Contact admin.&quot;);return false"') + '>Upgrade Plan</a></div>';
   }
   h += '</div>';
   return h;

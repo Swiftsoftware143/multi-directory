@@ -195,16 +195,16 @@ async function loadDashboard() {
   el.innerHTML = '<div class="loading"><span class="spinner"></span> Loading...</div>';
   try {
     const s = await g("/dashboard/stats");
-    el.innerHTML = \`
+    el.innerHTML = `
       <div class="stat-grid">
-        <div class="stat-card"><div class="stat-icon">📁</div><div class="stat-num">\${s.total_directories || 0}</div><div class="stat-label">Directories</div></div>
-        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">\${s.total_listings || 0}</div><div class="stat-label">Listings</div></div>
-        <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-num">\${s.active_users || 0}</div><div class="stat-label">Active Users</div></div>
-        <div class="stat-card"><div class="stat-icon">🔍</div><div class="stat-num">\${s.searches_today || 0}</div><div class="stat-label">Searches Today</div></div>
+        <div class="stat-card"><div class="stat-icon">📁</div><div class="stat-num">${s.total_directories || 0}</div><div class="stat-label">Directories</div></div>
+        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${s.total_listings || 0}</div><div class="stat-label">Listings</div></div>
+        <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-num">${s.active_users || 0}</div><div class="stat-label">Active Users</div></div>
+        <div class="stat-card"><div class="stat-icon">🔍</div><div class="stat-num">${s.searches_today || 0}</div><div class="stat-label">Searches Today</div></div>
       </div>
-    \`;
+    `;
   } catch(e) {
-    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
   }
 }
 
@@ -220,12 +220,12 @@ async function loadDirectories() {
     let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:.85rem;color:var(--text-secondary)">' + r.data.length + ' directories</span></div>';
     h += '<table><thead><tr><th>Name</th><th>Slug</th><th>City</th><th>Status</th></tr></thead><tbody>';
     r.data.forEach(d => {
-      h += \`<tr><td>\${d.name}</td><td><code>\${d.slug}</code></td><td>\${d.city || "-"}</td><td><span class="badge \${d.status === "active" ? "active" : "inactive"}">\${d.status || "active"}</span></td></tr>\`;
+      h += `<tr><td>${d.name}</td><td><code>${d.slug}</code></td><td>${d.city || "-"}</td><td><span class="badge ${d.status === "active" ? "active" : "inactive"}">${d.status || "active"}</span></td></tr>`;
     });
     h += '</tbody></table>';
     el.innerHTML = h;
   } catch(e) {
-    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
   }
 }
 
@@ -241,12 +241,12 @@ async function loadListings() {
     let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:.85rem;color:var(--text-secondary)">' + r.data.length + ' listings</span></div>';
     h += '<table><thead><tr><th>Name</th><th>Category</th><th>Status</th></tr></thead><tbody>';
     r.data.forEach(l => {
-      h += \`<tr><td>\${l.name}</td><td>\${l.category || "-"}</td><td><span class="badge \${l.status === "active" ? "active" : "inactive"}">\${l.status || "active"}</span></td></tr>\`;
+      h += `<tr><td>${l.name}</td><td>${l.category || "-"}</td><td><span class="badge ${l.status === "active" ? "active" : "inactive"}">${l.status || "active"}</span></td></tr>`;
     });
     h += '</tbody></table>';
     el.innerHTML = h;
   } catch(e) {
-    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
   }
 }
 
@@ -262,22 +262,22 @@ async function loadUsers() {
     let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:.85rem;color:var(--text-secondary)">' + r.data.length + ' users</span></div>';
     h += '<table><thead><tr><th>Email</th><th>Role</th><th>Created</th></tr></thead><tbody>';
     r.data.forEach(u => {
-      h += \`<tr><td>\${u.email}</td><td><span class="badge active">\${u.role || "user"}</span></td><td style="color:var(--text-secondary)">\${(u.created_at || "").substring(0, 10)}</td></tr>\`;
+      h += `<tr><td>${u.email}</td><td><span class="badge active">${u.role || "user"}</span></td><td style="color:var(--text-secondary)">${(u.created_at || "").substring(0, 10)}</td></tr>`;
     });
     h += '</tbody></table>';
     el.innerHTML = h;
   } catch(e) {
-    el.innerHTML = \`<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>\${e.message}</p></div>\`;
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
   }
 }
 
 function loadSettings() {
   const el = document.getElementById("pageContent");
-  el.innerHTML = \`
+  el.innerHTML = `
     <div class="card"><h3>Account</h3>
-      <div class="form-group"><label>Email</label><input value="\${user ? JSON.parse(user).email : ""}" disabled></div>
+      <div class="form-group"><label>Email</label><input value="${user ? JSON.parse(user).email : ""}" disabled></div>
     </div>
-  \`;
+  `;
 }
 
 // ── Sponsored Listings ──
