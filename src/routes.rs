@@ -170,6 +170,16 @@ pub fn create_router(s: AppState) -> Router {
             "/networks/:slug/settlement/runs/:run_id/statements.csv",
             get(settlement::settlement_statements_csv),
         )
+        // The scheduler's own surface: what it will do (next run), what it last did,
+        // and the manual "Send statements now" that goes through the very same path.
+        .route(
+            "/networks/:slug/settlement/schedule",
+            get(settlement::settlement_schedule),
+        )
+        .route(
+            "/networks/:slug/settlement/send-statements",
+            post(settlement::send_statements_now),
+        )
         // ── Ownership transfers (T2): initiate, accept, decline, cancel + audit ──
         // Fee, currency, fee_direction, host_stays and the re-home target directory
         // are entered on the transfer (admin card / owner portal) — never constants.

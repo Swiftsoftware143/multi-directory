@@ -812,7 +812,12 @@
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chPreview()">Preview (dry run)</button>
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__chRun()">Run settlement</button>
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chExpire()">Expire points (policy)</button>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__chSendStatements()">✉️ Send statements now</button>
         </div>
+        <!-- The scheduler's own panel: last run, next scheduled run, armed/off, the
+             cycle day and the expiry policy — all read from the API, none of it
+             compiled into this page. -->
+        <div id="ch-schedule" style="margin-top:12px"></div>
         <div class="feature-status" id="ch-status">settlement not loaded yet</div>
         <div id="ch-preview"></div>
         <div id="ch-runs" style="margin-top:14px"></div>
@@ -2122,6 +2127,7 @@
             'rates: issue ' + rates.issue_per_point + ' · redeem ' + rates.redeem_per_point +
             ' · cycle day ' + s.cycle_day + ' · min payout ' + s.minimum_payout_cents + 'c' +
             ' · settlement ' + (s.settlement_enabled ? 'enabled' : 'disabled');
+          chLoadSchedule();
           return chLoadRuns();
         })
         .catch(function (e) {
@@ -2274,6 +2280,69 @@
         .catch(function (e) { host.innerHTML = '<div class="feature-status">statements error: ' + daEsc(e.message) + '</div>'; });
     }
 
+    // ── Scheduler surfacing: is the loop armed, what did it last do, what is next ──
+    // Everything here comes from GET /settlement/schedule — the page holds no
+    // cadence, no cycle day and no policy of its own.
+    function chLoadSchedule() {
+      var slug = chSlug();
+      var host = document.getElementById('ch-schedule');
+      if (!slug || !host) return Promise.resolve();
+      host.innerHTML = '<div class="feature-status">loading schedule…</div>';
+      return apiGet('/networks/' + encodeURIComponent(slug) + '/settlement/schedule')
+        .then(function (sc) {
+          var lr = sc.last_run;
+          var exp = sc.expiry || {};
+          var next = sc.next_period || {};
+          var last = lr
+            ? (daEsc(lr.period_key) + ' · ' + daEsc(lr.status) +
+               ' · ' + (lr.triggered_by === 'scheduler' ? 'ran automatically' : 'run manually') +
+               ' · ' + daEsc(String(lr.created_at || '').slice(0, 16).replace('T', ' ')) +
+               (lr.statements_sent_at
+                  ? ' · statements ' + lr.statements_sent + ' sent / ' + lr.statements_skipped + ' skipped'
+                  : ' · statements not sent yet'))
+            : 'never — no settlement run yet';
+          var html = '<div style="border:1px solid var(--border,#1e2a3a);border-radius:8px;padding:10px 12px;font-size:.8rem;line-height:1.6">' +
+            '<div style="font-weight:600;margin-bottom:4px">🕒 The money loop runs itself</div>' +
+            '<div><b>Scheduler:</b> ' + (sc.enabled ? 'ARMED' : 'OFF — settlement is disabled for this network') +
+              ' — wakes ' + daEsc((sc.scheduler || {}).kind || 'hourly') +
+              ', settles when today\'s day-of-month equals the cycle day (<b>' + sc.cycle_day + '</b>)</div>' +
+            '<div><b>Last run:</b> ' + last + '</div>' +
+            '<div><b>Next scheduled run:</b> ' + daEsc(sc.next_run_at) +
+              ' — settles period ' + daEsc(next.key || '') + ' (' + daEsc(next.start || '') + ' → ' + daEsc(next.end || '') + ')</div>' +
+            '<div><b>Point expiry policy:</b> ' + exp.policy_days + ' days · last sweep ' +
+              (exp.last_run_at ? daEsc(String(exp.last_run_at).slice(0, 16).replace('T', ' ')) : 'not yet') + '</div>' +
+            (lr && lr.statements_message
+              ? '<div style="color:var(--text-muted,#8aa0b8)"><b>Last statement delivery:</b> ' + daEsc(lr.statements_message) + '</div>'
+              : '') +
+            '</div>';
+          host.innerHTML = html;
+        })
+        .catch(function (e) {
+          host.innerHTML = '<div class="feature-status">could not load schedule: ' + daEsc(e.message) + '</div>';
+        });
+    }
+
+    // Sends the statements for the network's most recent run through the directory's
+    // configured email provider (or skips, logging the reason — never a fake success).
+    function chSendStatements() {
+      var slug = chSlug();
+      var status = document.getElementById('ch-status');
+      var host = document.getElementById('ch-schedule');
+      if (!slug) { status.textContent = 'pick a network first'; return; }
+      status.textContent = 'sending statements for the latest run…';
+      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/settlement/send-statements', {})
+        .then(function (r) {
+          var x = r.result || {};
+          status.textContent = 'statements: ' + (x.message || 'done');
+          if (host) {
+            host.insertAdjacentHTML('beforeend',
+              '<div class="feature-status">' + daEsc(x.message || '') + '</div>');
+          }
+          return chLoadSchedule();
+        })
+        .catch(function (e) { status.textContent = 'send statements error: ' + e.message; });
+    }
+
     // CSV download with the auth header (a plain link cannot carry the bearer token).
     function chCsv(runId) {
       var slug = chSlug();
@@ -2309,6 +2378,8 @@
     window.__chExpire = chExpire;
     window.__chStatements = chStatements;
     window.__chCsv = chCsv;
+    window.__chSendStatements = chSendStatements;
+    window.__chLoadSchedule = chLoadSchedule;
 
     // ===== Ownership Transfers (Round 11 / T2) =====
     // Fee / currency / who-pays / host_stays come from the form (DB-backed), never

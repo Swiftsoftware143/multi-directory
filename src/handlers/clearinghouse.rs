@@ -703,7 +703,13 @@ pub async fn upsert_category_cap(
     ))
 }
 
-/// POST /api/v1/networks/:slug/clear/expire   (rolling 12-month expiry)
+/// POST /api/v1/networks/:slug/clear/expire   (policy-driven rolling expiry)
+///
+/// The window comes from `point_treasury.default_expiry_days` — admin-editable in
+/// the Clearinghouse card, never a constant here (David's stated terms are 12
+/// months). This is a thin wrapper over [`expire_points_for_network`], which the
+/// settlement scheduler also drives, so a manual click and a scheduled pass can
+/// never diverge.
 pub async fn expire_points(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -712,56 +718,125 @@ pub async fn expire_points(
         .bind(&slug)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let network_id = directory_network(&state.db, directory_id).await?;
     let Some(network_id) = network_id else {
         return Ok(Json(json!({ "error": "Directory not part of a network" })));
     };
 
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(365);
+    let days = expiry_policy_days(&state.db, network_id).await?;
+    let outcome = expire_points_for_network(&state.db, network_id, days).await?;
 
-    // Sum points older than cutoff from issuance logs
+    Ok(Json(json!({
+        "success": true,
+        "total_points_expired": outcome.total_points_expired,
+        "members_affected": outcome.members_affected,
+        "expiry_days": outcome.expiry_days,
+        "cutoff": outcome.cutoff.to_rfc3339()
+    })))
+}
+
+/// The configured expiry policy for a network. A network with no treasury row yet
+/// falls back to a year (the row is created on demand elsewhere) — a missing row
+/// must never fail the endpoint.
+pub async fn expiry_policy_days(db: &PgPool, network_id: Uuid) -> Result<i32, AppError> {
+    let days: Option<i32> =
+        sqlx::query_scalar("SELECT default_expiry_days FROM point_treasury WHERE network_id = $1")
+            .bind(network_id)
+            .fetch_optional(db)
+            .await?;
+    Ok(days.unwrap_or(365).clamp(1, 3650))
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExpiryOutcome {
+    pub total_points_expired: i64,
+    pub members_affected: i64,
+    pub expiry_days: i32,
+    pub cutoff: chrono::DateTime<chrono::Utc>,
+}
+
+/// Rolling point expiry — ONE implementation, used by both the manual endpoint and
+/// the settlement scheduler.
+///
+/// **Idempotent by construction.** The claim statement stamps `expired_at` on the
+/// issuance rows it returns, so those points are consumed exactly once: a restart,
+/// a second wake-up or a manual re-run over the same cutoff finds nothing left and
+/// removes nothing. (The previous implementation re-summed every old issuance on
+/// every call, so anything driving it on a schedule would have drained balances.)
+/// If the UPDATE of a member balance fails, the row stays claimed for that pass but
+/// the error is returned rather than hidden — never a fake success.
+pub async fn expire_points_for_network(
+    db: &PgPool,
+    network_id: Uuid,
+    expiry_days: i32,
+) -> Result<ExpiryOutcome, AppError> {
+    let days = expiry_days.clamp(1, 3650);
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);
+
+    // Claim + aggregate in one atomic statement: `UPDATE ... RETURNING` locks the
+    // rows it stamps, so two concurrent passes cannot both consume the same ones.
     let expired: Vec<(Uuid, i64)> = sqlx::query_as(
-        "SELECT member_id, SUM(points_issued)
-         FROM point_issuance_log WHERE network_id = $1 AND created_at < $2 AND points_issued > 0
-         GROUP BY member_id",
+        "WITH claimed AS ( \
+            UPDATE point_issuance_log SET expired_at = NOW() \
+            WHERE network_id = $1 AND created_at < $2 \
+              AND expired_at IS NULL AND points_issued > 0 \
+            RETURNING member_id, points_issued \
+         ) \
+         SELECT member_id, SUM(points_issued)::bigint FROM claimed \
+         WHERE member_id IS NOT NULL GROUP BY member_id",
     )
     .bind(network_id)
     .bind(cutoff)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| AppError::Database(e))?;
+    .fetch_all(db)
+    .await?;
 
     let mut total_expired: i64 = 0;
-    let mut affected = 0;
+    let mut affected: i64 = 0;
     for (member_id, points) in expired {
+        let balance = i32::try_from(points).unwrap_or(i32::MAX);
         sqlx::query(
             "UPDATE loyalty_members SET points_balance = GREATEST(0, points_balance - $1) WHERE id = $2",
         )
-        .bind(points as i32)
+        .bind(balance)
         .bind(member_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| AppError::Database(e))?;
-        sqlx::query(
-            "UPDATE point_treasury SET outstanding_liability = GREATEST(0, outstanding_liability - $1), updated_at = NOW() WHERE network_id = $2",
+        .execute(db)
+        .await?;
+
+        // Treasury liability is best-effort (a network may have no treasury row);
+        // failures are logged, never silently swallowed.
+        if let Err(e) = sqlx::query(
+            "UPDATE point_treasury SET outstanding_liability = GREATEST(0, outstanding_liability - $1), \
+                updated_at = NOW() WHERE network_id = $2",
         )
-        .bind(Decimal::new(points as i64, 2))
+        .bind(Decimal::new(points, 2))
         .bind(network_id)
-        .execute(&state.db)
+        .execute(db)
         .await
-        .ok();
+        {
+            eprintln!("[clearinghouse] treasury liability update failed for network {network_id}: {e}");
+        }
+
         total_expired += points;
         affected += 1;
     }
 
-    Ok(Json(json!({
-        "success": true,
-        "total_points_expired": total_expired,
-        "members_affected": affected,
-        "cutoff": cutoff.to_rfc3339()
-    })))
+    // Record the pass even when nothing expired, so the panel can show the policy is
+    // actually being driven (and when it last ran).
+    let _ = sqlx::query(
+        "UPDATE point_treasury SET expiry_last_run_at = NOW(), updated_at = NOW() WHERE network_id = $1",
+    )
+    .bind(network_id)
+    .execute(db)
+    .await;
+
+    Ok(ExpiryOutcome {
+        total_points_expired: total_expired,
+        members_affected: affected,
+        expiry_days: days,
+        cutoff,
+    })
 }
 
 /// GET /api/v1/networks/:slug/clear/logs  (consolidated issuance + redemption log)

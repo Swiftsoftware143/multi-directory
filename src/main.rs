@@ -69,6 +69,13 @@ async fn main() {
     // enrichment_settings row and runs it; disabled settings are never touched.
     handlers::enrichment::start_enrichment_scheduler(state.db.clone());
 
+    // Start the settlement scheduler (Round 14 / T1) — the monthly settlement and the
+    // configured point-expiry policy driven by each network's own cycle_day, instead
+    // of a button somebody has to remember to press. It calls the same
+    // `settlement::execute_settlement` the manual endpoint does, and idempotency is
+    // enforced by the database, so a scheduled run and a manual run cannot double-bill.
+    handlers::settlement::start_settlement_scheduler(state.db.clone());
+
     let app = routes::create_router(state.clone())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
