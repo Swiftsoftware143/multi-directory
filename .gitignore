@@ -1,2 +1,6 @@
 /target
 .env
+
+# compiled artefacts must never be tracked (the 19 MB root binary was)
+/multidirectory
+target/
