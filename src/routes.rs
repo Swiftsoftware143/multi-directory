@@ -1236,6 +1236,12 @@ async fn auth_guard(
         || (path.contains("/subscribers") && req.method() == "POST")
         // Public directory search suggestions
         || path.ends_with("/suggestions")
+        // Public directory listings — anonymous browsing of a city directory.
+        // GET only; POST/PUT/DELETE on the same paths stay behind auth.
+        || (req.method() == "GET"
+            && path.matches('/').count() == 3
+            && (path.starts_with("/directories/") || path.starts_with("/directory/"))
+            && path.ends_with("/businesses"))
         // Public visitor account routes
         || path == "/visitor/register"
         || path == "/visitor/login"
