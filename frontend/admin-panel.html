@@ -522,6 +522,8 @@
         <a href="#sec-directories">📁 Directories</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
         <a href="#email-settings-section">✉️ Email / SMTP</a>
+        <a href="#demand-analytics-section">📈 Demand Analytics</a>
+        <a href="#clearinghouse-section">🏦 Clearinghouse</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
@@ -704,6 +706,114 @@
             <span class="feature-status" id="em-signature-status">signature not loaded yet</span>
           </div>
         </div>
+      </div>
+
+      <!-- 📈 Demand Analytics (Round 11 / T1) — area → category → time-of-day demand.
+           Charts are inline SVG built in-app: no CDN dependency (a 404ing CDN has
+           bitten this repo before). Export buttons download the very same query the
+           table renders, so the licenceed file can never drift from the screen. -->
+      <div class="feature-card" id="demand-analytics-section">
+        <h3>📈 Demand Analytics
+          <span class="pk-badge pk-missing" id="da-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">Demand volume by <b>area (zip/city) → service category → time of day</b>, aggregated from real visitor events. This is the licenceable data product: the CSV/JSON exports run the same queries as the table below.</p>
+
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="da-directory" onchange="window.__daReload()"><option value="">All directories (network)</option></select>
+          <select class="pk-input" id="da-category"><option value="">All categories</option></select>
+          <select class="pk-input" id="da-days"></select>
+          <select class="pk-input" id="da-bucket">
+            <option value="hour">Bucket: hour of day</option>
+            <option value="day_of_week">Bucket: day of week</option>
+            <option value="day">Bucket: day</option>
+            <option value="week">Bucket: week</option>
+          </select>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__daLoad()">Load demand</button>
+        </div>
+
+        <div class="pk-controls" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__daExport('csv','matrix')">⬇ Matrix CSV</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__daExport('json','matrix')">⬇ Matrix JSON</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__daExport('csv','rollups')">⬇ Rollups CSV</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__daExport('json','rollups')">⬇ Rollups JSON</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__daExport('csv','supply')">⬇ Supply CSV</button>
+        </div>
+
+        <div class="feature-status" id="da-summary">demand not loaded yet</div>
+        <div id="da-empty" class="empty-state hidden" style="margin:10px 0">Not enough data yet — demand analytics needs visitor events carrying a business or category. Events are already being collected; this view fills in as soon as they arrive.</div>
+        <div id="da-chart" style="margin-top:10px"></div>
+        <div id="da-table" style="overflow-x:auto;margin-top:10px"></div>
+        <div id="da-rollups" style="margin-top:12px"></div>
+
+        <!-- Admin-editable settings: windows, default window, bucket, top-N, export cap -->
+        <div style="margin-top:16px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px">
+          <label style="font-size:.82rem;font-weight:600;display:block">⚙️ Analytics settings</label>
+          <p class="feature-subtitle" style="margin:4px 0 8px">Window choices, the default window, the bucket and the export row cap come from <code>demand_analytics_settings</code> — nothing here is compiled in. Pick a directory above to save a per-directory override; leave it on “All directories” to edit the global default.</p>
+          <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+            <input class="pk-input" id="da-windows" placeholder="windows in days, e.g. 7,30,90,180,365" style="flex:1 1 240px">
+            <input class="pk-input" id="da-default-window" type="number" min="1" placeholder="default window (days)" style="flex:0 1 170px">
+            <input class="pk-input" id="da-topn" type="number" min="1" placeholder="top N" style="flex:0 1 110px">
+            <input class="pk-input" id="da-rowlimit" type="number" min="1" placeholder="export row cap" style="flex:0 1 150px">
+            <select class="pk-input" id="da-bucket-default">
+              <option value="hour">Default bucket: hour</option>
+              <option value="day_of_week">Default bucket: day of week</option>
+              <option value="day">Default bucket: day</option>
+              <option value="week">Default bucket: week</option>
+            </select>
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__daSaveSettings()">Save settings</button>
+          </div>
+          <div class="feature-status" id="da-settings-status"></div>
+        </div>
+      </div>
+
+      <!-- 🏦 Clearinghouse (Round 11 / T3) — the monthly settlement that closes the
+           money loop: invoices to issuing businesses, payouts to redeeming ones, the
+           spread as platform revenue. Rates/caps/cycle/provider are all editable here
+           and stored in point_treasury. With no payment provider configured a run is
+           recorded as pending_provider — the ledger stays correct and nothing is
+           ever reported as paid that was not paid. -->
+      <div class="feature-card" id="clearinghouse-section">
+        <h3>🏦 Clearinghouse Settlement
+          <span class="pk-badge pk-missing" id="ch-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">Turns the loyalty ledger into money: each issuing business is <b>invoiced</b>, each redeeming business is <b>reimbursed</b>, and the spread stays with the platform. Runs are idempotent per period — re-running a period returns the existing run instead of billing twice.</p>
+
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="ch-directory" onchange="window.__chLoad()"></select>
+          <span class="pk-badge pk-missing" id="ch-provider-badge">provider: checking…</span>
+        </div>
+
+        <div class="em-grid" style="margin-top:10px">
+          <div class="em-field"><label>Issue rate — dollars per point issued</label><input id="ch-issue-rate" placeholder="0.01"></div>
+          <div class="em-field"><label>Redeem rate — dollars per point redeemed</label><input id="ch-redeem-rate" placeholder="0.008"></div>
+          <div class="em-field"><label>Cycle day (1–28)</label><input id="ch-cycle-day" type="number" min="1" max="28" placeholder="1"></div>
+          <div class="em-field"><label>Currency</label><input id="ch-currency" placeholder="USD"></div>
+          <div class="em-field"><label>Minimum payout (cents)</label><input id="ch-min-payout" type="number" min="0" placeholder="0"></div>
+          <div class="em-field"><label>Points expiry (days)</label><input id="ch-expiry-days" type="number" min="1" placeholder="365"></div>
+          <div class="em-field"><label>Payment provider</label><select id="ch-provider">
+            <option value="">Auto (first configured provider)</option>
+            <option value="stripe">Stripe</option>
+            <option value="paypal">PayPal</option>
+            <option value="square">Square</option>
+            <option value="wise">Wise</option>
+          </select></div>
+          <div class="em-field"><label>Settlement enabled</label><select id="ch-enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
+        </div>
+        <div class="pk-controls" style="margin-top:8px">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__chSaveSettings()">Save settlement settings</button>
+          <span class="feature-status" id="ch-settings-status"></span>
+        </div>
+
+        <div class="pk-controls" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+          <input class="pk-input" id="ch-period-start" type="date" style="flex:0 1 160px" title="period start (inclusive) — leave both blank for the previous month">
+          <input class="pk-input" id="ch-period-end" type="date" style="flex:0 1 160px" title="period end (inclusive)">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chPreview()">Preview (dry run)</button>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__chRun()">Run settlement</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chExpire()">Expire points (policy)</button>
+        </div>
+        <div class="feature-status" id="ch-status">settlement not loaded yet</div>
+        <div id="ch-preview"></div>
+        <div id="ch-runs" style="margin-top:14px"></div>
       </div>
 
       <!-- Ad Zones -->
@@ -1313,6 +1423,10 @@
       loadEmailTemplates();
       loadEmailCampaigns();
       loadScraperProviders();
+      // Round 11 / T1: demand analytics card (filters, matrix, chart, exports).
+      loadDemandAnalytics();
+      // Round 11 / T3: clearinghouse settlement card (settings, preview, run, statements).
+      loadClearinghouse();
     }
 
     // ===== Login Handler =====
@@ -1365,6 +1479,9 @@
           renderDirectories(directories);
           loadB2bFeatures();
           loadAdZones();
+          // Round 11 / T3: the clearinghouse selector is built from this list, so it
+          // must load after the directories arrive (not before, when it would be empty).
+          loadClearinghouse();
         })
         .catch(function (err) {
           dirLoading.classList.add('hidden');
@@ -1593,6 +1710,511 @@
     }
 
     window.__azLoad = loadAdZones;
+
+    // ===== Demand Analytics (Round 11 / T1) =====
+    // Filters come from the server (window choices, categories, directories are all
+    // DB-driven). The chart is inline SVG so there is no CDN to 404 on.
+    var daCfg = null;
+
+    function daEsc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function daParams() {
+      var p = [];
+      var dir = document.getElementById('da-directory').value;
+      var cat = document.getElementById('da-category').value;
+      var days = document.getElementById('da-days').value;
+      var bucket = document.getElementById('da-bucket').value;
+      if (dir) p.push('directory_id=' + encodeURIComponent(dir));
+      if (cat) p.push('category_id=' + encodeURIComponent(cat));
+      if (days) p.push('days=' + encodeURIComponent(days));
+      if (bucket) p.push('bucket=' + encodeURIComponent(bucket));
+      return p.length ? '?' + p.join('&') : '';
+    }
+
+    function loadDemandAnalytics() {
+      var dirSel = document.getElementById('da-directory');
+      var qs = dirSel.value ? '?directory_id=' + encodeURIComponent(dirSel.value) : '';
+      return apiGet('/analytics/demand/config' + qs).then(function (cfg) {
+        daCfg = cfg;
+        var s = cfg.settings || {};
+
+        var keep = dirSel.value;
+        dirSel.innerHTML = '<option value="">All directories (network)</option>';
+        (cfg.directories || []).forEach(function (d) {
+          var o = document.createElement('option');
+          o.value = d.id; o.textContent = d.name; dirSel.appendChild(o);
+        });
+        dirSel.value = keep;
+
+        var catSel = document.getElementById('da-category');
+        catSel.innerHTML = '<option value="">All categories</option>';
+        (cfg.categories || []).forEach(function (k) {
+          var o = document.createElement('option');
+          o.value = k.id; o.textContent = k.name; catSel.appendChild(o);
+        });
+
+        var daySel = document.getElementById('da-days');
+        daySel.innerHTML = '';
+        (s.window_options_days || [7, 30, 90, 365]).forEach(function (d) {
+          var o = document.createElement('option');
+          o.value = d; o.textContent = 'Last ' + d + ' days'; daySel.appendChild(o);
+        });
+        daySel.value = s.default_window_days || 90;
+
+        document.getElementById('da-bucket').value = s.bucket_size || 'hour';
+        document.getElementById('da-bucket-default').value = s.bucket_size || 'hour';
+        document.getElementById('da-windows').value = (s.window_options_days || []).join(',');
+        document.getElementById('da-default-window').value = s.default_window_days || 90;
+        document.getElementById('da-topn').value = s.top_categories || 5;
+        document.getElementById('da-rowlimit').value = s.export_row_limit || 5000;
+
+        return daLoad();
+      }).catch(function (e) {
+        var b = document.getElementById('da-badge');
+        b.textContent = 'error: ' + e.message;
+        b.className = 'pk-badge pk-missing';
+      });
+    }
+
+    function daLoad() {
+      var badge = document.getElementById('da-badge');
+      badge.textContent = 'loading…';
+      badge.className = 'pk-badge pk-missing';
+      var params = daParams();
+
+      return apiGet('/analytics/demand/matrix' + params).then(function (m) {
+        var s = m.summary || {};
+        document.getElementById('da-summary').textContent =
+          (s.total_events || 0) + ' events · ' + (s.distinct_areas || 0) + ' areas · ' +
+          (s.distinct_categories || 0) + ' categories · ' + (s.distinct_visitors || 0) +
+          ' visitors · window ' + ((m.scope && m.scope.days) || '?') + 'd · bucket ' +
+          ((m.scope && m.scope.bucket) || '');
+        var empty = document.getElementById('da-empty');
+        if (m.has_data) { empty.classList.add('hidden'); } else { empty.classList.remove('hidden'); }
+        daRenderChart(m.rows || [], (m.scope && m.scope.bucket) || 'bucket');
+        daRenderTable(m.rows || []);
+        badge.textContent = m.has_data ? ('OK · ' + m.row_count + ' rows') : 'no data yet';
+        badge.className = 'pk-badge ' + (m.has_data ? 'pk-ok' : 'pk-missing');
+        return apiGet('/analytics/demand/rollups' + params);
+      }).then(function (r) {
+        daRenderRollups(r);
+      }).catch(function (e) {
+        badge.textContent = 'error: ' + e.message;
+        badge.className = 'pk-badge pk-missing';
+      });
+    }
+
+    function daRenderChart(rows, bucketLabel) {
+      var host = document.getElementById('da-chart');
+      var byBucket = {};
+      rows.forEach(function (r) {
+        var k = r.bucket_label || '?';
+        byBucket[k] = (byBucket[k] || 0) + (r.events || 0);
+      });
+      var keys = Object.keys(byBucket);
+      if (!keys.length) { host.innerHTML = ''; return; }
+      keys.sort(function (a, b) { return (byBucket[b] - byBucket[a]); });
+      keys = keys.slice(0, 24);
+      var max = 1;
+      keys.forEach(function (k) { if (byBucket[k] > max) max = byBucket[k]; });
+
+      var barW = 34, gap = 10, h = 120, top = 16;
+      var w = keys.length * (barW + gap) + gap;
+      var svg = '<svg width="' + w + '" height="' + (h + 40) + '" role="img" aria-label="Demand by ' + daEsc(bucketLabel) + '">';
+      keys.forEach(function (k, i) {
+        var v = byBucket[k];
+        var bh = Math.round((v / max) * h);
+        var x = gap + i * (barW + gap);
+        var y = top + (h - bh);
+        svg += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + bh + '" rx="3" fill="#38bdf8"></rect>';
+        svg += '<text x="' + (x + barW / 2) + '" y="' + (y - 4) + '" font-size="10" fill="#cbd5e1" text-anchor="middle">' + v + '</text>';
+        svg += '<text x="' + (x + barW / 2) + '" y="' + (top + h + 14) + '" font-size="9" fill="#8aa0b8" text-anchor="middle">' + daEsc(k) + '</text>';
+      });
+      svg += '</svg>';
+      host.innerHTML = '<div style="font-size:.78rem;color:var(--text-muted,#8aa0b8);margin-bottom:4px">Demand volume by ' + daEsc(bucketLabel) + ' (top ' + keys.length + ' of the returned rows)</div>' + svg;
+    }
+
+    function daRenderTable(rows) {
+      var host = document.getElementById('da-table');
+      if (!rows.length) { host.innerHTML = ''; return; }
+      var shown = rows.slice(0, 100);
+      var html = '<table style="width:100%;border-collapse:collapse;font-size:.8rem">' +
+        '<thead><tr>' +
+        ['Area', 'City', 'Category', 'Bucket', 'Hour', 'DOW', 'Events', 'Visitors', 'Sessions', 'Views', 'Searches', 'Calls', 'Web', 'Dir']
+          .map(function (h) { return '<th style="text-align:left;padding:6px;border-bottom:1px solid var(--border,#1e2a3a)">' + h + '</th>'; }).join('') +
+        '</tr></thead><tbody>';
+      shown.forEach(function (r) {
+        html += '<tr>' +
+          '<td style="padding:5px 6px">' + daEsc(r.area) + '</td>' +
+          '<td style="padding:5px 6px">' + daEsc(r.city) + '</td>' +
+          '<td style="padding:5px 6px">' + daEsc(r.category) + '</td>' +
+          '<td style="padding:5px 6px">' + daEsc(r.bucket_label) + '</td>' +
+          '<td style="padding:5px 6px">' + r.hour_of_day + '</td>' +
+          '<td style="padding:5px 6px">' + r.day_of_week + '</td>' +
+          '<td style="padding:5px 6px">' + r.events + '</td>' +
+          '<td style="padding:5px 6px">' + r.unique_visitors + '</td>' +
+          '<td style="padding:5px 6px">' + r.sessions + '</td>' +
+          '<td style="padding:5px 6px">' + r.views + '</td>' +
+          '<td style="padding:5px 6px">' + r.searches + '</td>' +
+          '<td style="padding:5px 6px">' + r.phone_clicks + '</td>' +
+          '<td style="padding:5px 6px">' + r.website_clicks + '</td>' +
+          '<td style="padding:5px 6px">' + r.direction_clicks + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      if (rows.length > shown.length) {
+        html += '<div style="font-size:.75rem;color:var(--text-muted,#8aa0b8);margin-top:4px">Showing first ' + shown.length + ' of ' + rows.length + ' rows — use an export for the full set.</div>';
+      }
+      host.innerHTML = html;
+    }
+
+    function daRollupTable(title, cols, rows, mapFn) {
+      if (!rows || !rows.length) { return '<div style="font-size:.8rem;color:var(--text-muted,#8aa0b8);margin:6px 0">' + daEsc(title) + ': no data yet</div>'; }
+      var h = '<div style="font-size:.82rem;font-weight:600;margin:8px 0 4px">' + daEsc(title) + '</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:.78rem"><thead><tr>' +
+        cols.map(function (c) { return '<th style="text-align:left;padding:5px;border-bottom:1px solid var(--border,#1e2a3a)">' + daEsc(c) + '</th>'; }).join('') +
+        '</tr></thead><tbody>';
+      rows.forEach(function (r) {
+        h += '<tr>' + mapFn(r).map(function (v) { return '<td style="padding:4px 5px">' + daEsc(v) + '</td>'; }).join('') + '</tr>';
+      });
+      return h + '</tbody></table>';
+    }
+
+    function daRenderRollups(r) {
+      var host = document.getElementById('da-rollups');
+      if (!r) { host.innerHTML = ''; return; }
+      var mix = r.search_vs_view || {};
+      var html = '';
+      html += daRollupTable('Top category per area', ['Area', 'Category', 'Events'],
+        r.top_category_per_area, function (x) { return [x.area, x.category, x.events]; });
+      html += daRollupTable('Peak hour per category', ['Category', 'Peak hour', 'Events'],
+        r.peak_hour_per_category, function (x) { return [x.category, ('0' + x.hour_of_day).slice(-2) + ':00', x.events]; });
+      html += '<div style="font-size:.82rem;font-weight:600;margin:10px 0 4px">Search vs view mix</div>' +
+        '<div style="font-size:.8rem;color:var(--text-secondary,#cbd5e1)">' + (mix.searches || 0) + ' searches · ' +
+        (mix.views || 0) + ' views · ' + (mix.other_events || 0) + ' other events · ' +
+        (mix.phone_clicks || 0) + ' phone clicks · ' + (mix.website_clicks || 0) + ' website clicks</div>';
+      html += daRollupTable('Unmet demand (searches that returned nothing)', ['Category', 'Term', 'Searches'],
+        r.unmet_demand, function (x) { return [x.category, x.term, x.zero_result_searches]; });
+      html += daRollupTable('Supply by category (businesses listed)', ['Category', 'Businesses', 'Claimed'],
+        r.supply_by_category, function (x) { return [x.category, x.businesses, x.claimed]; });
+      host.innerHTML = html;
+    }
+
+    // Downloads the current view with the auth header, then saves it as a file.
+    function daExport(format, scope) {
+      var params = daParams();
+      var path = API_BASE + '/analytics/demand/export' + params +
+        (params ? '&' : '?') + 'format=' + encodeURIComponent(format) + '&scope=' + encodeURIComponent(scope);
+      var authToken = token || localStorage.getItem('md_admin_token');
+      var headers = {};
+      if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+      var status = document.getElementById('da-settings-status');
+      return fetch(path, { headers: headers }).then(function (res) {
+        if (!res.ok) { throw new Error('Export failed (' + res.status + ')'); }
+        return res.text();
+      }).then(function (txt) {
+        var blob = new Blob([txt], { type: format === 'json' ? 'application/json' : 'text/csv' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'demand_' + scope + '.' + (format === 'json' ? 'json' : 'csv');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+        status.textContent = 'exported demand_' + scope + '.' + (format === 'json' ? 'json' : 'csv');
+      }).catch(function (e) {
+        status.textContent = 'export error: ' + e.message;
+      });
+    }
+
+    function daSaveSettings() {
+      var status = document.getElementById('da-settings-status');
+      var dir = document.getElementById('da-directory').value;
+      var windows = (document.getElementById('da-windows').value || '')
+        .split(',').map(function (v) { return parseInt(v.trim(), 10); })
+        .filter(function (n) { return !isNaN(n) && n > 0; });
+      var body = {
+        directory_id: dir || null,
+        default_window_days: parseInt(document.getElementById('da-default-window').value, 10) || null,
+        top_categories: parseInt(document.getElementById('da-topn').value, 10) || null,
+        export_row_limit: parseInt(document.getElementById('da-rowlimit').value, 10) || null,
+        bucket_size: document.getElementById('da-bucket-default').value
+      };
+      if (windows.length) body.window_options_days = windows;
+      status.textContent = 'saving…';
+      return apiFetch('PUT', '/analytics/demand/config', body).then(function (res) {
+        status.textContent = 'saved — windows: ' + ((res.settings && res.settings.window_options_days) || []).join(', ') +
+          ' · default ' + (res.settings && res.settings.default_window_days) + 'd' +
+          ' · bucket ' + (res.settings && res.settings.bucket_size) +
+          ' · top ' + (res.settings && res.settings.top_categories) +
+          ' · cap ' + (res.settings && res.settings.export_row_limit);
+        return loadDemandAnalytics();
+      }).catch(function (e) {
+        status.textContent = 'save error: ' + e.message;
+      });
+    }
+
+    window.__daLoad = daLoad;
+    window.__daReload = loadDemandAnalytics;
+    window.__daExport = daExport;
+    window.__daSaveSettings = daSaveSettings;
+    window.__loadDemandAnalytics = loadDemandAnalytics;
+
+    // ===== Clearinghouse settlement (Round 11 / T3) =====
+    // Rates, cycle day, currency, minimum payout, expiry policy and the payment
+    // provider are all read from / written to point_treasury — none of them are
+    // constants in the app or in this page.
+    function chSlug() {
+      var sel = document.getElementById('ch-directory');
+      return sel ? sel.value : '';
+    }
+
+    function chFillDirectories() {
+      var sel = document.getElementById('ch-directory');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '';
+      (directories || []).forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d.slug;
+        o.textContent = (d.name || 'Directory') + ' (' + (d.slug || '') + ')';
+        sel.appendChild(o);
+      });
+      if (current) sel.value = current;
+    }
+
+    function chQs() {
+      var start = document.getElementById('ch-period-start').value;
+      var end = document.getElementById('ch-period-end').value;
+      if (start && end) return '?period_start=' + encodeURIComponent(start) + '&period_end=' + encodeURIComponent(end);
+      return '';
+    }
+
+    function loadClearinghouse() {
+      chFillDirectories();
+      var slug = chSlug();
+      var badge = document.getElementById('ch-badge');
+      if (!slug) {
+        badge.textContent = 'no network selected';
+        return;
+      }
+      return apiGet('/networks/' + encodeURIComponent(slug) + '/settlement/settings')
+        .then(function (res) {
+          var s = res.settings || {};
+          document.getElementById('ch-issue-rate').value = s.issuance_rate;
+          document.getElementById('ch-redeem-rate').value = s.redemption_rate;
+          document.getElementById('ch-cycle-day').value = s.cycle_day;
+          document.getElementById('ch-currency').value = s.currency;
+          document.getElementById('ch-min-payout').value = s.minimum_payout_cents;
+          document.getElementById('ch-expiry-days').value = s.default_expiry_days;
+          document.getElementById('ch-provider').value = s.payment_provider || '';
+          document.getElementById('ch-enabled').value = s.settlement_enabled ? 'true' : 'false';
+
+          var p = res.provider || {};
+          var pb = document.getElementById('ch-provider-badge');
+          pb.textContent = p.configured
+            ? ('provider: ' + p.effective + ' (live)')
+            : ('provider: ' + (p.effective || 'none') + ' — runs stay pending_provider');
+          pb.className = 'pk-badge ' + (p.configured ? 'pk-ok' : 'pk-missing');
+
+          var rates = res.effective_rates || {};
+          badge.textContent = 'spread ' + rates.spread_per_point + ' ' + (s.currency || '') + '/point';
+          badge.className = 'pk-badge pk-ok';
+          document.getElementById('ch-status').textContent =
+            'rates: issue ' + rates.issue_per_point + ' · redeem ' + rates.redeem_per_point +
+            ' · cycle day ' + s.cycle_day + ' · min payout ' + s.minimum_payout_cents + 'c' +
+            ' · settlement ' + (s.settlement_enabled ? 'enabled' : 'disabled');
+          return chLoadRuns();
+        })
+        .catch(function (e) {
+          badge.textContent = 'error: ' + e.message;
+          badge.className = 'pk-badge pk-missing';
+        });
+    }
+
+    function chSaveSettings() {
+      var status = document.getElementById('ch-settings-status');
+      var slug = chSlug();
+      if (!slug) { status.textContent = 'pick a network first'; return; }
+      var body = {
+        issuance_rate: document.getElementById('ch-issue-rate').value,
+        redemption_rate: document.getElementById('ch-redeem-rate').value,
+        cycle_day: parseInt(document.getElementById('ch-cycle-day').value, 10) || 1,
+        currency: document.getElementById('ch-currency').value,
+        minimum_payout_cents: parseInt(document.getElementById('ch-min-payout').value, 10) || 0,
+        default_expiry_days: parseInt(document.getElementById('ch-expiry-days').value, 10) || 365,
+        payment_provider: document.getElementById('ch-provider').value,
+        settlement_enabled: document.getElementById('ch-enabled').value === 'true'
+      };
+      status.textContent = 'saving…';
+      return apiFetch('PUT', '/networks/' + encodeURIComponent(slug) + '/settlement/settings', body)
+        .then(function () {
+          status.textContent = 'saved';
+          return loadClearinghouse();
+        })
+        .catch(function (e) { status.textContent = 'save error: ' + e.message; });
+    }
+
+    function chPreview() {
+      var slug = chSlug();
+      var status = document.getElementById('ch-status');
+      var host = document.getElementById('ch-preview');
+      if (!slug) { status.textContent = 'pick a network first'; return; }
+      status.textContent = 'running preview (no writes)…';
+      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/settlement/preview' + chQs(), {})
+        .then(function (r) {
+          var t = r.totals || {};
+          var p = r.period || {};
+          status.textContent = 'preview ' + p.key + ' (' + p.start + ' → ' + p.end + ') — no writes made';
+          var html = '<div style="font-size:.82rem;font-weight:600;margin:10px 0 4px">Preview ' + daEsc(p.key) + ' — ' +
+            t.points_issued + ' points issued (' + t.invoiced_cents + ' invoiced) · ' +
+            t.points_redeemed + ' points redeemed (' + t.payout_cents + ' reimbursed) · platform spread ' +
+            t.platform_spread_cents + '</div>';
+          html += daRollupTable('Invoices (issuing businesses owe)', ['Business', 'Points issued', 'Amount (cents)'],
+            r.invoices, function (x) { return [x.business_name, x.points_issued, x.amount_cents]; });
+          html += daRollupTable('Payouts (redeeming businesses are reimbursed)', ['Business', 'Points redeemed', 'Amount (cents)', 'Below minimum'],
+            r.payouts, function (x) { return [x.business_name, x.points_redeemed, x.amount_cents, x.below_minimum ? 'yes' : 'no']; });
+          host.innerHTML = html;
+        })
+        .catch(function (e) { status.textContent = 'preview error: ' + e.message; });
+    }
+
+    function chRun() {
+      var slug = chSlug();
+      var status = document.getElementById('ch-status');
+      if (!slug) { status.textContent = 'pick a network first'; return; }
+      status.textContent = 'running settlement…';
+      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/settlement/run' + chQs(), {})
+        .then(function (r) {
+          if (r.already_existed) {
+            status.textContent = 'this period was already settled — existing run returned, nothing was billed twice.';
+          } else if (r.status === 'disabled') {
+            status.textContent = r.message;
+          } else {
+            var run = r.run || {};
+            status.textContent = 'run ' + (run.period_key || '') + ' status ' + (run.status || '') +
+              ' · invoices ' + r.invoices_created + ' · payouts ' + r.payouts_created +
+              ' (paid ' + r.payouts_paid + ', failed ' + r.payouts_failed + ')' +
+              (r.provider_configured ? '' : ' · no payment provider configured → pending_provider, ledger recorded');
+          }
+          return chLoadRuns();
+        })
+        .catch(function (e) { status.textContent = 'run error: ' + e.message; });
+    }
+
+    function chExpire() {
+      var slug = chSlug();
+      var status = document.getElementById('ch-status');
+      if (!slug) { status.textContent = 'pick a network first'; return; }
+      status.textContent = 'expiring points per policy…';
+      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/clear/expire', {})
+        .then(function (r) { status.textContent = 'expiry sweep: ' + JSON.stringify(r).slice(0, 300); })
+        .catch(function (e) { status.textContent = 'expiry error: ' + e.message; });
+    }
+
+    function chLoadRuns() {
+      var slug = chSlug();
+      var host = document.getElementById('ch-runs');
+      if (!slug || !host) return Promise.resolve();
+      return apiGet('/networks/' + encodeURIComponent(slug) + '/settlement/runs')
+        .then(function (r) {
+          var runs = r.runs || [];
+          if (!runs.length) {
+            host.innerHTML = '<div class="empty-state"><p>No settlement runs yet — use “Preview (dry run)” then “Run settlement”.</p></div>';
+            return;
+          }
+          var html = '<div style="font-size:.82rem;font-weight:600;margin:0 0 4px">Run history</div>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:.78rem"><thead><tr>' +
+            ['Period', 'Status', 'Points in', 'Points out', 'Invoiced', 'Paid out', 'Spread', 'Provider', '']
+              .map(function (c) { return '<th style="text-align:left;padding:5px;border-bottom:1px solid var(--border,#1e2a3a)">' + c + '</th>'; }).join('') +
+            '</tr></thead><tbody>';
+          runs.forEach(function (x) {
+            html += '<tr>' +
+              '<td style="padding:4px 5px">' + daEsc(x.period_key) + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(x.status) + '</td>' +
+              '<td style="padding:4px 5px">' + x.total_points_issued + '</td>' +
+              '<td style="padding:4px 5px">' + x.total_points_redeemed + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(x.total_invoiced_cents) + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(x.total_payout_cents) + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(x.platform_spread_cents) + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(x.provider || '—') + '</td>' +
+              '<td style="padding:4px 5px">' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__chStatements(\'' + x.id + '\')">Statements</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__chCsv(\'' + x.id + '\')">CSV</button>' +
+              '</td>' +
+              '</tr>';
+          });
+          html += '</tbody></table><div id="ch-statements" style="margin-top:10px"></div>';
+          host.innerHTML = html;
+        })
+        .catch(function (e) {
+          host.innerHTML = '<div class="feature-status">could not load runs: ' + daEsc(e.message) + '</div>';
+        });
+    }
+
+    function chStatements(runId) {
+      var slug = chSlug();
+      var host = document.getElementById('ch-statements');
+      if (!slug || !host) return;
+      host.innerHTML = '<div class="feature-status">loading statements…</div>';
+      return apiGet('/networks/' + encodeURIComponent(slug) + '/settlement/runs/' + runId + '/statements')
+        .then(function (r) {
+          var rows = r.statements || [];
+          var html = '<div style="font-size:.82rem;font-weight:600;margin:0 0 4px">Statements — ' +
+            daEsc((r.run && r.run.period_key) || '') + '</div>';
+          if (!rows.length) {
+            host.innerHTML = html + '<div class="empty-state"><p>No statements for this run (no points moved in the period).</p></div>';
+            return;
+          }
+          html += daRollupTable('Per-business position', ['Business', 'Issued', 'Invoiced', 'Redeemed', 'Reimbursed', 'Net', 'Invoice', 'Payout'],
+            rows, function (x) {
+              return [x.business_name, x.points_issued, x.invoiced_cents, x.points_redeemed,
+                x.reimbursed_cents, x.net_position_cents, x.invoice_status || '—', x.payout_status || '—'];
+            });
+          host.innerHTML = html;
+        })
+        .catch(function (e) { host.innerHTML = '<div class="feature-status">statements error: ' + daEsc(e.message) + '</div>'; });
+    }
+
+    // CSV download with the auth header (a plain link cannot carry the bearer token).
+    function chCsv(runId) {
+      var slug = chSlug();
+      if (!slug) return;
+      var authToken = token || localStorage.getItem('md_admin_token');
+      var headers = {};
+      if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+      return fetch(API_BASE + '/networks/' + encodeURIComponent(slug) + '/settlement/runs/' + runId + '/statements.csv',
+        { headers: headers })
+        .then(function (res) {
+          if (!res.ok) throw new Error('CSV export failed (' + res.status + ')');
+          return res.text();
+        })
+        .then(function (txt) {
+          var blob = new Blob([txt], { type: 'text/csv' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'settlement_' + runId + '.csv';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+        })
+        .catch(function (e) {
+          document.getElementById('ch-status').textContent = 'csv error: ' + e.message;
+        });
+    }
+
+    window.__chLoad = loadClearinghouse;
+    window.__chSaveSettings = chSaveSettings;
+    window.__chPreview = chPreview;
+    window.__chRun = chRun;
+    window.__chExpire = chExpire;
+    window.__chStatements = chStatements;
+    window.__chCsv = chCsv;
 
     window.__azCreate = function () {
       var sel = document.getElementById('az-directory');

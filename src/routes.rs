@@ -143,6 +143,33 @@ pub fn create_router(s: AppState) -> Router {
             "/networks/:slug/clear/logs",
             get(clearinghouse::clearing_logs),
         )
+        // ── Clearinghouse settlement runs (T3): close the money loop ────────
+        // Rates/caps/cycle day/currency/provider are DB-backed (point_treasury) and
+        // editable in the admin Clearinghouse card. Runs are idempotent per period.
+        .route(
+            "/networks/:slug/settlement/settings",
+            get(settlement::settlement_settings).put(settlement::update_settlement_settings),
+        )
+        .route(
+            "/networks/:slug/settlement/preview",
+            post(settlement::settlement_preview),
+        )
+        .route(
+            "/networks/:slug/settlement/run",
+            post(settlement::settlement_run),
+        )
+        .route(
+            "/networks/:slug/settlement/runs",
+            get(settlement::settlement_runs),
+        )
+        .route(
+            "/networks/:slug/settlement/runs/:run_id/statements",
+            get(settlement::settlement_statements),
+        )
+        .route(
+            "/networks/:slug/settlement/runs/:run_id/statements.csv",
+            get(settlement::settlement_statements_csv),
+        )
         .route(
             "/reviews",
             get(reviews::list_reviews).post(reviews::create_review),
@@ -657,6 +684,27 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/analytics/demand-curve",
             get(demand_curve::get_demand_curve),
+        )
+        // ── Demand analytics (T1): the saleable data product ────────────────
+        // Admin-auth, optionally scoped to one directory via ?directory_id=.
+        // Settings (windows/bucket/top-N/export cap) are DB-backed and editable
+        // from the admin "Demand Analytics" card.
+        .route(
+            "/analytics/demand/config",
+            get(demand_analytics::demand_analytics_config)
+                .put(demand_analytics::update_demand_analytics_config),
+        )
+        .route(
+            "/analytics/demand/matrix",
+            get(demand_analytics::demand_matrix),
+        )
+        .route(
+            "/analytics/demand/rollups",
+            get(demand_analytics::demand_rollups),
+        )
+        .route(
+            "/analytics/demand/export",
+            get(demand_analytics::demand_export),
         )
         // ??? Email routes
         .route(
