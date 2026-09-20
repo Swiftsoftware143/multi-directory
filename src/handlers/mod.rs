@@ -64,6 +64,7 @@ pub use industries::*;
 pub use seo_config::*;
 pub use services_locations::*;
 pub mod newsletter;
+pub mod tenant_scope;
 pub use newsletter::*;
 pub mod blog_generator;
 pub mod blog_pages;

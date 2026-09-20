@@ -70,7 +70,11 @@ const TRANSFER_COLUMNS: &str =
      t.status, t.notes, t.requested_by, t.created_at, t.updated_at, t.decided_at";
 
 fn is_admin(claims: &Claims) -> bool {
-    claims.role == "admin" || claims.role == "super_admin"
+    // Round 13 IDOR audit: `admin` is the per-tenant role every business owner holds,
+    // so treating it as "may act on anyone's transfer" let any tenant read, re-price,
+    // accept, decline or cancel another tenant's transfer. Only the platform operator
+    // (super_admin) acts across tenants; a party still passes on its own side.
+    claims.role == "super_admin"
 }
 
 fn actor_id(claims: &Claims) -> ApiResult<Uuid> {

@@ -4,7 +4,7 @@
 //! and manages their own subscribers. Admin level is only for David's personal use.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Json},
     Json as JsonBody,
@@ -19,7 +19,9 @@ use lettre::{
     Tokio1Executor,
 };
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope::assert_directory_admin;
 use crate::AppState;
 
 // ── Newsletter Queue ──
@@ -171,9 +173,12 @@ async fn directory_id_for_slug(db: &sqlx::PgPool, slug: &str) -> Result<Uuid, Ap
 /// panel can show the true answer instead of a fabricated "OK".
 pub async fn test_email_settings(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let dir_id = directory_id_for_slug(&s.db, &slug).await?;
+    // Round 13 IDOR audit: credential test targets the directory's own settings.
+    assert_directory_admin(&s.db, &claims, dir_id).await?;
     let url = format!("{}/verify", email_service_url());
     let resp = reqwest::Client::new()
         .post(&url)
@@ -201,10 +206,13 @@ pub async fn test_email_settings(
 /// service and returns its JSON (`sent` | `skipped` | `error`) untouched.
 pub async fn send_test_email(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
     JsonBody(req): JsonBody<TestSendRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let dir_id = directory_id_for_slug(&s.db, &slug).await?;
+    // Round 13 IDOR audit: sending through another tenant's mailbox is a cross-tenant write.
+    assert_directory_admin(&s.db, &claims, dir_id).await?;
     if req.to.trim().is_empty() {
         return Err(AppError::BadRequest("to is required".into()));
     }
@@ -390,6 +398,7 @@ pub async fn delete_newsletter(
 
 pub async fn get_email_settings(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
@@ -397,6 +406,9 @@ pub async fn get_email_settings(
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("directory not found".into()))?;
+    // Round 13 IDOR audit: per-directory SMTP credentials are secrets — only the
+    // directory's own tenant (or the platform operator) may read them.
+    assert_directory_admin(&s.db, &claims, dir.0).await?;
 
     let settings = sqlx::query_as::<_, DirectoryEmailSettings>(
         "SELECT * FROM directory_email_settings WHERE directory_id = $1",
@@ -423,6 +435,7 @@ pub async fn get_email_settings(
 
 pub async fn upsert_email_settings(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
     JsonBody(req): JsonBody<UpsertEmailSettingsRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -431,6 +444,9 @@ pub async fn upsert_email_settings(
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("directory not found".into()))?;
+    // Round 13 IDOR audit: writing another tenant's SMTP settings redirects their
+    // outbound mail (or blanks it). Ownership is required.
+    assert_directory_admin(&s.db, &claims, dir.0).await?;
 
     // The transport must be one the DB accepts (mirrors the CHECK constraint on
     // directory_email_settings.transport). Reject anything else with the full list.
@@ -492,6 +508,7 @@ pub async fn upsert_email_settings(
 
 pub async fn delete_email_settings(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
@@ -499,6 +516,8 @@ pub async fn delete_email_settings(
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("directory not found".into()))?;
+    // Round 13 IDOR audit: deleting another tenant's settings is a cross-tenant write.
+    assert_directory_admin(&s.db, &claims, dir.0).await?;
 
     sqlx::query("DELETE FROM directory_email_settings WHERE directory_id = $1")
         .bind(dir.0)

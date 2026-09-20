@@ -1,7 +1,7 @@
 //! Deal CRUD handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope::assert_deal_admin;
 use crate::AppState;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -229,9 +231,12 @@ pub async fn get_deal(
 /// PUT /api/v1/deals/:id — update deal
 pub async fn update_deal(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateDealRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Round 13 IDOR audit: only the deal's own business/directory tenant may edit it.
+    assert_deal_admin(&s.db, &claims, id).await?;
     let existing = sqlx::query_as::<_, Deal>(
         "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE id = \x241 "
     )
@@ -312,8 +317,11 @@ pub async fn update_deal(
 /// DELETE /api/v1/deals/:id — delete deal
 pub async fn delete_deal(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Round 13 IDOR audit: cross-tenant delete — any tenant could delete any deal.
+    assert_deal_admin(&s.db, &claims, id).await?;
     let result = sqlx::query("DELETE FROM deals WHERE id = \x241")
         .bind(id)
         .execute(&s.db)
@@ -505,8 +513,11 @@ pub async fn use_redemption(
 /// GET /api/v1/deals/:id/redemptions — list all redemptions for a deal
 pub async fn list_deal_redemptions(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Round 13 IDOR audit: redemption records carry customer identity + codes.
+    assert_deal_admin(&s.db, &claims, id).await?;
     let redemptions =
         sqlx::query_as::<_, (Uuid, String, String, Option<DateTime<Utc>>, DateTime<Utc>)>(
             r#"SELECT id, redemption_code, status, used_at, created_at

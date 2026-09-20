@@ -2,7 +2,7 @@
 //! Public form submissions that admins can approve (→ create business) or reject.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -11,7 +11,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope::{assert_submission_admin, caller_tenant, is_platform_operator};
 use crate::AppState;
 
 // ── Rate limiter for the anonymous public submit-a-business form ─────────────
@@ -111,12 +113,33 @@ pub struct UpdateSubmissionRequest {
 }
 
 /// GET /api/v1/submissions — list all submissions (admin view)
-pub async fn list_submissions(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let submissions = sqlx::query_as::<_, Submission>(
-        "SELECT id, business_name, category, address, city, state, zip, phone, email, website, description, submitted_by, submitter_email, directory_id, status, admin_notes, created_at, updated_at FROM submissions ORDER BY created_at DESC "
-    )
-    .fetch_all(&s.db)
-    .await?;
+pub async fn list_submissions(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    // Round 13 IDOR audit: this used to return every submission on the platform
+    // (submitter names, emails, phone numbers) to any authenticated tenant.
+    // The platform operator sees the whole review queue; a tenant sees only the
+    // submissions addressed to a directory their tenant owns.
+    let submissions = if is_platform_operator(&claims) {
+        sqlx::query_as::<_, Submission>(
+            "SELECT id, business_name, category, address, city, state, zip, phone, email, website, description, submitted_by, submitter_email, directory_id, status, admin_notes, created_at, updated_at FROM submissions ORDER BY created_at DESC "
+        )
+        .fetch_all(&s.db)
+        .await?
+    } else {
+        let tid = caller_tenant(&claims)?;
+        sqlx::query_as::<_, Submission>(
+            "SELECT s.id, s.business_name, s.category, s.address, s.city, s.state, s.zip, s.phone, s.email, s.website, s.description, s.submitted_by, s.submitter_email, s.directory_id, s.status, s.admin_notes, s.created_at, s.updated_at \
+             FROM submissions s \
+             JOIN directories d ON d.id = s.directory_id \
+             JOIN users u ON u.id = d.owner_id \
+             WHERE u.tenant_id = $1 ORDER BY s.created_at DESC "
+        )
+        .bind(tid)
+        .fetch_all(&s.db)
+        .await?
+    };
 
     Ok(Json(submissions))
 }
@@ -164,6 +187,7 @@ pub async fn create_submission(
 /// GET /api/v1/submissions/:id — get single submission
 pub async fn get_submission(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let submission = sqlx::query_as::<_, Submission>(
@@ -173,6 +197,8 @@ pub async fn get_submission(
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Submission not found".into()))?;
+    // Round 13 IDOR audit: submitter PII is visible only to the directory's tenant.
+    assert_submission_admin(&s.db, &claims, id).await?;
 
     Ok(Json(submission))
 }
@@ -180,6 +206,7 @@ pub async fn get_submission(
 /// PUT /api/v1/submissions/:id — update submission (for admin review)
 pub async fn update_submission(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateSubmissionRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -190,6 +217,8 @@ pub async fn update_submission(
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Submission not found".into()))?;
+    // Round 13 IDOR audit: cross-tenant write — only the review queue's owner may edit.
+    assert_submission_admin(&s.db, &claims, id).await?;
 
     let business_name = req.business_name.unwrap_or(existing.business_name);
     let category = req.category.or(existing.category);
@@ -235,8 +264,11 @@ pub async fn update_submission(
 /// DELETE /api/v1/submissions/:id — delete submission
 pub async fn delete_submission(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Round 13 IDOR audit: cross-tenant delete.
+    assert_submission_admin(&s.db, &claims, id).await?;
     let result = sqlx::query("DELETE FROM submissions WHERE id = \x241")
         .bind(id)
         .execute(&s.db)
@@ -252,6 +284,7 @@ pub async fn delete_submission(
 /// POST /api/v1/submissions/:id/approve — approve → auto-create business
 pub async fn approve_submission(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let submission = sqlx::query_as::<_, Submission>(
@@ -261,6 +294,8 @@ pub async fn approve_submission(
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Submission not found".into()))?;
+    // Round 13 IDOR audit: approving injects a business into the target directory.
+    assert_submission_admin(&s.db, &claims, id).await?;
 
     if submission.status.as_deref() == Some("approved") {
         return Err(AppError::BadRequest(
@@ -308,9 +343,13 @@ pub async fn approve_submission(
 /// POST /api/v1/submissions/:id/reject — reject with optional notes
 pub async fn reject_submission(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<impl IntoResponse> {
+    // Round 13 IDOR audit: reject mutates another tenant's submission if left unscoped —
+    // proven live (a tenant admin with no directory flipped a stranger's row to 'rejected').
+    assert_submission_admin(&s.db, &claims, id).await?;
     let admin_notes = body
         .get("admin_notes")
         .and_then(|v| v.as_str())
