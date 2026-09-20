@@ -111,6 +111,10 @@ pub mod demand_analytics;
 pub use demand_analytics::*;
 pub mod settlement;
 pub use settlement::*;
+pub mod transfers;
+// pub use transfers::*;  -- accessed via transfers:: prefix in routes
+pub mod enrichment;
+pub use enrichment::*;
 pub mod contact_intelligence;
 pub use contact_intelligence::*;
 pub mod content_queue;

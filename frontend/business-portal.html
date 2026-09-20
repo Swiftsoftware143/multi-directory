@@ -211,6 +211,31 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
     <!-- My Businesses -->
     <div id="businessList"></div>
 
+    <!-- 🔄 Ownership Transfers (Round 11 / T2) — the owner's side.
+         An owner can request a handover of one of their listings to another person,
+         and accept or decline a listing being handed TO them. The fee and whether the
+         host directory stays are set by the platform admin; the owner sees them here. -->
+    <div id="transfersSection" style="margin-top:32px">
+      <div class="section-title">🔄 Ownership Transfers</div>
+      <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">
+        Hand one of your listings to a new owner, or accept one that has been offered to you. Accepting moves the listing and its listing claim to the new owner; the platform records any transfer fee.
+      </div>
+
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <h3 style="font-size:1rem;margin-bottom:12px">📤 Request a transfer of one of my listings</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>My listing</label><select id="trMyBusiness" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select></div>
+          <div class="form-group"><label>New owner's email</label><input type="email" id="trNewOwnerEmail" placeholder="new.owner@example.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>
+        </div>
+        <div class="form-group" style="margin-top:10px"><label>Note for the platform (optional)</label><input type="text" id="trRequestNote" placeholder="e.g. selling the business — agreed Jan 2026" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>
+        <button class="btn btn-primary btn-sm" onclick="requestTransfer()" style="margin-top:12px">Send transfer request</button>
+        <div id="trRequestResult" style="margin-top:8px;font-size:.8rem"></div>
+      </div>
+
+      <div id="trIncoming"></div>
+      <div id="trOutgoing"></div>
+    </div>
+
     <!-- Upgrade Plans -->
     <div id="upgradePlans" style="display:none">
       <div class="section-title">⬆️ Upgrade Plan</div>
@@ -1807,6 +1832,117 @@ function iqsDeleteFunnel(id) {
     alert('Delete failed: ' + e.message);
   });
 }
+
+// ── Ownership Transfers (T2) — the owner's side ──
+function _trEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function _trMsg(el, text, ok) {
+  var n = document.getElementById(el);
+  if (!n) return;
+  n.textContent = text || '';
+  n.style.color = ok ? '#16a34a' : '#dc2626';
+}
+function _trMoney(cents, cur) {
+  if (cents == null) return 'none';
+  var c = (cur || 'USD').toUpperCase();
+  return (c === 'USD' ? '$' : '') + (cents / 100).toFixed(2) + (c === 'USD' ? '' : ' ' + c);
+}
+function _trFillBusinesses(biz) {
+  var sel = document.getElementById('trMyBusiness');
+  if (!sel || !Array.isArray(biz)) return;
+  sel.innerHTML = biz.map(function (b) {
+    return '<option value="' + _trEsc(b.id) + '">' + _trEsc(b.name || b.slug || b.id) + '</option>';
+  }).join('');
+}
+
+async function requestTransfer() {
+  var sel = document.getElementById('trMyBusiness');
+  var email = document.getElementById('trNewOwnerEmail');
+  var note = document.getElementById('trRequestNote');
+  if (!sel || !sel.value) { _trMsg('trRequestResult', 'Select one of your listings first.', false); return; }
+  var to = ((email && email.value) || '').trim();
+  if (!to || to.indexOf('@') < 0) { _trMsg('trRequestResult', "Enter the new owner's email address.", false); return; }
+  try {
+    _trMsg('trRequestResult', 'Sending…', true);
+    await po('/transfers', {
+      business_id: sel.value,
+      to_email: to,
+      notes: ((note && note.value) || '').trim() || null
+    });
+    _trMsg('trRequestResult', 'Transfer request sent — the platform will confirm the terms.', true);
+    if (email) email.value = '';
+    if (note) note.value = '';
+    loadTransfers();
+  } catch (e) {
+    _trMsg('trRequestResult', e.message, false);
+  }
+}
+
+function _trCard(t, role) {
+  var who = role === 'in'
+    ? ('offered to me' + (t.from_email ? ' by ' + _trEsc(t.from_email) : ''))
+    : ('requested for ' + _trEsc(t.to_email || 'the new owner'));
+  var host = t.host_stays === true ? ' · host directory stays' : (t.host_stays === false ? ' · host directory changes' : '');
+  var btns = role === 'in'
+    ? '<button class="btn btn-primary btn-sm" onclick="acceptTransfer(\'' + t.id + '\')">Accept</button> ' +
+      '<button class="btn btn-ghost btn-sm" onclick="declineTransfer(\'' + t.id + '\')">Decline</button>'
+    : '<button class="btn btn-ghost btn-sm" onclick="cancelTransfer(\'' + t.id + '\')">Cancel</button>';
+  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:10px">' +
+    '<div style="font-weight:600">' + _trEsc(t.business_name || t.business_slug || t.business_id || 'Listing') + '</div>' +
+    '<div style="font-size:.8rem;color:var(--text-secondary)">' + who + ' · fee ' + _trMoney(t.fee_cents, t.currency) + host +
+    ' · status ' + _trEsc(t.status || 'pending') + '</div>' +
+    (t.notes ? '<div style="font-size:.8rem;margin-top:4px">' + _trEsc(t.notes) + '</div>' : '') +
+    '<div style="margin-top:10px">' + btns + '</div></div>';
+}
+
+async function loadTransfers() {
+  var inEl = document.getElementById('trIncoming');
+  var outEl = document.getElementById('trOutgoing');
+  if (!inEl) return;
+  try {
+    var r = await g('/transfers');
+    var all = Array.isArray(r) ? r : ((r && (r.data || r.transfers)) || []);
+    var inc = [], out = [];
+    all.forEach(function (t) {
+      if (t.direction === 'incoming' || t.is_incoming === true) inc.push(t); else out.push(t);
+    });
+    inEl.innerHTML = inc.length
+      ? '<div class="section-title" style="font-size:1rem">📥 Offered to me</div>' + inc.map(function (t) { return _trCard(t, 'in'); }).join('')
+      : '';
+    outEl.innerHTML = out.length
+      ? '<div class="section-title" style="font-size:1rem">📤 My requests</div>' + out.map(function (t) { return _trCard(t, 'out'); }).join('')
+      : '';
+  } catch (e) {
+    inEl.innerHTML = '<div style="font-size:.8rem;color:var(--text-secondary)">Could not load transfers: ' + _trEsc(e.message) + '</div>';
+  }
+}
+
+async function acceptTransfer(id) {
+  if (!confirm('Accept this transfer? Ownership of the listing moves to the new owner.')) return;
+  try { await po('/transfers/' + id + '/accept', {}); loadTransfers(); }
+  catch (e) { alert('Accept failed: ' + e.message); }
+}
+async function declineTransfer(id) {
+  if (!confirm('Decline this transfer?')) return;
+  try { await po('/transfers/' + id + '/decline', {}); loadTransfers(); }
+  catch (e) { alert('Decline failed: ' + e.message); }
+}
+async function cancelTransfer(id) {
+  if (!confirm('Cancel this transfer request?')) return;
+  try { await po('/transfers/' + id + '/cancel', {}); loadTransfers(); }
+  catch (e) { alert('Cancel failed: ' + e.message); }
+}
+
+// hook: whenever the dashboard renders the owner's businesses, fill the transfer picker and refresh the lists
+var _origRenderBusinessesForTransfers = renderBusinesses;
+renderBusinesses = function (biz) {
+  _origRenderBusinessesForTransfers(biz);
+  _trFillBusinesses(biz);
+  loadTransfers();
+};
 
 (function init() {
   if (localStorage.getItem('bizToken')) {

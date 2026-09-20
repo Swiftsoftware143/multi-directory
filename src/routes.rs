@@ -170,6 +170,21 @@ pub fn create_router(s: AppState) -> Router {
             "/networks/:slug/settlement/runs/:run_id/statements.csv",
             get(settlement::settlement_statements_csv),
         )
+        // ── Ownership transfers (T2): initiate, accept, decline, cancel + audit ──
+        // Fee, currency, fee_direction, host_stays and the re-home target directory
+        // are entered on the transfer (admin card / owner portal) — never constants.
+        .route(
+            "/transfers",
+            get(transfers::list_transfers).post(transfers::create_transfer),
+        )
+        .route("/transfers/options", get(transfers::transfer_options))
+        .route(
+            "/transfers/:id",
+            get(transfers::get_transfer).put(transfers::update_transfer),
+        )
+        .route("/transfers/:id/accept", post(transfers::accept_transfer))
+        .route("/transfers/:id/decline", post(transfers::decline_transfer))
+        .route("/transfers/:id/cancel", post(transfers::cancel_transfer))
         .route(
             "/reviews",
             get(reviews::list_reviews).post(reviews::create_review),
@@ -1062,6 +1077,16 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route("/enrich/business", post(data_company::enrich_business))
         .route("/enrich/logs", get(data_company::list_enrichment_logs))
+        // ── Enrichment cycle (T4): the rotating re-enrichment, admin-controlled ──
+        // Cadence/batch/enabled live in enrichment_settings; the search provider is
+        // read from provider_keys at call time (never hardcoded). A run with no
+        // provider configured records a SKIP instead of faking success.
+        .route(
+            "/enrich/settings",
+            get(enrichment::get_enrichment_settings).put(enrichment::update_enrichment_settings),
+        )
+        .route("/enrich/status", get(enrichment::enrichment_status))
+        .route("/enrich/run", post(enrichment::run_enrichment_now))
         .route("/export/bulk", get(data_company::bulk_export))
         // ??? Phase 4: Automation — directory events, n8n bridge
         .route(

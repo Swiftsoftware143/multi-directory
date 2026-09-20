@@ -63,6 +63,11 @@ async fn main() {
     // Start background reminder cron
     reminders::start_reminder_cron(state.db.clone());
 
+    // Start the enrichment cycle scheduler (T4) — the rotating re-enrichment that
+    // was previously only a comment. It checks every 5 minutes for a due
+    // enrichment_settings row and runs it; disabled settings are never touched.
+    handlers::enrichment::start_enrichment_scheduler(state.db.clone());
+
     let app = routes::create_router(state.clone())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());

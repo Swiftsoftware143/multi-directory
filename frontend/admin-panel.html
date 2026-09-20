@@ -524,6 +524,8 @@
         <a href="#email-settings-section">✉️ Email / SMTP</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
+        <a href="#transfers-section">🔄 Transfers</a>
+        <a href="#data-enrichment-section">🧭 Data Enrichment</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
@@ -828,6 +830,90 @@
         <div class="feature-status" id="az-status"></div>
       </div>
 
+      <!-- 🔄 Ownership Transfers (Round 11 / T2) — move a listing between owners.
+           Fee, currency, who-pays and whether the host directory stays are entered
+           per transfer (never constants). Accepting moves ownership in ONE
+           transaction and writes the audit trail to business_transfer_events. -->
+      <div class="feature-card" id="transfers-section">
+        <h3>🔄 Ownership Transfers
+          <span class="pk-badge pk-missing" id="tr-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">Hand a business listing to a new owner. <b>Fee</b>, <b>who pays it</b> and <b>whether the host directory stays</b> are admin-entered per transfer. Accepting reassigns the owner + claim row atomically (rolled back on any failure) and records the fee in <code>business_transfer_fees</code>; every transition lands in <code>business_transfer_events</code>.</p>
+
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="tr-dir" onchange="window.__trLoad()"><option value="">All directories</option></select>
+          <select class="pk-input" id="tr-scope">
+            <option value="all">All transfers</option>
+            <option value="incoming">Incoming</option>
+            <option value="outgoing">Outgoing</option>
+            <option value="history">History (decided)</option>
+          </select>
+          <select class="pk-input" id="tr-status">
+            <option value="">Any status</option>
+            <option value="pending">pending</option>
+            <option value="accepted">accepted</option>
+            <option value="declined">declined</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__trLoad()">Reload</button>
+        </div>
+
+        <div style="margin-top:14px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px">
+          <label style="font-size:.82rem;font-weight:600;display:block">➕ Start a transfer</label>
+          <div class="em-grid" style="margin-top:8px">
+            <div class="em-field"><label>Business</label><select id="tr-biz"></select></div>
+            <div class="em-field"><label>Incoming owner email</label><input id="tr-to-email" placeholder="newowner@example.com"></div>
+            <div class="em-field"><label>Fee (cents — 0 = free)</label><input id="tr-fee" type="number" min="0" value="0"></div>
+            <div class="em-field"><label>Currency</label><input id="tr-currency" value="USD"></div>
+            <div class="em-field"><label>Who pays the fee</label>
+              <select id="tr-fee-direction">
+                <option value="incoming">Incoming owner pays</option>
+                <option value="outgoing">Outgoing owner pays</option>
+                <option value="platform">Platform absorbs it (waived)</option>
+              </select>
+            </div>
+            <div class="em-field"><label>Host directory</label>
+              <select id="tr-host-stays" onchange="window.__trHostToggle()">
+                <option value="true">Host stays — listing keeps its directory</option>
+                <option value="false">Re-home the listing</option>
+              </select>
+            </div>
+            <div class="em-field" id="tr-target-wrap" style="display:none"><label>Re-home into directory</label><select id="tr-target-dir"></select></div>
+            <div class="em-field"><label>Notes</label><input id="tr-notes" placeholder="optional — e.g. sale reference"></div>
+          </div>
+          <div class="pk-controls" style="margin-top:8px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__trCreate()">Start transfer</button>
+            <span class="feature-status" id="tr-status-msg"></span>
+          </div>
+        </div>
+
+        <div id="tr-list" style="margin-top:12px"></div>
+        <div id="tr-audit" style="margin-top:12px"></div>
+      </div>
+
+      <!-- 🧭 Data Enrichment (Round 11 / T4) — the rotating re-enrichment cycle.
+           Cadence/batch/enabled are DB-driven; the provider is read from
+           provider_keys at call time. No provider = a recorded SKIP, never a
+           fabricated success. Businesses rotate oldest-enriched-first. -->
+      <div class="feature-card" id="data-enrichment-section">
+        <h3>🧭 Data Enrichment
+          <span class="pk-badge pk-missing" id="de-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">Rotating re-enrichment of phone / website / address / geo across the directory. The <b>provider comes from Provider API Keys</b> (Google Places · SerpAPI · Bing · Google CSE) — pick one here or leave it on auto. With nothing configured (or a key the provider rejects) the run records a <b>skip/error</b> and enriches nothing.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="de-dir" onchange="window.__deLoad()"><option value="">Global default</option></select>
+          <label style="font-size:.8rem;display:flex;gap:6px;align-items:center"><input type="checkbox" id="de-enabled"> Enabled (scheduler runs it)</label>
+          <input class="pk-input" id="de-cadence" type="number" min="1" placeholder="cadence (hours)" style="flex:0 1 150px">
+          <input class="pk-input" id="de-batch" type="number" min="1" max="500" placeholder="batch size" style="flex:0 1 130px">
+          <select class="pk-input" id="de-provider"></select>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__deSave()">Save settings</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__deRun()">▶ Run now</button>
+          <span class="feature-status" id="de-status"></span>
+        </div>
+        <div class="feature-status" id="de-summary" style="margin-top:8px">no run recorded yet</div>
+        <div id="de-logs" style="margin-top:10px"></div>
+      </div>
+
       <!-- Submission Queue -->
       <div class="feature-card" id="submissions-section">
         <h3>📥 Submission Queue</h3>
@@ -989,6 +1075,7 @@
     }
     function apiGet(path) { return apiFetch('GET', path); }
     function apiPost(path, body) { return apiFetch('POST', path, body); }
+    function apiPut(path, body) { return apiFetch('PUT', path, body); }
 
     // ===== Provider API Keys (admin-editable, per tenant) — Round 6 / U1 =====
     // Named, multiple keys per provider: one line per saved key with label, masked
@@ -1427,6 +1514,10 @@
       loadDemandAnalytics();
       // Round 11 / T3: clearinghouse settlement card (settings, preview, run, statements).
       loadClearinghouse();
+      // Round 11 / T2: ownership transfers card (create, list, accept/decline, audit).
+      loadTransfers();
+      // Round 11 / T4: enrichment cycle card (cadence, provider, run now, logs).
+      loadDataEnrichment();
     }
 
     // ===== Login Handler =====
@@ -1482,6 +1573,9 @@
           // Round 11 / T3: the clearinghouse selector is built from this list, so it
           // must load after the directories arrive (not before, when it would be empty).
           loadClearinghouse();
+          // Round 11 / T2 + T4: transfers + enrichment are directory-scoped the same way.
+          loadTransfers();
+          loadDataEnrichment();
         })
         .catch(function (err) {
           dirLoading.classList.add('hidden');
@@ -2215,6 +2309,347 @@
     window.__chExpire = chExpire;
     window.__chStatements = chStatements;
     window.__chCsv = chCsv;
+
+    // ===== Ownership Transfers (Round 11 / T2) =====
+    // Fee / currency / who-pays / host_stays come from the form (DB-backed), never
+    // from constants. Accept is behind a confirm because ownership moves at once.
+    var trCfg = { businesses: [], directories: [] };
+
+    function trEsc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function trMoney(cents, cur) {
+      return (cur || 'USD') + ' ' + ((Number(cents) || 0) / 100).toFixed(2);
+    }
+
+    function trFillSelects() {
+      var dirSel = document.getElementById('tr-dir');
+      var keep = dirSel.value;
+      dirSel.innerHTML = '<option value="">All directories</option>';
+      var tgt = document.getElementById('tr-target-dir');
+      var keepT = tgt.value;
+      tgt.innerHTML = '';
+      (trCfg.directories || []).forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d.id; o.textContent = d.name;
+        dirSel.appendChild(o);
+        var o2 = document.createElement('option');
+        o2.value = d.id; o2.textContent = d.name;
+        tgt.appendChild(o2);
+      });
+      dirSel.value = keep || '';
+      if (keepT) tgt.value = keepT;
+
+      var bizSel = document.getElementById('tr-biz');
+      var keepB = bizSel.value;
+      bizSel.innerHTML = '<option value="">Select a business…</option>';
+      (trCfg.businesses || []).forEach(function (b) {
+        var o = document.createElement('option');
+        o.value = b.id;
+        o.textContent = b.name + (b.owner_email ? ' — owner: ' + b.owner_email : ' — no owner on record');
+        bizSel.appendChild(o);
+      });
+      if (keepB) bizSel.value = keepB;
+    }
+
+    window.__trHostToggle = function () {
+      var stays = document.getElementById('tr-host-stays').value === 'true';
+      document.getElementById('tr-target-wrap').style.display = stays ? 'none' : '';
+    };
+
+    function loadTransfers() {
+      var dir = document.getElementById('tr-dir').value;
+      var qs = dir ? '?directory_id=' + encodeURIComponent(dir) : '';
+      return apiGet('/transfers/options' + qs)
+        .then(function (opt) {
+          trCfg = opt || { businesses: [], directories: [] };
+          trFillSelects();
+          return trFetchList();
+        })
+        .catch(function (e) {
+          document.getElementById('tr-status-msg').textContent = 'options error: ' + e.message;
+        });
+    }
+
+    function trFetchList() {
+      var p = [];
+      var dir = document.getElementById('tr-dir').value;
+      var scope = document.getElementById('tr-scope').value;
+      var status = document.getElementById('tr-status').value;
+      if (dir) p.push('directory_id=' + encodeURIComponent(dir));
+      if (scope) p.push('scope=' + encodeURIComponent(scope));
+      if (status) p.push('status=' + encodeURIComponent(status));
+      return apiGet('/transfers' + (p.length ? '?' + p.join('&') : '')).then(function (r) {
+        var rows = (r && r.transfers) || [];
+        var badge = document.getElementById('tr-badge');
+        var pending = rows.filter(function (t) { return t.status === 'pending'; }).length;
+        badge.textContent = rows.length + ' transfer(s) · ' + pending + ' pending';
+        badge.className = 'pk-badge' + (rows.length ? '' : ' pk-missing');
+        renderTrRows(rows);
+      });
+    }
+
+    function renderTrRows(rows) {
+      var el = document.getElementById('tr-list');
+      if (!rows.length) {
+        el.innerHTML = '<div class="empty-state">No transfers for this filter. Start one with the form above.</div>';
+        return;
+      }
+      var h = '<table style="width:100%;font-size:.78rem;border-collapse:collapse">';
+      h += '<tr style="text-align:left;color:var(--text-secondary)"><th>Business</th><th>From</th><th>To</th><th>Fee</th><th>Host</th><th>Status</th><th>Created</th><th></th></tr>';
+      rows.forEach(function (t) {
+        h += '<tr style="border-top:1px solid var(--border,#1e2a3a)">';
+        h += '<td style="padding:6px 4px">' + trEsc(t.business_name) + '</td>';
+        h += '<td>' + trEsc(t.from_email || t.from_user_id || '—') + '</td>';
+        h += '<td>' + trEsc(t.to_email || t.to_user_id || '—') + '</td>';
+        h += '<td>' + trMoney(t.fee_cents, t.currency) + ' <span style="opacity:.7">' + trEsc(t.fee_direction) + '</span></td>';
+        h += '<td>' + (t.host_stays ? 'stays' : 're-home') + '</td>';
+        h += '<td>' + trEsc(t.status) + '</td>';
+        h += '<td>' + trEsc(String(t.created_at || '').slice(0, 19)) + '</td>';
+        h += '<td style="white-space:nowrap">';
+        h += '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__trAudit(\'' + t.id + '\')">Audit</button>';
+        if (t.status === 'pending') {
+          h += ' <button class="btn btn-ghost btn-sm" type="button" onclick="window.__trEdit(\'' + t.id + '\',' + (t.fee_cents || 0) + ',\'' + trEsc(t.fee_direction) + '\',' + (t.host_stays ? 'true' : 'false') + ')">Terms</button>';
+          h += ' <button class="btn btn-accent btn-sm" type="button" onclick="window.__trAccept(\'' + t.id + '\')">Accept</button>';
+          h += ' <button class="btn btn-ghost btn-sm" type="button" onclick="window.__trDecline(\'' + t.id + '\')">Decline</button>';
+          h += ' <button class="btn btn-ghost btn-sm" type="button" onclick="window.__trCancel(\'' + t.id + '\')">Cancel</button>';
+        }
+        h += '</td></tr>';
+        h += '<tr id="tr-edit-row-' + t.id + '" style="display:none"><td colspan="8" style="padding:8px 4px;background:rgba(255,255,255,.02)"></td></tr>';
+      });
+      h += '</table>';
+      el.innerHTML = h;
+    }
+
+    window.__trCreate = function () {
+      var msg = document.getElementById('tr-status-msg');
+      var body = {
+        business_id: document.getElementById('tr-biz').value,
+        to_email: document.getElementById('tr-to-email').value.trim(),
+        fee_cents: parseInt(document.getElementById('tr-fee').value || '0', 10) || 0,
+        currency: document.getElementById('tr-currency').value.trim() || 'USD',
+        fee_direction: document.getElementById('tr-fee-direction').value,
+        host_stays: document.getElementById('tr-host-stays').value === 'true',
+        notes: document.getElementById('tr-notes').value.trim() || null
+      };
+      if (!body.business_id) { msg.textContent = 'Pick a business first'; return; }
+      if (!body.to_email) { msg.textContent = 'Incoming owner email is required'; return; }
+      if (!body.host_stays) {
+        body.target_directory_id = document.getElementById('tr-target-dir').value || null;
+        if (!body.target_directory_id) { msg.textContent = 'Pick the directory to re-home the listing into'; return; }
+      }
+      msg.textContent = 'starting…';
+      apiPost('/transfers', body)
+        .then(function (t) {
+          msg.textContent = 'transfer ' + t.status + (t.to_user_id ? '' : ' (invitation — the incoming owner must exist before it can be accepted)');
+          return trFetchList();
+        })
+        .catch(function (e) { msg.textContent = 'error: ' + e.message; });
+    };
+
+    window.__trEdit = function (id, fee, direction, hostStays) {
+      var row = document.getElementById('tr-edit-row-' + id);
+      var cell = row.firstChild;
+      var dirOpts = '<option value="">— keep —</option>' + (trCfg.directories || []).map(function (d) {
+        return '<option value="' + d.id + '">' + trEsc(d.name) + '</option>';
+      }).join('');
+      cell.innerHTML =
+        '<div class="pk-controls" style="flex-wrap:wrap;gap:8px">' +
+        '<input class="pk-input" id="tr-e-fee" type="number" min="0" value="' + (fee || 0) + '" style="flex:0 1 130px" title="fee in cents">' +
+        '<select class="pk-input" id="tr-e-direction">' +
+        '<option value="incoming"' + (direction === 'incoming' ? ' selected' : '') + '>Incoming pays</option>' +
+        '<option value="outgoing"' + (direction === 'outgoing' ? ' selected' : '') + '>Outgoing pays</option>' +
+        '<option value="platform"' + (direction === 'platform' ? ' selected' : '') + '>Platform absorbs</option>' +
+        '</select>' +
+        '<select class="pk-input" id="tr-e-host">' +
+        '<option value="true"' + (hostStays ? ' selected' : '') + '>Host stays</option>' +
+        '<option value="false"' + (!hostStays ? ' selected' : '') + '>Re-home</option>' +
+        '</select>' +
+        '<select class="pk-input" id="tr-e-target">' + dirOpts + '</select>' +
+        '<button class="btn btn-accent btn-sm" type="button" onclick="window.__trSaveTerms(\'' + id + '\')">Save terms</button>' +
+        '</div>';
+      row.style.display = '';
+    };
+
+    window.__trSaveTerms = function (id) {
+      var hostStays = document.getElementById('tr-e-host').value === 'true';
+      var body = {
+        fee_cents: parseInt(document.getElementById('tr-e-fee').value || '0', 10) || 0,
+        fee_direction: document.getElementById('tr-e-direction').value,
+        host_stays: hostStays
+      };
+      if (!hostStays) {
+        var t = document.getElementById('tr-e-target').value;
+        if (!t) { alert('Pick the directory to re-home the listing into'); return; }
+        body.target_directory_id = t;
+      }
+      apiPut('/transfers/' + id, body)
+        .then(function () { return trFetchList(); })
+        .then(function () { showToast('Transfer terms saved', 'success'); })
+        .catch(function (e) { alert('save failed: ' + e.message); });
+    };
+
+    window.__trAccept = function (id) {
+      if (!confirm('Accept this transfer? Ownership (owner + claim + fee) moves in one transaction.')) return;
+      apiPost('/transfers/' + id + '/accept', {})
+        .then(function () { showToast('Transfer accepted — ownership moved', 'success'); return trFetchList(); })
+        .catch(function (e) { alert('accept failed: ' + e.message); });
+    };
+
+    window.__trDecline = function (id) {
+      if (!confirm('Decline this transfer? The listing stays with its current owner.')) return;
+      apiPost('/transfers/' + id + '/decline', {})
+        .then(function () { showToast('Transfer declined', 'success'); return trFetchList(); })
+        .catch(function (e) { alert('decline failed: ' + e.message); });
+    };
+
+    window.__trCancel = function (id) {
+      if (!confirm('Cancel this transfer?')) return;
+      apiPost('/transfers/' + id + '/cancel', {})
+        .then(function () { showToast('Transfer cancelled', 'success'); return trFetchList(); })
+        .catch(function (e) { alert('cancel failed: ' + e.message); });
+    };
+
+    window.__trAudit = function (id) {
+      apiGet('/transfers/' + id)
+        .then(function (r) {
+          var h = '<div style="border:1px solid var(--border,#1e2a3a);border-radius:10px;padding:10px">';
+          h += '<b style="font-size:.85rem">Audit trail — ' + trEsc(r.transfer && r.transfer.business_name) + '</b>';
+          h += '<div style="font-size:.78rem;margin-top:6px">';
+          (r.events || []).forEach(function (ev) {
+            h += '<div>' + trEsc(String(ev.created_at || '').slice(0, 19)) + ' · <b>' + trEsc(ev.event) + '</b> · ' +
+              trEsc(ev.from_status || '—') + ' → ' + trEsc(ev.to_status || '—') +
+              ' · by ' + trEsc(ev.actor_user_id || 'system') + ' (' + trEsc(ev.actor_role || '—') + ')';
+            if (ev.metadata && ev.metadata.host_stays !== undefined) {
+              h += ' · host_stays=' + ev.metadata.host_stays + ' · fee=' + trMoney(ev.metadata.fee_cents, ev.metadata.currency);
+            }
+            h += '</div>';
+          });
+          if (!(r.events || []).length) h += '<div>no events recorded</div>';
+          if ((r.fees || []).length) {
+            h += '<div style="margin-top:6px">fee rows: ';
+            r.fees.forEach(function (f) { h += trMoney(f.amount_cents, f.currency) + ' (' + trEsc(f.status) + ') '; });
+            h += '</div>';
+          }
+          h += '</div></div>';
+          document.getElementById('tr-audit').innerHTML = h;
+        })
+        .catch(function (e) { document.getElementById('tr-audit').textContent = 'audit error: ' + e.message; });
+    };
+
+    window.__trLoad = trFetchList;
+
+    // ===== Data Enrichment cycle (Round 11 / T4) =====
+    var deCfg = null;
+
+    function loadDataEnrichment() {
+      var dir = document.getElementById('de-dir');
+      var qs = dir.value ? '?directory_id=' + encodeURIComponent(dir.value) : '';
+      return apiGet('/enrich/status' + qs)
+        .then(function (st) {
+          deCfg = st || {};
+          var s = deCfg.settings || {};
+
+          var keep = dir.value;
+          dir.innerHTML = '<option value="">Global default</option>';
+          (deCfg.directories || []).forEach(function (d) {
+            var o = document.createElement('option');
+            o.value = d.id; o.textContent = d.name;
+            dir.appendChild(o);
+          });
+          dir.value = keep || '';
+
+          document.getElementById('de-enabled').checked = !!s.is_enabled;
+          document.getElementById('de-cadence').value = s.cadence_hours || 24;
+          document.getElementById('de-batch').value = s.batch_size || 25;
+
+          var prov = document.getElementById('de-provider');
+          var have = {};
+          (deCfg.configured_providers || []).forEach(function (p) { have[p.provider] = p.label; });
+          prov.innerHTML = '<option value="">Auto — use whatever is configured</option>';
+          (deCfg.supported_adapters || []).forEach(function (a) {
+            var o = document.createElement('option');
+            o.value = a;
+            o.textContent = a + (have[a] ? ' — key: ' + have[a] : ' — NO KEY');
+            prov.appendChild(o);
+          });
+          prov.value = s.provider || '';
+
+          var badge = document.getElementById('de-badge');
+          if (deCfg.active_provider) {
+            badge.textContent = 'provider: ' + deCfg.active_provider + (deCfg.active_provider_label ? ' (' + deCfg.active_provider_label + ')' : '');
+            badge.className = 'pk-badge';
+          } else {
+            badge.textContent = 'no provider configured';
+            badge.className = 'pk-badge pk-missing';
+          }
+
+          var t = deCfg.totals || {};
+          document.getElementById('de-summary').textContent =
+            'last run: ' + (s.last_run_at ? String(s.last_run_at).slice(0, 19) + ' (' + (s.last_status || '?') + ')' : 'never') +
+            ' · next run: ' + (s.next_run_at ? String(s.next_run_at).slice(0, 19) : (s.is_enabled ? 'as soon as one is due' : 'not scheduled — disabled')) +
+            ' · logs: ' + (t.completed || 0) + ' completed, ' + (t.no_match || 0) + ' no match, ' + (t.errors || 0) + ' errors, ' + (t.skipped || 0) + ' skipped';
+
+          var h = '<table style="width:100%;font-size:.78rem;border-collapse:collapse">';
+          h += '<tr style="text-align:left;color:var(--text-secondary)"><th>When</th><th>Provider</th><th>Type</th><th>Business</th><th>Status</th><th>Note</th></tr>';
+          (deCfg.recent_logs || []).forEach(function (l) {
+            h += '<tr style="border-top:1px solid var(--border,#1e2a3a)">';
+            h += '<td style="padding:6px 4px">' + trEsc(String(l.created_at || '').slice(0, 19)) + '</td>';
+            h += '<td>' + trEsc(l.source) + '</td>';
+            h += '<td>' + trEsc(l.enrichment_type) + '</td>';
+            h += '<td>' + trEsc(l.business_id || '—') + '</td>';
+            h += '<td>' + trEsc(l.status) + '</td>';
+            h += '<td>' + trEsc(l.error_message || '') + '</td>';
+            h += '</tr>';
+          });
+          h += '</table>';
+          document.getElementById('de-logs').innerHTML = (deCfg.recent_logs || []).length
+            ? h
+            : '<div class="empty-state">No enrichment log entries yet. Run now, or enable the cycle and let the scheduler do it.</div>';
+        })
+        .catch(function (e) {
+          document.getElementById('de-status').textContent = 'error: ' + e.message;
+        });
+    }
+
+    window.__deSave = function () {
+      var st = document.getElementById('de-status');
+      var dir = document.getElementById('de-dir').value || null;
+      var body = {
+        directory_id: dir,
+        is_enabled: document.getElementById('de-enabled').checked,
+        cadence_hours: parseInt(document.getElementById('de-cadence').value || '24', 10) || 24,
+        batch_size: parseInt(document.getElementById('de-batch').value || '25', 10) || 25,
+        provider: document.getElementById('de-provider').value || ''
+      };
+      st.textContent = 'saving…';
+      apiPut('/enrich/settings', body)
+        .then(function (row) {
+          st.textContent = 'saved — ' + (row.is_enabled ? 'enabled every ' + row.cadence_hours + 'h' : 'disabled');
+          return loadDataEnrichment();
+        })
+        .catch(function (e) { st.textContent = 'error: ' + e.message; });
+    };
+
+    window.__deRun = function () {
+      var st = document.getElementById('de-status');
+      var dir = document.getElementById('de-dir').value || null;
+      var body = { directory_id: dir };
+      var batch = parseInt(document.getElementById('de-batch').value || '0', 10);
+      if (batch > 0) body.batch_size = batch;
+      st.textContent = 'running…';
+      apiPost('/enrich/run', body)
+        .then(function (o) {
+          st.textContent = (o.status || 'done') + ' — ' + (o.message || '');
+          return loadDataEnrichment();
+        })
+        .catch(function (e) { st.textContent = 'run failed: ' + e.message; });
+    };
+
+    window.__deLoad = loadDataEnrichment;
 
     window.__azCreate = function () {
       var sel = document.getElementById('az-directory');
