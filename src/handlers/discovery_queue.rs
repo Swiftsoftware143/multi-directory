@@ -528,6 +528,75 @@ pub async fn add_selected(
     })))
 }
 
+/// Round 6 (U2) — tick / untick queue rows from the panel (Select all + per-row check).
+#[derive(Debug, Deserialize)]
+pub struct QueueSelectionRequest {
+    pub directory_id: Uuid,
+    pub ids: Vec<Uuid>,
+    pub selected: bool,
+}
+
+/// Round 6 (U2) — re-assign the auto-mapped category of ONE queue row before publishing.
+#[derive(Debug, Deserialize)]
+pub struct QueueCategoryRequest {
+    pub directory_id: Uuid,
+    pub id: Uuid,
+    pub category_id: Uuid,
+}
+
+/// POST /api/v1/zaarhub/admin/discovery/queue/select — bulk tick/untick.
+pub async fn set_selection(
+    State(s): State<AppState>,
+    Json(req): Json<QueueSelectionRequest>,
+) -> ApiResult<impl IntoResponse> {
+    if !req.ids.is_empty() {
+        sqlx::query(
+            "UPDATE discovery_queue SET selected = $3, updated_at = NOW() \
+             WHERE directory_id = $1 AND id = ANY($2)",
+        )
+        .bind(req.directory_id)
+        .bind(&req.ids)
+        .bind(req.selected)
+        .execute(&s.db)
+        .await?;
+    }
+    let snap = queue_snapshot(&s, req.directory_id, None).await;
+    Ok(Json(json!({ "success": true, "stored": snap })))
+}
+
+/// POST /api/v1/zaarhub/admin/discovery/queue/category — override the mapped category.
+/// The category name is read from the `categories` table, never trusted from the client.
+pub async fn set_category(
+    State(s): State<AppState>,
+    Json(req): Json<QueueCategoryRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let name: Option<String> = sqlx::query_scalar("SELECT name FROM categories WHERE id = $1")
+        .bind(req.category_id)
+        .fetch_optional(&s.db)
+        .await?;
+    let Some(name) = name else {
+        return Err(AppError::BadRequest("unknown category".into()));
+    };
+
+    let res = sqlx::query(
+        "UPDATE discovery_queue SET mapped_category_id = $3, mapped_category = $4, \
+         updated_at = NOW() WHERE directory_id = $1 AND id = $2",
+    )
+    .bind(req.directory_id)
+    .bind(req.id)
+    .bind(req.category_id)
+    .bind(&name)
+    .execute(&s.db)
+    .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("queue row not found".into()));
+    }
+
+    let snap = queue_snapshot(&s, req.directory_id, None).await;
+    Ok(Json(json!({ "success": true, "stored": snap })))
+}
+
 /// DELETE /api/v1/zaarhub/admin/discovery/queue?directory_id= — clear queued rows.
 pub async fn clear_queue(
     State(s): State<AppState>,

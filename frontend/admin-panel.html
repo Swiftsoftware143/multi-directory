@@ -507,7 +507,34 @@
     </header>
 
     <div class="dashboard">
-      <div class="dashboard-header">
+      <!-- ===== ONE ADMIN NAV (Round 6 / U5) =====
+           Every admin capability is reachable from here — nothing lives in an
+           unlinked page. In-page anchors scroll within this panel; the right-hand
+           group opens the other admin surfaces that live on their own routes. -->
+      <style>
+        .adm-nav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:18px;background:var(--bg-card)}
+        .adm-nav a{font-size:.8rem;font-weight:600;text-decoration:none;color:var(--text-secondary);padding:6px 10px;border-radius:8px;border:1px solid transparent}
+        .adm-nav a:hover{color:var(--accent);border-color:var(--border);background:rgba(255,255,255,.04)}
+        .adm-nav a.nav-out::after{content:" ↗"}
+        .adm-nav .nav-sep{color:var(--text-tertiary);font-size:.75rem;margin:0 2px}
+      </style>
+      <nav class="adm-nav" id="admin-nav">
+        <a href="#sec-directories">📁 Directories</a>
+        <a href="#provider-keys-section">🔑 Provider API Keys</a>
+        <a href="#email-settings-section">✉️ Email / SMTP</a>
+        <a href="#ad-zones-section">📢 Ad Zones</a>
+        <a href="#submissions-section">📥 Submission Queue</a>
+        <a href="#b2b-features-section">🏢 B2B Toggles</a>
+        <a href="#zaarhub-nav-section">🧠 Loyalty &amp; IQS</a>
+        <span class="nav-sep">|</span>
+        <a class="nav-out" href="/zaarhub-admin.html">🔍 Discovery / Populate</a>
+        <a class="nav-out" href="/blog-features-admin.html">📝 Blog Features</a>
+        <a class="nav-out" href="/zaarhub-analytics.html">📊 Analytics</a>
+        <a class="nav-out" href="/portal.html">🏪 Business Portal</a>
+        <a class="nav-out" href="/guides/api-keys-setup.html">📘 API Keys Guide</a>
+      </nav>
+
+      <div class="dashboard-header" id="sec-directories">
         <div>
           <h1>Directories</h1>
           <p class="subtitle">Manage all directory networks from one place</p>
@@ -594,15 +621,73 @@
         .pk-badge{font-size:.7rem;padding:2px 8px;border-radius:99px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
         .pk-ok{background:rgba(34,197,94,.15);color:#22c55e}
         .pk-missing{background:rgba(148,163,184,.15);color:#94a3b8}
+        .pk-def{background:rgba(59,130,246,.18);color:#60a5fa}
         .pk-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
         .pk-input{flex:1 1 240px;min-width:200px;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#1e3a5f);background:rgba(0,0,0,.25);color:inherit;font-family:monospace;font-size:.85rem}
+        /* U1 — one line per SAVED key (named keys) */
+        .pk-keylines{margin:6px 0 10px}
+        .pk-keyline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:7px 9px;border:1px solid var(--border,#1e3a5f);border-radius:8px;background:rgba(0,0,0,.18);margin-bottom:6px}
+        .pk-keyname{font-weight:600;font-size:.82rem;color:var(--text-primary,#e6edf5)}
+        .pk-keyline code{font-family:monospace;font-size:.78rem;color:var(--text-muted,#8aa0b8)}
+        .pk-keyline .spacer{flex:1}
+        .pk-guide{font-size:.75rem;font-weight:600;color:var(--accent,#8bd3ff);text-decoration:none;white-space:nowrap}
+        .pk-guide:hover{text-decoration:underline}
+        .pk-addrow{border-top:1px dashed var(--border,#1e3a5f);padding-top:10px;margin-top:4px}
+        .em-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+        .em-field label{display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#8aa0b8);margin-bottom:4px}
+        .em-field input,.em-field select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#1e3a5f);background:rgba(0,0,0,.25);color:inherit;font-size:.85rem}
+        .em-out{display:none;margin-top:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border,#1e3a5f);background:rgba(0,0,0,.25);font-family:monospace;font-size:.78rem;white-space:pre-wrap;word-break:break-word}
+        .em-out.show{display:block}
+        .em-ok{border-color:rgba(34,197,94,.5)!important}
+        .em-bad{border-color:rgba(248,113,113,.5)!important}
       </style>
       <div class="feature-card" id="provider-keys-section">
-        <h3>🔑 Provider API Keys</h3>
-        <p class="feature-subtitle">Paste your own keys here — saved per tenant, encrypted at rest, and shown masked. These power Google Places, email, payments, AI drafting and every other integration.</p>
+        <h3>🔑 Provider API Keys
+          <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html" target="_blank" rel="noopener">📘 Full setup guide — all 23 providers →</a>
+        </h3>
+        <p class="feature-subtitle">Paste your own keys here — saved per tenant, encrypted at rest, and shown masked. <b>Every key can be named</b>, so you can store several accounts for the same service and pick which one is the default. These power Google Places, email, payments, AI drafting and every other integration.</p>
         <div id="pk-loading" class="loading-state"><span class="spinner"></span> Loading providers...</div>
         <div id="pk-list"></div>
         <div class="feature-status" id="pk-status"></div>
+      </div>
+
+      <!-- ✉️ Email / SMTP (Round 6 / U3) -->
+      <div class="feature-card" id="email-settings-section">
+        <h3>✉️ Email / SMTP
+          <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html#email-transport" target="_blank" rel="noopener">📘 Mailgun / SendGrid / Sendiio keys →</a>
+        </h3>
+        <p class="feature-subtitle">Pick the transport this directory sends with, save its credentials, verify them for real, then send yourself a test message.
+          Settings are <b>per directory</b> and the password is write-only — it is never sent back to the browser once saved.</p>
+        <div class="pk-controls" style="margin-bottom:12px">
+          <select class="pk-input" id="em-directory" onchange="window.__emLoad()"></select>
+          <span class="pk-badge pk-missing" id="em-service-badge">checking email service…</span>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__emLoadService()">Refresh service status</button>
+        </div>
+        <div class="em-grid">
+          <div class="em-field"><label>Transport</label><select id="em-transport"></select></div>
+          <div class="em-field"><label>From name</label><input id="em-from-name" placeholder="ZaarHub"></div>
+          <div class="em-field"><label>From email</label><input id="em-from-email" placeholder="hello@yourdomain.com"></div>
+          <div class="em-field"><label>Reply-to (optional)</label><input id="em-reply-to" placeholder="support@yourdomain.com"></div>
+        </div>
+        <div class="em-grid" style="margin-top:10px" id="em-smtp-fields">
+          <div class="em-field"><label>SMTP host</label><input id="em-smtp-host" placeholder="smtp.yourprovider.com"></div>
+          <div class="em-field"><label>SMTP port</label><input id="em-smtp-port" type="number" value="587"></div>
+          <div class="em-field"><label>SMTP username</label><input id="em-smtp-username" placeholder="smtp-user"></div>
+          <div class="em-field"><label>SMTP password <span class="pk-badge pk-missing" id="em-pw-badge">write-only</span></label><input id="em-smtp-password" type="password" placeholder="leave blank to keep saved password"></div>
+          <div class="em-field"><label>Encryption</label><select id="em-smtp-encryption"><option value="tls">STARTTLS (587)</option><option value="ssl">SSL (465)</option><option value="none">None</option></select></div>
+        </div>
+        <p style="font-size:.75rem;color:var(--text-muted,#8aa0b8);margin-top:8px">Mailgun / SendGrid / Sendiio use the API key saved above in <b>Provider API Keys</b> — SMTP fields are ignored for those transports.</p>
+        <div class="pk-controls" style="margin-top:12px">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__emSave()">Save settings</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__emVerify()">Verify credentials (real check)</button>
+          <span class="feature-status" id="em-saved-badge"></span>
+        </div>
+        <div class="pk-controls" style="margin-top:10px">
+          <input class="pk-input" id="em-test-to" placeholder="Send a real test email to…" style="flex:1 1 260px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__emTestSend()">Send test email</button>
+        </div>
+        <div class="em-out" id="em-result"></div>
+        <div class="feature-status" id="em-status"></div>
       </div>
 
       <!-- Ad Zones -->
@@ -645,7 +730,7 @@
 
   <!-- Advanced Loyalty & IQS Management -->
   <div style="max-width:1200px;margin:24px auto;padding:0 24px">
-    <div class="section-label">🧠 ZaarHub — Loyalty & IQS</div>
+    <div class="section-label" id="zaarhub-nav-section">🧠 ZaarHub — Loyalty & IQS</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:12px">
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
         <h3 style="font-size:1rem;margin-bottom:8px">🎯 Loyalty Management</h3>
@@ -720,8 +805,14 @@
     function apiGet(path) { return apiFetch('GET', path); }
     function apiPost(path, body) { return apiFetch('POST', path, body); }
 
-    // ===== Provider API Keys (admin-editable, per tenant) =====
-    var pkConfigured = {};
+    // ===== Provider API Keys (admin-editable, per tenant) — Round 6 / U1 =====
+    // Named, multiple keys per provider: one line per saved key with label, masked
+    // value, Default badge, Test / Set as default / Delete per key, and an
+    // "＋ Add another key" row carrying a Name field next to the key field.
+    var pkProviders = [];
+    var pkKeys = [];
+    var pkGrouped = {};
+    var GUIDE_URL = '/guides/api-keys-setup.html';
 
     function pkStatus(msg, ok) {
       var el = document.getElementById('pk-status');
@@ -736,19 +827,33 @@
       });
     }
 
+    function pkKeysFor(provider) {
+      // Primary source is the flat `data[]` (each row carries provider/base_url).
+      // `grouped` is only a fallback and its entries are slim — hydrate them so
+      // per-key actions always know which provider they belong to.
+      var flat = pkKeys.filter(function (k) { return k.provider === provider; });
+      if (flat.length) return flat;
+      var g = pkGrouped[provider];
+      if (!g || !g.length) return [];
+      return g.map(function (k) {
+        return Object.assign({}, k, { provider: k.provider || provider });
+      });
+    }
+
     function loadProviderKeys() {
-      var wrap = document.getElementById('pk-list');
       var loading = document.getElementById('pk-loading');
+      var wrap = document.getElementById('pk-list');
       if (!wrap) return;
       Promise.all([apiGet('/available-providers'), apiGet('/provider-keys')])
         .then(function (res) {
-          var providers = (res[0] && res[0].data) || [];
-          var keys = (res[1] && res[1].data) || [];
-          pkConfigured = {};
-          keys.forEach(function (k) { pkConfigured[k.provider] = k; });
-          renderProviderKeys(providers);
+          pkProviders = (res[0] && res[0].data) || [];
+          pkKeys = (res[1] && res[1].data) || [];
+          pkGrouped = (res[1] && res[1].grouped) || {};
+          renderProviderKeys();
           if (loading) loading.classList.add('hidden');
-          pkStatus(keys.length + ' of ' + providers.length + ' providers configured', true);
+          var named = pkKeys.filter(function (k) { return k.label && k.label !== 'default'; }).length;
+          pkStatus(pkKeys.length + ' key(s) saved across ' + pkProviders.length + ' providers' +
+                   (named ? ' — ' + named + ' named' : ''), true);
         })
         .catch(function (err) {
           if (loading) loading.classList.add('hidden');
@@ -756,59 +861,298 @@
         });
     }
 
-    function renderProviderKeys(providers) {
+    function renderProviderKeys() {
       var wrap = document.getElementById('pk-list');
       if (!wrap) return;
-      if (!providers.length) { wrap.innerHTML = '<div class="empty-state"><p>No providers available.</p></div>'; return; }
-      wrap.innerHTML = providers.map(function (p) {
-        var c = pkConfigured[p.key];
-        var masked = c ? pkEsc(c.api_key) : '';
-        var badge = c ? '<span class="pk-badge pk-ok">Configured</span>'
-                      : '<span class="pk-badge pk-missing">Not set</span>';
-        var baseField = p.requires_base_url
-          ? '<input class="pk-input" id="pk-base-' + pkEsc(p.key) + '" placeholder="Base URL (required)" value="' + pkEsc((c && c.base_url) || '') + '">'
-          : '';
-        return '<div class="pk-row">' +
-            '<div class="pk-head">' +
-              '<div class="pk-title">' + (p.icon ? pkEsc(p.icon) + ' ' : '') + pkEsc(p.name) + ' ' + badge + '</div>' +
-              '<div class="pk-desc">' + pkEsc(p.description || p.key) + (masked ? ' &middot; current: <code>' + masked + '</code>' : '') + '</div>' +
-            '</div>' +
-            '<div class="pk-controls">' +
-              '<input class="pk-input" id="pk-key-' + pkEsc(p.key) + '" type="password" placeholder="Paste API key">' +
-              baseField +
-              '<button class="btn btn-accent btn-sm" onclick="window.__pkSave(\'' + pkEsc(p.key) + '\')">Save</button>' +
-              (c ? '<button class="btn btn-ghost btn-sm" onclick="window.__pkTest(\'' + pkEsc(p.key) + '\')">Test</button>' : '') +
-              (c ? '<button class="btn btn-ghost btn-sm" onclick="window.__pkDelete(\'' + pkEsc(p.key) + '\')">Delete</button>' : '') +
-            '</div>' +
-          '</div>';
-      }).join('');
+      if (!pkProviders.length) {
+        wrap.innerHTML = '<div class="empty-state"><p>No providers available.</p></div>';
+        return;
+      }
+      wrap.innerHTML = pkProviders.map(renderProviderRow).join('');
     }
 
-    window.__pkSave = function (provider) {
+    function renderProviderRow(p) {
+      var key = pkEsc(p.key);
+      var mine = pkKeysFor(p.key);
+      var badge = mine.length
+        ? '<span class="pk-badge pk-ok">' + mine.length + ' key' + (mine.length > 1 ? 's' : '') + '</span>'
+        : '<span class="pk-badge pk-missing">Not set</span>';
+      var lines = mine.map(renderKeyLine).join('');
+      var baseField = p.requires_base_url
+        ? '<input class="pk-input" id="pk-base-' + key + '" placeholder="Base URL (required for this provider)" style="flex:1 1 200px">'
+        : '';
+      return '<div class="pk-row" data-pk-row="' + key + '">' +
+          '<div class="pk-head">' +
+            '<div class="pk-title">' + (p.icon ? pkEsc(p.icon) + ' ' : '') + pkEsc(p.name) + ' ' + badge +
+              '<a class="pk-guide" style="margin-left:auto" href="' + GUIDE_URL + '#provider-' + key +
+              '" target="_blank" rel="noopener">How do I get this key? →</a>' +
+            '</div>' +
+            '<div class="pk-desc">' + pkEsc(p.description || p.key) +
+              ' <span style="opacity:.7">&middot; id <code>' + key + '</code></span></div>' +
+          '</div>' +
+          (mine.length ? '<div class="pk-keylines">' + lines + '</div>' : '') +
+          '<div class="pk-controls pk-addrow">' +
+            '<input class="pk-input" id="pk-label-' + key + '" placeholder="Name this key (e.g. Primary, Test account)" style="flex:0 1 220px">' +
+            '<input class="pk-input" id="pk-key-' + key + '" type="password" placeholder="Paste API key">' +
+            baseField +
+            '<button class="btn btn-accent btn-sm" type="button" data-pk-action="save" data-pk-provider="' + key + '">＋ Add ' + (mine.length ? 'another' : '') + ' key</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function renderKeyLine(k) {
+      var label = k.label && k.label !== 'default' ? k.label : 'Unnamed';
+      return '<div class="pk-keyline">' +
+          '<span class="pk-keyname">' + pkEsc(label) + '</span>' +
+          (k.is_default ? '<span class="pk-badge pk-def">Default</span>' : '') +
+          '<code>' + pkEsc(k.api_key) + '</code>' +
+          (k.base_url ? '<code>' + pkEsc(k.base_url) + '</code>' : '') +
+          '<span class="spacer"></span>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="test" data-pk-provider="' + pkEsc(k.provider) + '">Test</button>' +
+          (k.is_default ? '' : '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="default" data-pk-provider="' + pkEsc(k.provider) + '" data-pk-id="' + k.id + '">Set as default</button>') +
+          '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="delete" data-pk-provider="' + pkEsc(k.provider) + '" data-pk-id="' + k.id + '" data-pk-label="' + pkEsc(label) + '">Delete</button>' +
+        '</div>';
+    }
+
+    // One delegated listener — provider ids contain hyphens/dots, so we never build
+    // inline JS with the id baked in.
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('[data-pk-action]') : null;
+      if (!btn) return;
+      ev.preventDefault();
+      var provider = btn.getAttribute('data-pk-provider');
+      var action = btn.getAttribute('data-pk-action');
+      if (action === 'save') pkSave(provider);
+      else if (action === 'test') pkTest(provider);
+      else if (action === 'default') pkSetDefault(provider, btn.getAttribute('data-pk-id'));
+      else if (action === 'delete') pkDelete(provider, btn.getAttribute('data-pk-id'), btn.getAttribute('data-pk-label'));
+    });
+
+    function pkSave(provider) {
       var keyEl = document.getElementById('pk-key-' + provider);
+      var labelEl = document.getElementById('pk-label-' + provider);
       var baseEl = document.getElementById('pk-base-' + provider);
       var apiKey = keyEl ? keyEl.value.trim() : '';
-      if (!apiKey) { pkStatus('Enter a key for ' + provider + ' first', false); return; }
+      if (!apiKey) { pkStatus('Paste a key for ' + provider + ' first', false); return; }
       var body = { provider: provider, api_key: apiKey };
+      if (labelEl && labelEl.value.trim()) body.label = labelEl.value.trim();
       if (baseEl && baseEl.value.trim()) body.base_url = baseEl.value.trim();
       apiPost('/provider-keys', body)
-        .then(function () { pkStatus(provider + ' key saved', true); showToast(provider + ' key saved'); loadProviderKeys(); })
+        .then(function () {
+          pkStatus(provider + ' key saved' + (body.label ? ' as "' + body.label + '"' : ''), true);
+          showToast(provider + ' key saved');
+          loadProviderKeys();
+        })
         .catch(function (e) { pkStatus('Save failed: ' + e.message, false); showToast('Save failed: ' + e.message); });
-    };
+    }
 
-    window.__pkTest = function (provider) {
-      pkStatus('Testing ' + provider + '...', true);
-      apiGet('/provider-keys/' + provider + '/test')
-        .then(function (r) { pkStatus(provider + ': ' + JSON.stringify(r).slice(0, 160), true); })
+    function pkTest(provider) {
+      pkStatus('Testing the default ' + provider + ' key...', true);
+      apiGet('/provider-keys/' + encodeURIComponent(provider) + '/test')
+        .then(function (r) { pkStatus(provider + ': ' + JSON.stringify(r).slice(0, 200), true); })
         .catch(function (e) { pkStatus(provider + ' test failed: ' + e.message, false); });
-    };
+    }
 
-    window.__pkDelete = function (provider) {
-      if (!confirm('Delete the ' + provider + ' API key?')) return;
-      apiFetch('DELETE', '/provider-keys/' + provider)
-        .then(function () { pkStatus(provider + ' key deleted', true); loadProviderKeys(); })
+    function pkSetDefault(provider, id) {
+      apiFetch('POST', '/provider-keys/id/' + id + '/default')
+        .then(function () { pkStatus('Default ' + provider + ' key switched', true); showToast('Default key switched'); loadProviderKeys(); })
+        .catch(function (e) { pkStatus('Could not set default: ' + e.message, false); });
+    }
+
+    function pkDelete(provider, id, label) {
+      if (!confirm('Delete the "' + label + '" ' + provider + ' key? Other keys for this provider stay.')) return;
+      apiFetch('DELETE', '/provider-keys/id/' + id)
+        .then(function () { pkStatus(label + ' ' + provider + ' key deleted', true); loadProviderKeys(); })
         .catch(function (e) { pkStatus('Delete failed: ' + e.message, false); });
-    };
+    }
+
+    // ===== ✉️ Email / SMTP (Round 6 / U3) =====
+    // Transport list comes from the email service itself — never hardcoded here.
+    var emDirectories = [];
+    var emServiceTransports = [];
+
+    function emStatus(msg, ok) {
+      var el = document.getElementById('em-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function emOut(text, ok) {
+      var el = document.getElementById('em-result');
+      if (!el) return;
+      el.textContent = text || '';
+      el.className = 'em-out' + (text ? ' show' : '') + (ok === true ? ' em-ok' : ok === false ? ' em-bad' : '');
+    }
+
+    function emSetBadge(ok, text) {
+      var b = document.getElementById('em-service-badge');
+      if (!b) return;
+      b.className = 'pk-badge ' + (ok ? 'pk-ok' : 'pk-missing');
+      b.textContent = text;
+    }
+
+    function emFillTransports(transports) {
+      var sel = document.getElementById('em-transport');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = (transports || []).map(function (t) {
+        return '<option value="' + pkEsc(t) + '">' + pkEsc(t) + '</option>';
+      }).join('') || '<option value="smtp">smtp</option>';
+      if (current) sel.value = current;
+    }
+
+    function loadEmailServiceStatus() {
+      return apiGet('/email-service/status').then(function (r) {
+        var svc = (r && r.service) || {};
+        emServiceTransports = svc.transports || [];
+        if (r && r.ok) {
+          emSetBadge(true, 'email service ok · ' + emServiceTransports.join(' | '));
+          emFillTransports(emServiceTransports);
+        } else {
+          emSetBadge(false, 'email service unreachable');
+          emOut('Email service not reachable: ' + JSON.stringify(r), false);
+        }
+        return r;
+      }).catch(function (e) {
+        emSetBadge(false, 'email service error');
+        emOut('Could not read email service status: ' + e.message, false);
+      });
+    }
+
+    function emSlug() {
+      var sel = document.getElementById('em-directory');
+      return sel ? sel.value : '';
+    }
+
+    function loadEmailSettingsDirectories() {
+      var sel = document.getElementById('em-directory');
+      if (!sel) return;
+      return apiGet('/directories?per_page=100').then(function (r) {
+        emDirectories = (r && r.data) || [];
+        sel.innerHTML = emDirectories.map(function (d) {
+          return '<option value="' + pkEsc(d.slug) + '">' + pkEsc(d.name || d.slug) + ' (' + pkEsc(d.slug) + ')</option>';
+        }).join('') || '<option value="">No directories</option>';
+        if (emDirectories.length) loadEmailSettings();
+      }).catch(function (e) {
+        sel.innerHTML = '<option value="">Could not load directories</option>';
+        emStatus('Could not load directories: ' + e.message, false);
+      });
+    }
+
+    function loadEmailSettings() {
+      var slug = emSlug();
+      if (!slug) return;
+      emOut('', null);
+      apiGet('/directories/' + encodeURIComponent(slug) + '/email-settings')
+        .then(function (s) {
+          document.getElementById('em-transport').value = s.transport || 'smtp';
+          document.getElementById('em-from-name').value = s.from_name || '';
+          document.getElementById('em-from-email').value = s.from_email || '';
+          document.getElementById('em-reply-to').value = s.reply_to || '';
+          document.getElementById('em-smtp-host').value = s.smtp_host || '';
+          document.getElementById('em-smtp-port').value = s.smtp_port || 587;
+          document.getElementById('em-smtp-username').value = s.smtp_username || '';
+          document.getElementById('em-smtp-encryption').value = s.smtp_encryption || 'tls';
+          document.getElementById('em-smtp-password').value = '';
+          var badge = document.getElementById('em-saved-badge');
+          badge.textContent = '✓ Saved (transport: ' + (s.transport || 'smtp') + ')';
+          badge.classList.add('show');
+          emStatus(slug + ': settings loaded — password is stored and never returned', true);
+        })
+        .catch(function () {
+          // 404 = nothing saved for this directory yet (not an error).
+          document.getElementById('em-smtp-password').value = '';
+          var badge = document.getElementById('em-saved-badge');
+          badge.textContent = 'Not configured yet';
+          badge.classList.add('show');
+          emStatus(slug + ': no email settings saved yet — fill the form and Save', false);
+        });
+    }
+
+    function emBody() {
+      return {
+        transport: document.getElementById('em-transport').value,
+        from_name: document.getElementById('em-from-name').value.trim(),
+        from_email: document.getElementById('em-from-email').value.trim(),
+        reply_to: document.getElementById('em-reply-to').value.trim(),
+        smtp_host: document.getElementById('em-smtp-host').value.trim(),
+        smtp_port: parseInt(document.getElementById('em-smtp-port').value, 10) || 587,
+        smtp_username: document.getElementById('em-smtp-username').value.trim(),
+        smtp_password: document.getElementById('em-smtp-password').value,
+        smtp_encryption: document.getElementById('em-smtp-encryption').value
+      };
+    }
+
+    function emSave() {
+      var slug = emSlug();
+      if (!slug) { emStatus('Pick a directory first', false); return; }
+      var body = emBody();
+      emStatus('Saving…', true);
+      apiFetch('PUT', '/directories/' + encodeURIComponent(slug) + '/email-settings', body)
+        .then(function (s) {
+          emOut(JSON.stringify(s, null, 2), true);
+          document.getElementById('em-smtp-password').value = '';
+          emStatus('Saved for ' + slug + ' (transport: ' + (s.transport || body.transport) + ')', true);
+          showToast('Email settings saved');
+          loadEmailSettings();
+        })
+        .catch(function (e) { emStatus('Save failed: ' + e.message, false); });
+    }
+
+    function emVerify() {
+      var slug = emSlug();
+      if (!slug) { emStatus('Pick a directory first', false); return; }
+      emStatus('Asking the email service to verify the saved credentials…', true);
+      apiFetch('POST', '/directories/' + encodeURIComponent(slug) + '/email-settings/test')
+        .then(function (r) {
+          var res = (r && r.result) || {};
+          var ok = res.status === 'ok';
+          emOut('service: ' + (r && r.service_url) + '\n' + JSON.stringify(res, null, 2), ok ? true : false);
+          emStatus(slug + ' → ' + (res.status || '?') + ': ' + (res.detail || ''), ok);
+        })
+        .catch(function (e) { emStatus('Verify failed: ' + e.message, false); });
+    }
+
+    function emTestSend() {
+      var slug = emSlug();
+      var to = document.getElementById('em-test-to').value.trim();
+      if (!slug) { emStatus('Pick a directory first', false); return; }
+      if (!to) { emStatus('Enter the address to send the test email to', false); return; }
+      emStatus('Sending a real test email via the email service…', true);
+      apiFetch('POST', '/directories/' + encodeURIComponent(slug) + '/email-settings/test-send', { to: to })
+        .then(function (r) {
+          var res = (r && r.result) || {};
+          var ok = res.status === 'sent';
+          emOut('service: ' + (r && r.service_url) + '\n' + JSON.stringify(res, null, 2), ok);
+          emStatus('Test send → ' + (res.status || '?') + ': ' + (res.detail || ''), ok);
+        })
+        .catch(function (e) { emStatus('Test send failed: ' + e.message, false); });
+    }
+
+    window.__emLoad = loadEmailSettings;
+    window.__emLoadService = loadEmailServiceStatus;
+    window.__emSave = emSave;
+    window.__emVerify = emVerify;
+    window.__emTestSend = emTestSend;
+
+    // Keep the SMTP block visually relevant to the chosen transport (fields still submit).
+    document.addEventListener('change', function (ev) {
+      if (ev.target && ev.target.id === 'em-transport') {
+        var wrapped = document.getElementById('em-smtp-fields');
+        if (wrapped) wrapped.style.opacity = ev.target.value === 'smtp' ? '1' : '.45';
+      }
+    });
+
+    // ===== Nav (U5): smooth-scroll in-page anchors =====
+    document.addEventListener('click', function (ev) {
+      var a = ev.target.closest ? ev.target.closest('#admin-nav a[href^="#"]') : null;
+      if (!a) return;
+      var target = document.querySelector(a.getAttribute('href'));
+      if (!target) return;
+      ev.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
 
     // ===== Toast =====
     var toastTimer;
@@ -846,6 +1190,8 @@
       headerUser.textContent = user ? (user.email || user.name || 'User') : 'User';
       loadDirectories();
       loadProviderKeys();
+      loadEmailServiceStatus();
+      loadEmailSettingsDirectories();
       loadAdZones();
       loadSubmissions();
     }

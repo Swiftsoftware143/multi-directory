@@ -51,7 +51,15 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
 
 <header>
   <h1>Zaar<span>Hub</span> Admin</h1>
-  <nav><a href="https://zaarhub.com">View Site</a></nav>
+  <!-- One admin nav (Round 6 / U5): this page is reachable from admin-panel.html and
+       links back to every other admin surface. -->
+  <nav>
+    <a href="/admin-panel.html">🔑 Provider Keys / Email / Ad Zones</a>
+    <a href="/blog-features-admin.html">Blog Features</a>
+    <a href="/zaarhub-analytics.html">Analytics</a>
+    <a href="/guides/api-keys-setup.html">API Keys Guide</a>
+    <a href="https://zaarhub.com">View Site</a>
+  </nav>
 </header>
 
 <div class="page">
@@ -92,8 +100,10 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
 
   <div id="tab-populate" style="display:none">
     <div class="panel">
-      <h2>🔑 Google Places API Key</h2>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Save your Google Places API key here — it's stored encrypted. The Populate search below uses it to find businesses that match a city + cuisine + radius.</p>
+      <h2>🔑 Google Places API Key
+        <a href="/guides/api-keys-setup.html#provider-google_places" target="_blank" rel="noopener" style="float:right;font-size:12px;font-weight:600;color:var(--brand)">How do I get this key? →</a>
+      </h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Save your Google Places API key here — it's stored encrypted. The Populate search below uses it to find businesses that match a category + city + radius.</p>
       <div class="form-row">
         <div class="form-group"><label>Google Places API Key</label>
           <input id="gplaces-key" placeholder="AIza..." style="font-family:monospace">
@@ -107,14 +117,21 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
     </div>
 
     <div class="panel">
-      <h2>🔍 Populate Businesses</h2>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Search Google Places by city + category + radius, assign each business to a category, then publish it to the directory.</p>
-
+      <h2>🔍 1 &middot; Search by category</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Pick the directory and a category — the query is built for you and the results land in the <b>queue</b> below, where you review them before they enter the directory.</p>
       <div class="form-row">
+        <div class="form-group"><label>Directory</label>
+          <select id="pop-directory" onchange="onPopDirectoryChange()"><option value="">Loading directories...</option></select>
+        </div>
         <div class="form-group"><label>City</label>
           <select id="pop-city" onchange="onPopCityChange()"><option value="">Loading cities...</option></select>
         </div>
-        <div class="form-group"><label>Search query (niche)</label>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Search by category</label>
+          <select id="pop-category" onchange="onPopCategoryChange()"><option value="">Loading categories...</option></select>
+        </div>
+        <div class="form-group"><label>Search query (auto-filled from the category — edit to override)</label>
           <input id="pop-query" placeholder="e.g. Italian restaurant" onkeydown="if(event.key==='Enter')runPopSearch()">
         </div>
       </div>
@@ -125,21 +142,34 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
             <select id="pop-radius-unit" style="width:100px"><option value="mi">miles</option><option value="km">km</option></select>
           </div>
         </div>
-        <div class="form-group"><label>Assign to category</label>
-          <select id="pop-category"><option value="">Loading categories...</option></select>
+        <div class="form-group"><label>Fallback category (rows Google can't map)</label>
+          <span id="pop-fallback-note" style="font-size:13px;color:var(--text-muted)">Same as the category you pick above.</span>
         </div>
       </div>
-      <div class="actions">
-        <button class="btn primary" onclick="runPopSearch()">Search Places</button>
+      <div class="actions" style="align-items:center;flex-wrap:wrap">
+        <button class="btn primary" onclick="runPopSearch()">Search &amp; add to queue</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer">
+          <input type="checkbox" id="pop-mock"> use test fixture (no live Google key needed)
+        </label>
       </div>
+      <div id="pop-status" style="font-size:13px;color:var(--text-muted);margin-top:12px"></div>
     </div>
 
     <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <h2 style="margin-bottom:0">Results</h2>
-        <span id="pop-status" style="font-size:13px;color:var(--text-muted)"></span>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <h2 style="margin-bottom:0">2 &middot; Queue — review, then add</h2>
+        <span id="pop-counts" style="font-size:13px;color:var(--text-muted)"></span>
       </div>
-      <div id="pop-results"><div class="loading" style="color:var(--text-muted);font-size:13px">Search for businesses to see results.</div></div>
+      <div class="actions" style="margin-top:0;flex-wrap:wrap;align-items:center">
+        <button class="btn secondary small" onclick="queueSelectAll(true)">Select all eligible</button>
+        <button class="btn secondary small" onclick="queueSelectAll(false)">Unselect all</button>
+        <button class="btn secondary small" onclick="reloadQueue()">Reload queue</button>
+        <button class="btn primary small" onclick="addSelectedToDirectory()">＋ Add selected to directory</button>
+        <button class="btn danger small" onclick="clearQueue()">Clear queue</button>
+        <span id="pop-selected" style="font-size:13px;font-weight:700;color:var(--green)"></span>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:8px 0 12px">Franchise rows and rows already in the directory are <b>unticked by default</b> — tick one yourself to override. The category is auto-mapped from Google's types and can be changed per row before adding.</p>
+      <div id="pop-queue"><div style="color:var(--text-muted);font-size:13px;padding:16px">Queue is empty — run a search above.</div></div>
     </div>
   </div>
 
@@ -210,13 +240,36 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
 <div class="toast" id="toast"></div>
 
 <script>
+// ── Auth shim (Round 6) ──────────────────────────────────────────────────────
+// /api/v1/zaarhub/admin/* is no longer anonymously reachable (Round 5 T6), so every
+// call from this page needs the admin JWT the panel stores in localStorage.
+(function () {
+  const origFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    init = init || {};
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (url.indexOf('/api/v1/') === 0) {
+        const t = localStorage.getItem('md_admin_token');
+        if (t) {
+          init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+          init.headers['Authorization'] = 'Bearer ' + t;
+        }
+      }
+    } catch (e) { /* never break the request path over a header */ }
+    return origFetch(input, init);
+  };
+})();
+
 const API = '/api/v1/zaarhub/admin';
 let currentTab = 'legal';
 let editingSlug = null;
-let popResults = [];
+let popAllCategories = [];
 let popCityLatLng = {};
+let queueSnap = { items: [], counts: {} };
+let popDirectoryId = '';
 
-async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey()}
+async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey();loadPopDirectories()}
 
 // ── Google Places API Key ──
 async function loadGPlacesKey(){
@@ -330,7 +383,7 @@ function switchTab(btn,tab){
   if(tab==='legal')loadLegalPages();
   else if(tab==='picks'){loadCitiesDropdown();loadEditorsPicks();}
   else if(tab==='branding')loadSiteConfig();
-  else if(tab==='populate'){loadPopCities();loadPopCategories();}
+  else if(tab==='populate'){loadPopCities();loadPopCategories();loadPopDirectories();reloadQueue();}
 }
 
 async function loadCitiesDropdown(){
@@ -386,6 +439,7 @@ async function loadPopCategories(){
   try{
     const r=await fetch('/api/v1/categories');const d=await r.json();
     const cats=Array.isArray(d)?d:(d.categories||[]);
+    popAllCategories=cats;
     // Only show leaf subcategories (exclude parent category rows) for assignment
     const leaves=cats.filter(c=>c.directory_id===null);
     let html='<option value="">— Select category —</option>';
@@ -393,109 +447,205 @@ async function loadPopCategories(){
     document.getElementById('pop-category').innerHTML=html;
   }catch(e){console.error(e);document.getElementById('pop-category').innerHTML='<option value="">Failed to load categories</option>';}
 }
+function onPopDirectoryChange(){
+  popDirectoryId=document.getElementById('pop-directory').value||'';
+  try{localStorage.setItem('md_adm_pop_directory',popDirectoryId);}catch(e){}
+  reloadQueue();
+}
 function onPopCityChange(){/* lat/lng resolved at search time via popCityLatLng */}
+function onPopCategoryChange(){
+  // Category-driven search: the query is derived from category + city, still editable.
+  const sel=document.getElementById('pop-category');
+  const name=sel&&sel.selectedOptions[0]?sel.selectedOptions[0].text:'';
+  if(name&&name!=='— Select category —'){
+    const cityEl=document.getElementById('pop-city');
+    const city=cityEl&&cityEl.selectedOptions[0]?cityEl.selectedOptions[0].text:'';
+    document.getElementById('pop-query').value=(name+(city?(' '+city):'')).trim();
+    document.getElementById('pop-fallback-note').textContent=name+' (rows Google can\'t map land here)';
+  }
+}
 function radiusMeters(){
   const v=parseFloat(document.getElementById('pop-radius').value)||10;
   const unit=document.getElementById('pop-radius-unit').value;
   return unit==='mi'?Math.round(v*1609.34):Math.round(v*1000);
 }
-async function runPopSearch(){
-  const q=document.getElementById('pop-query').value.trim();
-  if(!q){showToast('Enter a search query',true);return;}
-  const citySel=document.getElementById('pop-city');
-  const city=citySel.value;
-  const resultsEl=document.getElementById('pop-results');
-  const statusEl=document.getElementById('pop-status');
-  popResults=[];
-  resultsEl.innerHTML='<div class="loading">Searching Google Places...</div>';
-  statusEl.textContent='';
-  // Full text search (returns real businesses), not type-ahead autocomplete
-  const params=new URLSearchParams();
-  params.set('query', q);
-  if(city)params.set('city', city);
-  const ll=popCityLatLng[city];
-  if(ll){params.set('lat', ll.lat);params.set('lng', ll.lng);params.set('radius', radiusMeters());}
-  const url='/api/v1/zaarhub/admin/places/search?'+params.toString();
+
+// ── Discovery queue ─────────────────────────────────────────────────────────
+async function loadPopDirectories(){
+  const sel=document.getElementById('pop-directory');
   try{
-    const r=await fetch(url);
-    if(!r.ok){resultsEl.innerHTML='<div class="error" style="color:#dc2626">Search failed (HTTP '+r.status+')</div>';return;}
-    const d=await r.json();
-    popResults=d.results||[];
-    if(!popResults.length){resultsEl.innerHTML='<div style="color:var(--text-muted);padding:24px;text-align:center">No results for "'+esc(q)+'".</div>';return;}
-    renderPopResults();
-  }catch(e){resultsEl.innerHTML='<div class="error" style="color:#dc2626">Search failed. Check console.</div>';console.error(e);}
+    const r=await fetch('/api/v1/directories?per_page=100');const d=await r.json();
+    const dirs=d.data||[];
+    sel.innerHTML=dirs.map(x=>`<option value="${esc(x.id)}" data-slug="${esc(x.slug)}">${esc(x.name)} (${esc(x.slug)})</option>`).join('')||'<option value="">No directories</option>';
+    if(dirs.length){
+      // Remember the last directory so a reload keeps the queue you were reviewing.
+      const saved=localStorage.getItem('md_adm_pop_directory');
+      const pick=dirs.find(x=>x.id===saved)||dirs[0];
+      sel.value=pick.id;
+      popDirectoryId=pick.id;
+      reloadQueue();
+    }
+  }catch(e){console.error(e);sel.innerHTML='<option value="">Could not load directories</option>';}
 }
-function renderPopResults(){
-  const el=document.getElementById('pop-results');
-  el.innerHTML=popResults.map((b,i)=>`<div class="page-list-item">
-    <div class="info"><strong>${esc(b.name)}</strong><small>${esc(b.formatted_address||'')}</small></div>
-    <div class="status">
-      <button class="btn secondary small" onclick="previewPlace(${i})">Preview</button>
-      <button class="btn primary small" onclick="publishPlace(${i})">Publish</button>
+async function reloadQueue(){
+  const el=document.getElementById('pop-queue');
+  if(!popDirectoryId){el.innerHTML='<div style="color:var(--text-muted);font-size:13px;padding:16px">Pick a directory first.</div>';return;}
+  try{
+    const r=await fetch(`${API}/discovery/queue?directory_id=${encodeURIComponent(popDirectoryId)}`);
+    const d=await r.json();
+    queueSnap=d.data||{items:[],counts:{}};
+    renderQueue();
+  }catch(e){el.innerHTML='<div class="error">Could not load the queue. Check console.</div>';console.error(e);}
+}
+function catOptions(selectedId){
+  let html='<option value="">— unmapped —</option>';
+  popAllCategories.forEach(c=>{
+    html+=`<option value="${esc(c.id)}"${selectedId&&String(c.id)===String(selectedId)?' selected':''}>${esc(c.name)}</option>`;
+  });
+  return html;
+}
+function renderQueue(){
+  const el=document.getElementById('pop-queue');
+  const items=queueSnap.items||[];
+  const c=queueSnap.counts||{};
+  document.getElementById('pop-counts').textContent=
+    `${c.total||0} in queue · ${c.franchise||0} franchise · ${c.duplicate||0} already listed`;
+  document.getElementById('pop-selected').textContent=`${c.selected||0} selected`;
+  if(!items.length){
+    el.innerHTML='<div style="color:var(--text-muted);font-size:13px;padding:16px">Queue is empty — run a search above.</div>';
+    return;
+  }
+  el.innerHTML=items.map((it)=>`<div class="q-row" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;${it.is_franchise||it.is_duplicate?'background:#fff7ed;':''}">
+    <input type="checkbox" data-q-toggle="${esc(it.id)}" ${it.selected?'checked':''} style="margin-top:4px;width:16px;height:16px;cursor:pointer">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <strong style="font-size:14px">${esc(it.name)}</strong>
+        ${it.is_franchise?'<span class="badge" style="background:#fef3c7;color:#92400e">Franchise</span>':''}
+        ${it.is_duplicate?'<span class="badge" style="background:#e0e7ff;color:#3730a3">Already listed</span>':''}
+        ${it.rating?`<span style="font-size:12px;color:var(--text-muted)">★ ${it.rating}${it.review_count?` (${it.review_count})`:''}</span>`:''}
+      </div>
+      <small style="display:block;color:var(--text-muted);font-size:12px;margin-top:2px">${esc(it.address||'')} ${it.types&&it.types.length?('· '+esc(it.types.slice(0,3).join(', '))):''}</small>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+      <label style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Category</label>
+      <select data-q-cat="${esc(it.id)}" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;max-width:220px">${catOptions(it.category_id)}</select>
+      ${it.category?`<span style="font-size:11px;color:var(--text-muted)">mapped: ${esc(it.category)}</span>`:'<span style="font-size:11px;color:#b45309">not mapped</span>'}
     </div>
   </div>`).join('');
+  el.querySelectorAll('[data-q-toggle]').forEach(cb=>cb.addEventListener('change',()=>queueToggle(cb.getAttribute('data-q-toggle'),cb.checked)));
+  el.querySelectorAll('[data-q-cat]').forEach(s=>s.addEventListener('change',()=>queueSetCategory(s.getAttribute('data-q-cat'),s.value)));
 }
-async function previewPlace(i){
-  const b=popResults[i];
-  if(!b)return;
+async function queueToggle(id,on){
   try{
-    const r=await fetch(`/api/v1/places/details?place_id=${encodeURIComponent(b.place_id)}`);
+    const r=await fetch(`${API}/discovery/queue/select`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,ids:[id],selected:on})});
     const d=await r.json();
-    const p=d.place||d.result||{};
-    const catName=document.getElementById('pop-category').selectedOptions[0]?.text||'—';
-    showToast(`Preview: ${b.name} · assign to ${catName}`);
-  }catch(e){showToast('Preview failed',true);}
+    if(d.stored){queueSnap=d.stored;renderQueue();}
+  }catch(e){showToast('Could not update selection',true);}
 }
-async function publishPlace(i){
-  const b=popResults[i];
-  if(!b)return;
-  const city=document.getElementById('pop-city').value;
+async function queueSelectAll(on){
+  const items=queueSnap.items||[];
+  // "Select all" only takes the eligible rows; franchise/already-listed stay unticked
+  // unless the admin ticks them one by one (the override).
+  const ids=on?items.filter(i=>!i.is_franchise&&!i.is_duplicate).map(i=>i.id):items.map(i=>i.id);
+  if(!ids.length){showToast('Nothing to select',true);return;}
+  try{
+    const r=await fetch(`${API}/discovery/queue/select`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,ids,selected:on})});
+    const d=await r.json();
+    if(d.stored){queueSnap=d.stored;renderQueue();showToast(on?'Selected '+ids.length+' eligible rows':'Selection cleared');}
+  }catch(e){showToast('Could not update selection',true);}
+}
+async function queueSetCategory(id,categoryId){
+  if(!categoryId){showToast('Pick a category to map this row',true);return;}
+  try{
+    const r=await fetch(`${API}/discovery/queue/category`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,id,category_id:categoryId})});
+    const d=await r.json();
+    if(!r.ok){showToast(d.error||'Could not map category',true);return;}
+    if(d.stored){queueSnap=d.stored;renderQueue();showToast('Category updated');}
+  }catch(e){showToast('Could not map category',true);}
+}
+async function clearQueue(){
+  if(!popDirectoryId)return;
+  if(!confirm('Clear every row still waiting in the queue for this directory?'))return;
+  try{
+    const r=await fetch(`${API}/discovery/queue?directory_id=${encodeURIComponent(popDirectoryId)}`,{method:'DELETE'});
+    const d=await r.json();
+    showToast('Queue cleared ('+(d.cleared||0)+' rows)');
+    reloadQueue();
+  }catch(e){showToast('Could not clear the queue',true);}
+}
+async function runPopSearch(){
+  const q=document.getElementById('pop-query').value.trim();
   const catId=document.getElementById('pop-category').value;
-  if(!catId){showToast('Select a category first (category must exist before publishing)',true);return;}
-  // Resolve full details then create business
-  let detail={};
-  let franchiseHint=false;
+  const catName=document.getElementById('pop-category').selectedOptions[0]?.text||'';
+  const statusEl=document.getElementById('pop-status');
+  if(!popDirectoryId){statusEl.textContent='Pick a directory first.';return;}
+  if(!q){statusEl.textContent='Pick a category (or type a search query) first.';return;}
+  statusEl.innerHTML='Searching Google Places…';
+  const params=new URLSearchParams();
+  params.set('query',q);
+  const city=document.getElementById('pop-city').value;
+  if(city)params.set('city',city);
+  const ll=popCityLatLng[city];
+  if(ll){params.set('lat',ll.lat);params.set('lng',ll.lng);params.set('radius',radiusMeters());}
+  if(document.getElementById('pop-mock').checked)params.set('mock','true');
   try{
-    const dr=await fetch(`/api/v1/places/details?place_id=${encodeURIComponent(b.place_id)}`);
-    if(dr.ok){const dd=await dr.json();detail=dd.place||dd.result||{};franchiseHint=!!dd.is_franchise;}
-  }catch(e){}
-  // Franchise / big-chain auto-flag (manual override before publishing)
-  let isFranchise=franchiseHint;
-  if(franchiseHint){
-    const override=confirm(`⚠️ "${b.name}" looks like a franchise/big chain.\n\nPublish as a LOCAL community business?\n\nOK = keep as local · Cancel = flag as franchise (excluded from public directory)`);
-    isFranchise=!override;
-  }
-  const slug=(b.name||'business').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'business';
-  const body={
-    name:b.name,
-    slug:slug,
-    description:detail.formatted_address||'',
-    category_id:catId,
-    address:detail.formatted_address||b.formatted_address||'',
-    city:document.getElementById('pop-city').selectedOptions[0]?.text||'',
-    state:'FL',
-    zip:'',
-    phone:detail.formatted_phone_number||detail.phone||'',
-    email:'',
-    website:detail.website||'',
-    latitude:detail.geometry?.location?.lat||null,
-    longitude:detail.geometry?.location?.lng||null,
-    business_type:'local',
-    is_franchise:isFranchise
-  };
-  try{
-    const r=await fetch(`/api/v1/directories/${encodeURIComponent(city)}/businesses`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.ok){showToast(`Published: ${b.name} ✓`);markPublished(i);}
-    else if(r.status===409||r.status===422){const err=await r.json().catch(()=>({}));showToast('Duplicate — this business already exists at this address',true);}
-    else{const err=await r.json().catch(()=>({}));showToast('Publish failed: '+(err.message||err.error||r.status),true);}
-  }catch(e){showToast('Publish failed',true);}
+    const r=await fetch('/api/v1/zaarhub/admin/places/search?'+params.toString());
+    if(!r.ok){statusEl.innerHTML=`<span style="color:#dc2626">Search failed (HTTP ${r.status})</span>`;return;}
+    const d=await r.json();
+    const results=d.results||[];
+    const stub=d.stub?' <b style="color:#b45309">(TEST FIXTURE — not live Google data)</b>':'';
+    if(!results.length){statusEl.innerHTML='No results for "'+esc(q)+'".'+stub;return;}
+    statusEl.innerHTML=`Found ${results.length} · pushing into the queue…${stub}`;
+    const items=results.map(b=>({
+      place_id:b.place_id,name:b.name,address:b.formatted_address,
+      city:document.getElementById('pop-city').selectedOptions[0]?.text||'',
+      phone:b.formatted_phone_number||null,website:b.website||null,
+      rating:b.rating||null,review_count:b.user_ratings_total||null,
+      types:b.types||[],lat:b.geometry?.location?.lat||null,lng:b.geometry?.location?.lng||null
+    }));
+    const pr=await fetch(`${API}/discovery/queue`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,items,category_id:catId||null,category:catId?catName:null})});
+    const pd=await pr.json();
+    if(!pr.ok){statusEl.innerHTML=`<span style="color:#dc2626">${esc(pd.error||'Could not queue the results')}</span>`;return;}
+    statusEl.innerHTML=`Queued ${pd.queued} row(s) · ${pd.franchises} franchise flagged · ${pd.already_listed} already in the directory. Review below.${stub}`;
+    queueSnap=pd.stored||queueSnap;
+    renderQueue();
+  }catch(e){statusEl.innerHTML='<span style="color:#dc2626">Search failed. Check console.</span>';console.error(e);}
 }
-function markPublished(i){
-  const items=document.querySelectorAll('#pop-results .page-list-item');
-  if(items[i]){
-    items[i].style.opacity='0.45';
-    const btns=items[i].querySelectorAll('button');btns.forEach(b=>b.disabled=true);
-  }
+async function addSelectedToDirectory(){
+  const items=queueSnap.items||[];
+  const chosen=items.filter(i=>i.selected);
+  if(!chosen.length){showToast('Tick at least one row first',true);return;}
+  const label=chosen.map(i=>i.name).join(', ').slice(0,120);
+  if(!confirm(`Add ${chosen.length} business(es) to this directory?\n\n${label}`))return;
+  const statusEl=document.getElementById('pop-status');
+  statusEl.textContent=`Adding ${chosen.length} business(es)…`;
+  try{
+    const r=await fetch(`${API}/discovery/queue/add-selected`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,ids:chosen.map(i=>i.id)})});
+    const d=await r.json();
+    if(!r.ok){statusEl.innerHTML=`<span style="color:#dc2626">${esc(d.error||'Add failed')}</span>`;return;}
+    // Prove it: search the directory for each name we just added.
+    const slug=(document.getElementById('pop-directory').selectedOptions[0]?.dataset.slug)||'';
+    let proof='';
+    try{
+      let found=0;const missing=[];
+      for(const row of chosen.slice(0,12)){
+        const br=await fetch(`/api/v1/directories/${encodeURIComponent(slug)}/businesses?q=${encodeURIComponent(row.name)}&per_page=5`);
+        const bd=await br.json();
+        const list=bd.data||bd.businesses||[];
+        if(list.some(b=>(b.name||'').toLowerCase()===row.name.toLowerCase())) found++;
+        else missing.push(row.name);
+      }
+      proof=` Re-read from the directory: ${found}/${Math.min(chosen.length,12)} of the added businesses are present${missing.length?(' (not found: '+missing.join(', ')+')'):''}.`;
+    }catch(e){proof=' (Could not re-read the directory for the proof list.)';}
+    statusEl.innerHTML=`Added ${d.added} · skipped ${d.skipped}${d.errors&&d.errors.length?(' · errors: '+esc(d.errors.join('; '))):''}.${proof}`;
+    showToast(`Added ${d.added} business(es)`);
+    await reloadQueue();
+  }catch(e){statusEl.innerHTML='<span style="color:#dc2626">Add failed. Check console.</span>';console.error(e);}
 }
 function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),2500)}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}

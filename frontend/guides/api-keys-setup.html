@@ -81,7 +81,7 @@
 <div class="sidebar">
   <h2>&#x1F511; API Keys Setup</h2>
   <nav>
-    <a href="#start-here">&#x1F680; Start here (checklist)</a><a href="#quick-map">&#x1F5C2; Which key for what?</a><div class="section-label">Discovery &amp; Listings</div><a href="#provider-bing">🅱️ Bing Web Search</a><a href="#provider-brightlocal">⭐ BrightLocal</a><a href="#provider-google_cse">🔍 Google Custom Search</a><a href="#provider-google_places">🗺️ Google Places</a><a href="#provider-serpapi">🔎 SerpAPI</a><a href="#provider-uberall">📍 Uberall</a><a href="#provider-yext">🗺️ Yext</a><div class="section-label">AI &amp; Content</div><a href="#provider-anthropic">🧠 Anthropic (Claude)</a><a href="#provider-deepseek">🧠 DeepSeek</a><a href="#provider-letterman">newspaper Letterman</a><a href="#provider-mintbird">📧 Mintbird</a><a href="#provider-nexweave">video Nexweave</a><a href="#provider-openai">🤖 OpenAI</a><div class="section-label">Email</div><a href="#provider-mailgun">✉️ Mailgun</a><a href="#provider-sendgrid">✉️ SendGrid</a><a href="#provider-sendiio">mail Sendiio</a><div class="section-label">Payments</div><a href="#provider-groovesell">🛒 GrooveSell</a><a href="#provider-stripe">💳 Stripe</a><div class="section-label">SMS &amp; Voice</div><a href="#provider-telnyx">phone Telnyx</a><a href="#provider-twilio">📞 Twilio</a><div class="section-label">CRM &amp; Federal Data</div><a href="#provider-coreswift">crm CoreSwift CRM</a><a href="#provider-sam_gov">shield SAM.gov</a><a href="#provider-usaspending">dollar-sign USAspending</a><div class="section-label">Reference</div><a href="#related-creds">&#x26A0; Credentials not in this table</a><a href="index.html">&#x2190; All guides</a>
+    <a href="#start-here">&#x1F680; Start here (checklist)</a><a href="#panel-map">&#x1F5FA; Where each control lives</a><a href="#quick-map">&#x1F5C2; Which key for what?</a><a href="#email-transport">&#x2709;&#xFE0F; Email / SMTP card</a><a href="#discovery-queue">&#x1F50E; Discovery queue</a><div class="section-label">Discovery &amp; Listings</div><a href="#provider-bing">🅱️ Bing Web Search</a><a href="#provider-brightlocal">⭐ BrightLocal</a><a href="#provider-google_cse">🔍 Google Custom Search</a><a href="#provider-google_places">🗺️ Google Places</a><a href="#provider-serpapi">🔎 SerpAPI</a><a href="#provider-uberall">📍 Uberall</a><a href="#provider-yext">🗺️ Yext</a><div class="section-label">AI &amp; Content</div><a href="#provider-anthropic">🧠 Anthropic (Claude)</a><a href="#provider-deepseek">🧠 DeepSeek</a><a href="#provider-letterman">newspaper Letterman</a><a href="#provider-mintbird">📧 Mintbird</a><a href="#provider-nexweave">video Nexweave</a><a href="#provider-openai">🤖 OpenAI</a><div class="section-label">Email</div><a href="#provider-mailgun">✉️ Mailgun</a><a href="#provider-sendgrid">✉️ SendGrid</a><a href="#provider-sendiio">mail Sendiio</a><div class="section-label">Payments</div><a href="#provider-groovesell">🛒 GrooveSell</a><a href="#provider-stripe">💳 Stripe</a><div class="section-label">SMS &amp; Voice</div><a href="#provider-telnyx">phone Telnyx</a><a href="#provider-twilio">📞 Twilio</a><div class="section-label">CRM &amp; Federal Data</div><a href="#provider-coreswift">crm CoreSwift CRM</a><a href="#provider-sam_gov">shield SAM.gov</a><a href="#provider-usaspending">dollar-sign USAspending</a><div class="section-label">Reference</div><a href="#related-creds">&#x26A0; Credentials not in this table</a><a href="index.html">&#x2190; All guides</a>
   </nav>
 </div>
 
@@ -96,12 +96,56 @@
   <div class="card">
     <h3>How keys are stored (read this once)</h3>
     <ul>
-      <li>All keys are pasted in <b>one place</b>: the Admin Panel (<code>admin-panel.html</code>), card <b>&#x1F511; Provider API Keys</b>. Each provider gets its own row with a <b>&ldquo;Paste API key&rdquo;</b> field, a <b>Save</b> button, and &mdash; once a key exists &mdash; <b>Test</b> and <b>Delete</b> buttons.</li>
-      <li>Keys are saved <b>per tenant</b>, <b>encrypted at rest</b>, and always displayed <b>masked</b>. Nobody &mdash; including you after saving &mdash; can read a key back out of the panel.</li>
-      <li>The row badge tells you the state at a glance: <span class="badge" style="background:#065f46;color:#a7f3d0">Configured</span> vs <span class="badge badge-opt">Not set</span>.</li>
-      <li>Where a provider needs more than the key itself (a <b>Base URL</b>, or a <b>Search Engine ID</b>), the row grows an <b>extra input field</b> &mdash; don't skip it, the integration will not work without it.</li>
+      <li>All keys are pasted in <b>one place</b>: the Admin Panel (<code>admin-panel.html</code>), card <b>&#x1F511; Provider API Keys</b>. Every provider has its own block.</li>
+      <li><b>Every key can be named.</b> Type a name in the <b>&ldquo;Name this key&rdquo;</b> field (e.g. <code>Primary</code>, <code>Test account</code>), paste the key next to it, then press <b>&#xFF0B; Add key</b>. You can store <b>several keys for the same service</b> &mdash; each one appears on its own line with its name and masked value.</li>
+      <li>Exactly one key per service is the <b>Default</b> (blue badge) &mdash; that is the one the platform uses. Press <b>Set as default</b> on another line to switch. Delete one key with <b>Delete</b> on its line; the other keys for that service stay.</li>
+      <li>Keys are saved <b>per tenant</b>, <b>encrypted at rest</b>, and always displayed <b>masked</b> (first 4 + last 4 characters). Nobody &mdash; including you after saving &mdash; can read a key back out of the panel.</li>
+      <li>The provider badge shows the state at a glance: <span class="badge badge-opt">Not set</span> or <b>N keys</b>. The <b>Test</b> button on a key line tests the <i>default</i> key for that service and prints the real API answer at the bottom of the card.</li>
+      <li>Where a provider needs more than the key itself (<b>Base URL</b>, or a <b>Search Engine ID</b>), the block grows an <b>extra input field</b> &mdash; don't skip it, the integration will not work without it.</li>
+      <li>Stuck on where to create one? Every provider block has a <b>&ldquo;How do I get this key? &rarr;&rdquo;</b> link that jumps straight to that provider's section on this page.</li>
       <li>Never put a real key in a ticket, chat, email or screenshot. If a key leaks, rotate it in the provider's console and paste the new one.</li>
     </ul>
+  </div>
+
+  <h2 id="panel-map">&#x1F5FA; Where each control lives in the Admin Panel</h2>
+  <div class="card">
+    <table class="quick">
+      <tr><th>What you want to do</th><th>Where it is</th></tr>
+      <tr><td>Paste / name / test / delete an API key</td><td>Admin Panel &rarr; <b>&#x1F511; Provider API Keys</b> card (each block has its own <b>Name this key</b> + <b>Paste API key</b> + <b>&#xFF0B; Add key</b>)</td></tr>
+      <tr><td>Choose which email service a directory sends with, verify it and send a test email</td><td>Admin Panel &rarr; <b>&#x2709;&#xFE0F; Email / SMTP</b> card (<a href="#email-transport">details below</a>)</td></tr>
+      <tr><td>Save the Google Places key and populate businesses</td><td>Admin Panel &rarr; <b>&#x1F50D; Discovery / Populate</b> (ZaarHub Admin &rarr; Populate Businesses tab)</td></tr>
+      <tr><td>Review/approve what a search found before it enters the directory</td><td>ZaarHub Admin &rarr; Populate Businesses &rarr; <b>2 &middot; Queue &mdash; review, then add</b> (<a href="#discovery-queue">details below</a>)</td></tr>
+      <tr><td>Ad slots, submission queue, B2B toggles, plan/branding settings</td><td>Admin Panel nav bar (top of the panel links every card)</td></tr>
+    </table>
+    <p class="anchor-note">The panel's nav bar reaches every admin card, so nothing is hidden on an unlinked page. The same nav links back here.</p>
+  </div>
+
+  <h2 id="email-transport">&#x2709;&#xFE0F; Email / SMTP card &mdash; how to configure it</h2>
+  <div class="card">
+    <p>Email settings are <b>per directory</b>. The card sits directly under <b>Provider API Keys</b> in <code>admin-panel.html</code>.</p>
+    <ol class="checklist">
+      <li><b>Pick the directory</b> in the first dropdown.</li>
+      <li><b>Pick the transport</b> in the <b>Transport</b> field. The list is read live from the email service itself, so it always matches what the server can actually send with &mdash; today <code>smtp</code>, <code>mailgun</code>, <code>sendgrid</code>, <code>sendiio</code>. The badge next to the directory dropdown shows the service status and the same list.</li>
+      <li><b>SMTP</b> &rarr; fill <b>SMTP host</b>, <b>SMTP port</b> (587), <b>SMTP username</b>, <b>SMTP password</b> and <b>Encryption</b> (STARTTLS / SSL / None).<br>
+          <b>Mailgun / SendGrid / Sendiio</b> &rarr; leave the SMTP fields as they are; the API key those transports need is the one you saved in the <b>Provider API Keys</b> card above (<a href="#provider-mailgun">Mailgun</a>, <a href="#provider-sendgrid">SendGrid</a>, <a href="#provider-sendiio">Sendiio</a>).</li>
+      <li>Fill <b>From name</b>, <b>From email</b> and (optional) <b>Reply-to</b>, then press <b>Save settings</b>. The card shows <b>&#x2713; Saved (transport: …)</b> when it lands.</li>
+      <li>The password is <b>write-only</b>: the card shows <b>write-only</b> on the field and never displays a saved password. Leave it blank and save to keep the stored one.</li>
+      <li>Press <b>Verify credentials (real check)</b> &mdash; this performs a real SMTP login / real API credential call and prints the service's own answer (<code>ok</code>, <code>skipped</code> or <code>error</code> plus detail) in the box below. A canned &ldquo;success&rdquo; is never shown.</li>
+      <li>Put your own address in <b>Send a real test email to…</b> and press <b>Send test email</b>. <code>{"status":"sent"}</code> in the box means mail actually left the server; &ldquo;skipped / directory_not_configured&rdquo; means the save above did not land.</li>
+    </ol>
+  </div>
+
+  <h2 id="discovery-queue">&#x1F50E; Discovery queue &mdash; review before adding</h2>
+  <div class="card">
+    <p>Google Places results are never dumped straight into the directory. They land in a <b>queue</b> you review first (ZaarHub Admin &rarr; Populate Businesses).</p>
+    <ol class="checklist">
+      <li>Pick the <b>Directory</b> and the <b>City</b>, then pick a <b>category</b> &mdash; the search query is filled in for you as <i>&lt;category&gt; &lt;city&gt;</i>. You can still edit the query.</li>
+      <li>Press <b>Search &amp; add to queue</b>. The rows appear in <b>2 &middot; Queue &mdash; review, then add</b>; the counts line shows <i>in queue &middot; franchise &middot; already listed</i>.</li>
+      <li>Each row shows the business name, address, rating/review count, its <b>auto-mapped category</b> (change it in the row's <b>Category</b> dropdown at any time), and its badges: <b>Franchise</b> (big chain) and <b>Already listed</b> (duplicate of a business already in that directory).</li>
+      <li>Franchise and already-listed rows are <b>unticked by default</b>. <b>Select all eligible</b> ticks everything else; tick a franchise row yourself if it really is a local business you want.</li>
+      <li>Press <b>&#xFF0B; Add selected to directory</b>. The status line reports <i>added / skipped</i> and then re-reads the directory to confirm the businesses are really there. <b>Clear queue</b> empties the rows that are still waiting.</li>
+      <li>Reloading the page is safe &mdash; the queue is stored server-side per directory and comes back exactly as you left it.</li>
+    </ol>
   </div>
 
   <h2 id="start-here">&#x1F680; Start here &mdash; VA checklist</h2>
@@ -109,15 +153,15 @@
   <div class="card">
     <ol class="checklist">
       <li><b>Get admin access.</b> Log into the Admin Panel at <code>admin-panel.html</code> with the admin account (not a business/portal account).</li>
-      <li><b>Open the key card.</b> Find the card titled <b>&#x1F511; Provider API Keys</b>. It lists every provider below with a live Configured / Not set badge.</li>
+      <li><b>Open the key card.</b> Find the card titled <b>&#x1F511; Provider API Keys</b> (use the panel nav bar to jump to it). It lists every provider below with a live Not set / N keys badge. <b>Name each key</b> in the &ldquo;Name this key&rdquo; field before you press <b>&#xFF0B; Add key</b> &mdash; names are how you tell two accounts of the same service apart.</li>
       <li><b>Google Places first</b> &mdash; it is the one that is actually broken right now. Create a <b>Google Maps Platform &rarr; Places API</b> key and paste it (see <a href="#provider-google_places">Google Places</a>). This unblocks Populate / business discovery.</li>
       <li><b>AI drafting.</b> Paste a <b>DeepSeek</b> key (the default AI provider) or an <b>OpenAI</b> / <b>Anthropic</b> key. Without one of these, AI blog/content drafting cannot run.</li>
-      <li><b>System email.</b> If the directory sends newsletters, notifications or receipts, paste <b>Mailgun</b>, <b>SendGrid</b> or <b>Sendiio</b> &mdash; then choose that provider as the directory's email transport in its email settings.</li>
+      <li><b>System email.</b> If the directory sends newsletters, notifications or receipts, paste <b>Mailgun</b>, <b>SendGrid</b> or <b>Sendiio</b> &mdash; then open the <b>&#x2709;&#xFE0F; Email / SMTP</b> card, pick that transport for the directory and press <b>Verify credentials</b>, then <b>Send test email</b> (<a href="#email-transport">steps</a>). SMTP needs no provider key at all: just host/username/password on the same card.</li>
       <li><b>Card payments.</b> If the directory takes card payments or pays out, paste the <b>Stripe</b> <i>secret</i> key.</li>
       <li><b>SMS.</b> If the directory texts customers, paste the <b>Twilio</b> credentials (and complete carrier/A2P registration).</li>
       <li><b>CRM sync.</b> For CoreSwift, paste the <code>csk_…</code> key <b>and</b> the Base URL &mdash; both fields.</li>
       <li><b>Optionals.</b> Add BrightLocal / Yext / Uberall / SerpAPI / Google Custom Search / Bing / Telnyx / GrooveSell / SAM.gov / USAspending only if the client actually uses them.</li>
-      <li><b>Verify.</b> Click <b>Test</b> on every configured row (it calls <code>GET /api/v1/admin/provider-keys/&lt;provider&gt;/test</code> and returns the masked key preview), then run one real end-to-end action per feature: one Populate search, one AI draft, one test email, one test payment, one test SMS.</li>
+      <li><b>Verify.</b> Click <b>Test</b> on every configured key line (it calls <code>GET /api/v1/admin/provider-keys/&lt;provider&gt;/test</code> and prints the real API answer), press <b>Verify credentials</b> + <b>Send test email</b> on the Email/SMTP card, then run one real end-to-end action per feature: one Populate search (queue &rarr; add selected), one AI draft, one test email, one test payment, one test SMS.</li>
     </ol>
   </div>
 

@@ -63,6 +63,11 @@ pub fn create_router(s: AppState) -> Router {
         .route("/directories/:slug/businesses/:business_id/reviews", get(reviews::list_business_reviews).post(reviews::create_review))
         .route("/directories/:slug/branding", get(branding::get_branding))
         .route("/directories/:slug/email-settings", get(newsletter::get_email_settings).put(newsletter::upsert_email_settings).delete(newsletter::delete_email_settings))
+        // Round 6 (U3) — Email/SMTP card: real credential test + real test send, both
+        // proxied to the in-house email service; plus its advertised transport list.
+        .route("/directories/:slug/email-settings/test", post(newsletter::test_email_settings))
+        .route("/directories/:slug/email-settings/test-send", post(newsletter::send_test_email))
+        .route("/email-service/status", get(newsletter::email_service_status))
         .route("/directories/:slug/subscribers", get(newsletter::list_subscribers).post(newsletter::add_subscriber))
         .route("/directories/:slug/subscribers/import", post(newsletter::import_subscribers))
         .route("/directories/:slug/subscribers/:id/unsubscribe", post(newsletter::unsubscribe_subscriber))
@@ -572,6 +577,15 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/zaarhub/admin/discovery/queue/add-selected",
             post(crate::handlers::discovery_queue::add_selected),
+        )
+        // Round 6 (U2) — queue review UI: tick/untick rows + override an auto-mapped category.
+        .route(
+            "/zaarhub/admin/discovery/queue/select",
+            post(crate::handlers::discovery_queue::set_selection),
+        )
+        .route(
+            "/zaarhub/admin/discovery/queue/category",
+            post(crate::handlers::discovery_queue::set_category),
         )
         .route("/ads/active/:directory_id", get(monetization::get_active_ads))
         // ??? Public Spotlight & Notifications endpoints (Phase 4)

@@ -68,6 +68,10 @@ pub struct UpdateNewsletterRequest {
 pub struct DirectoryEmailSettings {
     pub id: Uuid,
     pub directory_id: Uuid,
+    /// Round 6 (U3): the transport the email service must use — `smtp` | `mailgun`
+    /// | `sendgrid` | `sendiio`. Added by migration 083; the admin picks it in the panel.
+    #[serde(default = "default_transport")]
+    pub transport: String,
     pub smtp_host: String,
     pub smtp_port: i32,
     pub smtp_username: String,
@@ -80,16 +84,154 @@ pub struct DirectoryEmailSettings {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+fn default_transport() -> String {
+    "smtp".to_string()
+}
+
+/// What the browser gets back instead of a stored secret (write-only field).
+const MASKED_SECRET: &str = "********";
+
+/// Mirror of the CHECK constraint on `directory_email_settings.transport`
+/// (migration 083). The panel renders the live list from the email service, but the
+/// API still refuses anything the database would reject.
+const ALLOWED_TRANSPORTS: &[&str] = &["smtp", "mailgun", "sendgrid", "sendiio"];
+
+/// Base URL of the in-house email service (loopback only) — same default as `src/email.rs`.
+fn email_service_url() -> String {
+    std::env::var("EMAIL_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:3456".to_string())
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpsertEmailSettingsRequest {
+    /// Round 6 (U3) — transport is optional so older callers keep working; `smtp` wins.
+    #[serde(default)]
+    pub transport: Option<String>,
+    #[serde(default)]
     pub smtp_host: String,
+    #[serde(default)]
     pub smtp_port: Option<i32>,
+    #[serde(default)]
     pub smtp_username: String,
+    #[serde(default)]
     pub smtp_password: String,
+    #[serde(default)]
     pub smtp_encryption: Option<String>,
+    #[serde(default)]
     pub from_name: String,
+    #[serde(default)]
     pub from_email: String,
+    #[serde(default)]
     pub reply_to: Option<String>,
+}
+
+/// Round 6 (U3) — body of `POST /directories/:slug/email-settings/test-send`.
+#[derive(Debug, Deserialize)]
+pub struct TestSendRequest {
+    pub to: String,
+}
+
+/// Round 6 (U3) — the transports the email service actually advertises (`/health`).
+/// Nothing is hardcoded in the panel: the card renders exactly this list.
+pub async fn email_service_status() -> ApiResult<impl IntoResponse> {
+    let url = format!("{}/health", email_service_url());
+    match reqwest::get(&url).await {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            let parsed: serde_json::Value = serde_json::from_str(&body)
+                .unwrap_or_else(|_| serde_json::json!({ "status": "error", "detail": body }));
+            Ok(Json(serde_json::json!({
+                "service_url": email_service_url(),
+                "ok": status.is_success(),
+                "service": parsed,
+            })))
+        }
+        Err(e) => Ok(Json(serde_json::json!({
+            "service_url": email_service_url(),
+            "ok": false,
+            "error": format!("email service unreachable: {e}"),
+            "transports": [],
+        }))),
+    }
+}
+
+/// Resolve ?slug → directory id (404 when missing).
+async fn directory_id_for_slug(db: &sqlx::PgPool, slug: &str) -> Result<Uuid, AppError> {
+    sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
+        .bind(slug)
+        .fetch_optional(db)
+        .await?
+        .map(|r| r.0)
+        .ok_or_else(|| AppError::NotFound("directory not found".into()))
+}
+
+/// Round 6 (U3) — POST /directories/:slug/email-settings/test
+/// Proxies the email service's `/verify`: a REAL transport credential check (SMTP
+/// login / API credential call). The service's own JSON is returned verbatim so the
+/// panel can show the true answer instead of a fabricated "OK".
+pub async fn test_email_settings(
+    State(s): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let dir_id = directory_id_for_slug(&s.db, &slug).await?;
+    let url = format!("{}/verify", email_service_url());
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({ "directory_id": dir_id }))
+        .send()
+        .await;
+    match resp {
+        Ok(r) => {
+            let body = r.text().await.unwrap_or_default();
+            let parsed: serde_json::Value = serde_json::from_str(&body)
+                .unwrap_or_else(|_| serde_json::json!({ "status": "error", "detail": body }));
+            Ok(Json(
+                serde_json::json!({ "service_url": url, "result": parsed }),
+            ))
+        }
+        Err(e) => Ok(Json(serde_json::json!({
+            "service_url": url,
+            "result": { "status": "error", "detail": format!("email service unreachable: {e}") }
+        }))),
+    }
+}
+
+/// Round 6 (U3) — POST /directories/:slug/email-settings/test-send {to}
+/// Sends a REAL message through the directory's saved transport via the email
+/// service and returns its JSON (`sent` | `skipped` | `error`) untouched.
+pub async fn send_test_email(
+    State(s): State<AppState>,
+    Path(slug): Path<String>,
+    JsonBody(req): JsonBody<TestSendRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let dir_id = directory_id_for_slug(&s.db, &slug).await?;
+    if req.to.trim().is_empty() {
+        return Err(AppError::BadRequest("to is required".into()));
+    }
+    let url = format!("{}/send-email", email_service_url());
+    let body = serde_json::json!({
+        "directory_id": dir_id,
+        "to": req.to.trim(),
+        "subject": "Test email — your directory email settings work",
+        "html": "<p>This is a test message sent from the Multi-Directory admin panel.</p>\
+                 <p>If you are reading it, the transport saved for this directory works.</p>",
+        "text": "This is a test message sent from the Multi-Directory admin panel."
+    });
+    let resp = reqwest::Client::new().post(&url).json(&body).send().await;
+    match resp {
+        Ok(r) => {
+            let raw = r.text().await.unwrap_or_default();
+            let parsed: serde_json::Value = serde_json::from_str(&raw)
+                .unwrap_or_else(|_| serde_json::json!({ "status": "error", "detail": raw }));
+            Ok(Json(
+                serde_json::json!({ "service_url": url, "result": parsed }),
+            ))
+        }
+        Err(e) => Ok(Json(serde_json::json!({
+            "service_url": url,
+            "result": { "status": "error", "detail": format!("email service unreachable: {e}") }
+        }))),
+    }
 }
 
 // ── Subscribers ──
@@ -290,19 +432,49 @@ pub async fn upsert_email_settings(
         .await?
         .ok_or_else(|| AppError::NotFound("directory not found".into()))?;
 
+    // The transport must be one the DB accepts (mirrors the CHECK constraint on
+    // directory_email_settings.transport). Reject anything else with the full list.
+    let transport = match req.transport.as_deref().map(str::trim) {
+        Some(t) if !t.is_empty() => {
+            let t = t.to_lowercase();
+            if !ALLOWED_TRANSPORTS.contains(&t.as_str()) {
+                return Err(AppError::BadRequest(format!(
+                    "unsupported transport '{}' — use one of: {}",
+                    t,
+                    ALLOWED_TRANSPORTS.join(", ")
+                )));
+            }
+            Some(t)
+        }
+        _ => None,
+    };
+
+    // Write-only password: the panel never receives it back (it reads `********`),
+    // so a masked/blank value means "keep the stored secret".
+    let password = match req.smtp_password.as_str() {
+        "" | MASKED_SECRET => None,
+        pw => Some(pw.to_string()),
+    };
+
     let settings = sqlx::query_as::<_, DirectoryEmailSettings>(
-        r#"INSERT INTO directory_email_settings (directory_id, smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption, from_name, from_email, reply_to)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        r#"INSERT INTO directory_email_settings
+             (directory_id, transport, smtp_host, smtp_port, smtp_username, smtp_password,
+              smtp_encryption, from_name, from_email, reply_to)
+           VALUES ($1, COALESCE($2, 'smtp'), $3, $4, $5, COALESCE($6, ''), $7, $8, $9, $10)
            ON CONFLICT (directory_id)
-           DO UPDATE SET smtp_host = $2, smtp_port = $3, smtp_username = $4, smtp_password = $5,
-                         smtp_encryption = $6, from_name = $7, from_email = $8, reply_to = $9, updated_at = NOW()
-           RETURNING *"#
+           DO UPDATE SET transport = COALESCE($2, directory_email_settings.transport),
+                         smtp_host = $3, smtp_port = $4, smtp_username = $5,
+                         smtp_password = COALESCE($6, directory_email_settings.smtp_password),
+                         smtp_encryption = $7, from_name = $8, from_email = $9,
+                         reply_to = $10, updated_at = NOW()
+           RETURNING *"#,
     )
     .bind(dir.0)
+    .bind(transport)
     .bind(&req.smtp_host)
     .bind(req.smtp_port.unwrap_or(587))
     .bind(&req.smtp_username)
-    .bind(&req.smtp_password)
+    .bind(password)
     .bind(req.smtp_encryption.unwrap_or_else(|| "tls".to_string()))
     .bind(&req.from_name)
     .bind(&req.from_email)
@@ -312,7 +484,8 @@ pub async fn upsert_email_settings(
 
     let mut resp = serde_json::to_value(&settings).unwrap();
     if let Some(obj) = resp.as_object_mut() {
-        obj.insert("smtp_password".into(), serde_json::json!("********"));
+        obj.insert("smtp_password".into(), serde_json::json!(MASKED_SECRET));
+        obj.insert("saved".into(), serde_json::json!(true));
     }
     Ok(Json(resp))
 }
