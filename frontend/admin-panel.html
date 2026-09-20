@@ -584,6 +584,27 @@
         </div>
       </div>
 
+      <!-- Provider API Keys -->
+      <style>
+        .pk-row{border:1px solid var(--border,#1e3a5f);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:rgba(255,255,255,.02)}
+        .pk-head{margin-bottom:8px}
+        .pk-title{font-weight:600;font-size:.95rem;display:flex;align-items:center;gap:8px}
+        .pk-desc{font-size:.8rem;color:var(--text-muted,#8aa0b8);margin-top:2px}
+        .pk-desc code{font-family:monospace;background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px}
+        .pk-badge{font-size:.7rem;padding:2px 8px;border-radius:99px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+        .pk-ok{background:rgba(34,197,94,.15);color:#22c55e}
+        .pk-missing{background:rgba(148,163,184,.15);color:#94a3b8}
+        .pk-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+        .pk-input{flex:1 1 240px;min-width:200px;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#1e3a5f);background:rgba(0,0,0,.25);color:inherit;font-family:monospace;font-size:.85rem}
+      </style>
+      <div class="feature-card" id="provider-keys-section">
+        <h3>🔑 Provider API Keys</h3>
+        <p class="feature-subtitle">Paste your own keys here — saved per tenant, encrypted at rest, and shown masked. These power Google Places, email, payments, AI drafting and every other integration.</p>
+        <div id="pk-loading" class="loading-state"><span class="spinner"></span> Loading providers...</div>
+        <div id="pk-list"></div>
+        <div class="feature-status" id="pk-status"></div>
+      </div>
+
       <!-- Directory Cards -->
       <div class="section-label">All Directories</div>
       <div id="directory-grid" class="directory-grid">
@@ -679,6 +700,96 @@
     function apiGet(path) { return apiFetch('GET', path); }
     function apiPost(path, body) { return apiFetch('POST', path, body); }
 
+    // ===== Provider API Keys (admin-editable, per tenant) =====
+    var pkConfigured = {};
+
+    function pkStatus(msg, ok) {
+      var el = document.getElementById('pk-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+
+    function pkEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function loadProviderKeys() {
+      var wrap = document.getElementById('pk-list');
+      var loading = document.getElementById('pk-loading');
+      if (!wrap) return;
+      Promise.all([apiGet('/available-providers'), apiGet('/provider-keys')])
+        .then(function (res) {
+          var providers = (res[0] && res[0].data) || [];
+          var keys = (res[1] && res[1].data) || [];
+          pkConfigured = {};
+          keys.forEach(function (k) { pkConfigured[k.provider] = k; });
+          renderProviderKeys(providers);
+          if (loading) loading.classList.add('hidden');
+          pkStatus(keys.length + ' of ' + providers.length + ' providers configured', true);
+        })
+        .catch(function (err) {
+          if (loading) loading.classList.add('hidden');
+          pkStatus('Could not load providers: ' + err.message, false);
+        });
+    }
+
+    function renderProviderKeys(providers) {
+      var wrap = document.getElementById('pk-list');
+      if (!wrap) return;
+      if (!providers.length) { wrap.innerHTML = '<div class="empty-state"><p>No providers available.</p></div>'; return; }
+      wrap.innerHTML = providers.map(function (p) {
+        var c = pkConfigured[p.key];
+        var masked = c ? pkEsc(c.api_key) : '';
+        var badge = c ? '<span class="pk-badge pk-ok">Configured</span>'
+                      : '<span class="pk-badge pk-missing">Not set</span>';
+        var baseField = p.requires_base_url
+          ? '<input class="pk-input" id="pk-base-' + pkEsc(p.key) + '" placeholder="Base URL (required)" value="' + pkEsc((c && c.base_url) || '') + '">'
+          : '';
+        return '<div class="pk-row">' +
+            '<div class="pk-head">' +
+              '<div class="pk-title">' + (p.icon ? pkEsc(p.icon) + ' ' : '') + pkEsc(p.name) + ' ' + badge + '</div>' +
+              '<div class="pk-desc">' + pkEsc(p.description || p.key) + (masked ? ' &middot; current: <code>' + masked + '</code>' : '') + '</div>' +
+            '</div>' +
+            '<div class="pk-controls">' +
+              '<input class="pk-input" id="pk-key-' + pkEsc(p.key) + '" type="password" placeholder="Paste API key">' +
+              baseField +
+              '<button class="btn btn-accent btn-sm" onclick="window.__pkSave(\'' + pkEsc(p.key) + '\')">Save</button>' +
+              (c ? '<button class="btn btn-ghost btn-sm" onclick="window.__pkTest(\'' + pkEsc(p.key) + '\')">Test</button>' : '') +
+              (c ? '<button class="btn btn-ghost btn-sm" onclick="window.__pkDelete(\'' + pkEsc(p.key) + '\')">Delete</button>' : '') +
+            '</div>' +
+          '</div>';
+      }).join('');
+    }
+
+    window.__pkSave = function (provider) {
+      var keyEl = document.getElementById('pk-key-' + provider);
+      var baseEl = document.getElementById('pk-base-' + provider);
+      var apiKey = keyEl ? keyEl.value.trim() : '';
+      if (!apiKey) { pkStatus('Enter a key for ' + provider + ' first', false); return; }
+      var body = { provider: provider, api_key: apiKey };
+      if (baseEl && baseEl.value.trim()) body.base_url = baseEl.value.trim();
+      apiPost('/provider-keys', body)
+        .then(function () { pkStatus(provider + ' key saved', true); showToast(provider + ' key saved'); loadProviderKeys(); })
+        .catch(function (e) { pkStatus('Save failed: ' + e.message, false); showToast('Save failed: ' + e.message); });
+    };
+
+    window.__pkTest = function (provider) {
+      pkStatus('Testing ' + provider + '...', true);
+      apiGet('/provider-keys/' + provider + '/test')
+        .then(function (r) { pkStatus(provider + ': ' + JSON.stringify(r).slice(0, 160), true); })
+        .catch(function (e) { pkStatus(provider + ' test failed: ' + e.message, false); });
+    };
+
+    window.__pkDelete = function (provider) {
+      if (!confirm('Delete the ' + provider + ' API key?')) return;
+      apiFetch('DELETE', '/provider-keys/' + provider)
+        .then(function () { pkStatus(provider + ' key deleted', true); loadProviderKeys(); })
+        .catch(function (e) { pkStatus('Delete failed: ' + e.message, false); });
+    };
+
     // ===== Toast =====
     var toastTimer;
     function showToast(msg, type) {
@@ -714,6 +825,7 @@
       dashPage.classList.remove('hidden');
       headerUser.textContent = user ? (user.email || user.name || 'User') : 'User';
       loadDirectories();
+      loadProviderKeys();
     }
 
     // ===== Login Handler =====
