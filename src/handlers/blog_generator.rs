@@ -670,12 +670,11 @@ async fn call_llm(
 }
 
 async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
-    let api_key = fetch_provider_key(db, "deepseek")
-        .await
-        .or_else(|| std::env::var("DEEPSEEK_API_KEY").ok())
-        .ok_or_else(|| {
-            AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into())
-        })?;
+    // DB only (provider_keys / Provider Keys UI). No env fallback: an env key
+    // would silently shadow the admin UI.
+    let api_key = fetch_provider_key(db, "deepseek").await.ok_or_else(|| {
+        AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into())
+    })?;
     let url = "https://api.deepseek.com/v1/chat/completions";
 
     let body = json!({
@@ -709,12 +708,10 @@ async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<S
 }
 
 async fn call_openai(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
-    let api_key = fetch_provider_key(db, "openai")
-        .await
-        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-        .ok_or_else(|| {
-            AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into())
-        })?;
+    // DB only (provider_keys). No env fallback.
+    let api_key = fetch_provider_key(db, "openai").await.ok_or_else(|| {
+        AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into())
+    })?;
     let url = "https://api.openai.com/v1/chat/completions";
 
     let body = json!({

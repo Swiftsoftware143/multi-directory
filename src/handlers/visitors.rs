@@ -10,12 +10,12 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::env;
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::provider_keys_handler::resolve_provider_key;
 use crate::AppState;
 
 // ── Auth Helpers (used by handlers that are before the auth_guard middleware) ──
@@ -1425,9 +1425,18 @@ async fn fetch_business_images_on_claim(
     db: &sqlx::PgPool,
     business_id: Uuid,
 ) -> Result<usize, String> {
-    let api_key = match env::var("GOOGLE_PLACES_API_KEY") {
-        Ok(k) => k,
-        Err(_) => return Err("GOOGLE_PLACES_API_KEY not set".to_string()),
+    // DB only — Provider Keys > Google Places (provider = "google_places").
+    // No env fallback: a server-wide GOOGLE_PLACES_API_KEY would silently
+    // shadow the admin UI. Unconfigured → log and skip the enrichment.
+    let api_key = match resolve_provider_key(db, "google_places").await {
+        Some(k) if !k.trim().is_empty() => k,
+        _ => {
+            tracing::info!(
+                "[claim] Google Places not configured (Admin > Provider Keys > Google Places) — \
+                 skipping image fetch for business {business_id}"
+            );
+            return Ok(0);
+        }
     };
 
     // Get business info
