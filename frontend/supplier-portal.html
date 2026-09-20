@@ -477,6 +477,10 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
           <h4>ðŸ“¦ <a href="/api/v1/b2b/products" target="_blank">B2B Marketplace</a></h4>
           <p>Browse products from all suppliers. Search by category, price, or delivery area.</p>
         </div>
+        <div class="link-card" onclick="window.location.href='/rfq.html'">
+          <h4>📋 <a href="/rfq.html">Requests for Quote</a></h4>
+          <p style="font-size:.82rem;color:#94a3b8">Post an RFQ, collect supplier bids, message bidders.</p>
+        </div>
         <div class="link-card" onclick="window.open('/api/v1/b2b/suppliers','_blank')">
           <h4>ðŸ¤ <a href="/api/v1/b2b/suppliers" target="_blank">Supplier Directory</a></h4>
           <p>View all registered suppliers, farms, wholesalers, and distributors on the network.</p>
@@ -1180,10 +1184,10 @@ async function supplierConnectIS() {
     return;
   }
   try {
-    var r = await fetch('/api/v1/connected-services/incentiveswift', {
+    var r = await fetch('/api/v1/connected-services/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ tenant_id: tenantId, api_key: apiKey })
+      body: JSON.stringify({ service: 'incentiveswift', api_key: apiKey })
     });
     if (!r.ok) throw new Error((await r.json()).message || 'Connection failed');
     document.getElementById('supplierIsConnectForm').style.display = 'none';
@@ -1195,9 +1199,10 @@ async function supplierConnectIS() {
 
 async function supplierConnectCoreSwift() {
   try {
-    var r = await fetch('/api/v1/connected-services/coreswift', {
+    var r = await fetch('/api/v1/connected-services/connect', {
       method: 'POST',
-      headers: authHeaders()
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ service: 'coreswift', api_key: 'auto' })
     });
     if (!r.ok) throw new Error((await r.json()).message || 'Connection failed');
     loadSupplierConnectedServices();

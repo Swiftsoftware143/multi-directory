@@ -60,6 +60,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/reviews/:id/approve", post(reviews::approve_review))
         .route("/reviews/:id/reject", post(reviews::reject_review))
         .route("/reviews/stats/:business_id", get(reviews::get_review_stats))
+        .route("/my-reviews", get(reviews::my_reviews))
         .route("/directories/:slug/businesses/:business_id/reviews", get(reviews::list_business_reviews).post(reviews::create_review))
         .route("/directories/:slug/branding", get(branding::get_branding))
         .route("/directories/:slug/email-settings", get(newsletter::get_email_settings).put(newsletter::upsert_email_settings).delete(newsletter::delete_email_settings))
@@ -452,6 +453,7 @@ pub fn create_router(s: AppState) -> Router {
         .route("/payment-providers/:provider_type", delete(checkout_handler::delete_payment_provider))
         .route("/checkout/create", post(checkout_handler::create_checkout_session))
         .route("/checkout/sessions", get(checkout_handler::list_checkout_sessions))
+        .route("/checkout/session/:id", get(checkout_handler::get_checkout_session))
         // ??? Industry dashboard routes
         .route("/industries", get(industries::list_user_industries).post(industries::set_user_industry))
         .route("/industries/:slug", delete(industries::remove_user_industry))
@@ -462,11 +464,16 @@ pub fn create_router(s: AppState) -> Router {
         .route("/visitor/profile", get(portal::visitor_profile))
         // ? Visitor wallet — the signed-in visitor's own loyalty wallet
         .route("/visitor/wallet", get(visitors::get_my_wallet))
+        .route("/visitor/referrals", get(feed::my_referral))
+        .route("/visitor/referrals/generate", post(feed::generate_referral_code))
+        .route("/visitor/loyalty/perks", get(visitors::my_redeemed_perks))
         // ? Anonymous tracking beacon (page views, sessions, events)
         .route("/visitors/track", post(visitors::track_visitor))
         .route("/visitors/page-view", post(visitors::track_page_view))
         .route("/visitors/event", post(visitors::track_visitor_event))
         .route("/visitors/session/:id/end", post(visitors::end_session))
+        .route("/visitors/business/:business_id", get(visitors::business_visitor_summary))
+        .route("/visitors/business/:business_id/events", get(visitors::business_visitor_events))
         .route("/visitor/favorites", get(visitors::list_favorites))
         .route("/visitor/favorites/check/:business_id", get(visitors::check_favorite))
         .route("/visitor/favorites/:business_id", post(visitors::toggle_favorite))
@@ -1310,6 +1317,8 @@ async fn auth_guard(
         || (path == "/reviews" && req.method() == "GET")
         // Public submit-a-business form — POST only, rate-limited inside the handler
         || (path == "/submissions" && req.method() == "POST")
+        // Public payment-confirmation lookup by checkout session id (unguessable id)
+        || (path.starts_with("/checkout/session/") && req.method() == "GET")
         // Public B2B register (distributor/supplier signup)
         || (path == "/b2b/register" && req.method() == "POST")
         // Public pricing endpoint

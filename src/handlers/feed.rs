@@ -7,7 +7,7 @@
 //! GET /api/v1/feed-page — server-rendered feed.hbs template (visitor JWT required)
 
 use axum::{
-    extract::State,
+    extract::{Extension, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
@@ -18,6 +18,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::template_engine;
 use crate::AppState;
@@ -905,6 +906,123 @@ async fn get_visitor_referral_context(
         "total_referrals": total_referrals,
         "confirmed_referrals": confirmed_referrals,
         "zaarcash_earned": zaarcash_earned,
+        "has_referral_code": code.is_some(),
+    }))
+}
+
+// ── Visitor referral API (round 9) ───────────────────────────────────────────
+// The visitor portal calls these; before round 9 the frontend pointed at
+// /referrals/* which never existed.
+
+/// GET /api/v1/visitor/referrals — the signed-in visitor's referral code + Zaarcash balance.
+pub async fn my_referral(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    if claims.role != "visitor" {
+        return Err(AppError::Forbidden("Visitor account required".to_string()));
+    }
+    let visitor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+    Ok(Json(visitor_referral_payload(&s.db, visitor_id).await?))
+}
+
+/// POST /api/v1/visitor/referrals/generate — create the visitor's referral code if absent.
+pub async fn generate_referral_code(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    if claims.role != "visitor" {
+        return Err(AppError::Forbidden("Visitor account required".to_string()));
+    }
+    let visitor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    let email_row: Option<String> =
+        sqlx::query_scalar::<_, String>("SELECT email FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_optional(&s.db)
+            .await?;
+    let email = email_row
+        .filter(|e| !e.trim().is_empty())
+        .ok_or_else(|| AppError::BadRequest("Visitor account not found".to_string()))?;
+
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT referral_code FROM referrals WHERE referrer_id = $1 AND referrer_type = 'visitor' AND status != 'expired' LIMIT 1",
+    )
+    .bind(visitor_id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
+    if existing.is_none() {
+        let code = format!(
+            "ZH{}",
+            Uuid::new_v4()
+                .simple()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>()
+                .to_uppercase()
+        );
+        sqlx::query(
+            r#"INSERT INTO referrals
+                   (referrer_type, referrer_id, referrer_email, referee_type, referral_code, direction, status)
+               VALUES ('visitor', $1, $2, 'visitor', $3, 'outbound', 'pending')
+               ON CONFLICT (referral_code) DO NOTHING"#,
+        )
+        .bind(visitor_id)
+        .bind(&email)
+        .bind(&code)
+        .execute(&s.db)
+        .await
+        .map_err(|e| AppError::Internal(format!("Referral insert failed: {}", e)))?;
+    }
+
+    Ok(Json(visitor_referral_payload(&s.db, visitor_id).await?))
+}
+
+/// Shared payload for the visitor referral endpoints.
+async fn visitor_referral_payload(
+    db: &sqlx::PgPool,
+    visitor_id: Uuid,
+) -> Result<serde_json::Value, AppError> {
+    let email: Option<String> =
+        sqlx::query_scalar("SELECT email FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_optional(db)
+            .await?
+            .flatten();
+    let email_like = email.unwrap_or_default();
+
+    let code: Option<String> = sqlx::query_scalar(
+        "SELECT referral_code FROM referrals WHERE referrer_id = $1 AND referrer_type = 'visitor' AND status != 'expired' LIMIT 1",
+    )
+    .bind(visitor_id)
+    .fetch_optional(db)
+    .await?
+    .flatten();
+
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM referrals WHERE referrer_email = $1 AND referrer_type = 'visitor' AND referee_id IS NOT NULL",
+    )
+    .bind(&email_like)
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    let earned: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(zaarcash_earned), 0) FROM referrals WHERE referrer_email = $1 AND referrer_type = 'visitor' AND status = 'paid'",
+    )
+    .bind(&email_like)
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    Ok(json!({
+        "referral_code": code,
+        "link": code.as_ref().map(|c| format!("zaarhub.com/join?ref={}", c)),
+        "zaarcash_balance": earned,
+        "total_referrals": total,
         "has_referral_code": code.is_some(),
     }))
 }

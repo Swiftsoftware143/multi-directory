@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add Your Business — ZaarHub</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--primary:#f27f2f;--ok:#22c55e;--err:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+  header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  header a.brand{color:var(--text);text-decoration:none;font-weight:700;font-size:1.1rem}
+  header nav a{color:var(--muted);text-decoration:none;margin-left:16px;font-size:.9rem}
+  header nav a:hover{color:var(--primary)}
+  main{max-width:760px;margin:32px auto;padding:0 20px 64px}
+  h1{font-size:1.7rem;margin:0 0 6px}
+  .sub{color:var(--muted);margin-bottom:24px;font-size:.95rem}
+  form{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .field{flex:1 1 220px;display:flex;flex-direction:column;margin-bottom:14px}
+  label{font-size:.85rem;color:var(--muted);margin-bottom:6px}
+  input,select,textarea{padding:11px 13px;border-radius:9px;border:1px solid var(--border);background:#0f172a;color:var(--text);font-size:.95rem;font-family:inherit;width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary)}
+  textarea{min-height:96px;resize:vertical}
+  .req{color:var(--primary)}
+  button{margin-top:8px;width:100%;padding:13px;border:0;border-radius:9px;background:var(--primary);color:#fff;font-size:1rem;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  #result{margin-top:18px;padding:14px 16px;border-radius:10px;display:none;font-size:.95rem}
+  #result.ok{display:block;background:rgba(34,197,94,.12);border:1px solid var(--ok);color:#bbf7d0}
+  #result.err{display:block;background:rgba(239,68,68,.12);border:1px solid var(--err);color:#fecaca}
+  #result.warn{display:block;background:rgba(242,127,47,.12);border:1px solid var(--primary);color:#fed7aa}
+  .hint{color:var(--muted);font-size:.82rem;margin-top:14px}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/zaarhub">ZaarHub</a>
+  <nav>
+    <a href="/zaarhub">Directory</a>
+    <a href="/portal">Owner Portal</a>
+    <a href="/submit-business.html">Add Your Business</a>
+  </nav>
+</header>
+<main>
+  <h1>Add your business</h1>
+  <p class="sub">Send us your listing details and a directory editor will review it. It is free to submit — you only pay if you later upgrade a listing.</p>
+
+  <form id="submitForm" novalidate>
+    <div class="row">
+      <div class="field">
+        <label for="business_name">Business name <span class="req">*</span></label>
+        <input type="text" id="business_name" required maxlength="180" placeholder="Sunrise Coffee Roasters">
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <input type="text" id="category" maxlength="120" placeholder="Coffee Shop">
+      </div>
+    </div>
+    <div class="field">
+      <label for="address">Street address</label>
+      <input type="text" id="address" maxlength="200" placeholder="123 Main St">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="city">City</label>
+        <input type="text" id="city" maxlength="120" placeholder="Palm Bay">
+      </div>
+      <div class="field">
+        <label for="state">State</label>
+        <input type="text" id="state" maxlength="40" placeholder="FL">
+      </div>
+      <div class="field">
+        <label for="zip">ZIP</label>
+        <input type="text" id="zip" maxlength="20" placeholder="32905">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input type="tel" id="phone" maxlength="40" placeholder="(321) 555-0123">
+      </div>
+      <div class="field">
+        <label for="website">Website</label>
+        <input type="text" id="website" maxlength="200" placeholder="https://example.com">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="email">Business email</label>
+        <input type="email" id="email" maxlength="160" placeholder="hello@example.com">
+      </div>
+      <div class="field">
+        <label for="submitter_email">Your email (for updates)</label>
+        <input type="email" id="submitter_email" maxlength="160" placeholder="you@example.com">
+      </div>
+    </div>
+    <div class="field">
+      <label for="description">Short description</label>
+      <textarea id="description" maxlength="1200" placeholder="What do you sell, and what makes you worth a visit?"></textarea>
+    </div>
+    <button type="submit" id="submitBtn">Submit for review</button>
+    <div id="result"></div>
+    <p class="hint">Submissions are rate-limited. If you run into a limit you will see a message here telling you to try again later.</p>
+  </form>
+</main>
+
+<script>
+(function(){
+  var form = document.getElementById('submitForm');
+  var btn = document.getElementById('submitBtn');
+  var out = document.getElementById('result');
+
+  function show(kind, html){ out.className = kind; out.innerHTML = html; }
+  function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // Optional directory attribution: /submit-business.html?d=<directory-slug>
+  var dirId = null;
+  var slug = new URLSearchParams(window.location.search).get('d');
+  if (slug) {
+    fetch('/api/v1/public/' + encodeURIComponent(slug))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        if (!j) return;
+        var d = j.directory || j;
+        if (d && d.id) dirId = d.id;
+      })
+      .catch(function(){});
+  }
+
+  form.addEventListener('submit', async function(ev){
+    ev.preventDefault();
+    var name = val('business_name');
+    if (!name) { show('err', '❌ Business name is required.'); return; }
+
+    var payload = {
+      business_name: name,
+      category: val('category') || null,
+      address: val('address') || null,
+      city: val('city') || null,
+      state: val('state') || null,
+      zip: val('zip') || null,
+      phone: val('phone') || null,
+      email: val('email') || null,
+      website: val('website') || null,
+      description: val('description') || null,
+      submitted_by: name,
+      submitter_email: val('submitter_email') || null
+    };
+    if (dirId) payload.directory_id = dirId;
+
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    out.className = ''; out.innerHTML = '';
+
+    try {
+      var resp = await fetch('/api/v1/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      var body = null;
+      try { body = await resp.json(); } catch(e) {}
+      var msg = (body && (body.message || body.error)) || '';
+
+      if (resp.status === 201) {
+        show('ok', '✅ Thanks! <strong>' + esc(name) + '</strong> was submitted for review. '
+          + (val('submitter_email') ? 'We will email you at ' + esc(val('submitter_email')) + ' once a directory editor has looked at it.' : 'A directory editor will review it shortly.'));
+        form.reset();
+      } else if (resp.status === 429) {
+        show('warn', '⏳ Rate limit reached — ' + esc(msg || 'too many submissions in the last hour.') + ' Please try again later.');
+      } else if (resp.status === 400 || resp.status === 422) {
+        show('err', '❌ ' + esc(msg || 'Please check the form — some details were rejected.'));
+      } else {
+        show('err', '❌ Submission failed (' + resp.status + '). ' + esc(msg));
+      }
+    } catch (e) {
+      show('err', '❌ Network error — could not reach the server. Please try again.');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Submit for review';
+  });
+})();
+</script>
+</body>
+</html>

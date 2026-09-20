@@ -192,18 +192,20 @@ pub async fn update_service_price(
     let dir_id: Option<Uuid> = req.directory_id;
     let net_id: Option<Uuid> = req.network_id;
 
-    // Upsert: try insert, on conflict update
-    let result = sqlx::query_as::<_, ServicePrice>(
-        r#"INSERT INTO service_prices (directory_id, network_id, service_key, price_monthly, price_yearly, price_one_time, is_active)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (directory_id, network_id, service_key)
-           DO UPDATE SET
-               price_monthly = COALESCE($4, service_prices.price_monthly),
-               price_yearly = COALESCE($5, service_prices.price_yearly),
-               price_one_time = COALESCE($6, service_prices.price_one_time),
-               is_active = COALESCE($7, service_prices.is_active),
+    // Update-then-insert. The scope unique index (directory_id, network_id, service_key)
+    // treats NULLs as distinct, so the previous ON CONFLICT upsert silently inserted a
+    // DUPLICATE row for global and directory scopes instead of updating the price.
+    let updated = sqlx::query_as::<_, ServicePrice>(
+        r#"UPDATE service_prices
+           SET price_monthly = COALESCE($4, price_monthly),
+               price_yearly = COALESCE($5, price_yearly),
+               price_one_time = COALESCE($6, price_one_time),
+               is_active = COALESCE($7, is_active),
                updated_at = NOW()
-           RETURNING *"#
+           WHERE service_key = $3
+             AND directory_id IS NOT DISTINCT FROM $1
+             AND network_id IS NOT DISTINCT FROM $2
+           RETURNING *"#,
     )
     .bind(dir_id)
     .bind(net_id)
@@ -212,8 +214,26 @@ pub async fn update_service_price(
     .bind(req.price_yearly)
     .bind(req.price_one_time)
     .bind(req.is_active)
-    .fetch_one(&s.db)
+    .fetch_optional(&s.db)
     .await?;
+
+    let result = match updated {
+        Some(row) => row,
+        None => sqlx::query_as::<_, ServicePrice>(
+            r#"INSERT INTO service_prices (directory_id, network_id, service_key, price_monthly, price_yearly, price_one_time, is_active)
+               VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, true))
+               RETURNING *"#,
+        )
+        .bind(dir_id)
+        .bind(net_id)
+        .bind(&service_key)
+        .bind(req.price_monthly)
+        .bind(req.price_yearly)
+        .bind(req.price_one_time)
+        .bind(req.is_active)
+        .fetch_one(&s.db)
+        .await?,
+    };
 
     Ok(Json(json!({ "service": result })))
 }

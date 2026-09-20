@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing Admin — Multi-Directory (BL29)</title>
+<style>
+  :root {
+    --bg-page: #12121a;
+    --bg-card: #1F1F1F;
+    --bg-input: #16161d;
+    --border: rgba(255,255,255,0.08);
+    --border-hover: rgba(255,255,255,0.20);
+    --text-primary: #eef4f8;
+    --text-secondary: #9fb0bd;
+    --text-tertiary: #6b7d8a;
+    --accent: #8bd3ff;
+    --accent-hover: #66c2ff;
+    --danger: #f87171;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --radius: 8px;
+    --radius-sm: 6px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  a { color: var(--accent); }
+  .header {
+    background: #0d0d14;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-inner {
+    max-width: 1280px; margin: 0 auto; padding: 0 24px; min-height: 56px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .header-brand { display: flex; align-items: center; gap: 10px; color: var(--text-primary); font-weight: 700; text-decoration: none; font-size: 1rem; }
+  .header-brand .dot { color: var(--accent); font-size: 1.1rem; }
+  .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 { font-size: 1.05rem; margin-bottom: 4px; }
+  .card h2 .tag { font-size: 0.7rem; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .08em; margin-left: 8px; }
+  .card p.sub { color: var(--text-secondary); font-size: 0.8125rem; margin-bottom: 16px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid transparent;
+    background: var(--bg-input); color: var(--text-primary);
+    font-size: 0.8125rem; font-weight: 600; cursor: pointer; text-decoration: none;
+    font-family: inherit; height: 32px;
+  }
+  .btn:hover { border-color: var(--border-hover); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-accent { background: rgba(139,211,255,0.14); border-color: rgba(139,211,255,0.35); color: var(--accent); }
+  .btn-accent:hover { background: rgba(139,211,255,0.22); }
+  .btn-ghost { background: transparent; border-color: var(--border); color: var(--text-secondary); }
+  .btn-danger { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.35); color: var(--danger); }
+  .btn-sm { height: 26px; padding: 2px 10px; font-size: 0.75rem; }
+  input, select, textarea {
+    background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
+    border-radius: var(--radius-sm); padding: 7px 9px; font-size: 0.8125rem;
+    font-family: inherit; width: 100%;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  label { display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; }
+  .grid { display: grid; gap: 12px; }
+  .grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .grid-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  @media (max-width: 900px) { .grid-3, .grid-4, .grid-2 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  th {
+    text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-tertiary); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; }
+  .badge { display: inline-block; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 100px; text-transform: uppercase; letter-spacing: .04em; }
+  .badge-active { background: rgba(74,222,136,0.12); color: var(--success); }
+  .badge-inactive { background: rgba(248,113,113,0.12); color: var(--danger); }
+  .badge-featured { background: rgba(251,191,36,0.12); color: var(--warning); }
+  .badge-muted { background: rgba(255,255,255,0.06); color: var(--text-tertiary); }
+  .chip { display: inline-block; background: var(--bg-input); border: 1px solid var(--border); border-radius: 100px; padding: 1px 8px; margin: 1px 3px 1px 0; font-size: 0.7rem; color: var(--text-secondary); }
+  .msg { display: none; margin-top: 12px; padding: 9px 12px; border-radius: var(--radius-sm); font-size: 0.8125rem; border: 1px solid transparent; white-space: pre-wrap; word-break: break-word; }
+  .msg.show { display: block; }
+  .msg.ok { background: rgba(74,222,136,0.10); border-color: rgba(74,222,136,0.30); color: var(--success); }
+  .msg.err { background: rgba(248,113,113,0.10); border-color: rgba(248,113,113,0.30); color: var(--danger); }
+  .msg.warn { background: rgba(251,191,36,0.10); border-color: rgba(251,191,36,0.30); color: var(--warning); }
+  .msg.info { background: rgba(139,211,255,0.08); border-color: rgba(139,211,255,0.25); color: var(--accent); }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .scope-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 16px; }
+  .auth-banner { display: none; }
+  .auth-banner.show { display: block; }
+  .empty { color: var(--text-tertiary); padding: 14px 0; font-size: 0.8125rem; }
+  .muted { color: var(--text-tertiary); font-size: 0.75rem; }
+  .kv { color: var(--text-secondary); font-size: 0.78rem; }
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; max-width: 420px; z-index: 999;
+    background: #1c1c24; border: 1px solid var(--border-hover); border-radius: var(--radius);
+    padding: 12px 16px; font-size: 0.8125rem; box-shadow: 0 12px 32px rgba(0,0,0,.5);
+    transform: translateY(140%); transition: transform .25s ease; color: var(--text-primary);
+  }
+  .toast.show { transform: translateY(0); }
+  .toast.ok { border-color: rgba(74,222,136,0.4); }
+  .toast.err { border-color: rgba(248,113,113,0.4); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <a class="header-brand" href="/admin-panel.html"><span class="dot">&#9679;</span> ZaarHub Pricing Admin</a>
+    <div class="header-actions">
+      <span class="muted" id="auth-state">checking auth&hellip;</span>
+      <button class="btn btn-ghost btn-sm" id="btn-refresh">Refresh all</button>
+      <a class="btn btn-ghost btn-sm" href="/admin-panel.html">Admin Panel</a>
+      <a class="btn btn-ghost btn-sm" href="/admin-login.html">Sign in</a>
+      <button class="btn btn-ghost btn-sm" id="btn-signout" style="display:none">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ===== AUTH BANNER ===== -->
+  <div class="card auth-banner" id="auth-banner" style="border-color:rgba(251,191,36,0.35)">
+    <h2>Admin sign-in required</h2>
+    <p class="sub" id="auth-banner-text">
+      No admin token was found in this browser, so the pricing endpoints return
+      <span class="mono">401 Authentication required</span>. Sign in, then reload this page.
+    </p>
+    <div class="toolbar">
+      <a class="btn btn-accent" href="/admin-login.html">Go to /admin-login.html</a>
+      <button class="btn btn-ghost" id="btn-retry-auth">Retry with current token</button>
+    </div>
+    <div class="grid grid-2">
+      <div>
+        <label for="manual-token">Or paste an admin bearer token (stored as <span class="mono">md_admin_token</span>)</label>
+        <input type="text" id="manual-token" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9&hellip;">
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn btn-accent" id="btn-save-token">Save token &amp; reload data</button>
+      </div>
+    </div>
+    <div class="msg err" id="auth-msg"></div>
+  </div>
+
+  <!-- ===== SCOPE ===== -->
+  <div class="card">
+    <h2>Scope filter <span class="tag">optional</span></h2>
+    <p class="sub">Leave both blank to read the global pricing rows (service_prices with no directory/network). Scope values are passed as <span class="mono">?directory_id=</span> / <span class="mono">?network_id=</span> to GET /pricing/services and GET /pricing/bundles.</p>
+    <div class="grid grid-3">
+      <div><label for="scope-directory">directory_id (uuid)</label><input type="text" id="scope-directory" placeholder="blank = global"></div>
+      <div><label for="scope-network">network_id (uuid)</label><input type="text" id="scope-network" placeholder="blank = global"></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn btn-accent" id="btn-apply-scope">Apply scope &amp; reload</button></div>
+    </div>
+  </div>
+
+  <!-- ===== SERVICE PRICES ===== -->
+  <div class="card">
+    <h2>Service prices <span class="tag">GET /api/v1/pricing/services</span></h2>
+    <p class="sub">Inline edit uses <span class="mono">PUT /api/v1/pricing/services/:service_key</span> (upsert on directory_id + network_id + service_key).</p>
+    <div class="toolbar">
+      <button class="btn btn-ghost btn-sm" id="btn-load-services">Reload service prices</button>
+      <span class="muted" id="services-count">&nbsp;</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Service key</th><th>Monthly</th><th>Yearly</th><th>One-time</th>
+            <th>Currency</th><th>Active</th><th>Scope</th><th>Updated (UTC)</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="services-body">
+          <tr><td colspan="9" class="empty">Not loaded yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="msg" id="services-msg"></div>
+  </div>
+
+  <!-- ===== BUNDLES ===== -->
+  <div class="card">
+    <h2>Price bundles <span class="tag">GET/POST /api/v1/pricing/bundles</span></h2>
+    <p class="sub">Create uses <span class="mono">POST /pricing/bundles</span>; edit uses <span class="mono">PUT /pricing/bundles/:id</span>; delete uses <span class="mono">DELETE /pricing/bundles/:id</span>. Service keys are comma-separated; each one is inserted into <span class="mono">bundle_services</span>.</p>
+
+    <form id="bundle-form" autocomplete="off">
+      <div class="grid grid-4">
+        <div><label for="b-name">Name *</label><input type="text" id="b-name" placeholder="Growth Bundle" required></div>
+        <div><label for="b-slug">Slug *</label><input type="text" id="b-slug" placeholder="growth-bundle" required></div>
+        <div><label for="b-monthly">price_monthly</label><input type="text" id="b-monthly" placeholder="199.00"></div>
+        <div><label for="b-yearly">price_yearly</label><input type="text" id="b-yearly" placeholder="1990.00"></div>
+      </div>
+      <div class="grid grid-4" style="margin-top:12px">
+        <div><label for="b-sort">sort_order</label><input type="text" id="b-sort" placeholder="0"></div>
+        <div><label for="b-active">is_active</label>
+          <select id="b-active"><option value="true">true</option><option value="false">false</option></select></div>
+        <div><label for="b-featured">is_featured</label>
+          <select id="b-featured"><option value="false">false</option><option value="true">true</option></select></div>
+        <div><label for="b-services">services (comma-separated keys)</label><input type="text" id="b-services" placeholder="premium_listing, deals, blogging"></div>
+      </div>
+      <div style="margin-top:12px">
+        <label for="b-description">description</label>
+        <textarea id="b-description" rows="2" placeholder="Everything a growing local business needs"></textarea>
+      </div>
+      <div class="toolbar" style="margin:14px 0 0">
+        <button class="btn btn-accent" type="submit" id="btn-bundle-submit">Create bundle</button>
+        <button class="btn btn-ghost" type="button" id="btn-bundle-cancel" style="display:none">Cancel edit</button>
+        <span class="muted" id="bundle-mode">mode: create</span>
+      </div>
+    </form>
+
+    <div class="msg" id="bundles-form-msg"></div>
+    <hr class="sep">
+    <div class="toolbar">
+      <button class="btn btn-ghost btn-sm" id="btn-load-bundles">Reload bundles</button>
+      <span class="muted" id="bundles-count">&nbsp;</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Slug</th><th>Monthly</th><th>Yearly</th>
+            <th>Services</th><th>Sort</th><th>Featured</th><th>Active</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="bundles-body">
+          <tr><td colspan="9" class="empty">Not loaded yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="msg" id="bundles-msg"></div>
+  </div>
+
+  <!-- ===== GRANDFATHERED ===== -->
+  <div class="card">
+    <h2>Grandfathered pricing <span class="tag">POST /api/v1/pricing/grandfather</span></h2>
+    <p class="sub">Locks a legacy price for one business + service key. Upsert on (business_id, service_key).</p>
+    <form id="gf-form" autocomplete="off">
+      <div class="grid grid-3">
+        <div><label for="gf-business">business_id (uuid) *</label><input type="text" id="gf-business" placeholder="00000000-0000-0000-0000-000000000000" required></div>
+        <div><label for="gf-service">service_key *</label>
+          <input type="text" id="gf-service" list="service-keys" placeholder="premium_listing" required>
+          <datalist id="service-keys"></datalist>
+        </div>
+        <div><label for="gf-expires">expires_at (local &rarr; sent as UTC ISO)</label><input type="datetime-local" id="gf-expires"></div>
+      </div>
+      <div class="grid grid-3" style="margin-top:12px">
+        <div><label for="gf-monthly">price_monthly</label><input type="text" id="gf-monthly" placeholder="9.00"></div>
+        <div><label for="gf-yearly">price_yearly</label><input type="text" id="gf-yearly" placeholder="90.00"></div>
+        <div><label for="gf-onetime">price_one_time</label><input type="text" id="gf-onetime" placeholder="blank = none"></div>
+      </div>
+      <div class="toolbar" style="margin:14px 0 0">
+        <button class="btn btn-accent" type="submit" id="btn-gf-submit">Set grandfathered pricing</button>
+        <span class="muted">Blank numeric fields are sent as null (COALESCE keeps any existing value).</span>
+      </div>
+    </form>
+    <div class="msg" id="gf-form-msg"></div>
+
+    <hr class="sep">
+    <div class="grid grid-3">
+      <div><label for="gf-lookup">Lookup business_id (uuid)</label><input type="text" id="gf-lookup" placeholder="00000000-0000-0000-0000-000000000000"></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn btn-ghost" id="btn-gf-lookup">Lookup rows (GET /pricing/grandfather/:business_id)</button></div>
+      <div style="display:flex;align-items:flex-end"><span class="muted" id="gf-lookup-count">&nbsp;</span></div>
+    </div>
+    <div style="overflow-x:auto;margin-top:14px">
+      <table>
+        <thead>
+          <tr><th>Service key</th><th>Monthly</th><th>Yearly</th><th>One-time</th><th>Expires (UTC)</th><th>Created (UTC)</th></tr>
+        </thead>
+        <tbody id="gf-body">
+          <tr><td colspan="6" class="empty">No lookup performed yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="msg" id="gf-msg"></div>
+  </div>
+
+  <!-- ===== PUBLIC PREVIEW ===== -->
+  <div class="card">
+    <h2>Public pricing preview <span class="tag">GET /api/v1/pricing/public (no auth)</span></h2>
+    <p class="sub">Exactly what the public read-only endpoint returns: active global services plus active global bundles with their service keys.</p>
+    <div class="toolbar"><button class="btn btn-ghost btn-sm" id="btn-load-public">Load /pricing/public</button></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Public services (active)</th><th>Monthly</th><th>Yearly</th><th>One-time</th></tr></thead>
+        <tbody id="public-services-body"><tr><td colspan="4" class="empty">Not loaded yet.</td></tr></tbody>
+      </table>
+    </div>
+    <div style="overflow-x:auto;margin-top:14px">
+      <table>
+        <thead><tr><th>Public bundles (active)</th><th>Slug</th><th>Monthly</th><th>Yearly</th><th>Services</th></tr></thead>
+        <tbody id="public-bundles-body"><tr><td colspan="5" class="empty">Not loaded yet.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="msg" id="public-msg"></div>
+  </div>
+
+  <p class="muted">Read-only diagnostics only — this page writes only when you explicitly submit an edit, a bundle form, or a grandfathered-pricing form.</p>
+</div>
+
+<div class="toast" id="toast"><span id="toast-text"></span></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var API = '/api/v1';
+  var services = [];   // last GET /pricing/services payload
+  var bundles = [];    // last GET /pricing/bundles payload ({bundle, services})
+  var editingService = null;   // service_key currently in inline edit
+  var editingBundleId = null;  // bundle id being edited
+
+  function el(id) { return document.getElementById(id); }
+  function esc(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function num(v) {
+    if (v === null || v === undefined || v === '') return '&mdash;';
+    var n = Number(v);
+    return isFinite(n) ? n.toFixed(2) : esc(String(v));
+  }
+  function attr(v) { return v === null || v === undefined ? '' : esc(v); }
+  function isBlank(v) { return v === null || v === undefined || String(v).trim() === ''; }
+  function dec(v) { return isBlank(v) ? null : String(v).trim(); }
+  function intOrNull(v) { if (isBlank(v)) return null; var n = parseInt(String(v).trim(), 10); return isNaN(n) ? null : n; }
+
+  function setMsg(id, kind, text) {
+    var m = el(id);
+    if (!m) return;
+    m.className = 'msg show ' + kind;
+    m.innerHTML = text;
+  }
+  function clearMsg(id) { var m = el(id); if (m) { m.className = 'msg'; m.innerHTML = ''; } }
+  function toast(kind, text) {
+    var t = el('toast');
+    el('toast-text').innerHTML = text;
+    t.className = 'toast show ' + kind;
+    setTimeout(function () { t.className = 'toast ' + kind; }, 4200);
+  }
+
+  // ── Token handling: md_admin_token, then token, then ws_dir_token ──────────
+  function getToken() {
+    try {
+      return localStorage.getItem('md_admin_token') ||
+             localStorage.getItem('token') ||
+             localStorage.getItem('ws_dir_token') || '';
+    } catch (e) { return ''; }
+  }
+  function tokenSource() {
+    try {
+      if (localStorage.getItem('md_admin_token')) return 'md_admin_token';
+      if (localStorage.getItem('token')) return 'token';
+      if (localStorage.getItem('ws_dir_token')) return 'ws_dir_token';
+    } catch (e) {}
+    return '';
+  }
+
+  function renderAuthState() {
+    var src = tokenSource();
+    el('auth-state').innerHTML = src
+      ? 'token: <span class="mono">' + esc(src) + '</span>'
+      : 'no admin token';
+    el('btn-signout').style.display = src ? 'inline-flex' : 'none';
+    if (!src) showAuthBanner('No admin token found in localStorage (looked for <span class="mono">md_admin_token</span>, <span class="mono">token</span>, <span class="mono">ws_dir_token</span>). Sign in at <a href="/admin-login.html">/admin-login.html</a>, or paste a token below.');
+    else hideAuthBanner();
+  }
+  function showAuthBanner(text) {
+    if (text) el('auth-banner-text').innerHTML = text;
+    el('auth-banner').classList.add('show');
+  }
+  function hideAuthBanner() { el('auth-banner').classList.remove('show'); }
+
+  // ── API helper ────────────────────────────────────────────────────────────
+  function api(method, path, body) {
+    var headers = { 'Content-Type': 'application/json' };
+    var t = getToken();
+    if (t) headers['Authorization'] = 'Bearer ' + t;
+    var opts = { method: method, headers: headers };
+    if (body !== undefined && body !== null) opts.body = JSON.stringify(body);
+    return fetch(API + path, opts).then(function (res) {
+      return res.text().then(function (txt) {
+        var data = null;
+        try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
+        if (res.status === 401) {
+          showAuthBanner('The API rejected the request with <b>401 Authentication required</b> &mdash; the stored token is missing, expired or invalid. Sign in at <a href="/admin-login.html">/admin-login.html</a>, then use &ldquo;Retry with current token&rdquo;.');
+        } else if (res.status === 403) {
+          showAuthBanner('The API rejected the request with <b>403</b> &mdash; this admin token does not have the admin role required by the pricing routes.');
+        }
+        if (!res.ok) {
+          var msg = (data && (data.message || data.error)) || (txt ? txt.slice(0, 300) : '');
+          var err = new Error(msg || ('HTTP ' + res.status + ' ' + res.statusText));
+          err.status = res.status;
+          err.body = data || txt;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  function scopeQuery() {
+    var parts = [];
+    var d = el('scope-directory').value.trim();
+    var n = el('scope-network').value.trim();
+    if (d) parts.push('directory_id=' + encodeURIComponent(d));
+    if (n) parts.push('network_id=' + encodeURIComponent(n));
+    return parts.length ? '?' + parts.join('&') : '';
+  }
+  function scopeLabel() {
+    var d = el('scope-directory').value.trim();
+    var n = el('scope-network').value.trim();
+    if (d) return 'directory ' + d.slice(0, 8);
+    if (n) return 'network ' + n.slice(0, 8);
+    return 'global';
+  }
+
+  // ── SERVICE PRICES ────────────────────────────────────────────────────────
+  function loadServices() {
+    setMsg('services-msg', 'info', 'Loading GET /api/v1/pricing/services' + scopeQuery() + ' &hellip;');
+    return api('GET', '/pricing/services' + scopeQuery()).then(function (data) {
+      services = (data && data.services) || [];
+      renderServices();
+      var keys = services.map(function (s) { return s.service_key; });
+      el('service-keys').innerHTML = keys.map(function (k) { return '<option value="' + attr(k) + '"></option>'; }).join('');
+      el('services-count').textContent = services.length + ' row(s), scope: ' + scopeLabel();
+      if (!services.length) {
+        setMsg('services-msg', 'warn', 'GET /pricing/services returned <b>0</b> rows for scope <b>' + esc(scopeLabel()) + '</b>. Clear the scope filter to see the global service_prices rows.');
+      } else {
+        setMsg('services-msg', 'ok', 'Loaded <b>' + services.length + '</b> service price row(s) for scope <b>' + esc(scopeLabel()) + '</b>.');
+      }
+      return data;
+    }).catch(function (e) {
+      services = [];
+      renderServices();
+      el('services-count').textContent = 'load failed';
+      setMsg('services-msg', 'err', 'Failed to load service prices: ' + esc(e.message) + ' (status ' + (e.status || '?') + ')');
+      throw e;
+    });
+  }
+
+  function renderServices() {
+    var tb = el('services-body');
+    if (!services.length) {
+      tb.innerHTML = '<tr><td colspan="9" class="empty">No service price rows returned for the current scope.</td></tr>';
+      return;
+    }
+    tb.innerHTML = services.map(function (s, i) {
+      if (editingService === s.service_key) {
+        return '<tr>' +
+          '<td class="mono">' + esc(s.service_key) + '</td>' +
+          '<td><input type="text" id="edit-monthly" value="' + attr(s.price_monthly) + '" placeholder="null"></td>' +
+          '<td><input type="text" id="edit-yearly" value="' + attr(s.price_yearly) + '" placeholder="null"></td>' +
+          '<td><input type="text" id="edit-onetime" value="' + attr(s.price_one_time) + '" placeholder="null"></td>' +
+          '<td class="muted">' + esc(s.currency) + '</td>' +
+          '<td><select id="edit-active"><option value="true"' + (s.is_active ? ' selected' : '') + '>true</option><option value="false"' + (s.is_active ? '' : ' selected') + '>false</option></select></td>' +
+          '<td><input type="text" id="edit-directory" value="' + attr(s.directory_id) + '" placeholder="directory_id (blank = global)">' +
+          '<input type="text" id="edit-network" value="' + attr(s.network_id) + '" placeholder="network_id" style="margin-top:4px"></td>' +
+          '<td class="muted">' + esc(s.updated_at) + '</td>' +
+          '<td><div class="row-actions">' +
+            '<button class="btn btn-accent btn-sm" type="button" onclick="window.__pricing.saveService(' + i + ')">Save</button>' +
+            '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__pricing.cancelEdit()">Cancel</button>' +
+          '</div></td>' +
+        '</tr>';
+      }
+      return '<tr>' +
+        '<td class="mono">' + esc(s.service_key) + '</td>' +
+        '<td class="num">' + num(s.price_monthly) + '</td>' +
+        '<td class="num">' + num(s.price_yearly) + '</td>' +
+        '<td class="num">' + num(s.price_one_time) + '</td>' +
+        '<td class="muted">' + esc(s.currency) + '</td>' +
+        '<td><span class="badge ' + (s.is_active ? 'badge-active">active' : 'badge-inactive">inactive') + '</span></td>' +
+        '<td class="muted">' + (s.directory_id ? 'dir ' + esc(String(s.directory_id).slice(0, 8)) : (s.network_id ? 'net ' + esc(String(s.network_id).slice(0, 8)) : 'global')) + '</td>' +
+        '<td class="muted mono">' + esc(s.updated_at) + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" type="button" onclick="window.__pricing.startEdit(\'' + esc(String(s.service_key).replace(/'/g, "")) + '\')">Edit</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function startEdit(serviceKey) {
+    editingService = serviceKey;
+    renderServices();
+    clearMsg('services-msg');
+    setMsg('services-msg', 'info', 'Editing <span class="mono">' + esc(serviceKey) + '</span> &mdash; change the prices then press Save (PUT /api/v1/pricing/services/' + esc(serviceKey) + ').');
+  }
+  function cancelEdit() {
+    editingService = null;
+    renderServices();
+    clearMsg('services-msg');
+  }
+
+  function saveService(i) {
+    var s = services[i];
+    if (!s) { setMsg('services-msg', 'err', 'Internal error: row no longer in list. Reload service prices.'); return; }
+    var body = {
+      price_monthly: dec(el('edit-monthly').value),
+      price_yearly: dec(el('edit-yearly').value),
+      price_one_time: dec(el('edit-onetime').value),
+      is_active: el('edit-active').value === 'true',
+      directory_id: dec(el('edit-directory').value),
+      network_id: dec(el('edit-network').value)
+    };
+    var path = '/pricing/services/' + encodeURIComponent(s.service_key);
+    setMsg('services-msg', 'info', 'Saving <span class="mono">' + esc(s.service_key) + '</span> via PUT ' + path + ' &hellip;');
+    api('PUT', path, body).then(function (data) {
+      var row = data && data.service;
+      var sameId = row && String(row.id) === String(s.id);
+      editingService = null;
+      setMsg('services-msg', 'ok', 'Saved <span class="mono">' + esc(s.service_key) + '</span> (HTTP 200). Returned: monthly=' + num(row && row.price_monthly) + ', yearly=' + num(row && row.price_yearly) + ', one-time=' + num(row && row.price_one_time) + ', active=' + esc(row && row.is_active) + '.');
+      if (row && !sameId) {
+        setMsg('services-msg', 'warn',
+          'Saved under a <b>new row id</b> (' + esc(String(row.id).slice(0, 8)) + ' &ne; ' + esc(String(s.id).slice(0, 8)) + '): the backend upsert is <span class="mono">ON CONFLICT (directory_id, network_id, service_key)</span> and Postgres treats NULL scope columns as distinct, so a global-scope PUT inserts rather than updates. The Rust handler would need a change for true in-place updates.');
+      }
+      toast('ok', 'Service price saved.');
+      loadServices();
+    }).catch(function (e) {
+      setMsg('services-msg', 'err', 'PUT ' + path + ' failed: ' + esc(e.message) + ' (status ' + (e.status || '?') + ')');
+      toast('err', 'Service price save failed.');
+    });
+  }
+
+  // ── BUNDLES ───────────────────────────────────────────────────────────────
+  function loadBundles() {
+    setMsg('bundles-msg', 'info', 'Loading GET /api/v1/pricing/bundles' + scopeQuery() + ' &hellip;');
+    return api('GET', '/pricing/bundles' + scopeQuery()).then(function (data) {
+      bundles = (data && data.bundles) || [];
+      renderBundles();
+      el('bundles-count').textContent = bundles.length + ' bundle(s), scope: ' + scopeLabel();
+      if (!bundles.length) setMsg('bundles-msg', 'ok', 'GET /pricing/bundles returned <b>0</b> bundles &mdash; none configured for scope <b>' + esc(scopeLabel()) + '</b> yet. Use the form above to create one.');
+      else setMsg('bundles-msg', 'ok', 'Loaded <b>' + bundles.length + '</b> bundle(s) for scope <b>' + esc(scopeLabel()) + '</b>.');
+      return data;
+    }).catch(function (e) {
+      bundles = [];
+      renderBundles();
+      el('bundles-count').textContent = 'load failed';
+      setMsg('bundles-msg', 'err', 'Failed to load bundles: ' + esc(e.message) + ' (status ' + (e.status || '?') + ')');
+      throw e;
+    });
+  }
+
+  function renderBundles() {
+    var tb = el('bundles-body');
+    if (!bundles.length) {
+      tb.innerHTML = '<tr><td colspan="9" class="empty">No bundles returned for the current scope.</td></tr>';
+      return;
+    }
+    tb.innerHTML = bundles.map(function (item, i) {
+      var b = item.bundle || {};
+      var svcs = item.services || [];
+      return '<tr>' +
+        '<td>' + esc(b.name) + (b.description ? '<div class="muted">' + esc(String(b.description).slice(0, 70)) + '</div>' : '') + '</td>' +
+        '<td class="mono">' + esc(b.slug) + '</td>' +
+        '<td class="num">' + num(b.price_monthly) + '</td>' +
+        '<td class="num">' + num(b.price_yearly) + '</td>' +
+        '<td class="kv">' + (svcs.length ? svcs.map(function (k) { return '<span class="chip">' + esc(k) + '</span>'; }).join('') : '<span class="muted">none</span>') + '</td>' +
+        '<td class="num">' + esc(b.sort_order) + '</td>' +
+        '<td>' + (b.is_featured ? '<span class="badge badge-featured">featured</span>' : '<span class="muted">&mdash;</span>') + '</td>' +
+        '<td><span class="badge ' + (b.is_active ? 'badge-active">active' : 'badge-inactive">inactive') + '</span></td>' +
+        '<td><div class="row-actions">' +
+          '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__pricing.editBundle(' + i + ')">Edit</button>' +
+          '<button class="btn btn-danger btn-sm" type="button" onclick="window.__pricing.deleteBundle(' + i + ')">Delete</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function editBundle(i) {
+    var item = bundles[i];
+    if (!item) { setMsg('bundles-form-msg', 'err', 'Internal error: bundle no longer in list. Reload bundles.'); return; }
+    var b = item.bundle || {};
+    editingBundleId = b.id;
+    el('b-name').value = b.name || '';
+    el('b-slug').value = b.slug || '';
+    el('b-description').value = b.description || '';
+    el('b-monthly').value = isBlank(b.price_monthly) ? '' : b.price_monthly;
+    el('b-yearly').value = isBlank(b.price_yearly) ? '' : b.price_yearly;
+    el('b-sort').value = isBlank(b.sort_order) ? '' : b.sort_order;
+    el('b-active').value = b.is_active ? 'true' : 'false';
+    el('b-featured').value = b.is_featured ? 'true' : 'false';
+    el('b-services').value = (item.services || []).join(', ');
+    el('btn-bundle-submit').textContent = 'Save bundle (PUT)';
+    el('btn-bundle-cancel').style.display = 'inline-flex';
+    el('bundle-mode').innerHTML = 'mode: edit <span class="mono">' + esc(b.slug) + '</span>';
+    setMsg('bundles-form-msg', 'info', 'Editing bundle <span class="mono">' + esc(b.name) + '</span> &mdash; PUT /api/v1/pricing/bundles/' + esc(b.id) + '.');
+    el('bundle-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function resetBundleForm() {
+    editingBundleId = null;
+    el('bundle-form').reset();
+    el('btn-bundle-submit').textContent = 'Create bundle';
+    el('btn-bundle-cancel').style.display = 'none';
+    el('bundle-mode').textContent = 'mode: create';
+  }
+
+  function submitBundle(ev) {
+    ev.preventDefault();
+    var name = el('b-name').value.trim();
+    var slug = el('b-slug').value.trim();
+    if (!name || !slug) { setMsg('bundles-form-msg', 'err', 'name and slug are required by the backend (POST/PUT /pricing/bundles).'); return; }
+    var svcList = el('b-services').value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+    var payload = {
+      name: name,
+      slug: slug,
+      description: el('b-description').value.trim() || null,
+      price_monthly: dec(el('b-monthly').value),
+      price_yearly: dec(el('b-yearly').value),
+      is_active: el('b-active').value === 'true',
+      sort_order: intOrNull(el('b-sort').value),
+      is_featured: el('b-featured').value === 'true',
+      services: svcList
+    };
+    var isEdit = !!editingBundleId;
+    var path = isEdit ? '/pricing/bundles/' + encodeURIComponent(editingBundleId) : '/pricing/bundles';
+    var method = isEdit ? 'PUT' : 'POST';
+    setMsg('bundles-form-msg', 'info', method + ' ' + path + ' &hellip;');
+    el('btn-bundle-submit').disabled = true;
+    api(method, path, payload).then(function (data) {
+      el('btn-bundle-submit').disabled = false;
+      var b = (data && data.bundle) || {};
+      var svcs = (data && data.services) || [];
+      setMsg('bundles-form-msg', 'ok', (isEdit ? 'Bundle updated' : 'Bundle created') + ' (HTTP 200): <span class="mono">' + esc(b.slug) + '</span>, monthly ' + num(b.price_monthly) + ', yearly ' + num(b.price_yearly) + ', services [' + esc(svcs.join(', ')) + '].');
+      toast('ok', isEdit ? 'Bundle updated.' : 'Bundle created.');
+      resetBundleForm();
+      loadBundles();
+    }).catch(function (e) {
+      el('btn-bundle-submit').disabled = false;
+      setMsg('bundles-form-msg', 'err', method + ' ' + path + ' failed: ' + esc(e.message) + ' (status ' + (e.status || '?') + ')');
+      toast('err', 'Bundle save failed.');
+    });
+  }
+
+  function deleteBundle(i) {
+    var item = bundles[i];
+    if (!item || !item.bundle) { setMsg('bundles-msg', 'err', 'Internal error: bundle no longer in list. Reload bundles.'); return; }
+    var b = item.bundle;
+    if (!window.confirm('Delete bundle "' + b.name + '" (' + b.slug + ')? This permanently removes the bundle and its bundle_services rows.')) return;
+    var path = '/pricing/bundles/' + encodeURIComponent(b.id);
+    setMsg('bundles-msg', 'info', 'DELETE ' + path + ' &hellip;');
+    api('DELETE', path).then(function (data) {
+      setMsg('bundles-msg', 'ok', 'Deleted bundle <span class="mono">' + esc(b.slug) + '</span>. Response: ' + esc(JSON.stringify(data)) + '.');
+      toast('ok', 'Bundle deleted.');
+      loadBundles();
+    }).catch(function (e) {
+      setMsg('bundles-msg', 'err', 'DELETE ' + path + ' failed: ' + esc(e.message) + ' (status ' + (e.status || '?') + ')');
+      toast('err', 'Bundle delete failed.');
+    });
+  }
+
+  // ── GRANDFATHERED ─────────────────────────────────────────────────────────
+  function submitGrandfather(ev) {
+    ev.preventDefault();
+    var business_id = el('gf-business').value.trim();
+    var service_key = el('gf-service').value.trim();
+    if (!business_id || !service_key) { setMsg('gf-form-msg', 'err', 'business_id and service_key are required (SetGrandfatheredRequest).'); return; }
+    var expires = el('gf-expires').value;
+    var body = {
+      business_id: business_id,
+      service_key: service_key,
+      price_monthly: dec(el('gf-monthly').value),
+      price_yearly: dec(el('gf-yearly').value),
+      price_one_time: dec(el('gf-onetime').value),
+      expires_at: expires ? new Date(expires).toISOString() : null
+    };
+    setMsg('gf-form-msg', 'info', 'POST /api/v1/pricing/grandfather &hellip;');
+    el('btn-gf-submit').disabled = true;
+    api('POST', '/pricing/grandfather', body).then(function (data) {
+      el('btn-gf-submit').disabled = false;
+      var g = (data && data.grandfathered) || {};
+      setMsg('gf-form-msg', 'ok', 'Grandfathered pricing set (HTTP 200): service <span class="mono">' + esc(g.service_key) + '</span> for business <span class="mono">' + esc(g.business_id) + '</span> &mdash; monthly ' + num(g.price_monthly) + ', yearly ' + num(g.price_yearly) + ', one-time ' + num(g.price_one_time) + ', expires ' + (g.expires_at ? esc(g.expires_at) : 'never') + '.');
+      toast('ok', 'Grandfathered pricing saved.');
+      el('gf-lookup').value = business_id;
+      lookupGrandfather();
+    }).catch(function (e) {
+      el('btn-gf-submit').disabled = false;
+      setMsg('gf-form-msg', 'err', 'POST /pricing/grandfather failed: ' + esc(e.message) + ' (status ' + (e.status || '?') + ')');
+      toast('err', 'Grandfathered save failed.');
+    });
+  }
+
+  function lookupGrandfather() {
+    var id = el('gf-lookup').value.trim();
+    if (!id) { setMsg('gf-msg', 'err', 'Enter a business_id (uuid) to look up GET /api/v1/pricing/grandfather/:business_id.'); return; }
+    setMsg('gf-msg', 'info', 'GET /api/v1/pricing/grandfather/' + esc(id) + ' &hellip;');
+    api('GET', '/pricing/grandfather/' + encodeURIComponent(id)).then(function (data) {
+      var rows = (data && data.grandfathered) || [];
+      var tb = el('gf-body');
+      if (!rows.length) {
+        tb.innerHTML = '<tr><td colspan="6" class="empty">No grandfathered pricing rows for this business.</td></tr>';
+        setMsg('gf-msg', 'ok', 'GET /pricing/grandfather/' + esc(id) + ' returned <b>0</b> rows (valid request, no overrides configured).');
+      } else {
+        tb.innerHTML = rows.map(function (g) {
+          return '<tr>' +
+            '<td class="mono">' + esc(g.service_key) + '</td>' +
+            '<td class="num">' + num(g.price_monthly) + '</td>' +
+            '<td class="num">' + num(g.price_yearly) + '</td>' +
+            '<td class="num">' + num(g.price_one_time) + '</td>' +
+            '<td class="mono">' + (g.expires_at ? esc(g.expires_at) : '<span class="muted">never</span>') + '</td>' +
+            '<td class="mono muted">' + esc(g.created_at) + '</td>' +
+          '</tr>';
+        }).join('');
+        setMsg('gf-msg', 'ok', 'Loaded <b>' + rows.length + '</b> grandfathered row(s) for business <span class="mono">' + esc(id) + '</span>.');
+      }
+      el('gf-lookup-count').textContent = rows.length + ' row(s)';
+    }).catch(function (e) {
+      el('gf-body').innerHTML = '<tr><td colspan="6" class="empty">Lookup failed.</td></tr>';
+      el('gf-lookup-count').textContent = 'lookup failed';
+      setMsg('gf-msg', 'err', 'GET /pricing/grandfather/' + esc(id) + ' failed: ' + esc(e.message) + ' (status ' + (e.status || '?') + '). A non-uuid business_id returns a 400 from the path extractor.');
+    });
+  }
+
+  // ── PUBLIC PREVIEW ────────────────────────────────────────────────────────
+  function loadPublic() {
+    setMsg('public-msg', 'info', 'Loading GET /api/v1/pricing/public &hellip;');
+    return api('GET', '/pricing/public').then(function (data) {
+      var svcs = (data && data.services) || [];
+      var bs = (data && data.bundles) || [];
+      el('public-services-body').innerHTML = svcs.length ? svcs.map(function (s) {
+        return '<tr><td class="mono">' + esc(s.service_key) + '</td><td class="num">' + num(s.price_monthly) + '</td><td class="num">' + num(s.price_yearly) + '</td><td class="num">' + num(s.price_one_time) + '</td></tr>';
+      }).join('') : '<tr><td colspan="4" class="empty">No active public services.</td></tr>';
+      el('public-bundles-body').innerHTML = bs.length ? bs.map(function (b) {
+        return '<tr><td>' + esc(b.name) + '</td><td class="mono">' + esc(b.slug) + '</td><td class="num">' + num(b.price_monthly) + '</td><td class="num">' + num(b.price_yearly) + '</td><td class="kv">' + ((b.services || []).map(function (k) { return '<span class="chip">' + esc(k) + '</span>'; }).join('') || '<span class="muted">none</span>') + '</td></tr>';
+      }).join('') : '<tr><td colspan="5" class="empty">No active public bundles.</td></tr>';
+      setMsg('public-msg', 'ok', 'Public endpoint returned <b>' + svcs.length + '</b> active service(s) and <b>' + bs.length + '</b> active bundle(s).');
+      return data;
+    }).catch(function (e) {
+      el('public-services-body').innerHTML = '<tr><td colspan="4" class="empty">Load failed.</td></tr>';
+      el('public-bundles-body').innerHTML = '<tr><td colspan="5" class="empty">Load failed.</td></tr>';
+      setMsg('public-msg', 'err', 'GET /pricing/public failed: ' + esc(e.message) + ' (status ' + (e.status || '?') + ')');
+    });
+  }
+
+  // ── WIRING ────────────────────────────────────────────────────────────────
+  window.__pricing = {
+    startEdit: startEdit,
+    cancelEdit: cancelEdit,
+    saveService: saveService,
+    editBundle: editBundle,
+    deleteBundle: deleteBundle,
+    loadServices: loadServices,
+    loadBundles: loadBundles,
+    loadPublic: loadPublic,
+    lookupGrandfather: lookupGrandfather
+  };
+
+  el('btn-refresh').addEventListener('click', function () { refreshAll(); });
+  el('btn-apply-scope').addEventListener('click', function () { refreshAll(); });
+  el('btn-load-services').addEventListener('click', function () { loadServices().catch(function () {}); });
+  el('btn-load-bundles').addEventListener('click', function () { loadBundles().catch(function () {}); });
+  el('btn-load-public').addEventListener('click', function () { loadPublic(); });
+  el('btn-gf-lookup').addEventListener('click', function () { lookupGrandfather(); });
+  el('bundle-form').addEventListener('submit', submitBundle);
+  el('btn-bundle-cancel').addEventListener('click', function () { resetBundleForm(); clearMsg('bundles-form-msg'); });
+  el('gf-form').addEventListener('submit', submitGrandfather);
+
+  el('btn-save-token').addEventListener('click', function () {
+    var t = el('manual-token').value.trim();
+    if (!t) { setMsg('auth-msg', 'err', 'Paste a token first.'); return; }
+    try { localStorage.setItem('md_admin_token', t); } catch (e) { setMsg('auth-msg', 'err', 'Could not write localStorage: ' + esc(e.message)); return; }
+    setMsg('auth-msg', 'ok', 'Token stored as md_admin_token. Reloading data &hellip;');
+    renderAuthState();
+    refreshAll();
+  });
+  el('btn-retry-auth').addEventListener('click', function () { renderAuthState(); refreshAll(); });
+  el('btn-signout').addEventListener('click', function () {
+    try {
+      localStorage.removeItem('md_admin_token');
+      localStorage.removeItem('token');
+      localStorage.removeItem('ws_dir_token');
+    } catch (e) {}
+    services = []; bundles = [];
+    renderServices(); renderBundles();
+    el('gf-body').innerHTML = '<tr><td colspan="6" class="empty">Signed out.</td></tr>';
+    setMsg('services-msg', 'warn', 'Signed out locally: admin token cleared from localStorage. Reload to sign in again.');
+    setMsg('bundles-msg', 'warn', 'Signed out locally.');
+    renderAuthState();
+    toast('ok', 'Local admin token cleared.');
+  });
+
+  function refreshAll() {
+    if (!getToken()) {
+      renderAuthState();
+      setMsg('services-msg', 'warn', 'Admin sign-in required: no token in localStorage, so GET /pricing/services would return 401. Sign in at /admin-login.html or paste a token in the banner above.');
+      setMsg('bundles-msg', 'warn', 'Admin sign-in required (see the banner at the top of this page).');
+      setMsg('gf-msg', 'warn', 'Admin sign-in required (see the banner at the top of this page).');
+      services = []; bundles = []; renderServices(); renderBundles();
+      el('services-count').textContent = 'not signed in';
+      el('bundles-count').textContent = 'not signed in';
+      loadPublic();
+      return;
+    }
+    renderAuthState();
+    loadServices().catch(function () {});
+    loadBundles().catch(function () {});
+    loadPublic();
+  }
+
+  renderAuthState();
+  refreshAll();
+})();
+</script>
+</body>
+</html>

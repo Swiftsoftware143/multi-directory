@@ -363,18 +363,19 @@ pub async fn get_my_wallet(
     .await?;
 
     #[allow(clippy::type_complexity)]
-    let activity = sqlx::query_as::<_, (String, Option<String>, i64, DateTime<Utc>, Option<String>)>(
-        r#"SELECT a.activity_type, a.description, a.points_earned, a.created_at, p.name
+    let activity =
+        sqlx::query_as::<_, (String, Option<String>, i64, DateTime<Utc>, Option<String>)>(
+            r#"SELECT a.activity_type, a.description, a.points_earned, a.created_at, p.name
            FROM loyalty_activity a
            JOIN loyalty_members m ON m.id = a.member_id
            JOIN loyalty_programs p ON p.id = m.program_id
            WHERE m.visitor_account_id = $1
            ORDER BY a.created_at DESC
            LIMIT 15"#,
-    )
-    .bind(visitor_account_id)
-    .fetch_all(&s.db)
-    .await?;
+        )
+        .bind(visitor_account_id)
+        .fetch_all(&s.db)
+        .await?;
 
     let total_points: i64 = members.iter().map(|m| m.1.unwrap_or(0) as i64).sum();
 
@@ -1736,4 +1737,113 @@ pub async fn admin_mark_city_added(
     Ok(Json(
         json!({"message": "City marked as added", "id": request_id}),
     ))
+}
+
+/// GET /api/v1/visitors/business/:business_id/events — recent visitor events for a business
+/// (owner dashboard export). Round 9: business-dashboard.html called this with no route behind it.
+pub async fn business_visitor_events(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    #[allow(clippy::type_complexity)]
+    let events = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<Uuid>,
+            Option<String>,
+            Option<String>,
+            DateTime<Utc>,
+        ),
+    >(
+        r#"SELECT id, event_type, visitor_id, event_value, page_url, created_at
+           FROM visitor_events
+           WHERE business_id = $1
+           ORDER BY created_at DESC
+           LIMIT 500"#,
+    )
+    .bind(business_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let items: Vec<serde_json::Value> = events
+        .into_iter()
+        .map(
+            |(id, event_type, visitor_id, event_value, page_url, created_at)| {
+                json!({
+                    "id": id,
+                    "event_type": event_type,
+                    "visitor_id": visitor_id,
+                    "event_value": event_value,
+                    "page_url": page_url,
+                    "created_at": created_at,
+                })
+            },
+        )
+        .collect();
+
+    Ok(Json(json!({
+        "business_id": business_id,
+        "total": items.len(),
+        "events": items,
+    })))
+}
+
+/// GET /api/v1/visitor/loyalty/perks — rewards the signed-in visitor has earned ("My Perks").
+/// Round 9: user-saved.html called /zaarhub/perks/redeemed, which never existed.
+pub async fn my_redeemed_perks(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    let visitor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    #[allow(clippy::type_complexity)]
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<DateTime<Utc>>,
+            Option<String>,
+        ),
+    >(
+        r#"SELECT e.id,
+                  COALESCE(t.name, 'Reward') AS title,
+                  t.reward_tag AS description,
+                  d.name AS directory_name,
+                  e.earned_at,
+                  e.status
+           FROM loyalty_rewards_earned e
+           JOIN loyalty_members m ON m.id = e.member_id
+           LEFT JOIN loyalty_reward_tiers t ON t.id = e.tier_id
+           LEFT JOIN loyalty_programs p ON p.id = m.program_id
+           LEFT JOIN directories d ON d.id = p.directory_id
+           WHERE m.visitor_account_id = $1
+           ORDER BY e.earned_at DESC NULLS LAST
+           LIMIT 200"#,
+    )
+    .bind(visitor_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let perks: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(
+            |(id, title, description, directory_name, earned_at, status)| {
+                json!({
+                    "id": id,
+                    "title": title,
+                    "description": description,
+                    "directory_name": directory_name,
+                    "redeemed_at": earned_at,
+                    "status": status,
+                })
+            },
+        )
+        .collect();
+
+    Ok(Json(json!(perks)))
 }

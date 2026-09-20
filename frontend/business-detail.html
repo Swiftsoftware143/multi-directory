@@ -387,9 +387,9 @@ async function loadBusiness() {
 
   try {
     // Fetch business data
-    const bizUrl = slug
-      ? `/api/v1/zaarhub/business/${slug}/${id}`
-      : `/api/v1/zaarhub/business/z/${id}`;
+    // No directory slug on the URL? The API resolves the directory from the business id
+    // itself (the "z" segment is the placeholder slug) - no dead 404 path.
+    const bizUrl = '/api/v1/zaarhub/business/' + (slug || 'z') + '/' + id;
     
     const bizResp = await fetch(bizUrl);
     if (!bizResp.ok) throw new Error('Not found');

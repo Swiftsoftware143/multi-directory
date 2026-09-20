@@ -508,10 +508,10 @@ function showReferralSection(){
 
 async function loadReferralPortalData(){
   try{
-    var codeR=await g('/api/v1/referrals/my-code');
+    var codeR=await g('/api/v1/visitor/referrals');
     var code=codeR.referral_code||'';
     var link='zaarhub.com/join?ref='+code;
-    var balanceR=await g('/api/v1/referrals/balance');
+    var balanceR=codeR;
     var balance=balanceR.zaarcash_balance||0;
     var el=document.getElementById('refPortalSection');
     var hasCode=!!code;
@@ -529,7 +529,7 @@ async function loadReferralPortalData(){
 
 async function generatePortalRefCode(){
   try{
-    var r=await po('/api/v1/referrals/generate',{});
+    var r=await po('/api/v1/visitor/referrals/generate',{});
     toast('Referral link created!','success');
     loadReferralPortalData();
   }catch(e){

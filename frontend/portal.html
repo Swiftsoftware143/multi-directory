@@ -826,7 +826,8 @@ function renderDirectoryTiers(did){
     window._dirTierList=list;
     var mine=list.filter(function(t){return t.directory_id===did;});
     var html='<div class="card" style="margin-top:16px"><div class="card-header"><h3>🏷 Directory Plans</h3>'+
-      '<button class="btn btn-primary btn-sm" onclick="showDirectoryTierForm()">+ Assign / edit plan</button></div>'+
+      '<button class="btn btn-primary btn-sm" onclick="showDirectoryTierForm()">+ Assign / edit plan</button>'+
+      '<a class="btn btn-sm" href="/admin/pricing" target="_blank" rel="noopener" style="margin-left:8px">💲 Tiered pricing</a></div>'+
       '<p style="color:var(--text-secondary);font-size:.85rem;padding:0 12px">The plan <b>this directory itself</b> is on — separate from <b>Plan Tiers</b> above, which are what a listing buys. Links to a Plan Tier when you sell directory subscriptions.</p>'+
       renderDirectoryTierTable(mine)+'</div>';
     document.getElementById('dirTiersContent').innerHTML=html;

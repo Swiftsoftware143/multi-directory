@@ -170,29 +170,6 @@ a:hover{text-decoration:underline}
       <button class="btn-primary" onclick="saveProfile()" id="saveProfileBtn">Save Changes</button>
       <div id="profileSaveFeedback"></div>
     </div>
-    <div class="settings-card">
-      <h3>🔔 Notifications</h3>
-      <div class="toggle-group">
-        <input type="checkbox" id="notifEmail">
-        <label for="notifEmail">Email notifications about new deals near me</label>
-      </div>
-      <div class="toggle-group">
-        <input type="checkbox" id="notifReview">
-        <label for="notifReview">Email when I receive a review reply</label>
-      </div>
-      <div class="toggle-group">
-        <input type="checkbox" id="notifClaim">
-        <label for="notifClaim">Email about claim status updates</label>
-      </div>
-      <button class="btn-primary" onclick="saveNotifications()" id="saveNotifBtn">Save Preferences</button>
-      <div id="notifSaveFeedback"></div>
-    </div>
-    <div class="settings-card">
-      <h3>📚 Saved Collections</h3>
-      <p style="font-size:.85rem;color:var(--text-light);margin-bottom:12px">Create collections to organize your saved spots.</p>
-      <div id="collectionsList"></div>
-      <button class="btn-primary" onclick="location.href='/zaarhub'" style="font-size:.8rem;padding:8px 18px">Browse &amp; Save More</button>
-    </div>
   </div>
 </div>
 
@@ -329,7 +306,7 @@ async function loadMyReviews() {
   if (!token) return;
   
   try {
-    const resp = await fetch('/api/v1/reviews/mine', {
+    const resp = await fetch('/api/v1/my-reviews', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (resp.ok) {
@@ -395,7 +372,7 @@ async function loadPerks() {
   if (!token) return;
   
   try {
-    const resp = await fetch('/api/v1/zaarhub/perks/redeemed', {
+    const resp = await fetch('/api/v1/visitor/loyalty/perks', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (resp.ok) {
@@ -481,74 +458,6 @@ async function saveProfile() {
   btn.textContent = 'Save Changes';
 }
 
-async function saveNotifications() {
-  const emailNotif = document.getElementById('notifEmail').checked;
-  const reviewNotif = document.getElementById('notifReview').checked;
-  const claimNotif = document.getElementById('notifClaim').checked;
-  const feedback = document.getElementById('notifSaveFeedback');
-  const btn = document.getElementById('saveNotifBtn');
-  
-  btn.disabled = true;
-  btn.textContent = 'Saving...';
-  feedback.innerHTML = '';
-  
-  const token = getToken();
-  if (!token) return;
-  
-  try {
-    const resp = await fetch('/api/v1/visitor/notifications', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        email_deals: emailNotif,
-        email_review_reply: reviewNotif,
-        email_claim_updates: claimNotif
-      })
-    });
-    
-    if (resp.ok) {
-      feedback.innerHTML = '<span class="save-feedback success">✅ Preferences saved!</span>';
-    } else {
-      feedback.innerHTML = '<span class="save-feedback error">❌ Failed to save.</span>';
-    }
-  } catch(e) {
-    feedback.innerHTML = '<span class="save-feedback error">❌ Network error.</span>';
-  }
-  
-  btn.disabled = false;
-  btn.textContent = 'Save Preferences';
-}
-
-// ── Load Collections ──
-async function loadCollections() {
-  const container = document.getElementById('collectionsList');
-  const token = getToken();
-  if (!token) return;
-  
-  try {
-    const resp = await fetch('/api/v1/zaarhub/collections', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (Array.isArray(data) && data.length > 0) {
-        container.innerHTML = data.map(c => `
-          <div style="padding:10px 12px;border:1px solid var(--border-light);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-            <span style="font-weight:600;font-size:.88rem">${c.name || 'Collection'}</span>
-            <span style="font-size:.78rem;color:var(--text-muted)">${c.count || 0} spots</span>
-          </div>
-        `).join('');
-        return;
-      }
-    }
-  } catch(e) { console.warn('Collections load fail:', e); }
-  
-  container.innerHTML = '<p style="font-size:.82rem;color:var(--text-muted)">No collections created yet. Save spots from the directory to create collections.</p>';
-}
-
 // ── Init ──
 document.addEventListener('DOMContentLoaded', function() {
   if (!checkAuth()) return;
@@ -557,7 +466,6 @@ document.addEventListener('DOMContentLoaded', function() {
   loadFavorites();
   loadMyReviews();
   loadPerks();
-  loadCollections();
 });
 </script>
 </body>

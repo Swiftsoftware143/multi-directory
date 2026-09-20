@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RFQ Marketplace - ZaarHub</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;--secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;--dark:#2b3255;--bg:#f8fafc;--card:#fff;--text:#4a5568;--text-secondary:#718096;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b;--accent:#8b5cf6}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Header */
+.topbar{background:linear-gradient(135deg,var(--dark) 0%,#1a3a6b 100%);color:#fff;padding:20px 24px}
+.topbar-inner{max-width:1080px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.topbar h1{font-size:1.4rem;font-weight:700}
+.topbar .sub{font-size:.82rem;color:#cbd5e1;margin-top:2px}
+.topbar .links{display:flex;align-items:center;gap:14px;font-size:.85rem;flex-wrap:wrap}
+.topbar .links a{color:#fff;opacity:.9}
+.topbar .links a:hover{opacity:1}
+.who{font-size:.8rem;background:rgba(255,255,255,.14);padding:6px 12px;border-radius:999px}
+.wrap{max-width:1080px;margin:0 auto;padding:24px}
+
+/* Cards / sections */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.section-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.section-subtitle{font-size:.85rem;color:var(--text-secondary);margin-bottom:12px}
+.hidden{display:none !important}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .2s;gap:4px;font-family:inherit}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-hover)}
+.btn-secondary{background:#e2e8f0;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#cbd5e1}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover{filter:brightness(.93)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{filter:brightness(.93)}
+.btn-sm{padding:5px 11px;font-size:.78rem}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+
+/* Forms */
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;font-family:inherit;background:var(--card);color:var(--text)}
+.form-group textarea{resize:vertical;min-height:70px}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(242,127,47,.15)}
+.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.form-hint{font-size:.75rem;color:var(--text-secondary);margin-top:2px}
+.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+
+/* State banners (success / error / info / loading) */
+.state{border-radius:8px;padding:10px 14px;font-size:.85rem;margin:8px 0;display:none}
+.state.show{display:block}
+.state.success{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.state.error{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.state.info{background:var(--secondary-light);color:var(--secondary);border:1px solid #cfe1fb}
+.state.loading{background:#f1f5f9;color:var(--text-secondary);border:1px solid var(--border)}
+
+/* Tabs */
+.tab-bar{display:flex;margin-bottom:16px;border-bottom:2px solid var(--border);gap:4px;flex-wrap:wrap}
+.tab{padding:10px 18px;cursor:pointer;font-weight:600;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;font-size:.9rem;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:center}
+.stat-card .stat-value{font-size:1.5rem;font-weight:700;color:var(--primary)}
+.stat-card .stat-label{font-size:.8rem;color:var(--text-secondary);margin-top:2px}
+
+/* RFQ list */
+.rfq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.rfq-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:all .2s}
+.rfq-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08);border-color:var(--primary)}
+.rfq-card h4{font-size:1rem;color:var(--dark);margin-bottom:4px}
+.rfq-card .meta{font-size:.78rem;color:var(--text-secondary);margin-bottom:8px}
+.rfq-card .desc{font-size:.83rem;color:var(--text);margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.rfq-card .foot{display:flex;justify-content:space-between;align-items:center;font-size:.78rem;color:var(--text-secondary);gap:8px;flex-wrap:wrap}
+.price{font-weight:700;color:var(--primary)}
+
+/* Badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.74rem;font-weight:600}
+.badge.primary{background:var(--primary-light);color:var(--primary-hover)}
+.badge.accent{background:#f3e8ff;color:#7c3aed}
+.badge.success{background:#dcfce7;color:#15803d}
+.badge.danger{background:#fee2e2;color:#b91c1c}
+.badge.warning{background:#fef3c7;color:#b45309}
+.badge.muted{background:#f1f5f9;color:var(--text-secondary)}
+
+/* Detail */
+.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:12px 0}
+.detail-item{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px}
+.detail-item .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);font-weight:700}
+.detail-item .v{font-size:.88rem;color:var(--text);margin-top:2px;word-break:break-word}
+.bid{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--secondary);border-radius:10px;padding:14px;margin-bottom:10px}
+.bid.is-accepted{border-left-color:var(--success);background:#f7fef9}
+.bid.is-rejected{border-left-color:var(--danger);opacity:.75}
+.bid .head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.bid .amount{font-size:1.05rem;font-weight:700;color:var(--primary)}
+.bid .who{font-size:.76rem;color:var(--text-secondary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.bid .body{font-size:.85rem;margin:6px 0}
+.bid .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.msg{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.msg .hdr{font-size:.74rem;color:var(--text-secondary);margin-bottom:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.msg .txt{font-size:.86rem;white-space:pre-wrap}
+.thread{max-height:340px;overflow-y:auto;margin:10px 0}
+
+/* Toast */
+#toastContainer{position:fixed;top:20px;right:20px;z-index:9999}
+.toast{padding:12px 20px;border-radius:10px;color:#fff;font-size:.85rem;font-weight:500;opacity:0;transform:translateY(-10px);transition:all .3s;max-width:360px;margin-bottom:8px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:var(--success)}
+.toast.error{background:var(--danger)}
+.toast.info{background:var(--primary)}
+
+.empty-state{text-align:center;padding:36px 20px;color:var(--text-secondary)}
+.empty-state .icon{font-size:2.6rem;margin-bottom:10px}
+.empty-state h3{font-size:1.05rem;color:var(--text);margin-bottom:4px}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;margin:24px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.signin-box{background:var(--primary-light);border:1px solid #fbd9bb;border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.signin-box p{font-size:.86rem;color:#8a4b12}
+</style>
+</head>
+<body>
+<div id="toastContainer"></div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div>
+      <h1>&#128230; RFQ Marketplace</h1>
+      <div class="sub">Post requests for quote and bid on open ones</div>
+    </div>
+    <div class="links">
+      <a href="/supplier-portal.html">Supplier Portal</a>
+      <a href="/b2b-marketplace.html">Marketplace</a>
+      <span class="who" id="whoAmI">Not signed in</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- Sign-in prompt (shown when no supplier token) -->
+  <div class="signin-box hidden" id="signinBox">
+    <p><strong>You are not signed in as a supplier.</strong><br>Browsing open RFQs is public. To post an RFQ, place bids, or read bids/messages, sign in with your supplier account.</p>
+    <a class="btn btn-primary" href="/supplier-portal.html">Sign in as a supplier &rarr;</a>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-value" id="statOpen">-</div><div class="stat-label">Open RFQs</div></div>
+    <div class="stat-card"><div class="stat-value" id="statAwarded">-</div><div class="stat-label">Awarded RFQs</div></div>
+    <div class="stat-card"><div class="stat-value" id="statCats" style="font-size:.95rem">-</div><div class="stat-label">Categories</div></div>
+  </div>
+  <div class="state" id="statsState"></div>
+
+  <div class="card">
+    <div class="tab-bar">
+      <button class="tab active" id="tabOpen" onclick="setTab('open')">All open RFQs</button>
+      <button class="tab" id="tabMine" onclick="setTab('mine')">My RFQs</button>
+    </div>
+
+    <div class="section-title">
+      <span id="listTitle">Open RFQs</span>
+      <span>
+        <button class="btn btn-secondary btn-sm" onclick="refreshList()">&#8635; Refresh</button>
+        <button class="btn btn-primary btn-sm" id="newRfqBtn" onclick="toggleCreate()">+ New RFQ</button>
+      </span>
+    </div>
+
+    <!-- Filters (open tab only) -->
+    <div id="filterBar" class="form-row" style="margin-bottom:12px">
+      <div class="form-group" style="margin-bottom:0"><label for="fq">Search</label><input id="fq" placeholder="keyword in title/description"></div>
+      <div class="form-group" style="margin-bottom:0"><label for="fcat">Category</label><input id="fcat" placeholder="e.g. produce"></div>
+      <div class="form-group" style="margin-bottom:0"><label for="furg">Urgency</label>
+        <select id="furg"><option value="">Any</option><option value="standard">standard</option><option value="high">high</option><option value="urgent">urgent</option></select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;display:flex;align-items:flex-end"><button class="btn btn-secondary" style="width:100%" onclick="refreshList()">Apply filters</button></div>
+    </div>
+
+    <div class="state" id="listState"></div>
+    <div id="rfqList" class="rfq-grid"></div>
+  </div>
+
+  <!-- Create RFQ -->
+  <div class="card hidden" id="createPanel">
+    <div class="section-title">Post a new RFQ</div>
+    <div class="state" id="createState"></div>
+    <form id="createForm" onsubmit="submitCreate(event)">
+      <div class="form-row">
+        <div class="form-group"><label for="cTitle">Title *</label><input id="cTitle" placeholder="Fresh organic produce - weekly supply" maxlength="200"></div>
+        <div class="form-group"><label for="cCategory">Category</label><input id="cCategory" placeholder="produce"></div>
+      </div>
+      <div class="form-group"><label for="cDesc">Description *</label><textarea id="cDesc" placeholder="What you need, volumes, quality requirements, terms..."></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label for="cQty">Quantity</label><input id="cQty" placeholder="weekly ongoing / 500 kg"></div>
+        <div class="form-group"><label for="cMin">Budget min</label><input id="cMin" type="number" step="0.01" min="0" placeholder="2000.00"></div>
+        <div class="form-group"><label for="cMax">Budget max</label><input id="cMax" type="number" step="0.01" min="0" placeholder="5000.00"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label for="cDeadline">Deadline</label><input id="cDeadline" type="date"><div class="form-hint">YYYY-MM-DD</div></div>
+        <div class="form-group"><label for="cLocation">Delivery location</label><input id="cLocation" placeholder="Northeast Region"></div>
+        <div class="form-group"><label for="cUrgency">Urgency</label>
+          <select id="cUrgency"><option value="standard">standard</option><option value="high">high</option><option value="urgent">urgent</option></select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="toggleCreate(false)">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="createSubmit">Post RFQ</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- RFQ detail -->
+  <div class="card hidden" id="detailPanel">
+    <div class="section-title">
+      <span id="detailTitle">RFQ</span>
+      <span>
+        <button class="btn btn-secondary btn-sm" onclick="closeDetail()">&larr; Back to list</button>
+      </span>
+    </div>
+    <div class="state" id="detailState"></div>
+    <div id="detailBody"></div>
+
+    <!-- Bids -->
+    <div class="section-title" style="margin-top:20px">Bids</div>
+    <div class="state" id="bidsState"></div>
+    <div id="bidsList"></div>
+
+    <!-- Place bid -->
+    <div id="bidFormWrap" class="hidden" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+      <div class="section-subtitle" style="font-weight:600;color:var(--text)">Place a bid</div>
+      <div class="state" id="bidState"></div>
+      <form id="bidForm" onsubmit="submitBid(event)">
+        <div class="form-row">
+          <div class="form-group"><label for="bAmount">Amount *</label><input id="bAmount" type="number" step="0.01" min="0.01" placeholder="3200.00"></div>
+          <div class="form-group"><label for="bTimeline">Delivery timeline</label><input id="bTimeline" placeholder="5 business days"></div>
+        </div>
+        <div class="form-group"><label for="bDetails">Details *</label><textarea id="bDetails" placeholder="What you can supply, pricing basis, shipping terms..."></textarea></div>
+        <div class="form-actions"><button type="submit" class="btn btn-primary" id="bidSubmit">Submit bid</button></div>
+      </form>
+    </div>
+    <div class="state info" id="bidLocked"></div>
+
+    <!-- Messages -->
+    <div class="section-title" style="margin-top:20px">Messages</div>
+    <div class="state" id="msgState"></div>
+    <div class="thread" id="msgList"></div>
+    <div class="state" id="msgSendState"></div>
+    <form id="msgForm" onsubmit="sendMessage(event)" class="hidden">
+      <div class="form-group"><label for="msgBox">Send a message</label><textarea id="msgBox" placeholder="Ask the buyer a question or clarify your bid..."></textarea></div>
+      <div class="form-actions"><button type="submit" class="btn btn-primary" id="msgSendBtn">Send</button></div>
+    </form>
+  </div>
+
+</main>
+
+<script>
+var API = '/api/v1';
+var origin = window.location.origin;
+var currentTab = 'open';
+var currentRfq = null;
+var myRfqIds = {};   // id -> true, for RFQs owned by the signed-in supplier
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s === null || s === undefined ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function money(v){ if(v === null || v === undefined || v === '') return '—'; var n = Number(v); return isNaN(n) ? String(v) : '$' + n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function when(v){ if(!v) return '—'; var d = new Date(v); return isNaN(d.getTime()) ? String(v) : d.toLocaleString(); }
+function dateOnly(v){ if(!v) return '—'; return String(v).slice(0,10); }
+
+function toast(msg, type){
+  type = type || 'info';
+  var t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  $('toastContainer').appendChild(t);
+  requestAnimationFrame(function(){ t.classList.add('show'); });
+  setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 300); }, 4000);
+}
+
+/* Show an explicit state in the UI. Never a silent no-op. */
+function setState(id, kind, msg){
+  var el = $(id);
+  if(!el) return;
+  if(!kind){ el.className = 'state'; el.innerHTML = ''; return; }
+  el.className = 'state show ' + kind;
+  el.innerHTML = msg;
+}
+function loadingState(id, msg){ setState(id, 'loading', '<span class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin:0 8px 0 0"></span>' + esc(msg || 'Loading...')); }
+
+/* Auth: exact convention from frontend/supplier-portal.html */
+function authHeaders(){
+  var token = localStorage.getItem('supplierToken');
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+function token(){ return localStorage.getItem('supplierToken'); }
+
+/* Raw fetch helper: returns {ok, status, data}. Reads body's `message` on error. */
+async function api(path, opts){
+  opts = opts || {};
+  var headers = {};
+  var h = opts.auth ? authHeaders() : {};
+  for (var k in h) headers[k] = h[k];
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  var res, data = null;
+  try {
+    res = await fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: headers,
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body)
+    });
+  } catch(netErr){
+    return { ok:false, status:0, data:null, message:'Network error: ' + netErr.message };
+  }
+  try { data = await res.json(); } catch(e){ data = null; }
+  if(!res.ok){
+    var msg = (data && (data.message || data.error)) || ('Request failed (HTTP ' + res.status + ')');
+    return { ok:false, status:res.status, data:data, message:msg };
+  }
+  return { ok:true, status:res.status, data:data, message:'' };
+}
+
+/* ── Header / sign-in state ── */
+function renderAuthState(){
+  if(token()){
+    $('whoAmI').textContent = 'Signed in as supplier';
+    $('signinBox').classList.add('hidden');
+  } else {
+    $('whoAmI').textContent = 'Not signed in';
+    $('signinBox').classList.remove('hidden');
+  }
+}
+
+/* ── Stats ── */
+async function loadStats(){
+  loadingState('statsState', 'Loading marketplace stats...');
+  var r = await api('/b2b/rfqs/stats');
+  if(!r.ok){
+    $('statOpen').textContent = '-'; $('statAwarded').textContent = '-'; $('statCats').textContent = '-';
+    setState('statsState', 'error', 'Could not load stats: ' + esc(r.message));
+    return;
+  }
+  var d = r.data || {};
+  $('statOpen').textContent = (d.open_rfqs === undefined ? 0 : d.open_rfqs);
+  $('statAwarded').textContent = (d.awarded_rfqs === undefined ? 0 : d.awarded_rfqs);
+  $('statCats').textContent = (d.categories && d.categories.length) ? d.categories.join(', ') : '—';
+  setState('statsState', null);
+}
+/* ── RFQ list with all-open / mine toggle ── */
+function setTab(tab){
+  currentTab = tab;
+  $('tabOpen').classList.toggle('active', tab === 'open');
+  $('tabMine').classList.toggle('active', tab === 'mine');
+  $('listTitle').textContent = (tab === 'open') ? 'Open RFQs' : 'My RFQs';
+  $('filterBar').style.display = (tab === 'open') ? '' : 'none';
+  refreshList();
+}
+
+function refreshList(){
+  if(currentTab === 'mine') return loadMyRfqs();
+  return loadOpenRfqs();
+}
+
+async function loadOpenRfqs(){
+  var q = $('fq').value.trim(), cat = $('fcat').value.trim(), urg = $('furg').value;
+  var qs = [];
+  if(q) qs.push('q=' + encodeURIComponent(q));
+  if(cat) qs.push('category=' + encodeURIComponent(cat));
+  if(urg) qs.push('urgency=' + encodeURIComponent(urg));
+  var path = '/b2b/rfqs' + (qs.length ? '?' + qs.join('&') : '');
+  loadingState('listState', 'Loading open RFQs...');
+  $('rfqList').innerHTML = '';
+  var r = await api(path);
+  if(!r.ok){
+    setState('listState', 'error', 'Could not load RFQs: ' + esc(r.message));
+    return;
+  }
+  var list = (r.data && r.data.rfqs) || [];
+  setState('listState', 'success', 'Loaded ' + list.length + ' open RFQ(s)' + (r.data && r.data.total !== undefined ? ' of ' + r.data.total + ' total' : '') + '.');
+  renderList(list, 'No open RFQs match these filters right now.');
+}
+
+async function loadMyRfqs(){
+  if(!token()){
+    myRfqIds = {};
+    $('rfqList').innerHTML = '';
+    setState('listState', 'info', 'Sign in as a supplier to see your RFQs. <a href="/supplier-portal.html">Open the Supplier Portal &rarr;</a>');
+    renderAuthState();
+    return;
+  }
+  loadingState('listState', 'Loading your RFQs...');
+  $('rfqList').innerHTML = '';
+  var r = await api('/b2b/rfqs/my', { auth:true });
+  if(!r.ok){
+    if(r.status === 401 || r.status === 403){
+      setState('listState', 'error', 'Session expired or not a supplier account (' + esc(r.message) + '). <a href="/supplier-portal.html">Sign in again &rarr;</a>');
+    } else {
+      setState('listState', 'error', 'Could not load your RFQs: ' + esc(r.message));
+    }
+    return;
+  }
+  var list = (r.data && r.data.rfqs) || [];
+  myRfqIds = {};
+  for(var i=0;i<list.length;i++) myRfqIds[list[i].id] = true;
+  setState('listState', 'success', 'Loaded ' + list.length + ' RFQ(s) posted by your business.');
+  renderList(list, 'You have not posted any RFQs yet. Use “+ New RFQ” to create one.');
+}
+
+function renderList(list, emptyMsg){
+  var host = $('rfqList');
+  host.innerHTML = '';
+  if(!list.length){
+    host.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="icon">&#128203;</div><h3>Nothing here</h3><p>' + esc(emptyMsg) + '</p></div>';
+    return;
+  }
+  for(var i=0;i<list.length;i++){
+    var r = list[i];
+    var budget = (r.budget_min !== null && r.budget_min !== undefined || r.budget_max !== null && r.budget_max !== undefined)
+      ? money(r.budget_min) + ' – ' + money(r.budget_max) : 'Budget not stated';
+    var mine = myRfqIds[r.id] ? ' <span class="badge accent">yours</span>' : '';
+    var card = document.createElement('div');
+    card.className = 'rfq-card';
+    card.setAttribute('data-id', r.id);
+    card.innerHTML =
+      '<h4>' + esc(r.title) + mine + '</h4>' +
+      '<div class="meta">' + esc(r.category || 'uncategorised') + ' &middot; ' + esc(r.status || '') +
+        ' &middot; ' + esc(r.urgency || 'standard') + ' urgency' +
+        (r.quantity ? ' &middot; ' + esc(r.quantity) : '') + '</div>' +
+      '<div class="desc">' + esc(r.description) + '</div>' +
+      '<div class="foot"><span class="price">' + esc(budget) + '</span>' +
+      '<span>' + (r.bid_count === undefined ? 0 : r.bid_count) + ' bid(s) &middot; ' + (r.view_count === undefined ? 0 : r.view_count) + ' views</span></div>' +
+      '<div class="foot" style="margin-top:6px"><span>Deadline: ' + esc(dateOnly(r.deadline)) + '</span><span>' + esc(r.delivery_location || '') + '</span></div>';
+    card.onclick = (function(id){ return function(){ openDetail(id); }; })(r.id);
+    host.appendChild(card);
+  }
+}
+/* ── Create RFQ ── */
+function toggleCreate(force){
+  var panel = $('createPanel');
+  var show = (force === undefined) ? panel.classList.contains('hidden') : !!force;
+  panel.classList.toggle('hidden', !show);
+  $('newRfqBtn').textContent = show ? '– Close form' : '+ New RFQ';
+  if(show){
+    if(!token()){
+      setState('createState', 'info', 'You need a supplier account to post an RFQ. <a href="/supplier-portal.html">Sign in as a supplier &rarr;</a>');
+    } else {
+      setState('createState', null);
+    }
+    panel.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+}
+
+async function submitCreate(ev){
+  ev.preventDefault();
+  if(!token()){
+    setState('createState', 'error', 'Not signed in. <a href="/supplier-portal.html">Sign in as a supplier &rarr;</a> to post an RFQ.');
+    return;
+  }
+  var title = $('cTitle').value.trim();
+  var desc = $('cDesc').value.trim();
+  if(!title){ setState('createState', 'error', 'Title is required.'); return; }
+  if(!desc){ setState('createState', 'error', 'Description is required.'); return; }
+
+  var body = { title: title, description: desc };
+  var cat = $('cCategory').value.trim();      if(cat) body.category = cat;
+  var qty = $('cQty').value.trim();           if(qty) body.quantity = qty;
+  var min = $('cMin').value.trim();           if(min !== '') body.budget_min = Number(min);
+  var max = $('cMax').value.trim();           if(max !== '') body.budget_max = Number(max);
+  var dl = $('cDeadline').value.trim();       if(dl) body.deadline = dl;
+  var loc = $('cLocation').value.trim();      if(loc) body.delivery_location = loc;
+  body.urgency = $('cUrgency').value || 'standard';
+
+  if(body.budget_min !== undefined && isNaN(body.budget_min)){ setState('createState','error','Budget min must be a number.'); return; }
+  if(body.budget_max !== undefined && isNaN(body.budget_max)){ setState('createState','error','Budget max must be a number.'); return; }
+
+  $('createSubmit').disabled = true;
+  setState('createState', 'loading', 'Posting your RFQ...');
+  var r = await api('/b2b/rfqs', { method:'POST', auth:true, body:body });
+  $('createSubmit').disabled = false;
+  if(!r.ok){
+    setState('createState', 'error', 'Could not post RFQ: ' + esc(r.message));
+    toast('RFQ not created: ' + r.message, 'error');
+    return;
+  }
+  var newId = r.data && r.data.id;
+  setState('createState', 'success', 'RFQ posted (status: ' + esc((r.data && r.data.status) || 'open') + '). It now appears under “My RFQs”.');
+  toast('RFQ posted successfully', 'success');
+  $('createForm').reset();
+  currentTab = 'mine';
+  $('tabOpen').classList.remove('active');
+  $('tabMine').classList.add('active');
+  $('listTitle').textContent = 'My RFQs';
+  $('filterBar').style.display = 'none';
+  await loadMyRfqs();
+  await loadStats();
+  if(newId) openDetail(newId);
+}
+/* ── Detail ── */
+function closeDetail(){
+  $('detailPanel').classList.add('hidden');
+  currentRfq = null;
+  $('rfqList').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+async function openDetail(id){
+  currentRfq = null;
+  $('detailPanel').classList.remove('hidden');
+  $('detailTitle').textContent = 'RFQ';
+  $('detailBody').innerHTML = '';
+  $('bidsList').innerHTML = '';
+  $('msgList').innerHTML = '';
+  setState('bidsState', null); setState('bidState', null); setState('msgState', null); setState('msgSendState', null);
+  $('bidFormWrap').classList.add('hidden');
+  $('bidLocked').className = 'state';
+  $('msgForm').classList.add('hidden');
+  loadingState('detailState', 'Loading RFQ details...');
+  $('detailPanel').scrollIntoView({ behavior:'smooth', block:'start' });
+
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(id));
+  if(!r.ok){
+    setState('detailState', 'error', 'Could not load RFQ: ' + esc(r.message));
+    return;
+  }
+  var rfq = (r.data && r.data.rfq) || null;
+  if(!rfq){ setState('detailState', 'error', 'RFQ payload was empty.'); return; }
+  currentRfq = rfq;
+  setState('detailState', null);
+  renderDetail(rfq);
+  await Promise.all([loadBids(rfq.id), loadMessages(rfq.id)]);
+}
+
+function isOwner(rfq){
+  if(!rfq) return false;
+  if(myRfqIds[rfq.id]) return true;
+  return false;
+}
+
+function renderDetail(r){
+  var owner = isOwner(r);
+  $('detailTitle').innerHTML = esc(r.title) + ' <span class="badge ' + badgeClass(r.status) + '">' + esc(r.status) + '</span>' +
+    (owner ? ' <span class="badge accent">you posted this</span>' : '');
+  var budget = (r.budget_min !== null && r.budget_min !== undefined) || (r.budget_max !== null && r.budget_max !== undefined)
+    ? money(r.budget_min) + ' – ' + money(r.budget_max) : '—';
+  var html =
+    '<div class="section-subtitle">' + esc(r.description) + '</div>' +
+    '<div class="detail-grid">' +
+      item('Category', r.category || '—') +
+      item('Quantity', r.quantity || '—') +
+      item('Budget', budget) +
+      item('Deadline', dateOnly(r.deadline)) +
+      item('Delivery location', r.delivery_location || '—') +
+      item('Urgency', r.urgency || 'standard') +
+      item('Bids', String(r.bid_count === undefined ? 0 : r.bid_count)) +
+      item('Views', String(r.view_count === undefined ? 0 : r.view_count)) +
+      item('Public', r.is_public ? 'yes' : 'no') +
+      item('Posted', when(r.created_at)) +
+      item('Awarded to', r.awarded_to || '—') +
+      item('Posted by business', r.poster_business_id || '—') +
+    '</div>';
+  if(owner){
+    html += '<div class="form-actions" style="justify-content:flex-start">' +
+      (r.status === 'open' ? '<button class="btn btn-secondary btn-sm" onclick="closeRfq()">Close this RFQ</button>' : '') +
+      '</div>';
+  }
+  $('detailBody').innerHTML = html;
+
+  // bid form visibility: hidden for owner (cannot bid on own RFQ) and when not signed in
+  if(owner){
+    $('bidFormWrap').classList.add('hidden');
+    setState('bidLocked', 'info', 'You posted this RFQ, so you cannot bid on it. Review incoming bids below.');
+  } else if(!token()){
+    $('bidFormWrap').classList.add('hidden');
+    setState('bidLocked', 'info', 'Sign in as a supplier to place a bid on this RFQ. <a href="/supplier-portal.html">Sign in &rarr;</a>');
+  } else {
+    $('bidFormWrap').classList.remove('hidden');
+    $('bidLocked').className = 'state';
+  }
+}
+
+function item(k, v){
+  return '<div class="detail-item"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>';
+}
+function badgeClass(status){
+  if(status === 'awarded') return 'success';
+  if(status === 'closed') return 'muted';
+  if(status === 'open') return 'primary';
+  return 'warning';
+}
+
+async function closeRfq(){
+  if(!currentRfq) return;
+  if(!confirm('Close this RFQ? It will no longer be open for bids.')) return;
+  setState('detailState', 'loading', 'Closing RFQ...');
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(currentRfq.id), { method:'PATCH', auth:true, body:{ status:'closed' } });
+  if(!r.ok){
+    setState('detailState', 'error', 'Could not close RFQ: ' + esc(r.message));
+    toast('Close failed: ' + r.message, 'error');
+    return;
+  }
+  toast('RFQ closed', 'success');
+  await openDetail(currentRfq.id);
+  await refreshList();
+}
+/* ── Bids ── */
+async function loadBids(rfqId){
+  $('bidsList').innerHTML = '';
+  if(!token()){
+    setState('bidsState', 'info', 'Sign in as a supplier to view bids on this RFQ. <a href="/supplier-portal.html">Sign in &rarr;</a>');
+    return;
+  }
+  loadingState('bidsState', 'Loading bids...');
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(rfqId) + '/bids', { auth:true });
+  if(!r.ok){
+    if(r.status === 403){
+      setState('bidsState', 'info', esc(r.message) + ' — bids are visible only to the buyer who posted the RFQ.');
+    } else if(r.status === 401){
+      setState('bidsState', 'error', 'Not authorised (' + esc(r.message) + '). <a href="/supplier-portal.html">Sign in again &rarr;</a>');
+    } else {
+      setState('bidsState', 'error', 'Could not load bids: ' + esc(r.message));
+    }
+    return;
+  }
+  var list = (r.data && r.data.bids) || [];
+  var owner = isOwner(currentRfq);
+  setState('bidsState', 'success', 'Loaded ' + list.length + ' bid(s)' + (owner ? ' — you can accept or reject.' : '.'));
+  if(!list.length){
+    $('bidsList').innerHTML = '<div class="empty-state"><div class="icon">&#128176;</div><h3>No bids yet</h3><p>' + (owner ? 'Suppliers have not bid on this RFQ yet.' : 'Nobody has bid on this RFQ yet.') + '</p></div>';
+    return;
+  }
+  for(var i=0;i<list.length;i++){
+    var b = list[i];
+    var cls = 'bid' + (b.status === 'accepted' ? ' is-accepted' : (b.status === 'rejected' ? ' is-rejected' : ''));
+    var el = document.createElement('div');
+    el.className = cls;
+    el.innerHTML =
+      '<div class="head"><span class="amount">' + esc(money(b.amount)) + '</span>' +
+      '<span class="badge ' + badgeClass(b.status === 'submitted' ? 'open' : (b.status === 'accepted' ? 'awarded' : 'closed')) + '">' + esc(b.status) + '</span></div>' +
+      '<div class="who">Supplier: ' + esc(b.bidder_business_id) + '</div>' +
+      '<div class="body">' + esc(b.details) + '</div>' +
+      '<div class="who">Delivery timeline: ' + esc(b.delivery_timeline || 'not stated') + ' &middot; placed ' + esc(when(b.created_at)) + '</div>' +
+      (owner && b.status === 'submitted' ?
+        '<div class="actions">' +
+        '<button class="btn btn-success btn-sm" onclick="acceptBid(\'' + b.id + '\')">Accept bid</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="rejectBid(\'' + b.id + '\')">Reject bid</button>' +
+        '</div>' : '');
+    $('bidsList').appendChild(el);
+  }
+}
+
+async function acceptBid(bidId){
+  if(!currentRfq) return;
+  if(!confirm('Accept this bid? The RFQ will be awarded and no further bids accepted.')) return;
+  setState('bidsState', 'loading', 'Accepting bid...');
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(currentRfq.id) + '/bids/' + encodeURIComponent(bidId) + '/accept', { method:'POST', auth:true });
+  if(!r.ok){
+    setState('bidsState', 'error', 'Could not accept bid: ' + esc(r.message));
+    toast('Accept failed: ' + r.message, 'error');
+    return;
+  }
+  toast('Bid accepted — RFQ ' + (r.data && r.data.status ? r.data.status : 'awarded'), 'success');
+  await openDetail(currentRfq.id);
+  await refreshList();
+}
+
+async function rejectBid(bidId){
+  if(!currentRfq) return;
+  if(!confirm('Reject this bid?')) return;
+  setState('bidsState', 'loading', 'Rejecting bid...');
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(currentRfq.id) + '/bids/' + encodeURIComponent(bidId) + '/reject', { method:'POST', auth:true });
+  if(!r.ok){
+    setState('bidsState', 'error', 'Could not reject bid: ' + esc(r.message));
+    toast('Reject failed: ' + r.message, 'error');
+    return;
+  }
+  toast('Bid rejected', 'success');
+  await openDetail(currentRfq.id);
+}
+/* ── Place bid ── */
+async function submitBid(ev){
+  ev.preventDefault();
+  if(!currentRfq) return;
+  if(!token()){
+    setState('bidState', 'error', 'Not signed in. <a href="/supplier-portal.html">Sign in as a supplier &rarr;</a>');
+    return;
+  }
+  var amountRaw = $('bAmount').value.trim();
+  var details = $('bDetails').value.trim();
+  var timeline = $('bTimeline').value.trim();
+  var amount = Number(amountRaw);
+  if(amountRaw === '' || isNaN(amount) || amount <= 0){ setState('bidState', 'error', 'Enter a bid amount greater than zero.'); return; }
+  if(!details){ setState('bidState', 'error', 'Bid details are required.'); return; }
+
+  var body = { amount: amount, details: details };
+  if(timeline) body.delivery_timeline = timeline;
+
+  $('bidSubmit').disabled = true;
+  setState('bidState', 'loading', 'Submitting your bid...');
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(currentRfq.id) + '/bids', { method:'POST', auth:true, body:body });
+  $('bidSubmit').disabled = false;
+  if(!r.ok){
+    setState('bidState', 'error', 'Bid not placed: ' + esc(r.message));
+    toast('Bid failed: ' + r.message, 'error');
+    return;
+  }
+  setState('bidState', 'success', 'Bid submitted (status: ' + esc((r.data && r.data.status) || 'submitted') + '). Your bid is visible to the buyer.');
+  toast('Bid submitted', 'success');
+  $('bidForm').reset();
+  await openDetail(currentRfq.id);
+}
+/* ── Messages ── */
+async function loadMessages(rfqId){
+  $('msgList').innerHTML = '';
+  loadingState('msgState', 'Loading messages...');
+  $('msgForm').classList.toggle('hidden', !token());
+  if(!token()){
+    setState('msgSendState', 'info', 'Sign in as a supplier to post a message on this RFQ. <a href="/supplier-portal.html">Sign in &rarr;</a>');
+  } else {
+    setState('msgSendState', null);
+  }
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(rfqId) + '/messages');
+  if(!r.ok){
+    setState('msgState', 'error', 'Could not load messages: ' + esc(r.message));
+    return;
+  }
+  var list = (r.data && r.data.messages) || [];
+  setState('msgState', 'success', 'Loaded ' + list.length + ' message(s).');
+  if(!list.length){
+    $('msgList').innerHTML = '<div class="empty-state" style="padding:20px"><p>No messages on this RFQ yet.</p></div>';
+    return;
+  }
+  for(var i=0;i<list.length;i++){
+    var m = list[i];
+    var el = document.createElement('div');
+    el.className = 'msg';
+    el.innerHTML = '<div class="hdr">' + esc(m.sender_business_id) + ' &middot; ' + esc(when(m.created_at)) + '</div><div class="txt">' + esc(m.message) + '</div>';
+    $('msgList').appendChild(el);
+  }
+  $('msgList').scrollTop = $('msgList').scrollHeight;
+}
+
+async function sendMessage(ev){
+  ev.preventDefault();
+  if(!currentRfq) return;
+  if(!token()){
+    setState('msgSendState', 'error', 'Not signed in. <a href="/supplier-portal.html">Sign in as a supplier &rarr;</a>');
+    return;
+  }
+  var text = $('msgBox').value.trim();
+  if(!text){ setState('msgSendState', 'error', 'Message cannot be empty.'); return; }
+
+  $('msgSendBtn').disabled = true;
+  setState('msgSendState', 'loading', 'Sending...');
+  var r = await api('/b2b/rfqs/' + encodeURIComponent(currentRfq.id) + '/messages', { method:'POST', auth:true, body:{ message: text } });
+  $('msgSendBtn').disabled = false;
+  if(!r.ok){
+    setState('msgSendState', 'error', 'Message not sent: ' + esc(r.message));
+    toast('Message failed: ' + r.message, 'error');
+    return;
+  }
+  $('msgBox').value = '';
+  setState('msgSendState', 'success', 'Message sent.');
+  toast('Message sent', 'success');
+  await loadMessages(currentRfq.id);
+}
+/* ── Boot ── */
+(function init(){
+  renderAuthState();
+  loadStats();
+  loadOpenRfqs();
+  if(token()){ loadMyRfqs(); }   // warms ownership map for accept/reject buttons
+})();
+window.addEventListener('storage', function(){ renderAuthState(); refreshList(); });
+</script>
+</body>
+</html>

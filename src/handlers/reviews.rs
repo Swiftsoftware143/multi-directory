@@ -1,7 +1,7 @@
 //! Review CRUD and moderation handlers.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -9,6 +9,7 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::auth::models::Claims;
 use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::models::*;
 use crate::AppState;
@@ -335,4 +336,35 @@ pub async fn list_business_reviews(
         total,
         total_pages,
     })))
+}
+
+/// GET /api/v1/my-reviews — reviews written by the signed-in account (visitor or admin user).
+/// Round 9: user-saved.html used to call /reviews/mine, which never existed.
+pub async fn my_reviews(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    let email: Option<String> = sqlx::query_scalar(
+        r#"SELECT email FROM visitor_accounts WHERE id::text = $1
+           UNION ALL
+           SELECT email FROM users WHERE id::text = $1
+           LIMIT 1"#,
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&s.db)
+    .await?;
+
+    let rows = sqlx::query_as::<_, Review>(
+        r#"SELECT * FROM reviews
+           WHERE user_id::text = $1
+              OR ($2::text <> '' AND lower(coalesce(reviewer_email, '')) = lower($2))
+           ORDER BY created_at DESC
+           LIMIT 200"#,
+    )
+    .bind(&claims.sub)
+    .bind(email.unwrap_or_default())
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(json!(rows)))
 }

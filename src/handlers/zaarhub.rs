@@ -946,11 +946,8 @@ pub async fn get_city_page(
     // Remove raw dining parent rows (fine-dining / food-drink) that the pills query may have
     // returned so they don't render as dead pills; the synthetic "Places to Eat" pill below
     // replaces them.
-    category_pills.retain(|c| {
-        c.slug != "fine-dining"
-            && c.slug != "food-drink"
-            && c.slug != "dining"
-    });
+    category_pills
+        .retain(|c| c.slug != "fine-dining" && c.slug != "food-drink" && c.slug != "dining");
 
     // Insert the synthetic "Places to Eat" pill as the #1 pinned pill. It aggregates every
     // dining leaf category in this city (Fine Dining cuisines + Food & Drink children) so
@@ -1276,11 +1273,29 @@ pub async fn get_business_detail(
     State(s): State<AppState>,
     Path((slug, id)): Path<(String, String)>,
 ) -> ApiResult<Json<Value>> {
-    let dir_id: Uuid = sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
-        .bind(&slug)
-        .fetch_optional(&s.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+    // Directory slug resolution. When the caller has no directory slug (the public
+    // business-detail page passes the placeholder "z"), resolve the directory from the
+    // business id itself instead of 404ing.
+    let dir_id: Uuid = match sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM directories WHERE slug = $1",
+    )
+    .bind(&slug)
+    .fetch_optional(&s.db)
+    .await?
+    {
+        Some(id) => id,
+        None => {
+            let bid = Uuid::parse_str(&id)
+                .map_err(|_| AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+            sqlx::query_scalar::<_, Uuid>(
+                "SELECT d.id FROM directories d JOIN businesses b ON b.directory_id = d.id WHERE b.id = $1 LIMIT 1",
+            )
+            .bind(bid)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Directory '{}' not found", slug)))?
+        }
+    };
 
     // Try UUID lookup first, then slug
     let business = if let Ok(bid) = Uuid::parse_str(&id) {

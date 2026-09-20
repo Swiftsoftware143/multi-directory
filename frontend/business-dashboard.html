@@ -87,15 +87,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 </div>
 
 <script>
-async function loadBusinessDashboard() {
+async function authHeaders() {
+  var tok = localStorage.getItem('zh_token');
+  return tok ? { 'Authorization': 'Bearer ' + tok } : {};
+}
+
+function loadBusinessDashboard() {
   var bizId = localStorage.getItem("biz_dash_id");
   if (!bizId) return;
   
   var el = document.getElementById("dashboardContent");
   el.innerHTML = '<div class="empty"><div class="icon">📊</div><h3>Loading your data...</h3></div>';
+
+  if (!localStorage.getItem('zh_token')) {
+    el.innerHTML = '<div class="empty"><div class="icon">🔒</div><h3>Sign in required</h3>'
+      + '<p>Visitor analytics are only served to an authenticated account. Sign in, then reopen this page.</p>'
+      + '<p><a class="btn btn-primary" href="/login">Sign in</a></p></div>';
+    return;
+  }
   
   try {
-    var data = await fetch("/api/v1/visitors/business/" + bizId).then(function(r){ return r.json(); });
+    var data = await fetch("/api/v1/visitors/business/" + bizId, { headers: authHeaders() }).then(function(r){ return r.json(); });
     
     // Fetch subscription info
     var subData = null;
@@ -209,7 +221,7 @@ function esc(s){
 }
 
 function exportMyData(bizId) {
-  fetch("/api/v1/visitors/business/" + bizId + "/events")
+  fetch("/api/v1/visitors/business/" + bizId + "/events", { headers: authHeaders() })
     .then(function(r){ return r.json(); })
     .then(function(data){
       var blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});

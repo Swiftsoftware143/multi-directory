@@ -903,3 +903,68 @@ fn to_stripe_form_data(value: &serde_json::Value) -> Vec<(String, String)> {
 fn base64_encode_auth(credentials: &str) -> String {
     general_purpose::STANDARD.encode(credentials.as_bytes())
 }
+
+/// GET /api/v1/checkout/session/:id — public payment-confirmation lookup by session id
+/// (accepts either the internal uuid or the provider session id). Round 9: thank-you.html
+/// called this and got the SPA HTML fallback, so the confirmation page never showed details.
+pub async fn get_checkout_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    #[allow(clippy::type_complexity)]
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            Option<Uuid>,
+            Option<Uuid>,
+            Option<serde_json::Value>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
+        r#"SELECT status, purchasable_type, provider_type, business_id, directory_id,
+                  metadata, amount::text, currency
+           FROM checkout_sessions
+           WHERE id::text = $1 OR provider_session_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1"#,
+    )
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Checkout session not found".to_string()))?;
+
+    let (
+        status,
+        purchasable_type,
+        provider_type,
+        business_id,
+        directory_id,
+        metadata,
+        amount,
+        currency,
+    ) = row;
+
+    let plan_name = metadata
+        .as_ref()
+        .and_then(|m| m.get("plan_name"))
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| purchasable_type.clone());
+
+    Ok(Json(json!({
+        "session_id": id,
+        "status": status,
+        "purchasable_type": purchasable_type,
+        "provider_type": provider_type,
+        "plan_name": plan_name,
+        "business_id": business_id,
+        "directory_id": directory_id,
+        "amount": amount,
+        "currency": currency,
+        "login_url": "/admin",
+    })))
+}
