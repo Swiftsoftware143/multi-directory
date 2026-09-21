@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::auth::middleware::{is_admin, is_business_owner};
+use crate::auth::middleware::{is_business_owner, is_super_admin};
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::handlers::tenant_scope::assert_business_admin;
@@ -164,7 +164,7 @@ pub async fn create_service(
     // Verify authorization
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
-    let is_authorized = if is_admin(&claims) {
+    let is_authorized = if is_super_admin(&claims) {
         true
     } else if is_business_owner(&claims) {
         let count: i64 = sqlx::query_scalar(
@@ -235,7 +235,7 @@ pub async fn update_service(
 
     let (business_id,) = biz_id.ok_or(AppError::NotFound("Service not found".to_string()))?;
 
-    let is_authorized = if is_admin(&claims) {
+    let is_authorized = if is_super_admin(&claims) {
         true
     } else if is_business_owner(&claims) {
         let count: i64 = sqlx::query_scalar(
@@ -308,7 +308,7 @@ pub async fn delete_service(
 
     let (business_id,) = biz_id.ok_or(AppError::NotFound("Service not found".to_string()))?;
 
-    let is_authorized = if is_admin(&claims) {
+    let is_authorized = if is_super_admin(&claims) {
         true
     } else if is_business_owner(&claims) {
         let count: i64 = sqlx::query_scalar(

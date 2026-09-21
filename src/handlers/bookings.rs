@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tracing;
 use uuid::Uuid;
 
-use crate::auth::middleware::{is_admin, is_business_owner, is_visitor, verify_token};
+use crate::auth::middleware::{is_business_owner, is_super_admin, is_visitor, verify_token};
 use crate::auth::models::Claims;
 use crate::coreswift::{coreswift_url, internal_key};
 use crate::error::{ApiResult, AppError};
@@ -768,7 +768,7 @@ pub async fn get_booking(
     } else if role == "business_owner" {
         is_business_claimed_by_user(&s.db, biz_id, caller_id).await?
     } else {
-        is_admin(&claims)
+        is_super_admin(&claims)
     };
 
     if !is_owner {
@@ -822,7 +822,7 @@ pub async fn list_business_bookings(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Verify the caller owns or manages this business
-    let is_authorized = if is_admin(&claims) {
+    let is_authorized = if is_super_admin(&claims) {
         true
     } else {
         is_business_claimed_by_user(&s.db, business_id, user_id).await?
@@ -924,7 +924,7 @@ pub async fn update_booking_status(
         .ok_or(AppError::NotFound("Booking not found".to_string()))?;
 
     // Verify caller owns or manages the business
-    let is_authorized = if is_admin(&claims) {
+    let is_authorized = if is_super_admin(&claims) {
         true
     } else {
         is_business_claimed_by_user(&s.db, biz_id, user_id).await?
@@ -999,7 +999,7 @@ pub async fn cancel_booking(
         booking.ok_or(AppError::NotFound("Booking not found".to_string()))?;
 
     // Only visitor who owns the booking (or admin) can cancel
-    if visitor_id != owner_id && !is_admin(&claims) {
+    if visitor_id != owner_id && !is_super_admin(&claims) {
         return Err(AppError::Forbidden(
             "Not authorized to cancel this booking".to_string(),
         ));

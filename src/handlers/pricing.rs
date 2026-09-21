@@ -13,7 +13,7 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::auth::middleware::is_admin;
+use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
@@ -184,7 +184,7 @@ pub async fn update_service_price(
     Path(service_key): Path<String>,
     Json(req): Json<UpdateServicePriceRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -245,7 +245,7 @@ pub async fn create_bundle(
     Extension(claims): Extension<Claims>,
     Json(req): Json<CreateBundleRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -386,7 +386,7 @@ pub async fn update_bundle(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateBundleRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -483,7 +483,7 @@ pub async fn delete_bundle(
     Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -507,7 +507,7 @@ pub async fn set_grandfathered(
     Extension(claims): Extension<Claims>,
     Json(req): Json<SetGrandfatheredRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -541,7 +541,7 @@ pub async fn get_grandfathered(
     Extension(claims): Extension<Claims>,
     Path(business_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 

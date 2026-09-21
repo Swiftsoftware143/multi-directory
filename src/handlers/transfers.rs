@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
@@ -234,7 +235,7 @@ pub async fn create_transfer(
 ) -> ApiResult<impl IntoResponse> {
     let actor = actor_id(&claims)?;
     let email = actor_email(&s.db, &claims).await;
-    let admin = is_admin(&claims);
+    let admin = is_super_admin(&claims);
 
     let business = sqlx::query_as::<_, (Option<Uuid>, Option<Uuid>, String)>(
         "SELECT owner_id, directory_id, name FROM businesses WHERE id = $1",
@@ -378,7 +379,7 @@ pub async fn list_transfers(
 ) -> ApiResult<impl IntoResponse> {
     let actor = actor_id(&claims)?;
     let email = actor_email(&s.db, &claims).await.unwrap_or_default();
-    let admin = is_admin(&claims);
+    let admin = is_super_admin(&claims);
     let scope = q.scope.clone().unwrap_or_else(|| "all".to_string());
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
 
@@ -437,7 +438,7 @@ pub async fn transfer_options(
 ) -> ApiResult<impl IntoResponse> {
     let actor = actor_id(&claims)?;
     let email = actor_email(&s.db, &claims).await.unwrap_or_default();
-    let admin = is_admin(&claims);
+    let admin = is_super_admin(&claims);
     let limit = qs.limit.unwrap_or(200).clamp(1, 500);
     let search = qs.q.clone().map(|s| s.to_lowercase());
 
@@ -505,7 +506,7 @@ pub async fn get_transfer(
         || transfer.to_user_id == Some(actor)
         || transfer.from_email.as_deref().map(|e| e.to_lowercase()) == Some(email.clone())
         || transfer.to_email.as_deref().map(|e| e.to_lowercase()) == Some(email.clone());
-    if !is_admin(&claims) && !mine {
+    if !is_super_admin(&claims) && !mine {
         return Err(AppError::Forbidden(
             "Not a party to this transfer".to_string(),
         ));
@@ -594,7 +595,7 @@ pub async fn update_transfer(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTransferRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden(
             "Admin role required to change transfer terms".to_string(),
         ));
@@ -710,7 +711,7 @@ pub async fn accept_transfer(
     let incoming_email = to_email.clone().unwrap_or_default().to_lowercase();
     let is_incoming =
         to_user_id == Some(actor) || (!incoming_email.is_empty() && incoming_email == email);
-    if !is_admin(&claims) && !is_incoming {
+    if !is_super_admin(&claims) && !is_incoming {
         return Err(AppError::Forbidden(
             "Only the incoming owner or an admin can accept this transfer".to_string(),
         ));

@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
@@ -916,7 +917,7 @@ pub async fn get_enrichment_settings(
     Extension(claims): Extension<Claims>,
     Query(q): Query<SettingsQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden(
             "Admin role required to view enrichment settings".to_string(),
         ));
@@ -969,7 +970,7 @@ pub async fn update_enrichment_settings(
     Extension(claims): Extension<Claims>,
     Json(req): Json<UpdateSettingsRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden(
             "Admin role required to change enrichment settings".to_string(),
         ));
@@ -1051,7 +1052,7 @@ pub async fn enrichment_status(
     Extension(claims): Extension<Claims>,
     Query(q): Query<SettingsQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden(
             "Admin role required to view enrichment status".to_string(),
         ));
@@ -1134,7 +1135,7 @@ pub async fn run_enrichment_now(
     Extension(claims): Extension<Claims>,
     body: Option<Json<RunRequest>>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden(
             "Admin role required to run enrichment".to_string(),
         ));

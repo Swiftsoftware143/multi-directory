@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::auth::middleware::is_admin;
+use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
@@ -90,7 +90,7 @@ pub async fn get_survey_config(
     Extension(claims): Extension<Claims>,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -125,7 +125,7 @@ pub async fn upsert_survey_config(
     Path(directory_id): Path<Uuid>,
     Json(req): Json<UpsertSurveyRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -221,7 +221,7 @@ pub async fn toggle_survey(
     Extension(claims): Extension<Claims>,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 

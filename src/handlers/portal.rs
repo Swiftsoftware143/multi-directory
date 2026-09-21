@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::auth::middleware::{create_token, is_admin, verify_token};
+use crate::auth::middleware::{create_token, is_super_admin, verify_token};
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
@@ -617,7 +617,7 @@ pub async fn update_directory_features(
     Path(id): Path<Uuid>,
     Json(req): Json<FeatureConfigUpdate>,
 ) -> ApiResult<impl IntoResponse> {
-    if !is_admin(&claims) {
+    if !is_super_admin(&claims) {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
