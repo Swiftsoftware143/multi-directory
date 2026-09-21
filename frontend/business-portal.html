@@ -1224,8 +1224,15 @@ function icCard(p) {
     h += '<div class="form-group" style="margin-bottom:8px"><label style="font-size:.8rem">API key (your own — BYOK)</label>' +
       '<input id="' + icKeyInputId(key) + '" type="password" placeholder="' + (isCore ? 'csk_…  from CoreSwift → Integration Center' : 'Paste your API key') + '" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>';
     if (p.requires_base_url) {
-      h += '<div class="form-group" style="margin-bottom:8px"><label style="font-size:.8rem">Base URL (required)</label>' +
-        '<input id="' + icBaseInputId(key) + '" type="text" placeholder="https://…" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>';
+      // The label is DATA-DRIVEN: available_providers.field_label / field_help. For most providers
+      // this second input is a URL, but for DataForSEO it is the HTTP Basic-auth LOGIN (account
+      // email) stored in the same base_url column — a hardcoded "Base URL" label told the admin to
+      // type the wrong thing.
+      var extraLabel = p.field_label || 'Base URL (required)';
+      h += '<div class="form-group" style="margin-bottom:8px"><label style="font-size:.8rem">' + esc(extraLabel) + '</label>' +
+        '<input id="' + icBaseInputId(key) + '" type="text" placeholder="' + (p.field_label ? 'you@example.com' : 'https://…') + '" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">' +
+        (p.field_help ? '<div style="font-size:.72rem;color:var(--text-secondary);margin-top:4px">' + esc(p.field_help) + '</div>' : '') +
+        '</div>';
     }
   }
 

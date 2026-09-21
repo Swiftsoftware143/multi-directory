@@ -18,7 +18,12 @@ use crate::AppState;
 
 #[derive(Deserialize)]
 pub struct FetchKeywordsReq {
-    pub directory_id: i32,
+    // directories.id is uuid (blog_qa_keywords.directory_id carries an FK to it), so the old i32 here
+    // made every caller fail: a real uuid body was rejected 422 on deserialisation, and an integer
+    // passed deserialisation only to blow up in `SELECT name FROM directories WHERE id = $1`
+    // (operator does not exist: uuid = integer). This is why the keyword surface never worked even
+    // once the provider was configured.
+    pub directory_id: Uuid,
     pub seed_keywords: Vec<String>,
     pub source: String,
 }
@@ -26,7 +31,7 @@ pub struct FetchKeywordsReq {
 #[derive(Serialize, sqlx::FromRow)]
 pub struct KeywordItem {
     pub id: Uuid,
-    pub directory_id: i32,
+    pub directory_id: Uuid,
     pub question: String,
     pub keyword: String,
     pub intent: String,
@@ -39,7 +44,7 @@ pub struct KeywordItem {
 
 #[derive(Deserialize)]
 pub struct KeywordListQuery {
-    pub directory_id: Option<i32>,
+    pub directory_id: Option<Uuid>,
     pub status: Option<String>,
     pub source: Option<String>,
     pub intent: Option<String>,
@@ -55,7 +60,7 @@ pub struct KeywordListResponse {
 
 #[derive(Deserialize)]
 pub struct GeneratePostsReq {
-    pub directory_id: i32,
+    pub directory_id: Uuid,
     pub count: Option<i32>,
     pub template_id: Option<String>,
 }
@@ -68,7 +73,7 @@ pub struct GeneratePostsResponse {
 
 #[derive(Deserialize)]
 pub struct DigestReq {
-    pub directory_id: i32,
+    pub directory_id: Uuid,
 }
 
 #[derive(Serialize)]
@@ -86,7 +91,7 @@ pub struct SendDigestReq {
 
 #[derive(Deserialize)]
 pub struct ScheduleReq {
-    pub directory_id: i32,
+    pub directory_id: Uuid,
     pub day_of_week: String,
     pub hour: i32,
     pub posts_per_week: i32,
@@ -321,7 +326,10 @@ async fn fetch_dataforseo_keywords(
     .await?
     .ok_or_else(|| {
         AppError::NotFound(
-            "DataForSEO API key not configured. Set login + key in Integrations page.".into(),
+            "DataForSEO is not configured. In Integrations -> DataForSEO, enter your DataForSEO \
+             account email in \"DataForSEO login (account email)\" and the API password in the API \
+             key field, then save."
+                .into(),
         )
     })?;
 
@@ -332,8 +340,12 @@ async fn fetch_dataforseo_keywords(
         crate::security::provider_key_crypto::decrypt_for_use(&state.db, &stored_key, "dataforseo")
             .await
             .ok_or_else(|| {
-                AppError::Internal(
-                    "The stored DataForSEO key cannot be decrypted — re-save it in Integrations."
+                // BadRequest for the same reason as the refusal below: Internal is masked to
+                // "Internal server error", which told the admin nothing about the one action that
+                // fixes it (re-save the key so it is encrypted with the current master key).
+                AppError::BadRequest(
+                    "The stored DataForSEO key cannot be decrypted with the current master key. \
+                     Re-save it in Integrations -> DataForSEO."
                         .into(),
                 )
             })?;
@@ -361,6 +373,21 @@ async fn fetch_dataforseo_keywords(
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("DataForSEO request failed: {}", e)))?;
+
+    // A bad login/API-password pair (or an empty account balance) answers 401/402 with a JSON body
+    // that carries no tasks — without this check the admin just saw "no keywords returned" and could
+    // not tell a wrong credential from a genuinely empty result.
+    if !resp.status().is_success() {
+        let status = resp.status();
+        // BadRequest, NOT Internal: AppError::Internal is masked to a bare "Internal server error"
+        // over the wire, so an admin who mistyped the account email saw nothing actionable. This
+        // message carries no secret and tells the admin exactly which two fields to re-check.
+        return Err(AppError::BadRequest(format!(
+            "DataForSEO refused the request (HTTP {}). Check the login (account email) and the API \
+             password in Integrations -> DataForSEO, and that the account has API balance.",
+            status.as_u16()
+        )));
+    }
 
     let dfs_json: Value = resp
         .json()

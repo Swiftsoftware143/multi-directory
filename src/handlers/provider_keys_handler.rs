@@ -76,6 +76,12 @@ pub struct AvailableProviderResponse {
     pub name: String,
     pub description: Option<String>,
     pub requires_base_url: bool,
+    /// Label for the extra input that requires_base_url demands (NULL = the client falls back to
+    /// "Base URL"). DataForSEO needs the HTTP Basic-auth LOGIN there, i.e. the account email, so a
+    /// hardcoded "Base URL" label would tell the admin to type the wrong thing.
+    pub field_label: Option<String>,
+    /// One-line hint shown with that extra input (NULL = no hint).
+    pub field_help: Option<String>,
     pub requires_metadata: Value,
     pub icon: Option<String>,
 }
@@ -441,7 +447,7 @@ pub async fn delete_provider_key(
 /// GET /api/v1/available-providers
 pub async fn list_available_providers(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let rows = sqlx::query(
-        "SELECT key, name, description, requires_base_url, requires_metadata, icon \
+        "SELECT key, name, description, requires_base_url, field_label, field_help, requires_metadata, icon \
          FROM available_providers \
          ORDER BY name ASC",
     )
@@ -455,6 +461,8 @@ pub async fn list_available_providers(State(s): State<AppState>) -> ApiResult<im
             name: row.get("name"),
             description: row.get("description"),
             requires_base_url: row.get("requires_base_url"),
+            field_label: row.get("field_label"),
+            field_help: row.get("field_help"),
             requires_metadata: row.get("requires_metadata"),
             icon: row.get("icon"),
         })

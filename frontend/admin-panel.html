@@ -1223,8 +1223,14 @@
         ? '<span class="pk-badge pk-ok">' + mine.length + ' key' + (mine.length > 1 ? 's' : '') + '</span>'
         : '<span class="pk-badge pk-missing">Not set</span>';
       var lines = mine.map(renderKeyLine).join('');
+      // The extra input's label comes from the provider row (available_providers.field_label), not
+      // from this file: for DataForSEO the value stored in base_url is the HTTP Basic-auth LOGIN
+      // (account email), not a URL, so "Base URL" would be a wrong instruction.
       var baseField = p.requires_base_url
-        ? '<input class="pk-input" id="pk-base-' + key + '" placeholder="Base URL (required for this provider)" style="flex:1 1 200px">'
+        ? '<span class="pk-extra" style="flex:1 1 200px;min-width:200px">' +
+            '<input class="pk-input" id="pk-base-' + key + '" placeholder="' + pkEsc(p.field_label || 'Base URL (required for this provider)') + '" title="' + pkEsc(p.field_help || '') + '" style="width:100%">' +
+            (p.field_help ? '<span class="pk-hint" style="display:block;font-size:.72rem;opacity:.7;margin-top:2px">' + pkEsc(p.field_help) + '</span>' : '') +
+          '</span>'
         : '';
       return '<div class="pk-row" data-pk-row="' + key + '">' +
           '<div class="pk-head">' +
