@@ -2038,6 +2038,34 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // Serve the operator console — the UI for the admin endpoints that had no
+                    // screen calling them (kanban t_5356f3fb).
+                    if path == "/admin-ops"
+                        || path == "/admin-ops.html"
+                        || path == "/admin-ops/"
+                        || path == "/admin/ops"
+                        || path == "/admin/ops/"
+                    {
+                        let ops_path = std::path::Path::new(&frontend).join("admin-ops.html");
+                        if ops_path.exists() {
+                            match tokio::fs::read(&ops_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(
+                                                axum::http::header::CONTENT_TYPE,
+                                                "text/html; charset=utf-8",
+                                            )
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap(),
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     // Serve blog features admin panel
                     if path == "/blog-features" || path == "/blog-features/" {
                         let blog_feat_path =

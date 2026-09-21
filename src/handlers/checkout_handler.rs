@@ -20,7 +20,7 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::auth::middleware::is_super_admin;
+use crate::auth::middleware::{is_admin, is_super_admin};
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::security::provider_key_crypto as keycrypto;
@@ -509,17 +509,23 @@ pub async fn create_checkout_session(
     let provider_session_id = provider_session["id"].as_str().unwrap_or("");
     let checkout_url = provider_session["url"].as_str().unwrap_or("");
 
-    // Store the checkout session in our database
+    // Store the checkout session in our database.
+    //
+    // checkout_sessions keys a session to the BUYING BUSINESS (business_id is NOT NULL and a
+    // FK to businesses) plus its directory. The original code bound account_id/user_id —
+    // neither column exists — so every checkout creation 500'd (kanban t_5356f3fb).
     let session_id = Uuid::new_v4();
+    let (business_id, business_directory_id) =
+        resolve_checkout_business(&state.db, user_id, tenant_id).await?;
     sqlx::query(
         r#"INSERT INTO checkout_sessions
-           (id, account_id, user_id, provider_type, provider_session_id,
+           (id, business_id, directory_id, provider_type, provider_session_id,
             purchasable_type, purchasable_id, amount, currency, status, metadata)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10)"#,
     )
     .bind(session_id)
-    .bind(tenant_id)
-    .bind(user_id)
+    .bind(business_id)
+    .bind(business_directory_id)
     .bind(provider_type)
     .bind(provider_session_id)
     .bind(purchasable_type)
@@ -1050,38 +1056,109 @@ pub async fn list_checkout_sessions(
     Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
     let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
-    let rows = sqlx::query(
-        r#"SELECT id, provider_type, purchasable_type, purchasable_id::text,
-                  amount::text, currency, status, provider_session_id,
-                  created_at, updated_at
-           FROM checkout_sessions
-           WHERE account_id = $1
-           ORDER BY created_at DESC
-           LIMIT 50"#,
+    // A session belongs to the buying business. account_id was never a column on
+    // checkout_sessions, so this route 500'd for everyone (kanban t_5356f3fb).
+    // A platform admin with no claimed business still sees the whole book.
+    let scope = match resolve_checkout_business(&state.db, user_id, tenant_id).await {
+        Ok((business_id, _dir)) => Ok(Some(business_id)),
+        Err(e) => {
+            if is_admin(&claims) {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    }?;
+
+    let rows = match scope {
+        Some(business_id) => {
+            sqlx::query(
+                r#"SELECT id, business_id, directory_id, provider_type, purchasable_type,
+                          purchasable_id::text, amount::text, currency, status,
+                          provider_session_id, created_at, updated_at
+                   FROM checkout_sessions
+                   WHERE business_id = $1
+                   ORDER BY created_at DESC
+                   LIMIT 50"#,
+            )
+            .bind(business_id)
+            .fetch_all(&state.db)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                r#"SELECT id, business_id, directory_id, provider_type, purchasable_type,
+                          purchasable_id::text, amount::text, currency, status,
+                          provider_session_id, created_at, updated_at
+                   FROM checkout_sessions
+                   ORDER BY created_at DESC
+                   LIMIT 50"#,
+            )
+            .fetch_all(&state.db)
+            .await?
+        }
+    };
+
+    let sessions: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<Uuid, _>("id").map(|u| u.to_string()).unwrap_or_default(),
+                "business_id": r.try_get::<Option<Uuid>, _>("business_id").map(|u| u.map(|x| x.to_string())).unwrap_or(None),
+                "directory_id": r.try_get::<Option<Uuid>, _>("directory_id").map(|u| u.map(|x| x.to_string())).unwrap_or(None),
+                "provider_type": r.try_get::<&str, _>("provider_type").unwrap_or(""),
+                "purchasable_type": r.try_get::<&str, _>("purchasable_type").unwrap_or(""),
+                "purchasable_id": r.try_get::<Option<&str>, _>("purchasable_id").unwrap_or(None),
+                "amount": r.try_get::<&str, _>("amount").unwrap_or("0"),
+                "currency": r.try_get::<&str, _>("currency").unwrap_or(""),
+                "status": r.try_get::<&str, _>("status").unwrap_or(""),
+                "provider_session_id": r.try_get::<Option<&str>, _>("provider_session_id").unwrap_or(None),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                    .map(|t| t.to_rfc3339()).unwrap_or_default(),
+                "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
+                    .map(|t| t.to_rfc3339()).unwrap_or_default(),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({"sessions": sessions, "total": sessions.len()})))
+}
+
+/// Resolve the business a checkout session belongs to, plus its directory.
+///
+/// Order: the claimed business of the authenticated user (any business type), then — for
+/// tokens minted before a claim existed — the tenant id itself being a business id.
+/// Returns a clear 400 instead of a 500 when the account owns no business at all.
+async fn resolve_checkout_business(
+    db: &sqlx::PgPool,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> ApiResult<(Uuid, Option<Uuid>)> {
+    if let Ok(biz) = crate::handlers::b2b::resolve_buyer_business(db, user_id).await {
+        let dir = sqlx::query_scalar::<_, Option<Uuid>>(
+            "SELECT directory_id FROM businesses WHERE id = $1",
+        )
+        .bind(biz)
+        .fetch_optional(db)
+        .await?
+        .flatten();
+        return Ok((biz, dir));
+    }
+
+    let row = sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
+        "SELECT id, directory_id FROM businesses WHERE id = $1",
     )
     .bind(tenant_id)
-    .fetch_all(&state.db)
+    .fetch_optional(db)
     .await?;
 
-    let sessions: Vec<serde_json::Value> = rows.iter().map(|r| {
-        json!({
-            "id": r.try_get::<Uuid,_>("id").map(|u| u.to_string()).unwrap_or_default(),
-            "provider_type": r.try_get::<&str,_>("provider_type").unwrap_or(""),
-            "purchasable_type": r.try_get::<&str,_>("purchasable_type").unwrap_or(""),
-            "purchasable_id": r.try_get::<Option<&str>,_>("purchasable_id").unwrap_or(None),
-            "amount": r.try_get::<&str,_>("amount").unwrap_or("0"),
-            "currency": r.try_get::<&str,_>("currency").unwrap_or(""),
-            "status": r.try_get::<&str,_>("status").unwrap_or(""),
-            "provider_session_id": r.try_get::<Option<&str>,_>("provider_session_id").unwrap_or(None),
-            "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at")
-                .map(|t| t.to_rfc3339()).unwrap_or_default(),
-            "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("updated_at")
-                .map(|t| t.to_rfc3339()).unwrap_or_default(),
-        })
-    }).collect();
-
-    Ok(Json(json!({"sessions": sessions})))
+    row.ok_or_else(|| {
+        AppError::BadRequest(
+            "No business is linked to this account — claim a business before checking out".into(),
+        )
+    })
 }
 
 /// PayPal runs a sandbox and a live environment on different hosts. A webhook signed by one is not

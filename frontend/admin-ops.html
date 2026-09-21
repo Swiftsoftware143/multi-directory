@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Directory — Operator Console</title>
+<style>
+  :root{--bg:#0f1720;--panel:#16202b;--panel2:#1d2937;--border:#2a3948;--text:#e6edf3;
+        --muted:#8aa0b8;--accent:#38bdf8;--ok:#22c55e;--bad:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--text)}
+  header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--panel);
+         border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .sp{flex:1}
+  header a,header button{color:var(--accent);text-decoration:none;background:none;border:0;
+       font-size:13px;cursor:pointer}
+  main{display:flex;min-height:calc(100vh - 54px)}
+  nav{width:230px;flex:0 0 230px;border-right:1px solid var(--border);padding:12px 0;background:var(--panel)}
+  nav a{display:block;padding:8px 16px;color:var(--text);text-decoration:none;font-size:13px;cursor:pointer}
+  nav a:hover{background:var(--panel2)}
+  nav a.on{background:var(--panel2);border-left:3px solid var(--accent);padding-left:13px}
+  section{flex:1;padding:18px 22px;min-width:0}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px}
+  .card h3{margin:0 0 4px;font-size:14px}
+  .card .ep{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);margin-bottom:10px;
+            word-break:break-all}
+  label{display:block;font-size:11.5px;color:var(--muted);margin:8px 0 3px}
+  input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--text);
+       border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit}
+  textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:64px}
+  button.run{margin-top:10px;background:var(--accent);color:#04202c;border:0;border-radius:5px;
+       padding:7px 14px;font-weight:600;cursor:pointer;font-size:13px}
+  button.run[disabled]{opacity:.5;cursor:wait}
+  .out{margin-top:10px;font-size:12.5px}
+  .out pre{background:#0b1219;border:1px solid var(--border);border-radius:5px;padding:8px;overflow:auto;
+       max-height:280px;margin:0;font-size:11.5px}
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th,td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600}
+  .status{font-size:11.5px;margin-left:8px}
+  .ok{color:var(--ok)} .bad{color:var(--bad)}
+  .hint{font-size:11.5px;color:var(--muted)}
+  #gate{max-width:420px;margin:60px auto;background:var(--panel);border:1px solid var(--border);
+        border-radius:8px;padding:20px}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h3 style="margin-top:0">Operator Console — sign in</h3>
+  <p class="hint">The console reuses the admin panel session. Enter an operator admin login, or sign in at
+     <a href="/admin-panel" style="color:var(--accent)">/admin-panel</a> first.</p>
+  <label for="g-email">Email</label><input id="g-email" autocomplete="username">
+  <label for="g-pass">Password</label><input id="g-pass" type="password" autocomplete="current-password">
+  <button class="run" id="g-btn">Sign in</button>
+  <div id="g-err" class="status bad"></div>
+</div>
+
+<div id="app" class="hidden">
+<header>
+  <h1>🧰 Multi-Directory — Operator Console</h1>
+  <span class="hint" id="who"></span>
+  <span class="sp"></span>
+  <label for="dir-sel" style="margin:0">Directory</label>
+  <select id="dir-sel" style="width:260px"></select>
+  <a href="/admin-panel">← Admin panel</a>
+  <button id="signout">Sign out</button>
+</header>
+<main>
+  <nav id="nav"></nav>
+  <section id="pane"></section>
+</main>
+</div>
+
+<script>
+/* ============================================================================
+   Multi-Directory Operator Console  (kanban t_5356f3fb)
+
+   Every endpoint below is registered in the backend and was reachable only by
+   curl — no shipped surface called it. This page is the missing operator UI:
+   one card per capability, real inputs, live result. Nothing here is a mock;
+   each card performs the same HTTP request a curl would.
+
+   Body/field specs are taken from the handlers' request structs, so the forms
+   send exactly the fields the backend deserialises.
+   ========================================================================== */
+(function () {
+  var API = '/api/v1';
+  var token = localStorage.getItem('md_admin_token') || null;
+  var dirs = [], curDir = null, bizCache = {};
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  /* tenant_id on tracked_links / tag_rules / directory_events is a FOREIGN KEY to `tenants`, and
+     a directory id is NOT a tenant id (they are different rows) — feeding one a directory id is a
+     foreign-key 500. The operator's own JWT carries `tid`, so default every tenant field to it. */
+  function sessionTenant() {
+    try {
+      var t = token || localStorage.getItem('md_admin_token') || '';
+      var p = t.split('.')[1];
+      if (!p) return '';
+      p = p.replace(/-/g, '+').replace(/_/g, '/');
+      var c = JSON.parse(decodeURIComponent(escape(atob(p))));
+      return c.tid || c.tenant_id || '';
+    } catch (e) { return ''; }
+  }
+
+  function api(method, path, body) {
+    var h = { 'Content-Type': 'application/json' };
+    var t = token || localStorage.getItem('md_admin_token');
+    if (t) h['Authorization'] = 'Bearer ' + t;
+    var o = { method: method, headers: h };
+    if (body !== undefined && body !== null) o.body = JSON.stringify(body);
+    return fetch(API + path, o).then(function (r) {
+      if (r.status === 204) return { _status: 204 };
+      return r.text().then(function (txt) {
+        var data;
+        try { data = JSON.parse(txt); } catch (e) { data = { _raw: txt.slice(0, 500) }; }
+        data._status = r.status;
+        return data;
+      });
+    });
+  }
+
+  /* ---------- endpoint registry ----------
+     t: field type — text | num | dir | biz | plan | zone | sponsor | json | date | select
+     q: true → sent as a query string parameter (GET)
+     path: true → substituted into the URL template {name}, never sent in the body
+  */
+  var GROUPS = [
+    { g: 'Content Queue', items: [
+      { t: 'List queue', m: 'GET', p: '/admin/content-queue', f: [
+        { k: 'page', l: 'Page', ty: 'num', q: true }, { k: 'per_page', l: 'Per page', ty: 'num', q: true } ] },
+      { t: 'Add job', m: 'POST', p: '/admin/content-queue', f: [
+        { k: 'queue_type', l: 'Queue type', ty: 'select', o: ['blog_post', 'social_post', 'digest'], d: 'blog_post' },
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'keyword', l: 'Keyword' },
+        { k: 'template_id', l: 'Template id (optional)', ty: 'uuid' },
+        { k: 'merge_fields', l: 'Merge fields (JSON, optional)', ty: 'json' },
+        { k: 'scheduled_for', l: 'Scheduled for (RFC3339)', d: '2026-09-22T10:00:00Z' } ] },
+      { t: 'Update job', m: 'PUT', p: '/admin/content-queue/{id}', f: [
+        { k: 'id', l: 'Queue item id', ty: 'uuid', path: true },
+        { k: 'keyword', l: 'Keyword' },
+        { k: 'scheduled_for', l: 'Scheduled for (RFC3339)' },
+        { k: 'merge_fields', l: 'Merge fields (JSON)', ty: 'json' } ] },
+      { t: 'Cancel job', m: 'DELETE', p: '/admin/content-queue/{id}', f: [
+        { k: 'id', l: 'Queue item id', ty: 'uuid', path: true } ] },
+      { t: 'Bulk add jobs', m: 'POST', p: '/admin/content-queue/bulk', f: [
+        { k: 'jobs', l: 'Jobs (JSON array of {queue_type,directory_id,keyword,scheduled_for})', ty: 'json' } ] }
+    ]},
+
+    { g: 'Tags & Tracked Links', items: [
+      { t: 'List tag rules', m: 'GET', p: '/admin/tag-rules', f: [
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant', q: true } ] },
+      { t: 'Create tag rule', m: 'POST', p: '/admin/tag-rules', f: [
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant' },
+        { k: 'name', l: 'Rule name' },
+        { k: 'tag_id', l: 'Tag id', ty: 'uuid' },
+        { k: 'trigger_type', l: 'Trigger', ty: 'select', o: ['contact_created', 'event_attended', 'page_view', 'purchase'], d: 'contact_created' },
+        { k: 'action_type', l: 'Action', ty: 'select', o: ['apply_tag', 'send_email', 'webhook'], d: 'apply_tag' },
+        { k: 'action_config', l: 'Action config (JSON, optional)', ty: 'json' },
+        { k: 'is_active', l: 'Active', ty: 'select', o: ['true', 'false'], d: 'true' } ] },
+      { t: 'Update tag rule', m: 'PUT', p: '/admin/tag-rules/{id}', f: [
+        { k: 'id', l: 'Rule id', ty: 'uuid', path: true },
+        { k: 'name', l: 'Rule name' },
+        { k: 'trigger_type', l: 'Trigger' },
+        { k: 'action_type', l: 'Action' },
+        { k: 'action_config', l: 'Action config (JSON)', ty: 'json' },
+        { k: 'is_active', l: 'Active (true/false)' } ] },
+      { t: 'Delete tag rule', m: 'DELETE', p: '/admin/tag-rules/{id}', f: [
+        { k: 'id', l: 'Rule id', ty: 'uuid', path: true } ] },
+      { t: 'Execute rules for a contact', m: 'POST', p: '/admin/tag-rules/execute', f: [
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant' },
+        { k: 'tag_id', l: 'Tag id', ty: 'uuid' },
+        { k: 'trigger_type', l: 'Trigger' },
+        { k: 'contact_id', l: 'Contact id (optional)', ty: 'uuid' } ] },
+      { t: 'List tracked links', m: 'GET', p: '/admin/tracked-links', f: [
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant', q: true } ] },
+      { t: 'Create tracked link', m: 'POST', p: '/admin/tracked-links', f: [
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant' },
+        { k: 'name', l: 'Link name' },
+        { k: 'url', l: 'Destination URL' },
+        { k: 'utm_source', l: 'utm_source' }, { k: 'utm_medium', l: 'utm_medium' },
+        { k: 'utm_campaign', l: 'utm_campaign' } ] },
+      { t: 'Update tracked link', m: 'PUT', p: '/admin/tracked-links/{id}', f: [
+        { k: 'id', l: 'Link id', ty: 'uuid', path: true },
+        { k: 'name', l: 'Link name' }, { k: 'url', l: 'Destination URL' },
+        { k: 'is_active', l: 'Active (true/false)' } ] },
+      { t: 'Delete tracked link', m: 'DELETE', p: '/admin/tracked-links/{id}', f: [
+        { k: 'id', l: 'Link id', ty: 'uuid', path: true } ] },
+      { t: 'Bulk create links', m: 'POST', p: '/admin/tracked-links/bulk', f: [
+        { k: 'links', l: 'Links (JSON array of {tenant_id,name,url})', ty: 'json' } ] },
+      { t: 'Link click stats', m: 'GET', p: '/admin/tracked-links/stats/{id}', f: [
+        { k: 'id', l: 'Link id', ty: 'uuid', path: true } ] },
+      { t: 'Cross-platform tag sync', m: 'POST', p: '/admin/tag-sync', f: [
+        { k: 'event', l: 'Event name' },
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant' },
+        { k: 'tag_id', l: 'Tag id', ty: 'uuid' },
+        { k: 'payload', l: 'Payload (JSON)', ty: 'json' } ] }
+    ]},
+
+    { g: 'Event Providers', items: [
+      { t: 'List providers for a directory', m: 'GET', p: '/admin/directories/{dir}/event-providers', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true } ] },
+      { t: 'Update provider', m: 'PUT', p: '/admin/directories/{dir}/event-providers/{id}', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true },
+        { k: 'id', l: 'Provider id', ty: 'uuid', path: true },
+        { k: 'api_key', l: 'API key' }, { k: 'city', l: 'City' },
+        { k: 'radius_miles', l: 'Radius (miles)', ty: 'num' },
+        { k: 'is_active', l: 'Active (true/false)' } ] },
+      { t: 'Delete provider', m: 'DELETE', p: '/admin/directories/{dir}/event-providers/{id}', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true },
+        { k: 'id', l: 'Provider id', ty: 'uuid', path: true } ] },
+      { t: 'Sync one provider now', m: 'POST', p: '/admin/event-providers/{id}/sync', f: [
+        { k: 'id', l: 'Provider id', ty: 'uuid', path: true } ] },
+      { t: 'Provider sync status', m: 'GET', p: '/admin/event-providers/{id}/sync-status', f: [
+        { k: 'id', l: 'Provider id', ty: 'uuid', path: true } ] }
+    ]},
+
+    { g: 'City Requests', items: [
+      { t: 'Requests for a directory', m: 'GET', p: '/admin/directories/{dir}/city-requests', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true } ] },
+      { t: 'Mark a request added', m: 'POST', p: '/admin/directories/{dir}/city-requests/{id}/mark-added', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true },
+        { k: 'id', l: 'City request id', ty: 'uuid', path: true } ] },
+      { t: 'All city requests (public votes)', m: 'GET', p: '/city-requests' }
+    ]},
+
+    { g: 'Approvals & Verifications', items: [
+      { t: 'List approvals', m: 'GET', p: '/approvals', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true },
+        { k: 'status', l: 'Status', q: true } ] },
+      { t: 'Set approval status', m: 'PUT', p: '/approvals/{id}/status', f: [
+        { k: 'id', l: 'Approval id', ty: 'uuid', path: true },
+        { k: 'status', l: 'Status', ty: 'select', o: ['approved', 'rejected', 'pending'], d: 'approved' },
+        { k: 'notes', l: 'Notes' } ] },
+      { t: 'List verifications', m: 'GET', p: '/verifications', f: [
+        { k: 'business_id', l: 'Business', ty: 'biz', q: true },
+        { k: 'status', l: 'Status', q: true } ] },
+      { t: 'Verifications for one business', m: 'GET', p: '/businesses/{biz}/verifications', f: [
+        { k: 'biz', l: 'Business', ty: 'biz', path: true } ] },
+      { t: 'Get verification', m: 'GET', p: '/verifications/{id}', f: [
+        { k: 'id', l: 'Verification id', ty: 'uuid', path: true } ] },
+      { t: 'Create verification', m: 'POST', p: '/verifications', f: [
+        { k: 'business_id', l: 'Business', ty: 'biz' },
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'method', l: 'Method (phone, postcard, document…)' },
+        { k: 'notes', l: 'Notes' } ] },
+      { t: 'Update verification', m: 'PUT', p: '/verifications/{id}', f: [
+        { k: 'id', l: 'Verification id', ty: 'uuid', path: true },
+        { k: 'status', l: 'Status' },
+        { k: 'notes', l: 'Notes' } ] }
+    ]},
+
+    { g: 'Call Logs & Numbers', items: [
+      { t: 'List call logs', m: 'GET', p: '/call-logs', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true },
+        { k: 'business_id', l: 'Business', ty: 'biz', q: true },
+        { k: 'lead_status', l: 'Lead status', q: true } ] },
+      { t: 'Get call log', m: 'GET', p: '/call-logs/{id}', f: [
+        { k: 'id', l: 'Call log id', ty: 'uuid', path: true } ] },
+      { t: 'Call logs for a business', m: 'GET', p: '/businesses/{biz}/call-logs', f: [
+        { k: 'biz', l: 'Business', ty: 'biz', path: true } ] },
+      { t: 'Call logs for a directory', m: 'GET', p: '/directories/{dir}/call-logs', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true } ] },
+      { t: 'Assign / update lead', m: 'PUT', p: '/call-logs/{id}/lead', f: [
+        { k: 'id', l: 'Call log id', ty: 'uuid', path: true },
+        { k: 'lead_name', l: 'Lead name' }, { k: 'lead_email', l: 'Lead email' },
+        { k: 'lead_status', l: 'Lead status' }, { k: 'lead_notes', l: 'Notes' } ] },
+      { t: 'List phone numbers', m: 'GET', p: '/phone-numbers' },
+      { t: 'Get phone number', m: 'GET', p: '/phone-numbers/{id}', f: [
+        { k: 'id', l: 'Phone number id', ty: 'uuid', path: true } ] },
+      { t: 'Provision phone number', m: 'POST', p: '/phone-numbers/{id}/provision', f: [
+        { k: 'id', l: 'Phone number id', ty: 'uuid', path: true },
+        { k: 'provider', l: 'Provider (twilio…)' },
+        { k: 'area_code', l: 'Area code' } ] }
+    ]},
+
+    { g: 'Directory Events & Schedules', items: [
+      { t: 'Recent directory events', m: 'GET', p: '/directory-events', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true },
+        { k: 'limit', l: 'Limit', ty: 'num', q: true } ] },
+      { t: 'Unprocessed events', m: 'GET', p: '/directory-events/unprocessed', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true } ] },
+      { t: 'Process an event', m: 'POST', p: '/directory-events/{id}/process', f: [
+        { k: 'id', l: 'Event id', ty: 'uuid', path: true } ] },
+      { t: 'Emit event', m: 'POST', p: '/directory-events', f: [
+        { k: 'event_type', l: 'Event type' },
+        { k: 'entity_type', l: 'Entity type' },
+        { k: 'entity_id', l: 'Entity id', ty: 'uuid' },
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'data', l: 'Data (JSON)', ty: 'json' } ] },
+      { t: 'Event attendees', m: 'GET', p: '/events/{id}/attendees', f: [
+        { k: 'id', l: 'Event id', ty: 'uuid', path: true } ] },
+      { t: 'List ad schedules', m: 'GET', p: '/schedules', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true } ] },
+      { t: 'Create ad schedule', m: 'POST', p: '/schedules', f: [
+        { k: 'ad_zone_id', l: 'Ad zone', ty: 'zone' },
+        { k: 'sponsor_id', l: 'Sponsor id', ty: 'uuid' },
+        { k: 'creative_id', l: 'Creative id', ty: 'uuid' },
+        { k: 'start_date', l: 'Start (RFC3339)', d: '2026-10-01T00:00:00Z' },
+        { k: 'end_date', l: 'End (RFC3339)', d: '2026-11-01T00:00:00Z' } ] },
+      { t: 'Update ad schedule', m: 'PUT', p: '/schedules/{id}', f: [
+        { k: 'id', l: 'Schedule id', ty: 'uuid', path: true },
+        { k: 'start_date', l: 'Start (RFC3339)' }, { k: 'end_date', l: 'End (RFC3339)' },
+        { k: 'status', l: 'Status' } ] },
+      { t: 'Delete ad schedule', m: 'DELETE', p: '/schedules/{id}', f: [
+        { k: 'id', l: 'Schedule id', ty: 'uuid', path: true } ] }
+    ]},
+
+    { g: 'Category Requests', items: [
+      { t: 'List category requests', m: 'GET', p: '/category-requests', f: [
+        { k: 'status', l: 'Status (defaults to pending)', q: true },
+        { k: 'business_id', l: 'Business', ty: 'biz', q: true } ] },
+      { t: 'Business asks for a category', m: 'POST', p: '/businesses/{biz}/category-requests', f: [
+        { k: 'biz', l: 'Business', ty: 'biz', path: true },
+        { k: 'category_id', l: 'Category id', ty: 'uuid' },
+        { k: 'notes', l: 'Notes' } ] },
+      { t: 'Deny a category request', m: 'POST', p: '/category-requests/{id}/deny', f: [
+        { k: 'id', l: 'Request id', ty: 'uuid', path: true } ] }
+    ]},
+
+    { g: 'Monetisation', items: [
+      { t: 'Subscription plans', m: 'GET', p: '/subscription-plans' },
+      { t: 'Upgrade a business', m: 'POST', p: '/subscriptions/upgrade', f: [
+        { k: 'business_id', l: 'Business', ty: 'biz' },
+        { k: 'plan_id', l: 'Plan', ty: 'plan' },
+        { k: 'billing_cycle', l: 'Billing cycle', ty: 'select', o: ['monthly', 'annual'], d: 'monthly' } ] },
+      { t: 'Downgrade a business', m: 'POST', p: '/subscriptions/downgrade', f: [
+        { k: 'business_id', l: 'Business', ty: 'biz' },
+        { k: 'plan_id', l: 'Plan (optional)', ty: 'plan' } ] },
+      { t: 'Directory earnings', m: 'GET', p: '/earnings/{dir}', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true } ] },
+      { t: 'Sponsor creatives', m: 'GET', p: '/sponsors/{id}/creatives', f: [
+        { k: 'id', l: 'Sponsor id', ty: 'uuid', path: true } ] },
+      { t: 'Add sponsor creative', m: 'POST', p: '/sponsors/{id}/creatives', f: [
+        { k: 'id', l: 'Sponsor id', ty: 'uuid', path: true },
+        { k: 'name', l: 'Creative name' }, { k: 'image_url', l: 'Image URL' },
+        { k: 'target_url', l: 'Click-through URL' },
+        { k: 'width', l: 'Width', ty: 'num', d: '300' }, { k: 'height', l: 'Height', ty: 'num', d: '250' } ] },
+      { t: 'List ad zones', m: 'GET', p: '/ad-zones', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true } ] },
+      { t: 'Demand curve', m: 'GET', p: '/analytics/demand-curve', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true },
+        { k: 'days', l: 'Days', ty: 'num', d: '90', q: true } ] },
+      { t: 'Checkout sessions', m: 'GET', p: '/checkout/sessions' },
+      { t: 'Start a checkout', m: 'POST', p: '/checkout/create', f: [
+        { k: 'provider_type', l: 'Payment provider', ty: 'select', o: ['stripe', 'paypal'], d: 'stripe' },
+        { k: 'purchasable_type', l: 'What is being bought', ty: 'select',
+          o: ['plan_subscription', 'sponsored_listing', 'ad_zone', 'credits'], d: 'plan_subscription' },
+        { k: 'purchasable_id', l: 'Item id', ty: 'uuid' },
+        { k: 'amount', l: 'Amount', ty: 'num', d: '10' },
+        { k: 'currency', l: 'Currency', d: 'USD' } ] },
+      { t: 'Payment providers', m: 'GET', p: '/payment-providers' },
+      { t: 'Remove a payment provider', m: 'DELETE', p: '/payment-providers/{provider_type}', f: [
+        { k: 'provider_type', l: 'Provider type (stripe, paypal…)', d: 'stripe', path: true } ] }
+    ]},
+
+    { g: 'Content & Blog QA', items: [
+      { t: 'Generated keywords', m: 'GET', p: '/blog-qa/keywords', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir', q: true },
+        { k: 'page', l: 'Page', ty: 'num', q: true } ] },
+      { t: 'Fetch keywords (provider)', m: 'POST', p: '/blog-qa/fetch-keywords', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'seed_keywords', l: 'Seed keywords (JSON array)', ty: 'json', d: '["plumber"]' },
+        { k: 'source', l: 'Source', d: 'dataforseo' } ] },
+      { t: 'Generate posts', m: 'POST', p: '/blog-qa/generate-posts', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'count', l: 'Count', ty: 'num', d: '1' } ] },
+      { t: 'Generate digest', m: 'POST', p: '/blog-qa/generate-digest', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir' } ] },
+      { t: 'Send digest', m: 'POST', p: '/blog-qa/send-digest', f: [
+        { k: 'digest_id', l: 'Digest id', ty: 'uuid' } ] },
+      { t: 'Schedule weekly posts', m: 'POST', p: '/blog-qa/schedule-weekly', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'day_of_week', l: 'Day', ty: 'select', o: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'], d: 'monday' },
+        { k: 'hour', l: 'Hour (0-23)', ty: 'num', d: '9' },
+        { k: 'posts_per_week', l: 'Posts per week', ty: 'num', d: '1' } ] },
+      { t: 'Search posts & keywords', m: 'GET', p: '/blog-qa/search-all', f: [
+        { k: 'q', l: 'Search term', q: true } ] },
+      { t: 'Filter options', m: 'GET', p: '/categories/filter-options' },
+      { t: 'Trap-door factors', m: 'GET', p: '/directories/{dir}/trap-doors/available-factors', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true } ] },
+      { t: 'Generate trap-door pages', m: 'POST', p: '/directories/{dir}/trap-doors/scheduled-generate', f: [
+        { k: 'dir', l: 'Directory', ty: 'dir', path: true } ] },
+      { t: 'Blog schema for a post', m: 'POST', p: '/blog/schema/generate/{id}', f: [
+        { k: 'id', l: 'Blog post id', ty: 'uuid', path: true } ] },
+      { t: 'Remove internal link', m: 'DELETE', p: '/blog/internal-links/{post}/{target}', f: [
+        { k: 'post', l: 'Post id', ty: 'uuid', path: true },
+        { k: 'target', l: 'Target post id', ty: 'uuid', path: true } ] }
+    ]},
+
+    { g: 'Integrations & Data', items: [
+      { t: 'Integration configs', m: 'GET', p: '/integration-configs' },
+      { t: 'Get provider config', m: 'GET', p: '/integration-configs/{provider}', f: [
+        { k: 'provider', l: 'Provider', path: true } ] },
+      { t: 'Save provider config', m: 'POST', p: '/integration-configs', f: [
+        { k: 'provider', l: 'Provider' },
+        { k: 'config', l: 'Config (JSON)', ty: 'json' },
+        { k: 'is_active', l: 'Active (true/false)' } ] },
+      { t: 'Delete provider config', m: 'DELETE', p: '/integration-configs/{provider}', f: [
+        { k: 'provider', l: 'Provider', path: true } ] },
+      { t: 'Push lead to CoreSwift', m: 'POST', p: '/integrations/coreswift/push', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'email', l: 'Email' }, { k: 'phone', l: 'Phone' },
+        { k: 'name', l: 'Name' }, { k: 'company', l: 'Company' } ] },
+      { t: 'Ingest lead pipeline item', m: 'POST', p: '/pipeline/ingest', f: [
+        { k: 'source', l: 'Source' }, { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'email', l: 'Email' }, { k: 'name', l: 'Name' } ] },
+      { t: 'Portfolio sync', m: 'POST', p: '/portfolio/sync' },
+      { t: 'Places autocomplete', m: 'GET', p: '/places/autocomplete', f: [
+        { k: 'input', l: 'Input', d: 'pizza', q: true } ] },
+      { t: 'ZaarHub activity feed', m: 'GET', p: '/zaarhub/activity', f: [
+        { k: 'limit', l: 'Limit', ty: 'num', q: true } ] },
+      { t: 'Visitor claims', m: 'GET', p: '/zaarhub/claims/{visitor}', f: [
+        { k: 'visitor', l: 'Visitor account id', ty: 'uuid', path: true } ] }
+    ]},
+
+    { g: 'B2B & Supplier', items: [
+      { t: 'List co-op groups', m: 'GET', p: '/b2b/co-op/groups' },
+      { t: 'My co-op groups', m: 'GET', p: '/b2b/co-op/my-groups' },
+      { t: 'Co-op group detail', m: 'GET', p: '/b2b/co-op/groups/{id}', f: [
+        { k: 'id', l: 'Group id', ty: 'uuid', path: true } ] },
+      { t: 'Join co-op group', m: 'POST', p: '/b2b/co-op/groups/{id}/join', f: [
+        { k: 'id', l: 'Group id', ty: 'uuid', path: true } ] },
+      { t: 'Commit to a co-op deal', m: 'POST', p: '/b2b/co-op/deals/{id}/commit', f: [
+        { k: 'id', l: 'Deal id', ty: 'uuid', path: true },
+        { k: 'quantity', l: 'Quantity', ty: 'num', d: '1' } ] },
+      { t: 'Post a B2B lead', m: 'POST', p: '/b2b/leads', f: [
+        { k: 'title', l: 'Title' }, { k: 'description', l: 'Description' },
+        { k: 'category', l: 'Category' }, { k: 'budget', l: 'Budget', ty: 'num' } ] },
+      { t: 'Feature a supplier product', m: 'PUT', p: '/supplier/featured-product', f: [
+        { k: 'product_id', l: 'Product id', ty: 'uuid' },
+        { k: 'cta_text', l: 'Call-to-action text', d: 'Shop now' } ] }
+    ]}
+  ];
+
+  /* ---------- lookups for selects ---------- */
+  var LOOKUPS = { plan: [], zone: [] };
+
+  function loadDirectories() {
+    return api('GET', '/directories').then(function (d) {
+      dirs = d.data || d || [];
+      if (!Array.isArray(dirs)) dirs = [];
+      var sel = document.getElementById('dir-sel');
+      sel.innerHTML = dirs.map(function (x) {
+        return '<option value="' + esc(x.id) + '">' + esc(x.name || x.slug) + '</option>';
+      }).join('');
+      var saved = localStorage.getItem('md_ops_dir');
+      if (saved && dirs.some(function (x) { return x.id === saved; })) sel.value = saved;
+      curDir = sel.value;
+      sel.addEventListener('change', function () {
+        curDir = sel.value;
+        localStorage.setItem('md_ops_dir', curDir);
+        render();
+        loadBiz();
+      });
+    }).catch(function () {});
+  }
+
+  function loadLookups() {
+    return Promise.all([
+      api('GET', '/subscription-plans').then(function (d) { LOOKUPS.plan = d.plans || d.data || []; }).catch(function () {}),
+      api('GET', '/ad-zones').then(function (d) { LOOKUPS.zone = Array.isArray(d) ? d : (d.data || []); }).catch(function () {})
+    ]);
+  }
+
+  function dirSlug(id) {
+    var m = dirs.filter(function (x) { return x.id === id; })[0];
+    return m ? m.slug : null;
+  }
+
+  function loadBiz() {
+    var slug = dirSlug(curDir);
+    if (!slug) return Promise.resolve([]);
+    var fill = function (list) {
+      var dl = document.getElementById('biz-list');
+      if (dl) {
+        dl.innerHTML = list.slice(0, 300).map(function (b) {
+          return '<option value="' + esc(b.id) + '">' + esc((b.name || '') + (b.city ? ' — ' + b.city : '')) + '</option>';
+        }).join('');
+      }
+      return list;
+    };
+    if (bizCache[slug]) return Promise.resolve(fill(bizCache[slug]));
+    return api('GET', '/directories/' + encodeURIComponent(slug) + '/businesses?per_page=100')
+      .then(function (d) {
+        var list = d.businesses || d.data || (Array.isArray(d) ? d : []);
+        bizCache[slug] = Array.isArray(list) ? list : [];
+        return fill(bizCache[slug]);
+      }).catch(function () { return []; });
+  }
+
+  /* ---------- rendering ---------- */
+  var active = 0;
+
+  function fieldHtml(f, idx) {
+    var id = 'f' + idx + '_' + f.k;
+    var h = '<label for="' + id + '">' + esc(f.l || f.k) + '</label>';
+    if (f.ty === 'select') {
+      h += '<select id="' + id + '" data-k="' + esc(f.k) + '" data-ty="select"' +
+           (f.path ? ' data-path="1"' : '') + (f.q ? ' data-q="1"' : '') + '>' +
+           (f.o || []).map(function (o) {
+             return '<option value="' + esc(o) + '"' + (o === f.d ? ' selected' : '') + '>' + esc(o) + '</option>';
+           }).join('') + '</select>';
+    } else if (f.ty === 'dir') {
+      h += '<select id="' + id + '" data-k="' + esc(f.k) + '" data-ty="dir"' +
+           (f.path ? ' data-path="1"' : '') + (f.q ? ' data-q="1"' : '') + '>' +
+           dirs.map(function (x) {
+             var on = (curDir === x.id) ? ' selected' : '';
+             return '<option value="' + esc(x.id) + '"' + on + '>' + esc(x.name || x.slug) + '</option>';
+           }).join('') + '</select>';
+    } else if (f.ty === 'biz') {
+      h += '<input id="' + id + '" data-k="' + esc(f.k) + '" data-ty="biz" list="biz-list"' +
+           (f.path ? ' data-path="1"' : '') + (f.q ? ' data-q="1"' : '') +
+           ' placeholder="business uuid (datalist shows names for the selected directory)">';
+    } else if (f.ty === 'plan') {
+      h += '<select id="' + id + '" data-k="' + esc(f.k) + '" data-ty="plan"' + (f.path ? ' data-path="1"' : '') + '>' +
+           LOOKUPS.plan.map(function (p) {
+             return '<option value="' + esc(p.id) + '">' + esc(p.name || p.slug) + '</option>';
+           }).join('') + '</select>';
+    } else if (f.ty === 'zone') {
+      h += '<select id="' + id + '" data-k="' + esc(f.k) + '" data-ty="zone"' + (f.path ? ' data-path="1"' : '') + '>' +
+           LOOKUPS.zone.map(function (z) {
+             return '<option value="' + esc(z.id) + '">' + esc(z.name || z.zone_name || z.id) + '</option>';
+           }).join('') + '</select>';
+    } else if (f.ty === 'tenant') {
+      h += '<input id="' + id + '" data-k="' + esc(f.k) + '" data-ty="text"' +
+           (f.path ? ' data-path="1"' : '') + (f.q ? ' data-q="1"' : '') +
+           ' value="' + esc(sessionTenant()) + '">';
+    } else if (f.ty === 'json') {
+      h += '<textarea id="' + id + '" data-k="' + esc(f.k) + '" data-ty="json">' + esc(f.d || '') + '</textarea>';
+    } else {
+      h += '<input id="' + id + '" data-k="' + esc(f.k) + '" data-ty="' + esc(f.ty || 'text') + '"' +
+           (f.path ? ' data-path="1"' : '') + (f.q ? ' data-q="1"' : '') +
+           ' value="' + esc(f.d || '') + '">';
+    }
+    return h;
+  }
+
+  function render() {
+    document.getElementById('nav').innerHTML = GROUPS.map(function (gr, i) {
+      return '<a href="#" data-i="' + i + '" class="' + (i === active ? 'on' : '') + '">' + esc(gr.g) + '</a>';
+    }).join('');
+    var gr = GROUPS[active];
+    var html = '<datalist id="biz-list"></datalist>' +
+      '<h2 style="margin-top:0;font-size:16px">' + esc(gr.g) + '</h2>' +
+      '<p class="hint">Each card calls the live backend with the session you signed in with. ' +
+      'Earlier these routes were registered but no screen called them.</p>';
+    gr.items.forEach(function (it, i) {
+      var fid = 'c_' + active + '_' + i;
+      html += '<div class="card" id="' + fid + '">' +
+        '<h3>' + esc(it.t) + '</h3>' +
+        '<div class="ep">' + esc(it.m) + ' ' + esc(API + it.p) + '</div>' +
+        (it.f ? it.f.map(function (f, j) { return fieldHtml(f, active + '_' + i + '_' + j); }).join('') : '') +
+        '<button class="run" data-i="' + i + '">Run</button>' +
+        '<span class="status"></span><div class="out"></div></div>';
+    });
+    document.getElementById('pane').innerHTML = html;
+  }
+
+  function outHtml(d) {
+    var st = d._status;
+    var rows = Array.isArray(d) ? d :
+      (d && Array.isArray(d.data) ? d.data :
+        (d && Array.isArray(d.items) ? d.items :
+          (d && Array.isArray(d.sessions) ? d.sessions :
+            (d && Array.isArray(d.providers) ? d.providers : null))));
+    if (!rows) return '<pre>' + esc(JSON.stringify(d, null, 2)) + '</pre>';
+    if (!rows.length) return '<div class="hint">0 rows</div>';
+    var keys = Object.keys(rows[0]).slice(0, 12);
+    return '<table><thead><tr>' + keys.map(function (k) { return '<th>' + esc(k) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows.slice(0, 50).map(function (r) {
+        return '<tr>' + keys.map(function (k) {
+          var v = r[k];
+          return '<td>' + esc(typeof v === 'object' ? JSON.stringify(v) : v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function collect(card) {
+    var els = card.querySelectorAll('[data-k]');
+    var path = {}, query = {}, body = {}, bad = null;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i], k = el.getAttribute('data-k'), ty = el.getAttribute('data-ty');
+      var v = el.value;
+      if (v === '' || v == null) continue;
+      if (ty === 'json') {
+        try { v = JSON.parse(v); } catch (e) { bad = 'Invalid JSON in ' + k + ': ' + e.message; continue; }
+      } else if (ty === 'num') {
+        v = Number(v);
+      }
+      if (el.getAttribute('data-path')) path[k] = v;
+      else if (el.getAttribute('data-q')) query[k] = v;
+      else body[k] = v;
+    }
+    return { path: path, query: query, body: body, bad: bad };
+  }
+
+  function run(card, it) {
+    var stEl = card.querySelector('.status'), outEl = card.querySelector('.out');
+    var got = collect(card);
+    if (got.bad) { stEl.className = 'status bad'; stEl.textContent = got.bad; return; }
+    var url = it.p.replace(/\{(\w+)\}/g, function (_, k) {
+      return encodeURIComponent(got.path[k] == null ? '' : got.path[k]);
+    });
+    var qs = Object.keys(got.query).map(function (k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(got.query[k]);
+    }).join('&');
+    if (qs) url += (url.indexOf('?') === -1 ? '?' : '&') + qs;
+    var send = (it.m === 'GET' || it.m === 'DELETE') ? undefined : got.body;
+    stEl.className = 'status'; stEl.textContent = 'running…';
+    outEl.innerHTML = '';
+    card.querySelector('button.run').disabled = true;
+    api(it.m, url, send).then(function (d) {
+      var ok = d._status >= 200 && d._status < 300;
+      stEl.className = 'status ' + (ok ? 'ok' : 'bad');
+      stEl.textContent = 'HTTP ' + d._status;
+      outEl.innerHTML = outHtml(d);
+    }).catch(function (e) {
+      stEl.className = 'status bad';
+      stEl.textContent = e.message;
+    }).finally(function () { card.querySelector('button.run').disabled = false; });
+  }
+
+  document.addEventListener('click', function (ev) {
+    var navA = ev.target.closest && ev.target.closest('#nav a');
+    if (navA) { ev.preventDefault(); active = Number(navA.getAttribute('data-i')); render(); return; }
+    var btn = ev.target.closest && ev.target.closest('button.run');
+    if (btn) {
+      var card = btn.closest('.card');
+      var gr = GROUPS[active];
+      var idx = Number(btn.getAttribute('data-i'));
+      run(card, gr.items[idx]);
+    }
+  });
+
+  /* ---------- auth gate ---------- */
+  function showApp() {
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    var u = JSON.parse(localStorage.getItem('md_admin_user') || 'null');
+    document.getElementById('who').textContent = u ? (u.email || u.name || '') : '';
+    loadDirectories().then(function () { return loadLookups(); }).then(function () { render(); loadBiz(); });
+  }
+
+  document.getElementById('g-btn').addEventListener('click', function () {
+    var email = document.getElementById('g-email').value.trim();
+    var pass = document.getElementById('g-pass').value;
+    var err = document.getElementById('g-err');
+    err.textContent = '';
+    api('POST', '/auth/login', { email: email, password: pass }).then(function (d) {
+      if (!d.token && !d.access_token) throw new Error(d.message || 'Login failed');
+      token = d.token || d.access_token;
+      localStorage.setItem('md_admin_token', token);
+      localStorage.setItem('md_admin_user', JSON.stringify(d.user || { email: email }));
+      showApp();
+    }).catch(function (e) { err.textContent = e.message || 'Login failed'; });
+  });
+
+  document.getElementById('signout').addEventListener('click', function () {
+    localStorage.removeItem('md_admin_token');
+    localStorage.removeItem('md_admin_user');
+    location.reload();
+  });
+
+  if (token) { showApp(); }
+})();
+</script>
+</body>
+</html>
