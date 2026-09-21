@@ -1,7 +1,7 @@
 //! CRM (Contacts, Pipelines, Deals) CRUD handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use serde_json::json;
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
@@ -505,8 +506,13 @@ pub struct DirectorySlugId {
 /// GET /api/v1/directories/:slug/crm/stats
 pub async fn directory_crm_stats(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    // CRM aggregates are the directory's own business data — only its admin (or the platform
+    // operator) may read them; previously any signed-in admin could.
+    crate::handlers::tenant_scope::assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
+
     let dir = sqlx::query_as::<_, DirectorySlugId>(
         "SELECT id, name FROM directories WHERE slug = \x241 ",
     )
