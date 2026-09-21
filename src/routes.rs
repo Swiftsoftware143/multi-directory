@@ -2609,6 +2609,13 @@ async fn auth_guard(
         || (path == "/submissions" && req.method() == "POST")
         // Public payment-confirmation lookup by checkout session id (unguessable id)
         || (path.starts_with("/checkout/session/") && req.method() == "GET")
+        // Public payment webhook receivers. Stripe/PayPal POST here with no JWT — they
+        // authenticate by SIGNING the request (Stripe-Signature / PayPal transmission headers),
+        // which the handlers verify against the stored webhook secret. Without these entries the
+        // guard answered 401 to the gateway itself, so a completed payment could never be
+        // confirmed by webhook.
+        || (req.method() == "POST"
+            && (path == "/webhooks/stripe" || path == "/webhooks/paypal"))
         // Public B2B register (distributor/supplier signup)
         || (path == "/b2b/register" && req.method() == "POST")
         // Public pricing endpoint
