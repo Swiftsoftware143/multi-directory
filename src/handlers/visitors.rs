@@ -789,6 +789,21 @@ pub async fn toggle_favorite(
     // Manually verify JWT from Authorization header (route is before auth_guard)
     let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
 
+    // A valid JWT is not necessarily a VISITOR token: any signed-in admin/business user holds one,
+    // and their id is not a visitor_accounts row — inserting it violated the FK and returned 500.
+    // Confirm the caller really is a visitor, and refuse cleanly if not.
+    let is_visitor =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_one(&s.db)
+            .await?;
+    if is_visitor == 0 {
+        return Err(AppError::Forbidden(
+            "Favourites are for shopper accounts — sign in as a visitor to save a business."
+                .to_string(),
+        ));
+    }
+
     // Get the business's directory_id
     let biz_info =
         sqlx::query_as::<_, (Uuid,)>("SELECT directory_id FROM businesses WHERE id = $1")
@@ -845,6 +860,21 @@ pub async fn list_favorites(
 ) -> ApiResult<impl IntoResponse> {
     // Manually verify JWT from Authorization header (route is before auth_guard)
     let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
+
+    // A valid JWT is not necessarily a VISITOR token: any signed-in admin/business user holds one,
+    // and their id is not a visitor_accounts row — inserting it violated the FK and returned 500.
+    // Confirm the caller really is a visitor, and refuse cleanly if not.
+    let is_visitor =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_one(&s.db)
+            .await?;
+    if is_visitor == 0 {
+        return Err(AppError::Forbidden(
+            "Favourites are for shopper accounts — sign in as a visitor to save a business."
+                .to_string(),
+        ));
+    }
 
     let favorites = sqlx::query_as::<_, FavoriteBusinessRow>(
         r#"SELECT
