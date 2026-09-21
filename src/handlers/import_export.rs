@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -710,8 +710,14 @@ pub async fn get_import_log(
 
 pub async fn export_businesses(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // A bulk export dumps a whole directory (its businesses / reviews / CRM contacts): only the
+    // platform operator or an admin of that directory.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_directory_admin(&state.db, &claims, directory_id).await?;
     let businesses = sqlx::query_as::<_, Business>(
         "SELECT * FROM businesses WHERE directory_id = $1 ORDER BY name",
     )
@@ -723,8 +729,14 @@ pub async fn export_businesses(
 
 pub async fn export_reviews(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // A bulk export dumps a whole directory (its businesses / reviews / CRM contacts): only the
+    // platform operator or an admin of that directory.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_directory_admin(&state.db, &claims, directory_id).await?;
     let reviews = sqlx::query_as::<_, Review>(
         "SELECT r.* FROM reviews r JOIN businesses b ON r.business_id = b.id WHERE b.directory_id = $1 ORDER BY r.created_at"
     )
@@ -736,8 +748,14 @@ pub async fn export_reviews(
 
 pub async fn export_contacts(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // A bulk export dumps a whole directory (its businesses / reviews / CRM contacts): only the
+    // platform operator or an admin of that directory.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_directory_admin(&state.db, &claims, directory_id).await?;
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
     struct CrmContactExport {
         id: Uuid,

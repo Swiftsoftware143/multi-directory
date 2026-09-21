@@ -2,6 +2,7 @@
 
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     Extension, Json,
 };
 use chrono::{DateTime, Utc};
@@ -183,16 +184,18 @@ async fn forward_to_coreswift(
 /// GET /api/v1/messages/:business_id — list messages for a business (owner only)
 pub async fn list_messages(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
-    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Vec<MessageResponse>>, AppError> {
     let db = &s.db;
 
-    if !is_owner_of(db, &claims.sub, business_id).await? && claims.role != "admin" {
-        return Err(AppError::Forbidden(
-            "Not authorized to view messages".into(),
-        ));
-    }
+    // Customer messages are private to the business. The claims are verified from the header
+    // rather than taken from Extension, so the check holds no matter which router group this
+    // route lands in. (The old check let ANY tenant admin through via `role == "admin"`.)
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(db, &claims, business_id)
+        .await?;
 
     let messages = sqlx::query_as::<_, MessageResponse>(
         r#"SELECT id, business_id, sender_name, sender_email, subject, message, is_read, created_at
@@ -238,14 +241,16 @@ pub async fn mark_read(
 /// GET /api/v1/messages/:business_id/unread — unread count for business owner
 pub async fn unread_count(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
-    Extension(claims): Extension<Claims>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let db = &s.db;
 
-    if !is_owner_of(db, &claims.sub, business_id).await? && claims.role != "admin" {
-        return Err(AppError::Forbidden("Not authorized".into()));
-    }
+    // The unread count is derived from the same private message set — same guard.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(db, &claims, business_id)
+        .await?;
 
     let count: i64 = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM business_messages WHERE business_id = $1 AND is_read = false",

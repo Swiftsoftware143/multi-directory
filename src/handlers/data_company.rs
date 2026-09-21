@@ -3,7 +3,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -617,8 +617,20 @@ pub async fn update_verification(
 /// GET /api/v1/businesses/:id/verifications — list verifications for a business
 pub async fn business_verifications(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Verification records (method, uploaded document URL, verified data) are private to the
+    // business: platform operator or an admin of that business only.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(
+        &state.db,
+        &claims,
+        business_id,
+    )
+    .await?;
+
     let verifications = sqlx::query_as::<_, BusinessVerification>(
         "SELECT * FROM business_verifications WHERE business_id = $1 ORDER BY created_at DESC",
     )

@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -2455,8 +2455,15 @@ pub async fn list_business_ads(
 /// Shows total earned from ads for this business
 pub async fn get_business_ad_earnings(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Ad revenue is money owed to a business: platform operator or an admin of that business only.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, business_id)
+        .await?;
+
     let sponsor_id: Option<Uuid> =
         sqlx::query_scalar("SELECT id FROM sponsors WHERE business_id = $1 LIMIT 1")
             .bind(business_id)

@@ -15,9 +15,11 @@
 //! Failures return 404 (`NotFound`) rather than 403 so the endpoint does not confirm that
 //! an object with that id exists at all.
 
+use axum::http::HeaderMap;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::auth::middleware::verify_token;
 use crate::auth::models::Claims;
 use crate::error::AppError;
 
@@ -34,6 +36,52 @@ pub fn caller_user(claims: &Claims) -> Result<Uuid, AppError> {
 /// The platform operator — the account that operates the shared directories.
 pub fn is_platform_operator(claims: &Claims) -> bool {
     claims.role == "super_admin"
+}
+
+/// Verify the caller's JWT straight from the request headers.
+///
+/// Handlers must NOT rely on `Extension<Claims>`: a route's position in the router does not
+/// guarantee `auth_guard` injected the claims (the public-path bypass returns before injection,
+/// and per-router layering means a route added after a `.layer()` call is not covered), and a
+/// missing extension panics into an HTTP 500 for *every* caller. Reading and verifying the bearer
+/// token inside the handler holds no matter which router group the route ends up in.
+pub fn claims_from_headers(headers: &HeaderMap, jwt_secret: &str) -> Result<Claims, AppError> {
+    headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or(AppError::Unauthorized)
+        .and_then(|t| verify_token(t, jwt_secret).map_err(|_| AppError::Unauthorized))
+}
+
+/// Guard for a row that carries an owning `user_id` (api_keys, webhooks): the caller must be the
+/// platform operator or a user of the same tenant as the row's owner. 404 on failure.
+pub async fn assert_user_row_tenant(
+    db: &PgPool,
+    claims: &Claims,
+    table: &str,
+    id: Uuid,
+    not_found: &str,
+) -> Result<(), AppError> {
+    if is_platform_operator(claims) {
+        return Ok(());
+    }
+    let tid = caller_tenant(claims)?;
+    // `table` is a compile-time literal at every call site, never caller input.
+    let sql = format!(
+        "SELECT EXISTS (SELECT 1 FROM {table} t JOIN users u ON u.id = t.user_id \
+         WHERE t.id = $1 AND u.tenant_id = $2)"
+    );
+    let ok = sqlx::query_scalar::<_, bool>(&sql)
+        .bind(id)
+        .bind(tid)
+        .fetch_one(db)
+        .await?;
+    if ok {
+        Ok(())
+    } else {
+        Err(AppError::NotFound(not_found.to_string()))
+    }
 }
 
 /// Resolve a directory slug to its id (404 when it does not exist).
@@ -135,6 +183,40 @@ pub async fn assert_business_admin(
     } else {
         Err(AppError::NotFound("business not found".into()))
     }
+}
+
+/// Guard for business-scoped routes the business dashboard calls. A business is the caller's when
+/// they administer it (owner, claim by user id, or directory operator) OR when the caller's user
+/// email matches the active public claim on it — the claim form records `owner_email` only and
+/// never `user_id`, so an email match is the only ownership link a self-serve owner has. 404 on
+/// failure (never 403) so a probe cannot confirm the business exists.
+pub async fn assert_business_admin_or_claimant(
+    db: &PgPool,
+    claims: &Claims,
+    business_id: Uuid,
+) -> Result<(), AppError> {
+    if can_admin_business(db, claims, business_id).await? {
+        return Ok(());
+    }
+    let uid = caller_user(claims)?;
+    let email: Option<String> = sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(uid)
+        .fetch_optional(db)
+        .await?;
+    if let Some(email) = email {
+        let claimed = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM claimed_businesses \
+             WHERE business_id = $1 AND owner_email = $2 AND is_active)",
+        )
+        .bind(business_id)
+        .bind(&email)
+        .fetch_one(db)
+        .await?;
+        if claimed {
+            return Ok(());
+        }
+    }
+    Err(AppError::NotFound("business not found".into()))
 }
 
 /// Guard for a submission: the submission's directory must be one the caller administers

@@ -3,7 +3,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -278,9 +278,15 @@ pub async fn call_log_stats(State(s): State<AppState>) -> ApiResult<impl IntoRes
 /// GET /api/v1/directories/:slug/call-logs — directory scoped
 pub async fn directory_call_logs(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
     Query(q): Query<ListQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    // Call logs carry caller numbers and lead PII: directory-scoped, operator-only otherwise.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
+
     let limit = q.limit.unwrap_or(50).min(200);
     let offset = q.offset.unwrap_or(0);
 
@@ -299,9 +305,15 @@ pub async fn directory_call_logs(
 /// GET /api/v1/businesses/:id/call-logs — per business
 pub async fn business_call_logs(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Query(q): Query<ListQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    // A business's call log is private to that business (and the platform operator).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, id).await?;
+
     let limit = q.limit.unwrap_or(50).min(200);
     let offset = q.offset.unwrap_or(0);
 

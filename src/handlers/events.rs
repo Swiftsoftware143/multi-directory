@@ -543,12 +543,47 @@ pub async fn list_attendees(
     headers: HeaderMap,
     Path(event_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let (user_id, role) = extract_user_id(&headers, &s.config.jwt_secret)?;
-    let authorized = user_can_manage_event(&s.db, user_id, &role, event_id).await?;
-    if !authorized {
-        return Err(AppError::Forbidden(
-            "Only the event creator or admin can view attendees".to_string(),
-        ));
+    // The attendee list is visitor PII: only the platform operator, the directory that owns the
+    // event, the business it is attached to, or the event's creator may read it. The old check
+    // accepted `role == "admin"`, which every tenant admin holds. Claims are verified from the
+    // header so the check holds wherever the route sits in the router.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        let row: Option<(Uuid, Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+            "SELECT directory_id, business_id, created_by FROM community_events WHERE id = $1",
+        )
+        .bind(event_id)
+        .fetch_optional(&s.db)
+        .await?;
+        let (directory_id, business_id, created_by) =
+            row.ok_or_else(|| AppError::NotFound("Event not found".to_string()))?;
+        let mut ok =
+            crate::handlers::tenant_scope::can_admin_directory(&s.db, &claims, directory_id)
+                .await
+                .unwrap_or(false);
+        if !ok {
+            if let Some(b) = business_id {
+                ok = crate::handlers::tenant_scope::can_admin_business(&s.db, &claims, b)
+                    .await
+                    .unwrap_or(false);
+            }
+        }
+        if !ok {
+            if let Some(c) = created_by {
+                let tid = crate::handlers::tenant_scope::caller_tenant(&claims)?;
+                ok = sqlx::query_scalar::<_, bool>(
+                    "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND tenant_id = $2)",
+                )
+                .bind(c)
+                .bind(tid)
+                .fetch_one(&s.db)
+                .await?;
+            }
+        }
+        if !ok {
+            return Err(AppError::NotFound("Event not found".to_string()));
+        }
     }
 
     let attendees = sqlx::query_as::<_, RsvpWithVisitor>(

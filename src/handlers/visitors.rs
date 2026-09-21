@@ -547,8 +547,16 @@ pub async fn export_visitors(
 /// GET /api/v1/visitors/business/:business_id — per-business visitor summary for owner dashboard
 pub async fn business_visitor_summary(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Visitor analytics (traffic, locations, click counts) are a business's private dashboard
+    // data: platform operator or an admin of that business only.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, business_id)
+        .await?;
+
     let total_views = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM visitor_events WHERE business_id = $1 AND event_type = 'listing_view'"
     )
@@ -1782,8 +1790,15 @@ pub async fn admin_mark_city_added(
 /// (owner dashboard export). Round 9: business-dashboard.html called this with no route behind it.
 pub async fn business_visitor_events(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Event-level visitor trail for a business — same guard as the summary.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, business_id)
+        .await?;
+
     #[allow(clippy::type_complexity)]
     let events = sqlx::query_as::<
         _,

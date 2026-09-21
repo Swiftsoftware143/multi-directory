@@ -450,8 +450,43 @@ pub async fn delete_webhook(
 /// GET /api/v1/admin/webhooks/:id/deliveries — list deliveries for a webhook
 pub async fn list_webhook_deliveries(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // A webhook and its delivery log (endpoints + payloads) belong to the tenant that registered
+    // it or to the directory it is scoped to.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        let dir: Option<Uuid> = sqlx::query_scalar::<_, Option<Uuid>>(
+            "SELECT directory_id FROM webhooks WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .flatten();
+        let mut ok = match dir {
+            Some(d) => crate::handlers::tenant_scope::can_admin_directory(&state.db, &claims, d)
+                .await
+                .unwrap_or(false),
+            None => false,
+        };
+        if !ok {
+            ok = crate::handlers::tenant_scope::assert_user_row_tenant(
+                &state.db,
+                &claims,
+                "webhooks",
+                id,
+                "Webhook not found",
+            )
+            .await
+            .is_ok();
+        }
+        if !ok {
+            return Err(AppError::NotFound("Webhook not found".to_string()));
+        }
+    }
+
     let deliveries = sqlx::query_as::<_, WebhookDelivery>(
         "SELECT * FROM webhook_deliveries WHERE webhook_id = $1 ORDER BY created_at DESC LIMIT 50",
     )
@@ -681,8 +716,22 @@ pub fn check_rate_limit(key_id: &str, rpm: i32, rph: i32) -> (bool, i32, i32) {
 /// GET /api/v1/admin/api-keys/:id/usage — get usage stats for an API key
 pub async fn get_api_key_usage(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // API-key usage is private to the tenant that owns the key: any signed-in admin could
+    // previously read any key's usage by guessing its id.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_user_row_tenant(
+        &state.db,
+        &claims,
+        "api_keys",
+        id,
+        "API key not found",
+    )
+    .await?;
+
     let minute_usage: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM api_key_usage WHERE api_key_id = $1 AND created_at > NOW() - INTERVAL '1 minute'"
     )

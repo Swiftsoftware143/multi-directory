@@ -9,16 +9,44 @@
 
 use axum::{
     extract::{Extension, State},
+    http::HeaderMap,
     response::IntoResponse,
     Json,
 };
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::auth::models::Claims;
-use crate::error::ApiResult;
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 use super::proxy_common::*;
+
+/// Guard for the funnel trio. A funnel lives in IncentiveSwift and is owned by the IS account that
+/// maps to the caller's MD user, so ownership is resolved in the IS database: only the platform
+/// operator, or a caller whose IS account owns the funnel, gets through. 404 (never 403) so a
+/// probe cannot confirm the funnel exists.
+async fn assert_funnel_access(
+    s: &AppState,
+    claims: &Claims,
+    funnel_id: &str,
+) -> Result<(), AppError> {
+    if crate::handlers::tenant_scope::is_platform_operator(claims) {
+        return Ok(());
+    }
+    let fid =
+        Uuid::parse_str(funnel_id).map_err(|_| AppError::NotFound("Funnel not found".into()))?;
+    let (account_id, _email) = resolve_is_account(&s.db, &s.is_db, claims).await?;
+    let owner: Option<Uuid> =
+        sqlx::query_scalar::<_, Uuid>("SELECT account_id FROM iqs_funnels WHERE id = $1")
+            .bind(fid)
+            .fetch_optional(&s.is_db)
+            .await?;
+    match owner {
+        Some(o) if o.to_string() == account_id => Ok(()),
+        _ => Err(AppError::NotFound("Funnel not found".into())),
+    }
+}
 
 // ── Funnels ──
 
@@ -46,9 +74,12 @@ pub async fn create_funnel(
 /// GET /iqs/funnels/:id — get a single IQS funnel
 pub async fn get_funnel(
     State(s): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    assert_funnel_access(&s, &claims, &id).await?;
     let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
     let result = proxy_get(&format!("/iqs/funnels/{}", id), &aid, &email, &claims.role).await?;
     Ok(Json(result))
@@ -125,9 +156,12 @@ pub async fn submit_funnel(
 /// GET /iqs/funnels/:id/questions — list questions for a funnel
 pub async fn list_questions(
     State(s): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    assert_funnel_access(&s, &claims, &id).await?;
     let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
     let result = proxy_get(
         &format!("/iqs/funnels/{}/questions", id),
@@ -199,9 +233,12 @@ pub async fn delete_question(
 /// GET /iqs/funnels/:id/submissions — list submissions for a funnel
 pub async fn list_submissions(
     State(s): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    assert_funnel_access(&s, &claims, &id).await?;
     let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
     let result = proxy_get(
         &format!("/iqs/funnels/{}/submissions", id),
