@@ -1012,8 +1012,8 @@
     <div class="section-label" id="loyalty-programme-section">⭐ Loyalty Programmes</div>
     <p style="font-size:.85rem;color:var(--text-secondary);margin:8px 0 0">
       <b>One programme for the whole ZaarHub network.</b> ZaarHub is a single directory spread across
-      every city, so points are earned network-wide — a shopper keeps the same balance in Palm Bay,
-      St Cloud or any city you add later. A member earns <b>points per redemption</b> when they redeem
+      every city, so <b>ZaarCash 💎</b> is earned network-wide — a shopper keeps the same balance in Palm Bay,
+      St Cloud or any city you add later. A member earns <b>ZaarCash per redemption</b> when they redeem
       a deal, <b>per check-in</b> when they check in, and <b>per visit</b> on visit recognition.
       Set a rate to 0 to switch that source off.
     </p>
@@ -2155,9 +2155,9 @@
       return '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px" data-program="' + lpEsc(p.id) + '">' +
         '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">' +
           '<input class="input" style="min-width:200px" value="' + lpEsc(p.name) + '" data-f="name" placeholder="Programme name">' +
-          '<label style="font-size:.8rem;color:var(--text-secondary)">per redemption <input class="input" type="number" min="0" style="width:96px" value="' + (p.points_per_redemption || 0) + '" data-f="points_per_redemption"></label>' +
-          '<label style="font-size:.8rem;color:var(--text-secondary)">per check-in <input class="input" type="number" min="0" style="width:96px" value="' + (p.points_per_checkin || 0) + '" data-f="points_per_checkin"></label>' +
-          '<label style="font-size:.8rem;color:var(--text-secondary)">per visit <input class="input" type="number" min="0" style="width:96px" value="' + (p.points_per_visit || 0) + '" data-f="points_per_visit"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">ZaarCash per redemption <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_redemption || 0) + '" data-f="points_per_redemption"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">per check-in <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_checkin || 0) + '" data-f="points_per_checkin"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">per visit <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_visit || 0) + '" data-f="points_per_visit"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="is_active" ' + (p.is_active ? 'checked' : '') + '> active</label>' +
           '<button class="btn btn-accent" type="button" data-save="' + lpEsc(p.id) + '">Save</button>' +
         '</div>' +
