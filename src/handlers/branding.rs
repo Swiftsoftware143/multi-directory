@@ -59,23 +59,23 @@ pub async fn update_branding(
         r#"INSERT INTO directory_branding (directory_id, primary_color, secondary_color, accent_color,
            background_color, text_color, heading_color, link_color, button_background, button_text,
            heading_font, body_font, logo_url, favicon_url, meta_title_template, meta_description_template)
-           VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
            ON CONFLICT (directory_id) DO UPDATE SET
-           primary_color = COALESCE(\x242, directory_branding.primary_color),
-           secondary_color = COALESCE(\x243, directory_branding.secondary_color),
-           accent_color = COALESCE(\x244, directory_branding.accent_color),
-           background_color = COALESCE(\x245, directory_branding.background_color),
-           text_color = COALESCE(\x246, directory_branding.text_color),
-           heading_color = COALESCE(\x247, directory_branding.heading_color),
-           link_color = COALESCE(\x248, directory_branding.link_color),
-           button_background = COALESCE(\x249, directory_branding.button_background),
-           button_text = COALESCE(\x2410, directory_branding.button_text),
-           heading_font = COALESCE(\x2411, directory_branding.heading_font),
-           body_font = COALESCE(\x2412, directory_branding.body_font),
-           logo_url = COALESCE(\x2413, directory_branding.logo_url),
-           favicon_url = COALESCE(\x2414, directory_branding.favicon_url),
-           meta_title_template = COALESCE(\x2415, directory_branding.meta_title_template),
-           meta_description_template = COALESCE(\x2416, directory_branding.meta_description_template),
+           primary_color = COALESCE($2, directory_branding.primary_color),
+           secondary_color = COALESCE($3, directory_branding.secondary_color),
+           accent_color = COALESCE($4, directory_branding.accent_color),
+           background_color = COALESCE($5, directory_branding.background_color),
+           text_color = COALESCE($6, directory_branding.text_color),
+           heading_color = COALESCE($7, directory_branding.heading_color),
+           link_color = COALESCE($8, directory_branding.link_color),
+           button_background = COALESCE($9, directory_branding.button_background),
+           button_text = COALESCE($10, directory_branding.button_text),
+           heading_font = COALESCE($11, directory_branding.heading_font),
+           body_font = COALESCE($12, directory_branding.body_font),
+           logo_url = COALESCE($13, directory_branding.logo_url),
+           favicon_url = COALESCE($14, directory_branding.favicon_url),
+           meta_title_template = COALESCE($15, directory_branding.meta_title_template),
+           meta_description_template = COALESCE($16, directory_branding.meta_description_template),
            updated_at = NOW()
            RETURNING *"#
     )
@@ -251,15 +251,15 @@ pub async fn extract_colors(
     // Update branding with extracted colors
     let branding = sqlx::query_as::<_, DirectoryBranding>(
         r#"UPDATE directory_branding SET
-           primary_color = COALESCE(\x241, primary_color),
-           secondary_color = COALESCE(\x242, secondary_color),
-           accent_color = COALESCE(\x243, accent_color),
-           background_color = COALESCE(\x244, background_color),
-           text_color = COALESCE(\x245, text_color),
-           heading_color = \x246,
-           extracted_from_url = \x247,
+           primary_color = COALESCE($1, primary_color),
+           secondary_color = COALESCE($2, secondary_color),
+           accent_color = COALESCE($3, accent_color),
+           background_color = COALESCE($4, background_color),
+           text_color = COALESCE($5, text_color),
+           heading_color = $6,
+           extracted_from_url = $7,
            updated_at = NOW()
-           WHERE directory_id = \x248
+           WHERE directory_id = $8
            RETURNING *"#,
     )
     .bind(&colors.primary_color)

@@ -97,7 +97,7 @@ pub async fn create_review(
 
     let review = sqlx::query_as::<_, Review>(
         r#"INSERT INTO reviews (business_id, rating, title, content, reviewer_name, reviewer_email, source, source_url, directory_id, status)
-           VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, 'pending')
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
            RETURNING *"#
     )
     .bind(req.business_id)
@@ -137,16 +137,16 @@ pub async fn update_review(
 ) -> ApiResult<impl IntoResponse> {
     let review = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET
-           rating = COALESCE(\x241, rating),
-           title = COALESCE(\x242, title),
-           content = COALESCE(\x243, content),
-           reviewer_name = COALESCE(\x244, reviewer_name),
-           reviewer_email = COALESCE(\x245, reviewer_email),
-           featured = COALESCE(\x246, featured),
-           source = COALESCE(\x247, source),
-           source_url = COALESCE(\x248, source_url),
+           rating = COALESCE($1, rating),
+           title = COALESCE($2, title),
+           content = COALESCE($3, content),
+           reviewer_name = COALESCE($4, reviewer_name),
+           reviewer_email = COALESCE($5, reviewer_email),
+           featured = COALESCE($6, featured),
+           source = COALESCE($7, source),
+           source_url = COALESCE($8, source_url),
            updated_at = NOW()
-           WHERE id = \x249 RETURNING *"#,
+           WHERE id = $9 RETURNING *"#,
     )
     .bind(req.rating)
     .bind(&req.title)
@@ -188,7 +188,7 @@ pub async fn approve_review(
 ) -> ApiResult<impl IntoResponse> {
     let review = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET status = 'approved', is_verified = true, updated_at = NOW()
-           WHERE id = \x241 RETURNING *"#,
+           WHERE id = $1 RETURNING *"#,
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -199,10 +199,10 @@ pub async fn approve_review(
     if let Some(biz_id) = review.business_id {
         sqlx::query(
             r#"UPDATE businesses SET
-               rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE business_id = \x241 AND status = 'approved'),
-               review_count = (SELECT COUNT(*) FROM reviews WHERE business_id = \x241 AND status = 'approved'),
+               rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+               review_count = (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
                updated_at = NOW()
-               WHERE id = \x241"#
+               WHERE id = $1"#
         )
         .bind(biz_id)
         .execute(&s.db)
@@ -219,7 +219,7 @@ pub async fn reject_review(
 ) -> ApiResult<impl IntoResponse> {
     let review = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET status = 'rejected', updated_at = NOW()
-           WHERE id = \x241 RETURNING *"#,
+           WHERE id = $1 RETURNING *"#,
     )
     .bind(id)
     .fetch_optional(&s.db)

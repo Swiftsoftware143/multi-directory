@@ -224,12 +224,12 @@ pub async fn create_business(
     //   2. OR same slug (backward-compat safety net for legacy imports)
     let dup = sqlx::query_scalar::<_, i64>(
         r#"SELECT COUNT(*) FROM businesses
-           WHERE directory_id = \x241 AND (
-             (LOWER(TRIM(name)) = LOWER(TRIM(\x243))
+           WHERE directory_id = $1 AND (
+             (LOWER(TRIM(name)) = LOWER(TRIM($3))
                AND LOWER(REGEXP_REPLACE(COALESCE(address,''), '\s+', ' ', 'g'))
-                   = LOWER(REGEXP_REPLACE(COALESCE(\x244,''), '\s+', ' ', 'g'))
-               AND COALESCE(\x244,'') <> '')
-             OR slug = \x242
+                   = LOWER(REGEXP_REPLACE(COALESCE($4,''), '\s+', ' ', 'g'))
+               AND COALESCE($4,'') <> '')
+             OR slug = $2
            )"#,
     )
     .bind(dir.id)
@@ -250,9 +250,9 @@ pub async fn create_business(
         r#"INSERT INTO businesses (directory_id, name, slug, description, category_id,
            address, city, state, zip, phone, email, website, latitude, longitude,
            business_type, is_franchise)
-           VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
            COALESCE($15, 'local'), COALESCE($16, false))
-           RETURNING *"#
+           RETURNING *"#,
     )
     .bind(dir.id)
     .bind(&req.name)
@@ -301,19 +301,19 @@ pub async fn update_business(
 
     let business = sqlx::query_as::<_, Business>(
         r#"UPDATE businesses SET
-           name = COALESCE(\x241, name),
-           slug = COALESCE(\x242, slug),
-           description = COALESCE(\x243, description),
-           category_id = COALESCE(\x244, category_id),
-           address = COALESCE(\x245, address),
-           city = COALESCE(\x246, city),
-           state = COALESCE(\x247, state),
-           zip = COALESCE(\x248, zip),
-           phone = COALESCE(\x249, phone),
-           email = COALESCE(\x2410, email),
-           website = COALESCE(\x2411, website),
-           latitude = COALESCE(\x2412, latitude),
-           longitude = COALESCE(\x2413, longitude),
+           name = COALESCE($1, name),
+           slug = COALESCE($2, slug),
+           description = COALESCE($3, description),
+           category_id = COALESCE($4, category_id),
+           address = COALESCE($5, address),
+           city = COALESCE($6, city),
+           state = COALESCE($7, state),
+           zip = COALESCE($8, zip),
+           phone = COALESCE($9, phone),
+           email = COALESCE($10, email),
+           website = COALESCE($11, website),
+           latitude = COALESCE($12, latitude),
+           longitude = COALESCE($13, longitude),
            is_active = COALESCE($14, is_active),
            business_type = COALESCE($15, business_type),
            supplier_fields = COALESCE($16, supplier_fields),
