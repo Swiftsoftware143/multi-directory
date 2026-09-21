@@ -23,12 +23,13 @@
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::handlers::provider_keys_handler;
+use crate::handlers::tenant_scope::assert_directory_admin_by_slug;
 use crate::AppState;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::header,
     response::IntoResponse,
-    Extension, Json,
+    Json,
 };
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
@@ -124,7 +125,9 @@ async fn get_settings(db: &PgPool, network_id: Uuid) -> Result<SettlementSetting
 pub async fn settlement_settings(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
     let network_id = resolve_network(&s.db, &slug).await?;
     let settings = get_settings(&s.db, network_id).await?;
     let (provider, configured) = detect_provider(&s.db, &settings).await;
@@ -479,8 +482,10 @@ fn period_key(start: chrono::NaiveDate) -> String {
 pub async fn settlement_preview(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<PeriodQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
     let network_id = resolve_network(&s.db, &slug).await?;
     let settings = get_settings(&s.db, network_id).await?;
     let (start, end) = req.resolve(&settings)?;
@@ -578,6 +583,7 @@ pub async fn settlement_run(
     Extension(claims): Extension<Claims>,
     Json(req): Json<PeriodQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
     if claims.role != "admin" && claims.role != "super_admin" {
         return Err(AppError::Forbidden(
             "Admin role required to run settlement".into(),
@@ -969,8 +975,10 @@ async fn stripe_transfer(
 pub async fn settlement_runs(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
     Query(q): Query<RunsQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
     let network_id = resolve_network(&s.db, &slug).await?;
     let limit = q.limit.unwrap_or(24).clamp(1, 200);
 
@@ -1413,6 +1421,7 @@ pub async fn send_statements_now(
     Extension(claims): Extension<Claims>,
     body: Option<Json<SendStatementsRequest>>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
     if claims.role != "admin" && claims.role != "super_admin" {
         return Err(AppError::Forbidden(
             "Admin role required to send settlement statements".into(),
@@ -1488,7 +1497,9 @@ struct LastRunRow {
 pub async fn settlement_schedule(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
     let network_id = resolve_network(&s.db, &slug).await?;
     let settings = get_settings(&s.db, network_id).await?;
 

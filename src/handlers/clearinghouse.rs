@@ -11,10 +11,12 @@
 //!   - Platform keeps the $0.002 slippage (spread) for fees + breakage.
 //!   - Guardrails: per-category redemption caps (e.g. 20% at grocery), rolling expiry.
 
+use crate::auth::models::Claims;
 use crate::error::AppError;
+use crate::handlers::tenant_scope::assert_directory_admin_by_slug;
 use crate::AppState;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     Json,
 };
 use rust_decimal::prelude::ToPrimitive;
@@ -538,7 +540,9 @@ async fn redeem(
 pub async fn treasury_summary(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, AppError> {
+    assert_directory_admin_by_slug(&state.db, &claims, &slug).await?;
     let directory_id: Uuid = sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&state.db)
@@ -580,7 +584,9 @@ pub async fn treasury_summary(
 pub async fn business_ledgers(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, AppError> {
+    assert_directory_admin_by_slug(&state.db, &claims, &slug).await?;
     let directory_id: Uuid = sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&state.db)
@@ -627,7 +633,9 @@ pub async fn business_ledgers(
 pub async fn category_caps(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, AppError> {
+    assert_directory_admin_by_slug(&state.db, &claims, &slug).await?;
     let directory_id: Uuid = sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&state.db)
@@ -713,7 +721,9 @@ pub async fn upsert_category_cap(
 pub async fn expire_points(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, AppError> {
+    assert_directory_admin_by_slug(&state.db, &claims, &slug).await?;
     let directory_id: Uuid = sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&state.db)
@@ -843,8 +853,10 @@ pub async fn expire_points_for_network(
 pub async fn clearing_logs(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, AppError> {
+    assert_directory_admin_by_slug(&state.db, &claims, &slug).await?;
     let directory_id: Uuid = sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&state.db)
