@@ -501,7 +501,7 @@ pub struct BlogPost {
     pub author_id: Option<uuid::Uuid>,
     pub service_id: Option<uuid::Uuid>,
     pub location_id: Option<uuid::Uuid>,
-    pub scheduled_at: Option<chrono::NaiveDateTime>,
+    pub scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
     pub template_id: Option<uuid::Uuid>,
     pub template_data: Option<serde_json::Value>,
     pub is_master: Option<bool>,

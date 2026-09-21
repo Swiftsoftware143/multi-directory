@@ -86,8 +86,8 @@ pub async fn admin_members(State(s): State<AppState>) -> ApiResult<impl IntoResp
         name: Option<String>,
         business_type: Option<String>,
         directory_id: Option<uuid::Uuid>,
-        created_at: Option<chrono::NaiveDateTime>,
-        survey_answered_at: Option<chrono::NaiveDateTime>,
+        created_at: Option<chrono::DateTime<chrono::Utc>>,
+        survey_answered_at: Option<chrono::DateTime<chrono::Utc>>,
         interest_tags: Option<Vec<String>>,
     }
 

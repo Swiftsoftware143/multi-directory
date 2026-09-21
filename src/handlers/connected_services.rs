@@ -59,7 +59,7 @@ pub async fn list_connected_services(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Look up connected services in MD
-    let row = sqlx::query_as::<_, (bool, Option<chrono::NaiveDateTime>)>(
+    let row = sqlx::query_as::<_, (bool, Option<chrono::DateTime<chrono::Utc>>)>(
         r#"SELECT is_active, expires_at
            FROM connected_services
            WHERE user_id = $1 AND service = 'incentiveswift'

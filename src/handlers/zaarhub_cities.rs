@@ -72,8 +72,8 @@ fn listing_json(r: &sqlx::postgres::PgRow) -> Value {
         "coordinates_lat": r.try_get::<Option<f64>, _>("coordinates_lat").unwrap_or_default(),
         "coordinates_lng": r.try_get::<Option<f64>, _>("coordinates_lng").unwrap_or_default(),
         "display_order": r.try_get::<i32, _>("display_order").unwrap_or(0),
-        "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
-        "updated_at": r.try_get::<chrono::NaiveDateTime, _>("updated_at").unwrap_or_default(),
+        "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
+        "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
     })
 }
 
@@ -101,8 +101,8 @@ pub async fn list_cities(State(state): State<AppState>) -> ApiResult<Json<Value>
         "is_active": r.try_get::<bool, _>("is_active").unwrap_or(false),
         "display_order": r.try_get::<i32, _>("display_order").unwrap_or(0),
         "listing_count": r.try_get::<i64, _>("listing_count").unwrap_or(0),
-        "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
-        "updated_at": r.try_get::<chrono::NaiveDateTime, _>("updated_at").unwrap_or_default(),
+        "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
+        "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
     })).collect();
 
     Ok(Json(json!({"cities": cities, "total": cities.len()})))
@@ -136,8 +136,8 @@ pub async fn get_city(
         "is_active": row.try_get::<bool, _>("is_active").unwrap_or(false),
         "display_order": row.try_get::<i32, _>("display_order").unwrap_or(0),
         "listing_count": row.try_get::<i64, _>("listing_count").unwrap_or(0),
-        "created_at": row.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
-        "updated_at": row.try_get::<chrono::NaiveDateTime, _>("updated_at").unwrap_or_default(),
+        "created_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
+        "updated_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
     });
 
     Ok(Json(json!({"city": city})))
@@ -525,9 +525,9 @@ pub async fn visitor_claims(
         "email": r.try_get::<Option<String>, _>("email").unwrap_or_default(),
         "phone": r.try_get::<Option<String>, _>("phone").unwrap_or_default(),
         "promo_code_revealed": r.try_get::<String, _>("promo_code_revealed").unwrap_or_default(),
-        "claimed_at": r.try_get::<chrono::NaiveDateTime, _>("claimed_at").unwrap_or_default(),
+        "claimed_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("claimed_at").unwrap_or_default(),
         "redeemed": r.try_get::<bool, _>("redeemed").unwrap_or(false),
-        "redeemed_at": r.try_get::<Option<chrono::NaiveDateTime>, _>("redeemed_at").unwrap_or_default(),
+        "redeemed_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("redeemed_at").unwrap_or_default(),
         "offer_title": r.try_get::<String, _>("offer_title").unwrap_or_default(),
         "listing_id": r.try_get::<Uuid, _>("listing_id").map(|v| v.to_string()).unwrap_or_default(),
         "business_name": r.try_get::<String, _>("business_name").unwrap_or_default(),
@@ -549,13 +549,13 @@ fn offer_json(r: &sqlx::postgres::PgRow) -> Value {
         "redemption_url": r.try_get::<Option<String>, _>("redemption_url").unwrap_or_default(),
         "redemption_phone": r.try_get::<Option<String>, _>("redemption_phone").unwrap_or_default(),
         "discount_value": r.try_get::<Option<String>, _>("discount_value").unwrap_or_default(),
-        "expires_at": r.try_get::<Option<chrono::NaiveDateTime>, _>("expires_at").unwrap_or_default(),
+        "expires_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("expires_at").unwrap_or_default(),
         "terms_conditions": r.try_get::<Option<String>, _>("terms_conditions").unwrap_or_default(),
         "is_active": r.try_get::<bool, _>("is_active").unwrap_or(false),
         "max_claims": r.try_get::<Option<i32>, _>("max_claims").unwrap_or_default(),
         "current_claims": r.try_get::<i32, _>("current_claims").unwrap_or(0),
-        "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
-        "updated_at": r.try_get::<chrono::NaiveDateTime, _>("updated_at").unwrap_or_default(),
+        "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
+        "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
     })
 }
 

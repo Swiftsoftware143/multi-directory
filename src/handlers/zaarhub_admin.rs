@@ -44,7 +44,7 @@ pub async fn list_legal_pages(State(state): State<AppState>) -> ApiResult<Json<V
             "is_published": r.try_get::<bool,_>("is_published").unwrap_or(false),
             "show_in_footer": r.try_get::<bool,_>("show_in_footer").unwrap_or(false),
             "display_order": r.try_get::<i32,_>("display_order").unwrap_or(0),
-            "updated_at": r.try_get::<Option<chrono::NaiveDateTime>,_>("updated_at").unwrap_or_default(),
+            "updated_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>,_>("updated_at").unwrap_or_default(),
         })
     }).collect();
 
@@ -70,8 +70,8 @@ pub async fn get_legal_page(
             "is_published": r.try_get::<bool,_>("is_published").unwrap_or(false),
             "show_in_footer": r.try_get::<bool,_>("show_in_footer").unwrap_or(false),
             "display_order": r.try_get::<i32,_>("display_order").unwrap_or(0),
-            "created_at": r.try_get::<Option<chrono::NaiveDateTime>,_>("created_at").unwrap_or_default(),
-            "updated_at": r.try_get::<Option<chrono::NaiveDateTime>,_>("updated_at").unwrap_or_default(),
+            "created_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>,_>("created_at").unwrap_or_default(),
+            "updated_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>,_>("updated_at").unwrap_or_default(),
         }))),
         None => Err(AppError::NotFound("Legal page not found".into())),
     }

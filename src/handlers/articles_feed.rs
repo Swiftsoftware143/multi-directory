@@ -32,18 +32,21 @@ pub async fn articles_xml_feed(
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     // 1. Fetch the directory to get name, description, and domain info
-    // Fetch tenant by slug (directories are tenants in multi-directory)
+    // Fetch the directory by slug. `directories` is the table every *_directory_id column
+    // points at; `tenants` is a SEPARATE table with non-overlapping ids (0 shared ids), so a
+    // tenant id here silently matched no blog posts and every feed rendered empty.
     #[derive(sqlx::FromRow)]
     struct DirInfo {
         id: uuid::Uuid,
         name: String,
         slug: String,
     }
-    let dir = sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM tenants WHERE slug = $1")
-        .bind(&slug)
-        .fetch_optional(&s.db)
-        .await?
-        .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
+    let dir =
+        sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM directories WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
     // Get description from seo_meta
     let description: Option<String> = sqlx::query_scalar(

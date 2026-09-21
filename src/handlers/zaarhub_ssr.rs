@@ -600,8 +600,8 @@ pub async fn render_listing_page(
 
     // Data freshness — get most recent verification date or listing updated_at
     let freshness: Option<String> = {
-        let ver_date: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
-            "SELECT MAX(bv.created_at)::timestamp FROM business_verifications bv \
+        let ver_date: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
+            "SELECT MAX(bv.created_at) FROM business_verifications bv \
              JOIN businesses b ON bv.business_id = b.id \
              WHERE b.name = $1 AND bv.status = 'approved'",
         )
@@ -611,7 +611,8 @@ pub async fn render_listing_page(
         .unwrap_or(None)
         .flatten();
 
-        let updated: Option<chrono::NaiveDateTime> = r.try_get("updated_at").unwrap_or(None);
+        let updated: Option<chrono::DateTime<chrono::Utc>> =
+            r.try_get("updated_at").unwrap_or(None);
         let latest = match (ver_date, updated) {
             (Some(v), Some(u)) => Some(if v > u { v } else { u }),
             (Some(v), None) => Some(v),

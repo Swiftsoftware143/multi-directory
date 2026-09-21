@@ -244,7 +244,7 @@ pub async fn recent_claims(
             "email": r.try_get::<Option<String>,_>("email").unwrap_or_default(),
             "phone": r.try_get::<Option<String>,_>("phone").unwrap_or_default(),
             "promo_code": r.try_get::<String,_>("promo_code_revealed").unwrap_or_default(),
-            "claimed_at": r.try_get::<chrono::NaiveDateTime,_>("claimed_at").unwrap_or_default(),
+            "claimed_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("claimed_at").unwrap_or_default(),
             "redeemed": r.try_get::<bool,_>("redeemed").unwrap_or(false),
             "offer_title": r.try_get::<String,_>("offer_title").unwrap_or_default(),
             "offer_type": r.try_get::<String,_>("offer_type").unwrap_or_default(),

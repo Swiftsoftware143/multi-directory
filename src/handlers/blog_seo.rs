@@ -38,11 +38,12 @@ pub async fn news_sitemap(
         name: String,
         slug: String,
     }
-    let dir = sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM tenants WHERE slug = $1")
-        .bind(&slug)
-        .fetch_optional(&s.db)
-        .await?
-        .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
+    let dir =
+        sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM directories WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
     let description: Option<String> = sqlx::query_scalar(
         "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1",
@@ -144,7 +145,7 @@ struct RssFeedItem {
     blog_category: Option<String>,
     tags: Option<Vec<String>>,
     created_at: Option<DateTime<Utc>>,
-    scheduled_at: Option<chrono::NaiveDateTime>,
+    scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// GET /public/directories/{slug}/blog/feed.xml
@@ -162,11 +163,12 @@ pub async fn blog_rss_feed(
         name: String,
         slug: String,
     }
-    let dir = sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM tenants WHERE slug = $1")
-        .bind(&slug)
-        .fetch_optional(&s.db)
-        .await?
-        .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
+    let dir =
+        sqlx::query_as::<_, DirInfo>("SELECT id, name, slug FROM directories WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
     let description: Option<String> = sqlx::query_scalar(
         "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1",
@@ -276,11 +278,7 @@ pub async fn blog_rss_feed(
         // Use scheduled_at if available, else created_at
         let pub_date = item
             .scheduled_at
-            .map(|d| {
-                // Convert NaiveDateTime to DateTime<Utc> for formatting
-                let dt: DateTime<Utc> = DateTime::from_naive_utc_and_offset(d, Utc);
-                dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
-            })
+            .map(|dt| dt.format("%a, %d %b %Y %H:%M:%S %z").to_string())
             .or_else(|| {
                 item.created_at
                     .map(|dt| dt.format("%a, %d %b %Y %H:%M:%S %z").to_string())
