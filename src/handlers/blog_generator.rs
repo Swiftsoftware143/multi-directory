@@ -4,7 +4,7 @@
 //! multi-LLM provider selection (DeepSeek, OpenAI, Gemini), and image/video injection.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -16,6 +16,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
@@ -298,12 +299,31 @@ pub async fn set_template_directories(
 pub async fn get_template_directories(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
+    // Tenant isolation: only report the directories this caller administers (all of them for the
+    // platform operator) rather than every tenant using the template.
+    let operator = crate::handlers::tenant_scope::is_platform_operator(&claims);
+
     let dirs: Vec<(Uuid,)> =
         sqlx::query_as("SELECT directory_id FROM blog_template_directories WHERE template_id = $1")
             .bind(id)
             .fetch_all(&s.db)
             .await?;
+    let dirs: Vec<(Uuid,)> = if operator {
+        dirs
+    } else {
+        let mut allowed = Vec::new();
+        for (did,) in dirs {
+            if crate::handlers::tenant_scope::can_admin_directory(&s.db, &claims, did)
+                .await
+                .unwrap_or(false)
+            {
+                allowed.push((did,));
+            }
+        }
+        allowed
+    };
 
     Ok(Json(dirs.into_iter().map(|d| d.0).collect::<Vec<_>>()))
 }

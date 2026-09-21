@@ -21,7 +21,7 @@ use lettre::{
 
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
-use crate::handlers::tenant_scope::assert_directory_admin;
+use crate::handlers::tenant_scope::{assert_directory_admin, assert_directory_admin_by_slug};
 use crate::AppState;
 
 // ── Newsletter Queue ──
@@ -532,8 +532,12 @@ pub async fn delete_email_settings(
 pub async fn list_subscribers(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    Extension(claims): Extension<Claims>,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
+    // Tenant isolation: subscriber lists are PII and belong to the directory's admin alone.
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
+
     let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&s.db)
