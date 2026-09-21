@@ -1,7 +1,7 @@
 //! Analytics tracking and reporting handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope::assert_directory_admin;
 use crate::AppState;
 
 // ── Data Types ───────────────────────────────────────────────────────────────
@@ -208,7 +210,11 @@ pub async fn get_summary(State(s): State<AppState>) -> ApiResult<impl IntoRespon
 pub async fn by_directory(
     State(s): State<AppState>,
     Path(directory_id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
+    // Tenant isolation: a caller may only read analytics for a directory they administer.
+    // 404 (not 403) so a refusal does not confirm the directory exists.
+    assert_directory_admin(&s.db, &claims, directory_id).await?;
     let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE id = \x241 ")
         .bind(directory_id)
         .fetch_one(&s.db)

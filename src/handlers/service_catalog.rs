@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::auth::middleware::{is_admin, is_business_owner};
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope::assert_business_admin;
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -344,7 +345,10 @@ pub async fn delete_service(
 pub async fn list_services_for_business(
     State(s): State<AppState>,
     Path(business_id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
+    // Tenant isolation: services belong to a business, which belongs to a tenant.
+    assert_business_admin(&s.db, &claims, business_id).await?;
     let services = sqlx::query_as::<_, BusinessServiceRow>(
         r#"SELECT id, business_id, directory_id, name, description, price, currency,
                   duration_minutes, category, is_active, sort_order, created_at, updated_at

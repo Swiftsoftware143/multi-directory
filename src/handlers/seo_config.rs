@@ -1,7 +1,7 @@
 //! Handlers: SEO Fallback Templates, Schema Config, Google Maps Config, Directory SEO Settings
 
 use axum::{
-    extract::{Path, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope::assert_directory_admin;
 use crate::AppState;
 
 // ── SEO Fallback Templates ──
@@ -81,7 +83,9 @@ pub struct UpsertSchemaConfigReq {
 pub async fn list_schema_configs(
     State(s): State<AppState>,
     Path(dir_id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin(&s.db, &claims, dir_id).await?;
     Ok(Json(
         sqlx::query_as::<_, SchemaConfig>(
             "SELECT * FROM schema_config WHERE directory_id=$1 ORDER BY schema_type",
@@ -95,8 +99,10 @@ pub async fn list_schema_configs(
 pub async fn upsert_schema_config(
     State(s): State<AppState>,
     Path((dir_id, st)): Path<(Uuid, String)>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<UpsertSchemaConfigReq>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin(&s.db, &claims, dir_id).await?;
     let cfg = sqlx::query_as::<_, SchemaConfig>(
         "INSERT INTO schema_config (directory_id,schema_type,enabled,config) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT (directory_id,schema_type) DO UPDATE SET enabled=COALESCE($3,schema_config.enabled),config=CASE WHEN $4::jsonb='{}'::jsonb THEN schema_config.config ELSE COALESCE($4::jsonb,schema_config.config) END,updated_at=NOW() RETURNING *"
     ).bind(dir_id).bind(&st).bind(req.enabled).bind(&req.config)
