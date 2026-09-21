@@ -681,9 +681,10 @@ pub async fn business_visitor_summary(
                 0.0
             };
 
-            // Rank this business among others in the same category (by listing views)
+            // Rank this business among others in the same category (by listing views).
+            // `ROW_NUMBER()` is bigint (INT8) in Postgres, so cast to int: the field is i32.
             let rank: Option<i32> = sqlx::query_scalar(
-                    "SELECT rn FROM (
+                    "SELECT rn::int FROM (
                        SELECT b.id, ROW_NUMBER() OVER (ORDER BY COUNT(ve.id) DESC) as rn
                        FROM businesses b
                        LEFT JOIN visitor_events ve ON ve.business_id = b.id AND ve.event_type = 'listing_view'
