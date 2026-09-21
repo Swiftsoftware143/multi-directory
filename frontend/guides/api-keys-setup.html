@@ -115,6 +115,7 @@
       <tr><td>Choose which email service a directory sends with, verify it and send a test email</td><td>Admin Panel &rarr; <b>&#x2709;&#xFE0F; Email / SMTP</b> card (<a href="#email-transport">details below</a>)</td></tr>
       <tr><td>Save the Google Places key and populate businesses</td><td>Admin Panel &rarr; <b>&#x1F50D; Discovery / Populate</b> (ZaarHub Admin &rarr; Populate Businesses tab)</td></tr>
       <tr><td>Review/approve what a search found before it enters the directory</td><td>ZaarHub Admin &rarr; Populate Businesses &rarr; <b>2 &middot; Queue &mdash; review, then add</b> (<a href="#discovery-queue">details below</a>)</td></tr>
+      <tr><td>Connect Stripe / PayPal so customers can pay</td><td>Admin Panel &rarr; <b>&#x1F4B3; Payment Gateways</b> card (<a href="#payment-gateways">details below</a>)</td></tr>
       <tr><td>Ad slots, submission queue, B2B toggles, plan/branding settings</td><td>Admin Panel nav bar (top of the panel links every card)</td></tr>
     </table>
     <p class="anchor-note">The panel's nav bar reaches every admin card, so nothing is hidden on an unlinked page. The same nav links back here.</p>
@@ -133,6 +134,23 @@
       <li>Press <b>Verify credentials (real check)</b> &mdash; this performs a real SMTP login / real API credential call and prints the service's own answer (<code>ok</code>, <code>skipped</code> or <code>error</code> plus detail) in the box below. A canned &ldquo;success&rdquo; is never shown.</li>
       <li>Put your own address in <b>Send a real test email to…</b> and press <b>Send test email</b>. <code>{"status":"sent"}</code> in the box means mail actually left the server; &ldquo;skipped / directory_not_configured&rdquo; means the save above did not land.</li>
     </ol>
+  </div>
+
+  <h2 id="payment-gateways">&#x1F4B3; Payment Gateways card &mdash; Stripe &amp; PayPal</h2>
+  <div class="card">
+    <p>Customers pay through <b>Stripe</b> and/or <b>PayPal</b>. The card sits under <b>Provider API Keys</b> in <code>admin-panel.html</code> and writes the <code>payment_providers</code> settings. Two values are needed per gateway: the <b>API key</b> that creates the checkout, and the <b>webhook verification value</b> that proves an incoming &ldquo;payment complete&rdquo; message really came from the gateway.</p>
+    <p><b>Why the second value is mandatory:</b> the webhook endpoint is public (the gateway has to reach it without a login). Without a verification value the server cannot tell a real payment notice from a forged one, so it refuses every event instead of marking orders paid. That is why the card &mdash; and the API behind it &mdash; will not let you switch a gateway to <b>Active</b> until the verification value is stored.</p>
+    <ol class="checklist">
+      <li><b>Stripe.</b> In <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">Stripe &rarr; Developers &rarr; API keys</a> copy the <b>Secret key</b> (<code>sk_live_…</code> or <code>sk_test_…</code>). Paste it into <b>API key / client credentials</b>.</li>
+      <li><b>Stripe &mdash; webhook.</b> Go to <a href="https://dashboard.stripe.com/webhooks" target="_blank" rel="noopener">Stripe &rarr; Developers &rarr; Webhooks</a> &rarr; <b>Add endpoint</b>. In <b>Endpoint URL</b> paste the address the card shows (the line under the form: <code>&lt;your-domain&gt;/api/v1/webhooks/stripe</code>). Under <b>Events to send</b> tick <code>checkout.session.completed</code> and <code>checkout.session.expired</code>. Save, then press <b>Reveal</b> next to <b>Signing secret</b> and copy the <code>whsec_…</code> value into <b>Webhook signing secret</b>.</li>
+      <li><b>PayPal.</b> In <a href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">PayPal &rarr; Apps &amp; Credentials</a> open your app (Live or Sandbox) and put <b>Client ID</b> and <b>Secret</b> into the card joined by a colon: <code>client_id:secret</code> in <b>API key / client credentials</b>.</li>
+      <li><b>PayPal &mdash; webhook.</b> Still in the app, scroll to <b>Webhooks</b> &rarr; <b>Add Webhook</b>, set the <b>Webhook URL</b> to the address the card shows (<code>&lt;your-domain&gt;/api/v1/webhooks/paypal</code>) and tick <code>PAYMENT.CAPTURE.COMPLETED</code> and <code>CHECKOUT.ORDER.APPROVED</code>. After saving, copy the <b>Webhook ID</b> of that webhook into <b>PayPal Webhook ID</b> (PayPal has no signing secret; it verifies each event server-side against this ID).</li>
+      <li>Set <b>Environment</b>: <b>Test / sandbox</b> while you are testing (sandbox keys and the sandbox webhook), <b>Live</b> for real customers. Sandbox and live are different worlds &mdash; a sandbox webhook is never accepted in Live.</li>
+      <li>Set <b>Status</b> to <b>Active</b> and press <b>Save gateway</b>. The row at the top of the card must show <b>credentials saved</b> and <b>webhook verifiable</b>. If you try to activate without the verification value the card refuses and tells you which value is missing.</li>
+      <li>Send a real test payment and check the row list: <b>webhook verifiable</b> plus the checkout session flipping to <code>completed</code> is the proof it works end to end. Rejected events are stored too &mdash; they are the fastest way to see a wrong signing secret.</li>
+      <li>Both fields are <b>write-only</b>: they are encrypted at rest and never shown again. Leave a field blank and save to keep the stored value.</li>
+    </ol>
+    <p class="anchor-note">One gateway is enough to sell; the checkout form uses whichever gateway is Active. Deleting a gateway stops new checkouts but never deletes past orders.</p>
   </div>
 
   <h2 id="discovery-queue">&#x1F50E; Discovery queue &mdash; review before adding</h2>

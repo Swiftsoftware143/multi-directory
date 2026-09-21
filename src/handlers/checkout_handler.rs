@@ -30,12 +30,71 @@ use crate::AppState;
 // Admin: Payment Provider CRUD
 // ──────────────────────────────────────────────
 
+/// True when a stored (encrypted) credential column holds a value; `NULL` and `''` both mean
+/// "not configured".
+fn stored_column_has_value(v: &Option<String>) -> bool {
+    v.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+}
+
+/// Stripe and PayPal are the two gateways whose receivers verify a signature before an event may
+/// complete a checkout, so each one needs a value stored before it may be armed:
+///   * stripe — the endpoint's signing secret (`whsec_…`), used for the HMAC check
+///   * paypal — the Webhook ID from the PayPal dashboard. PayPal verifies server-side through
+///     `POST /v1/notifications/verify-webhook-signature`, which needs the Webhook ID plus the
+///     client credentials; PayPal issues no HMAC secret, so the "webhook secret" field holds the id.
+///
+/// Activating either without that value used to be allowed, and the receiver then ACCEPTED
+/// unverified events — a forged `checkout.session.completed` naming a pending
+/// `provider_session_id` would have completed that session and fired fulfillment. The receivers now
+/// fail closed; this guard stops the misconfiguration at the source so an operator cannot quietly
+/// arm an unverified receiver.
+fn require_webhook_config_for_activation(
+    provider_type: &str,
+    is_active: bool,
+    api_key_present: bool,
+    webhook_value_present: bool,
+) -> Result<(), AppError> {
+    if !is_active || !matches!(provider_type, "stripe" | "paypal") {
+        return Ok(());
+    }
+
+    if !webhook_value_present {
+        return Err(AppError::BadRequest(
+            match provider_type {
+                "stripe" => {
+                    "Stripe cannot be activated without its webhook signing secret (whsec_…): \
+                     without it /api/v1/webhooks/stripe cannot verify anything. Copy the signing \
+                     secret from the webhook endpoint in the Stripe dashboard and save it in the \
+                     same form."
+                }
+                _ => {
+                    "PayPal cannot be activated without its Webhook ID: without it \
+                     /api/v1/webhooks/paypal cannot verify anything. Copy the Webhook ID from the \
+                     webhook in the PayPal dashboard and save it in the same form."
+                }
+            }
+            .to_string(),
+        ));
+    }
+
+    if provider_type == "paypal" && !api_key_present {
+        return Err(AppError::BadRequest(
+            "PayPal cannot be activated without its client_id:secret — PayPal verifies webhooks \
+             server-side with those credentials."
+                .into(),
+        ));
+    }
+
+    Ok(())
+}
+
 /// GET /api/v1/payment-providers
-/// List all configured payment providers (keys masked)
+/// List all configured payment providers (credentials never returned — status only)
 pub async fn list_payment_providers(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let rows = sqlx::query(
         r#"SELECT id, provider_type, label, is_active,
                   CASE WHEN api_key_encrypted IS NOT NULL AND api_key_encrypted != '' THEN 'configured' ELSE 'not_configured' END as key_status,
+                  CASE WHEN webhook_secret_encrypted IS NOT NULL AND webhook_secret_encrypted != '' THEN 'configured' ELSE 'not_configured' END as webhook_secret_status,
                   COALESCE(publishable_key, '') as publishable_key,
                   is_test_mode, config, created_at, updated_at
            FROM payment_providers
@@ -53,7 +112,16 @@ pub async fn list_payment_providers(State(state): State<AppState>) -> ApiResult<
                 "label": r.try_get::<&str,_>("label").unwrap_or(""),
                 "is_active": r.try_get::<bool,_>("is_active").unwrap_or(false),
                 "key_status": r.try_get::<&str,_>("key_status").unwrap_or("not_configured"),
+                "webhook_secret_status": r.try_get::<&str,_>("webhook_secret_status").unwrap_or("not_configured"),
                 "publishable_key": r.try_get::<&str,_>("publishable_key").unwrap_or(""),
+                // The public receiver URL for this provider, so the admin panel can show the
+                // operator exactly what to register in the gateway dashboard. Empty for the
+                // provider types that have no receiver implemented.
+                "webhook_url": match r.try_get::<&str,_>("provider_type").unwrap_or("") {
+                    "stripe" => "/api/v1/webhooks/stripe",
+                    "paypal" => "/api/v1/webhooks/paypal",
+                    _ => "",
+                },
                 "is_test_mode": r.try_get::<bool,_>("is_test_mode").unwrap_or(true),
                 "config": r.try_get::<serde_json::Value,_>("config").unwrap_or(json!({})),
                 "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at")
@@ -126,14 +194,26 @@ pub async fn upsert_payment_provider(
     let stored_api_key = keycrypto::encrypt_for_storage(&state.db, api_key).await?;
     let stored_webhook_secret = keycrypto::encrypt_for_storage(&state.db, webhook_secret).await?;
 
-    // Check if provider already exists
-    let existing =
-        sqlx::query_scalar::<_, Uuid>("SELECT id FROM payment_providers WHERE provider_type = $1")
-            .bind(provider_type)
-            .fetch_optional(&state.db)
-            .await?;
+    // Check if provider already exists. The stored credential columns come back too, so the
+    // activation guard below sees the EFFECTIVE configuration — a blank field on an update means
+    // "keep the stored credential", not "this provider has none".
+    let existing = sqlx::query_as::<_, (Uuid, Option<String>, Option<String>)>(
+        "SELECT id, api_key_encrypted, webhook_secret_encrypted FROM payment_providers \
+         WHERE provider_type = $1",
+    )
+    .bind(provider_type)
+    .fetch_optional(&state.db)
+    .await?;
 
-    if let Some(provider_id) = existing {
+    if let Some((provider_id, stored_api_key_col, stored_webhook_secret_col)) = existing {
+        // Refuse to ARM a receiver that has nothing to verify with — see
+        // `require_webhook_config_for_activation` and the two webhook handlers below.
+        require_webhook_config_for_activation(
+            provider_type,
+            is_active,
+            !api_key.is_empty() || stored_column_has_value(&stored_api_key_col),
+            !webhook_secret.is_empty() || stored_column_has_value(&stored_webhook_secret_col),
+        )?;
         // Update — only overwrite api_key/webhook_secret if provided
         let mut query = String::from(
             "UPDATE payment_providers SET label = $1, is_active = $2, is_test_mode = $3, \
@@ -180,6 +260,14 @@ pub async fn upsert_payment_provider(
                 "api_key is required when creating a new provider".into(),
             ));
         }
+
+        // Same guard as the update path: a receiver may not be armed without its verification value.
+        require_webhook_config_for_activation(
+            provider_type,
+            is_active,
+            !api_key.is_empty(),
+            !webhook_secret.is_empty(),
+        )?;
 
         sqlx::query(
             r#"INSERT INTO payment_providers
@@ -251,8 +339,13 @@ pub async fn delete_payment_provider(
 struct ActiveProvider {
     /// Decrypted, for use. Never log directly — use [`ActiveProvider::api_key_mask`].
     api_key: String,
-    /// Decrypted, for use (Stripe/PayPal webhook signature verification).
+    /// Decrypted, for use (Stripe/PayPal webhook signature verification). For PayPal this holds the
+    /// operator's PayPal Webhook ID — see `verify_paypal_webhook`.
     webhook_secret: String,
+    /// PayPal runs a sandbox and a live environment on different hosts, and a webhook signature made
+    /// in one is not valid in the other: the receiver must verify against the host the provider is
+    /// configured for.
+    is_test_mode: bool,
 }
 
 impl ActiveProvider {
@@ -268,7 +361,7 @@ async fn get_active_provider(
     provider_type: &str,
 ) -> Result<Option<ActiveProvider>, AppError> {
     let row = sqlx::query(
-        r#"SELECT api_key_encrypted, webhook_secret_encrypted
+        r#"SELECT api_key_encrypted, webhook_secret_encrypted, is_test_mode
            FROM payment_providers
            WHERE provider_type = $1 AND is_active = true
            LIMIT 1"#,
@@ -304,6 +397,8 @@ async fn get_active_provider(
     Ok(Some(ActiveProvider {
         api_key,
         webhook_secret,
+        // An unknown value must not silently mean "sandbox": default to the live host.
+        is_test_mode: r.try_get::<bool, _>("is_test_mode").unwrap_or(false),
     }))
 }
 
@@ -393,6 +488,7 @@ pub async fn create_checkout_session(
         "paypal" => {
             create_paypal_session(
                 &api_key,
+                paypal_api_base(provider.is_test_mode),
                 amount,
                 currency,
                 purchasable_type,
@@ -522,6 +618,7 @@ async fn create_stripe_session(
 /// Create a PayPal order via PayPal REST API
 async fn create_paypal_session(
     api_key: &str,
+    api_base: &str,
     amount: f64,
     currency: &str,
     _purchasable_type: &str,
@@ -533,7 +630,7 @@ async fn create_paypal_session(
 
     // PayPal requires an access token first
     let token_resp = client
-        .post("https://api-m.paypal.com/v1/oauth2/token")
+        .post(format!("{}/v1/oauth2/token", api_base))
         .header(
             "Authorization",
             format!("Basic {}", base64_encode_auth(api_key)),
@@ -576,7 +673,7 @@ async fn create_paypal_session(
     });
 
     let order_resp = client
-        .post("https://api-m.paypal.com/v2/checkout/orders")
+        .post(format!("{}/v2/checkout/orders", api_base))
         .header("Authorization", format!("Bearer {}", access_token))
         .header("Content-Type", "application/json")
         .header("PayPal-Request-Id", format!("order-{}", Uuid::new_v4()))
@@ -642,44 +739,58 @@ pub async fn stripe_webhook(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    // Verify webhook signature if we have a secret configured
-    let verification_ok = if let Some(ref prov) = provider {
-        let webhook_secret = prov.webhook_secret.as_str();
-        if !webhook_secret.is_empty() && !signature.is_empty() {
-            verify_stripe_signature(&body, signature, webhook_secret)
-        } else {
-            // No secret configured — accept but warn
-            tracing::warn!("Stripe webhook received without signature verification (no webhook_secret configured)");
-            true
+    // FAIL CLOSED. This receiver used to answer "accept" whenever no webhook_secret was stored, so
+    // an anonymous POST could complete a pending checkout session for any gateway configured
+    // without one. Every path that is not a verified signature now REJECTS: no active provider, no
+    // stored secret, no signature header, a wrong signature, or a signature outside the timestamp
+    // tolerance (replay).
+    let rejection: Option<&'static str> = match provider.as_ref() {
+        None => Some("no_active_stripe_provider_configured"),
+        Some(prov) if prov.webhook_secret.is_empty() => Some("no_webhook_secret_configured"),
+        Some(_) if signature.is_empty() => Some("missing_signature_header"),
+        Some(prov) if !verify_stripe_signature(&body, signature, &prov.webhook_secret) => {
+            Some("signature_verification_failed")
         }
-    } else {
-        tracing::warn!("Stripe webhook received but no active Stripe provider configured");
-        false
+        Some(_) => None,
     };
 
-    // Log the webhook event
-    let db_status = if verification_ok {
+    if let Some(reason) = rejection {
+        match reason {
+            // A misconfiguration the operator can fix from the panel: say so loudly.
+            "no_webhook_secret_configured" => tracing::error!(
+                provider = "stripe",
+                event_id,
+                "Stripe webhook REJECTED — the active Stripe provider has no signing secret stored, \
+                 so no event can be verified. Add the endpoint's whsec_… in Admin > Payment gateways."
+            ),
+            _ => tracing::warn!(provider = "stripe", event_id, reason, "Stripe webhook rejected"),
+        }
+    }
+
+    // Log the event either way — a refusal is evidence and belongs in payment_webhook_events.
+    let db_status = if rejection.is_none() {
         "received"
     } else {
         "failed"
     };
     sqlx::query(
         r#"INSERT INTO payment_webhook_events
-           (provider_type, event_type, event_id, raw_body, headers, status)
-           VALUES ('stripe', $1, $2, $3, $4, $5)"#,
+           (provider_type, event_type, event_id, raw_body, headers, status, error_message)
+           VALUES ('stripe', $1, $2, $3, $4, $5, $6)"#,
     )
     .bind(event_type)
     .bind(event_id)
     .bind(&event_body)
     .bind(&json!({"stripe-signature": signature}))
     .bind(db_status)
+    .bind(rejection)
     .execute(&state.db)
     .await?;
 
-    if !verification_ok {
+    if let Some(reason) = rejection {
         return Ok((
             StatusCode::OK,
-            Json(json!({"status": "ignored", "reason": "signature_verification_failed"})),
+            Json(json!({"status": "ignored", "reason": reason})),
         ));
     }
 
@@ -718,26 +829,116 @@ pub async fn paypal_webhook(
     let event_type = event_body["event_type"].as_str().unwrap_or("unknown");
     let event_id = event_body["id"].as_str().unwrap_or("");
 
-    // Log the webhook event
-    let mut hdrs = json!({});
-    if let Some(trans_id) = headers
-        .get("paypal-transmission-id")
-        .and_then(|v| v.to_str().ok())
-    {
-        hdrs["paypal-transmission-id"] = json!(trans_id);
+    // The five transmission headers PayPal signs with. This receiver used to log ONE of them and
+    // act on the body regardless, so any caller could post PAYMENT.CAPTURE.COMPLETED and the
+    // checkout session was marked completed. Verification is now the supported server-side check,
+    // and anything unverified is refused.
+    let hdr = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+    };
+    let transmission_id = hdr("paypal-transmission-id");
+    let transmission_time = hdr("paypal-transmission-time");
+    let cert_url = hdr("paypal-cert-url");
+    let auth_algo = hdr("paypal-auth-algo");
+    let transmission_sig = hdr("paypal-transmission-sig");
+
+    let provider = get_active_provider(&state.db, "paypal").await?;
+
+    let rejection: Option<&'static str> = match provider.as_ref() {
+        None => Some("no_active_paypal_provider_configured"),
+        Some(prov) if prov.webhook_secret.is_empty() => Some("no_webhook_id_configured"),
+        Some(_)
+            if transmission_id.is_empty()
+                || transmission_time.is_empty()
+                || cert_url.is_empty()
+                || auth_algo.is_empty()
+                || transmission_sig.is_empty() =>
+        {
+            Some("missing_transmission_headers")
+        }
+        Some(prov) => {
+            match verify_paypal_webhook(
+                prov,
+                &event_body,
+                transmission_id,
+                transmission_time,
+                cert_url,
+                auth_algo,
+                transmission_sig,
+            )
+            .await
+            {
+                Ok(true) => None,
+                Ok(false) => Some("signature_verification_failed"),
+                // PayPal could not be asked (network, bad client credentials, unknown webhook id).
+                // An event that cannot be verified is an event that is not acted on.
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        provider = "paypal",
+                        event_id,
+                        "PayPal webhook verification could not be completed — rejecting"
+                    );
+                    Some("verification_unavailable")
+                }
+            }
+        }
+    };
+
+    if let Some(reason) = rejection {
+        if reason == "no_webhook_id_configured" {
+            tracing::error!(
+                provider = "paypal",
+                event_id,
+                "PayPal webhook REJECTED — the active PayPal provider has no Webhook ID stored, so \
+                 no event can be verified. Add it in Admin > Payment gateways."
+            );
+        } else {
+            tracing::warn!(
+                provider = "paypal",
+                event_id,
+                reason,
+                "PayPal webhook rejected"
+            );
+        }
     }
 
+    // Log the event either way — a refusal is evidence and belongs in payment_webhook_events.
+    let hdrs = json!({
+        "paypal-transmission-id": transmission_id,
+        "paypal-transmission-time": transmission_time,
+        "paypal-transmission-sig": transmission_sig,
+        "paypal-cert-url": cert_url,
+        "paypal-auth-algo": auth_algo,
+    });
+    let db_status = if rejection.is_none() {
+        "received"
+    } else {
+        "failed"
+    };
     sqlx::query(
         r#"INSERT INTO payment_webhook_events
-           (provider_type, event_type, event_id, raw_body, headers, status)
-           VALUES ('paypal', $1, $2, $3, $4, 'received')"#,
+           (provider_type, event_type, event_id, raw_body, headers, status, error_message)
+           VALUES ('paypal', $1, $2, $3, $4, $5, $6)"#,
     )
     .bind(event_type)
     .bind(event_id)
     .bind(&event_body)
     .bind(&hdrs)
+    .bind(db_status)
+    .bind(rejection)
     .execute(&state.db)
     .await?;
+
+    if let Some(reason) = rejection {
+        return Ok((
+            StatusCode::OK,
+            Json(json!({"status": "ignored", "reason": reason})),
+        ));
+    }
 
     match event_type {
         "CHECKOUT.ORDER.APPROVED" | "PAYMENT.CAPTURE.COMPLETED" => {
@@ -883,20 +1084,125 @@ pub async fn list_checkout_sessions(
     Ok(Json(json!({"sessions": sessions})))
 }
 
-/// Verify Stripe webhook signature using HMAC-SHA256 via `ring`
+/// PayPal runs a sandbox and a live environment on different hosts. A webhook signed by one is not
+/// valid in the other, so both the checkout call and the webhook verification use the host the
+/// provider row is configured for (`is_test_mode`). Before this, the toggle was stored and shown in
+/// the panel but ignored, so a sandbox-configured PayPal always talked to live.
+fn paypal_api_base(is_test_mode: bool) -> &'static str {
+    if is_test_mode {
+        "https://api-m.sandbox.paypal.com"
+    } else {
+        "https://api-m.paypal.com"
+    }
+}
+
+/// Verify a PayPal webhook the way PayPal supports it: server-side, by asking PayPal to validate the
+/// transmission signature (`POST /v1/notifications/verify-webhook-signature`). There is no HMAC
+/// secret to compare locally — `provider.webhook_secret` holds the operator's PayPal **Webhook ID**
+/// and `provider.api_key` holds the `client_id:secret` pair the call authenticates with.
+///
+/// Returns `Ok(true)` only for PayPal's own `verification_status: SUCCESS`. Every other outcome —
+/// a FAILURE, or an error from the call itself — must be treated as "not verified" by the caller.
+async fn verify_paypal_webhook(
+    provider: &ActiveProvider,
+    event_body: &serde_json::Value,
+    transmission_id: &str,
+    transmission_time: &str,
+    cert_url: &str,
+    auth_algo: &str,
+    transmission_sig: &str,
+) -> Result<bool, AppError> {
+    let client = reqwest::Client::new();
+    let api_base = paypal_api_base(provider.is_test_mode);
+
+    let token_resp = client
+        .post(format!("{}/v1/oauth2/token", api_base))
+        .header(
+            "Authorization",
+            format!("Basic {}", base64_encode_auth(&provider.api_key)),
+        )
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body("grant_type=client_credentials")
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("PayPal auth error: {}", e)))?;
+
+    let token_body: serde_json::Value = token_resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to parse PayPal auth response: {}", e)))?;
+
+    let access_token = token_body["access_token"].as_str().ok_or_else(|| {
+        AppError::Internal("Failed to get a PayPal access token for webhook verification".into())
+    })?;
+
+    let payload = json!({
+        "transmission_id": transmission_id,
+        "transmission_time": transmission_time,
+        "cert_url": cert_url,
+        "auth_algo": auth_algo,
+        "transmission_sig": transmission_sig,
+        "webhook_id": provider.webhook_secret,
+        "webhook_event": event_body,
+    });
+
+    let resp = client
+        .post(format!(
+            "{}/v1/notifications/verify-webhook-signature",
+            api_base
+        ))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("PayPal verify-webhook-signature error: {}", e)))?;
+
+    let http_status = resp.status();
+    let body: serde_json::Value = resp.json().await.unwrap_or_else(|_| json!({}));
+
+    if !http_status.is_success() {
+        // PayPal answers 4xx when it cannot even run the check (unknown Webhook ID, rejected client
+        // credentials). That is NOT a pass: refuse the event and name the reason.
+        return Err(AppError::Internal(format!(
+            "PayPal verify-webhook-signature returned HTTP {}: {}",
+            http_status,
+            body["message"]
+                .as_str()
+                .or_else(|| body["error_description"].as_str())
+                .unwrap_or("no detail")
+        )));
+    }
+
+    Ok(body["verification_status"].as_str() == Some("SUCCESS"))
+}
+
+/// Verify a Stripe webhook signature: HMAC-SHA256 over `"{timestamp}.{body}"`, compared in constant
+/// time, with the timestamp inside a replay window.
+///
+/// - constant time: `ring::hmac::verify` is used instead of comparing two hex strings with `==`
+///   (which leaks how much of a guessed signature matched).
+/// - replay window: an event whose signed timestamp is more than `TOLERANCE_SECS` away from now is
+///   refused, per Stripe's guidance, so a captured signed body cannot be replayed later.
+/// - the payload is built from raw bytes, not from a lossy UTF-8 conversion, so a body containing
+///   invalid UTF-8 can never be mangled into something that verifies.
 fn verify_stripe_signature(body: &[u8], signature: &str, secret: &str) -> bool {
     use ring::hmac;
 
+    /// Stripe's documented default tolerance for the signed timestamp.
+    const TOLERANCE_SECS: i64 = 300;
+
     // Stripe sends signatures in the format: t=timestamp,v1=signature
-    let parts: Vec<&str> = signature.split(',').collect();
     let mut timestamp = "";
     let mut expected_sig = "";
 
-    for part in &parts {
+    for part in signature.split(',') {
         if let Some(t) = part.strip_prefix("t=") {
-            timestamp = t;
+            timestamp = t.trim();
         } else if let Some(s) = part.strip_prefix("v1=") {
-            expected_sig = s;
+            if expected_sig.is_empty() {
+                expected_sig = s.trim();
+            }
         }
     }
 
@@ -904,16 +1210,33 @@ fn verify_stripe_signature(body: &[u8], signature: &str, secret: &str) -> bool {
         return false;
     }
 
-    // Build the payload: timestamp + "." + body
-    let body_str = std::str::from_utf8(body).unwrap_or("");
-    let payload = format!("{}.{}", timestamp, body_str);
+    let Ok(ts) = timestamp.parse::<i64>() else {
+        return false;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    if (now - ts).abs() > TOLERANCE_SECS {
+        tracing::warn!(
+            skew_secs = now - ts,
+            "Stripe webhook signature timestamp is outside the replay tolerance — rejected"
+        );
+        return false;
+    }
 
-    // Compute HMAC-SHA256 using ring
+    let Ok(expected) = hex::decode(expected_sig) else {
+        return false;
+    };
+
+    // The payload is `timestamp + "." + body`, byte for byte as Stripe signed it.
+    let mut payload = Vec::with_capacity(timestamp.len() + 1 + body.len());
+    payload.extend_from_slice(timestamp.as_bytes());
+    payload.push(b'.');
+    payload.extend_from_slice(body);
+
     let key = hmac::Key::new(hmac::HMAC_SHA256, secret.as_bytes());
-    let computed = hmac::sign(&key, payload.as_bytes());
-    let computed_hex = hex::encode(computed.as_ref());
-
-    computed_hex == expected_sig
+    hmac::verify(&key, &payload, &expected).is_ok()
 }
 
 /// Convert a JSON value to URL-encoded form data for Stripe API

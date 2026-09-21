@@ -521,6 +521,7 @@
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
+        <a href="#payment-gateways-section">💳 Payment Gateways</a>
         <a href="#email-settings-section">✉️ Email / SMTP</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
@@ -643,6 +644,7 @@
         .em-field input,.em-field select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#1e3a5f);background:rgba(0,0,0,.25);color:inherit;font-size:.85rem}
         .em-out{display:none;margin-top:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border,#1e3a5f);background:rgba(0,0,0,.25);font-family:monospace;font-size:.78rem;white-space:pre-wrap;word-break:break-word}
         .em-out.show{display:block}
+        .pg-field-help{display:block;font-size:.7rem;color:var(--text-muted,#8aa0b8);margin-top:4px}
         .em-ok{border-color:rgba(34,197,94,.5)!important}
         .em-bad{border-color:rgba(248,113,113,.5)!important}
       </style>
@@ -654,6 +656,43 @@
         <div id="pk-loading" class="loading-state"><span class="spinner"></span> Loading providers...</div>
         <div id="pk-list"></div>
         <div class="feature-status" id="pk-status"></div>
+      </div>
+
+      <!-- 💳 Payment gateways (kanban t_3f82bba8). Before this the payment_providers API had NO
+           UI at all, so a gateway could only be armed with curl — and the API allowed arming it
+           with no webhook verification value, which made the receiver accept forged events. -->
+      <div class="feature-card" id="payment-gateways-section">
+        <h3>💳 Payment Gateways
+          <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html#payment-gateways" target="_blank" rel="noopener">📘 Setup guide →</a>
+        </h3>
+        <p class="feature-subtitle">Where customers actually pay: connect <b>Stripe</b> and/or <b>PayPal</b> here.
+          Saved credentials are encrypted at rest and never sent back to the browser, so these fields are write-only.
+          A gateway <b>cannot be switched on without its webhook verification value</b>, and the receiver itself
+          refuses any event it cannot verify — otherwise a forged "payment complete" would hand out paid features for free.</p>
+        <div id="pg-loading" class="loading-state"><span class="spinner"></span> Loading payment gateways...</div>
+        <div id="pg-list"></div>
+        <div style="margin-top:14px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px">
+          <div class="em-grid">
+            <div class="em-field"><label>Gateway</label><select id="pg-type" onchange="window.__pgTypeChanged()">
+              <option value="stripe">Stripe</option>
+              <option value="paypal">PayPal</option>
+              <option value="square">Square (no receiver yet)</option>
+              <option value="paddle">Paddle (no receiver yet)</option>
+            </select></div>
+            <div class="em-field"><label>Label</label><input id="pg-label" placeholder="e.g. ZaarHub live Stripe"></div>
+            <div class="em-field"><label>API key / client credentials</label><input id="pg-api-key" type="password" placeholder="leave blank to keep the stored value"><span class="pg-field-help" id="pg-api-key-help"></span></div>
+            <div class="em-field"><label id="pg-webhook-label">Webhook verification value</label><input id="pg-webhook-secret" type="password" placeholder="leave blank to keep the stored value"><span class="pg-field-help" id="pg-webhook-help"></span></div>
+            <div class="em-field"><label>Publishable key (optional)</label><input id="pg-publishable-key" placeholder="pk_…"></div>
+            <div class="em-field"><label>Environment</label><select id="pg-test-mode"><option value="true">Test / sandbox</option><option value="false">Live</option></select></div>
+            <div class="em-field"><label>Status</label><select id="pg-active"><option value="false">Disabled</option><option value="true">Active (receiver live)</option></select></div>
+          </div>
+          <p class="pg-field-help" id="pg-webhook-url" style="margin-top:8px"></p>
+          <div class="pk-controls" style="margin-top:10px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__pgSave()">Save gateway</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="window.__pgDelete()">Delete gateway</button>
+            <span class="feature-status" id="pg-status"></span>
+          </div>
+        </div>
       </div>
 
       <!-- ✉️ Email / SMTP (Round 6 / U3) -->
@@ -1475,6 +1514,8 @@
         .catch(function (e) { emStatus('Test send failed: ' + e.message, false); });
     }
 
+    loadPaymentGateways();
+
     window.__emLoad = loadEmailSettings;
     window.__emLoadService = loadEmailServiceStatus;
     window.__emSave = emSave;
@@ -1488,6 +1529,182 @@
         if (wrapped) wrapped.style.opacity = ev.target.value === 'smtp' ? '1' : '.45';
       }
     });
+
+    // ===== Payment gateways: Stripe / PayPal (kanban t_3f82bba8) =====
+    // payment_providers had a full API and no UI, so arming a gateway was curl-only and an
+    // unverified receiver could be armed by accident. This is the control, and it enforces the
+    // same rule as the API: a receiver cannot be switched on without its verification value.
+    var pgProviders = [];
+
+    function pgStatus(msg, ok) {
+      var el = document.getElementById('pg-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.classList.add('show');
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function pgType() { return document.getElementById('pg-type').value; }
+
+    function pgIsReceiver(type) { return type === 'stripe' || type === 'paypal'; }
+
+    function pgStoredFor(type) {
+      return pgProviders.filter(function (p) { return p.provider_type === type; })[0] || null;
+    }
+
+    function pgTypeChanged() {
+      var type = pgType();
+      var stored = pgStoredFor(type);
+      var isStripe = type === 'stripe';
+      var isPaypal = type === 'paypal';
+
+      document.getElementById('pg-webhook-label').textContent = isStripe
+        ? 'Webhook signing secret (whsec_…)'
+        : (isPaypal ? 'PayPal Webhook ID' : 'Webhook verification value');
+      document.getElementById('pg-api-key-help').textContent = isStripe
+        ? 'Stripe: the secret key (sk_… or rk_…).'
+        : (isPaypal
+            ? 'PayPal: client_id:secret — both halves, separated by a colon.'
+            : 'Not used by this gateway.');
+      document.getElementById('pg-webhook-help').textContent = isStripe
+        ? 'Stripe signs every event with this secret; the receiver refuses anything unsigned or wrongly signed.'
+        : (isPaypal
+            ? 'PayPal verifies each event server-side against this ID (PayPal issues no signing secret).'
+            : 'No receiver exists for this gateway yet, so events cannot be verified — leave it disabled.');
+
+      var url = isStripe ? '/api/v1/webhooks/stripe' : (isPaypal ? '/api/v1/webhooks/paypal' : '');
+      document.getElementById('pg-webhook-url').textContent = url
+        ? 'Register this endpoint in the gateway dashboard: ' + window.location.origin + url
+          + (stored && stored.webhook_secret_status === 'configured'
+              ? ' · verification value stored ✓'
+              : ' · no verification value stored yet')
+        : 'No receiver endpoint exists for this gateway.';
+
+      var labelEl = document.getElementById('pg-label');
+      var pubEl = document.getElementById('pg-publishable-key');
+      if (stored) {
+        labelEl.value = stored.label || '';
+        pubEl.value = stored.publishable_key || '';
+        document.getElementById('pg-test-mode').value = stored.is_test_mode ? 'true' : 'false';
+        document.getElementById('pg-active').value = stored.is_active ? 'true' : 'false';
+      } else {
+        labelEl.value = '';
+        pubEl.value = '';
+        document.getElementById('pg-test-mode').value = 'true';
+        document.getElementById('pg-active').value = 'false';
+      }
+      document.getElementById('pg-api-key').value = '';
+      document.getElementById('pg-webhook-secret').value = '';
+    }
+
+    function pgRender() {
+      var wrap = document.getElementById('pg-list');
+      if (!wrap) return;
+      if (!pgProviders.length) {
+        wrap.innerHTML = '<div class="pk-badge pk-missing">no gateway configured — customers cannot pay yet</div>';
+        return;
+      }
+      wrap.innerHTML = pgProviders.map(function (p) {
+        var receiver = pgIsReceiver(p.provider_type);
+        var verified = p.webhook_secret_status === 'configured';
+        var risky = receiver && p.is_active && !verified;
+        var badge = risky
+          ? '<span class="pk-badge pk-missing">ACTIVE WITHOUT VERIFICATION — its events are refused</span>'
+          : (p.is_active ? '<span class="pk-badge pk-ok">active</span>' : '<span class="pk-badge pk-missing">disabled</span>');
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#1e2a3a)">'
+          + '<b style="min-width:80px;text-transform:capitalize">' + pkEsc(p.provider_type) + '</b>'
+          + '<span style="flex:1 1 140px">' + pkEsc(p.label || '(no label)') + '</span>'
+          + badge
+          + '<span class="pk-badge ' + (p.key_status === 'configured' ? 'pk-ok' : 'pk-missing') + '">credentials ' + (p.key_status === 'configured' ? 'saved' : 'missing') + '</span>'
+          + '<span class="pk-badge ' + (verified ? 'pk-ok' : 'pk-missing') + '">webhook ' + (verified ? 'verifiable' : 'not verifiable') + '</span>'
+          + '<span class="pk-badge pk-missing">' + (p.is_test_mode ? 'test / sandbox' : 'live') + '</span>'
+          + '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__pgEdit(\'' + p.provider_type + '\')">Edit</button>'
+          + '</div>';
+      }).join('');
+    }
+
+    function pgEdit(type) {
+      document.getElementById('pg-type').value = type;
+      pgTypeChanged();
+      document.getElementById('payment-gateways-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    window.__pgEdit = pgEdit;
+
+    function loadPaymentGateways() {
+      var loading = document.getElementById('pg-loading');
+      apiGet('/payment-providers')
+        .then(function (r) {
+          pgProviders = (r && r.providers) || [];
+          pgRender();
+          pgTypeChanged();
+          if (loading) loading.classList.add('hidden');
+          var armed = pgProviders.filter(function (p) {
+            return pgIsReceiver(p.provider_type) && p.is_active && p.webhook_secret_status !== 'configured';
+          });
+          if (armed.length) {
+            pgStatus('⚠ ' + armed.length + ' gateway(s) are switched on without a webhook verification value — '
+              + 'their events are refused until you add it', false);
+          } else {
+            pgStatus(pgProviders.length ? pgProviders.length + ' gateway(s) configured' : 'No gateway configured yet', true);
+          }
+        })
+        .catch(function (e) {
+          if (loading) loading.classList.add('hidden');
+          pgStatus('Could not load payment gateways: ' + e.message, false);
+        });
+    }
+
+    function pgSave() {
+      var type = pgType();
+      var stored = pgStoredFor(type);
+      var apiKey = document.getElementById('pg-api-key').value;
+      var webhook = document.getElementById('pg-webhook-secret').value;
+      var active = document.getElementById('pg-active').value === 'true';
+      var storedWebhook = !!(stored && stored.webhook_secret_status === 'configured');
+
+      // The same rule the API enforces, stated before the round trip.
+      if (active && pgIsReceiver(type) && !webhook && !storedWebhook) {
+        pgStatus('Refused: ' + type + ' cannot be switched on without its '
+          + (type === 'stripe' ? 'webhook signing secret (whsec_…)' : 'PayPal Webhook ID')
+          + '. Add it, or leave the gateway disabled.', false);
+        return;
+      }
+
+      var body = {
+        provider_type: type,
+        label: document.getElementById('pg-label').value.trim(),
+        publishable_key: document.getElementById('pg-publishable-key').value.trim(),
+        is_test_mode: document.getElementById('pg-test-mode').value === 'true',
+        is_active: active
+      };
+      if (apiKey) body.api_key = apiKey;
+      if (webhook) body.webhook_secret = webhook;
+
+      pgStatus('Saving…', true);
+      apiPost('/payment-providers', body)
+        .then(function () {
+          document.getElementById('pg-api-key').value = '';
+          document.getElementById('pg-webhook-secret').value = '';
+          pgStatus('✓ ' + type + ' saved (' + (active ? 'active — receiver live' : 'disabled') + ')', true);
+          showToast('Payment gateway saved');
+          loadPaymentGateways();
+        })
+        .catch(function (e) { pgStatus('Save failed: ' + e.message, false); });
+    }
+
+    function pgDelete() {
+      var type = pgType();
+      if (!pgStoredFor(type)) { pgStatus('Nothing stored for ' + type, false); return; }
+      pgStatus('Deleting…', true);
+      apiFetch('DELETE', '/payment-providers/' + encodeURIComponent(type))
+        .then(function () { pgStatus('✓ ' + type + ' deleted', true); showToast('Payment gateway removed'); loadPaymentGateways(); })
+        .catch(function (e) { pgStatus('Delete failed: ' + e.message, false); });
+    }
+
+    window.__pgLoad = loadPaymentGateways;
+    window.__pgSave = pgSave;
+    window.__pgDelete = pgDelete;
+    window.__pgTypeChanged = pgTypeChanged;
 
     // ===== Nav (U5): smooth-scroll in-page anchors =====
     document.addEventListener('click', function (ev) {
