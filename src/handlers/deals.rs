@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -442,6 +442,7 @@ pub async fn list_business_deals(
 /// POST /api/v1/deals/:id/redeem — generate redemption code and store claim
 pub async fn redeem_deal(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     use rand::Rng;
@@ -452,12 +453,27 @@ pub async fn redeem_deal(
         .collect();
     let code = code.to_uppercase();
 
+    // Attribute the redemption to the signed-in visitor when one is present. Without this the
+    // redemption is anonymous (visitor_id NULL), so no loyalty member can ever be credited — which
+    // is why a customer could redeem repeatedly and their wallet stayed at zero. Anonymous
+    // redemptions remain allowed: this endpoint is public by design.
+    let visitor_id =
+        crate::handlers::visitors::extract_visitor_id_optional(&headers, &s.config.jwt_secret);
+    let business_id: Option<Uuid> =
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT business_id FROM deals WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
+
     let redemption = sqlx::query_as::<_, (Uuid, String)>(
-        "INSERT INTO deal_redemptions (id, deal_id, redemption_code, status)
-         VALUES ($1, $2, $3, 'active') RETURNING id, redemption_code",
+        "INSERT INTO deal_redemptions (id, deal_id, visitor_id, business_id, redemption_code, status)
+         VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id, redemption_code",
     )
     .bind(Uuid::new_v4())
     .bind(id)
+    .bind(visitor_id)
+    .bind(business_id)
     .bind(&code)
     .fetch_one(&s.db)
     .await?;
@@ -521,7 +537,61 @@ pub async fn use_redemption(
         ));
     }
 
-    Ok(Json(json!({"status": "used"})))
+    // Loyalty credit — native to Multi-Directory, at a rate the directory's admin controls
+    // (loyalty_programs.points_per_redemption; 0 = disabled). Best-effort by design: a missing
+    // programme, a missing visitor link or a duplicate programme must never fail the redemption
+    // itself, so the error is logged and the scan still succeeds.
+    let credited: Option<(i32, i32)> = sqlx::query_as(
+        r#"WITH ctx AS (
+               SELECT dr.visitor_id, d.directory_id
+               FROM deal_redemptions dr
+               JOIN deals d ON d.id = dr.deal_id
+               WHERE dr.id = $1
+           ), prog AS (
+               SELECT p.id, p.points_per_redemption
+               FROM loyalty_programs p, ctx
+               WHERE p.directory_id = ctx.directory_id
+                 AND p.is_active = true
+                 AND COALESCE(p.points_per_redemption, 0) > 0
+               ORDER BY p.created_at
+               LIMIT 1
+           ), mem AS (
+               INSERT INTO loyalty_members (id, program_id, visitor_account_id, points_balance,
+                                            lifetime_points, member_since, last_activity_date)
+               SELECT gen_random_uuid(), prog.id, ctx.visitor_id, prog.points_per_redemption,
+                      prog.points_per_redemption, NOW(), CURRENT_DATE
+               FROM prog, ctx
+               WHERE ctx.visitor_id IS NOT NULL
+               ON CONFLICT (program_id, visitor_account_id) DO UPDATE
+                   SET points_balance = loyalty_members.points_balance + EXCLUDED.points_balance,
+                       lifetime_points = loyalty_members.lifetime_points + EXCLUDED.lifetime_points,
+                       last_activity_date = CURRENT_DATE
+               RETURNING id, points_balance
+           ), act AS (
+               INSERT INTO loyalty_activity (id, member_id, activity_type, description,
+                                             points_earned, created_at)
+               SELECT gen_random_uuid(), mem.id, 'deal_redemption', 'Deal redeemed',
+                      prog.points_per_redemption, NOW()
+               FROM mem, prog
+               RETURNING member_id
+           )
+           SELECT mem.points_balance, prog.points_per_redemption FROM mem, prog"#,
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("[loyalty] redemption credit skipped for {id}: {e}");
+        None
+    });
+
+    Ok(Json(json!({
+        "status": "used",
+        "loyalty": credited.map(|(bal, earned)| json!({
+            "points_earned": earned,
+            "new_balance": bal,
+        })),
+    })))
 }
 
 /// GET /api/v1/deals/:id/redemptions — list all redemptions for a deal
