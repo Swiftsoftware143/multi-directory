@@ -28,6 +28,7 @@ use uuid::Uuid;
 use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::security::provider_key_crypto as keycrypto;
 use crate::AppState;
 
 /// The search adapters this app can actually speak. Which one RUNS is decided by
@@ -133,7 +134,7 @@ pub async fn configured_search_providers(
     db: &sqlx::PgPool,
 ) -> Result<Vec<ProviderCfg>, sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<Value>)>(
-        "SELECT provider, label, COALESCE(decrypt_provider_key(api_key_encrypted), api_key) AS api_key, \
+        "SELECT provider, label, api_key, \
                 base_url, metadata \
          FROM provider_keys \
          WHERE is_active = true AND provider = ANY($1) \
@@ -143,19 +144,26 @@ pub async fn configured_search_providers(
     .fetch_all(db)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .filter(|(_, _, key, _, _)| !key.trim().is_empty())
-        .map(
-            |(provider, label, api_key, base_url, metadata)| ProviderCfg {
-                provider,
-                label,
-                api_key,
-                base_url,
-                metadata: metadata.unwrap_or_else(|| json!({})),
-            },
-        )
-        .collect())
+    // `api_key` is enc:v1 ciphertext at rest; it is decrypted here with the env-only master
+    // key. A row that cannot be decrypted is treated as unconfigured (log + skip) rather than
+    // handed to an adapter as ciphertext.
+    let mut out = Vec::with_capacity(rows.len());
+    for (provider, label, stored, base_url, metadata) in rows {
+        let Some(api_key) = keycrypto::decrypt_for_use(db, &stored, &provider).await else {
+            continue;
+        };
+        if api_key.trim().is_empty() {
+            continue;
+        }
+        out.push(ProviderCfg {
+            provider,
+            label,
+            api_key,
+            base_url,
+            metadata: metadata.unwrap_or_else(|| json!({})),
+        });
+    }
+    Ok(out)
 }
 
 /// Which adapter runs: the pinned provider when it is configured, else the first

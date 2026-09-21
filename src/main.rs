@@ -15,6 +15,7 @@ mod handlers;
 mod models;
 mod providers;
 mod routes;
+mod security;
 mod state;
 mod template_engine;
 pub mod tracking_script;
@@ -58,6 +59,18 @@ async fn main() {
     // Run migrations
     tracing::info!("Running database migrations...");
     db::run_migrations(&pool).await;
+
+    // BYOK credentials (provider_keys.api_key) are encrypted at rest under an env-only master
+    // key. Say the posture out loud at boot: a missing key means provider-key writes fail
+    // closed (never a plaintext write), and reads report the provider as unconfigured.
+    if security::provider_key_crypto::is_configured() {
+        tracing::info!("Provider key encryption: enabled (AES-256 at rest, enc:v1 format)");
+    } else {
+        tracing::error!(
+            "Provider key encryption: DISABLED — PROVIDER_KEY_ENC_SECRET missing or shorter than \
+             32 chars. Storing a provider key will fail rather than store it in the clear."
+        );
+    }
 
     let state = AppState::new(pool, config.clone(), is_db);
 

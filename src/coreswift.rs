@@ -1423,10 +1423,7 @@ pub async fn resolve_lead_conn(
 ) -> Result<Option<CoreSwiftConn>, String> {
     for cand in lead_tenant_candidates(db, tenant_id, directory_id).await {
         let row = sqlx::query_as::<_, (String, Option<String>)>(
-            r#"SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) AS api_key,
-                      CASE WHEN base_url_encrypted IS NOT NULL
-                           THEN decrypt_provider_key(base_url_encrypted)
-                           ELSE base_url END AS base_url
+            r#"SELECT api_key, base_url
                FROM provider_keys
                WHERE tenant_id = $1 AND provider = 'coreswift' AND is_active = true
                ORDER BY is_default DESC, updated_at DESC
@@ -1437,7 +1434,16 @@ pub async fn resolve_lead_conn(
         .await
         .map_err(|e| format!("DB error resolving CoreSwift key: {e}"))?;
 
-        if let Some((api_key, base_url)) = row {
+        if let Some((stored_key, base_url)) = row {
+            // The credential is enc:v1 ciphertext at rest — decrypt with the env-only master key
+            // before it goes on the wire. A row we cannot decrypt is treated as not connected
+            // (never push ciphertext to the hub) and the next candidate is tried.
+            let Some(api_key) =
+                crate::security::provider_key_crypto::decrypt_for_use(db, &stored_key, "coreswift")
+                    .await
+            else {
+                continue;
+            };
             let base = base_url
                 .filter(|s| !s.trim().is_empty())
                 .or(preset_base_url(db, "coreswift").await)

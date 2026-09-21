@@ -312,8 +312,7 @@ async fn fetch_dataforseo_keywords(
     _directory: &str,
 ) -> Result<Vec<Value>, AppError> {
     let config_row = sqlx::query_as::<_, (String, Option<String>)>(
-        r#"SELECT decrypt_provider_key(api_key_encrypted) as api_key, 
-                decrypt_provider_key(base_url_encrypted) as login
+        r#"SELECT api_key, base_url
          FROM provider_keys WHERE provider = 'dataforseo' AND is_active = true
          ORDER BY is_default DESC, updated_at DESC
          LIMIT 1"#,
@@ -326,7 +325,18 @@ async fn fetch_dataforseo_keywords(
         )
     })?;
 
-    let (api_key, login_opt) = config_row;
+    // api_key is enc:v1 ciphertext at rest — decrypt with the env-only master key before it is
+    // put on the wire. The DataForSEO login is the (non-secret) base_url field.
+    let (stored_key, login_opt) = config_row;
+    let api_key =
+        crate::security::provider_key_crypto::decrypt_for_use(&state.db, &stored_key, "dataforseo")
+            .await
+            .ok_or_else(|| {
+                AppError::Internal(
+                    "The stored DataForSEO key cannot be decrypted — re-save it in Integrations."
+                        .into(),
+                )
+            })?;
     let login = login_opt.unwrap_or_default();
 
     // DataForSEO uses Basic auth: login:api_key

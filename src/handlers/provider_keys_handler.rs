@@ -32,6 +32,7 @@ use uuid::Uuid;
 
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::security::provider_key_crypto as keycrypto;
 use crate::AppState;
 
 /// Label used when the caller does not name a key.
@@ -59,6 +60,8 @@ pub struct ProviderKeyResponse {
     pub label: String,
     pub is_default: bool,
     pub api_key: String, // masked in response — never unmasked over the wire
+    /// True when a usable credential is stored for this row (the mask is not the key).
+    pub has_key: bool,
     pub base_url: Option<String>,
     pub metadata: Value,
     pub is_active: bool,
@@ -77,11 +80,12 @@ pub struct AvailableProviderResponse {
     pub icon: Option<String>,
 }
 
-fn row_to_response(row: &sqlx::postgres::PgRow) -> ProviderKeyResponse {
-    let resolved: String = row
-        .try_get::<Option<String>, _>("api_key")
-        .unwrap_or(None)
-        .unwrap_or_default();
+/// Build the client-facing row. `api_key` arrives AS STORED (enc:v1 ciphertext for every row
+/// written since migration 095) and is decrypted here before masking, so a client never sees
+/// ciphertext and the mask always derives from the DECRYPTED credential.
+async fn row_to_response(db: &sqlx::PgPool, row: &sqlx::postgres::PgRow) -> ProviderKeyResponse {
+    let stored: String = row.try_get::<String, _>("api_key").unwrap_or_default();
+    let resolved = keycrypto::decrypt_for_display(db, &stored).await;
     ProviderKeyResponse {
         id: row.get("id"),
         tenant_id: row.get("tenant_id"),
@@ -90,10 +94,15 @@ fn row_to_response(row: &sqlx::postgres::PgRow) -> ProviderKeyResponse {
             .try_get("label")
             .unwrap_or_else(|_| DEFAULT_LABEL.to_string()),
         is_default: row.try_get("is_default").unwrap_or(false),
-        api_key: mask_key(&resolved),
-        base_url: row.get("base_url"),
+        api_key: if resolved.is_empty() {
+            String::new()
+        } else {
+            mask_key(&resolved)
+        },
+        has_key: !resolved.is_empty(),
+        base_url: row.try_get("base_url").unwrap_or(None),
         metadata: row.get("metadata"),
-        is_active: row.get("is_active"),
+        is_active: row.try_get("is_active").unwrap_or(false),
         scope: row.get("scope"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
@@ -113,10 +122,10 @@ pub fn mask_key(key: &str) -> String {
 }
 
 /// Shared selection SQL — default row first, then most recently updated active row.
+/// `api_key` is selected AS STORED (ciphertext); `row_to_response` decrypts it in Rust with
+/// the env-only master key, so no SQL path here depends on a key held in the database.
 const SELECT_KEYS: &str = "SELECT id, tenant_id, provider, label, is_default, \
-        COALESCE(decrypt_provider_key(api_key_encrypted), api_key) as api_key, \
-        CASE WHEN base_url_encrypted IS NOT NULL \
-            THEN decrypt_provider_key(base_url_encrypted) ELSE base_url END as base_url, \
+        api_key, base_url, \
         metadata, is_active, scope, created_at::text, updated_at::text \
      FROM provider_keys";
 
@@ -124,8 +133,8 @@ const SELECT_KEYS: &str = "SELECT id, tenant_id, provider, label, is_default, \
 /// falling back to any tenant that has an active key.
 /// Default row wins; otherwise the most recently updated active row.
 pub async fn resolve_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<String> {
-    sqlx::query_scalar::<_, String>(
-        r#"SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys
+    let stored = sqlx::query_scalar::<_, String>(
+        r#"SELECT api_key FROM provider_keys
            WHERE provider = $1 AND is_active = true
            ORDER BY (tenant_id = '00000000-0000-0000-0000-000000000000'::uuid) DESC,
                     is_default DESC, updated_at DESC
@@ -135,7 +144,9 @@ pub async fn resolve_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<S
     .fetch_optional(db)
     .await
     .ok()
-    .flatten()
+    .flatten()?;
+
+    keycrypto::decrypt_for_use(db, &stored, provider).await
 }
 
 /// Resolve "the key for provider X" for one tenant: the tenant's own keys first
@@ -145,8 +156,8 @@ pub async fn resolve_provider_key_for_tenant(
     tenant_id: Uuid,
     provider: &str,
 ) -> Option<String> {
-    sqlx::query_scalar::<_, String>(
-        r#"SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys
+    let stored = sqlx::query_scalar::<_, String>(
+        r#"SELECT api_key FROM provider_keys
            WHERE provider = $1 AND is_active = true
              AND (tenant_id = $2 OR tenant_id = '00000000-0000-0000-0000-000000000000'::uuid)
            ORDER BY (tenant_id = $2) DESC, is_default DESC, updated_at DESC
@@ -157,7 +168,9 @@ pub async fn resolve_provider_key_for_tenant(
     .fetch_optional(db)
     .await
     .ok()
-    .flatten()
+    .flatten()?;
+
+    keycrypto::decrypt_for_use(db, &stored, provider).await
 }
 
 async fn validate_provider_exists(db: &sqlx::PgPool, provider: &str) -> Result<(), AppError> {
@@ -186,7 +199,12 @@ async fn fetch_keys(
         SELECT_KEYS
     );
     let rows = sqlx::query(&sql).bind(tenant_id).fetch_all(db).await?;
-    Ok(rows.iter().map(row_to_response).collect())
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows.iter() {
+        // Decryption happens per row in Rust (the master key is not available to SQL).
+        out.push(row_to_response(db, row).await);
+    }
+    Ok(out)
 }
 
 /// GET /api/v1/admin/provider-keys — every key, plus a provider-grouped map.
@@ -208,6 +226,7 @@ pub async fn list_provider_keys(
                 "id": k.id,
                 "label": k.label,
                 "api_key": k.api_key, // masked
+                "has_key": k.has_key,
                 "is_default": k.is_default,
                 "is_active": k.is_active,
                 "updated_at": k.updated_at,
@@ -266,7 +285,10 @@ pub async fn upsert_provider_key(
     .await?;
     let is_default = make_default || any_existing == 0;
 
-    // Store plaintext api_key in api_key — trigger auto-encrypts to api_key_encrypted.
+    // BYOK credential: encrypt BEFORE it reaches the database. Fail-closed — if the master key
+    // is missing this errors, it never stores the value the customer typed (migration 095's
+    // CHECK constraint refuses a plaintext write anyway).
+    let stored_api_key = keycrypto::encrypt_for_storage(&s.db, &req.api_key).await?;
     let sql = format!(
         "INSERT INTO provider_keys (tenant_id, provider, label, api_key, base_url, metadata, is_active, scope, is_default) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
@@ -279,17 +301,14 @@ pub async fn upsert_provider_key(
                        is_default = EXCLUDED.is_default, \
                        updated_at = NOW() \
          RETURNING id, tenant_id, provider, label, is_default, \
-                   COALESCE(decrypt_provider_key(api_key_encrypted), api_key) as api_key, \
-                   CASE WHEN base_url_encrypted IS NOT NULL \
-                       THEN decrypt_provider_key(base_url_encrypted) \
-                       ELSE base_url END as base_url, \
+                   api_key, base_url, \
                    metadata, is_active, scope, created_at::text, updated_at::text"
     );
     let row = sqlx::query(&sql)
         .bind(tenant_id)
         .bind(&req.provider)
         .bind(&label)
-        .bind(&req.api_key)
+        .bind(&stored_api_key)
         .bind(&req.base_url)
         .bind(&metadata)
         .bind(is_active)
@@ -298,7 +317,7 @@ pub async fn upsert_provider_key(
         .fetch_one(&s.db)
         .await?;
 
-    let resp = row_to_response(&row);
+    let resp = row_to_response(&s.db, &row).await;
 
     Ok((
         StatusCode::CREATED,

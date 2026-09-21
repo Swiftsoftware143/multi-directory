@@ -9,6 +9,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
+use crate::security::provider_key_crypto as keycrypto;
 use crate::AppState;
 
 // ── Legal Pages ──
@@ -187,7 +188,7 @@ pub async fn get_site_config(State(state): State<AppState>) -> ApiResult<Json<Va
 pub async fn get_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let row = sqlx::query(
         "SELECT id, tenant_id, provider, label, is_default, is_active, scope, metadata, \
-                COALESCE(decrypt_provider_key(api_key_encrypted), api_key) AS api_key \
+                api_key \
          FROM provider_keys WHERE provider = 'google_places' \
          ORDER BY is_default DESC, updated_at DESC LIMIT 1",
     )
@@ -196,10 +197,10 @@ pub async fn get_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Va
 
     match row {
         Some(r) => {
-            let full_key: String = r
-                .try_get::<Option<String>, _>("api_key")
-                .unwrap_or(None)
-                .unwrap_or_default();
+            // The column holds enc:v1 ciphertext; decrypt with the env master key (never the
+            // database) before masking, so the panel shows a mask and never the ciphertext.
+            let stored: String = r.try_get::<String, _>("api_key").unwrap_or_default();
+            let full_key = keycrypto::decrypt_for_display(&state.db, &stored).await;
             let masked = crate::handlers::provider_keys_handler::mask_key(&full_key);
             Ok(Json(json!({
                 "configured": !full_key.is_empty(),
@@ -227,7 +228,7 @@ pub struct GplacesKeyPayload {
     pub label: Option<String>,
 }
 
-/// POST /api/v1/zaarhub/admin/provider-keys/google-places — upsert (encrypt via trigger)
+/// POST /api/v1/zaarhub/admin/provider-keys/google-places — upsert (encrypted at rest)
 pub async fn save_gplaces_key(
     State(state): State<AppState>,
     Json(payload): Json<GplacesKeyPayload>,
@@ -242,7 +243,10 @@ pub async fn save_gplaces_key(
         ));
     }
 
-    // provider_keys has an INSERT/UPDATE trigger that encrypts api_key -> api_key_encrypted.
+    // Encryption happens in the app (env-only master key, fail-closed) before the value reaches
+    // the database; migration 095's CHECK constraint refuses a plaintext write outright.
+    let stored_key = keycrypto::encrypt_for_storage(&state.db, &key).await?;
+
     // Bind a real tenant_id (must exist in tenants FK). Reuse an existing provider key's tenant,
     // else fall back to the super-admin seed tenant.
     let tenant_id: Uuid = sqlx::query_scalar::<_, Uuid>(
@@ -280,7 +284,7 @@ pub async fn save_gplaces_key(
     .bind(tenant_id)
     .bind("google_places")
     .bind(&label)
-    .bind(&key)
+    .bind(&stored_key)
     .execute(&state.db)
     .await?;
 
@@ -290,7 +294,7 @@ pub async fn save_gplaces_key(
 /// POST /api/v1/zaarhub/admin/provider-keys/google-places/test — validate via Autocomplete
 pub async fn test_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     let row = sqlx::query(
-        "SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys \
+        "SELECT api_key FROM provider_keys \
          WHERE provider = 'google_places' AND is_active = true \
          ORDER BY is_default DESC, updated_at DESC LIMIT 1",
     )
@@ -298,7 +302,16 @@ pub async fn test_gplaces_key(State(state): State<AppState>) -> ApiResult<Json<V
     .await?;
 
     let key: String = match row {
-        Some(r) => r.try_get("api_key").unwrap_or_default(),
+        Some(r) => {
+            let stored: String = r.try_get::<String, _>("api_key").unwrap_or_default();
+            keycrypto::decrypt_for_use(&state.db, &stored, "google_places")
+                .await
+                .ok_or_else(|| {
+                    AppError::BadRequest(
+                        "The saved Google Places key cannot be decrypted — re-save it".into(),
+                    )
+                })?
+        }
         None => {
             return Err(AppError::BadRequest(
                 "No Google Places API key saved yet".into(),
@@ -371,14 +384,23 @@ pub async fn places_text_search(
     }
 
     let row = sqlx::query(
-        "SELECT COALESCE(decrypt_provider_key(api_key_encrypted), api_key) FROM provider_keys \
+        "SELECT api_key FROM provider_keys \
          WHERE provider = 'google_places' AND is_active = true \
          ORDER BY is_default DESC, updated_at DESC LIMIT 1",
     )
     .fetch_optional(&state.db)
     .await?;
     let key: String = match row {
-        Some(r) => r.try_get("api_key").unwrap_or_default(),
+        Some(r) => {
+            let stored: String = r.try_get::<String, _>("api_key").unwrap_or_default();
+            keycrypto::decrypt_for_use(&state.db, &stored, "google_places")
+                .await
+                .ok_or_else(|| {
+                    AppError::BadRequest(
+                        "The saved Google Places key cannot be decrypted — re-save it".into(),
+                    )
+                })?
+        }
         None => {
             return Err(AppError::BadRequest(
                 "No Google Places API key saved yet — save one above".into(),
