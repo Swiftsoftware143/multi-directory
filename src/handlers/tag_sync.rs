@@ -1,11 +1,13 @@
 //! Cross-platform tag sync handler.
 //!
 //! When a user signs up or changes role in MultiDirectory, this handler
-//! broadcasts the tag event to:
-//!   1. CoreSwift (contact CRM — tag + list assignment)
-//!   2. IncentiveSwift (loyalty engine — tag for campaign eligibility)
+//! broadcasts the tag event to CoreSwift (contact CRM — tag + list assignment).
 //!
-//! Both calls are fire-and-forget with 5s timeouts. Errors are logged, not returned.
+//! IncentiveSwift is deliberately NOT contacted: ZaarHub loyalty is native Multi-Directory code
+//! and network-scoped (one programme for the whole network — see loyalty_native). The only
+//! permitted IncentiveSwift seam is the onboarding/IQS survey proxy (handlers::onboarding_survey).
+//!
+//! Calls are fire-and-forget with 5s timeouts. Errors are logged, not returned.
 
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
@@ -50,12 +52,10 @@ async fn perform_tag_sync(event: TagSyncEvent) {
 
     let first_name = event.first_name.clone().unwrap_or_default();
     let last_name = event.last_name.clone().unwrap_or_default();
-    let phone = event.phone.clone().unwrap_or_default();
     let source = event
         .source
         .clone()
         .unwrap_or_else(|| "multidirectory".to_string());
-    let directory_slug = event.directory_slug.clone().unwrap_or_default();
     let coreswift_list_id = event.coreswift_list_id.clone();
 
     // ── 1. Sync to CoreSwift (fire-and-forget) ─────────────────────
@@ -105,41 +105,12 @@ async fn perform_tag_sync(event: TagSyncEvent) {
         });
     }
 
-    // ── 2. Sync to IncentiveSwift (fire-and-forget) ────────────────
-    let is_url = "http://localhost:8083/api/v1/loyalty/external/tag-contact".to_string();
-    let email_is = event.email.clone();
-
-    {
-        let is_payload = json!({
-            "event": "contact_tagged",
-            "email": event.email,
-            "first_name": first_name,
-            "last_name": last_name,
-            "phone": phone,
-            "tags": event.tags,
-            "source": source,
-            "directory_slug": directory_slug,
-        });
-
-        tokio::spawn(async move {
-            match SYNC_CLIENT.post(&is_url).json(&is_payload).send().await {
-                Ok(resp) => {
-                    if resp.status().is_success() {
-                        tracing::info!("[tag-sync] IncentiveSwift sync OK for {}", email_is);
-                    } else {
-                        let status = resp.status();
-                        let body_text = resp.text().await.unwrap_or_default();
-                        tracing::warn!(
-                            "[tag-sync] IncentiveSwift sync returned {status}: {body_text}"
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("[tag-sync] IncentiveSwift sync request failed: {e}");
-                }
-            }
-        });
-    }
+    // ── 2. IncentiveSwift: deliberately NOT called. ───────────────
+    // ZaarHub loyalty is native to Multi-Directory and network-scoped (see
+    // loyalty_native::enroll_visitor_in_network_loyalty). David's standing rule: the only
+    // permitted IncentiveSwift seam is the onboarding/IQS survey proxy
+    // (handlers::onboarding_survey). The old tag-contact POST here hit a programme that does
+    // not exist on IS, so it failed on every signup and only polluted the logs.
 
     // ── 3. List membership (CoreSwift) — low priority ──────────
     if let Some(ref list_id) = coreswift_list_id {
@@ -263,65 +234,7 @@ pub fn fire_tag_sync(
     });
 }
 
-// ── IncentiveSwift Member Registration ──────────────────────────────────────
-
-/// Called after every member signup in MultiDirectory (visitor, supplier, business owner).
-/// Fire-and-forget to IncentiveSwift to create the contact and enroll in the loyalty program.
-pub async fn register_member_in_is(
-    email: String,
-    first_name: Option<String>,
-    last_name: Option<String>,
-    phone: Option<String>,
-    member_type: &str,
-    business_type: Option<String>,
-    directory_slug: Option<String>,
-    tags: Option<Vec<String>>,
-) {
-    let is_url = "http://localhost:8083/api/v1/loyalty/external/register-member".to_string();
-
-    let payload = serde_json::json!({
-        "email": email,
-        "first_name": first_name,
-        "last_name": last_name,
-        "phone": phone,
-        "member_type": member_type,
-        "business_type": business_type,
-        "directory_slug": directory_slug,
-        "tags": tags,
-    });
-
-    let email_for_log = payload["email"].as_str().unwrap_or("unknown").to_string();
-    let member_type_for_log = member_type.to_string();
-
-    tokio::spawn(async move {
-        match SYNC_CLIENT.post(&is_url).json(&payload).send().await {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    tracing::info!(
-                        "[register-member] IS enrollment OK for {} ({})",
-                        email_for_log,
-                        member_type_for_log
-                    );
-                } else {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::warn!(
-                        "[register-member] IS enrollment FAILED for {} ({}): {} {}",
-                        email_for_log,
-                        member_type_for_log,
-                        status,
-                        body
-                    );
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "[register-member] IS enrollment request failed for {} ({}): {}",
-                    email_for_log,
-                    member_type_for_log,
-                    e
-                );
-            }
-        }
-    });
-}
+// NOTE (2026-09-21): register_member_in_is() is gone. It POSTed every signup to
+// http://localhost:8083/api/v1/loyalty/external/register-member, an IncentiveSwift programme that
+// does not exist, so it failed on every signup and polluted the logs. Loyalty enrolment is now
+// native and network-scoped: loyalty_native::enroll_visitor_in_network_loyalty().

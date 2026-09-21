@@ -95,24 +95,10 @@ pub async fn register(
     .execute(&s.db)
     .await?;
 
-    // Auto-provision IncentiveSwift account for loyalty/IQS access
-    {
-        let is_email = req.email.clone();
-        let is_name = req.name.clone();
-        tokio::spawn(async move {
-            crate::handlers::tag_sync::register_member_in_is(
-                is_email,
-                Some(is_name.clone()),
-                None,
-                None,
-                "business_owner",
-                None,
-                Some("zaarhub".to_string()),
-                Some(vec!["zaarhub_business".to_string()]),
-            )
-            .await;
-        });
-    }
+    // Loyalty is native Multi-Directory code — there is no per-user IncentiveSwift account to
+    // provision here. The only external seam is the onboarding/IQS survey proxy, which the app
+    // authenticates as the platform. (This block used to POST to a hardcoded localhost:8083 for a
+    // programme that did not exist there, so it failed on every signup.)
 
     // Create JWT
     let now_ts = Utc::now().timestamp() as usize;

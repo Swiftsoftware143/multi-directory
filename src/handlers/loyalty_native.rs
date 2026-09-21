@@ -27,7 +27,10 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct LoyaltyProgram {
     pub id: Uuid,
-    pub directory_id: Uuid,
+    /// NULL for a network-wide programme (the normal case: ZaarHub loyalty covers every city).
+    pub directory_id: Option<Uuid>,
+    /// Set when the programme is network-wide (ZaarHub is ONE directory across many cities).
+    pub network_id: Option<Uuid>,
     pub name: String,
     pub recognition_method: String,
     pub points_per_checkin: i32,
@@ -106,7 +109,7 @@ pub struct LoyaltyMember {
 
 pub async fn get_program(pool: &PgPool, program_id: &Uuid) -> Result<LoyaltyProgram, AppError> {
     let p = sqlx::query_as::<_, LoyaltyProgram>(
-        r#"SELECT id, directory_id, name, recognition_method, points_per_checkin,
+        r#"SELECT id, directory_id, network_id, name, recognition_method, points_per_checkin,
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
@@ -131,33 +134,134 @@ pub async fn resolve_directory_id(pool: &PgPool, slug: &str) -> Result<Uuid, App
     Ok(id)
 }
 
-/// Find or create a member for (program, visitor account).
+/// The programme that governs a directory. ZaarHub is ONE directory across ten city directories
+/// with ONE network-wide programme, so the scope is the directory's *network*: nothing about
+/// loyalty may depend on a city-scoped programme existing.
+pub async fn programme_for_directory(
+    pool: &PgPool,
+    directory_id: &Uuid,
+) -> Result<Option<LoyaltyProgram>, AppError> {
+    let program = sqlx::query_as::<_, LoyaltyProgram>(
+        r#"SELECT id, directory_id, network_id, name, recognition_method, points_per_checkin,
+                  max_checkins_per_day, point_decay_days, points_expire_days,
+                  currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
+                  tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
+                  streak_days, referral_bonus, birthday_bonus, social_share_points,
+                  is_active, created_at, updated_at
+           FROM (SELECT *, (network_id IS NOT NULL) AS _network_first
+                 FROM loyalty_programs
+                 WHERE is_active
+                   AND ((network_id IS NOT NULL
+                         AND network_id = (SELECT network_id FROM directories WHERE id = $1))
+                        OR (network_id IS NULL AND directory_id = $1))) picked
+           ORDER BY _network_first DESC, created_at
+           LIMIT 1"#,
+    )
+    .bind(directory_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(program)
+}
+
+/// Native, network-scoped loyalty enrolment. Called when a visitor signs up: the visitor joins
+/// the single network-wide programme (no per-city programme, no external service). Best-effort by
+/// design — enrolment must never fail a signup.
+pub async fn enroll_visitor_in_network_loyalty(pool: &PgPool, visitor_account_id: &Uuid) {
+    let directory_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT directory_id FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_account_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+    // 1) the programme for the visitor's city's network, 2) otherwise the network programme itself
+    let program_id: Option<Uuid> = match directory_id {
+        Some(dir) => match programme_for_directory(pool, &dir).await {
+            Ok(Some(p)) => Some(p.id),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!("[loyalty] programme lookup failed on signup: {e}");
+                None
+            }
+        },
+        None => None,
+    };
+    let program_id = match program_id {
+        Some(id) => Some(id),
+        None => sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM loyalty_programs WHERE is_active AND network_id IS NOT NULL
+             ORDER BY created_at LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None),
+    };
+
+    let Some(program_id) = program_id else {
+        tracing::info!(
+            "[loyalty] no active programme — visitor {visitor_account_id} not enrolled (admin creates one in the panel)"
+        );
+        return;
+    };
+
+    match find_or_create_member(pool, &program_id, visitor_account_id).await {
+        Ok(member_id) => tracing::info!(
+            "[loyalty] visitor {visitor_account_id} enrolled in network programme {program_id} as member {member_id}"
+        ),
+        Err(e) => tracing::warn!(
+            "[loyalty] native enrolment failed for visitor {visitor_account_id}: {e}"
+        ),
+    }
+}
+
+/// Find or create a member for (program, visitor account). Network-scoped programmes carry the
+/// network on the membership row, which is what the database's partial unique index enforces.
 pub async fn find_or_create_member(
     pool: &PgPool,
     program_id: &Uuid,
     visitor_account_id: &Uuid,
 ) -> Result<Uuid, AppError> {
-    let existing: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM loyalty_members WHERE program_id = $1 AND visitor_account_id = $2",
+    if let Some(id) = find_member(pool, program_id, visitor_account_id).await? {
+        return Ok(id);
+    }
+
+    sqlx::query(
+        "INSERT INTO loyalty_members (id, program_id, visitor_account_id, points_balance, lifetime_points, network_id)
+         SELECT $1, p.id, $3, 0, 0, p.network_id FROM loyalty_programs p WHERE p.id = $2
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(Uuid::new_v4())
+    .bind(program_id)
+    .bind(visitor_account_id)
+    .execute(pool)
+    .await?;
+
+    find_member(pool, program_id, visitor_account_id)
+        .await?
+        .ok_or_else(|| AppError::Internal("could not create loyalty membership".into()))
+}
+
+/// The visitor's membership of a programme — directly, or through the network the programme
+/// belongs to (one membership per visitor per network).
+async fn find_member(
+    pool: &PgPool,
+    program_id: &Uuid,
+    visitor_account_id: &Uuid,
+) -> Result<Option<Uuid>, AppError> {
+    let id = sqlx::query_scalar(
+        "SELECT id FROM loyalty_members
+          WHERE visitor_account_id = $2
+            AND (program_id = $1
+                 OR (network_id IS NOT NULL
+                     AND network_id = (SELECT network_id FROM loyalty_programs WHERE id = $1)))
+          ORDER BY (program_id = $1) DESC
+          LIMIT 1",
     )
     .bind(program_id)
     .bind(visitor_account_id)
     .fetch_optional(pool)
-    .await?;
-
-    if let Some(id) = existing {
-        return Ok(id);
-    }
-
-    let id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO loyalty_members (id, program_id, visitor_account_id, points_balance, lifetime_points)
-         VALUES ($1, $2, $3, 0, 0)",
-    )
-    .bind(id)
-    .bind(program_id)
-    .bind(visitor_account_id)
-    .execute(pool)
     .await?;
 
     Ok(id)
@@ -208,7 +312,10 @@ pub async fn record_checkin(
 // Handlers — directory-scoped, public-read / admin-write
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// GET /api/v1/directories/:slug/loyalty/programs — list programs for a directory
+/// GET /api/v1/directories/:slug/loyalty/programs — list the programmes that govern a directory
+/// The slug selects the *network*: ZaarHub's single programme is returned for every one of its
+/// city directories, and a programme that is city-scoped only applies when the directory has no
+/// network.
 pub async fn list_programs(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -216,13 +323,17 @@ pub async fn list_programs(
     let directory_id = resolve_directory_id(&state.db, &slug).await?;
 
     let programs: Vec<LoyaltyProgram> = sqlx::query_as::<_, LoyaltyProgram>(
-        r#"SELECT id, directory_id, name, recognition_method, points_per_checkin,
+        r#"SELECT id, directory_id, network_id, name, recognition_method, points_per_checkin,
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
-           FROM loyalty_programs WHERE directory_id = $1 ORDER BY created_at"#,
+           FROM loyalty_programs
+           WHERE (network_id IS NOT NULL
+                  AND network_id = (SELECT network_id FROM directories WHERE id = $1))
+              OR (network_id IS NULL AND directory_id = $1)
+           ORDER BY (directory_id IS NULL) DESC, created_at"#,
     )
     .bind(directory_id)
     .fetch_all(&state.db)
@@ -231,7 +342,10 @@ pub async fn list_programs(
     Ok(Json(json!({ "programs": programs })))
 }
 
-/// POST /api/v1/directories/:slug/loyalty/programs — create a program (admin)
+/// POST /api/v1/directories/:slug/loyalty/programs — create the programme (admin)
+/// Network-wide by design: when the directory belongs to a network the programme is created for
+/// the network (directory_id NULL) and an existing one is returned untouched instead of creating
+/// a duplicate. This is the rule that keeps ZaarHub at exactly one programme.
 pub async fn create_program(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -241,14 +355,24 @@ pub async fn create_program(
         return Err(AppError::Validation("Program name is required".into()));
     }
     let directory_id = resolve_directory_id(&state.db, &slug).await?;
+    let network_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT network_id FROM directories WHERE id = $1")
+            .bind(directory_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if let Some(existing) = programme_for_directory(&state.db, &directory_id).await? {
+        return Ok(Json(json!({ "program": existing, "already_exists": true })));
+    }
+
     let id = Uuid::new_v4();
 
     sqlx::query(
-        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active, points_per_redemption)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)",
+        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active, points_per_redemption, network_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)",
     )
     .bind(id)
-    .bind(directory_id)
+    .bind(if network_id.is_some() { None } else { Some(directory_id) })
     .bind(&body.name)
     .bind(body.recognition_method.as_deref().unwrap_or("both"))
     .bind(body.points_per_checkin.unwrap_or(10))
@@ -269,6 +393,7 @@ pub async fn create_program(
     .bind(body.social_share_points.unwrap_or(0))
     .bind(body.is_active.unwrap_or(true))
     .bind(body.points_per_redemption.unwrap_or(0))
+    .bind(network_id)
     .execute(&state.db)
     .await?;
 
@@ -276,18 +401,44 @@ pub async fn create_program(
     Ok(Json(json!({ "program": program })))
 }
 
+/// Authorise a programme id against a directory slug. A programme is in scope when it is scoped
+/// to the directory itself or to the directory's network (the ZaarHub case: one network-wide
+/// programme serving all ten cities). Returns the resolved directory id.
+async fn assert_program_in_scope(
+    pool: &PgPool,
+    slug: &str,
+    program_id: &Uuid,
+) -> Result<Uuid, AppError> {
+    let directory_id = resolve_directory_id(pool, slug).await?;
+    let program = get_program(pool, program_id).await?;
+    let directory_network: Option<Uuid> =
+        sqlx::query_scalar("SELECT network_id FROM directories WHERE id = $1")
+            .bind(directory_id)
+            .fetch_one(pool)
+            .await?;
+
+    let in_scope = match (program.directory_id, program.network_id) {
+        (_, Some(program_network)) => Some(program_network) == directory_network,
+        (Some(program_directory), None) => program_directory == directory_id,
+        (None, None) => false,
+    };
+
+    if !in_scope {
+        return Err(AppError::NotFound(
+            "Program not found for this directory or its network".into(),
+        ));
+    }
+
+    Ok(directory_id)
+}
+
 /// GET /api/v1/directories/:slug/loyalty/programs/:program_id
 pub async fn get_program_handler(
     State(state): State<AppState>,
     Path((slug, program_id)): Path<(String, Uuid)>,
 ) -> Result<Json<Value>, AppError> {
-    let directory_id = resolve_directory_id(&state.db, &slug).await?;
+    assert_program_in_scope(&state.db, &slug, &program_id).await?;
     let program = get_program(&state.db, &program_id).await?;
-    if program.directory_id != directory_id {
-        return Err(AppError::NotFound(
-            "Program not found in this directory".into(),
-        ));
-    }
     Ok(Json(json!({ "program": program })))
 }
 
@@ -297,7 +448,7 @@ pub async fn update_program(
     Path((slug, program_id)): Path<(String, Uuid)>,
     Json(body): Json<ProgramInput>,
 ) -> Result<Json<Value>, AppError> {
-    let directory_id = resolve_directory_id(&state.db, &slug).await?;
+    assert_program_in_scope(&state.db, &slug, &program_id).await?;
 
     sqlx::query(
         "UPDATE loyalty_programs SET
@@ -318,9 +469,9 @@ pub async fn update_program(
             birthday_bonus = COALESCE($16, birthday_bonus),
             social_share_points = COALESCE($17, social_share_points),
             is_active = COALESCE($18, is_active),
-            points_per_redemption = COALESCE($20, points_per_redemption),
+            points_per_redemption = COALESCE($19, points_per_redemption),
             updated_at = now()
-         WHERE id = $1 AND directory_id = $19",
+         WHERE id = $1",
     )
     .bind(program_id)
     .bind(&body.name)
@@ -340,7 +491,6 @@ pub async fn update_program(
     .bind(body.birthday_bonus)
     .bind(body.social_share_points)
     .bind(body.is_active)
-    .bind(directory_id)
     .bind(body.points_per_redemption)
     .execute(&state.db)
     .await?;
@@ -354,10 +504,9 @@ pub async fn delete_program(
     State(state): State<AppState>,
     Path((slug, program_id)): Path<(String, Uuid)>,
 ) -> Result<Json<Value>, AppError> {
-    let directory_id = resolve_directory_id(&state.db, &slug).await?;
-    let res = sqlx::query("DELETE FROM loyalty_programs WHERE id = $1 AND directory_id = $2")
+    assert_program_in_scope(&state.db, &slug, &program_id).await?;
+    let res = sqlx::query("DELETE FROM loyalty_programs WHERE id = $1")
         .bind(program_id)
-        .bind(directory_id)
         .execute(&state.db)
         .await?;
 
@@ -379,13 +528,7 @@ pub async fn enroll_member(
     Path((slug, program_id)): Path<(String, Uuid)>,
     Json(body): Json<EnrollInput>,
 ) -> Result<Json<Value>, AppError> {
-    let directory_id = resolve_directory_id(&state.db, &slug).await?;
-    let program = get_program(&state.db, &program_id).await?;
-    if program.directory_id != directory_id {
-        return Err(AppError::NotFound(
-            "Program not found in this directory".into(),
-        ));
-    }
+    let directory_id = assert_program_in_scope(&state.db, &slug, &program_id).await?;
 
     let member_id = find_or_create_member(&state.db, &program_id, &body.visitor_account_id).await?;
 
@@ -415,13 +558,8 @@ pub async fn checkin(
     Path((slug, program_id)): Path<(String, Uuid)>,
     Json(body): Json<CheckinInput>,
 ) -> Result<Json<Value>, AppError> {
-    let directory_id = resolve_directory_id(&state.db, &slug).await?;
+    let directory_id = assert_program_in_scope(&state.db, &slug, &program_id).await?;
     let program = get_program(&state.db, &program_id).await?;
-    if program.directory_id != directory_id {
-        return Err(AppError::NotFound(
-            "Program not found in this directory".into(),
-        ));
-    }
 
     let member_id = find_or_create_member(&state.db, &program_id, &body.visitor_account_id).await?;
 
@@ -480,13 +618,17 @@ pub async fn get_member(
 ) -> Result<Json<Value>, AppError> {
     let directory_id = resolve_directory_id(&state.db, &slug).await?;
 
+    // Network-aware: ZaarHub membership is network-wide, so the visitor's membership of the
+    // directory's network counts just as much as a city-scoped one.
     let member: Option<LoyaltyMember> = sqlx::query_as::<_, LoyaltyMember>(
         r#"SELECT m.id, m.program_id, m.visitor_account_id, m.points_balance, m.lifetime_points, m.tier_id,
                   m.current_streak, m.longest_streak, m.last_activity_date, m.birthday, m.referral_code,
                   m.total_referrals, m.qr_code, m.member_since, m.last_checkin_at
            FROM loyalty_members m
            JOIN loyalty_programs p ON p.id = m.program_id
-           WHERE m.visitor_account_id = $1 AND p.directory_id = $2
+           WHERE m.visitor_account_id = $1
+             AND (m.network_id = (SELECT network_id FROM directories WHERE id = $2)
+                  OR p.directory_id = $2)
            ORDER BY m.member_since DESC LIMIT 1"#,
     )
     .bind(visitor_account_id)
@@ -593,14 +735,7 @@ pub struct MilestoneInput {
 }
 
 async fn owned_program_id(pool: &PgPool, slug: &str, program_id: &Uuid) -> Result<Uuid, AppError> {
-    let directory_id = resolve_directory_id(pool, slug).await?;
-    let program = get_program(pool, program_id).await?;
-    if program.directory_id != directory_id {
-        return Err(AppError::NotFound(
-            "Program not found in this directory".into(),
-        ));
-    }
-    Ok(directory_id)
+    assert_program_in_scope(pool, slug, program_id).await
 }
 
 // ── Tiers ──

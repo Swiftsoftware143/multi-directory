@@ -386,24 +386,14 @@ pub async fn visitor_register(
         });
     }
 
-    // Auto-provision IncentiveSwift account for loyalty/IQS access.
-    // Every MultiDirectory user gets an IS account for seamless ZaarHub integration.
+    // Enrol the new shopper in the network-wide loyalty programme — native Multi-Directory code.
+    // (This replaces a call into IncentiveSwift at a hardcoded localhost:8083. Loyalty is now ours;
+    // the only external seam left is the onboarding/IQS survey proxy.)
     {
-        let auto_name = req.name.clone();
-        let auto_email = req.email.clone();
-        let auto_phone = req.phone.clone();
+        let db = s.db.clone();
+        let vid = visitor.id;
         tokio::spawn(async move {
-            crate::handlers::tag_sync::register_member_in_is(
-                auto_email,
-                auto_name,
-                None,
-                auto_phone,
-                "visitor",
-                None,
-                Some("zaarhub".to_string()),
-                Some(vec!["zaarhub_visitor".to_string()]),
-            )
-            .await;
+            crate::handlers::loyalty_native::enroll_visitor_in_network_loyalty(&db, &vid).await;
         });
     }
 
