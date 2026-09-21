@@ -609,10 +609,9 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route("/b2b/rfqs/:id/bids/:bid_id/accept", post(rfq::accept_bid))
         .route("/b2b/rfqs/:id/bids/:bid_id/reject", post(rfq::reject_bid))
-        .route(
-            "/b2b/rfqs/:id/messages",
-            get(rfq::get_rfq_messages).post(rfq::post_rfq_message),
-        )
+        // NOTE: /b2b/rfqs/:id/messages deliberately lives in the AUTHENTICATED router below — an
+        // RFQ thread is private to the posting business and its bidders, and the handler needs the
+        // Claims the auth_guard injects in order to check that.
         // Lead Sharing (BL25)
         .route("/b2b/leads", post(lead_sharing::share_lead))
         .route("/b2b/leads/available", get(lead_sharing::available_leads))
@@ -1519,6 +1518,12 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/admin/event-providers/:provider_id/sync-status",
             get(event_providers::sync_status),
+        )
+        // RFQ threads: private to the poster and its bidders, so they sit behind auth_guard which
+        // injects the Claims the handler checks (moved here from the unauthenticated router).
+        .route(
+            "/b2b/rfqs/:id/messages",
+            get(rfq::get_rfq_messages).post(rfq::post_rfq_message),
         )
         .layer(middleware::from_fn_with_state(s.clone(), auth_guard))
         // ? Directory feature config (public GET, admin PUT)

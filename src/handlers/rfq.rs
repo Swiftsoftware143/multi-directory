@@ -3,7 +3,7 @@
 //! Creates a B2B lead exchange that Google's algorithm cannot replicate.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::HeaderMap,
     response::IntoResponse,
     Json,
@@ -16,6 +16,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
@@ -628,8 +629,57 @@ pub async fn reject_bid(
 
 pub async fn get_rfq_messages(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(rfq_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // An RFQ thread is private: it belongs to the business that posted the request and to the
+    // businesses that bid on it. Previously ANY signed-in admin could read any thread.
+    // The claims are verified here rather than taken from Extension, so the check holds no matter
+    // which router group this route ends up in (router layering does not always inject them).
+    let claims = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or(AppError::Unauthorized)
+        .and_then(|t| {
+            verify_token(t, &state.config.jwt_secret).map_err(|_| AppError::Unauthorized)
+        })?;
+    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        let poster: Option<Uuid> = sqlx::query_scalar::<_, Option<Uuid>>(
+            "SELECT poster_business_id FROM rfqs WHERE id = $1",
+        )
+        .bind(rfq_id)
+        .fetch_optional(&state.db)
+        .await?
+        .flatten();
+        let mut ok = match poster {
+            Some(p) => crate::handlers::tenant_scope::can_admin_business(&state.db, &claims, p)
+                .await
+                .unwrap_or(false),
+            None => false,
+        };
+        if !ok {
+            let bidders: Vec<(Uuid,)> =
+                sqlx::query_as("SELECT business_id FROM rfq_bids WHERE rfq_id = $1")
+                    .bind(rfq_id)
+                    .fetch_all(&state.db)
+                    .await
+                    .unwrap_or_default();
+            for (b,) in bidders {
+                if crate::handlers::tenant_scope::can_admin_business(&state.db, &claims, b)
+                    .await
+                    .unwrap_or(false)
+                {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        if !ok {
+            return Err(AppError::NotFound("RFQ not found".to_string()));
+        }
+    }
+
     let messages = sqlx::query_as::<_, RfqMessageRow>(
         "SELECT m.id, m.rfq_id, m.sender_business_id, m.message, m.created_at \
          FROM rfq_messages m WHERE m.rfq_id = $1 ORDER BY m.created_at ASC",
