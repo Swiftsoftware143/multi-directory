@@ -543,23 +543,26 @@ pub async fn use_redemption(
     // itself, so the error is logged and the scan still succeeds.
     let credited: Option<(i32, i32)> = sqlx::query_as(
         r#"WITH ctx AS (
-               SELECT dr.visitor_id, d.directory_id
+               -- ZaarHub is ONE directory across many cities: the loyalty programme is network-wide,
+               -- not city-specific, so resolve the network through the deal's directory.
+               SELECT dr.visitor_id, dir.network_id
                FROM deal_redemptions dr
                JOIN deals d ON d.id = dr.deal_id
+               JOIN directories dir ON dir.id = d.directory_id
                WHERE dr.id = $1
            ), prog AS (
                SELECT p.id, p.points_per_redemption
                FROM loyalty_programs p, ctx
-               WHERE p.directory_id = ctx.directory_id
+               WHERE p.network_id = ctx.network_id
                  AND p.is_active = true
                  AND COALESCE(p.points_per_redemption, 0) > 0
                ORDER BY p.created_at
                LIMIT 1
            ), mem AS (
                INSERT INTO loyalty_members (id, program_id, visitor_account_id, points_balance,
-                                            lifetime_points, member_since, last_activity_date)
+                                            lifetime_points, member_since, last_activity_date, network_id)
                SELECT gen_random_uuid(), prog.id, ctx.visitor_id, prog.points_per_redemption,
-                      prog.points_per_redemption, NOW(), CURRENT_DATE
+                      prog.points_per_redemption, NOW(), CURRENT_DATE, ctx.network_id
                FROM prog, ctx
                WHERE ctx.visitor_id IS NOT NULL
                ON CONFLICT (program_id, visitor_account_id) DO UPDATE
