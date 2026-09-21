@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::security::provider_key_crypto as keycrypto;
 use crate::AppState;
 
 use super::proxy_common::*;
@@ -126,6 +127,14 @@ pub async fn connect_service(
                 return Err(AppError::BadRequest("Invalid API key".into()));
             }
 
+            // The IncentiveSwift API key is a CUSTOMER credential (it can revoke campaigns and touch
+            // the account's data), so it is encrypted BEFORE it reaches the database through the
+            // single choke point in src/security/provider_key_crypto.rs: enc:v1 + AES-256 under
+            // PROVIDER_KEY_ENC_SECRET, which lives only in the process environment. Fail-closed — a
+            // missing master key errors here instead of storing the value the user typed, and
+            // migration 096's CHECK constraint refuses a plaintext write at the database.
+            let stored_api_key = keycrypto::encrypt_for_storage(&s.db, &body.api_key).await?;
+
             // Store the connection in MD
             sqlx::query(
                 r#"INSERT INTO connected_services (user_id, service, api_key_encrypted, is_active, created_at)
@@ -134,7 +143,7 @@ pub async fn connect_service(
                    DO UPDATE SET api_key_encrypted = $2, is_active = true, updated_at = NOW()"#
             )
             .bind(user_id)
-            .bind(&body.api_key)
+            .bind(&stored_api_key)
             .execute(&s.db)
             .await
             .map_err(|_| AppError::Internal("Failed to store API key".into()))?;
@@ -185,7 +194,7 @@ pub async fn disconnect_service(
     match svc.as_str() {
         "incentiveswift" => {
             // If we have an API key, try to revoke it on IS side
-            let key: Option<String> = sqlx::query_scalar(
+            let stored: Option<String> = sqlx::query_scalar(
                 "SELECT api_key_encrypted FROM connected_services WHERE user_id = $1 AND service = 'incentiveswift' AND is_active = true"
             )
             .bind(user_id)
@@ -193,15 +202,23 @@ pub async fn disconnect_service(
             .await
             .map_err(|_| AppError::Internal("DB error".into()))?;
 
-            if let Some(api_key) = key {
-                let is_url = is_base_url();
-                let url = format!("{}/api-keys/revoke", is_url);
-                // Best-effort revocation
-                let _ = http()
-                    .post(&url)
-                    .json(&json!({ "api_key": api_key }))
-                    .send()
-                    .await;
+            if let Some(stored) = stored.filter(|v| !v.is_empty()) {
+                // Read-for-USE: the column holds enc:v1 ciphertext, so decrypt before the value
+                // goes on the wire. An undecryptable value (missing/rotated master key) must never
+                // be sent to IncentiveSwift as if it were a credential — log it and skip the
+                // best-effort remote revoke, the local deactivate below still runs.
+                if let Some(api_key) =
+                    keycrypto::decrypt_for_use(&s.db, &stored, "incentiveswift").await
+                {
+                    let is_url = is_base_url();
+                    let url = format!("{}/api-keys/revoke", is_url);
+                    // Best-effort revocation
+                    let _ = http()
+                        .post(&url)
+                        .json(&json!({ "api_key": api_key }))
+                        .send()
+                        .await;
+                }
             }
 
             // Deactivate in MD

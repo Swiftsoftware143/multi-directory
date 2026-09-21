@@ -23,6 +23,7 @@ use uuid::Uuid;
 use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::security::provider_key_crypto as keycrypto;
 use crate::AppState;
 
 // ──────────────────────────────────────────────
@@ -115,6 +116,16 @@ pub async fn upsert_payment_provider(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
+    // Payment credentials are CUSTOMER-supplied secrets (a gateway secret key can move money, a
+    // webhook secret authenticates payment events). Encrypt them BEFORE they reach the database
+    // through the single choke point in src/security/provider_key_crypto.rs: enc:v1 + AES-256
+    // under PROVIDER_KEY_ENC_SECRET, which lives only in the process environment. Fail-closed — a
+    // missing master key errors here instead of storing the value the admin typed, and migration
+    // 096's CHECK constraints refuse a plaintext write at the database. An empty value on the
+    // update path means "keep the stored credential", so it is never re-encrypted.
+    let stored_api_key = keycrypto::encrypt_for_storage(&state.db, api_key).await?;
+    let stored_webhook_secret = keycrypto::encrypt_for_storage(&state.db, webhook_secret).await?;
+
     // Check if provider already exists
     let existing =
         sqlx::query_scalar::<_, Uuid>("SELECT id FROM payment_providers WHERE provider_type = $1")
@@ -148,10 +159,10 @@ pub async fn upsert_payment_provider(
             .bind(&config);
 
         if !api_key.is_empty() {
-            q = q.bind(api_key);
+            q = q.bind(&stored_api_key);
         }
         if !webhook_secret.is_empty() {
-            q = q.bind(webhook_secret);
+            q = q.bind(&stored_webhook_secret);
         }
         q = q.bind(provider_id);
 
@@ -179,8 +190,8 @@ pub async fn upsert_payment_provider(
         .bind(provider_type)
         .bind(label)
         .bind(is_active)
-        .bind(api_key)
-        .bind(webhook_secret)
+        .bind(&stored_api_key)
+        .bind(&stored_webhook_secret)
         .bind(publishable_key)
         .bind(&config)
         .bind(is_test_mode)
@@ -229,14 +240,35 @@ pub async fn delete_payment_provider(
 // Checkout Session Creation
 // ──────────────────────────────────────────────
 
-/// Get active payment provider configuration
+/// Decrypted credentials of the active provider for one payment type.
+///
+/// Payment credentials are stored as `enc:v1:` ciphertext under the env-only master key (see
+/// [`crate::security::provider_key_crypto`]). This struct is the ONLY shape in which they leave the
+/// database, and it is deliberately not `Serialize`: this lookup used to return a
+/// `serde_json::Value` that carried the raw stored column under the key `"api_key"`, so any caller
+/// that echoed that value into a response would have handed the credential (or its ciphertext) to a
+/// client. No field here holds the stored value.
+struct ActiveProvider {
+    /// Decrypted, for use. Never log directly — use [`ActiveProvider::api_key_mask`].
+    api_key: String,
+    /// Decrypted, for use (Stripe/PayPal webhook signature verification).
+    webhook_secret: String,
+}
+
+impl ActiveProvider {
+    /// A `sk-l...2345` mask derived from the DECRYPTED key — safe for logs and diagnostics.
+    fn api_key_mask(&self) -> String {
+        super::provider_keys_handler::mask_key(&self.api_key)
+    }
+}
+
+/// Get active payment provider configuration, credentials DECRYPTED for use.
 async fn get_active_provider(
     db: &sqlx::PgPool,
     provider_type: &str,
-) -> Result<Option<serde_json::Value>, sqlx::Error> {
+) -> Result<Option<ActiveProvider>, AppError> {
     let row = sqlx::query(
-        r#"SELECT id, provider_type, api_key_encrypted, publishable_key,
-                  webhook_secret_encrypted, config, is_test_mode
+        r#"SELECT api_key_encrypted, webhook_secret_encrypted
            FROM payment_providers
            WHERE provider_type = $1 AND is_active = true
            LIMIT 1"#,
@@ -245,15 +277,33 @@ async fn get_active_provider(
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| {
-        json!({
-            "id": r.try_get::<Uuid,_>("id").map(|u| u.to_string()).unwrap_or_default(),
-            "provider_type": r.try_get::<&str,_>("provider_type").unwrap_or(""),
-            "api_key": r.try_get::<Option<&str>,_>("api_key_encrypted").unwrap_or(None).unwrap_or(""),
-            "publishable_key": r.try_get::<Option<&str>,_>("publishable_key").unwrap_or(None).unwrap_or(""),
-            "webhook_secret": r.try_get::<Option<&str>,_>("webhook_secret_encrypted").unwrap_or(None).unwrap_or(""),
-            "is_test_mode": r.try_get::<bool,_>("is_test_mode").unwrap_or(true),
-        })
+    let Some(r) = row else {
+        return Ok(None);
+    };
+
+    // Read-for-USE: the columns hold ciphertext, so decrypt here — once — and never hand the
+    // stored value to a caller. A value that cannot be decrypted (missing/rotated master key)
+    // degrades to "no usable credential" (log + skip) instead of putting ciphertext on the wire to
+    // Stripe/PayPal as if it were a credential.
+    let stored_api_key: Option<String> = r.try_get("api_key_encrypted")?;
+    let stored_webhook_secret: Option<String> = r.try_get("webhook_secret_encrypted")?;
+
+    let api_key = match stored_api_key.filter(|v| !v.is_empty()) {
+        Some(stored) => keycrypto::decrypt_for_use(db, &stored, provider_type)
+            .await
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+    let webhook_secret = match stored_webhook_secret.filter(|v| !v.is_empty()) {
+        Some(stored) => keycrypto::decrypt_for_use(db, &stored, provider_type)
+            .await
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+
+    Ok(Some(ActiveProvider {
+        api_key,
+        webhook_secret,
     }))
 }
 
@@ -310,13 +360,21 @@ pub async fn create_checkout_session(
             AppError::BadRequest(format!("No active {} provider configured", provider_type))
         })?;
 
-    let api_key = provider["api_key"].as_str().unwrap_or("").to_string();
+    let api_key = provider.api_key.clone();
     if api_key.is_empty() {
         return Err(AppError::BadRequest(format!(
             "{} API key not configured",
             provider_type
         )));
     }
+
+    // Log the posture from the DECRYPTED value's mask — the mask is what is safe to keep, the
+    // credential itself never reaches a log line.
+    tracing::info!(
+        provider = provider_type,
+        api_key = %provider.api_key_mask(),
+        "creating checkout session with the decrypted gateway credential"
+    );
 
     // Create checkout session with the provider
     let provider_session = match provider_type {
@@ -586,7 +644,7 @@ pub async fn stripe_webhook(
 
     // Verify webhook signature if we have a secret configured
     let verification_ok = if let Some(ref prov) = provider {
-        let webhook_secret = prov["webhook_secret"].as_str().unwrap_or("");
+        let webhook_secret = prov.webhook_secret.as_str();
         if !webhook_secret.is_empty() && !signature.is_empty() {
             verify_stripe_signature(&body, signature, webhook_secret)
         } else {
