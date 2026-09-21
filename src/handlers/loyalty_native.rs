@@ -38,6 +38,7 @@ pub struct LoyaltyProgram {
     pub currency_icon: String,
     pub currency_color: String,
     pub points_per_visit: i32,
+    pub points_per_redemption: i32,
     pub tiers_enabled: bool,
     pub milestones_enabled: bool,
     pub streak_enabled: bool,
@@ -63,6 +64,8 @@ pub struct ProgramInput {
     pub currency_icon: Option<String>,
     pub currency_color: Option<String>,
     pub points_per_visit: Option<i32>,
+    /// Points credited when a member redeems a deal. 0 = disabled.
+    pub points_per_redemption: Option<i32>,
     pub tiers_enabled: Option<bool>,
     pub milestones_enabled: Option<bool>,
     pub streak_enabled: Option<bool>,
@@ -105,7 +108,7 @@ pub async fn get_program(pool: &PgPool, program_id: &Uuid) -> Result<LoyaltyProg
     let p = sqlx::query_as::<_, LoyaltyProgram>(
         r#"SELECT id, directory_id, name, recognition_method, points_per_checkin,
                   max_checkins_per_day, point_decay_days, points_expire_days,
-                  currency_name, currency_icon, currency_color, points_per_visit,
+                  currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -215,7 +218,7 @@ pub async fn list_programs(
     let programs: Vec<LoyaltyProgram> = sqlx::query_as::<_, LoyaltyProgram>(
         r#"SELECT id, directory_id, name, recognition_method, points_per_checkin,
                   max_checkins_per_day, point_decay_days, points_expire_days,
-                  currency_name, currency_icon, currency_color, points_per_visit,
+                  currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -241,8 +244,8 @@ pub async fn create_program(
     let id = Uuid::new_v4();
 
     sqlx::query(
-        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)",
+        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active, points_per_redemption)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)",
     )
     .bind(id)
     .bind(directory_id)
@@ -265,6 +268,7 @@ pub async fn create_program(
     .bind(body.birthday_bonus.unwrap_or(0))
     .bind(body.social_share_points.unwrap_or(0))
     .bind(body.is_active.unwrap_or(true))
+    .bind(body.points_per_redemption.unwrap_or(0))
     .execute(&state.db)
     .await?;
 
@@ -314,6 +318,7 @@ pub async fn update_program(
             birthday_bonus = COALESCE($16, birthday_bonus),
             social_share_points = COALESCE($17, social_share_points),
             is_active = COALESCE($18, is_active),
+            points_per_redemption = COALESCE($20, points_per_redemption),
             updated_at = now()
          WHERE id = $1 AND directory_id = $19",
     )
@@ -336,6 +341,7 @@ pub async fn update_program(
     .bind(body.social_share_points)
     .bind(body.is_active)
     .bind(directory_id)
+    .bind(body.points_per_redemption)
     .execute(&state.db)
     .await?;
 
