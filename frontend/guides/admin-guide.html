@@ -308,6 +308,16 @@ a:hover{text-decoration:underline}
     <strong>⭐ Every one of those numbers is a per-programme setting, not a constant.</strong> Edit them in the admin panel's <strong>⭐ Loyalty Programmes</strong> card: the <strong>earn rate</strong> (ZaarCash per $1 spent), the <strong>redemption cap %</strong> (max % of a bill payable), the <strong>minimum balance to redeem</strong>, whether <strong>free items earn nothing</strong>, and the currency's <strong>name and icon</strong> — plus the <strong>per-check-in</strong>, <strong>per-visit</strong> and <strong>per-redemption</strong> rates. A programme may be scoped to one directory or a whole network (ZaarHub runs a single network-wide programme). Another directory could call its currency something else and run different numbers — same code, different settings.
   </div>
 
+  <h3 id="zaarcash-loyalty">🛡️ Your ZaarCash obligations — the administrator's view</h3>
+  <p>The settings above are more than configuration: because the programme is customer-facing, <strong>the numbers you choose are the promises customers see</strong>. Publish your terms — earning rates, cap, minimum and expiry — and keep them accurate here, in the loyalty guide, and in the panel. Promotional and gift-card style rules vary by state and country; confirm what applies to you before launch, including whether unredeemed balances must be honoured or may expire.</p>
+  <p style="margin-top:14px;"><a href="loyalty-guide.html#for-administrators"><strong>Read the full ZaarCash programme guide for administrators →</strong></a></p>
+  <div style="background:#fef2f2;border:1px solid #fca5a5;border-left:6px solid #ef4444;border-radius:0 10px 10px 0;padding:18px 22px;margin:20px 0 8px;">
+    <span style="display:block;font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#b91c1c;margin-bottom:8px;">⚠️ Disclaimer — for administrators</span>
+    <p style="margin:0 0 10px;color:#7f1d1d;font-size:0.88rem;line-height:1.65;">You are configuring a customer-facing rewards scheme, so the settings you choose are the promises customers see. Publish your terms (earning rates, cap, minimum, expiry) and keep them accurate in this guide and in the panel.</p>
+    <p style="margin:0 0 10px;color:#7f1d1d;font-size:0.88rem;line-height:1.65;">Promotional and gift-card style rules vary by state and country — confirm what applies to you before launch, including whether unredeemed balances must be honoured or may expire.</p>
+    <p style="margin:0;color:#7f1d1d;font-size:0.88rem;line-height:1.65;">The platform stores and applies your settings; it does not decide them, does not reimburse redeemed value, and gives no warranty that a particular configuration is lawful or profitable in your jurisdiction.</p>
+  </div>
+
   <p><strong>Loyalty Programs (per-directory):</strong></p>
   <ul>
     <li><code>GET /api/v1/directories/:slug/loyalty/programs</code> — list programs</li>

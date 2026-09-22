@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZaarCash Loyalty Programme — The Complete Guide (Customers · Businesses · Suppliers · Admins)</title>
+<meta name="description" content="The complete ZaarCash loyalty guide: how ZaarHub's own loyalty programme works for customers, businesses, suppliers and administrators — earn 1 ZaarCash per $1, 100 ZaarCash = $1.00, up to 10% of a bill per redemption, network-wide across every ZaarHub city.">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .sidebar { width: 280px; min-height: 100vh; background: #1e293b; position: fixed; top: 0; left: 0; overflow-y: auto; padding: 24px 0; border-right: 1px solid #334155; z-index: 10; }
+  .sidebar h2 { color: #10b981; font-size: 1.1rem; padding: 0 20px; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sidebar nav a { display: block; padding: 8px 20px; color: #94a3b8; font-size: 0.85rem; border-left: 3px solid transparent; transition: all 0.2s; }
+  .sidebar nav a:hover, .sidebar nav a.active { color: #10b981; background: rgba(16,185,129,0.08); border-left-color: #10b981; }
+  .sidebar .section-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 4px; }
+
+  .main { margin-left: 280px; flex: 1; padding: 40px 48px; max-width: 960px; }
+  .main h1 { font-size: 2rem; color: #f1f5f9; margin-bottom: 8px; }
+  .main h2 { font-size: 1.4rem; color: #10b981; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .main h3 { font-size: 1.1rem; color: #e2e8f0; margin-top: 24px; margin-bottom: 8px; }
+  .main h4 { font-size: 1rem; color: #cbd5e1; margin-top: 16px; margin-bottom: 6px; }
+  .main p, .main li { line-height: 1.7; color: #cbd5e1; }
+  .main p { margin-bottom: 12px; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; }
+  .main li { margin-bottom: 6px; }
+
+  .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .card h3 { margin-top: 0; color: #10b981; }
+  .card p { color: #cbd5e1; }
+  .card table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .card td { padding: 6px 12px; border-bottom: 1px solid #334155; }
+  .card td:first-child { color: #94a3b8; white-space: nowrap; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #10b981; }
+  pre { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: #e2e8f0; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }
+  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; text-align: center; }
+  .stat .num { font-size: 2rem; font-weight: 700; color: #10b981; display: block; }
+  .stat .label { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
+
+  .step-item { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; padding: 12px 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
+  .step-item:last-child { margin-bottom: 0; }
+  .step-num { width: 30px; height: 30px; min-width: 30px; background: #10b981; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
+  .step-text { flex: 1; }
+  .step-text p { margin: 0; color: #cbd5e1; line-height: 1.6; }
+  .step-text p strong { color: #e2e8f0; }
+
+  .tip-box { background: #064e3b; border-left: 4px solid #10b981; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .tip-box p { margin: 0; color: #a7f3d0; font-size: 0.9rem; }
+  .tip-box strong { color: #6ee7b7; }
+
+  .warn-box { background: #451a03; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 14px 0; }
+  .warn-box p { margin: 0; color: #fde68a; font-size: 0.9rem; }
+  .warn-box strong { color: #fbbf24; }
+
+  /* Disclaimer callout — visually distinct from tips and warnings: the formal terms box. */
+  .disclaimer { background: #450a0a; border: 1px solid #b91c1c; border-left: 6px solid #ef4444; border-radius: 0 10px 10px 0; padding: 18px 22px; margin: 20px 0 8px; }
+  .disclaimer .disc-label { display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #fca5a5; margin-bottom: 8px; }
+  .disclaimer p { margin: 0 0 10px; color: #fecaca; font-size: 0.88rem; line-height: 1.65; }
+  .disclaimer p:last-child { margin-bottom: 0; }
+  .disclaimer strong { color: #fca5a5; }
+
+  .toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin: 20px 0 8px; }
+  .toc a { display: block; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 18px; transition: all 0.2s; }
+  .toc a:hover { border-color: #10b981; text-decoration: none; transform: translateY(-1px); }
+  .toc .toc-icon { font-size: 1.6rem; display: block; margin-bottom: 6px; }
+  .toc .toc-title { display: block; color: #f1f5f9; font-weight: 700; font-size: 0.98rem; margin-bottom: 4px; }
+  .toc .toc-sub { display: block; color: #94a3b8; font-size: 0.8rem; line-height: 1.5; }
+
+  .audience-tag { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
+  .tag-customer { background: #064e3b; color: #a7f3d0; }
+  .tag-business { background: #713f12; color: #fde68a; }
+  .tag-supplier { background: #1e3a5f; color: #93c5fd; }
+  .tag-admin { background: #4c1d95; color: #ddd6fe; }
+
+  .badge { display: inline-block; background: #065f46; color: #a7f3d0; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-right: 4px; }
+  .badge.info { background: #1e3a5f; color: #93c5fd; }
+  .badge.warn { background: #713f12; color: #fde68a; }
+
+  .top-link { display: inline-block; margin-top: 20px; font-size: 0.85rem; }
+  hr { border: none; border-top: 1px solid #334155; margin: 24px 0; }
+
+  .back-link { display: inline-block; margin-top: 32px; font-size: 0.85rem; padding: 8px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; transition: all 0.2s; }
+  .back-link:hover { border-color: #10b981; text-decoration: none; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>💎 ZaarCash Loyalty</h2>
+  <nav>
+    <a href="#rules" class="active">The programme rules</a>
+    <a href="#for-customers">👤 For Customers</a>
+    <a href="#for-businesses">🏪 For Businesses</a>
+    <a href="#for-suppliers">📦 For Suppliers</a>
+    <a href="#for-administrators">🛡️ For Administrators</a>
+    <a href="#legal">Legal basis</a>
+    <span class="section-label">Other guides</span>
+    <a href="visitor-guide.html">Visitor Guide</a>
+    <a href="participant-guide.html">Customer Guide</a>
+    <a href="business-owner-guide.html">Business Owner Guide</a>
+    <a href="merchant-guide.html">Merchant Guide</a>
+    <a href="supplier-guide.html">Supplier Guide</a>
+    <a href="admin-guide.html">Admin Guide</a>
+    <a href="index.html">← All guides</a>
+  </nav>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+<h1>💎 The ZaarCash Loyalty Programme</h1>
+<p style="color:#64748b;margin-bottom:28px;">One programme, four audiences. ZaarCash is ZaarHub's own loyalty currency — earned and spent across the whole ZaarHub network. This page explains what it is, how it works for <strong>you</strong>, and what it is worth to <strong>you</strong>.</p>
+
+<div class="toc">
+  <a href="#for-customers">
+    <span class="toc-icon">👤</span>
+    <span class="toc-title">For Customers</span>
+    <span class="toc-sub">Earn on every visit, redeem real savings, one wallet in every city.</span>
+  </a>
+  <a href="#for-businesses">
+    <span class="toc-icon">🏪</span>
+    <span class="toc-title">For Businesses</span>
+    <span class="toc-sub">Turn one-off customers into repeat regulars — on your own terms.</span>
+  </a>
+  <a href="#for-suppliers">
+    <span class="toc-icon">📦</span>
+    <span class="toc-title">For Suppliers</span>
+    <span class="toc-sub">Put an offer in front of the businesses that already buy from you.</span>
+  </a>
+  <a href="#for-administrators">
+    <span class="toc-icon">🛡️</span>
+    <span class="toc-title">For Administrators</span>
+    <span class="toc-sub">Every number is a setting you own — and a promise you publish.</span>
+  </a>
+</div>
+
+<hr>
+
+<!-- RULES -->
+<h2 id="rules">The programme rules — how ZaarCash actually works</h2>
+
+<p><strong>ZaarCash (💎) is the currency of the programme.</strong> It is called ZaarCash everywhere — on customer listings, on receipts, in the scanner, in this guide. It is <em>not</em> "points" and it is <em>not</em> "credits"; if you see either of those words anywhere, treat it as a documentation bug rather than a second currency.</p>
+
+<div class="stat-grid">
+  <div class="stat"><span class="num">1</span><div class="label">ZaarCash earned per $1 of earnable spend</div></div>
+  <div class="stat"><span class="num">100</span><div class="label">ZaarCash = $1.00 of buying power</div></div>
+  <div class="stat"><span class="num">10%</span><div class="label">Maximum share of a bill payable in ZaarCash</div></div>
+  <div class="stat"><span class="num">100</span><div class="label">ZaarCash minimum banked before you can redeem</div></div>
+</div>
+
+<div class="card">
+  <h3>💎 ZaarCash at a glance</h3>
+  <ul>
+    <li><strong>Currency:</strong> ZAARCASH (💎). Never "points", never "credits".</li>
+    <li><strong>Earning:</strong> 1 ZaarCash per $1.00 of <em>earnable</em> spend at participating businesses. <strong>Bonuses may also apply per redemption, per check-in and per visit</strong> — check-in and visit bonuses are awarded at the business's own setting.</li>
+    <li><strong>Value:</strong> 100 ZaarCash = $1.00 (1 ZaarCash = 1¢).</li>
+    <li><strong>Redemption cap:</strong> at most <strong>10% of any bill</strong> may be paid in ZaarCash. A $40.00 bill can take at most $4.00 of ZaarCash, whatever the balance.</li>
+    <li><strong>Minimum balance:</strong> you must bank <strong>100 ZaarCash</strong> (= $1.00) before you can redeem anything. Below that the balance simply keeps accruing.</li>
+    <li><strong>Free items earn nothing:</strong> a free or fully discounted item mints no ZaarCash. Only the paid subtotal of a bill earns.</li>
+    <li><strong>Network-wide:</strong> your wallet is one wallet. Earn at a business in one ZaarHub city and redeem it in another; new cities join the same programme automatically.</li>
+    <li><strong>Opt-in only:</strong> only businesses that sign up to the programme participate — participating listings carry the <strong>ZaarCash 💎 badge</strong>.</li>
+    <li><strong>Ownership:</strong> this is <strong>ZaarHub's own programme</strong>, native to the directory. It is not a third-party rewards service and it does not depend on one.</li>
+  </ul>
+</div>
+
+<div class="warn-box">
+  <p><strong>⭐ The numbers are settings, not constants.</strong> ZaarHub runs one network-wide programme with the numbers above. Another directory using the same platform can run different numbers — a different earn rate, a different cap, a different minimum, or even a different currency name. Always read the terms shown by the directory you are using.</p>
+</div>
+
+<a class="top-link" href="#rules">↑ Back to top</a>
+
+<hr>
+
+<!-- CUSTOMERS -->
+<span class="audience-tag tag-customer">For Customers</span>
+<h2 id="for-customers">👤 For Customers — earning and spending ZaarCash</h2>
+
+<h3>What it is</h3>
+<p>ZaarCash is the reward you collect for spending money at businesses that have joined the programme. Every dollar of earnable spend mints ZaarCash into your own wallet, and that wallet works everywhere in the ZaarHub network — not just at the business where you earned it.</p>
+
+<h3>How it works for you</h3>
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p><strong>Join once, for free.</strong> Open a business profile that carries the ZaarCash 💎 badge and tap <strong>"Join ZaarHub Rewards"</strong>. You need a free ZaarHub account; joining takes one tap and gives you a personal QR code.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p><strong>Show your QR code when you pay.</strong> Your code lives in the visitor portal on your phone — nothing to print. Staff scan it with the ZaarHub Scanner.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p><strong>Earn on the paid subtotal.</strong> 1 ZaarCash per $1.00 of earnable spend — a $25.00 purchase earns 25 ZaarCash. Free or fully discounted items earn nothing, and check-in, visit and redemption bonuses may add more.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">4</div>
+  <div class="step-text"><p><strong>Watch your balance grow in real time.</strong> Your ZaarCash balance, tier badge and QR code appear on every business profile once you are enrolled — no separate app, no need to refresh.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">5</div>
+  <div class="step-text"><p><strong>Redeem anywhere in the network.</strong> Once you have banked at least <strong>100 ZaarCash</strong>, tell the cashier you want to pay with ZaarCash. The scanner deducts up to <strong>10% of the bill</strong> — again, free items are excluded from what can be discounted.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">6</div>
+  <div class="step-text"><p><strong>Travel with it.</strong> Spend in one ZaarHub city, redeem in another. New cities join the same programme automatically, so your wallet follows you.</p></div>
+</div>
+
+<h3>How you benefit</h3>
+<ul>
+  <li><strong>A real discount, not a voucher maze.</strong> 100 ZaarCash is worth exactly $1.00 — a fixed, predictable 1% back on the paid subtotal, before any bonus.</li>
+  <li><strong>It compounds with bonuses.</strong> Check-in, visit and redemption bonuses are awarded on top of the base earn rate, so regulars earn faster than occasional visitors.</li>
+  <li><strong>One wallet, every city.</strong> You never have a stranded balance in a city you have left behind.</li>
+  <li><strong>No card, no stamp, no app install.</strong> One QR code in the browser works at every participating business.</li>
+  <li><strong>No surprises at the till.</strong> The cap is a fixed percentage of the bill, so the discount you expect is the discount you get.</li>
+</ul>
+
+<div class="disclaimer">
+  <span class="disc-label">⚠️ Disclaimer — for customers</span>
+  <p>ZaarCash is a loyalty reward, not money. It has no cash value and cannot be exchanged for cash, transferred, sold or inherited. It can only be redeemed at businesses that participate in the programme.</p>
+  <p>The earning rates, the 10% bill cap and the minimum balance are set by each business and by ZaarHub, and can change; ZaarCash may also expire or be withdrawn if the programme changes or ends. A balance is not a promise that any particular reward will be available.</p>
+  <p>If a participating business refuses or is unable to honour a valid redemption, report it and we will act — but we do not guarantee any individual business's performance. Your balance belongs to your account and is forfeited if the account is closed.</p>
+</div>
+
+<a class="top-link" href="#rules">↑ Back to top</a>
+
+<hr>
+
+<!-- BUSINESSES -->
+<span class="audience-tag tag-business">For Businesses</span>
+<h2 id="for-businesses">🏪 For Businesses — running the programme on your terms</h2>
+
+<h3>What it is</h3>
+<p>The ZaarCash programme is a shared loyalty network you can switch on for your listing. Your customers earn ZaarCash when they spend with you and spend it with you (or anywhere else in the network). You do not build or maintain anything: you sign up, you set your numbers, your staff scan.</p>
+
+<h3>How it works for you</h3>
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p><strong>Sign up to the programme</strong> from your Business Portal. Your listing then carries the ZaarCash 💎 badge so customers know you participate; only signed-up businesses participate, so the badge is a real signal.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p><strong>Set your numbers</strong> — earn rate, redemption cap, minimum balance and whether free items earn. These are your settings, and they are the terms your customers see.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p><strong>Put the scanner in your staff's hands.</strong> Open <code>zaarhub.com/scanner</code> on any phone or tablet, sign in, add it to the home screen. Three scan types: <strong>Check-in</strong> (award a visit bonus), <strong>Purchase</strong> (customer earns on the amount you enter) and <strong>Redeem</strong> (customer pays with ZaarCash, deducted up to the programme cap).</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">4</div>
+  <div class="step-text"><p><strong>Scan on every visit.</strong> Every scan produces a unique transaction ID, so your earning and redemption activity is auditable and disputes are resolvable with evidence.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">5</div>
+  <div class="step-text"><p><strong>Track and tune.</strong> Your portal shows ZaarCash earning activity and redemption history. If the cost is outrunning the return, change your numbers — your settings, your call.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">6</div>
+  <div class="step-text"><p><strong>Pair it with offers.</strong> Deals and loyalty work together: a deal wins the trial visit, ZaarCash and visit bonuses bring the customer back.</p></div>
+</div>
+
+<h3>How you benefit</h3>
+<ul>
+  <li><strong>Repeat footfall by design.</strong> A balance with your name on it is a reason to come back — and because the wallet is network-wide, customers arriving from other ZaarHub cities bring balances with them.</li>
+  <li><strong>You control the economics.</strong> Earn rate, cap, minimum and free-item treatment are yours. Nothing pays out beyond the ceiling you set.</li>
+  <li><strong>Opt-in, and opt-out.</strong> Participation is optional, and you can change your rates at any time.</li>
+  <li><strong>Zero builds, zero integration.</strong> No app, no POS replacement, no development work — a badge, a scanner and your settings.</li>
+  <li><strong>Trust the badge carries.</strong> The 💎 badge tells customers you reward loyalty, and it appears in search and on your listing next to your business name.</li>
+  <li><strong>Auditable by default.</strong> Every transaction is identified, so you can check exactly what was earned and redeemed when you reconcile your month.</li>
+</ul>
+
+<div class="disclaimer">
+  <span class="disc-label">⚠️ Disclaimer — for businesses</span>
+  <p>Participation is optional and you control the numbers — earn rate, redemption cap, minimum balance and whether free items earn. ZaarCash you issue is funded by you: ZaarHub does not reimburse redeemed value, and the discount comes out of your margin, so treat it as a marketing cost and account for it as such.</p>
+  <p>You are responsible for honouring redemptions validly issued under your settings and for the tax treatment of the discounts you give. You may change your rates at any time; balances already earned remain redeemable under the rules in force when they were earned.</p>
+  <p>ZaarHub does not guarantee any increase in sales, footfall or retention, and may suspend a business that abuses the programme or repeatedly fails to honour redemptions.</p>
+</div>
+
+<a class="top-link" href="#rules">↑ Back to top</a>
+
+<hr>
+
+<!-- SUPPLIERS -->
+<span class="audience-tag tag-supplier">For Suppliers</span>
+<h2 id="for-suppliers">📦 For Suppliers — reaching the businesses that already buy</h2>
+
+<h3>What it is</h3>
+<p>Suppliers sit one step upstream of the loyalty loop. The businesses in the network earn and redeem ZaarCash with their own customers, and you supply those businesses. The programme gives you a way to put a funded offer in front of them: a supplier deal or CTA on your listing that business buyers can claim through the same ZaarCash mechanism their customers use.</p>
+
+<h3>How it works for you</h3>
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p><strong>Maintain a claimed, complete supplier listing.</strong> Buyers reach you through your supplier profile and catalog — the same profile that carries your verification badges.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p><strong>Publish an offer with a <code>🎁 Claim This Deal</code> CTA.</strong> That CTA routes redemption through the native ZaarCash programme, so the buyer's claim is tracked the same way a customer redemption is: network-wide, capped, and identified by transaction ID.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p><strong>Know the rules your buyers are playing by.</strong> Network-wide: 1 ZaarCash per $1.00 spent, 100 ZaarCash = $1.00, at most 10% of a bill redeemable, at least 100 ZaarCash banked before a buyer may redeem any, and free or fully discounted items earn nothing. Only businesses that sign up to the programme participate — they show the ZaarCash 💎 badge.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">4</div>
+  <div class="step-text"><p><strong>Decide your own funding.</strong> Any discount or reward you attach to your offer is your commercial decision — you set the value and your margin absorbs it.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">5</div>
+  <div class="step-text"><p><strong>Fulfil what you advertise.</strong> Claimed offers must be honoured exactly as published, at the published value, at the published time.</p></div>
+</div>
+
+<h3>How you benefit</h3>
+<ul>
+  <li><strong>Distribution where the demand already is.</strong> Your offer appears to directory businesses whose own customers are already earning ZaarCash with them.</li>
+  <li><strong>One mechanism, no new integration.</strong> The same programme that runs customer loyalty carries your supplier offer — one badge, one redemption path, one audit trail.</li>
+  <li><strong>A reason for merchants to return.</strong> A standing supplier deal gives a buying business a reason to come back to your catalog next month, not just once.</li>
+  <li><strong>Traceable redemptions.</strong> Every claim is identified, so you can see what your offer actually produced.</li>
+  <li><strong>You keep control of the economics.</strong> What you fund, and how much, is your decision — nothing is imposed on your margin.</li>
+</ul>
+
+<div class="disclaimer">
+  <span class="disc-label">⚠️ Disclaimer — for suppliers</span>
+  <p>Loyalty benefits offered to suppliers are provided as-is. ZaarHub does not guarantee lead volume, orders, margins, listing placement or any commercial outcome from participating. Any discount or reward you fund is your own commercial decision and is not reimbursed by ZaarHub.</p>
+  <p>Do not misrepresent the programme, the value of ZaarCash, or your participation status to merchants or customers. Programme features may change or be withdrawn, and access may be suspended for misuse or for non-payment where fees apply.</p>
+</div>
+
+<a class="top-link" href="#rules">↑ Back to top</a>
+
+<hr>
+
+<!-- ADMINISTRATORS -->
+<span class="audience-tag tag-admin">For Administrators</span>
+<h2 id="for-administrators">🛡️ For Administrators — every number is a setting you own</h2>
+
+<h3>What it is</h3>
+<p>The loyalty programme is native to the directory: it is configured in the admin panel rather than in code, and it is scoped per directory or per network. ZaarHub runs a single network-wide programme; another directory can run different numbers under a different currency name on the same platform.</p>
+
+<h3>How it works for you</h3>
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p><strong>Open the ⭐ Loyalty Programmes card</strong> in the admin panel. This is the single surface that controls the programme.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p><strong>Set the earning and redemption numbers:</strong> the <strong>earn rate</strong> (ZaarCash per $1 spent), the <strong>redemption cap %</strong> (max share of a bill payable), the <strong>minimum balance to redeem</strong>, and whether <strong>free items earn nothing</strong>.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p><strong>Set the currency identity and bonuses:</strong> the currency's <strong>name and icon</strong>, plus the <strong>per-check-in</strong>, <strong>per-visit</strong> and <strong>per-redemption</strong> rates.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">4</div>
+  <div class="step-text"><p><strong>Scope it and switch it on or off.</strong> A programme can target one directory or a whole network, and it can be toggled on or off.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">5</div>
+  <div class="step-text"><p><strong>Publish the terms.</strong> Whatever you configure becomes the promise customers see. Keep this guide, the loyalty page and the panel in agreement, and state earning rates, cap, minimum and expiry where customers can find them.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">6</div>
+  <div class="step-text"><p><strong>Watch the loop and police it.</strong> Use the dashboard's transaction view for unusual patterns, resolve disputes against transaction IDs, and log every manual balance correction with reason, authorisation and timestamp.</p></div>
+</div>
+
+<h3>How you benefit</h3>
+<ul>
+  <li><strong>No code changes to tune the programme.</strong> Rates, cap, minimum, currency name and bonuses are all panel settings.</li>
+  <li><strong>Multi-tenant by design.</strong> Another directory may run different numbers and a different currency name — same engine, separate settings.</li>
+  <li><strong>One source of truth.</strong> Configure once at network scope, and every city that joins inherits it instead of needing its own launch.</li>
+  <li><strong>Disputes you can settle with evidence.</strong> Transaction IDs, audit logs and manual-adjustment records give you a defensible paper trail.</li>
+  <li><strong>Clear division of responsibility.</strong> The platform stores and applies your settings; the commercial judgement — the numbers, the terms, the launch — stays yours.</li>
+</ul>
+
+<div class="disclaimer">
+  <span class="disc-label">⚠️ Disclaimer — for administrators</span>
+  <p>You are configuring a customer-facing rewards scheme, so the settings you choose are the promises customers see. Publish your terms (earning rates, cap, minimum, expiry) and keep them accurate in this guide and in the panel.</p>
+  <p>Promotional and gift-card style rules vary by state and country — confirm what applies to you before launch, including whether unredeemed balances must be honoured or may expire.</p>
+  <p>The platform stores and applies your settings; it does not decide them, does not reimburse redeemed value, and gives no warranty that a particular configuration is lawful or profitable in your jurisdiction.</p>
+</div>
+
+<a class="top-link" href="#rules">↑ Back to top</a>
+
+<hr>
+
+<!-- LEGAL -->
+<h2 id="legal">⚖️ Legal basis and where to read more</h2>
+<p>Each audience's terms are stated in the disclaimer above under its own heading. They are written for that audience specifically — a customer's terms are not the same as a business's, and an administrator's obligations are not the same as either. The four disclaimers on this page are the substance of the programme's terms.</p>
+<ul>
+  <li><a href="participant-guide.html">Customer Guide</a> — earning, redeeming and managing your wallet</li>
+  <li><a href="visitor-guide.html">Visitor Guide</a> — your rewards section on business profiles</li>
+  <li><a href="business-owner-guide.html">Business Owner Guide</a> — joining, the scanner and your settings</li>
+  <li><a href="merchant-guide.html">Merchant Guide</a> — the merchant walkthrough of the same loop</li>
+  <li><a href="supplier-guide.html">Supplier Guide</a> — supplier offers and CTAs</li>
+  <li><a href="admin-guide.html">Admin Guide</a> — running the platform's loyalty configuration</li>
+  <li><a href="/legal-terms">ZaarHub Program Legal Terms</a></li>
+</ul>
+
+<div style="text-align:center;">
+  <a href="index.html" class="back-link">📚 Back to Guides Hub</a>
+  <a href="admin-guide.html" class="back-link" style="margin-left:8px;">📖 Back to Admin Guide</a>
+</div>
+
+</div>
+
+</body>
+</html>
