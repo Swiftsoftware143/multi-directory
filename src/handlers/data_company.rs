@@ -461,10 +461,15 @@ pub(crate) async fn get_yelp_api_key(
         return Ok(key.clone());
     }
 
-    // Last fallback to env var
+    // Last fallback to env var. A missing provider key is a CONFIGURATION gap, not a
+    // crash: answer with an actionable message naming the screen that fixes it.
     std::env::var("YELP_API_KEY").map_err(|_| {
-        AppError::Internal(
-            "YELP_API_KEY not configured (set via Provider Keys or env var)".to_string(),
+        tracing::warn!(
+            "yelp: no API key found (directory api_config.yelp_api_key, provider key 'yelp', or YELP_API_KEY)"
+        );
+        AppError::BadRequest(
+            "Yelp is not configured yet. Add your Yelp API key in the admin panel > Integrations > Yelp, then retry."
+                .to_string(),
         )
     })
 }

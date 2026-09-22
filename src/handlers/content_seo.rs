@@ -260,7 +260,7 @@ pub async fn create_topic(
     Json(req): Json<CreateTopicReq>,
 ) -> ApiResult<impl IntoResponse> {
     let topic = sqlx::query_as::<_, ContentTopic>(
-        "INSERT INTO content_topics (directory_id,service_id,location_id,title,format_template,target_keyword,status,scheduled_date,word_count_target,assigned_author_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *"
+        "INSERT INTO content_topics (directory_id,service_id,location_id,title,name,format_template,target_keyword,status,scheduled_date,word_count_target,assigned_author_id) VALUES($1,$2,$3,$4,$4,$5,$6,$7,$8,$9,$10) RETURNING *"
     ).bind(dir_id).bind(req.service_id).bind(req.location_id).bind(&req.title).bind(&req.format_template)
     .bind(&req.target_keyword).bind(req.status.unwrap_or_else(|| "suggested".into()))
     .bind(req.scheduled_date).bind(req.word_count_target).bind(req.assigned_author_id)

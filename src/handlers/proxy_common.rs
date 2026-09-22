@@ -20,6 +20,50 @@ pub(crate) fn http() -> reqwest::Client {
     reqwest::Client::new()
 }
 
+/// Decode an IncentiveSwift response, keeping the UPSTREAM status.
+///
+/// Calling `.json::<Value>()` directly turned every upstream answer that was not a
+/// JSON object into `AppError::Internal` — a 500. A funnel that does not exist (real
+/// upstream 404) therefore looked like a crash in MultiDirectory, and an upstream 5xx
+/// was indistinguishable from a bad request. Never report an upstream status as 500
+/// unless the upstream itself failed.
+async fn decode_is_response(resp: reqwest::Response, path: &str) -> Result<Value, AppError> {
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| AppError::Internal(format!("IS request failed for {}: {}", path, e)))?;
+    let snippet: String = text.chars().take(300).collect();
+
+    if status.is_success() {
+        if snippet.trim().is_empty() {
+            return Ok(Value::Null);
+        }
+        return serde_json::from_str(&text).map_err(|e| {
+            AppError::BadRequest(format!(
+                "IS returned a non-JSON body for {} ({}): {}",
+                path,
+                e,
+                snippet.trim()
+            ))
+        });
+    }
+
+    let msg = format!(
+        "IncentiveSwift {} for {}: {}",
+        status.as_u16(),
+        path,
+        snippet.trim()
+    );
+    match status.as_u16() {
+        401 | 403 => Err(AppError::Unauthorized),
+        404 => Err(AppError::NotFound(msg)),
+        429 => Err(AppError::TooManyRequests(msg)),
+        s if s >= 500 => Err(AppError::Internal(msg)),
+        _ => Err(AppError::BadRequest(msg)),
+    }
+}
+
 /// Generate an IS-compatible JWT using jsonwebtoken.
 pub(crate) fn make_is_jwt(
     account_id: &str,
@@ -102,9 +146,7 @@ pub(crate) async fn proxy_get(
         .await
         .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
 
-    resp.json::<Value>()
-        .await
-        .map_err(|e| AppError::Internal(format!("IS parse failed: {}", e)))
+    decode_is_response(resp, path).await
 }
 
 /// Proxy a POST request to IncentiveSwift.
@@ -127,9 +169,7 @@ pub(crate) async fn proxy_post(
         .await
         .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
 
-    resp.json::<Value>()
-        .await
-        .map_err(|e| AppError::Internal(format!("IS parse failed: {}", e)))
+    decode_is_response(resp, path).await
 }
 
 /// Proxy a PUT request to IncentiveSwift.
@@ -152,9 +192,7 @@ pub(crate) async fn proxy_put(
         .await
         .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
 
-    resp.json::<Value>()
-        .await
-        .map_err(|e| AppError::Internal(format!("IS parse failed: {}", e)))
+    decode_is_response(resp, path).await
 }
 
 /// Proxy a DELETE request to IncentiveSwift.
@@ -175,7 +213,5 @@ pub(crate) async fn proxy_delete(
         .await
         .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
 
-    resp.json::<Value>()
-        .await
-        .map_err(|e| AppError::Internal(format!("IS parse failed: {}", e)))
+    decode_is_response(resp, path).await
 }

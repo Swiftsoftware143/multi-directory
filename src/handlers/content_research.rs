@@ -137,9 +137,17 @@ pub async fn create_topic(
     Json(req): Json<CreateTopicRequest>,
 ) -> ApiResult<Json<ContentTopic>> {
     let kw: Vec<String> = req.keywords.unwrap_or_default();
+    // keywords is a JSONB column: a Vec<String> would be bound as text[] and the
+    // INSERT would fail with "column keywords is of type jsonb but expression is of type text[]".
+    let kw_json = Value::Array(kw.into_iter().map(Value::String).collect());
+    // content_topics is shared with the editorial-calendar UI, whose title column is
+    // NOT NULL — a research topic with no title was a not-null violation.
+    let directory_id = req
+        .directory_id
+        .ok_or_else(|| AppError::Validation("directory_id is required".into()))?;
     let topic = sqlx::query_as::<_, ContentTopic>(
-        "INSERT INTO content_topics (name, directory_id, description, keywords, search_phrase) VALUES ($1, $2, $3, $4, $5) RETURNING *"
-    ).bind(&req.name).bind(req.directory_id).bind(&req.description).bind(&kw).bind(&req.search_phrase).fetch_one(&s.db).await?;
+        "INSERT INTO content_topics (name, title, directory_id, description, keywords, search_phrase) VALUES ($1, $1, $2, $3, $4::jsonb, $5) RETURNING *"
+    ).bind(&req.name).bind(directory_id).bind(&req.description).bind(&kw_json).bind(&req.search_phrase).fetch_one(&s.db).await?;
     Ok(Json(topic))
 }
 
@@ -158,11 +166,13 @@ pub async fn update_topic(
     let kw: Option<Vec<String>> = req.keywords.or(existing
         .keywords
         .and_then(|v| serde_json::from_value(v).ok()));
+    let kw_json: Option<Value> =
+        kw.map(|v| Value::Array(v.into_iter().map(Value::String).collect()));
     let sp = req.search_phrase.or(existing.search_phrase);
     let status = req.status.or(existing.status);
     let topic = sqlx::query_as::<_, ContentTopic>(
-        "UPDATE content_topics SET name=$1, description=$2, keywords=$3, search_phrase=$4, status=$5, updated_at=NOW() WHERE id=$6 RETURNING *"
-    ).bind(&name).bind(&desc).bind(&kw).bind(&sp).bind(&status).bind(id).fetch_one(&s.db).await?;
+        "UPDATE content_topics SET name=$1, description=$2, keywords=$3::jsonb, search_phrase=$4, status=$5, updated_at=NOW() WHERE id=$6 RETURNING *"
+    ).bind(&name).bind(&desc).bind(&kw_json).bind(&sp).bind(&status).bind(id).fetch_one(&s.db).await?;
     Ok(Json(topic))
 }
 
@@ -601,8 +611,8 @@ pub async fn bulk_research(
             Some(id) => { result.topics_existing += 1; id }
             None => {
                 let id = sqlx::query_scalar::<_, Uuid>(
-                    "INSERT INTO content_topics (name, directory_id, description, keywords, search_phrase) VALUES ($1, $2, $3, $4, $5) RETURNING id"
-                ).bind(&topic_req.name).bind(req.directory_id).bind(&topic_req.description).bind(&kw).bind(&base_search).fetch_one(&s.db).await?;
+                    "INSERT INTO content_topics (name, title, directory_id, description, keywords, search_phrase) VALUES ($1, $1, $2, $3, $4::jsonb, $5) RETURNING id"
+                ).bind(&topic_req.name).bind(req.directory_id).bind(&topic_req.description).bind(&Value::Array(kw.iter().cloned().map(Value::String).collect::<Vec<_>>())).bind(&base_search).fetch_one(&s.db).await?;
                 result.topics_created += 1;
                 id
             }
