@@ -763,8 +763,18 @@ function showAuthSuccess(msg) {
 }
 
 // â”€â”€ API Calls â”€â”€
+// Card B58 — one session across both B2B surfaces.
+// The marketplace signs users in with `b2b_token` while the portal used to read only
+// `supplierToken`, so a supplier who logged in on the marketplace and clicked through saw an
+// empty portal. Read either key; portal sign-in writes both.
+function getToken() {
+  try {
+    return localStorage.getItem('supplierToken') || localStorage.getItem('b2b_token') || '';
+  } catch (e) { return ''; }
+}
+
 async function g(path) {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   var h = {};
   if (token) h['Authorization'] = 'Bearer ' + token;
   var r = await fetch(API + path, { headers: h });
@@ -773,7 +783,7 @@ async function g(path) {
 }
 
 async function po(path, body) {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   var h = { 'Content-Type': 'application/json' };
   if (token) h['Authorization'] = 'Bearer ' + token;
   var r = await fetch(API + path, { method: 'POST', headers: h, body: JSON.stringify(body) });
@@ -782,7 +792,7 @@ async function po(path, body) {
 }
 
 async function pu(path, body) {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   var h = { 'Content-Type': 'application/json' };
   if (token) h['Authorization'] = 'Bearer ' + token;
   var r = await fetch(API + path, { method: 'PUT', headers: h, body: JSON.stringify(body) });
@@ -791,7 +801,7 @@ async function pu(path, body) {
 }
 
 async function del(path) {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   var h = {};
   if (token) h['Authorization'] = 'Bearer ' + token;
   var r = await fetch(API + path, { method: 'DELETE', headers: h });
@@ -821,7 +831,7 @@ document.addEventListener('click', function(e) {
 });
 
 async function loadNotifs() {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   if (!token) return;
   try {
     var data = await fetch(API + '/b2b/notifications?per_page=20', {
@@ -851,7 +861,7 @@ async function loadNotifs() {
 }
 
 async function loadNotifBadge() {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   if (!token) return;
   try {
     var data = await fetch(API + '/b2b/notifications?per_page=1&is_read=false', {
@@ -872,7 +882,7 @@ function updateNotifBadge(count) {
 }
 
 async function markNotifRead(id) {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   if (!token) return;
   try {
     await fetch(API + '/b2b/notifications/' + id + '/read', {
@@ -887,7 +897,7 @@ async function markNotifRead(id) {
 }
 
 async function markAllNotifsRead() {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   if (!token) return;
   try {
     await fetch(API + '/b2b/notifications/read-all', {
@@ -910,8 +920,12 @@ async function doLogin() {
   hideAuthMessages();
   try {
     var r = await po('/visitor/login', { email: email, password: password });
+    if (!r || !r.access_token) throw new Error('Login failed: no token returned');
     localStorage.setItem('supplierToken', r.access_token);
-    localStorage.setItem('distributorInfo', JSON.stringify(r.visitor));
+    localStorage.setItem('distributorInfo', JSON.stringify(r.visitor || {}));
+    // Card B58: keep the marketplace session in step so /b2b-marketplace.html is signed in too.
+    localStorage.setItem('b2b_token', r.access_token);
+    localStorage.setItem('b2b_user', JSON.stringify(r.visitor || {}));
     toast('Signed in successfully!', 'success');
     loadDashboard();
   } catch(e) {
@@ -941,7 +955,10 @@ async function doRegister() {
       business_type: businessType
     });
     localStorage.setItem('supplierToken', r.access_token);
-    localStorage.setItem('distributorInfo', JSON.stringify(r.visitor));
+    localStorage.setItem('distributorInfo', JSON.stringify(r.visitor || {}));
+    // Card B58: same session on the marketplace surface.
+    localStorage.setItem('b2b_token', r.access_token);
+    localStorage.setItem('b2b_user', JSON.stringify(r.visitor || {}));
     showAuthSuccess('Account created! Loading your dashboard...');
     toast('Welcome to the ZaarHub Supplier Network!', 'success');
     setTimeout(loadDashboard, 500);
@@ -953,6 +970,8 @@ async function doRegister() {
 function doLogout() {
   localStorage.removeItem('supplierToken');
   localStorage.removeItem('distributorInfo');
+  localStorage.removeItem('b2b_token');
+  localStorage.removeItem('b2b_user');
   $('dashboard').style.display = 'none';
   $('authScreen').style.display = '';
   $('loginForm').style.display = '';
@@ -975,7 +994,7 @@ function businessTypeLabel(bt) {
 }
 
 async function loadDashboard() {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   if (!token) {
     $('authScreen').style.display = '';
     $('dashboard').style.display = 'none';
@@ -1030,6 +1049,11 @@ async function loadDashboard() {
 
     // Load my products
     loadMyProducts();
+
+    // Card B58: the stat cards used to stay at their static 0 / $0.00 because nothing called
+    // this on dashboard load (only after an order status change). The API already returned the
+    // real totals for this supplier, so the panel read 0 orders while the data said otherwise.
+    loadSupplierStats();
 
     // Load connected services status
     loadSupplierConnectedServices();
@@ -1223,7 +1247,7 @@ async function disconnectSupplierService(service) {
 }
 
 function authHeaders() {
-  var token = localStorage.getItem('supplierToken');
+  var token = getToken();
   return token ? { 'Authorization': 'Bearer ' + token } : {};
 }
 
@@ -1415,7 +1439,7 @@ async function deleteProduct(id) {
 async function exportProductsCSV() {
   try {
     var resp = await fetch('/api/v1/b2b/products/export', {
-      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('supplierToken') || '') }
+      headers: { 'Authorization': 'Bearer ' + (getToken() || '') }
     });
     if (!resp.ok) {
       var err = await resp.json().catch(function(){ return {message:'Export failed'}; });
@@ -1450,7 +1474,7 @@ function importProductsCSV(input) {
 
   fetch('/api/v1/b2b/products/import', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('supplierToken') || '') },
+    headers: { 'Authorization': 'Bearer ' + (getToken() || '') },
     body: formData
   })
   .then(function(resp) { return resp.json(); })
@@ -1809,7 +1833,7 @@ async function markMsgReadFromDetail() {
 
 // â”€â”€ Init â”€â”€
 (function init() {
-  if (localStorage.getItem('supplierToken')) {
+  if (getToken()) {
     loadDashboard();
     // Auto-show walkthrough on first visit
     setTimeout(function(){

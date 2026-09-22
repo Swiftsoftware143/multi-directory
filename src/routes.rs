@@ -1818,9 +1818,11 @@ pub fn create_router(s: AppState) -> Router {
         // ? BL29: Pricing engine — public endpoint (no auth)
         .route("/pricing/public", get(pricing::public_pricing))
         // ??? Contact Intelligence Pipeline — monthly cron for unclaimed business enrichment
+        // Card B56: NOT public — internal key or platform-operator JWT only.
         .route(
             "/cron/contact-intelligence",
-            post(contact_intelligence::contact_intelligence_pipeline),
+            post(contact_intelligence::contact_intelligence_pipeline)
+                .route_layer(middleware::from_fn_with_state(s.clone(), cron_guard)),
         )
         // ??? Content Queue routes (Phase 5 Task 3)
         .route(
@@ -1835,9 +1837,11 @@ pub fn create_router(s: AppState) -> Router {
             "/admin/content-queue/bulk",
             post(content_queue::bulk_add_jobs),
         )
+        // Card B56: NOT public — internal key or platform-operator JWT only.
         .route(
             "/cron/content-queue-worker",
-            post(content_queue::process_content_queue),
+            post(content_queue::process_content_queue)
+                .route_layer(middleware::from_fn_with_state(s.clone(), cron_guard)),
         )
         // ??? Tag Automation + Tracked Links (Task 4)
         .route(
@@ -2806,9 +2810,10 @@ async fn auth_guard(
         || (path.starts_with("/bookmarks/count/") && req.method() == "GET")
         // Server-rendered saved places page (handlers handle auth extraction)
         || path == "/saved-places"
-        // Cron endpoints (triggered by cron daemon with optional API key)
-        || (path == "/cron/contact-intelligence" && req.method() == "POST")
-        || (path == "/cron/content-queue-worker" && req.method() == "POST")
+        // Card B56 — /cron/* is NOT public. It is reachable only with the internal key
+        // (`x-internal-key`), or with a platform-operator bearer token (handled below by
+        // `cron_guard`, which also re-checks the key). Anonymous callers get 401.
+        || (path.starts_with("/cron/") && cron_internal_key_ok(req.headers()))
         // Public business image upload
         || (path.starts_with("/businesses/") && path.ends_with("/images") && req.method() == "POST")
         // Public city requests
@@ -2914,6 +2919,60 @@ async fn operator_guard(
     }
     req.extensions_mut().insert(claims);
     Ok(next.run(req).await)
+}
+
+/// Card B56 — the internal key accepted on `/cron/*`.
+///
+/// Read from the environment at call time (no compile-time bake, no tenant credential — this is
+/// a fleet/infra secret, not a per-directory provider key). `MD_CRON_KEY` wins when set; the
+/// fleet-wide `CORESWIFT_INTERNAL_KEY` (already present in this container's env, and the same
+/// header the app itself sends to CoreSwift) is the fallback so existing schedulers keep working.
+/// Unset everywhere ⇒ `None` ⇒ every `/cron/*` call fails closed with 401.
+fn cron_internal_key() -> Option<String> {
+    for var in ["MD_CRON_KEY", "INTERNAL_API_KEY", "CORESWIFT_INTERNAL_KEY"] {
+        if let Ok(v) = std::env::var(var) {
+            if !v.trim().is_empty() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// Constant-time-ish comparison of the presented `x-internal-key` against the configured key.
+fn cron_internal_key_ok(headers: &axum::http::HeaderMap) -> bool {
+    let Some(expected) = cron_internal_key() else {
+        return false;
+    };
+    let Some(provided) = headers.get("x-internal-key").and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let (a, b) = (provided.as_bytes(), expected.as_bytes());
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Card B56 — gate for the background-job triggers.
+///
+/// `POST /cron/content-queue-worker` answered **200 to an anonymous caller** and
+/// `POST /cron/contact-intelligence` ran long enough to blow a 25s client timeout, so anyone on
+/// the internet could start enrichment batches against the whole `businesses` table. Both routes
+/// now accept exactly two identities: the internal key, or a platform-operator JWT (so an
+/// operator can still kick a run by hand from the admin console). Everything else is 401 —
+/// anonymous *and* an unrelated authenticated account.
+async fn cron_guard(
+    State(s): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    if cron_internal_key_ok(req.headers()) {
+        return Ok(next.run(req).await);
+    }
+    match crate::handlers::tenant_scope::claims_from_headers(req.headers(), &s.config.jwt_secret) {
+        Ok(claims) if crate::handlers::tenant_scope::is_platform_operator(&claims) => {
+            Ok(next.run(req).await)
+        }
+        _ => Err(AppError::Unauthorized),
+    }
 }
 
 /// Card B52 — role gate for TENANT-SCOPED routes a business/directory portal legitimately calls.

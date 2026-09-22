@@ -21,6 +21,11 @@ use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
+/// Largest order a buyer may place in one go. Anything below 1 or above this is a 400: the old code
+/// accepted 0 and negative quantities and silently coerced them to a single unit, which let a client
+/// order a count it never asked for. Sane wholesale ceiling, not a business-policy number.
+const MAX_ORDER_QUANTITY: i32 = 1000;
+
 // ── B2B Feature Config Helpers ──
 
 use serde_json::Value;
@@ -776,7 +781,21 @@ pub async fn place_order(
     let user_id = extract_user_id(&headers, &s)?;
     let buyer_biz_id = resolve_buyer_business(&s.db, user_id).await?;
 
-    let quantity = req.quantity.unwrap_or(1).max(1);
+    // Card B62 — was `req.quantity.unwrap_or(1).max(1)`: `quantity: -5` and `quantity: 0` both
+    // returned 201 and were silently coerced to 1 unit. A client must not be able to place an
+    // order for a count it never asked for, so anything outside 1..=MAX_ORDER_QUANTITY is a 400.
+    // The order total stays server-computed: `unit_price` comes from the product row, never from
+    // the request body (the request carries no total field at all).
+    let quantity = match req.quantity {
+        None => 1i32,
+        Some(q) if (1..=MAX_ORDER_QUANTITY).contains(&q) => q,
+        Some(q) => {
+            return Err(AppError::BadRequest(format!(
+                "quantity must be an integer between 1 and {} (got {})",
+                MAX_ORDER_QUANTITY, q
+            )))
+        }
+    };
 
     // Look up the product
     let product = sqlx::query_as::<_, (Uuid, Option<rust_decimal::Decimal>)>(
@@ -1856,6 +1875,14 @@ pub struct DiscoverSuppliersQuery {
     pub per_page: Option<i64>,
 }
 
+/// Card B55 — the per-supplier active-product count, spelled out once.
+///
+/// PostgreSQL's HAVING cannot see SELECT-list aliases, so `HAVING COALESCE(product_count, 0) >= N`
+/// died with `column "product_count" does not exist` and turned
+/// `GET /b2b/discover?min_products=2` into an HTTP 500. The alias is fine in the SELECT list and
+/// in ORDER BY; every HAVING filter has to repeat the aggregate expression itself.
+const PRODUCT_COUNT_EXPR: &str = "COUNT(sp.id) FILTER (WHERE sp.is_active = true)";
+
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 struct SupplierDiscoveryRow {
     business_id: Uuid,
@@ -1929,7 +1956,7 @@ pub async fn discover_suppliers(
         if !cat.is_empty() {
             param_idx += 1;
             // Filter via subquery on supplier_products category
-            having_clauses.push(format!("COALESCE(product_count, 0) > 0"));
+            having_clauses.push(format!("{} > 0", PRODUCT_COUNT_EXPR));
             wheres.push(format!(
                 "EXISTS (SELECT 1 FROM supplier_products sp WHERE sp.business_id = b.id AND sp.is_active = true AND sp.category ILIKE '%' || ${0} || '%')",
                 0
@@ -1942,7 +1969,8 @@ pub async fn discover_suppliers(
 
     if let Some(min_p) = qs.min_products {
         if min_p > 0 {
-            having_clauses.push(format!("COALESCE(product_count, 0) >= {}", min_p));
+            // Card B55: repeat the aggregate — HAVING cannot resolve the `product_count` alias.
+            having_clauses.push(format!("{} >= {}", PRODUCT_COUNT_EXPR, min_p));
         }
     }
 
