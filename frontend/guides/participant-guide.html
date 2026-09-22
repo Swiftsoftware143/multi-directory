@@ -69,9 +69,40 @@ a:hover{text-decoration:underline}
   .quick-start{padding:18px 20px;margin:-16px 16px 24px}
   .step-item{padding:10px 12px}
 }
+/* --- Guides: PDF download + clean print (added 2026-09-22) --- */
+.guide-download{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:20px 0 30px;padding:16px 20px;background:rgba(16,185,129,.10);border:1px solid #10b981;border-left:4px solid #10b981;border-radius:10px}
+.guide-download .dl-btn{display:inline-block;background:#10b981;color:#052e21;font-weight:700;font-size:.95rem;padding:11px 20px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.guide-download .dl-btn:hover{background:#34d399;color:#052e21;text-decoration:none}
+.guide-download .dl-note{font-size:.85rem;color:#64748b;line-height:1.5;flex:1;min-width:220px}
+.guide-download .dl-alt{font-size:.8rem;color:#94a3b8}
+.walkthrough-lead{color:#64748b;margin-bottom:16px;font-size:.92rem}
+.print-header{display:none}
+@media print{
+  .sidebar,.header,.hero .no-print,nav,.guide-download,.toc,.back-link,.side-nav{display:none!important}
+  html,body{background:#fff!important;color:#000!important;display:block!important;min-height:0!important}
+  body{font-size:10.5pt;line-height:1.5}
+  .main{margin-left:0!important;padding:0!important;max-width:100%!important}
+  .container{max-width:100%!important;margin:0!important;padding:0!important}
+  .hero{padding:0 0 14px!important;background:#fff!important;border-bottom:2px solid #000}
+  .print-header{display:block!important;font-size:9pt;color:#333;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:14px}
+  h1,h2,h3,h4,.main h1,.main h2,.main h3,.main h4,.hero h2,.card h3{color:#000!important;border-color:#bbb!important;page-break-after:avoid;break-after:avoid}
+  p,li,td,th,strong,.card p,.card li,.main p,.main li{color:#111!important}
+  .card,.step-item,.tip-box,.warn-box,.quick-start,table,.lead,.guide-download{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important;page-break-inside:avoid;break-inside:avoid}
+  .step-item{margin-bottom:8px;padding:8px 10px}
+  .step-num{background:#000!important;color:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000!important;text-decoration:none}
+  hr{border-top:1px solid #ccc!important}
+  .hero h2{font-size:17pt}
+  h1,.main h1{font-size:19pt}
+  h2,.main h2{font-size:14pt}
+  h3,.card h3{font-size:12pt}
+  @page{margin:16mm 14mm}
+}
+
 </style>
 </head>
 <body>
+<div class="print-header" aria-hidden="true">ZaarHub — Customer Guide — ZaarCash — zaarhub.com/guides/participant-guide.html</div>
 
 <div class="header">
   <div class="header-inner">
@@ -89,6 +120,28 @@ a:hover{text-decoration:underline}
 </div>
 
 <div class="container">
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="guide-download" id="download">
+  <a class="dl-btn" href="downloads/participant-guide.pdf" download>⬇️ Download this guide (PDF)</a>
+  <span class="dl-note">Download the customer guide as a PDF, or read it on the page below.</span>
+  <span class="dl-alt">Or press Ctrl+P / ⌘P for a clean printed copy.</span>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="card" id="walkthrough">
+  <h3><span class="emoji">⚡</span> Walkthrough — do this, in this order</h3>
+  <p>From your first sign-up to your first redeemed discount — the exact order of clicks at the counter and on your phone.</p>
+  <div class="step-item"><div class="step-num">1</div><div class="step-text"><p><strong>Get an account.</strong> Sign up free (or <strong>Sign In</strong> if you already have one) — you cannot hold ZaarCash without a ZaarHub account. See the Sign-In &amp; Account Guide if you get stuck.</p></div></div>
+  <div class="step-item"><div class="step-num">2</div><div class="step-text"><p><strong>Find your QR code.</strong> Log in, then open any participating business profile (<code>/biz/&lt;slug&gt;/&lt;id&gt;</code>). The <strong>ZaarHub Rewards</strong> card shows your tier, balance and QR code. Only businesses that signed up to the programme participate — look for the <strong>💎 ZaarCash badge</strong> on the listing.</p></div></div>
+  <div class="step-item"><div class="step-num">3</div><div class="step-text"><p><strong>Earn — at the counter.</strong> Make your purchase, show your QR code, and let the cashier scan it in the <strong>ZaarHub Scanner</strong> (<code>zaarhub.com/scanner</code>) after choosing <strong>💳 Purchase</strong> and typing the bill total. You earn <strong>1 ZaarCash per $1.00</strong> of paid subtotal, credited instantly.</p></div></div>
+  <div class="step-item"><div class="step-num">4</div><div class="step-text"><p><strong>Bank 100 ZaarCash.</strong> You must hold at least <strong>100 ZaarCash</strong> before you can redeem anything (100 ZaarCash = $1.00). Your balance is visible in the Rewards card whenever you are logged in.</p></div></div>
+  <div class="step-item"><div class="step-num">5</div><div class="step-text"><p><strong>Redeem — at the counter.</strong> Tell the cashier you want to use your ZaarCash. They pick <strong>🎁 Redeem</strong> in the scanner and enter the amount. The programme caps a redemption at <strong>10% of the bill</strong> and refuses anything above it.</p></div></div>
+  <div class="step-item"><div class="step-num">6</div><div class="step-text"><p><strong>Collect a check-in bonus.</strong> With no purchase needed, the cashier can choose <strong>✅ Check-in</strong> in the scanner — 10 ZaarCash by default just for visiting.</p></div></div>
+  <div class="step-item"><div class="step-num">7</div><div class="step-text"><p><strong>Track it all.</strong> Open your visitor portal (<code>/visitor</code>) → loyalty section for your tier, balance and full earn/redeem history. The same card is on every business profile.</p></div></div>
+  <div class="step-item"><div class="step-num">8</div><div class="step-text"><p><strong>Know the one trap.</strong> Free or fully discounted items earn nothing — only the <strong>paid subtotal</strong> of a bill mints ZaarCash.</p></div></div>
+  <div class="tip-box"><strong>✅ You're done when:</strong> you have shown your QR, earned ZaarCash on a purchase, banked at least 100, and redeemed up to 10% of a bill as a discount.</div>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
 
 <div class="quick-start">
   <h3>⚡ Quick Start</h3>

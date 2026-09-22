@@ -67,14 +67,46 @@
     .main { margin-left: 0; padding: 24px; }
     .feature-grid { grid-template-columns: 1fr; }
   }
+/* --- Guides: PDF download + clean print (added 2026-09-22) --- */
+.guide-download{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:20px 0 30px;padding:16px 20px;background:rgba(16,185,129,.10);border:1px solid #10b981;border-left:4px solid #10b981;border-radius:10px}
+.guide-download .dl-btn{display:inline-block;background:#10b981;color:#052e21;font-weight:700;font-size:.95rem;padding:11px 20px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.guide-download .dl-btn:hover{background:#34d399;color:#052e21;text-decoration:none}
+.guide-download .dl-note{font-size:.85rem;color:#64748b;line-height:1.5;flex:1;min-width:220px}
+.guide-download .dl-alt{font-size:.8rem;color:#94a3b8}
+.walkthrough-lead{color:#64748b;margin-bottom:16px;font-size:.92rem}
+.print-header{display:none}
+@media print{
+  .sidebar,.header,.hero .no-print,nav,.guide-download,.toc,.back-link,.side-nav{display:none!important}
+  html,body{background:#fff!important;color:#000!important;display:block!important;min-height:0!important}
+  body{font-size:10.5pt;line-height:1.5}
+  .main{margin-left:0!important;padding:0!important;max-width:100%!important}
+  .container{max-width:100%!important;margin:0!important;padding:0!important}
+  .hero{padding:0 0 14px!important;background:#fff!important;border-bottom:2px solid #000}
+  .print-header{display:block!important;font-size:9pt;color:#333;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:14px}
+  h1,h2,h3,h4,.main h1,.main h2,.main h3,.main h4,.hero h2,.card h3{color:#000!important;border-color:#bbb!important;page-break-after:avoid;break-after:avoid}
+  p,li,td,th,strong,.card p,.card li,.main p,.main li{color:#111!important}
+  .card,.step-item,.tip-box,.warn-box,.quick-start,table,.lead,.guide-download{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important;page-break-inside:avoid;break-inside:avoid}
+  .step-item{margin-bottom:8px;padding:8px 10px}
+  .step-num{background:#000!important;color:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000!important;text-decoration:none}
+  hr{border-top:1px solid #ccc!important}
+  .hero h2{font-size:17pt}
+  h1,.main h1{font-size:19pt}
+  h2,.main h2{font-size:14pt}
+  h3,.card h3{font-size:12pt}
+  @page{margin:16mm 14mm}
+}
+
 </style>
 </head>
 <body>
+<div class="print-header" aria-hidden="true">ZaarHub — Sign-In & Account Guide — zaarhub.com/guides/sign-in-guide.html</div>
 
 <!-- Sidebar -->
 <div class="sidebar">
   <h2>🔐 Account Guide</h2>
   <nav>
+    <a href="#walkthrough">⚡ Walkthrough</a>
     <a href="#introduction" class="active">1. Introduction</a>
     <a href="#how-to-sign-in">2. How to Sign In</a>
     <a href="#account-creation">3. Account Creation</a>
@@ -92,6 +124,33 @@
 
 <h1>🔐 Sign-In &amp; Account Guide</h1>
 <p style="color:#64748b;margin-bottom:32px;">Everything you need to know about signing in, creating an account, managing roles, and keeping your account secure on the Multi-Directory Platform.</p>
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="guide-download" id="download">
+  <a class="dl-btn" href="downloads/sign-in-guide.pdf" download>⬇️ Download this guide (PDF)</a>
+  <span class="dl-note">Download the sign-in guide as a PDF, or read the full guide below.</span>
+  <span class="dl-alt">Or press Ctrl+P / ⌘P for a clean printed copy.</span>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+<!-- GUIDES-AUGMENTATION:START -->
+<div id="walkthrough">
+<h2>⚡ Walkthrough — do this, in this order</h2>
+<p class="walkthrough-lead">Which login to use, where you land, and how to fix the usual problems — in order.</p>
+<div class="card">
+  <div class="step-item"><div class="step-num">1</div><div class="step-text"><p><strong>Click Sign In.</strong> The <strong>Sign In</strong> button is top-right on any page of the site.</p></div></div>
+  <div class="step-item"><div class="step-num">2</div><div class="step-text"><p><strong>Pick your method.</strong> <strong>Continue with Google</strong> is fastest. Or use the <strong>Login</strong> tab with your email and password. Or choose <strong>Magic Link</strong> to have a one-time sign-in link emailed to you. New here? Use the <strong>Register</strong> tab and click <strong>Create Account</strong>.</p></div></div>
+  <div class="step-item"><div class="step-num">3</div><div class="step-text"><p><strong>Verify your email if asked.</strong> Check your inbox — and the spam folder before concluding it never arrived. Verification is what lets you claim a business later.</p></div></div>
+  <div class="step-item"><div class="step-num">4</div><div class="step-text"><p><strong>Land where you meant to.</strong> Customers land in the visitor portal (<code>/visitor</code>), businesses in the business portal (<code>/portal</code>), suppliers in <code>/distributor</code>.</p></div></div>
+  <div class="step-item"><div class="step-num">5</div><div class="step-text"><p><strong>Switch roles if you hold more than one.</strong> The <strong>Role Switcher</strong> moves you between the roles you already have — no second account, no second password.</p></div></div>
+  <div class="step-item"><div class="step-num">6</div><div class="step-text"><p><strong>Claim a business.</strong> Click <strong>Claim This Business</strong> on the listing (or open <code>/claim</code>), enter your details, and submit. Three steps: submit → verify → approved by an admin.</p></div></div>
+  <div class="step-item"><div class="step-num">7</div><div class="step-text"><p><strong>Reset a forgotten password.</strong> <strong>Forgot password</strong> on the Login tab emails you a reset link. The link is one-use and time-limited.</p></div></div>
+  <div class="step-item"><div class="step-num">8</div><div class="step-text"><p><strong>See the result.</strong> You are signed in, in the right workspace, with every role you hold listed in the switcher.</p></div></div>
+</div>
+<div class="tip-box"><p><strong>✅ You're done when:</strong> you can sign in with your chosen method, land in the correct portal, and see your roles in the Role Switcher.</p></div>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+
+
+
 
 <!-- 1. Introduction -->
 <h2 id="introduction">1. Introduction</h2>

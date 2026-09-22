@@ -59,9 +59,40 @@ a:hover{text-decoration:underline}
   .card{padding:20px 18px}
   .step-item{padding:10px 12px}
 }
+/* --- Guides: PDF download + clean print (added 2026-09-22) --- */
+.guide-download{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:20px 0 30px;padding:16px 20px;background:rgba(16,185,129,.10);border:1px solid #10b981;border-left:4px solid #10b981;border-radius:10px}
+.guide-download .dl-btn{display:inline-block;background:#10b981;color:#052e21;font-weight:700;font-size:.95rem;padding:11px 20px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.guide-download .dl-btn:hover{background:#34d399;color:#052e21;text-decoration:none}
+.guide-download .dl-note{font-size:.85rem;color:#64748b;line-height:1.5;flex:1;min-width:220px}
+.guide-download .dl-alt{font-size:.8rem;color:#94a3b8}
+.walkthrough-lead{color:#64748b;margin-bottom:16px;font-size:.92rem}
+.print-header{display:none}
+@media print{
+  .sidebar,.header,.hero .no-print,nav,.guide-download,.toc,.back-link,.side-nav{display:none!important}
+  html,body{background:#fff!important;color:#000!important;display:block!important;min-height:0!important}
+  body{font-size:10.5pt;line-height:1.5}
+  .main{margin-left:0!important;padding:0!important;max-width:100%!important}
+  .container{max-width:100%!important;margin:0!important;padding:0!important}
+  .hero{padding:0 0 14px!important;background:#fff!important;border-bottom:2px solid #000}
+  .print-header{display:block!important;font-size:9pt;color:#333;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:14px}
+  h1,h2,h3,h4,.main h1,.main h2,.main h3,.main h4,.hero h2,.card h3{color:#000!important;border-color:#bbb!important;page-break-after:avoid;break-after:avoid}
+  p,li,td,th,strong,.card p,.card li,.main p,.main li{color:#111!important}
+  .card,.step-item,.tip-box,.warn-box,.quick-start,table,.lead,.guide-download{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important;page-break-inside:avoid;break-inside:avoid}
+  .step-item{margin-bottom:8px;padding:8px 10px}
+  .step-num{background:#000!important;color:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000!important;text-decoration:none}
+  hr{border-top:1px solid #ccc!important}
+  .hero h2{font-size:17pt}
+  h1,.main h1{font-size:19pt}
+  h2,.main h2{font-size:14pt}
+  h3,.card h3{font-size:12pt}
+  @page{margin:16mm 14mm}
+}
+
 </style>
 </head>
 <body>
+<div class="print-header" aria-hidden="true">ZaarHub — Admin Guide — zaarhub.com/guides/admin-guide.html</div>
 
 <div class="header">
   <div class="header-inner">
@@ -79,6 +110,28 @@ a:hover{text-decoration:underline}
 </div>
 
 <div class="container">
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="guide-download" id="download">
+  <a class="dl-btn" href="downloads/admin-guide.pdf" download>⬇️ Download this guide (PDF)</a>
+  <span class="dl-note">Download the admin guide as a PDF, or read it below.</span>
+  <span class="dl-alt">Or press Ctrl+P / ⌘P for a clean printed copy.</span>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="card" id="walkthrough">
+  <h3><span class="emoji">⚡</span> Walkthrough — do this, in this order</h3>
+  <p>From sign-in to a claim approved and the public pages matching your settings.</p>
+  <div class="step-item"><div class="step-num">1</div><div class="step-text"><p><strong>Sign in.</strong> Open <code>https://zaarhub.com/admin-panel.html</code> and sign in with your administrator credentials.</p></div></div>
+  <div class="step-item"><div class="step-num">2</div><div class="step-text"><p><strong>Read the numbers first.</strong> Open the <strong>Admin Dashboard</strong> and look at the platform totals before touching anything — it tells you whether today is normal.</p></div></div>
+  <div class="step-item"><div class="step-num">3</div><div class="step-text"><p><strong>Clear the claim queue.</strong> Open the <strong>Business Claim &amp; Verification Flow</strong>, check the claimant's evidence, then approve or reject. Approval is what gives a business its portal.</p></div></div>
+  <div class="step-item"><div class="step-num">4</div><div class="step-text"><p><strong>Manage a tenant.</strong> Use <strong>Tenant Management</strong> to inspect or adjust a directory/tenant.</p></div></div>
+  <div class="step-item"><div class="step-num">5</div><div class="step-text"><p><strong>Watch the network.</strong> Review <strong>Fraud Monitoring</strong> for suspicious earn and redeem patterns, and <strong>Audit &amp; Logging</strong> for who changed what.</p></div></div>
+  <div class="step-item"><div class="step-num">6</div><div class="step-text"><p><strong>Configure the public face.</strong> Set the <strong>Notifications Ticker</strong>, <strong>Editor's Picks</strong>, <strong>Verification Badges</strong> and <strong>Category Management</strong> — these decide what every visitor sees.</p></div></div>
+  <div class="step-item"><div class="step-num">7</div><div class="step-text"><p><strong>Own the loyalty numbers.</strong> The earn rate, the redemption cap (10% of a bill), the minimum balance (100 ZaarCash) and free-item treatment are programme settings you control. Every user-facing guide quotes these numbers, so change them here and keep the guides in step.</p></div></div>
+  <div class="step-item"><div class="step-num">8</div><div class="step-text"><p><strong>See the result.</strong> Claims move, the ticker reflects real activity, and every public page matches the settings you just made.</p></div></div>
+  <div class="tip-box"><strong>✅ You're done when:</strong> you have cleared at least one claim, and the ticker, Editor’s Picks and loyalty settings all match what the public pages show.</div>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
 
 <!-- 1. Business Claim & Verification -->
 <div class="card">
@@ -340,7 +393,7 @@ a:hover{text-decoration:underline}
   <ul>
     <li><code>GET/POST /api/v1/directories/:slug/loyalty/programs/:program_id/rewards</code> — list / create a reward (<code>points_required</code>, <code>requires_approval</code>, <code>reward_tag</code>, sort_order)</li>
     <li><code>DELETE /api/v1/directories/:slug/loyalty/programs/:program_id/rewards/:reward_id</code> — delete a reward</li>
-    <li><code>POST /api/v1/directories/:slug/loyalty/programs/:program_id/rewards/earn</code> — member redeems a reward (deducts points, creates an earned record)</li>
+    <li><code>POST /api/v1/directories/:slug/loyalty/programs/:program_id/rewards/earn</code> — member redeems a reward (deducts ZaarCash, creates an earned record)</li>
     <li><code>GET /api/v1/directories/:slug/loyalty/members/:member_id/rewards</code> — member's earned rewards</li>
     <li><code>POST /api/v1/directories/:slug/loyalty/rewards/earned/:earned_id/approve</code> — admin approves a pending earned reward</li>
   </ul>

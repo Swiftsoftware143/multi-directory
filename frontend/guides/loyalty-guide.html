@@ -95,14 +95,46 @@
     .main { margin-left: 0; padding: 24px; }
     .feature-grid { grid-template-columns: 1fr; }
   }
+/* --- Guides: PDF download + clean print (added 2026-09-22) --- */
+.guide-download{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:20px 0 30px;padding:16px 20px;background:rgba(16,185,129,.10);border:1px solid #10b981;border-left:4px solid #10b981;border-radius:10px}
+.guide-download .dl-btn{display:inline-block;background:#10b981;color:#052e21;font-weight:700;font-size:.95rem;padding:11px 20px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.guide-download .dl-btn:hover{background:#34d399;color:#052e21;text-decoration:none}
+.guide-download .dl-note{font-size:.85rem;color:#64748b;line-height:1.5;flex:1;min-width:220px}
+.guide-download .dl-alt{font-size:.8rem;color:#94a3b8}
+.walkthrough-lead{color:#64748b;margin-bottom:16px;font-size:.92rem}
+.print-header{display:none}
+@media print{
+  .sidebar,.header,.hero .no-print,nav,.guide-download,.toc,.back-link,.side-nav{display:none!important}
+  html,body{background:#fff!important;color:#000!important;display:block!important;min-height:0!important}
+  body{font-size:10.5pt;line-height:1.5}
+  .main{margin-left:0!important;padding:0!important;max-width:100%!important}
+  .container{max-width:100%!important;margin:0!important;padding:0!important}
+  .hero{padding:0 0 14px!important;background:#fff!important;border-bottom:2px solid #000}
+  .print-header{display:block!important;font-size:9pt;color:#333;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:14px}
+  h1,h2,h3,h4,.main h1,.main h2,.main h3,.main h4,.hero h2,.card h3{color:#000!important;border-color:#bbb!important;page-break-after:avoid;break-after:avoid}
+  p,li,td,th,strong,.card p,.card li,.main p,.main li{color:#111!important}
+  .card,.step-item,.tip-box,.warn-box,.quick-start,table,.lead,.guide-download{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important;page-break-inside:avoid;break-inside:avoid}
+  .step-item{margin-bottom:8px;padding:8px 10px}
+  .step-num{background:#000!important;color:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000!important;text-decoration:none}
+  hr{border-top:1px solid #ccc!important}
+  .hero h2{font-size:17pt}
+  h1,.main h1{font-size:19pt}
+  h2,.main h2{font-size:14pt}
+  h3,.card h3{font-size:12pt}
+  @page{margin:16mm 14mm}
+}
+
 </style>
 </head>
 <body>
+<div class="print-header" aria-hidden="true">ZaarHub — ZaarCash Loyalty Programme — zaarhub.com/guides/loyalty-guide.html</div>
 
 <!-- Sidebar -->
 <div class="sidebar">
   <h2>💎 ZaarCash Loyalty</h2>
   <nav>
+    <a href="#walkthrough">⚡ Walkthrough</a>
     <a href="#rules" class="active">The programme rules</a>
     <a href="#for-customers">👤 For Customers</a>
     <a href="#for-businesses">🏪 For Businesses</a>
@@ -125,6 +157,33 @@
 
 <h1>💎 The ZaarCash Loyalty Programme</h1>
 <p style="color:#64748b;margin-bottom:28px;">One programme, four audiences. ZaarCash is ZaarHub's own loyalty currency — earned and spent across the whole ZaarHub network. This page explains what it is, how it works for <strong>you</strong>, and what it is worth to <strong>you</strong>.</p>
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="guide-download" id="download">
+  <a class="dl-btn" href="downloads/loyalty-guide.pdf" download>⬇️ Download this guide (PDF)</a>
+  <span class="dl-note">Download the whole programme guide as a PDF, or read the full guide below — including all four audience sections.</span>
+  <span class="dl-alt">Or press Ctrl+P / ⌘P for a clean printed copy.</span>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+<!-- GUIDES-AUGMENTATION:START -->
+<div id="walkthrough">
+<h2>⚡ Walkthrough — do this, in this order</h2>
+<p class="walkthrough-lead">One programme, four audiences. Find your role below and follow its numbers — the four sections further down this page give each audience its full terms and disclaimers.</p>
+<div class="card">
+  <div class="step-item"><div class="step-num">1</div><div class="step-text"><p><strong>Customer — get set up.</strong> Sign in, then open any participating business profile (<code>/biz/&lt;slug&gt;/&lt;id&gt;</code>). Look for the <strong>💎 ZaarCash badge</strong>, and find your tier, balance and QR code under <strong>ZaarHub Rewards</strong>.</p></div></div>
+  <div class="step-item"><div class="step-num">2</div><div class="step-text"><p><strong>Customer — earn.</strong> Show your QR at the till. The cashier scans it in the scanner as <strong>💳 Purchase</strong> and you earn <strong>1 ZaarCash per $1.00</strong> of paid subtotal, credited instantly.</p></div></div>
+  <div class="step-item"><div class="step-num">3</div><div class="step-text"><p><strong>Customer — redeem.</strong> Bank at least <strong>100 ZaarCash</strong>, then ask the cashier to <strong>🎁 Redeem</strong> — up to <strong>10% of the bill</strong>, and never on a free item.</p></div></div>
+  <div class="step-item"><div class="step-num">4</div><div class="step-text"><p><strong>Business — turn it on.</strong> Claim your listing, open <code>/portal</code>, and opt in to the programme so your listing carries the badge and your customers can earn with you.</p></div></div>
+  <div class="step-item"><div class="step-num">5</div><div class="step-text"><p><strong>Business — run the till.</strong> Open <code>https://zaarhub.com/scanner</code> on the shop phone, add it to the home screen, and scan <strong>💳 Purchase</strong>, <strong>✅ Check-in</strong> or <strong>🎁 Redeem</strong>.</p></div></div>
+  <div class="step-item"><div class="step-num">6</div><div class="step-text"><p><strong>Supplier — reach the buyers.</strong> List with <code>/distributor</code>, keep the catalog current, and remember the rules your buyers play by: 1 ZaarCash per $1.00 spent, 100 ZaarCash = $1.00, 10% bill cap, 100 minimum to redeem, free items earn nothing.</p></div></div>
+  <div class="step-item"><div class="step-num">7</div><div class="step-text"><p><strong>Administrator — own every number.</strong> The earn rate, redemption cap, minimum balance and free-item treatment are programme settings you control in the admin panel — this page quotes the same numbers your users are shown.</p></div></div>
+  <div class="step-item"><div class="step-num">8</div><div class="step-text"><p><strong>Everyone — the loop is the same.</strong> Earn at the till, bank 100 ZaarCash, redeem up to 10% of a bill. The wallet is network-wide, so it is earned in one city and spendable in another.</p></div></div>
+</div>
+<div class="tip-box"><p><strong>✅ You're done when:</strong> you have followed the path for your own role above, and you can point to the “for you” section further down this page that carries your terms and disclaimer.</p></div>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+
+
+
 
 <div class="toc">
   <a href="#for-customers">

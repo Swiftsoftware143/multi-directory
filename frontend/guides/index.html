@@ -25,6 +25,14 @@
   .guide-card .content a { color: #0ea5e9; font-weight: 600; font-size: 0.9rem; text-decoration: none; }
   .guide-card .content a:hover { text-decoration: underline; }
 
+  .guide-card { display: flex; align-items: flex-start; gap: 20px; background: #ffffff; border-radius: 14px; padding: 28px; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: all 0.2s; margin-bottom: 20px; }
+  .guide-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-color: #0ea5e9; }
+  .guide-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
+  .guide-actions a.read-link { color: #0ea5e9; font-weight: 600; font-size: 0.9rem; text-decoration: none; }
+  .guide-actions a.read-link:hover { text-decoration: underline; }
+  .guide-actions a.pdf-link { display: inline-block; background: #10b981; color: #052e21; font-weight: 700; font-size: 0.82rem; padding: 7px 14px; border-radius: 8px; text-decoration: none; white-space: nowrap; }
+  .guide-actions a.pdf-link:hover { background: #34d399; text-decoration: none; }
+
   .back-link { display: block; text-align: center; margin-top: 32px; color: #64748b; font-size: 0.85rem; }
   .back-link:hover { color: #0ea5e9; }
 
@@ -42,101 +50,109 @@
 
   <div class="guide-grid">
 
-    <a href="loyalty-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">💎</div>
         <div class="content">
           <span class="audience" style="color:#0f766e;background:#ccfbf1;">All Audiences</span>
           <h2>ZaarCash Loyalty Programme</h2>
           <p>The complete guide to ZaarHub's own loyalty currency, written for four audiences: what ZaarCash is and how it works for <strong>customers</strong>, <strong>businesses</strong>, <strong>suppliers</strong> and <strong>administrators</strong> — each with its own benefits and its own terms. 1 ZaarCash per $1 spent, 100 ZaarCash = $1.00, up to 10% of a bill per redemption, network-wide across every ZaarHub city.</p>
-          <span>Read the ZaarCash Loyalty Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="loyalty-guide.html">Read the ZaarCash Loyalty Guide →</a>
+          <a class="pdf-link" href="downloads/loyalty-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
-    <a href="visitor-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">👤</div>
         <div class="content">
           <span class="audience">Visitor</span>
           <h2>Visitor Guide</h2>
           <p>Create an account, save businesses, write reviews, find businesses near you, browse Editor's Picks, and claim your business listing.</p>
-          <span>Read the Visitor Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="visitor-guide.html">Read the Visitor Guide →</a>
+          <a class="pdf-link" href="downloads/visitor-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
-    <a href="business-owner-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">🏪</div>
         <div class="content">
           <span class="audience merchant">Business Owner</span>
           <h2>Business Owner Guide</h2>
           <p>Claim your listing, manage your profile, post deals & events, earn verification badges, track ad performance, and respond to reviews.</p>
-          <span>Read the Business Owner Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="business-owner-guide.html">Read the Business Owner Guide →</a>
+          <a class="pdf-link" href="downloads/business-owner-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
-    <a href="participant-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">🎁</div>
         <div class="content">
           <span class="audience">Customer</span>
           <h2>Customer Guide</h2>
           <p>How to earn and redeem ZaarCash — 1 ZaarCash per $1 spent, 100 ZaarCash = $1.00, up to 10% of a bill per redemption, and a 100 ZaarCash minimum before you can redeem. Free items earn nothing, and the wallet is network-wide across every ZaarHub city. ZaarCash is ZaarHub's own loyalty programme, not a third-party service — only businesses that sign up participate, so look for the 💎 badge. Find your QR code on any business profile, see your tier and balance, and get the most out of every purchase.</p>
-          <span>Read the Customer Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="participant-guide.html">Read the Customer Guide →</a>
+          <a class="pdf-link" href="downloads/participant-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
-    <a href="merchant-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">🏪</div>
         <div class="content">
           <span class="audience merchant">Merchant</span>
           <h2>Merchant Guide</h2>
           <p>Understand the network ZaarCash earn rate and the loyalty rules, create and manage offers, use the ZaarHub Scanner PWA for check-ins/purchases/redemptions, scan customer QR codes, and understand the earn vs redeem flow. Complete loyalty setup walkthrough.</p>
-          <span>Read the Merchant Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="merchant-guide.html">Read the Merchant Guide →</a>
+          <a class="pdf-link" href="downloads/merchant-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
-    <a href="admin-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">🏢</div>
         <div class="content">
           <span class="audience admin">ZaarHub Admin</span>
           <h2>Admin Guide</h2>
           <p>Tenant management, legal terms oversight, network monitoring, community velocity, notifications ticker configuration, and handling disputes across the entire platform.</p>
-          <span>Read the Admin Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="admin-guide.html">Read the Admin Guide →</a>
+          <a class="pdf-link" href="downloads/admin-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
-    <a href="supplier-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">📦</div>
         <div class="content">
           <span class="audience" style="color:#059669;background:#d1fae5;">Supplier</span>
           <h2>Supplier Guide</h2>
           <p>List rewards, manage fulfillment, quality standards, fee structures, and best practices for reward partners. Includes B2B SSR pages.</p>
-          <span>Read the Supplier Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="supplier-guide.html">Read the Supplier Guide →</a>
+          <a class="pdf-link" href="downloads/supplier-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
-    <a href="sign-in-guide.html" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
         <div class="icon">🔐</div>
         <div class="content">
           <span class="audience">All Users</span>
           <h2>Sign-In &amp; Account Guide</h2>
           <p>How to sign in with Google or email, create an account, switch roles, claim a business, reset your password, manage security, and troubleshoot common issues.</p>
-          <span>Read the Account Guide →</span>
+                  <div class="guide-actions">
+          <a class="read-link" href="sign-in-guide.html">Read the Account Guide →</a>
+          <a class="pdf-link" href="downloads/sign-in-guide.pdf" download>⬇️ Download PDF</a>
+        </div>
         </div>
       </div>
-    </a>
 
     <a href="../rfq-marketplace" style="text-decoration:none;color:inherit;">
       <div class="guide-card">
@@ -173,6 +189,19 @@
         </div>
       </div>
     </a>
+
+    <div class="guide-card">
+      <div class="icon">🔑</div>
+      <div class="content">
+        <span class="audience admin">ZaarHub Admin</span>
+        <h2>API Keys Setup Guide</h2>
+        <p>Where every provider key goes and how to get it — email/SMTP, payments, maps &amp; search, AI, SMS and scraping — entered per directory in the admin panel, never hardcoded. Includes the 24-provider checklist and the VA start-here list.</p>
+        <div class="guide-actions">
+          <a class="read-link" href="api-keys-setup.html">Read the API Keys Setup Guide →</a>
+          <a class="pdf-link" href="downloads/api-keys-setup.pdf" download>⬇️ Download PDF</a>
+        </div>
+      </div>
+    </div>
 
   </div>
 

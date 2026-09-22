@@ -72,15 +72,47 @@
     .sidebar { display: none; }
     .main { margin-left: 0; padding: 24px; }
   }
+/* --- Guides: PDF download + clean print (added 2026-09-22) --- */
+.guide-download{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:20px 0 30px;padding:16px 20px;background:rgba(16,185,129,.10);border:1px solid #10b981;border-left:4px solid #10b981;border-radius:10px}
+.guide-download .dl-btn{display:inline-block;background:#10b981;color:#052e21;font-weight:700;font-size:.95rem;padding:11px 20px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.guide-download .dl-btn:hover{background:#34d399;color:#052e21;text-decoration:none}
+.guide-download .dl-note{font-size:.85rem;color:#64748b;line-height:1.5;flex:1;min-width:220px}
+.guide-download .dl-alt{font-size:.8rem;color:#94a3b8}
+.walkthrough-lead{color:#64748b;margin-bottom:16px;font-size:.92rem}
+.print-header{display:none}
+@media print{
+  .sidebar,.header,.hero .no-print,nav,.guide-download,.toc,.back-link,.side-nav{display:none!important}
+  html,body{background:#fff!important;color:#000!important;display:block!important;min-height:0!important}
+  body{font-size:10.5pt;line-height:1.5}
+  .main{margin-left:0!important;padding:0!important;max-width:100%!important}
+  .container{max-width:100%!important;margin:0!important;padding:0!important}
+  .hero{padding:0 0 14px!important;background:#fff!important;border-bottom:2px solid #000}
+  .print-header{display:block!important;font-size:9pt;color:#333;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:14px}
+  h1,h2,h3,h4,.main h1,.main h2,.main h3,.main h4,.hero h2,.card h3{color:#000!important;border-color:#bbb!important;page-break-after:avoid;break-after:avoid}
+  p,li,td,th,strong,.card p,.card li,.main p,.main li{color:#111!important}
+  .card,.step-item,.tip-box,.warn-box,.quick-start,table,.lead,.guide-download{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important;page-break-inside:avoid;break-inside:avoid}
+  .step-item{margin-bottom:8px;padding:8px 10px}
+  .step-num{background:#000!important;color:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000!important;text-decoration:none}
+  hr{border-top:1px solid #ccc!important}
+  .hero h2{font-size:17pt}
+  h1,.main h1{font-size:19pt}
+  h2,.main h2{font-size:14pt}
+  h3,.card h3{font-size:12pt}
+  @page{margin:16mm 14mm}
+}
+
 </style>
 </head>
 <body>
+<div class="print-header" aria-hidden="true">ZaarHub — API Keys Setup Guide — zaarhub.com/guides/api-keys-setup.html</div>
 <a id="top"></a>
 
 <!-- Sidebar -->
 <div class="sidebar">
   <h2>&#x1F511; API Keys Setup</h2>
   <nav>
+    <a href="#walkthrough">⚡ Walkthrough</a>
     <a href="#start-here">&#x1F680; Start here (checklist)</a><a href="#panel-map">&#x1F5FA; Where each control lives</a><a href="#quick-map">&#x1F5C2; Which key for what?</a><a href="#email-transport">&#x2709;&#xFE0F; Email / SMTP card</a><a href="#discovery-queue">&#x1F50E; Discovery queue</a><div class="section-label">Discovery &amp; Listings</div><a href="#provider-bing">🅱️ Bing Web Search</a><a href="#provider-brightlocal">⭐ BrightLocal</a><a href="#provider-dataforseo">🔑 DataForSEO</a><a href="#provider-google_cse">🔍 Google Custom Search</a><a href="#provider-google_places">🗺️ Google Places</a><a href="#provider-serpapi">🔎 SerpAPI</a><a href="#provider-uberall">📍 Uberall</a><a href="#provider-yext">🗺️ Yext</a><div class="section-label">AI &amp; Content</div><a href="#provider-anthropic">🧠 Anthropic (Claude)</a><a href="#provider-deepseek">🧠 DeepSeek</a><a href="#provider-letterman">newspaper Letterman</a><a href="#provider-mintbird">📧 Mintbird</a><a href="#provider-nexweave">video Nexweave</a><a href="#provider-openai">🤖 OpenAI</a><div class="section-label">Email</div><a href="#provider-mailgun">✉️ Mailgun</a><a href="#provider-sendgrid">✉️ SendGrid</a><a href="#provider-sendiio">mail Sendiio</a><div class="section-label">Payments</div><a href="#provider-groovesell">🛒 GrooveSell</a><a href="#provider-stripe">💳 Stripe</a><div class="section-label">SMS &amp; Voice</div><a href="#provider-telnyx">phone Telnyx</a><a href="#provider-twilio">📞 Twilio</a><div class="section-label">CRM &amp; Federal Data</div><a href="#provider-coreswift">crm CoreSwift CRM</a><a href="#provider-sam_gov">shield SAM.gov</a><a href="#provider-usaspending">dollar-sign USAspending</a><div class="section-label">Reference</div><a href="#related-creds">&#x26A0; Credentials not in this table</a><a href="index.html">&#x2190; All guides</a>
   </nav>
 </div>
@@ -89,6 +121,33 @@
 <div class="main">
   <h1>&#x1F511; API Keys Setup Guide</h1>
   <p class="lead">Everything a VA needs: <b>which key goes where, how to get each one, and how to prove it works.</b>
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="guide-download" id="download">
+  <a class="dl-btn" href="downloads/api-keys-setup.pdf" download>⬇️ Download this guide (PDF)</a>
+  <span class="dl-note">Download the API keys setup guide as a PDF, or read the full guide below.</span>
+  <span class="dl-alt">Or press Ctrl+P / ⌘P for a clean printed copy.</span>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+<!-- GUIDES-AUGMENTATION:START -->
+<div id="walkthrough">
+<h2>⚡ Walkthrough — do this, in this order</h2>
+<p class="walkthrough-lead">For administrators and VAs wiring providers into the admin panel — the order to do it in.</p>
+<div class="card">
+  <div class="step-item"><div class="step-num">1</div><div class="step-text"><p><strong>Sign in to the Admin Panel.</strong> Open <code>https://zaarhub.com/admin-panel.html</code> and sign in as an administrator.</p></div></div>
+  <div class="step-item"><div class="step-num">2</div><div class="step-text"><p><strong>Find the card for your provider.</strong> Use <strong>Where each control lives in the Admin Panel</strong> to jump to the card that owns the key you have.</p></div></div>
+  <div class="step-item"><div class="step-num">3</div><div class="step-text"><p><strong>Get the key from the provider.</strong> Follow the provider's block below to the exact screen where the key is generated, and copy it.</p></div></div>
+  <div class="step-item"><div class="step-num">4</div><div class="step-text"><p><strong>Paste it into the panel — not a file.</strong> Credentials belong in the admin panel (the database), never in code and never in server-wide environment variables. Enter the key in that provider's card and save.</p></div></div>
+  <div class="step-item"><div class="step-num">5</div><div class="step-text"><p><strong>Test the capability, not just the save.</strong> Trigger the feature that uses the key (a search, an email, a payment) and confirm it works end to end.</p></div></div>
+  <div class="step-item"><div class="step-num">6</div><div class="step-text"><p><strong>Check availability flags.</strong> Providers marked <span class="badge badge-req">Required</span> must be configured before launch; <span class="badge badge-opt">Optional</span> ones enrich results but degrade gracefully when absent.</p></div></div>
+  <div class="step-item"><div class="step-num">7</div><div class="step-text"><p><strong>Leave the rest unconfigured if you like.</strong> An unconfigured optional provider must log and skip — never break the page.</p></div></div>
+  <div class="step-item"><div class="step-num">8</div><div class="step-text"><p><strong>See the result.</strong> Every capability you switched on is reachable from a UI control in the admin panel, and a real request proves it works.</p></div></div>
+</div>
+<div class="tip-box"><p><strong>✅ You're done when:</strong> every required key is entered in the admin panel, and a real call through each configured capability succeeds.</p></div>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+
+
+
   This page mirrors the platform's live provider table (<code>available_providers</code>) &mdash; <b>24 providers</b> at the time of generation &mdash;
   and every provider has its own section with a stable anchor you can deep-link to (<code>#provider-&lt;key&gt;</code>).<br>
   <span style="font-size:0.82rem">Generated 2026-09-21 14:45 from <code>SELECT key, name, description, requires_base_url, field_label, field_help, requires_metadata, icon FROM available_providers ORDER BY name;</code> &mdash; 24 rows.</span></p>

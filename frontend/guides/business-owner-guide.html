@@ -83,14 +83,46 @@
     .main { margin-left: 0; padding: 24px; }
     .feature-grid { grid-template-columns: 1fr; }
   }
+/* --- Guides: PDF download + clean print (added 2026-09-22) --- */
+.guide-download{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:20px 0 30px;padding:16px 20px;background:rgba(16,185,129,.10);border:1px solid #10b981;border-left:4px solid #10b981;border-radius:10px}
+.guide-download .dl-btn{display:inline-block;background:#10b981;color:#052e21;font-weight:700;font-size:.95rem;padding:11px 20px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.guide-download .dl-btn:hover{background:#34d399;color:#052e21;text-decoration:none}
+.guide-download .dl-note{font-size:.85rem;color:#64748b;line-height:1.5;flex:1;min-width:220px}
+.guide-download .dl-alt{font-size:.8rem;color:#94a3b8}
+.walkthrough-lead{color:#64748b;margin-bottom:16px;font-size:.92rem}
+.print-header{display:none}
+@media print{
+  .sidebar,.header,.hero .no-print,nav,.guide-download,.toc,.back-link,.side-nav{display:none!important}
+  html,body{background:#fff!important;color:#000!important;display:block!important;min-height:0!important}
+  body{font-size:10.5pt;line-height:1.5}
+  .main{margin-left:0!important;padding:0!important;max-width:100%!important}
+  .container{max-width:100%!important;margin:0!important;padding:0!important}
+  .hero{padding:0 0 14px!important;background:#fff!important;border-bottom:2px solid #000}
+  .print-header{display:block!important;font-size:9pt;color:#333;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:14px}
+  h1,h2,h3,h4,.main h1,.main h2,.main h3,.main h4,.hero h2,.card h3{color:#000!important;border-color:#bbb!important;page-break-after:avoid;break-after:avoid}
+  p,li,td,th,strong,.card p,.card li,.main p,.main li{color:#111!important}
+  .card,.step-item,.tip-box,.warn-box,.quick-start,table,.lead,.guide-download{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important;page-break-inside:avoid;break-inside:avoid}
+  .step-item{margin-bottom:8px;padding:8px 10px}
+  .step-num{background:#000!important;color:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000!important;text-decoration:none}
+  hr{border-top:1px solid #ccc!important}
+  .hero h2{font-size:17pt}
+  h1,.main h1{font-size:19pt}
+  h2,.main h2{font-size:14pt}
+  h3,.card h3{font-size:12pt}
+  @page{margin:16mm 14mm}
+}
+
 </style>
 </head>
 <body>
+<div class="print-header" aria-hidden="true">ZaarHub — Business Owner Guide — zaarhub.com/guides/business-owner-guide.html</div>
 
 <!-- Sidebar -->
 <div class="sidebar">
   <h2>🏪 Biz Owner Guide</h2>
   <nav>
+    <a href="#walkthrough">⚡ Walkthrough</a>
     <a href="#introduction" class="active">1. Introduction</a>
     <a href="#claiming">2. Claiming Your Business</a>
     <a href="#signing-in">3. Signing In</a>
@@ -115,6 +147,35 @@
 
 <h1>🏪 Business Owner Guide</h1>
 <p style="color:#64748b;margin-bottom:32px;">Everything you need to manage your business listing, ads, and subscriptions through the Business Portal.</p>
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="guide-download" id="download">
+  <a class="dl-btn" href="downloads/business-owner-guide.pdf" download>⬇️ Download this guide (PDF)</a>
+  <span class="dl-note">Download the business owner guide as a PDF, or read the full guide below.</span>
+  <span class="dl-alt">Or press Ctrl+P / ⌘P for a clean printed copy.</span>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+<!-- GUIDES-AUGMENTATION:START -->
+<div id="walkthrough">
+<h2>⚡ Walkthrough — do this, in this order</h2>
+<p class="walkthrough-lead">From an unclaimed listing to a live, loyalty-enabled profile — the order that gets you visible fastest.</p>
+<div class="card">
+  <div class="step-item"><div class="step-num">1</div><div class="step-text"><p><strong>Find your listing.</strong> Search <a href="https://zaarhub.com">zaarhub.com</a> for your business name and open it. If it does not exist yet, add it from <code>/submit-business</code> first.</p></div></div>
+  <div class="step-item"><div class="step-num">2</div><div class="step-text"><p><strong>Claim it.</strong> Click <strong>Claim This Business</strong> on your listing (or open <code>/claim</code>), fill in your details and submit. An administrator reviews the claim — this is the step that unlocks your dashboard.</p></div></div>
+  <div class="step-item"><div class="step-num">3</div><div class="step-text"><p><strong>Sign in.</strong> <strong>Sign In</strong> with the same email you claimed with. One login covers your visitor and business roles — see the Sign-In &amp; Account Guide for the Role Switcher.</p></div></div>
+  <div class="step-item"><div class="step-num">4</div><div class="step-text"><p><strong>Open your dashboard.</strong> Go to <code>/portal</code>. The panels you will use are <strong>Dashboard</strong>, <strong>Profile</strong>, <strong>Ads</strong>, <strong>Reviews</strong>, <strong>Offers</strong> and <strong>Settings</strong>.</p></div></div>
+  <div class="step-item"><div class="step-num">5</div><div class="step-text"><p><strong>Complete your profile.</strong> Add photos, opening hours, categories and a description — the fields customers actually search on — then save. An empty profile is invisible in near-me and category search.</p></div></div>
+  <div class="step-item"><div class="step-num">6</div><div class="step-text"><p><strong>Turn on loyalty.</strong> Sign up to the programme in the loyalty tab so your listing carries the <strong>💎 ZaarCash badge</strong>, and check what your customers earn and can redeem.</p></div></div>
+  <div class="step-item"><div class="step-num">7</div><div class="step-text"><p><strong>Give people a reason to click.</strong> Post a deal or an event, then submit an advert in <strong>Ads</strong> for extra placement.</p></div></div>
+  <div class="step-item"><div class="step-num">8</div><div class="step-text"><p><strong>Run the counter.</strong> Open <code>https://zaarhub.com/scanner</code> on the shop phone, sign in, and scan customers with <strong>💳 Purchase</strong>, <strong>✅ Check-in</strong> or <strong>🎁 Redeem</strong>.</p></div></div>
+  <div class="step-item"><div class="step-num">9</div><div class="step-text"><p><strong>Close the loop.</strong> In <strong>Reviews</strong> reply to what customers wrote, and in <strong>Ads</strong> check the status of what you submitted.</p></div></div>
+  <div class="step-item"><div class="step-num">10</div><div class="step-text"><p><strong>See the result.</strong> Your listing now shows the badge, your deals, your reviews and your photos — and every scan is in your dashboard.</p></div></div>
+</div>
+<div class="tip-box"><p><strong>✅ You're done when:</strong> your listing shows the ZaarCash badge and your deals, a customer has been scanned at the counter, and the transaction is visible in your dashboard.</p></div>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+
+
+
 
 <!-- 1. Introduction -->
 <h2 id="introduction">1. Introduction</h2>

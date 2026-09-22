@@ -80,14 +80,46 @@
     .main { margin-left: 0; padding: 24px; }
     .feature-grid { grid-template-columns: 1fr; }
   }
+/* --- Guides: PDF download + clean print (added 2026-09-22) --- */
+.guide-download{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:20px 0 30px;padding:16px 20px;background:rgba(16,185,129,.10);border:1px solid #10b981;border-left:4px solid #10b981;border-radius:10px}
+.guide-download .dl-btn{display:inline-block;background:#10b981;color:#052e21;font-weight:700;font-size:.95rem;padding:11px 20px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.guide-download .dl-btn:hover{background:#34d399;color:#052e21;text-decoration:none}
+.guide-download .dl-note{font-size:.85rem;color:#64748b;line-height:1.5;flex:1;min-width:220px}
+.guide-download .dl-alt{font-size:.8rem;color:#94a3b8}
+.walkthrough-lead{color:#64748b;margin-bottom:16px;font-size:.92rem}
+.print-header{display:none}
+@media print{
+  .sidebar,.header,.hero .no-print,nav,.guide-download,.toc,.back-link,.side-nav{display:none!important}
+  html,body{background:#fff!important;color:#000!important;display:block!important;min-height:0!important}
+  body{font-size:10.5pt;line-height:1.5}
+  .main{margin-left:0!important;padding:0!important;max-width:100%!important}
+  .container{max-width:100%!important;margin:0!important;padding:0!important}
+  .hero{padding:0 0 14px!important;background:#fff!important;border-bottom:2px solid #000}
+  .print-header{display:block!important;font-size:9pt;color:#333;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:14px}
+  h1,h2,h3,h4,.main h1,.main h2,.main h3,.main h4,.hero h2,.card h3{color:#000!important;border-color:#bbb!important;page-break-after:avoid;break-after:avoid}
+  p,li,td,th,strong,.card p,.card li,.main p,.main li{color:#111!important}
+  .card,.step-item,.tip-box,.warn-box,.quick-start,table,.lead,.guide-download{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important;page-break-inside:avoid;break-inside:avoid}
+  .step-item{margin-bottom:8px;padding:8px 10px}
+  .step-num{background:#000!important;color:#fff!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000!important;text-decoration:none}
+  hr{border-top:1px solid #ccc!important}
+  .hero h2{font-size:17pt}
+  h1,.main h1{font-size:19pt}
+  h2,.main h2{font-size:14pt}
+  h3,.card h3{font-size:12pt}
+  @page{margin:16mm 14mm}
+}
+
 </style>
 </head>
 <body>
+<div class="print-header" aria-hidden="true">ZaarHub — Supplier Guide — zaarhub.com/guides/supplier-guide.html</div>
 
 <!-- Sidebar -->
 <div class="sidebar">
   <h2>📦 Supplier Guide</h2>
   <nav>
+    <a href="#walkthrough">⚡ Walkthrough</a>
     <a href="#introduction" class="active">1. Introduction</a>
     <a href="#signing-up">2. Signing Up as a Supplier</a>
     <a href="#portal-overview">3. Supplier Portal Overview</a>
@@ -106,6 +138,34 @@
 
 <h1>📦 Supplier Guide</h1>
 <p style="color:#64748b;margin-bottom:32px;">Everything you need to know about registering as a supplier, managing your catalog, and fulfilling orders.</p>
+<!-- GUIDES-AUGMENTATION:START -->
+<div class="guide-download" id="download">
+  <a class="dl-btn" href="downloads/supplier-guide.pdf" download>⬇️ Download this guide (PDF)</a>
+  <span class="dl-note">Download the supplier guide as a PDF, or read the full guide below.</span>
+  <span class="dl-alt">Or press Ctrl+P / ⌘P for a clean printed copy.</span>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+<!-- GUIDES-AUGMENTATION:START -->
+<div id="walkthrough">
+<h2>⚡ Walkthrough — do this, in this order</h2>
+<p class="walkthrough-lead">From sign-up to your first fulfilled order — the order to do things in.</p>
+<div class="card">
+  <div class="step-item"><div class="step-num">1</div><div class="step-text"><p><strong>Register as a supplier.</strong> Open <code>/distributor</code> to sign up, then work in the supplier portal at <code>/supplier-portal</code>.</p></div></div>
+  <div class="step-item"><div class="step-num">2</div><div class="step-text"><p><strong>Complete verification.</strong> Add your company details, contact information and documents, then submit for verification.</p></div></div>
+  <div class="step-item"><div class="step-num">3</div><div class="step-text"><p><strong>Add your first product.</strong> Open the catalog and create an item — name, description, price and image. Buyers cannot find what you have not listed.</p></div></div>
+  <div class="step-item"><div class="step-num">4</div><div class="step-text"><p><strong>Set your call-to-action.</strong> Choose your <strong>call-to-action button</strong> and your <strong>supplier type</strong> so buyers know exactly what clicking your listing does (quote, order, contact).</p></div></div>
+  <div class="step-item"><div class="step-num">5</div><div class="step-text"><p><strong>Get discovered.</strong> Your storefront appears in <code>/supplier-directory</code> and on the B2B surfaces such as <code>b2b-marketplace.html</code>. Keep the catalog current to stay visible.</p></div></div>
+  <div class="step-item"><div class="step-num">6</div><div class="step-text"><p><strong>Receive an order.</strong> Orders land in the supplier portal and follow a lifecycle — new → accepted → fulfilled. Open the order to see what was bought.</p></div></div>
+  <div class="step-item"><div class="step-num">7</div><div class="step-text"><p><strong>Process it.</strong> Accept the order, then mark it fulfilled once it has shipped or been delivered. That closes the loop for your buyer.</p></div></div>
+  <div class="step-item"><div class="step-num">8</div><div class="step-text"><p><strong>Know your buyers' rules.</strong> They earn and spend <strong>ZaarCash</strong> — 1 ZaarCash per $1.00 spent, 100 ZaarCash = $1.00, at most 10% of a bill redeemable, at least 100 ZaarCash banked before any redemption, and free items earning nothing. It is never “points”, never “credits”.</p></div></div>
+  <div class="step-item"><div class="step-num">9</div><div class="step-text"><p><strong>See the result.</strong> Fulfilled orders and your supplier rating build your standing on the B2B pages — the two things that make the next buyer choose you.</p></div></div>
+</div>
+<div class="tip-box"><p><strong>✅ You're done when:</strong> your catalog is live, your CTA and supplier type are set, and at least one order has been marked fulfilled.</p></div>
+</div>
+<!-- GUIDES-AUGMENTATION:END -->
+
+
+
 
 <!-- 1. Introduction -->
 <h2 id="introduction">1. Introduction</h2>
