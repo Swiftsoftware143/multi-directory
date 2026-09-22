@@ -28,6 +28,19 @@ Click the ♡ heart icon on any business listing to save it to your favorites.
 3. Show the code to the business to redeem
 4. Deal pages have countdown timers showing how long the offer lasts
 
+## ZaarCash Loyalty (💎)
+
+ZaarCash 💎 is ZaarHub's own loyalty currency — native to the directory, not a third-party service. You earn it as you shop and spend it at participating businesses across **every** ZaarHub city; new cities join the same programme automatically. Only businesses that **sign up** to the loyalty programme participate — look for the ZaarCash 💎 badge on their listing.
+
+- **Earn:** 1 ZaarCash per $1.00 of earnable spend at any participating business
+- **Value:** 100 ZaarCash = $1.00 (1 ZaarCash = 1¢)
+- **Redeem:** at most **10% of a bill** may be paid with ZaarCash
+- **Minimum:** you must bank at least **100 ZaarCash** (=$1.00) before you can redeem
+- **Free items earn nothing:** only the paid subtotal of a bill earns ZaarCash
+- **Network-wide:** earn at a business in one city and redeem at a business in another
+
+Your QR code, balance and transaction history live in your account — sign in and they appear in the "ZaarHub Rewards" section of any business profile at `/biz/:slug/:id`.
+
 ## Creating an Account (Free)
 Sign up to save favorites, claim deals, leave reviews, and get city newsletters.
 

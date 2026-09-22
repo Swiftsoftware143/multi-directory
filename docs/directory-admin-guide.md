@@ -62,6 +62,21 @@ Create one-question polls from the admin panel → **Polls** in sidebar:
 - Visitors vote once per poll, see live results after voting
 - Active polls show as a sidebar widget on directory pages
 
+## Loyalty Programme (ZaarCash)
+
+ZaarCash 💎 is the network's loyalty currency — **native to the platform**, not a third-party service. It is earned and spent across every city in the directory/network, and new cities join the same programme automatically. Only businesses that **sign up** to the loyalty programme participate — they show the ZaarCash 💎 badge.
+
+The rules currently shipped:
+
+- **Earn:** 1 ZaarCash per $1.00 of earnable spend at any participating business
+- **Value:** 100 ZaarCash = $1.00 (1 ZaarCash = 1¢)
+- **Redemption cap:** at most 10% of a bill may be paid with ZaarCash
+- **Minimum:** a member must bank at least 100 ZaarCash before redeeming
+- **Free items:** free or fully discounted items earn nothing — only the paid subtotal earns
+- **Network-wide:** earned and spent in every city
+
+**Every one of those numbers is a per-programme setting, not a constant.** Edit them in the admin panel's **⭐ Loyalty Programmes** card — earn rate, redemption cap %, minimum balance to redeem, whether free items earn nothing, and the currency's name and icon, plus the per-check-in, per-visit and per-redemption rates. A programme can be scoped to one directory or a whole network, so another directory could call its currency something else and run different numbers — same code, different settings. A "Loyalty Terms" legal page can also be published per directory (see Legal Pages above).
+
 ## Branding
 Custom colors, logos, favicon per directory.
 

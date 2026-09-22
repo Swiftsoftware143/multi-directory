@@ -33,3 +33,7 @@ Local polls appear on city directory pages. Cast your vote on community topics r
 - Detailed descriptions get more inquiries
 - Accurate pricing builds trust
 - Set realistic delivery zones
+
+## ZaarCash Loyalty (💎)
+
+Your B2B deals run on the same deal system, and ZaarHub's loyalty currency — **ZaarCash 💎** — is native to the directory (not a third-party service) and network-wide across every city. Customers earn **1 ZaarCash per $1.00** of earnable spend at any participating business, and **100 ZaarCash = $1.00**. Redemption is capped at **10% of a bill**, a customer must bank at least **100 ZaarCash** before redeeming, and free or fully discounted items earn nothing. Only businesses that sign up to the loyalty programme participate and show the ZaarCash 💎 badge. The earn rate, cap % and minimum balance are programme settings the directory operator controls.

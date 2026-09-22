@@ -3,7 +3,7 @@
 Sign into your dashboard through your city's directory page at `directory.swiftsoftware.net`.
 
 ## Your Dashboard
-Manage your listing, run deals, publish articles, engage with your community. The portal has tabs across the top: Dashboard, Credits, Vouchers, Referrals, Rewards, PIN, Scanner, Pledges, Offers, Legal, **Settings**, and Surveys.
+Manage your listing, run deals, publish articles, engage with your community. The portal has tabs across the top: Dashboard, ZaarCash, Vouchers, Referrals, Rewards, PIN, Scanner, Pledges, Offers, Legal, **Settings**, and Surveys.
 
 ## Connected Services — Unlock Campaigns & Bookings
 
@@ -16,7 +16,7 @@ Your portal can connect to two SwiftSoftware products that add powerful features
 
 | Service | Sign Up At | What You Get |
 |---------|-----------|-------------|
-| **IncentiveSwift** | `https://incentiveswift.com` | Connected campaign/IQS funnel linking and smart surveys (loyalty points engine is now native to the directory) |
+| **IncentiveSwift** | `https://incentiveswift.com` | Connected campaign/IQS funnel linking and smart surveys (the ZaarCash loyalty engine is native to the directory) |
 | **CoreSwift CRM** | `https://coreswiftcrm.com` | Calendar, bookings, contact management, CRM pipeline |
 
 Use the same email as your directory account so the system auto-detects you. If emails don't match, the service connection won't work and you won't be able to link services. Both sites have a "Get Started" / "Free Trial" button — the signup form is on the app login page.
@@ -64,7 +64,7 @@ The campaign builder, calendar manager, and booking dashboard are managed in Inc
 
 | Task | Where |
 |------|-------|
-| Create a loyalty campaign | Your directory (native loyalty engine) |
+| Create a loyalty campaign | Your directory (native ZaarCash loyalty engine) |
 | Build SMS funnels | IncentiveSwift |
 | Manage your calendar & bookings | CoreSwift CRM (sign in at `app.coreswiftcrm.com`) |
 | View/respond to bookings | CoreSwift CRM |
@@ -74,6 +74,22 @@ The campaign builder, calendar manager, and booking dashboard are managed in Inc
 
 ### Disconnecting
 Go to Settings tab → click **Disconnect** on any connected service. You can reconnect anytime.
+
+---
+
+## ZaarCash Loyalty (💎)
+
+ZaarCash 💎 is ZaarHub's own loyalty programme — **native to the directory**, not a third-party service. Customers earn ZaarCash at your business and spend it network-wide: earned in one city, redeemable in another, with new cities joining automatically. Only businesses that **sign up** to the loyalty programme participate, and participants show the **ZaarCash 💎 badge**.
+
+The rules your customers are promised:
+
+- **Earn:** 1 ZaarCash per $1.00 of earnable spend at your business
+- **Value:** 100 ZaarCash = $1.00 (1 ZaarCash = 1¢)
+- **Redemption cap:** at most 10% of a bill may be paid with ZaarCash — on a $40 bill that is $4.00
+- **Minimum:** a customer must bank at least 100 ZaarCash before redeeming any
+- **Free items earn nothing:** only the paid subtotal of a bill earns ZaarCash
+
+Those numbers are programme settings the directory operator controls in the admin panel's **⭐ Loyalty Programmes** card (earn rate, redemption cap %, minimum balance, free-items rule, currency name and icon, plus per-check-in/per-visit/per-redemption rates) — so treat them as your network's current settings rather than per-merchant knobs. Your staff process transactions with the mobile **Scanner PWA** at `/scanner` (check-in, purchase, redeem), and every scan records a unique transaction ID for billing and dispute resolution.
 
 ---
 
@@ -228,7 +244,7 @@ You choose one CTA type for each listing. Here's what each option does when a vi
 | **Call Now** | Taps to call your business phone number — works on mobile |
 | **Visit Website** | Opens your website in a new browser tab |
 | **Message Us** | Opens the messaging form — the message lands in your dashboard inbox |
-| **Join Rewards** | Links to your directory's native loyalty/rewards program |
+| **Join Rewards** | Links to your directory's native ZaarCash loyalty programme |
 | **Claim Deal** | Takes visitors to your active deal or special offer |
 | **View Menu** | Opens your menu page (great for restaurants) |
 | **Get Directions** | Opens a map with driving directions to your business |

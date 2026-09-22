@@ -71,7 +71,7 @@ a:hover{text-decoration:underline}
 </div>
 
 <div style="background:#fef3c7;border-bottom:2px solid #f59e0b;text-align:center;padding:8px 16px;font-size:0.85rem;color:#92400e;">
-  ⚠️ <strong>Loyalty Program</strong> — Powered by the native MultiDirectory loyalty engine + clearinghouse (no separate incentive engine).
+  ⚠️ <strong>Loyalty Program</strong> — ZaarCash 💎, native to the platform (no separate incentive engine). Every rate is admin-configurable.
 </div>
 <div class="hero">
   <h2>🛡️ Admin Guide — Managing the Loyalty Platform</h2>
@@ -134,7 +134,7 @@ a:hover{text-decoration:underline}
   <h4 style="margin:16px 0 8px;font-size:.95rem">What Business Owners See After Approval</h4>
   <ul>
     <li>Login at <strong>https://zaarhub.com/portal</strong> with their email and temp password</li>
-    <li><strong>Business portal</strong> at <strong>/business-portal.html</strong> with credit rate config, purchase PIN, offers management, scanner, guides</li>
+    <li><strong>Business portal</strong> at <strong>/business-portal.html</strong> with purchase PIN, offers management, scanner, guides</li>
     <li>They can change their password, manage their listing, create loyalty offers, and track performance</li>
   </ul>
 </div>
@@ -145,7 +145,7 @@ a:hover{text-decoration:underline}
   <p>The admin panel is your central hub for monitoring and managing the entire ZaarHub Loyalty Program.</p>
   <ul>
     <li><strong>All tenants</strong> — View every merchant, supplier, and participant across the platform</li>
-    <li><strong>All transactions</strong> — Monitor credit earnings, redemptions, and referral activity in real-time</li>
+    <li><strong>All transactions</strong> — Monitor ZaarCash earnings, redemptions, and referral activity in real-time</li>
     <li><strong>Flagged activity</strong> — Review transactions that triggered automated fraud detection rules</li>
     <li><strong>System health</strong> — Check API status, queue lengths, and service availability</li>
   </ul>
@@ -160,7 +160,7 @@ a:hover{text-decoration:underline}
   <p>As an admin, you have oversight of all tenant accounts. Your responsibilities include:</p>
   <ul>
     <li><strong>View accounts</strong> — Access merchant, supplier, and participant profiles when needed for support</li>
-    <li><strong>Manage configurations</strong> — Adjust tenant settings when authorized (credit rates, offer limits, account status)</li>
+    <li><strong>Manage configurations</strong> — Adjust tenant settings when authorized (offer limits, account status)</li>
     <li><strong>Account recovery</strong> — Help merchants and participants regain access to locked accounts</li>
     <li><strong>Account lifecycle</strong> — Activate, suspend, or deactivate accounts according to Program rules</li>
   </ul>
@@ -175,7 +175,7 @@ a:hover{text-decoration:underline}
   <p>Fraud detection is one of the most critical admin functions. The system flags suspicious transactions automatically, but you need to investigate.</p>
   <p><strong>What to look for:</strong></p>
   <ul>
-    <li><strong>Unusual patterns</strong> — A single customer earning credits at many different businesses in a short period, or a business seeing unusual redemption spikes</li>
+    <li><strong>Unusual patterns</strong> — A single customer earning ZaarCash at many different businesses in a short period, or a business seeing unusual redemption spikes</li>
     <li><strong>PIN misuse</strong> — Multiple verification failures with the same PIN, or verifications occurring at odd hours with no customers present</li>
     <li><strong>Self-referral loops</strong> — Multiple accounts referring themselves using different emails or phone numbers</li>
     <li><strong>Inflated purchase amounts</strong> — A business consistently reporting purchases much higher than their average ticket, especially when the customer is a frequent visitor</li>
@@ -197,12 +197,12 @@ a:hover{text-decoration:underline}
   <ul>
     <li><strong>Account recovery</strong> — Verify identity using email, phone, or security questions, then reset access</li>
     <li><strong>PIN resets</strong> — Generate a new Purchase PIN for merchants who've lost access or suspect compromise</li>
-    <li><strong>Credit corrections</strong> — Manually adjust credit balances when system errors occur. <strong>Every manual adjustment must include an audit trail:</strong> reason, authorization, timestamp</li>
+    <li><strong>ZaarCash corrections</strong> — Manually adjust ZaarCash balances when system errors occur. <strong>Every manual adjustment must include an audit trail:</strong> reason, authorization, timestamp</li>
     <li><strong>Dispute resolution</strong> — Mediate between participants and merchants when a transaction is disputed. Review system logs to determine the correct outcome</li>
     <li><strong>Technical support</strong> — Help tenants with portal access, scanner issues, or offer configuration</li>
   </ul>
   <div class="tip-box">
-    <strong>💡 Tip:</strong> For credit corrections, follow the policy: under 1,000 credits = admin-level approval; 1,000+ credits = supervisor authorization required.
+    <strong>💡 Tip:</strong> For ZaarCash corrections, follow the policy: under 1,000 ZaarCash = admin-level approval; 1,000+ ZaarCash = supervisor authorization required.
   </div>
 </div>
 
@@ -211,8 +211,8 @@ a:hover{text-decoration:underline}
   <h3><span class="emoji">📋</span> 6. Audit & Logging</h3>
   <p>The ZaarHub Platform maintains a comprehensive audit trail. All admin actions are logged and subject to review.</p>
   <ul>
-    <li><strong>All actions logged</strong> — Every verification, credit adjustment, account modification, and offer change is recorded with the admin who performed it</li>
-    <li><strong>Manual adjustments documented</strong> — When you make a manual credit correction or account change, the system records the before/after state, reason, and your admin ID</li>
+    <li><strong>All actions logged</strong> — Every verification, ZaarCash adjustment, account modification, and offer change is recorded with the admin who performed it</li>
+    <li><strong>Manual adjustments documented</strong> — When you make a manual ZaarCash correction or account change, the system records the before/after state, reason, and your admin ID</li>
     <li><strong>Regular audit reviews</strong> — Audit logs are reviewed on a recurring schedule to ensure compliance with policies</li>
     <li><strong>Retention</strong> — Logs are retained for a minimum of 3 years per regulatory requirements</li>
   </ul>
@@ -275,14 +275,14 @@ a:hover{text-decoration:underline}
 
 <!-- 11. Referral Management -->
 <div class="card">
-  <h3><span class="emoji">👥</span> 11. Referrals & Zaarcash</h3>
+  <h3><span class="emoji">👥</span> 11. Referrals &amp; ZaarCash</h3>
   <p>Admins verify and manage referrals:</p>
   <ul>
     <li><strong>Referrals tab</strong> — tabbed view: Pending | Verified | Paid</li>
     <li><strong>Pending</strong> — shows referrer, referee, direction, and action buttons</li>
-    <li><strong>Verify</strong> button — marks referral as paid and grants Zaarcash to referrer via the MultiDirectory loyalty engine</li>
+    <li><strong>Verify</strong> button — marks referral as paid and grants ZaarCash to the referrer via the native loyalty engine</li>
     <li><strong>Reject</strong> button — marks as rejected</li>
-    <li>Summary cards: Total referrals, Pending count, Total Zaarcash awarded</li>
+    <li>Summary cards: Total referrals, Pending count, Total ZaarCash awarded</li>
     <li>Amounts by direction: visitor→visitor: 50, business→business: 200 (2×), business→visitor: 50, visitor→business: 100</li>
   </ul>
 </div>
@@ -290,7 +290,23 @@ a:hover{text-decoration:underline}
 <!-- 12. Loyalty Program Architecture (NEW) -->
 <div class="card">
   <h3><span class="emoji">🏆</span> 12. Native Loyalty &amp; Clearinghouse Architecture</h3>
-  <p>The ZaarHub Loyalty Program is now <strong>native to the Multi-Directory platform</strong>. Loyalty capability is built into every directory — there is no separate IncentiveSwift engine. Each directory admin creates and configures their own loyalty programs, and members are <code>visitor_accounts</code> of the directory. The native <strong>clearinghouse</strong> handles ZaarCash billing, reimbursement, and point expiry.</p>
+  <p>The ZaarHub Loyalty Program is <strong>native to the Multi-Directory platform</strong>. Loyalty capability is built into every directory — there is no separate IncentiveSwift engine. Each directory admin creates and configures their own loyalty programmes, and members are <code>visitor_accounts</code> of the directory. The native <strong>clearinghouse</strong> handles ZaarCash billing, reimbursement, and expiry.</p>
+
+  <p><strong>The programme rules the guides state as fact (ZaarHub's current settings):</strong></p>
+  <ul>
+    <li><strong>Currency:</strong> ZaarCash 💎 — never "points" or "credits"</li>
+    <li><strong>Earn:</strong> 1 ZaarCash per $1.00 of earnable spend at any participating business</li>
+    <li><strong>Value:</strong> 100 ZaarCash = $1.00 (1 ZaarCash = 1¢)</li>
+    <li><strong>Redemption cap:</strong> at most 10% of a bill may be paid with ZaarCash</li>
+    <li><strong>Minimum:</strong> a member must bank at least 100 ZaarCash before redeeming</li>
+    <li><strong>Free items:</strong> free or fully discounted items earn nothing — only the paid subtotal earns</li>
+    <li><strong>Network-wide:</strong> earned and spent across every ZaarHub city; new cities join the same programme automatically</li>
+    <li><strong>Opt-in:</strong> only businesses that sign up participate — they show the ZaarCash 💎 badge</li>
+    <li><strong>Native:</strong> it is ZaarHub's own programme, not a third-party service</li>
+  </ul>
+  <div class="warn-box">
+    <strong>⭐ Every one of those numbers is a per-programme setting, not a constant.</strong> Edit them in the admin panel's <strong>⭐ Loyalty Programmes</strong> card: the <strong>earn rate</strong> (ZaarCash per $1 spent), the <strong>redemption cap %</strong> (max % of a bill payable), the <strong>minimum balance to redeem</strong>, whether <strong>free items earn nothing</strong>, and the currency's <strong>name and icon</strong> — plus the <strong>per-check-in</strong>, <strong>per-visit</strong> and <strong>per-redemption</strong> rates. A programme may be scoped to one directory or a whole network (ZaarHub runs a single network-wide programme). Another directory could call its currency something else and run different numbers — same code, different settings.
+  </div>
 
   <p><strong>Loyalty Programs (per-directory):</strong></p>
   <ul>
@@ -329,8 +345,8 @@ a:hover{text-decoration:underline}
     <li><code>POST /networks/:slug/clear/scan</code> — process a scan (check-in/purchase/redeem) through the clearinghouse</li>
     <li><code>GET /networks/:slug/clear/treasury</code> — treasury summary</li>
     <li><code>GET /networks/:slug/clear/ledgers</code> — business ledgers</li>
-    <li><code>GET /networks/:slug/clear/caps</code>, <code>PUT /networks/:slug/clear/caps</code> — category caps (10% bill cap)</li>
-    <li><code>POST /networks/:slug/clear/expire</code> — run point expiry (365-day rolling)</li>
+    <li><code>GET /networks/:slug/clear/caps</code>, <code>PUT /networks/:slug/clear/caps</code> — redemption caps (max % of a bill payable with ZaarCash; 10% default)</li>
+    <li><code>POST /networks/:slug/clear/expire</code> — run ZaarCash expiry (365-day rolling)</li>
     <li><code>GET /networks/:slug/clear/logs</code> — clearing logs</li>
   </ul>
 
@@ -566,7 +582,7 @@ a:hover{text-decoration:underline}
   </details>
 </div>
 
-<a href="/guides/" class="back-link">← Back to All Guides</a>
+<a href="/guides/index.html" class="back-link">← Back to All Guides</a>
 
 </div>
 

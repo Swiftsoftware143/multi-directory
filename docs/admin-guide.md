@@ -158,6 +158,21 @@ Separate back office at `zaarhub.com/supplier/` for distributors, wholesalers, f
 
 All guides available at `zaarhub.com/guides/`.
 
+## Loyalty Programme (ZaarCash)
+
+ZaarCash 💎 is ZaarHub's own loyalty currency — **native to the MultiDirectory platform**, not a third-party service. Members (`visitor_accounts`) earn and spend it across every city in the network, and new cities join the same programme automatically. Only businesses that **sign up** to the loyalty programme participate — they show the ZaarCash 💎 badge.
+
+The rules ZaarHub currently runs:
+
+- **Earn:** 1 ZaarCash per $1.00 of earnable spend at any participating business
+- **Value:** 100 ZaarCash = $1.00 (1 ZaarCash = 1¢)
+- **Redemption cap:** at most 10% of a bill may be paid with ZaarCash
+- **Minimum:** a member must bank at least 100 ZaarCash before redeeming
+- **Free items:** free or fully discounted items earn nothing — only the paid subtotal earns
+- **Network-wide:** earned and spent in every ZaarHub city
+
+**Every one of those numbers is a per-programme setting, not a constant.** Edit them in the admin panel's **⭐ Loyalty Programmes** card: the earn rate (ZaarCash per $1 spent), the redemption cap %, the minimum balance to redeem, whether free items earn nothing, and the currency's name and icon — plus the per-check-in, per-visit and per-redemption rates. A programme can be scoped to one directory or a whole network (ZaarHub runs one network-wide programme), so another directory could call its currency something else and run different numbers — same code, different settings. Programme API: `GET/POST /api/v1/directories/:slug/loyalty/programs`, `PUT/DELETE .../:program_id`.
+
 ## Cross-Platform Tag Sync
 
 ### Overview

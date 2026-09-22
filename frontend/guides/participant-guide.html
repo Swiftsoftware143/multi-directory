@@ -81,7 +81,7 @@ a:hover{text-decoration:underline}
 </div>
 
 <div style="background:#d1fae5;border-bottom:2px solid #10b981;text-align:center;padding:8px 16px;font-size:0.85rem;color:#065f46;">
-  ✅ <strong>ZaarCash Loyalty</strong> — 1 ZaarCash = 1¢ of value. Powered by the MultiDirectory clearinghouse.
+  ✅ <strong>ZaarCash Loyalty</strong> — 100 ZaarCash = $1.00. ZaarHub's own loyalty programme, earned and spent network-wide.
 </div>
 <div class="hero">
   <h2>🎉 How the Loyalty Program Works for You</h2>
@@ -103,7 +103,7 @@ a:hover{text-decoration:underline}
 <!-- 1. Getting Started -->
 <div class="card">
   <h3><span class="emoji">🚀</span> 1. Getting Started</h3>
-  <p>Getting started with the ZaarHub Loyalty Program is quick and free. Here's what you need to know:</p>
+  <p>Getting started with the ZaarHub Loyalty Program is quick and free. Only businesses that <strong>sign up to the loyalty programme</strong> participate — look for the <strong>ZaarCash 💎 badge</strong> on their listing. Here's what you need to know:</p>
   <div class="step-item">
     <div class="step-num">1</div>
     <div class="step-text"><p><strong>Scan a Business QR Code</strong> — When you visit a participating business, look for their ZaarHub QR code. Scanning it opens the sign-up flow directly.</p></div>
@@ -124,7 +124,7 @@ a:hover{text-decoration:underline}
 <!-- 2. Earning ZaarCash -->
 <div class="card">
   <h3><span class="emoji">💰</span> 2. Earning ZaarCash</h3>
-  <p>Every time you spend money at a participating business, you earn ZaarCash — typically <strong>1 point per $1.00</strong> of your purchase. The process is automatic once the business verifies your purchase.</p>
+  <p>Every time you spend money at a participating business, you earn ZaarCash — <strong>1 ZaarCash per $1.00</strong> of earnable spend. The process is automatic once the business verifies your purchase.</p>
   <p><strong>How it works:</strong></p>
   <div class="step-item">
     <div class="step-num">1</div>
@@ -142,14 +142,15 @@ a:hover{text-decoration:underline}
     <div class="step-num">4</div>
     <div class="step-text"><p>ZaarCash is added to your account <strong>instantly</strong></p></div>
   </div>
-  <p><strong>Standard rate:</strong> 1 point per $1.00 spent. So a $5 purchase earns <strong>5 ZaarCash</strong>, and a $50 purchase earns <strong>50 ZaarCash</strong>. Points accumulate in one network-wide wallet across every participating business and city.</p>
-  <p><strong>What your points are worth:</strong></p>
-  <div class="step-item"><div class="step-num">50</div><div class="step-text"><p><strong>50 points = $0.50</strong> of buying power</p></div></div>
-  <div class="step-item"><div class="step-num">100</div><div class="step-text"><p><strong>100 points = $1.00</strong> of buying power</p></div></div>
-  <div class="step-item"><div class="step-num">500</div><div class="step-text"><p><strong>500 points = $5.00</strong> of buying power</p></div></div>
+  <p><strong>Standard rate:</strong> 1 ZaarCash per $1.00 of earnable spend. So a $5 purchase earns <strong>5 ZaarCash</strong>, and a $50 purchase earns <strong>50 ZaarCash</strong>. ZaarCash accumulates in one network-wide wallet across every participating business and city — earn at a business in one city and redeem it in another, and any new city joins the same programme automatically.</p>
+  <p><strong>What your ZaarCash are worth: 100 ZaarCash = $1.00</strong> of buying power (1 ZaarCash = 1¢).</p>
+  <div class="step-item"><div class="step-num">100</div><div class="step-text"><p><strong>100 ZaarCash = $1.00</strong> — the minimum you must bank before you can redeem anything.</p></div></div>
+  <div class="step-item"><div class="step-num">500</div><div class="step-text"><p><strong>500 ZaarCash = $5.00</strong> of buying power</p></div></div>
+  <div class="step-item"><div class="step-num">1,000</div><div class="step-text"><p><strong>1,000 ZaarCash = $10.00</strong> of buying power</p></div></div>
   <div class="tip-box">
-    <strong>💡 Tip:</strong> 1 ZaarCash always equals 1¢ of value. No hidden rates — what you earn is what you can spend.
+    <strong>💡 Tip:</strong> 100 ZaarCash always equals $1.00 of value. No hidden rates — what you earn is what you can spend.
   </div>
+  <p><strong>Free items earn nothing:</strong> if an item is free or fully discounted, only the <strong>paid subtotal</strong> of your bill earns ZaarCash — a 100%-off deal mints none. ZaarCash is ZaarHub's own loyalty programme, built into the directory (not a third-party service).</p>
 </div>
 
 <!-- 3. Your QR Code &amp; Loyalty Display -->
@@ -164,7 +165,7 @@ a:hover{text-decoration:underline}
     <li><strong>Never share your password:</strong> Your account password is secret. Your QR code is just an identifier, not a credential.</li>
     <li><strong>Permanent:</strong> Your QR code doesn't change. Screenshot it for quick access if you like.</li>
   </ul>
-  <p><strong>How it works on business profiles:</strong> The loyalty card on each business listing (<code>/biz/:slug/:id</code>) fetches your loyalty data from the native MultiDirectory loyalty engine automatically when you're logged in. It shows your current tier, points balance, and a QR that any business can scan at checkout.</p>
+  <p><strong>How it works on business profiles:</strong> The loyalty card on each business listing (<code>/biz/:slug/:id</code>) fetches your loyalty data from the native loyalty engine automatically when you're logged in. It shows your current tier, ZaarCash balance, and a QR that any business can scan at checkout.</p>
   <div class="tip-box">
     <strong>💡 Tip:</strong> Turn up your screen brightness so the business scanner can read your QR code easily, especially in bright store lighting. The scanner uses your phone's camera and processes codes in under a second.
   </div>
@@ -184,18 +185,14 @@ a:hover{text-decoration:underline}
   </div>
   <div class="step-item">
     <div class="step-num">3</div>
-    <div class="step-text"><p>The cashier applies points as a discount up to the business category's cap</p></div>
+    <div class="step-text"><p>The cashier applies ZaarCash as a discount, up to 10% of the bill</p></div>
   </div>
   <div class="step-item">
     <div class="step-num">4</div>
     <div class="step-text"><p>Discount is applied automatically — ZaarCash is deducted, savings are yours!</p></div>
   </div>
-  <p><strong>Example:</strong> You have 200 ZaarCash ($2.00 value). On a $20 restaurant bill (100% cap), you could apply points to cover any amount up to your balance — say $2.00 of the bill, saving you $2.00.</p>
-  <p><strong>Redemption caps:</strong> how much of a purchase can be paid with points depends on the business's category:</p>
-  <div class="step-item"><div class="step-num">100%</div><div class="step-text"><p><strong>restaurant, retail, services</strong> — can cover the full bill</p></div></div>
-  <div class="step-item"><div class="step-num">50%</div><div class="step-text"><p><strong>homegoods</strong> — up to half the bill</p></div></div>
-  <div class="step-item"><div class="step-num">20%</div><div class="step-text"><p><strong>grocery, convenience, fuel</strong> — up to 20% of the bill</p></div></div>
-  <div class="step-item"><div class="step-num">0%</div><div class="step-text"><p><strong>tobacco</strong> — points not accepted</p></div></div>
+  <p><strong>Example:</strong> You have 300 ZaarCash ($3.00 value) and the bill is $20. You may pay at most <strong>10% of the bill</strong> with ZaarCash — $2.00 — so $200 ZaarCash is applied and the remaining $18.00 is paid normally. You must also hold at least <strong>100 ZaarCash</strong> before any redemption is allowed at all.</p>
+  <p><strong>The redemption cap:</strong> at most <strong>10% of a bill</strong> may be paid with ZaarCash, whatever your balance. On a $20 bill that is $2.00; on a $100 bill, $10.00. The cap keeps the programme healthy for participating businesses and is applied automatically at the register.</p>
   <div class="tip-box">
     <strong>💡 Tip:</strong> The cap is applied automatically at the register — the cashier will show you the maximum you can apply before finalizing.
   </div>
@@ -228,10 +225,10 @@ a:hover{text-decoration:underline}
   <p>Stay on top of your ZaarCash and rewards anytime:</p>
   <ul>
     <li><strong>Log into the visitor portal</strong> — Your dashboard shows your current ZaarCash balance and recent transactions</li>
-    <li><strong>Transaction history</strong> — See every point earned and redeemed, including which business and the date</li>
+    <li><strong>Transaction history</strong> — See every ZaarCash earned and redeemed, including which business and the date</li>
   </ul>
   <div class="tip-box">
-    <strong>💡 Point expiry:</strong> ZaarCash older than <strong>365 days</strong> is expired on a rolling basis. Redeem regularly to keep your balance working for you.
+    <strong>💡 ZaarCash expiry:</strong> ZaarCash older than <strong>365 days</strong> is expired on a rolling basis. Redeem regularly to keep your balance working for you.
   </div>
 </div>
 
@@ -331,7 +328,7 @@ a:hover{text-decoration:underline}
   </ul>
 </div>
 
-<a href="/guides/" class="back-link">← Back to All Guides</a>
+<a href="/guides/index.html" class="back-link">← Back to All Guides</a>
 <a href="merchant-guide.html" class="back-link" style="float:right;">Merchant Guide →</a>
 
 </div>
