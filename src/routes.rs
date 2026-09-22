@@ -745,7 +745,8 @@ pub fn create_router(s: AppState) -> Router {
             "/email/templates/:id",
             get(email::get_template)
                 .put(email::update_template)
-                .delete(email::delete_template),
+                .delete(email::delete_template)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/email/campaigns",
@@ -1120,11 +1121,13 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route(
             "/directory-events/unprocessed",
-            get(automation::unprocessed_events),
+            get(automation::unprocessed_events)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/directory-events/:id/process",
-            post(automation::mark_event_processed),
+            post(automation::mark_event_processed)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route("/n8n/webhook", post(automation::n8n_webhook_receiver))
         .route("/n8n/health", get(automation::n8n_health))
@@ -1323,24 +1326,33 @@ pub fn create_router(s: AppState) -> Router {
             "/api-keys/:id",
             get(api_complete::get_api_key)
                 .put(api_complete::update_api_key)
-                .delete(api_complete::delete_api_key),
+                .delete(api_complete::delete_api_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
-        .route("/api-keys/:id/usage", get(api_complete::get_api_key_usage))
+        .route(
+            "/api-keys/:id/usage",
+            get(api_complete::get_api_key_usage)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/api-keys/verify", post(api_complete::verify_api_key))
         // ??? Phase 4: Webhook management
         .route(
             "/webhooks",
-            get(api_complete::list_webhooks).post(api_complete::create_webhook),
+            get(api_complete::list_webhooks)
+                .post(api_complete::create_webhook)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/webhooks/:id",
             get(api_complete::get_webhook)
                 .put(api_complete::update_webhook)
-                .delete(api_complete::delete_webhook),
+                .delete(api_complete::delete_webhook)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/webhooks/:id/deliveries",
-            get(api_complete::list_webhook_deliveries),
+            get(api_complete::list_webhook_deliveries)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         // ??? Provider keys management
         .route(
@@ -1682,11 +1694,13 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route(
             "/zaarhub/admin/provider-keys/google-places/test",
-            post(zaarhub_admin::test_gplaces_key),
+            post(zaarhub_admin::test_gplaces_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/zaarhub/admin/places/search",
-            get(zaarhub_admin::places_text_search),
+            get(zaarhub_admin::places_text_search)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         // Round 5 T3 - discovery queue: persisted per directory, franchise-filtered,
         // deduped against the directory's own businesses.
@@ -1694,20 +1708,24 @@ pub fn create_router(s: AppState) -> Router {
             "/zaarhub/admin/discovery/queue",
             get(crate::handlers::discovery_queue::list_queue)
                 .post(crate::handlers::discovery_queue::push_results)
-                .delete(crate::handlers::discovery_queue::clear_queue),
+                .delete(crate::handlers::discovery_queue::clear_queue)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/zaarhub/admin/discovery/queue/add-selected",
-            post(crate::handlers::discovery_queue::add_selected),
+            post(crate::handlers::discovery_queue::add_selected)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         // Round 6 (U2) — queue review UI: tick/untick rows + override an auto-mapped category.
         .route(
             "/zaarhub/admin/discovery/queue/select",
-            post(crate::handlers::discovery_queue::set_selection),
+            post(crate::handlers::discovery_queue::set_selection)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/zaarhub/admin/discovery/queue/category",
-            post(crate::handlers::discovery_queue::set_category),
+            post(crate::handlers::discovery_queue::set_category)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/ads/active/:directory_id",
