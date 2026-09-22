@@ -168,20 +168,17 @@ pub async fn b2b_register(
         ));
     }
 
-    let valid_types = [
-        "association",
-        "farm",
-        "wholesaler",
-        "distributor",
-        "manufacturer",
-        "other",
-    ];
-    let bt_lower = req.business_type.to_lowercase();
-    if !valid_types.contains(&bt_lower.as_str()) {
+    // ONE source of truth for the allowed types (card B53): the same constant that
+    // migration 100 writes into the `businesses_business_type_check` constraint and that
+    // `GET /api/v1/b2b/business-types` serves to the register UI. Previously this list
+    // was a private literal that refused `supplier`, `local` and `chain` (so registering
+    // as a supplier was impossible) while accepting `other`, which the database rejects.
+    let bt_lower = crate::business_types::normalize(&req.business_type);
+    if !crate::business_types::is_valid(&bt_lower) {
         return Err(AppError::Validation(format!(
             "Invalid business_type '{}'. Must be one of: {}",
             req.business_type,
-            valid_types.join(", ")
+            crate::business_types::BUSINESS_TYPES.join(", ")
         )));
     }
 
@@ -210,20 +207,20 @@ pub async fn b2b_register(
         .map_err(|e| AppError::Hash(e.to_string()))?
         .to_string();
 
-    // Create visitor_account
-    let visitor = sqlx::query_as::<_, crate::handlers::portal::VisitorAccount>(
-        "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, business_type) \
-         VALUES ($1, $2, $3, $4, NULL, $5) RETURNING *"
-    )
-    .bind(&req.email)
-    .bind(&password_hash)
-    .bind(&req.name)
-    .bind(&req.phone)
-    .bind(&bt_lower)
-    .fetch_one(&s.db)
-    .await?;
+    // ── Atomic registration (card B53) ───────────────────────────────────────────────
+    // Everything below runs in ONE transaction. Previously the visitor_accounts row was
+    // committed on its own and the business insert followed it, so a database rejection of
+    // the business_type (e.g. `other`, which the constraint refused) answered HTTP 500 and
+    // left a PERMANENTLY ORPHANED account: a login that owns no business. Registration is
+    // one unit of work — either the account, its business and its claim all exist, or
+    // nothing does.
+    let mut tx =
+        s.db.begin()
+            .await
+            .map_err(|e| AppError::Internal(format!("Could not start registration: {}", e)))?;
 
-    // Create a business record for the supplier (linked via email)
+    // Create the business record for the supplier (linked to the account by email).
+    // Inserted FIRST so a constraint rejection can never leave a committed account behind.
     let business_id = Uuid::new_v4();
     let biz_name = req.name.as_deref().unwrap_or("Unnamed Supplier");
     let biz_slug = format!(
@@ -246,7 +243,7 @@ pub async fn b2b_register(
 
     sqlx::query(
         "INSERT INTO businesses (id, name, email, phone, slug, business_type, description, is_active, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())"
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())",
     )
     .bind(business_id)
     .bind(biz_name)
@@ -255,7 +252,34 @@ pub async fn b2b_register(
     .bind(&biz_slug)
     .bind(&bt_lower)
     .bind(&biz_desc)
-    .execute(&s.db)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        // A business_type the database refuses must be a clean 4xx that says so — never a
+        // 500 — and, because this is the first write in the transaction, the rollback means
+        // no account is left behind either.
+        if e.to_string().contains("businesses_business_type_check") {
+            AppError::Validation(format!(
+                "Invalid business_type '{}'. Must be one of: {}",
+                req.business_type,
+                crate::business_types::BUSINESS_TYPES.join(", ")
+            ))
+        } else {
+            AppError::Internal(format!("Could not create the business record: {}", e))
+        }
+    })?;
+
+    // Create visitor_account
+    let visitor = sqlx::query_as::<_, crate::handlers::portal::VisitorAccount>(
+        "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, business_type) \
+         VALUES ($1, $2, $3, $4, NULL, $5) RETURNING *"
+    )
+    .bind(&req.email)
+    .bind(&password_hash)
+    .bind(&req.name)
+    .bind(&req.phone)
+    .bind(&bt_lower)
+    .fetch_one(&mut *tx)
     .await?;
 
     // Auto-claim: link the visitor account to the newly created business
@@ -269,14 +293,18 @@ pub async fn b2b_register(
     .bind(&req.name)
     .bind(&req.phone)
     .bind(visitor.id)
-    .execute(&s.db)
+    .execute(&mut *tx)
     .await?;
 
     // Update last_login
     sqlx::query("UPDATE visitor_accounts SET last_login_at = NOW() WHERE id = $1")
         .bind(visitor.id)
-        .execute(&s.db)
+        .execute(&mut *tx)
         .await?;
+
+    tx.commit()
+        .await
+        .map_err(|e| AppError::Internal(format!("Could not complete registration: {}", e)))?;
 
     // Fire tag sync in background
     let ts_db = s.db.clone();

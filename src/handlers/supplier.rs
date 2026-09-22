@@ -64,10 +64,12 @@ pub async fn get_supplier_profile(
         r#"SELECT b.id, b.name, b.email, b.phone, b.website, b.description
            FROM businesses b
            WHERE b.id = $1
-             AND b.business_type IN ('supplier','distributor','wholesaler','farm','association')
+             AND b.business_type = ANY($2)
            LIMIT 1"#,
     )
     .bind(biz_id)
+    // The supplier taxonomy lives in ONE place (card B53): src/business_types.rs.
+    .bind(crate::business_types::supplier_types_param())
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound("No supplier profile found for your account".into()))?;
@@ -138,7 +140,7 @@ pub async fn update_supplier_profile(
         "UPDATE businesses SET name=COALESCE($1,name), email=COALESCE($2,email), \
          phone=COALESCE($3,phone), website=COALESCE($4,website), description=COALESCE($5,description), \
          updated_at=NOW() WHERE id = $6 \
-         AND business_type IN ('supplier','distributor','wholesaler','farm','association')"
+         AND business_type = ANY($7)"
     )
     .bind(&req.name)
     .bind(&req.email)
@@ -146,6 +148,7 @@ pub async fn update_supplier_profile(
     .bind(&req.website)
     .bind(&req.description)
     .bind(biz_id)
+    .bind(crate::business_types::supplier_types_param())
     .execute(&s.db)
     .await?;
 
@@ -187,10 +190,11 @@ pub async fn update_delivery_settings(
         sqlx::query(
             "UPDATE businesses SET supplier_fields = jsonb_set(COALESCE(supplier_fields,'{}'::jsonb), '{delivery_areas}', $1, true), \
              updated_at=NOW() WHERE id = $2 \
-             AND business_type IN ('supplier','distributor','wholesaler','farm','association')"
+             AND business_type = ANY($3)"
         )
         .bind(&delivery_areas_json)
         .bind(biz_id)
+        .bind(crate::business_types::supplier_types_param())
         .execute(&s.db)
         .await?;
     }
@@ -200,10 +204,11 @@ pub async fn update_delivery_settings(
         sqlx::query(
             "UPDATE businesses SET supplier_fields = jsonb_set(COALESCE(supplier_fields,'{}'::jsonb), '{min_order}', $1, true), \
              updated_at=NOW() WHERE id = $2 \
-             AND business_type IN ('supplier','distributor','wholesaler','farm','association')"
+             AND business_type = ANY($3)"
         )
         .bind(&mo_json)
         .bind(biz_id)
+        .bind(crate::business_types::supplier_types_param())
         .execute(&s.db)
         .await?;
     }
@@ -233,11 +238,12 @@ pub async fn set_featured_product(
         "UPDATE businesses SET featured_product_id = $1, \
          featured_product_cta = COALESCE($2, featured_product_cta, 'Featured Product'), \
          updated_at = NOW() WHERE id = $3 \
-         AND business_type IN ('supplier','distributor','wholesaler','farm','association')",
+         AND business_type = ANY($4)",
     )
     .bind(req.product_id)
     .bind(&req.cta_text)
     .bind(biz_id)
+    .bind(crate::business_types::supplier_types_param())
     .execute(&s.db)
     .await?;
 

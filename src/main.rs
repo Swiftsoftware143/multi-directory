@@ -8,6 +8,7 @@ mod reminders;
 mod auth;
 mod beacon_middleware;
 mod branding_injector;
+mod business_types;
 mod config;
 mod db;
 mod error;
