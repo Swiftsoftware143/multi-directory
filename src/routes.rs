@@ -697,7 +697,11 @@ pub fn create_router(s: AppState) -> Router {
         .route("/listings", get(businesses::list_all_businesses))
         // ??? Analytics routes (Phase 3 Task 2)
         .route("/analytics/track", post(analytics::track_event))
-        .route("/analytics", get(analytics::list_events))
+        .route(
+            "/analytics",
+            get(analytics::list_events)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route(
             "/analytics/by-directory/:directory_id",
             get(analytics::by_directory),
@@ -733,7 +737,9 @@ pub fn create_router(s: AppState) -> Router {
         // ??? Email routes
         .route(
             "/email/templates",
-            get(email::list_templates).post(email::create_template),
+            get(email::list_templates)
+                .post(email::create_template)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/email/templates/:id",
@@ -837,7 +843,11 @@ pub fn create_router(s: AppState) -> Router {
         )
         // ??? Import/Export routes
         .route("/import", post(import_export::import_data))
-        .route("/import/logs", get(import_export::list_import_logs))
+        .route(
+            "/import/logs",
+            get(import_export::list_import_logs)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/import/logs/:id", get(import_export::get_import_log))
         .route(
             "/export/businesses/:directory_id",
@@ -866,7 +876,11 @@ pub fn create_router(s: AppState) -> Router {
             post(import_export::run_export_template),
         )
         // ??? Monetization routes (Phase 3 Task 3) - aliases at /monetization
-        .route("/monetization", get(monetization::monetization_dashboard))
+        .route(
+            "/monetization",
+            get(monetization::monetization_dashboard)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route(
             "/monetization/tiers",
             get(monetization::list_tiers).post(monetization::create_tier),
@@ -1100,7 +1114,9 @@ pub fn create_router(s: AppState) -> Router {
         // ??? Phase 4: Automation — directory events, n8n bridge
         .route(
             "/directory-events",
-            get(automation::list_events).post(automation::create_event),
+            get(automation::list_events)
+                .post(automation::create_event)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/directory-events/unprocessed",
@@ -1257,13 +1273,29 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route("/auth/me", get(auth_handler::me))
         .route("/auth/password", put(auth_handler::change_password))
-        .route("/dashboard/stats", get(admin::dashboard_stats))
+        // Card B52 — operator-only surfaces: auth_guard checks the JWT, never the role, so a free
+        // visitor signup read these (visitor emails, global revenue, audit log, all tenants' keys).
+        .route(
+            "/dashboard/stats",
+            get(admin::dashboard_stats)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route(
             "/domains",
-            get(domains::list_domains).post(domains::register_domain),
+            get(domains::list_domains)
+                .post(domains::register_domain)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
-        .route("/domains/:domain_id", delete(domains::remove_domain))
-        .route("/domains/:domain_id/verify", post(domains::verify_domain))
+        .route(
+            "/domains/:domain_id",
+            delete(domains::remove_domain)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/domains/:domain_id/verify",
+            post(domains::verify_domain)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/branding/:directory_id", put(branding::update_branding))
         .route(
             "/branding/:directory_id/upload",
@@ -1273,13 +1305,19 @@ pub fn create_router(s: AppState) -> Router {
             "/branding/:directory_id/extract",
             post(branding::extract_colors),
         )
-        .route("/members", get(admin::admin_members))
+        .route(
+            "/members",
+            get(admin::admin_members)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/portfolio/sync", post(admin::portfolio_sync))
         .route("/plans/:plan_id/domains", get(domains::check_plan_domains))
         // ??? Phase 4: API key management
         .route(
             "/api-keys",
-            get(api_complete::list_api_keys).post(api_complete::create_api_key),
+            get(api_complete::list_api_keys)
+                .post(api_complete::create_api_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/api-keys/:id",
@@ -1308,7 +1346,10 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/provider-keys",
             get(provider_keys_handler::list_provider_keys)
-                .post(provider_keys_handler::upsert_provider_key),
+                .post(provider_keys_handler::upsert_provider_key)
+                // Tenant-scoped in the handler (rows filter on claims.tid); refuse the visitor role,
+                // whose nil tenant must never reach a tenant API.
+                .route_layer(middleware::from_fn_with_state(s.clone(), tenant_guard)),
         )
         .route(
             "/provider-keys/:provider",
@@ -1327,7 +1368,8 @@ pub fn create_router(s: AppState) -> Router {
         // THE INBOUND PATH: MultiDirectory captures the lead, CoreSwift is the hub.
         .route(
             "/integrations/coreswift/status",
-            get(coreswift_integration_handler::coreswift_status),
+            get(coreswift_integration_handler::coreswift_status)
+                .route_layer(middleware::from_fn_with_state(s.clone(), tenant_guard)),
         )
         .route(
             "/integrations/coreswift/lists",
@@ -1371,7 +1413,9 @@ pub fn create_router(s: AppState) -> Router {
         // ??? Industry dashboard routes
         .route(
             "/industries",
-            get(industries::list_user_industries).post(industries::set_user_industry),
+            get(industries::list_user_industries)
+                .post(industries::set_user_industry)
+                .route_layer(middleware::from_fn_with_state(s.clone(), tenant_guard)),
         )
         .route(
             "/industries/:slug",
@@ -1613,20 +1657,28 @@ pub fn create_router(s: AppState) -> Router {
         // ??? ZaarHub Admin (legal pages + site config)
         .route(
             "/zaarhub/admin/legal",
-            get(zaarhub_admin::list_legal_pages).post(zaarhub_admin::save_legal_page),
+            get(zaarhub_admin::list_legal_pages)
+                .post(zaarhub_admin::save_legal_page)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/zaarhub/admin/legal/:slug",
-            get(zaarhub_admin::get_legal_page).delete(zaarhub_admin::delete_legal_page),
+            get(zaarhub_admin::get_legal_page)
+                .delete(zaarhub_admin::delete_legal_page)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/zaarhub/admin/config",
-            get(zaarhub_admin::get_site_config).patch(zaarhub_admin::update_site_config),
+            get(zaarhub_admin::get_site_config)
+                .patch(zaarhub_admin::update_site_config)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         // ZaarHub Admin — Google Places provider key (save/test for Populate Businesses)
         .route(
             "/zaarhub/admin/provider-keys/google-places",
-            get(zaarhub_admin::get_gplaces_key).post(zaarhub_admin::save_gplaces_key),
+            get(zaarhub_admin::get_gplaces_key)
+                .post(zaarhub_admin::save_gplaces_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/zaarhub/admin/provider-keys/google-places/test",
@@ -1715,7 +1767,11 @@ pub fn create_router(s: AppState) -> Router {
         // ? My Bookings server-rendered page
         .route("/my-bookings", get(public::my_bookings_page))
         // ? BL29: Pricing engine — admin routes
-        .route("/pricing/services", get(pricing::list_services))
+        .route(
+            "/pricing/services",
+            get(pricing::list_services)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route(
             "/pricing/services/:service_key",
             put(pricing::update_service_price),
@@ -2786,6 +2842,54 @@ async fn auth_guard(
     // Insert claims into request extensions for handlers that need them
     req.extensions_mut().insert(claims);
 
+    Ok(next.run(req).await)
+}
+
+/// Card B52 — role gate for PLATFORM-OPERATOR-ONLY routes.
+///
+/// `auth_guard` only proves the JWT is valid; it never inspects the role, and these handlers did
+/// not either. A free public visitor signup therefore collected HTTP 200 from the operator/admin
+/// API surface — `/members` (the 500 latest visitor emails), global analytics, the audit log,
+/// import logs, every tenant's API/provider keys and the ZaarHub site config.
+///
+/// The bearer token is verified HERE from the Authorization header rather than read from
+/// `Extension<Claims>`: router layering does not guarantee the extension is present on every path,
+/// and a missing one turns into an HTTP 500 instead of a clean refusal. 403 (not 401) because the
+/// token is valid — the role is what is missing.
+async fn operator_guard(
+    State(s): State<AppState>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(req.headers(), &s.config.jwt_secret)?;
+    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        return Err(AppError::Forbidden(
+            "Platform operator access required".to_string(),
+        ));
+    }
+    req.extensions_mut().insert(claims);
+    Ok(next.run(req).await)
+}
+
+/// Card B52 — role gate for TENANT-SCOPED routes a business/directory portal legitimately calls.
+///
+/// The handler already scopes its rows to the caller's own tenant (`tid`), so the only thing to
+/// refuse is the `visitor` role: a visitor token carries the nil tenant and must never reach a
+/// tenant API. `admin`, `super_admin` and `business_owner` keep working. 403 on refusal.
+async fn tenant_guard(
+    State(s): State<AppState>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(req.headers(), &s.config.jwt_secret)?;
+    if crate::auth::middleware::is_visitor(&claims) {
+        return Err(AppError::Forbidden(
+            "Tenant admin access required".to_string(),
+        ));
+    }
+    req.extensions_mut().insert(claims);
     Ok(next.run(req).await)
 }
 
