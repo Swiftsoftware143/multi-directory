@@ -125,6 +125,7 @@ pub mod contact_intelligence;
 pub use contact_intelligence::*;
 pub mod content_queue;
 // pub use content_queue::*;  -- accessed via content_queue:: prefix in routes
+pub mod onboarding_questionnaire;
 pub mod onboarding_survey;
 pub mod tag_automation;
 pub use onboarding_survey::*;

@@ -331,6 +331,118 @@ pub async fn record_checkin(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// The native earn path (used by onboarding — no external service, no campaign)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// What a one-off native award credited.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreditedAward {
+    pub member_id: Uuid,
+    pub program_id: Uuid,
+    pub currency_name: String,
+    pub currency_icon: String,
+    pub units: i32,
+    pub balance_after: i32,
+}
+
+/// Credit `units` of the programme currency to a visitor account as a one-off award
+/// (onboarding completion today, any other one-shot action later).
+///
+/// This is the *native* earn path: the membership is created when the visitor has none yet,
+/// one `loyalty_activity` row records why the currency moved, and the balance moves by exactly
+/// `units` in the same transaction. The programme is resolved the same way every other native
+/// loyalty read resolves it — the directory's network programme first (ZaarHub's single
+/// programme governs all ten cities), so a supplier or a business owner earns into the same
+/// balance as a customer.
+///
+/// `Ok(None)` = no active programme governs this directory. That is a skip the caller logs,
+/// never an error, and nothing is silently credited to a programme the admin did not create.
+pub async fn credit_visitor_units(
+    pool: &PgPool,
+    directory_id: &Uuid,
+    visitor_account_id: &Uuid,
+    units: i32,
+    activity_type: &str,
+    description: &str,
+) -> Result<Option<CreditedAward>, AppError> {
+    let program = match programme_for_directory(pool, directory_id).await? {
+        Some(p) => p,
+        None => {
+            // fall back to the network-wide programme (the same fallback signup enrolment uses)
+            match sqlx::query_as::<_, LoyaltyProgram>(
+                r#"SELECT id, directory_id, network_id, name, recognition_method, points_per_checkin,
+                          max_checkins_per_day, point_decay_days, points_expire_days,
+                          currency_name, currency_icon, currency_color, points_per_visit,
+                          points_per_redemption, earn_rate, redemption_cap_pct, min_redeem_balance,
+                          exclude_free_items, tiers_enabled, milestones_enabled, streak_enabled,
+                          streak_bonus, streak_days, referral_bonus, birthday_bonus,
+                          social_share_points, is_active, created_at, updated_at
+                   FROM loyalty_programs
+                   WHERE is_active AND network_id IS NOT NULL
+                   ORDER BY created_at LIMIT 1"#,
+            )
+            .fetch_optional(pool)
+            .await?
+            {
+                Some(p) => p,
+                None => return Ok(None),
+            }
+        }
+    };
+
+    let member_id = find_or_create_member(pool, &program.id, visitor_account_id).await?;
+
+    if units <= 0 {
+        return Ok(Some(CreditedAward {
+            member_id,
+            program_id: program.id,
+            currency_name: program.currency_name,
+            currency_icon: program.currency_icon,
+            units: 0,
+            balance_after: 0,
+        }));
+    }
+
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        "INSERT INTO loyalty_activity (id, member_id, activity_type, description, points_earned)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(member_id)
+    .bind(activity_type)
+    .bind(description)
+    .bind(i64::from(units))
+    .execute(&mut *tx)
+    .await?;
+
+    let balance_after: i32 = sqlx::query_scalar(
+        "UPDATE loyalty_members
+            SET points_balance = points_balance + $1,
+                lifetime_points = lifetime_points + $1,
+                last_activity_date = NOW()
+          WHERE id = $2
+          RETURNING points_balance",
+    )
+    .bind(units)
+    .bind(member_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Some(CreditedAward {
+        member_id,
+        program_id: program.id,
+        currency_name: program.currency_name,
+        currency_icon: program.currency_icon,
+        units,
+        balance_after,
+    }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Handlers — directory-scoped, public-read / admin-write
 // ─────────────────────────────────────────────────────────────────────────────
 

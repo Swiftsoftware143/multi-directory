@@ -780,6 +780,12 @@ pub fn create_router(s: AppState) -> Router {
             "/public/directories/:slug/survey",
             get(onboarding_survey::public_get_survey),
         )
+        // Signup surfaces with no city (business / supplier portals): resolve the published
+        // questionnaire for that audience and tell the client which directory slug to post to.
+        .route(
+            "/public/onboarding",
+            get(onboarding_survey::public_get_onboarding_network),
+        )
         // ? Public articles XML feed (RSS) (MUST come before :slug routes)
         .route(
             "/public/directories/:slug/articles.xml",
@@ -1870,6 +1876,26 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/admin/directories/:id/survey/toggle",
             post(onboarding_survey::toggle_survey),
+        )
+        // ✍️ Onboarding questionnaire builder + responses view (card B65)
+        // The builder's type picker is served from the backend constant — never hardcoded.
+        .route(
+            "/admin/onboarding/question-types",
+            get(onboarding_questionnaire::question_types),
+        )
+        .route(
+            "/admin/directories/:id/questionnaires",
+            get(onboarding_questionnaire::list_questionnaires),
+        )
+        .route(
+            "/admin/directories/:id/questionnaires/:audience",
+            get(onboarding_questionnaire::get_questionnaire)
+                .put(onboarding_questionnaire::upsert_questionnaire)
+                .delete(onboarding_questionnaire::delete_questionnaire),
+        )
+        .route(
+            "/admin/directories/:id/questionnaires/:audience/responses",
+            get(onboarding_questionnaire::list_responses),
         )
         // ??? Cross-platform tag sync
         .route("/admin/tag-sync", post(tag_sync::sync_tag_across_platforms))
