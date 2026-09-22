@@ -555,6 +555,27 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
           <p>Add your first product to start selling on the B2B marketplace.</p>
         </div>
       </div>
+      <!-- Card B61: featured-product control. PUT /supplier/featured-product worked but no
+           control existed anywhere in the portal (endpoint-only capability = defect). Choosing
+           a product here sets the headline product on the supplier's public marketplace card. -->
+      <div class="edit-form show" id="featuredForm">
+        <h4 style="margin-bottom:4px">⭐ Featured Product</h4>
+        <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px">
+          The product shown as your headline offer on your public supplier card.
+        </div>
+        <div class="form-group">
+          <label>Product</label>
+          <select id="featuredProductId"><option value="">— none —</option></select>
+        </div>
+        <div class="form-group">
+          <label>Call-to-action text</label>
+          <input type="text" id="featuredCtaText" placeholder="Featured Product" maxlength="80">
+        </div>
+        <div class="form-actions">
+          <span id="featuredStatus" style="font-size:.8rem;color:var(--text-secondary);margin-right:auto"></span>
+          <button class="btn btn-primary" id="featuredSaveBtn" onclick="saveFeaturedProduct()">💾 Save Featured Product</button>
+        </div>
+      </div>
     </div>
     <!-- Info Section -->
     <div class="section">
@@ -1002,7 +1023,10 @@ async function loadDashboard() {
   }
 
   $('authScreen').style.display = 'none';
-  $('dashboard').style.display = '';
+  // Card B58: `.dashboard{display:none}` in the stylesheet means clearing the inline style
+  // (`style.display = ''`) falls back to the hidden CSS rule, so the whole portal stayed a blank
+  // page after login. Set an explicit display value that beats the class.
+  $('dashboard').style.display = 'block';
   $('loadingState').style.display = '';
   $('dashboardContent').style.display = 'none';
 
@@ -1054,6 +1078,8 @@ async function loadDashboard() {
     // this on dashboard load (only after an order status change). The API already returned the
     // real totals for this supplier, so the panel read 0 orders while the data said otherwise.
     loadSupplierStats();
+    // Card B61: keep the featured-product control in step with the server.
+    loadFeaturedProduct();
 
     // Load connected services status
     loadSupplierConnectedServices();
@@ -1299,6 +1325,53 @@ function toggleAddProduct() {
     $('apUnit').value = '';
     $('apMinOrder').value = '1';
     $('apDeliveryAreas').value = '';
+  }
+}
+
+// ── Card B61: Featured Product ──
+// Fills the product dropdown from the supplier's own catalog and reflects what the server
+// currently has featured, so the control is never lying about the saved state.
+async function loadFeaturedProduct() {
+  var sel = $('featuredProductId');
+  if (!sel) return;
+  try {
+    var sp = {};
+    try { sp = await g('/supplier/profile'); } catch (e) {}
+    var prods = [];
+    try { var pd = await g('/b2b/products/my'); prods = pd.products || []; } catch (e) {}
+    var opts = '<option value="">— none —</option>';
+    for (var i = 0; i < prods.length; i++) {
+      opts += '<option value="' + prods[i].id + '">' + esc(prods[i].name) + '</option>';
+    }
+    sel.innerHTML = opts;
+    if (sp && sp.featured_product_id) sel.value = sp.featured_product_id;
+    $('featuredCtaText').value = (sp && sp.featured_product_cta) || '';
+    if (sp && sp.featured_product_id) {
+      var chosen = sel.options[sel.selectedIndex];
+      $('featuredStatus').textContent = 'Currently featured: ' + (chosen ? chosen.textContent : 'saved product');
+    } else {
+      $('featuredStatus').textContent = 'Nothing featured yet';
+    }
+  } catch (e) {
+    console.error('loadFeaturedProduct error:', e);
+  }
+}
+
+async function saveFeaturedProduct() {
+  var sel = $('featuredProductId');
+  if (!sel) return;
+  var pid = sel.value || null;
+  var cta = ($('featuredCtaText').value || '').trim() || null;
+  var btn = $('featuredSaveBtn');
+  if (btn) btn.disabled = true;
+  try {
+    await pu('/supplier/featured-product', { product_id: pid, cta_text: cta });
+    $('featuredStatus').textContent = pid ? 'Saved — shown on your public card' : 'Cleared — nothing featured';
+    toast(pid ? 'Featured product saved' : 'Featured product cleared', 'success');
+  } catch (e) {
+    toast('Could not save featured product: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

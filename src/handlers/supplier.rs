@@ -101,6 +101,18 @@ pub async fn get_supplier_profile(
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);
 
+    // Card B61: the portal's featured-product control needs the current state to prefill itself.
+    // featured_product_id references supplier_products (ON DELETE SET NULL), so a deleted product
+    // simply resolves to NULL here.
+    let (featured_product_id, featured_product_cta) =
+        sqlx::query_as::<_, (Option<Uuid>, Option<String>)>(
+            "SELECT featured_product_id, featured_product_cta FROM businesses WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .unwrap_or((None, None));
+
     Ok(Json(json!({
         "business_id": id,
         "name": name,
@@ -109,7 +121,9 @@ pub async fn get_supplier_profile(
         "website": website,
         "description": desc,
         "delivery_areas": delivery_areas,
-        "min_order": min_order
+        "min_order": min_order,
+        "featured_product_id": featured_product_id,
+        "featured_product_cta": featured_product_cta
     })))
 }
 

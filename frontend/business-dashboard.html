@@ -87,19 +87,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 </div>
 
 <script>
+// Card B60 (same class as B58): NO page in the app writes `zh_token` — the visitor login writes
+// `visitorToken` — so this dashboard reported "Sign in required" to a signed-in visitor forever.
+// Accept either key, newest first.
+function visitorToken() {
+  try { return localStorage.getItem('visitorToken') || localStorage.getItem('zh_token') || ''; } catch (e) { return ''; }
+}
+
 async function authHeaders() {
-  var tok = localStorage.getItem('zh_token');
+  var tok = visitorToken();
   return tok ? { 'Authorization': 'Bearer ' + tok } : {};
 }
 
-function loadBusinessDashboard() {
+// Card B60: this function awaits its fetches, so it must be declared async — without it the
+// whole script block fails to parse with "await is only valid in async functions".
+async function loadBusinessDashboard() {
   var bizId = localStorage.getItem("biz_dash_id");
   if (!bizId) return;
   
   var el = document.getElementById("dashboardContent");
   el.innerHTML = '<div class="empty"><div class="icon">📊</div><h3>Loading your data...</h3></div>';
 
-  if (!localStorage.getItem('zh_token')) {
+  if (!visitorToken()) {
     el.innerHTML = '<div class="empty"><div class="icon">🔒</div><h3>Sign in required</h3>'
       + '<p>Visitor analytics are only served to an authenticated account. Sign in, then reopen this page.</p>'
       + '<p><a class="btn btn-primary" href="/login">Sign in</a></p></div>';
@@ -112,14 +121,16 @@ function loadBusinessDashboard() {
     // Fetch subscription info
     var subData = null;
     try {
-      subData = await fetch("/api/v1/businesses/" + bizId + "/subscription").then(function(r){ return r.ok ? r.json() : null; });
+      // Card B60: /api/v1/businesses/:id/subscription requires auth (401 anonymous) — this call
+      // sent no Authorization header at all, so every business was shown "No active subscription".
+      subData = await fetch("/api/v1/businesses/" + bizId + "/subscription", { headers: authHeaders() }).then(function(r){ return r.ok ? r.json() : null; });
     } catch(e) {}
     
     // Fetch the plan tier info if subscription exists
     var planInfo = null;
     if (subData && subData.tier_id) {
       try {
-        planInfo = await fetch("/api/v1/tiers/" + subData.tier_id).then(function(r){ return r.ok ? r.json() : null; });
+        planInfo = await fetch("/api/v1/tiers/" + subData.tier_id, { headers: authHeaders() }).then(function(r){ return r.ok ? r.json() : null; });
       } catch(e) {}
     }
     if (!data || data.total_views === undefined) {

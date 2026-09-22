@@ -630,7 +630,11 @@ document.body.appendChild(helpIcon);
   },800);
 })();
 </script>
-  <div data-directory-slug="visitor" style="display:none"></div>
+  <!-- Card B63: this page is NOT a city page. It used to carry data-directory-slug="visitor",
+       which survey-widget.js used verbatim as a directory slug — no directory is called
+       "visitor", so every visit 404'd on /api/v1/public/directories/visitor/survey and the
+       bogus value was cached in md_active_slug, breaking the survey on other non-city pages
+       too. With no slug the widget correctly uses the network endpoint for this audience. -->
   <script src="/survey-widget.js" defer></script>
   <!-- Real scannable QR encoder for the loyalty wallet (vendored, no CDN dependency) -->
   <script src="/qrcode.min.js" defer></script>

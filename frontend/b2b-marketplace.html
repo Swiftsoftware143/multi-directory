@@ -866,16 +866,26 @@ async function handleSendMessage(){
   const subject = document.getElementById('msgSubject').value.trim();
   const message = document.getElementById('msgBody').value.trim();
   if(!subject||!message) { showToast('Subject and message required','error'); return; }
+  // Card B59: closeMsgModal() clears selectedSupplier, so the recipient must be captured BEFORE
+  // the modal is dismissed — the old success toast dereferenced null, threw
+  // "Cannot read properties of null (reading 'name')" and reported a false failure for a
+  // message that had in fact been delivered.
+  if(!selectedSupplier || !selectedSupplier.id){
+    showToast('❌ No supplier selected — reopen the supplier and try again','error');
+    return;
+  }
+  const toId = selectedSupplier.id;
+  const toName = selectedSupplier.name || 'supplier';
   try {
     const resp = await fetch('/api/v1/b2b/messages', {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
-      body:JSON.stringify({to_business_id:selectedSupplier.id, subject, message})
+      body:JSON.stringify({to_business_id:toId, subject, message})
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(()=>({}));
     if(!resp.ok) throw new Error(data.message||'Failed to send');
     closeMsgModal();
-    showToast('✅ Message sent to '+esc(selectedSupplier.name),'');
+    showToast('✅ Message sent to '+esc(toName),'');
   } catch(err){
     showToast('❌ '+err.message,'error');
   }
