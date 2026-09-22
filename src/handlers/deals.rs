@@ -9,10 +9,12 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::loyalty_native::UNITS_PER_DOLLAR;
 use crate::handlers::tenant_scope::assert_deal_admin;
 use crate::AppState;
 
@@ -520,10 +522,148 @@ pub async fn lookup_redemption(
 }
 
 /// POST /api/v1/deals/redemptions/:id/use — mark a redemption as used (business scans code)
+///
+/// Also the one place currency is credited, and the only place it is spent. The rules enforced here
+/// are per-programme settings an admin edits in the ⭐ Loyalty Programmes card — nothing hardwired:
+///   earn_rate          units credited per $1 of earnable spend
+///   redemption_cap_pct the most of a bill that may be paid in currency
+///   min_redeem_balance a member must hold this much before redeeming
+///   exclude_free_items a free / fully-discounted item earns nothing
+#[derive(Debug, Deserialize, Default)]
+pub struct UseRedemptionInput {
+    /// Bill total in dollars, when the member pays (part of) it with loyalty currency.
+    pub bill_amount: Option<f64>,
+    /// Currency units the member wants to apply to that bill.
+    pub redeem_units: Option<i32>,
+}
+
 pub async fn use_redemption(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
+    body: Option<Json<UseRedemptionInput>>,
 ) -> ApiResult<impl IntoResponse> {
+    let input = body.map(|Json(b)| b).unwrap_or_default();
+    let bill_amount = input.bill_amount.filter(|b| *b > 0.0);
+    let requested_units = input.redeem_units.unwrap_or(0).max(0);
+
+    // Everything the guardrails need in one read: the redemption's state, the visitor it belongs
+    // to, the deal's price and discount, the governing programme (network-wide for ZaarHub,
+    // city-scoped otherwise) and the member's balance. deal_price is free text in this schema
+    // ("$25.50"), so it is digit-stripped in SQL and falls back to 0 rather than failing the scan.
+    let ctx = sqlx::query(
+        r#"SELECT dr.status, dr.visitor_id, d.directory_id, dir.network_id,
+                  CASE WHEN regexp_replace(COALESCE(d.deal_price, ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+                       THEN regexp_replace(d.deal_price, '[^0-9.]', '', 'g')::float8
+                       ELSE 0 END AS deal_price,
+                  COALESCE(d.discount_percent, 0) AS discount_percent,
+                  p.id AS program_id, p.earn_rate, p.redemption_cap_pct, p.min_redeem_balance,
+                  p.exclude_free_items, p.points_per_redemption, p.currency_name,
+                  m.id AS member_id, COALESCE(m.points_balance, 0) AS points_balance
+           FROM deal_redemptions dr
+           JOIN deals d ON d.id = dr.deal_id
+           LEFT JOIN directories dir ON dir.id = d.directory_id
+           LEFT JOIN LATERAL (
+               SELECT lp.* FROM loyalty_programs lp
+               WHERE lp.is_active
+                 AND ((lp.network_id IS NOT NULL AND lp.network_id = dir.network_id)
+                      OR (lp.network_id IS NULL AND lp.directory_id = d.directory_id))
+               ORDER BY (lp.network_id IS NOT NULL) DESC, lp.created_at
+               LIMIT 1
+           ) p ON TRUE
+           LEFT JOIN loyalty_members m
+                  ON m.program_id = p.id AND m.visitor_account_id = dr.visitor_id
+           WHERE dr.id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?;
+
+    let Some(ctx) = ctx else {
+        return Err(AppError::NotFound("Redemption not found".into()));
+    };
+    if ctx
+        .get::<Option<String>, _>("status")
+        .unwrap_or_default()
+        .as_str()
+        != "active"
+    {
+        return Err(AppError::NotFound(
+            "Redemption not found or already used".into(),
+        ));
+    }
+
+    let program_id: Option<Uuid> = ctx.try_get("program_id").unwrap_or(None);
+    let visitor_id: Option<Uuid> = ctx.try_get("visitor_id").unwrap_or(None);
+    let network_id: Option<Uuid> = ctx.try_get("network_id").unwrap_or(None);
+    let member_id: Option<Uuid> = ctx.try_get("member_id").unwrap_or(None);
+    let currency_name: String = ctx
+        .try_get::<Option<String>, _>("currency_name")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "points".to_string());
+    let earn_rate: f64 = ctx
+        .try_get::<Option<f64>, _>("earn_rate")
+        .unwrap_or(None)
+        .unwrap_or(0.0);
+    let redemption_cap_pct: i32 = ctx
+        .try_get::<Option<i32>, _>("redemption_cap_pct")
+        .unwrap_or(None)
+        .unwrap_or(0);
+    let min_redeem_balance: i32 = ctx
+        .try_get::<Option<i32>, _>("min_redeem_balance")
+        .unwrap_or(None)
+        .unwrap_or(0);
+    let exclude_free_items: bool = ctx
+        .try_get::<Option<bool>, _>("exclude_free_items")
+        .unwrap_or(None)
+        .unwrap_or(false);
+    let points_per_redemption: i32 = ctx
+        .try_get::<Option<i32>, _>("points_per_redemption")
+        .unwrap_or(None)
+        .unwrap_or(0);
+    let deal_price: f64 = ctx.try_get("deal_price").unwrap_or(0.0);
+    let discount_percent: i32 = ctx.try_get("discount_percent").unwrap_or(0);
+    let balance_before: i32 = ctx.try_get("points_balance").unwrap_or(0);
+
+    // Settlement: how much of the bill the currency may cover. The cap is a % of the bill, converted
+    // to units at 100 units = $1. A member below the programme's minimum is refused outright, with
+    // the reason, before anything is marked used.
+    let cap_units: i32 = (bill_amount.unwrap_or(0.0) * redemption_cap_pct as f64 / 100.0
+        * UNITS_PER_DOLLAR)
+        .floor()
+        .max(0.0) as i32;
+    let mut applied_units: i32 = 0;
+    if requested_units > 0 {
+        if program_id.is_none() {
+            return Err(AppError::Validation(
+                "No active loyalty programme — create one in the ⭐ Loyalty Programmes card first."
+                    .into(),
+            ));
+        }
+        if min_redeem_balance > 0 && balance_before < min_redeem_balance {
+            return Err(AppError::Validation(format!(
+                "Minimum balance of {min_redeem_balance} {currency_name} (US${:.2}) required to redeem — current balance is {balance_before}.",
+                min_redeem_balance as f64 / UNITS_PER_DOLLAR
+            )));
+        }
+        applied_units = requested_units.min(cap_units).min(balance_before);
+    }
+
+    // Earning: units per $1 of earnable spend, plus the programme's flat per-redemption bonus. A
+    // free / fully-discounted item earns nothing while exclude_free_items is on.
+    let earnable_spend: f64 = bill_amount.unwrap_or(deal_price).max(0.0);
+    let is_free_item = deal_price <= 0.0 || discount_percent >= 100;
+    let excluded_free_item = exclude_free_items && (is_free_item || earnable_spend <= 0.0);
+    let earned: i32 = if program_id.is_some() && !excluded_free_item {
+        let rate_credit = if earn_rate > 0.0 {
+            (earnable_spend * earn_rate).floor() as i32
+        } else {
+            0
+        };
+        rate_credit + points_per_redemption.max(0)
+    } else {
+        0
+    };
+
     let result = sqlx::query(
         "UPDATE deal_redemptions SET status = 'used', used_at = NOW() WHERE id = $1 AND status = 'active'"
     )
@@ -537,64 +677,120 @@ pub async fn use_redemption(
         ));
     }
 
-    // Loyalty credit — native to Multi-Directory, at a rate the directory's admin controls
-    // (loyalty_programs.points_per_redemption; 0 = disabled). Best-effort by design: a missing
-    // programme, a missing visitor link or a duplicate programme must never fail the redemption
-    // itself, so the error is logged and the scan still succeeds.
-    let credited: Option<(i32, i32)> = sqlx::query_as(
-        r#"WITH ctx AS (
-               -- ZaarHub is ONE directory across many cities: the loyalty programme is network-wide,
-               -- not city-specific, so resolve the network through the deal's directory.
-               SELECT dr.visitor_id, dir.network_id
-               FROM deal_redemptions dr
-               JOIN deals d ON d.id = dr.deal_id
-               JOIN directories dir ON dir.id = d.directory_id
-               WHERE dr.id = $1
-           ), prog AS (
-               SELECT p.id, p.points_per_redemption
-               FROM loyalty_programs p, ctx
-               WHERE p.network_id = ctx.network_id
-                 AND p.is_active = true
-                 AND COALESCE(p.points_per_redemption, 0) > 0
-               ORDER BY p.created_at
-               LIMIT 1
-           ), mem AS (
-               INSERT INTO loyalty_members (id, program_id, visitor_account_id, points_balance,
-                                            lifetime_points, member_since, last_activity_date, network_id)
-               SELECT gen_random_uuid(), prog.id, ctx.visitor_id, prog.points_per_redemption,
-                      prog.points_per_redemption, NOW(), CURRENT_DATE, ctx.network_id
-               FROM prog, ctx
-               WHERE ctx.visitor_id IS NOT NULL
-               ON CONFLICT (program_id, visitor_account_id) DO UPDATE
-                   SET points_balance = loyalty_members.points_balance + EXCLUDED.points_balance,
-                       lifetime_points = loyalty_members.lifetime_points + EXCLUDED.lifetime_points,
-                       last_activity_date = CURRENT_DATE
-               RETURNING id, points_balance
-           ), act AS (
-               INSERT INTO loyalty_activity (id, member_id, activity_type, description,
-                                             points_earned, created_at)
-               SELECT gen_random_uuid(), mem.id, 'deal_redemption', 'Deal redeemed',
-                      prog.points_per_redemption, NOW()
-               FROM mem, prog
-               RETURNING member_id
-           )
-           SELECT mem.points_balance, prog.points_per_redemption FROM mem, prog"#,
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await
-    .unwrap_or_else(|e| {
-        eprintln!("[loyalty] redemption credit skipped for {id}: {e}");
-        None
-    });
+    // Spend first, earn second: the currency the member pays with leaves the balance, then the
+    // currency this redemption earns goes back in. Both steps are best-effort — a failure is logged
+    // and the scan still succeeds (the redemption itself has already been marked used).
+    let mut balance_after = balance_before;
+    if applied_units > 0 {
+        if let Some(member_id) = member_id {
+            match sqlx::query(
+                "UPDATE loyalty_members SET points_balance = points_balance - $2,
+                                            last_activity_date = CURRENT_DATE
+                 WHERE id = $1 AND points_balance >= $2 RETURNING points_balance",
+            )
+            .bind(member_id)
+            .bind(applied_units)
+            .fetch_optional(&s.db)
+            .await
+            {
+                Ok(Some(row)) => {
+                    balance_after = row.get::<i32, _>("points_balance");
+                    let _ = sqlx::query(
+                        "INSERT INTO loyalty_activity (id, member_id, activity_type, description,
+                                                       points_earned, created_at)
+                         VALUES (gen_random_uuid(), $1, 'currency_redemption', $2, $3, NOW())",
+                    )
+                    .bind(member_id)
+                    .bind(format!(
+                        "{applied_units} {currency_name} applied to a US${:.2} bill",
+                        bill_amount.unwrap_or(0.0)
+                    ))
+                    .bind(-(applied_units as i64))
+                    .execute(&s.db)
+                    .await;
+                }
+                Ok(None) => eprintln!(
+                    "[loyalty] settlement skipped for {id}: balance changed under us, nothing debited"
+                ),
+                Err(e) => eprintln!("[loyalty] settlement failed for {id}: {e}"),
+            }
+        }
+    }
 
-    Ok(Json(json!({
+    // Loyalty credit — native to Multi-Directory, at a rate the directory's admin controls. The
+    // programme was resolved through the deal's directory above (network-wide for ZaarHub,
+    // city-scoped otherwise). Best-effort by design: a missing programme, a missing visitor link or
+    // a duplicate programme must never fail the redemption itself.
+    let credited: Option<i32> = match (program_id, visitor_id, earned) {
+        (Some(program_id), Some(visitor_id), earned) if earned > 0 => sqlx::query_scalar(
+            r#"WITH ctx AS (
+                   SELECT $2::uuid AS program_id, $3::uuid AS visitor_id, $4::uuid AS network_id
+               ), ins AS (
+                   INSERT INTO loyalty_members (id, program_id, visitor_account_id, points_balance,
+                                                lifetime_points, member_since, last_activity_date, network_id)
+                   SELECT gen_random_uuid(), ctx.program_id, ctx.visitor_id, $1, $1, NOW(),
+                          CURRENT_DATE, ctx.network_id
+                   FROM ctx
+                   WHERE ctx.visitor_id IS NOT NULL
+                   ON CONFLICT (program_id, visitor_account_id) DO UPDATE
+                       SET points_balance = loyalty_members.points_balance + EXCLUDED.points_balance,
+                           lifetime_points = loyalty_members.lifetime_points + EXCLUDED.lifetime_points,
+                           last_activity_date = CURRENT_DATE
+                   RETURNING id, points_balance
+               ), act AS (
+                   INSERT INTO loyalty_activity (id, member_id, activity_type, description,
+                                                 points_earned, created_at)
+                   SELECT gen_random_uuid(), ins.id, 'deal_redemption', $5, $1, NOW()
+                   FROM ins
+                   RETURNING member_id
+               )
+               SELECT ins.points_balance FROM ins"#,
+        )
+        .bind(earned)
+        .bind(program_id)
+        .bind(visitor_id)
+        .bind(network_id)
+        .bind(format!("Deal redeemed — {earned} {currency_name} earned"))
+        .fetch_optional(&s.db)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("[loyalty] redemption credit skipped for {id}: {e}");
+            None
+        }),
+        _ => None,
+    };
+
+    let mut out = json!({
         "status": "used",
-        "loyalty": credited.map(|(bal, earned)| json!({
+        "loyalty": credited.map(|bal| json!({
             "points_earned": earned,
             "new_balance": bal,
         })),
-    })))
+        "earning": {
+            "earn_rate": earn_rate,
+            "earnable_spend": earnable_spend,
+            "points_earned": earned,
+            "excluded_free_item": excluded_free_item,
+            "currency_name": currency_name,
+        },
+    });
+    if requested_units > 0 {
+        out["settlement"] = json!({
+            "bill_amount": bill_amount,
+            "requested_units": requested_units,
+            "cap_pct": redemption_cap_pct,
+            "cap_units": cap_units,
+            "applied_units": applied_units,
+            "capped": applied_units < requested_units,
+            "balance_before": balance_before,
+            "balance_after": balance_after,
+            "units_per_dollar": UNITS_PER_DOLLAR,
+            "value_usd": applied_units as f64 / UNITS_PER_DOLLAR,
+            "currency_name": currency_name,
+        });
+    }
+
+    Ok(Json(out))
 }
 
 /// GET /api/v1/deals/:id/redemptions — list all redemptions for a deal

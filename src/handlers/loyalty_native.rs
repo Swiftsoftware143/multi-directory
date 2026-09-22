@@ -20,6 +20,10 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+/// 100 units of a programme currency = US$1. A platform-wide constant (deliberately NOT a column):
+/// the admin panel renders every rate in dollars with it, and deals.rs settles bills with it.
+pub const UNITS_PER_DOLLAR: f64 = 100.0;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Program config
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,6 +46,14 @@ pub struct LoyaltyProgram {
     pub currency_color: String,
     pub points_per_visit: i32,
     pub points_per_redemption: i32,
+    /// Currency units credited per $1 of earnable spend. 0 = earning disabled. Default 1.
+    pub earn_rate: f64,
+    /// Max % of a bill a member may settle with the currency (0-100). Default 10.
+    pub redemption_cap_pct: i32,
+    /// Balance required before a member may redeem. 100 units = $1, so 100 = $1. Default 100.
+    pub min_redeem_balance: i32,
+    /// Free / fully-discounted items earn nothing. Default on.
+    pub exclude_free_items: bool,
     pub tiers_enabled: bool,
     pub milestones_enabled: bool,
     pub streak_enabled: bool,
@@ -69,6 +81,14 @@ pub struct ProgramInput {
     pub points_per_visit: Option<i32>,
     /// Points credited when a member redeems a deal. 0 = disabled.
     pub points_per_redemption: Option<i32>,
+    /// Currency units credited per $1 of earnable spend. 0 = disabled. Default 1.
+    pub earn_rate: Option<f64>,
+    /// Max % of a bill payable in the currency (clamped 0-100). Default 10.
+    pub redemption_cap_pct: Option<i32>,
+    /// Balance required before a member may redeem. 100 units = $1. Default 100.
+    pub min_redeem_balance: Option<i32>,
+    /// Free / fully-discounted items earn nothing. Default true.
+    pub exclude_free_items: Option<bool>,
     pub tiers_enabled: Option<bool>,
     pub milestones_enabled: Option<bool>,
     pub streak_enabled: Option<bool>,
@@ -112,6 +132,7 @@ pub async fn get_program(pool: &PgPool, program_id: &Uuid) -> Result<LoyaltyProg
         r#"SELECT id, directory_id, network_id, name, recognition_method, points_per_checkin,
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
+                  earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -145,6 +166,7 @@ pub async fn programme_for_directory(
         r#"SELECT id, directory_id, network_id, name, recognition_method, points_per_checkin,
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
+                  earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -326,6 +348,7 @@ pub async fn list_programs(
         r#"SELECT id, directory_id, network_id, name, recognition_method, points_per_checkin,
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
+                  earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -368,8 +391,8 @@ pub async fn create_program(
     let id = Uuid::new_v4();
 
     sqlx::query(
-        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active, points_per_redemption, network_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)",
+        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active, points_per_redemption, network_id, earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)",
     )
     .bind(id)
     .bind(if network_id.is_some() { None } else { Some(directory_id) })
@@ -394,6 +417,14 @@ pub async fn create_program(
     .bind(body.is_active.unwrap_or(true))
     .bind(body.points_per_redemption.unwrap_or(0))
     .bind(network_id)
+    .bind(body.earn_rate.map(|v| v.max(0.0)).unwrap_or(1.0))
+    .bind(body.redemption_cap_pct.map(|v| v.clamp(0, 100)).unwrap_or(10))
+    .bind(
+        body.min_redeem_balance
+            .map(|v| v.max(0))
+            .unwrap_or(100),
+    )
+    .bind(body.exclude_free_items.unwrap_or(true))
     .execute(&state.db)
     .await?;
 
@@ -470,6 +501,10 @@ pub async fn update_program(
             social_share_points = COALESCE($17, social_share_points),
             is_active = COALESCE($18, is_active),
             points_per_redemption = COALESCE($19, points_per_redemption),
+            earn_rate = COALESCE($20, earn_rate),
+            redemption_cap_pct = COALESCE($21, redemption_cap_pct),
+            min_redeem_balance = COALESCE($22, min_redeem_balance),
+            exclude_free_items = COALESCE($23, exclude_free_items),
             updated_at = now()
          WHERE id = $1",
     )
@@ -492,6 +527,10 @@ pub async fn update_program(
     .bind(body.social_share_points)
     .bind(body.is_active)
     .bind(body.points_per_redemption)
+    .bind(body.earn_rate.map(|v| v.max(0.0)))
+    .bind(body.redemption_cap_pct.map(|v| v.clamp(0, 100)))
+    .bind(body.min_redeem_balance.map(|v| v.max(0)))
+    .bind(body.exclude_free_items)
     .execute(&state.db)
     .await?;
 

@@ -1056,6 +1056,11 @@
       St Cloud or any city you add later. A member earns <b>ZaarCash per redemption</b> when they redeem
       a deal, <b>per check-in</b> when they check in, and <b>per visit</b> on visit recognition.
       Set a rate to 0 to switch that source off.
+      <br><b>Guardrails — every one a per-programme setting edited right here:</b> <b>per $1 spent</b>
+      is the earn rate on a member's spend, <b>max % of a bill</b> caps how much of a bill the currency
+      may pay, <b>minimum balance to redeem</b> is what a member must hold before spending any, and
+      <b>free items earn nothing</b> stops a 100%-off deal from minting currency.
+      <b>100 units = US$1.00</b>, so each rate below is also shown in dollars.
     </p>
 
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-top:12px">
@@ -2375,19 +2380,42 @@
           list.innerHTML = '<p style="font-size:.85rem;color:#f87171">' + lpEsc(e.message) + '</p>';
         });
     }
+    // 100 currency units = US$1 (the platform peg). A rate an admin cannot convert to dollars is
+    // meaningless, so every numeric rate in the row is echoed in dollars underneath it.
+    var LP_UNITS_PER_DOLLAR = 100;
+    function lpUsd(units) {
+      return 'US$' + (Number(units || 0) / LP_UNITS_PER_DOLLAR).toFixed(2);
+    }
+    function lpNum(v, dflt) {
+      var n = Number(v);
+      return (v == null || isNaN(n)) ? dflt : n;
+    }
     function lpRow(p) {
+      var cur = lpEsc(p.currency_name || 'ZaarCash');
+      var rate = lpNum(p.earn_rate, 1);
+      var cap = lpNum(p.redemption_cap_pct, 10);
+      var minBal = lpNum(p.min_redeem_balance, 100);
+      var noFree = (p.exclude_free_items == null) ? true : !!p.exclude_free_items;
       return '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px" data-program="' + lpEsc(p.id) + '">' +
         '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">' +
           '<input class="input" style="min-width:200px" value="' + lpEsc(p.name) + '" data-f="name" placeholder="Programme name">' +
-          '<label style="font-size:.8rem;color:var(--text-secondary)">ZaarCash per redemption <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_redemption || 0) + '" data-f="points_per_redemption"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">' + cur + ' per redemption <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_redemption || 0) + '" data-f="points_per_redemption"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)">per check-in <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_checkin || 0) + '" data-f="points_per_checkin"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)">per visit <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_visit || 0) + '" data-f="points_per_visit"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="is_active" ' + (p.is_active ? 'checked' : '') + '> active</label>' +
           '<button class="btn btn-accent" type="button" data-save="' + lpEsc(p.id) + '">Save</button>' +
         '</div>' +
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">' + cur + ' earned per $1 spent <input class="input" type="number" min="0" step="0.1" style="width:90px" value="' + rate + '" data-f="earn_rate"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">max % of a bill payable <input class="input" type="number" min="0" max="100" style="width:80px" value="' + cap + '" data-f="redemption_cap_pct"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">minimum balance to redeem <input class="input" type="number" min="0" style="width:100px" value="' + minBal + '" data-f="min_redeem_balance"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="exclude_free_items" ' + (noFree ? 'checked' : '') + '> free items earn nothing</label>' +
+        '</div>' +
         '<p style="font-size:.75rem;color:var(--text-tertiary);margin-top:6px">' +
           (p.network_id && !p.directory_id ? '🌐 Network-wide — applies to every city, including new ones. ' : '') +
-          'Currency: ' + lpEsc(p.currency_name || 'Points') + ' ' + lpEsc(p.currency_icon || '') + ' · id ' + lpEsc(String(p.id).slice(0, 8)) + '</p>' +
+          'Currency: ' + lpEsc(p.currency_name || 'Points') + ' ' + lpEsc(p.currency_icon || '') + ' · id ' + lpEsc(String(p.id).slice(0, 8)) +
+          '<br>💱 100 ' + cur + ' = US$1.00 — ' + cur + ' per $1 spent = ' + lpUsd(rate) + ' earned, minimum balance = ' +
+          minBal + ' (' + lpUsd(minBal) + '), cap = ' + cap + '% of a bill (' + cur + ' pays up to ' + lpUsd(cap * 100) + ' on a $100 bill).</p>' +
       '</div>';
     }
     function saveLoyaltyProgram(id) {
@@ -2399,7 +2427,7 @@
       Array.prototype.forEach.call(box.querySelectorAll('[data-f]'), function (el) {
         var f = el.getAttribute('data-f');
         if (el.type === 'checkbox') body[f] = el.checked;
-        else if (el.type === 'number') body[f] = parseInt(el.value || '0', 10);
+        else if (el.type === 'number') body[f] = (f === 'earn_rate') ? parseFloat(el.value || '0') : parseInt(el.value || '0', 10);
         else body[f] = el.value;
       });
       badge.textContent = 'saving…';
@@ -2413,7 +2441,8 @@
       var name = prompt('Programme name', 'Loyalty Rewards');
       if (!name) return;
       return apiPost('/directories/' + encodeURIComponent(slug) + '/loyalty/programs', {
-        name: name, points_per_redemption: 0, points_per_checkin: 10, points_per_visit: 5, is_active: true
+        name: name, points_per_redemption: 0, points_per_checkin: 10, points_per_visit: 5, is_active: true,
+        earn_rate: 1, redemption_cap_pct: 10, min_redeem_balance: 100, exclude_free_items: true
       }).then(loadLoyaltyPrograms).catch(function (e) { alert(e.message); });
     }
 
