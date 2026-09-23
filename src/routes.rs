@@ -1397,6 +1397,31 @@ pub fn create_router(s: AppState) -> Router {
             "/integrations/coreswift/push",
             post(coreswift_integration_handler::coreswift_push),
         )
+        // ── Card B67: the NATIVE connection — connect / test / status / lists / disconnect.
+        // Operator-only (credentials move captures between accounts), the same guard the rest
+        // of the operator surface uses.
+        .route(
+            "/integrations/coreswift/connection/targets",
+            get(coreswift_integration_handler::coreswift_connection_targets)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/integrations/coreswift/connection",
+            get(coreswift_integration_handler::coreswift_connection_get)
+                .post(coreswift_integration_handler::coreswift_connection_save)
+                .delete(coreswift_integration_handler::coreswift_connection_delete)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/integrations/coreswift/connection/test",
+            post(coreswift_integration_handler::coreswift_connection_test)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/integrations/coreswift/connection/lists",
+            get(coreswift_integration_handler::coreswift_connection_lists)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // Round 5 T0 — named keys: delete ONE key by id, and promote one key to default.
         .route(
             "/provider-keys/id/:id",

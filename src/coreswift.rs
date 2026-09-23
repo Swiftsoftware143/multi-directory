@@ -8,7 +8,7 @@
 //!   - Database is always source of truth; CoreSwift push is secondary
 
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 /// CoreSwift URL — read from CORESWIFT_URL env var at runtime, fallback localhost:8084
@@ -956,36 +956,39 @@ pub async fn resolve_cs_conn(db: &PgPool, directory_id: Uuid) -> Result<CoreSwif
         .or(net_tid)
         .ok_or_else(|| format!("No CoreSwift tenant provisioned for directory {directory_id}"))?;
 
-    // Key: dir first, then net
+    // Key: dir first, then net. A missing personal key is NOT an error any more — the
+    // tenant + list link alone drives the internal-API push (the same mechanism the claim
+    // and newsletter pushes already use). The `csk_` personal key is only needed for the
+    // field-mapping path (`/api/external/contacts`), so a directory can connect, receive
+    // its signups and carry the identity BEFORE anyone pastes a key.
     let (enc_key, base_url) = match (&dir_key, &dir_base) {
         (Some(k), b) => (
-            k.clone(),
+            Some(k.clone()),
             b.clone()
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(coreswift_url),
         ),
-        (None, _) => match &net_key {
-            Some(k) => (
-                k.clone(),
-                net_base
-                    .clone()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(coreswift_url),
-            ),
-            None => {
-                return Err(format!(
-                    "No CoreSwift personal key configured for directory {directory_id}"
-                ))
-            }
-        },
+        (None, _) => (
+            net_key.clone(),
+            net_base
+                .clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(coreswift_url),
+        ),
     };
 
-    // Decrypt the key
-    let api_key: String = sqlx::query_scalar("SELECT decrypt_provider_key($1)")
-        .bind(&enc_key)
-        .fetch_one(db)
-        .await
-        .map_err(|e| format!("Failed to decrypt CoreSwift key: {e}"))?;
+    // Decrypt the stored personal key with the app's enc:v1 helper (the same path every
+    // other BYOK credential uses). A row we cannot decrypt counts as "no key": the
+    // ciphertext must never go on the wire.
+    let api_key = match enc_key {
+        Some(bytes) if !bytes.is_empty() => {
+            let stored = String::from_utf8_lossy(&bytes).to_string();
+            crate::security::provider_key_crypto::decrypt_for_use(db, &stored, "coreswift")
+                .await
+                .unwrap_or_default()
+        }
+        _ => String::new(),
+    };
 
     // Lists: dir first, then net fallback
     let users_list_id = dir_ul.or(net_ul);
@@ -1028,10 +1031,17 @@ impl ParticipantType {
 }
 
 /// POST to CoreSwift /api/external/contacts using the personal key.
+/// Returns the hub's contact id (201 body `{ id, ... }`).
 async fn push_external_contact(
     conn: &CoreSwiftConn,
     body: serde_json::Value,
-) -> Result<(), String> {
+) -> Result<Uuid, String> {
+    if conn.api_key.is_empty() {
+        return Err(
+            "no CoreSwift personal key is stored for this connection — the external ".to_string()
+                + "field-mapping path needs a csk_ key from CoreSwift's Integration Center",
+        );
+    }
     let resp = HTTP
         .post(format!("{}/api/external/contacts", conn.base_url))
         .header("Authorization", format!("Bearer {}", conn.api_key))
@@ -1041,14 +1051,17 @@ async fn push_external_contact(
         .map_err(|e| format!("CoreSwift external contact push failed: {e}"))?;
 
     let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        let rbody = resp.text().await.unwrap_or_default();
         return Err(format!(
-            "CoreSwift external contact returned {status}: {rbody}"
+            "CoreSwift external contact returned {status}: {text}"
         ));
     }
-
-    Ok(())
+    let id = serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string))
+        .and_then(|s| Uuid::parse_str(&s).ok());
+    id.ok_or_else(|| format!("CoreSwift external contact returned {status} without an id: {text}"))
 }
 
 /// Build the base external-contact body with list + type tag + session tags.
@@ -1416,11 +1429,21 @@ async fn lead_tenant_candidates(
 
 /// Resolve the CoreSwift hub connection a capture event must push through.
 /// `Ok(None)` = the tenant has not connected CoreSwift → capture proceeds locally.
+///
+/// Order: the NATIVE per-directory / per-network link first (David's model — the linking
+/// unit is a network or a standalone directory), then the platform-level BYOK key held for
+/// the caller's MD tenant.
 pub async fn resolve_lead_conn(
     db: &PgPool,
     tenant_id: Option<Uuid>,
     directory_id: Option<Uuid>,
 ) -> Result<Option<CoreSwiftConn>, String> {
+    if let Some(dir) = directory_id {
+        if let Ok(conn) = resolve_cs_conn(db, dir).await {
+            return Ok(Some(conn));
+        }
+    }
+
     for cand in lead_tenant_candidates(db, tenant_id, directory_id).await {
         let row = sqlx::query_as::<_, (String, Option<String>)>(
             r#"SELECT api_key, base_url
@@ -1473,6 +1496,13 @@ pub async fn resolve_lead_conn(
 
 /// `GET {hub}/api/external/lists` — the tenant's CoreSwift lists (picker proxy).
 pub async fn hub_lists(conn: &CoreSwiftConn) -> Result<Value, String> {
+    if conn.api_key.is_empty() {
+        return Err(
+            "this connection has no personal key — the list picker needs a csk_ key from \
+             CoreSwift's Integration Center"
+                .to_string(),
+        );
+    }
     let resp = HTTP
         .get(format!("{}/api/external/lists", conn.base_url))
         .header("Authorization", format!("Bearer {}", conn.api_key))
@@ -1556,19 +1586,27 @@ fn lead_body(conn: &CoreSwiftConn, lead: &LeadPayload) -> Value {
 
 /// THE INBOUND PATH — push one captured lead into the tenant's CoreSwift account.
 ///
-/// `Ok(true)`  = pushed (a contact row now exists on the hub)
-/// `Ok(false)` = nothing to push / no CoreSwift connection for this capture
-///               (quiet skip — the capture already succeeded locally)
-/// `Err(_)`    = a real hub/gateway failure worth surfacing in another layer
+/// Two transports, one contract (the contact always lands in the linked tenant):
+///   * a connection carrying a `csk_` personal key  → `POST /api/external/contacts`
+///     (Bearer key; the hub stores `fields` as per-tenant data points — the field-mapping path
+///     card B68 builds on);
+///   * a connection with only the tenant + lists linked (no personal key yet) →
+///     `POST /api/internal/contacts` + list membership, the same internal transport the
+///     claim and newsletter pushes already use.
+///
+/// `Ok(Some(contact_id))` = pushed (a contact row exists on the hub)
+/// `Ok(None)`             = nothing to push / no CoreSwift link for this capture
+///                          (quiet skip — the capture already succeeded locally)
+/// `Err(_)`               = a real hub/gateway failure worth surfacing in another layer
 pub async fn push_lead_to_coreswift(
     db: &PgPool,
     tenant_id: Option<Uuid>,
     directory_id: Option<Uuid>,
     lead: LeadPayload,
-) -> Result<bool, String> {
+) -> Result<Option<Uuid>, String> {
     if !lead.has_identity() {
         tracing::debug!("[coreswift] lead push skipped: no email/phone/name to identify it");
-        return Ok(false);
+        return Ok(None);
     }
 
     let Some(conn) = resolve_lead_conn(db, tenant_id, directory_id).await? else {
@@ -1577,16 +1615,684 @@ pub async fn push_lead_to_coreswift(
             tenant_id,
             directory_id
         );
-        return Ok(false);
+        return Ok(None);
     };
 
-    let body = lead_body(&conn, &lead);
-    push_external_contact(&conn, body).await?;
+    let contact_id = if conn.api_key.is_empty() {
+        // No personal key on this link: carry the identity across with the internal
+        // transport so the contact still lands in the right tenant and list.
+        let id = push_contact_internal(&conn, &lead).await?;
+        tracing::info!(
+            "[coreswift] lead pushed via the internal transport (tenant {}, list {:?})",
+            conn.tenant_id,
+            lead.list_id.or(conn.users_list_id)
+        );
+        id
+    } else {
+        let body = lead_body(&conn, &lead);
+        push_external_contact(&conn, body).await?
+    };
+
     tracing::info!(
-        "[coreswift] lead pushed to CoreSwift hub ({}) for tenant {:?} / directory {:?}",
+        "[coreswift] lead pushed to CoreSwift hub ({}) for tenant {:?} / directory {:?} as contact {}",
         conn.base_url,
         tenant_id,
-        directory_id
+        directory_id,
+        contact_id
     );
-    Ok(true)
+    Ok(Some(contact_id))
+}
+
+/// Internal transport: create the contact (tenant from the LINK, never from the caller) and
+/// put it in the target list, then apply the tags. Returns the hub contact id.
+///
+/// The internal contacts endpoint stores no custom fields, so the answer set travels in
+/// `notes` for now — an interim mapping until the questionnaire→data-point mapping (card B68)
+/// writes real contact fields through the external API.
+async fn push_contact_internal(conn: &CoreSwiftConn, lead: &LeadPayload) -> Result<Uuid, String> {
+    let base = coreswift_url();
+    let key = internal_key();
+
+    let explicit_first = lead
+        .first_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let (first, last) = match explicit_first {
+        Some(f) => (
+            f,
+            lead.last_name
+                .clone()
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+        ),
+        None => match lead
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(full) => split_name(full),
+            None => ("Lead".to_string(), String::new()),
+        },
+    };
+
+    let mut notes = lead.notes.clone().unwrap_or_default();
+    if !lead.fields.is_empty() {
+        let mut pairs: Vec<String> = lead
+            .fields
+            .iter()
+            .filter_map(|(k, v)| match v {
+                Value::Null => None,
+                Value::String(s) if s.trim().is_empty() => None,
+                Value::String(s) => Some(format!("{k}={s}")),
+                other => Some(format!("{k}={other}")),
+            })
+            .collect();
+        pairs.sort();
+        if !pairs.is_empty() {
+            if !notes.is_empty() {
+                notes.push_str(" | ");
+            }
+            notes.push_str(&pairs.join("; "));
+        }
+    }
+
+    let mut body = json!({
+        "tenant_id": conn.tenant_id.to_string(),
+        "first_name": first,
+        "last_name": last,
+        "notes": notes,
+    });
+    if let Some(email) = lead.email.as_deref().filter(|s| !s.trim().is_empty()) {
+        body["email"] = json!(email);
+    }
+    if let Some(phone) = lead.phone.as_deref().filter(|s| !s.trim().is_empty()) {
+        body["phone"] = json!(phone);
+    }
+
+    let resp = HTTP
+        .post(format!("{base}/api/internal/contacts"))
+        .header("x-internal-key", &key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("CoreSwift internal contact create failed: {e}"))?;
+
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!(
+            "CoreSwift internal contact returned {status}: {text}"
+        ));
+    }
+    let contact_id = serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string))
+        .and_then(|s| Uuid::parse_str(&s).ok())
+        .ok_or_else(|| {
+            format!("CoreSwift internal contact returned {status} without an id: {text}")
+        })?;
+
+    if let Some(list_id) = lead.list_id.or(conn.users_list_id) {
+        let resp = HTTP
+            .post(format!("{base}/api/internal/lists/{list_id}/members"))
+            .header("x-internal-key", &key)
+            .json(&json!({
+                "tenant_id": conn.tenant_id.to_string(),
+                "contact_id": contact_id.to_string(),
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("CoreSwift list add failed: {e}"))?;
+        let ls = resp.status();
+        if !ls.is_success() {
+            let b = resp.text().await.unwrap_or_default();
+            tracing::warn!("[coreswift] list {list_id} add returned {ls}: {b}");
+        }
+    }
+
+    // Tags: find-or-create on the hub, then assign. Bounded so one lead cannot fan out into
+    // an unbounded number of round trips.
+    for tag in lead.tags.iter().take(8) {
+        let name = tag.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let tag_id = match find_tag_by_name(conn.tenant_id, name).await {
+            Ok(Some(id)) => Some(id),
+            Ok(None) => create_tag_internal(conn.tenant_id, name, "#0ea5e9")
+                .await
+                .ok(),
+            Err(e) => {
+                tracing::warn!("[coreswift] tag lookup '{name}' failed: {e}");
+                None
+            }
+        };
+        if let Some(id) = tag_id {
+            if let Err(e) = assign_contact_tag(conn.tenant_id, contact_id, id).await {
+                tracing::warn!("[coreswift] tag assign '{name}' failed: {e}");
+            }
+        }
+    }
+
+    Ok(contact_id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NATIVE LINK — the Admin Panel's connect / test / status / disconnect surface.
+//
+// David's model: the linking unit is a NETWORK or a STANDALONE DIRECTORY. A directory in a
+// connected network inherits that network's account and carries its own per-city lists; a
+// directory running on its own gets its own account. The link lives in the row itself —
+// tenant id, base URL, an OPTIONAL personal key (encrypted at rest with the app's enc:v1
+// helper) and the six typed list ids. Nothing is server-wide, nothing is hardcoded, and an
+// unconfigured link is a quiet skip: never a panic, never a fake success.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LinkScope {
+    Network,
+    Directory,
+}
+
+impl LinkScope {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "network" | "networks" => Some(Self::Network),
+            "directory" | "directories" => Some(Self::Directory),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Network => "network",
+            Self::Directory => "directory",
+        }
+    }
+
+    fn table(&self) -> &'static str {
+        match self {
+            Self::Network => "networks",
+            Self::Directory => "directories",
+        }
+    }
+}
+
+/// The six list columns plus the tenant/base/key state, selected identically from both tables.
+const LINK_COLUMNS: &str = "coreswift_tenant_id, coreswift_base_url, coreswift_key_prefix, \
+     (coreswift_personal_key_encrypted IS NOT NULL \
+      AND length(coreswift_personal_key_encrypted) > 0) AS key_configured, \
+     coreswift_list_id_users, coreswift_list_id_businesses, coreswift_list_id_suppliers, \
+     coreswift_list_id_sponsors, coreswift_list_id_claimed, coreswift_list_id_newsletter";
+
+type LinkRow = (
+    Option<Uuid>,
+    Option<String>,
+    Option<String>,
+    bool,
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+);
+
+fn uuid_of(v: &Value, key: &str) -> Option<Uuid> {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| Uuid::parse_str(s).ok())
+}
+
+fn link_json(scope: LinkScope, id: Uuid, name: &str, row: &LinkRow) -> Value {
+    json!({
+        "scope": scope.as_str(),
+        "id": id,
+        "name": name,
+        "linked_here": row.0.is_some(),
+        "tenant_id": row.0,
+        "base_url": row.1,
+        "key_prefix": row.2,
+        "key_configured": row.3,
+        "lists": {
+            "users": row.4,
+            "businesses": row.5,
+            "suppliers": row.6,
+            "sponsors": row.7,
+            "claimed": row.8,
+            "newsletter": row.9,
+        },
+    })
+}
+
+async fn read_link_row(
+    db: &PgPool,
+    scope: LinkScope,
+    id: Uuid,
+) -> Result<Option<(String, LinkRow)>, String> {
+    let sql = format!(
+        "SELECT name, {LINK_COLUMNS} FROM {} WHERE id = $1",
+        scope.table()
+    );
+    let row = sqlx::query(&sql)
+        .bind(id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| format!("DB error reading the CoreSwift link: {e}"))?;
+
+    // Read by column NAME: the link row is wider than sqlx's tuple Decode set.
+    let Some(row) = row else { return Ok(None) };
+    let name: String = row
+        .try_get("name")
+        .map_err(|e| format!("DB error reading name: {e}"))?;
+    let base_url: Option<String> = row
+        .try_get("coreswift_base_url")
+        .map_err(|e| format!("DB error reading coreswift_base_url: {e}"))?;
+    let key_prefix: Option<String> = row
+        .try_get("coreswift_key_prefix")
+        .map_err(|e| format!("DB error reading coreswift_key_prefix: {e}"))?;
+    let key_configured: bool = row
+        .try_get("key_configured")
+        .map_err(|e| format!("DB error reading key_configured: {e}"))?;
+    let uuid_col = |name: &str| -> Result<Option<Uuid>, String> {
+        row.try_get::<Option<Uuid>, _>(name)
+            .map_err(|e| format!("DB error reading {name}: {e}"))
+    };
+
+    Ok(Some((
+        name,
+        (
+            uuid_col("coreswift_tenant_id")?,
+            base_url,
+            key_prefix,
+            key_configured,
+            uuid_col("coreswift_list_id_users")?,
+            uuid_col("coreswift_list_id_businesses")?,
+            uuid_col("coreswift_list_id_suppliers")?,
+            uuid_col("coreswift_list_id_sponsors")?,
+            uuid_col("coreswift_list_id_claimed")?,
+            uuid_col("coreswift_list_id_newsletter")?,
+        ),
+    )))
+}
+
+async fn parent_network_id(db: &PgPool, directory_id: Uuid) -> Option<Uuid> {
+    sqlx::query_scalar::<_, Option<Uuid>>("SELECT network_id FROM directories WHERE id = $1")
+        .bind(directory_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+}
+
+/// Read the connection state of one network or directory (what the Admin Panel's card shows).
+/// `Ok(None)` = no such row. A directory reports both its own link and the network it inherits.
+pub async fn link_status(db: &PgPool, scope: LinkScope, id: Uuid) -> Result<Option<Value>, String> {
+    let Some((name, row)) = read_link_row(db, scope, id).await? else {
+        return Ok(None);
+    };
+    let mut out = link_json(scope, id, &name, &row);
+
+    if scope == LinkScope::Directory {
+        if let Some(nid) = parent_network_id(db, id).await {
+            if let Some((net_name, net_row)) = read_link_row(db, LinkScope::Network, nid).await? {
+                out["effective_tenant_id"] = match row.0 {
+                    Some(t) => json!(t),
+                    None => json!(net_row.0),
+                };
+                out["inherits_from"] = link_json(LinkScope::Network, nid, &net_name, &net_row);
+                return Ok(Some(out));
+            }
+        }
+        out["effective_tenant_id"] = json!(row.0);
+    } else {
+        out["effective_tenant_id"] = json!(row.0);
+    }
+    Ok(Some(out))
+}
+
+/// Connect (or update) a link. Lists that are not supplied keep their stored value, so the
+/// panel can save the tenant first and pick lists afterwards. `Ok(None)` = no such row.
+pub async fn save_link(
+    db: &PgPool,
+    scope: LinkScope,
+    id: Uuid,
+    tenant_id: Uuid,
+    base_url: Option<String>,
+    personal_key: Option<String>,
+    lists: &Value,
+) -> Result<Option<Value>, String> {
+    let plain_key = personal_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty());
+
+    let stored_key: Option<Vec<u8>> = match plain_key {
+        Some(k) => Some(
+            crate::security::provider_key_crypto::encrypt_for_storage(db, k)
+                .await
+                .map_err(|e| format!("could not encrypt the CoreSwift key: {e}"))?
+                .into_bytes(),
+        ),
+        None => None,
+    };
+    let prefix: Option<String> = plain_key.map(|k| k.chars().take(12).collect());
+
+    let table = scope.table();
+    let sql = format!(
+        "UPDATE {table} SET \
+           coreswift_tenant_id = $2, \
+           coreswift_base_url = COALESCE($3, coreswift_base_url), \
+           coreswift_personal_key_encrypted = COALESCE($4::bytea, coreswift_personal_key_encrypted), \
+           coreswift_key_prefix = COALESCE($5, coreswift_key_prefix), \
+           coreswift_list_id_users = COALESCE($6::uuid, coreswift_list_id_users), \
+           coreswift_list_id_businesses = COALESCE($7::uuid, coreswift_list_id_businesses), \
+           coreswift_list_id_suppliers = COALESCE($8::uuid, coreswift_list_id_suppliers), \
+           coreswift_list_id_sponsors = COALESCE($9::uuid, coreswift_list_id_sponsors), \
+           coreswift_list_id_claimed = COALESCE($10::uuid, coreswift_list_id_claimed), \
+           coreswift_list_id_newsletter = COALESCE($11::uuid, coreswift_list_id_newsletter) \
+         WHERE id = $1"
+    );
+
+    let res = sqlx::query(&sql)
+        .bind(id)
+        .bind(tenant_id)
+        .bind(base_url.as_deref().map(str::trim).filter(|s| !s.is_empty()))
+        .bind(&stored_key)
+        .bind(&prefix)
+        .bind(uuid_of(lists, "users"))
+        .bind(uuid_of(lists, "businesses"))
+        .bind(uuid_of(lists, "suppliers"))
+        .bind(uuid_of(lists, "sponsors"))
+        .bind(uuid_of(lists, "claimed"))
+        .bind(uuid_of(lists, "newsletter"))
+        .execute(db)
+        .await
+        .map_err(|e| format!("DB error saving the CoreSwift link: {e}"))?;
+
+    if res.rows_affected() == 0 {
+        return Ok(None);
+    }
+    tracing::info!(
+        "[coreswift] link saved for {} {id} (tenant {tenant_id}, key {})",
+        scope.as_str(),
+        if stored_key.is_some() {
+            "set"
+        } else {
+            "unchanged"
+        }
+    );
+    link_status(db, scope, id).await
+}
+
+/// Disconnect: clear every link column on this row. A directory inside a connected network
+/// falls back to inheriting the network again — that is the documented behaviour.
+pub async fn clear_link(db: &PgPool, scope: LinkScope, id: Uuid) -> Result<bool, String> {
+    let sql = format!(
+        "UPDATE {} SET \
+           coreswift_tenant_id = NULL, coreswift_base_url = NULL, \
+           coreswift_personal_key_encrypted = NULL, coreswift_key_prefix = NULL, \
+           coreswift_list_id_users = NULL, coreswift_list_id_businesses = NULL, \
+           coreswift_list_id_suppliers = NULL, coreswift_list_id_sponsors = NULL, \
+           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL \
+         WHERE id = $1",
+        scope.table()
+    );
+    let res = sqlx::query(&sql)
+        .bind(id)
+        .execute(db)
+        .await
+        .map_err(|e| format!("DB error clearing the CoreSwift link: {e}"))?;
+    tracing::info!("[coreswift] link cleared for {} {id}", scope.as_str());
+    Ok(res.rows_affected() > 0)
+}
+
+/// The effective connection of one link, network-level included.
+pub async fn conn_for_link(
+    db: &PgPool,
+    scope: LinkScope,
+    id: Uuid,
+) -> Result<Option<CoreSwiftConn>, String> {
+    match scope {
+        LinkScope::Directory => Ok(resolve_cs_conn(db, id).await.ok()),
+        LinkScope::Network => {
+            let row = sqlx::query_as::<
+                _,
+                (
+                    Option<Uuid>,
+                    Option<String>,
+                    Option<Vec<u8>>,
+                    Option<Uuid>,
+                    Option<Uuid>,
+                    Option<Uuid>,
+                ),
+            >(
+                "SELECT coreswift_tenant_id, coreswift_base_url, \
+                        coreswift_personal_key_encrypted, coreswift_list_id_users, \
+                        coreswift_list_id_businesses, coreswift_list_id_suppliers \
+                 FROM networks WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| format!("DB error reading the CoreSwift connection: {e}"))?;
+
+            let Some((tenant, base, key, ul, bl, sl)) = row else {
+                return Ok(None);
+            };
+            let Some(tenant_id) = tenant else {
+                return Ok(None);
+            };
+            let api_key = match key {
+                Some(bytes) if !bytes.is_empty() => {
+                    let stored = String::from_utf8_lossy(&bytes).to_string();
+                    crate::security::provider_key_crypto::decrypt_for_use(db, &stored, "coreswift")
+                        .await
+                        .unwrap_or_default()
+                }
+                _ => String::new(),
+            };
+            let base_url = match base.filter(|s| !s.is_empty()) {
+                Some(b) => b,
+                None => match preset_base_url(db, "coreswift").await {
+                    Some(b) => b,
+                    None => coreswift_url(),
+                },
+            };
+            Ok(Some(CoreSwiftConn {
+                tenant_id,
+                api_key,
+                base_url,
+                users_list_id: ul,
+                businesses_list_id: bl,
+                suppliers_list_id: sl,
+            }))
+        }
+    }
+}
+
+/// A REAL probe: personal-key connections list their lists through the external API; a
+/// tenant-only link proves reachability + that the tenant exists through the internal API
+/// (the same one every push uses). Never reports `ok: true` for an unreachable hub.
+pub async fn probe_conn(conn: &CoreSwiftConn) -> Result<Value, String> {
+    let base = conn.base_url.clone();
+    if !conn.api_key.is_empty() {
+        return Ok(match hub_lists(conn).await {
+            Ok(lists) => json!({
+                "ok": true,
+                "transport": "personal-key",
+                "base_url": base,
+                "lists": lists.get("lists").and_then(|l| l.as_array()).map(|a| a.len()).unwrap_or(0),
+                "detail": "CoreSwift accepted the personal key.",
+            }),
+            Err(e) => json!({
+                "ok": false,
+                "transport": "personal-key",
+                "base_url": base,
+                "detail": e,
+            }),
+        });
+    }
+
+    let resp = HTTP
+        .post(format!("{}/api/internal/tags/list", coreswift_url()))
+        .header("x-internal-key", internal_key())
+        .json(&json!({ "tenant_id": conn.tenant_id.to_string() }))
+        .send()
+        .await
+        .map_err(|e| format!("CoreSwift probe failed: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    Ok(json!({
+        "ok": status.is_success(),
+        "transport": "internal",
+        "base_url": base,
+        "status": status.as_u16(),
+        "detail": if status.is_success() {
+            "CoreSwift answered for this tenant; the fleet internal key is accepted.".to_string()
+        } else {
+            text.chars().take(300).collect::<String>()
+        },
+    }))
+}
+
+/// The CoreSwift tenant a directory is linked to — its own, or its network's.
+pub async fn resolve_directory_tenant(
+    db: &PgPool,
+    directory_id: Option<Uuid>,
+    directory_slug: Option<&str>,
+) -> Option<Uuid> {
+    let row = sqlx::query_as::<_, (Option<Uuid>,)>(
+        r#"SELECT COALESCE(d.coreswift_tenant_id, n.coreswift_tenant_id)
+           FROM directories d
+           LEFT JOIN networks n ON n.id = d.network_id
+           WHERE d.id = $1 OR d.slug = $2
+           ORDER BY (d.id = $1) DESC
+           LIMIT 1"#,
+    )
+    .bind(directory_id)
+    .bind(directory_slug)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten();
+    row.and_then(|(t,)| t)
+}
+
+/// The platform's one connected network — the fallback for captures that carry no directory
+/// (a B2B supplier registering on the community site, for example). Deliberately refuses to
+/// guess once more than one network is connected: two accounts means the caller must say
+/// which directory the capture belongs to.
+pub async fn default_network_tenant(db: &PgPool) -> Option<Uuid> {
+    let rows: Vec<Option<Uuid>> = sqlx::query_scalar::<_, Option<Uuid>>(
+        "SELECT coreswift_tenant_id FROM networks WHERE coreswift_tenant_id IS NOT NULL LIMIT 2",
+    )
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+    let found: Vec<Uuid> = rows.into_iter().flatten().collect();
+    match found.len() {
+        1 => found.first().copied(),
+        0 => None,
+        _ => {
+            tracing::warn!(
+                "[coreswift] {} networks are connected — refusing to guess which account a \
+                 directory-less capture belongs to",
+                found.len()
+            );
+            None
+        }
+    }
+}
+
+/// The tenant a capture event pushes into: the directory's link, else the one connected
+/// network. `None` = nothing is linked → the caller skips the push quietly.
+pub async fn capture_tenant(
+    db: &PgPool,
+    directory_id: Option<Uuid>,
+    directory_slug: Option<&str>,
+) -> Option<Uuid> {
+    match resolve_directory_tenant(db, directory_id, directory_slug).await {
+        Some(t) => Some(t),
+        None => default_network_tenant(db).await,
+    }
+}
+
+/// The list a captured audience belongs in, resolved from the LINK (directory, else its
+/// network, else the one connected network) — never from a hardcoded id.
+pub async fn audience_list(
+    db: &PgPool,
+    directory_slug: Option<&str>,
+    list_type: Option<&str>,
+) -> Option<Uuid> {
+    let kind = list_type
+        .unwrap_or("subscribers")
+        .trim()
+        .to_ascii_lowercase();
+
+    let row: Option<(
+        Option<Uuid>,
+        Option<Uuid>,
+        Option<Uuid>,
+        Option<Uuid>,
+        Option<Uuid>,
+        Option<Uuid>,
+    )> = match directory_slug.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(slug) => sqlx::query_as(
+            r#"SELECT COALESCE(d.coreswift_list_id_users, n.coreswift_list_id_users),
+                      COALESCE(d.coreswift_list_id_businesses, n.coreswift_list_id_businesses),
+                      COALESCE(d.coreswift_list_id_suppliers, n.coreswift_list_id_suppliers),
+                      COALESCE(d.coreswift_list_id_newsletter, n.coreswift_list_id_newsletter),
+                      COALESCE(d.coreswift_list_id_claimed, n.coreswift_list_id_claimed),
+                      COALESCE(d.coreswift_list_id_sponsors, n.coreswift_list_id_sponsors)
+               FROM directories d
+               LEFT JOIN networks n ON n.id = d.network_id
+               WHERE d.slug = $1
+               LIMIT 1"#,
+        )
+        .bind(slug)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten(),
+        None => {
+            let rows: Vec<(
+                Option<Uuid>,
+                Option<Uuid>,
+                Option<Uuid>,
+                Option<Uuid>,
+                Option<Uuid>,
+                Option<Uuid>,
+            )> = sqlx::query_as(
+                "SELECT coreswift_list_id_users, coreswift_list_id_businesses, \
+                            coreswift_list_id_suppliers, coreswift_list_id_newsletter, \
+                            coreswift_list_id_claimed, coreswift_list_id_sponsors \
+                     FROM networks WHERE coreswift_tenant_id IS NOT NULL LIMIT 2",
+            )
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+            if rows.len() == 1 {
+                rows.into_iter().next()
+            } else {
+                None
+            }
+        }
+    };
+
+    let (users, businesses, suppliers, newsletter, claimed, sponsors) = row?;
+    match kind.as_str() {
+        "businesses" | "business" => businesses.or(claimed),
+        "suppliers" | "supplier" => suppliers,
+        "sponsors" | "sponsor" => sponsors,
+        "subscribers" | "subscriber" | "newsletter" => newsletter.or(users),
+        _ => users,
+    }
 }

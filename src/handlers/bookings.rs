@@ -601,11 +601,12 @@ pub async fn create_service_booking(
             match crate::coreswift::push_lead_to_coreswift(&cs_db, lead_tenant, lead_dir, lead)
                 .await
             {
-                Ok(true) => tracing::info!(
-                    "[bookings] booking lead pushed into CoreSwift ({:?})",
-                    lead_dir
+                Ok(Some(contact_id)) => tracing::info!(
+                    "[bookings] booking lead pushed into CoreSwift ({:?}) as contact {}",
+                    lead_dir,
+                    contact_id
                 ),
-                Ok(false) => {
+                Ok(None) => {
                     tracing::debug!("[bookings] CoreSwift not connected — booking kept locally")
                 }
                 Err(e) => tracing::warn!("[bookings] CoreSwift lead push failed: {e}"),

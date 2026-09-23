@@ -974,30 +974,37 @@ pub async fn public_submit_survey(
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false);
 
-    let (pushed, push_error): (bool, Option<String>) = if !has_identity {
-        (
-            false,
-            Some(
-                "skipped: the response carries no email, phone or name to identify the contact"
-                    .to_string(),
-            ),
-        )
-    } else {
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(8),
-            crate::coreswift::push_lead_to_coreswift(&s.db, None, Some(directory_id), lead),
-        )
-        .await
-        {
-            Err(_) => (false, Some("CoreSwift push timed out after 8s".to_string())),
-            Ok(Ok(true)) => (true, None),
-            Ok(Ok(false)) => (
+    let (pushed, push_error, coreswift_contact_id): (bool, Option<String>, Option<Uuid>) =
+        if !has_identity {
+            (
                 false,
-                Some("skipped: CoreSwift is not connected for this directory".to_string()),
-            ),
-            Ok(Err(e)) => (false, Some(e)),
-        }
-    };
+                Some(
+                    "skipped: the response carries no email, phone or name to identify the contact"
+                        .to_string(),
+                ),
+                None,
+            )
+        } else {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                crate::coreswift::push_lead_to_coreswift(&s.db, None, Some(directory_id), lead),
+            )
+            .await
+            {
+                Err(_) => (
+                    false,
+                    Some("CoreSwift push timed out after 8s".to_string()),
+                    None,
+                ),
+                Ok(Ok(contact_id)) => (true, None, contact_id),
+                Ok(Ok(None)) => (
+                    false,
+                    Some("skipped: no CoreSwift connection for this directory".to_string()),
+                    None,
+                ),
+                Ok(Err(e)) => (false, Some(e), None),
+            }
+        };
 
     if let Some(reason) = &push_error {
         tracing::warn!(
@@ -1014,13 +1021,31 @@ pub async fn public_submit_survey(
         );
     }
 
-    sqlx::query("UPDATE survey_responses SET coreswift_pushed = $1, coreswift_push_error = $2 WHERE id = $3")
-        .bind(pushed)
-        .bind(&push_error)
-        .bind(response.id)
+    sqlx::query(
+        "UPDATE survey_responses SET coreswift_pushed = $1, coreswift_push_error = $2, \
+         coreswift_contact_id = COALESCE($4, coreswift_contact_id) WHERE id = $3",
+    )
+    .bind(pushed)
+    .bind(&push_error)
+    .bind(response.id)
+    .bind(coreswift_contact_id)
+    .execute(&s.db)
+    .await
+    .map_err(|e| AppError::Internal(format!("Could not record the CRM push result: {e}")))?;
+
+    // Carry the identity across: the same person is ONE contact in CoreSwift, linked to
+    // their Multi-Directory account (and the response the admin drills into in card B68).
+    if let (Some(contact_id), Some(visitor_id)) = (coreswift_contact_id, respondent_id) {
+        sqlx::query(
+            "UPDATE visitor_accounts SET coreswift_contact_id = COALESCE(coreswift_contact_id, $1) \
+             WHERE id = $2",
+        )
+        .bind(contact_id)
+        .bind(visitor_id)
         .execute(&s.db)
         .await
-        .map_err(|e| AppError::Internal(format!("Could not record the CRM push result: {e}")))?;
+        .ok();
+    }
 
     // ── Newsletter opt-in straight from the questionnaire (native, in-house) ──
     if let Some(visitor_id) = respondent_id {

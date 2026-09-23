@@ -21,7 +21,7 @@
 //! no second CoreSwift client.
 
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Extension, Path, Query, State},
     response::IntoResponse,
     Json,
 };
@@ -30,7 +30,10 @@ use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 use crate::auth::models::Claims;
-use crate::coreswift::{hub_lists, push_lead_to_coreswift, resolve_lead_conn, LeadPayload};
+use crate::coreswift::{
+    clear_link, conn_for_link, coreswift_url, hub_lists, link_status, probe_conn,
+    push_lead_to_coreswift, resolve_lead_conn, save_link, CoreSwiftConn, LeadPayload, LinkScope,
+};
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
@@ -160,14 +163,15 @@ pub async fn coreswift_push(
         ));
     }
 
-    let pushed = push_lead_to_coreswift(&s.db, Some(tenant_id), directory_id, payload)
+    let contact_id = push_lead_to_coreswift(&s.db, Some(tenant_id), directory_id, payload)
         .await
         .map_err(AppError::Internal)?;
 
     Ok(Json(json!({
-        "success": pushed,
-        "pushed": pushed,
-        "message": if pushed {
+        "success": contact_id.is_some(),
+        "pushed": contact_id.is_some(),
+        "coreswift_contact_id": contact_id,
+        "message": if contact_id.is_some() {
             "Lead pushed to CoreSwift."
         } else {
             "Nothing pushed."
@@ -244,4 +248,245 @@ pub async fn test_provider_key_live(
             "message": e,
         }))),
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Card B67 — the NATIVE per-network / per-directory CoreSwift connection.
+//
+// Operable entirely from the Admin Panel: connect, test, see the status, choose the lists,
+// disconnect. The link (tenant id, base URL, optional `csk_` personal key, the six typed
+// list ids) lives on the `networks` / `directories` row for that account — nothing
+// server-wide, nothing hardcoded, nothing server-provisioned behind the operator's back.
+//
+// Every route here is PLATFORM-OPERATOR-only: these write credentials and move a tenant's
+// captures into (or out of) another account.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct LinkQuery {
+    pub scope: String,
+    pub id: Uuid,
+}
+
+impl LinkQuery {
+    fn scope(&self) -> Result<LinkScope, AppError> {
+        LinkScope::parse(&self.scope).ok_or_else(|| {
+            AppError::Validation("scope must be 'network' or 'directory'".to_string())
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LinkSaveRequest {
+    pub scope: String,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub personal_key: Option<String>,
+    #[serde(default)]
+    pub lists: Value,
+}
+
+/// GET /api/v1/integrations/coreswift/connection/targets — the picker's own list: every
+/// network and every directory with its current link state. Operator-only.
+pub async fn coreswift_connection_targets(
+    State(s): State<AppState>,
+) -> ApiResult<impl IntoResponse> {
+    let networks = sqlx::query_as::<_, (Uuid, String, String, Option<Uuid>, bool)>(
+        "SELECT id, name, slug, coreswift_tenant_id, \
+                (coreswift_personal_key_encrypted IS NOT NULL \
+                 AND length(coreswift_personal_key_encrypted) > 0) \
+         FROM networks ORDER BY name",
+    )
+    .fetch_all(&s.db)
+    .await
+    .map_err(|e| AppError::Internal(format!("DB error listing networks: {e}")))?;
+
+    let directories =
+        sqlx::query_as::<_, (Uuid, String, String, Option<Uuid>, Option<Uuid>, bool)>(
+            "SELECT id, name, slug, network_id, coreswift_tenant_id, \
+                (coreswift_personal_key_encrypted IS NOT NULL \
+                 AND length(coreswift_personal_key_encrypted) > 0) \
+         FROM directories ORDER BY name",
+        )
+        .fetch_all(&s.db)
+        .await
+        .map_err(|e| AppError::Internal(format!("DB error listing directories: {e}")))?;
+
+    Ok(Json(json!({
+        "success": true,
+        "networks": networks.into_iter().map(|(id, name, slug, tenant, key)| json!({
+            "id": id, "name": name, "slug": slug, "tenant_id": tenant, "key_configured": key,
+        })).collect::<Vec<_>>(),
+        "directories": directories.into_iter().map(|(id, name, slug, network_id, tenant, key)| json!({
+            "id": id, "name": name, "slug": slug, "network_id": network_id,
+            "tenant_id": tenant, "key_configured": key,
+        })).collect::<Vec<_>>(),
+    })))
+}
+
+/// GET /api/v1/integrations/coreswift/connection?scope=network|directory&id=<uuid>
+pub async fn coreswift_connection_get(
+    State(s): State<AppState>,
+    Query(q): Query<LinkQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let scope = q.scope()?;
+    let connection = link_status(&s.db, scope, q.id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or_else(|| AppError::NotFound(format!("No {} with id {}", scope.as_str(), q.id)))?;
+    Ok(Json(json!({ "success": true, "connection": connection })))
+}
+
+/// POST /api/v1/integrations/coreswift/connection — connect or update a link.
+///
+/// The connection is PROBED against the hub before it is stored, so the panel can never
+/// report "connected" for a tenant the CRM will reject on the next push.
+pub async fn coreswift_connection_save(
+    State(s): State<AppState>,
+    Json(req): Json<LinkSaveRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let scope = LinkScope::parse(&req.scope).ok_or_else(|| {
+        AppError::Validation("scope must be 'network' or 'directory'".to_string())
+    })?;
+
+    let candidate = CoreSwiftConn {
+        tenant_id: req.tenant_id,
+        api_key: req
+            .personal_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+            .unwrap_or("")
+            .to_string(),
+        base_url: req
+            .base_url
+            .clone()
+            .map(|b| b.trim().to_string())
+            .filter(|b| !b.is_empty())
+            .unwrap_or_else(coreswift_url),
+        users_list_id: None,
+        businesses_list_id: None,
+        suppliers_list_id: None,
+    };
+
+    let probe = probe_conn(&candidate).await.map_err(AppError::Internal)?;
+    if probe.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+        return Err(AppError::Validation(format!(
+            "CoreSwift refused this connection: {}",
+            probe
+                .get("detail")
+                .and_then(|d| d.as_str())
+                .unwrap_or("no detail returned")
+        )));
+    }
+
+    let connection = save_link(
+        &s.db,
+        scope,
+        req.id,
+        req.tenant_id,
+        req.base_url,
+        req.personal_key,
+        &req.lists,
+    )
+    .await
+    .map_err(AppError::Internal)?
+    .ok_or_else(|| AppError::NotFound(format!("No {} with id {}", scope.as_str(), req.id)))?;
+
+    Ok(Json(json!({
+        "success": true,
+        "message": "CoreSwift connected.",
+        "connection": connection,
+        "probe": probe,
+    })))
+}
+
+/// DELETE /api/v1/integrations/coreswift/connection?scope=&id=
+pub async fn coreswift_connection_delete(
+    State(s): State<AppState>,
+    Query(q): Query<LinkQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let scope = q.scope()?;
+    let cleared = clear_link(&s.db, scope, q.id)
+        .await
+        .map_err(AppError::Internal)?;
+    if !cleared {
+        return Err(AppError::NotFound(format!(
+            "No {} with id {}",
+            scope.as_str(),
+            q.id
+        )));
+    }
+    Ok(Json(json!({
+        "success": true,
+        "message": "CoreSwift disconnected. Captures continue locally.",
+    })))
+}
+
+/// POST /api/v1/integrations/coreswift/connection/test — a REAL probe of the stored link.
+pub async fn coreswift_connection_test(
+    State(s): State<AppState>,
+    Query(q): Query<LinkQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let scope = q.scope()?;
+    let conn = conn_for_link(&s.db, scope, q.id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or_else(|| {
+            AppError::BadRequest(format!(
+                "This {} has no CoreSwift tenant linked — connect it first.",
+                scope.as_str()
+            ))
+        })?;
+
+    let probe = probe_conn(&conn).await.map_err(AppError::Internal)?;
+    Ok(Json(json!({
+        "success": true,
+        "tenant_id": conn.tenant_id,
+        "key_configured": !conn.api_key.is_empty(),
+        "probe": probe,
+    })))
+}
+
+/// GET /api/v1/integrations/coreswift/connection/lists?scope=&id=
+/// The stored lists, plus the hub's own list picker when a personal key is present (the
+/// external API endpoint the picker needs; the internal transport can create contacts but
+/// not enumerate the tenant's lists).
+pub async fn coreswift_connection_lists(
+    State(s): State<AppState>,
+    Query(q): Query<LinkQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let scope = q.scope()?;
+    let connection = link_status(&s.db, scope, q.id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or_else(|| AppError::NotFound(format!("No {} with id {}", scope.as_str(), q.id)))?;
+
+    let (hub, hub_error) = match conn_for_link(&s.db, scope, q.id)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        Some(conn) if !conn.api_key.is_empty() => match hub_lists(&conn).await {
+            Ok(v) => (Some(v), Value::Null),
+            Err(e) => (None, json!(e)),
+        },
+        Some(_) => (
+            None,
+            json!(
+                "No personal key on this connection — the hub picker needs a csk_ key. \
+                 The lists already stored for this link are shown below."
+            ),
+        ),
+        None => (None, json!("No CoreSwift tenant linked yet.")),
+    };
+
+    Ok(Json(json!({
+        "success": true,
+        "connection": connection,
+        "hub": hub,
+        "hub_error": hub_error,
+    })))
 }

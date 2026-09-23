@@ -338,8 +338,12 @@ pub async fn b2b_register(
             Some("suppliers".to_string()),
             None,
             Some("b2b_register".to_string()),
-            Some("2944af81-2086-44b8-93c1-d83e93a5dec1".to_string()),
-            Some("043fb15c-0874-4f41-b81a-4f324ce98b23".to_string()),
+            // Tenant and list come from the CoreSwift LINK in the database (this account's
+            // network, or the directory that owns the capture). They were hardcoded here —
+            // one specific tenant + list id — which broke David's "nothing hardwired" rule
+            // and silently mis-targeted any other account.
+            None,
+            None,
         );
     });
 

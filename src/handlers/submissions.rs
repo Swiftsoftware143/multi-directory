@@ -227,11 +227,12 @@ pub async fn create_submission(
             match crate::coreswift::push_lead_to_coreswift(&cs_db, lead_tenant, lead_dir, lead)
                 .await
             {
-                Ok(true) => tracing::info!(
-                    "[submissions] enquiry lead pushed into CoreSwift ({:?})",
-                    lead_dir
+                Ok(Some(contact_id)) => tracing::info!(
+                    "[submissions] enquiry lead pushed into CoreSwift ({:?}) as contact {}",
+                    lead_dir,
+                    contact_id
                 ),
-                Ok(false) => {
+                Ok(None) => {
                     tracing::debug!("[submissions] CoreSwift not connected — enquiry kept locally")
                 }
                 Err(e) => tracing::warn!("[submissions] CoreSwift lead push failed: {e}"),
