@@ -529,18 +529,26 @@ pub async fn visitor_profile(
     // Get saved deals — deals where this visitor claimed/flagged
     let saved_deals =
         sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>)>(
-            r#"SELECT d.id, d.title, d.description, d.discount_value, d.image_url
+            // deal_claims links a claim to a visitor by email only (it has no visitor_account_id)
+            // and stamps claimed_at, not created_at — the old WHERE/ORDER BY named three columns
+            // that do not exist, so this read errored out on every page load and the swallow turned
+            // it into a silently empty list (t_4f883b9a).
+            r#"SELECT d.id, d.title, d.description, d.discount_value::text AS discount_value, d.image_url
            FROM deals d
            JOIN deal_claims dc ON dc.deal_id = d.id
-           WHERE dc.visitor_account_id = $1 OR dc.email = $2
-           ORDER BY dc.created_at DESC
+           WHERE dc.visitor_email = $1
+           ORDER BY dc.claimed_at DESC
            LIMIT 20"#,
         )
-        .bind(visitor_id)
         .bind(&visitor.email)
         .fetch_all(&s.db)
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Secondary read: never take the visitor dashboard down with it, but never swallow it
+            // silently either — the decode mismatch this used to hide is t_4f883b9a.
+            eprintln!("portal saved_deals query failed: {e}");
+            Vec::new()
+        });
 
     Ok(Json(json!({
         "visitor": {

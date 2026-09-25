@@ -87,7 +87,7 @@ pub struct UpdatePublicPageRequest {
 /// GET /api/v1/public_pages — list all public_pages
 pub async fn list_public_pages(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let public_pages = sqlx::query_as::<_, PublicPage>(
-        "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages ORDER BY created_at DESC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -98,7 +98,7 @@ pub async fn list_public_pages(State(s): State<AppState>) -> ApiResult<impl Into
 /// GET /api/v1/public_pages/featured — featured public_pages across all directories
 pub async fn list_featured_public_pages(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let public_pages = sqlx::query_as::<_, PublicPage>(
-        "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -112,7 +112,7 @@ pub async fn create_public_page(
     Json(req): Json<CreatePublicPageRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let public_page = sqlx::query_as::<_, PublicPage>(
-        "INSERT INTO public_pages (title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417) RETURNING id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at "
+        "INSERT INTO public_pages (title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code) VALUES (\x241, \x242, NULLIF(\x243::text, '')::numeric, NULLIF(\x244::text, '')::numeric, \x245::int4::numeric, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417) RETURNING id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at "
     )
     .bind(&req.title)
     .bind(&req.description)
@@ -143,7 +143,7 @@ pub async fn get_public_page(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let public_page = sqlx::query_as::<_, PublicPage>(
-        "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE id = \x241 "
+        "SELECT id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -160,7 +160,7 @@ pub async fn update_public_page(
     Json(req): Json<UpdatePublicPageRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let existing = sqlx::query_as::<_, PublicPage>(
-        "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE id = \x241 "
+        "SELECT id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -186,7 +186,7 @@ pub async fn update_public_page(
     let coupon_code = req.coupon_code.or(existing.coupon_code);
 
     let public_page = sqlx::query_as::<_, PublicPage>(
-        "UPDATE public_pages SET title = \x241, description = \x242, original_price = \x243, public_page_price = \x244, discount_percent = \x245, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, public_page_type = \x2416, coupon_code = \x2417, updated_at = NOW() WHERE id = \x2418 RETURNING id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at "
+        "UPDATE public_pages SET title = \x241, description = \x242, original_price = NULLIF(\x243::text, '')::numeric, public_page_price = NULLIF(\x244::text, '')::numeric, discount_percent = \x245::int4::numeric, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, public_page_type = \x2416, coupon_code = \x2417, updated_at = NOW() WHERE id = \x2418 RETURNING id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at "
     )
     .bind(&title)
     .bind(&description)
@@ -235,7 +235,7 @@ pub async fn claim_public_page(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let public_page = sqlx::query_as::<_, PublicPage>(
-        "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE id = \x241 "
+        "SELECT id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -252,7 +252,7 @@ pub async fn claim_public_page(
     }
 
     let updated = sqlx::query_as::<_, PublicPage>(
-        "UPDATE public_pages SET redemption_count = COALESCE(redemption_count, 0) + 1, updated_at = NOW() WHERE id = \x241 RETURNING id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at "
+        "UPDATE public_pages SET redemption_count = COALESCE(redemption_count, 0) + 1, updated_at = NOW() WHERE id = \x241 RETURNING id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at "
     )
     .bind(id)
     .fetch_one(&s.db)
@@ -273,7 +273,7 @@ pub async fn list_directory_public_pages(
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let public_pages = sqlx::query_as::<_, PublicPage>(
-        "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE directory_id = \x241 ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE directory_id = \x241 ORDER BY created_at DESC "
     )
     .bind(dir.0)
     .fetch_all(&s.db)
@@ -294,7 +294,7 @@ pub async fn list_business_public_pages(
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let public_pages = sqlx::query_as::<_, PublicPage>(
-        "SELECT id, title, description, original_price, public_page_price, discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price::text AS original_price, public_page_price::text AS public_page_price, discount_percent::int4 AS discount_percent, currency, image_url, terms, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, public_page_type, coupon_code, created_at, updated_at FROM public_pages WHERE directory_id = \x241 AND business_id = \x242 ORDER BY created_at DESC "
     )
     .bind(dir.0)
     .bind(business_id)

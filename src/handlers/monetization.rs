@@ -1107,7 +1107,9 @@ pub async fn downgrade_subscription(
     Json(req): Json<DowngradeRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if let Some(plan_id) = req.plan_id {
-        let plan = sqlx::query_as::<_, (String, f64)>(
+        // plan_tiers.price_monthly is numeric(10,2) and sqlx has no f64 decode for NUMERIC, so
+        // this tuple failed every downgrade with a decode error (t_4f883b9a). Decimal is right.
+        let plan = sqlx::query_as::<_, (String, rust_decimal::Decimal)>(
             "SELECT name, price_monthly FROM plan_tiers WHERE id = $1",
         )
         .bind(plan_id)
@@ -1115,10 +1117,13 @@ pub async fn downgrade_subscription(
         .await?
         .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
 
+        // business_subscriptions carries tier_id (FK -> plan_tiers.id) and price_paid; the
+        // plan_name/price/updated_at columns this statement used to name do not exist (t_a42eb313),
+        // so every downgrade failed before the price_monthly read above could return.
         sqlx::query(
-            "UPDATE business_subscriptions SET plan_name = $1, price = $2, status = 'active', updated_at = NOW() WHERE business_id = $3"
+            "UPDATE business_subscriptions SET tier_id = $1, price_paid = $2, status = 'active' WHERE business_id = $3"
         )
-        .bind(&plan.0)
+        .bind(plan_id)
         .bind(plan.1)
         .bind(req.business_id)
         .execute(&s.db)
@@ -1127,7 +1132,7 @@ pub async fn downgrade_subscription(
         Ok(Json(json!({"status": "downgraded", "plan": plan.0})))
     } else {
         sqlx::query(
-            "UPDATE business_subscriptions SET status = 'cancelled', updated_at = NOW() WHERE business_id = $1"
+            "UPDATE business_subscriptions SET status = 'cancelled' WHERE business_id = $1",
         )
         .bind(req.business_id)
         .execute(&s.db)

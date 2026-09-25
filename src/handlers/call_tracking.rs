@@ -340,7 +340,7 @@ pub async fn list_phone_numbers(
     let offset = q.offset.unwrap_or(0);
 
     let numbers = sqlx::query_as::<_, PhoneNumber>(
-        "SELECT id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost, status, created_at FROM twilio_numbers ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 "
+        "SELECT id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost::float8 AS monthly_cost, status, created_at FROM twilio_numbers ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 "
     )
     .bind(limit)
     .bind(offset)
@@ -360,7 +360,7 @@ pub async fn create_phone_number(
     }
 
     let number = sqlx::query_as::<_, PhoneNumber>(
-        "INSERT INTO twilio_numbers (phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost, status) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411) RETURNING id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost, status, created_at "
+        "INSERT INTO twilio_numbers (phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost, status) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410::float8::numeric, \x2411) RETURNING id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost::float8 AS monthly_cost, status, created_at "
     )
     .bind(&body.phone_number)
     .bind(&body.friendly_name)
@@ -385,7 +385,7 @@ pub async fn get_phone_number(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let number = sqlx::query_as::<_, PhoneNumber>(
-        "SELECT id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost, status, created_at FROM twilio_numbers WHERE id = \x241 "
+        "SELECT id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost::float8 AS monthly_cost, status, created_at FROM twilio_numbers WHERE id = \x241 "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -424,7 +424,7 @@ pub async fn update_phone_number(
     // Since sqlx doesn't do dynamic bind easily, use raw sql with explicit bind
     // We'll use a simpler approach with query builder
     let log = sqlx::query_as::<_, PhoneNumber>(
-        "UPDATE twilio_numbers SET friendly_name = COALESCE(\x241, friendly_name), sid = COALESCE(\x242, sid), provider = COALESCE(\x243, provider), directory_id = COALESCE(\x244, directory_id), business_id = COALESCE(\x245, business_id), forwarding_number = COALESCE(\x246, forwarding_number), webhook_url = COALESCE(\x247, webhook_url), call_logging = COALESCE(\x248, call_logging), monthly_cost = COALESCE(\x249, monthly_cost), status = COALESCE(\x2410, status) WHERE id = \x2411 RETURNING id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost, status, created_at "
+        "UPDATE twilio_numbers SET friendly_name = COALESCE(\x241, friendly_name), sid = COALESCE(\x242, sid), provider = COALESCE(\x243, provider), directory_id = COALESCE(\x244, directory_id), business_id = COALESCE(\x245, business_id), forwarding_number = COALESCE(\x246, forwarding_number), webhook_url = COALESCE(\x247, webhook_url), call_logging = COALESCE(\x248, call_logging), monthly_cost = COALESCE(\x249::float8::numeric, monthly_cost), status = COALESCE(\x2410, status) WHERE id = \x2411 RETURNING id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost::float8 AS monthly_cost, status, created_at "
     )
     .bind(&body.friendly_name)
     .bind(&body.sid)
@@ -467,7 +467,7 @@ pub async fn provision_phone_number(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let number = sqlx::query_as::<_, PhoneNumber>(
-        "UPDATE twilio_numbers SET status = 'provisioned' WHERE id = \x241 RETURNING id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost, status, created_at "
+        "UPDATE twilio_numbers SET status = 'provisioned' WHERE id = \x241 RETURNING id, phone_number, friendly_name, sid, provider, directory_id, business_id, forwarding_number, webhook_url, call_logging, monthly_cost::float8 AS monthly_cost, status, created_at "
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -491,7 +491,7 @@ pub async fn directory_phone_numbers(
     let offset = q.offset.unwrap_or(0);
 
     let numbers = sqlx::query_as::<_, PhoneNumber>(
-        "SELECT pn.id, pn.phone_number, pn.friendly_name, pn.sid, pn.provider, pn.directory_id, pn.business_id, pn.forwarding_number, pn.webhook_url, pn.call_logging, pn.monthly_cost, pn.status, pn.created_at FROM twilio_numbers pn JOIN directories d ON d.id = pn.directory_id WHERE d.slug = \x241 ORDER BY pn.created_at DESC LIMIT \x242 OFFSET \x243 "
+        "SELECT pn.id, pn.phone_number, pn.friendly_name, pn.sid, pn.provider, pn.directory_id, pn.business_id, pn.forwarding_number, pn.webhook_url, pn.call_logging, pn.monthly_cost::float8 AS monthly_cost, pn.status, pn.created_at FROM twilio_numbers pn JOIN directories d ON d.id = pn.directory_id WHERE d.slug = \x241 ORDER BY pn.created_at DESC LIMIT \x242 OFFSET \x243 "
     )
     .bind(&slug)
     .bind(limit)
