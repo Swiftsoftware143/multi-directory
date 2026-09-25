@@ -89,12 +89,18 @@ pub(crate) fn make_is_jwt(
     .map_err(|e| AppError::Internal(format!("JWT encode failed: {}", e)))
 }
 
-/// Look up the IS account_id by email from MD's user table.
-pub(crate) async fn resolve_is_account(
+/// The email MultiDirectory holds for the signed-in user, plus the IncentiveSwift account
+/// registered with that email — `None` when there is no such account.
+///
+/// `None` is a REAL answer, not an error: it means no IncentiveSwift account exists for this
+/// directory's email, so there is nothing the directory could legitimately be linked to.
+/// Callers that have to decide whether a pasted API key belongs to THIS directory use the
+/// `Option` directly; callers that only need a `sub` for an IS JWT use [`resolve_is_account`].
+pub(crate) async fn resolve_is_account_owner(
     db: &sqlx::PgPool,
     is_db: &sqlx::PgPool,
     md_claims: &Claims,
-) -> Result<(String, String), AppError> {
+) -> Result<(String, Option<String>), AppError> {
     let user_id = uuid::Uuid::parse_str(&md_claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Get email from MD users table
@@ -112,6 +118,21 @@ pub(crate) async fn resolve_is_account(
             .fetch_optional(is_db)
             .await
             .map_err(|_| AppError::Internal("IS lookup failed".into()))?;
+
+    Ok((email, is_account))
+}
+
+/// Look up the IS account_id by email from MD's user table.
+///
+/// Falls back to the MD user id (`claims.sub`) when the email has no IncentiveSwift account,
+/// which is what the IS proxy/JWT callers have always done. Anything that must know whether a
+/// real IncentiveSwift account exists uses [`resolve_is_account_owner`] instead.
+pub(crate) async fn resolve_is_account(
+    db: &sqlx::PgPool,
+    is_db: &sqlx::PgPool,
+    md_claims: &Claims,
+) -> Result<(String, String), AppError> {
+    let (email, is_account) = resolve_is_account_owner(db, is_db, md_claims).await?;
 
     let account_id = match is_account {
         Some(id) => id,

@@ -396,12 +396,9 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <!-- IncentiveSwift Connect Form -->
       <div id="supplierIsConnectForm" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
         <div class="form-group">
-          <label>IncentiveSwift Tenant ID</label>
-          <input type="text" id="supplierIsTenantId" placeholder="Enter your IncentiveSwift tenant ID">
-        </div>
-        <div class="form-group">
           <label>IncentiveSwift API Key</label>
           <input type="password" id="supplierIsApiKey" placeholder="Enter your IncentiveSwift API key">
+          <small style="display:block;margin-top:4px;color:var(--text-secondary);font-size:.75rem">Use a key from the IncentiveSwift account registered to this login's email — a key from any other IncentiveSwift account is refused.</small>
         </div>
         <div style="margin-top:8px">
           <button class="btn btn-primary btn-sm" onclick="supplierConnectIS()">Connect</button>
@@ -1227,10 +1224,9 @@ function showSupplierConnectForm(service) {
 }
 
 async function supplierConnectIS() {
-  var tenantId = document.getElementById('supplierIsTenantId').value.trim();
   var apiKey = document.getElementById('supplierIsApiKey').value.trim();
-  if (!tenantId || !apiKey) {
-    document.getElementById('supplierIsConnectResult').textContent = 'âŒ Tenant ID and API key required';
+  if (!apiKey) {
+    document.getElementById('supplierIsConnectResult').textContent = 'Please paste your IncentiveSwift API key';
     return;
   }
   try {
@@ -1266,6 +1262,9 @@ async function disconnectSupplierService(service) {
   try {
     var r = await fetch('/api/v1/connected-services/' + service, { method: 'DELETE', headers: authHeaders() });
     if (!r.ok) throw new Error('Failed to disconnect');
+    toast(service === 'incentiveswift'
+      ? 'Disconnected. Your IncentiveSwift API key is unchanged — it stays valid everywhere else you use it.'
+      : 'Disconnected from ' + service, 'success');
     loadSupplierConnectedServices();
   } catch(e) {
     toast('âŒ ' + e.message, 'error');

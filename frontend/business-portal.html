@@ -648,6 +648,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <div class="form-group">
               <label>API Key</label>
               <input type="password" id="isApiKey" placeholder="Paste your IncentiveSwift API key">
+              <small style="display:block;margin-top:4px;color:var(--text-secondary);font-size:.75rem">Use a key from the IncentiveSwift account registered to this directory's email — a key from any other IncentiveSwift account is refused.</small>
             </div>
             <div style="display:flex;gap:8px">
               <button class="btn btn-primary btn-sm" onclick="connectService('incentiveswift')">✅ Connect</button>
@@ -1099,7 +1100,7 @@ function disconnectService(service) {
   })
   .then(function(r) { return r.json(); })
   .then(function() {
-    toast('Disconnected from ' + service, 'success');
+    toast('Disconnected from ' + service + '. Your IncentiveSwift API key is unchanged — it stays valid everywhere else you use it.', 'success');
     loadConnectedServices();
   })
   .catch(function(e) {

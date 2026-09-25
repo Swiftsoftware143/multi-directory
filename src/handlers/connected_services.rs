@@ -21,6 +21,46 @@ use crate::AppState;
 
 use super::proxy_common::*;
 
+/// IncentiveSwift's answer to `POST /api-keys/verify`.
+struct IsKeyCheck {
+    /// The HTTP call itself succeeded (2xx).
+    http_ok: bool,
+    /// IncentiveSwift says the key is live.
+    valid: bool,
+    /// The IncentiveSwift account the key belongs to. EMPTY when the key is not valid or when
+    /// IncentiveSwift did not report an owner (older build) — callers must treat empty as
+    /// "ownership unknown", never as a match.
+    account_id: String,
+}
+
+/// Ask IncentiveSwift whether an API key is live, and which account it belongs to.
+///
+/// This is the ONE place Multi-Directory reads IncentiveSwift's verify answer, so
+/// `connect_service` and `verify_service_key` cannot drift apart about who owns a key.
+async fn verify_is_api_key(api_key: &str) -> Result<IsKeyCheck, AppError> {
+    let url = format!("{}/api-keys/verify", is_base_url());
+
+    let resp = http()
+        .post(&url)
+        .json(&json!({ "api_key": api_key }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
+
+    let http_ok = resp.status().is_success();
+    let v: Value = resp.json().await.unwrap_or_default();
+
+    Ok(IsKeyCheck {
+        http_ok,
+        valid: v.get("valid").and_then(|v| v.as_bool()).unwrap_or(false),
+        account_id: v
+            .get("account_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+    })
+}
+
 /// Status of a connected service for the current user.
 #[derive(Debug, Serialize)]
 pub struct ServiceStatus {
@@ -100,31 +140,54 @@ pub async fn connect_service(
 
     match body.service.as_str() {
         "incentiveswift" => {
-            // Verify the API key by calling IS's verify endpoint
-            let (aid, email) = resolve_is_account(&s.db, &s.is_db, &claims).await?;
+            // Who is THIS directory's IncentiveSwift account? Resolved from the signed-in
+            // user's email. `None` means no IncentiveSwift account is registered with that
+            // address, so there is nothing a pasted key could legitimately belong to.
+            let (email, directory_is_account) =
+                resolve_is_account_owner(&s.db, &s.is_db, &claims).await?;
 
-            // Test the key by calling a lightweight IS endpoint
-            let is_url = is_base_url();
-            let url = format!("{}/api-keys/verify", is_url);
+            // Is the pasted key a LIVE IncentiveSwift key, and whose is it?
+            let check = verify_is_api_key(&body.api_key).await?;
 
-            let resp = http()
-                .post(&url)
-                .json(&json!({ "api_key": body.api_key }))
-                .send()
-                .await
-                .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
-
-            if !resp.status().is_success() {
+            if !check.http_ok {
                 return Err(AppError::BadRequest(
                     "Invalid API key — verification failed".into(),
                 ));
             }
 
-            let v: Value = resp.json().await.unwrap_or_default();
-            let valid = v.get("valid").and_then(|v| v.as_bool()).unwrap_or(false);
-
-            if !valid {
+            if !check.valid {
                 return Err(AppError::BadRequest("Invalid API key".into()));
+            }
+
+            // ── BIND the key to this directory's IncentiveSwift account ──────────────
+            // `valid` only proves "this string is SOMEBODY'S IncentiveSwift key": an
+            // IncentiveSwift API key is a SHARED customer credential — IS's own API-Keys
+            // screen hands it out to be pasted into other surfaces — so without the
+            // comparison below ANY valid key, a stranger's included, could arm this
+            // directory's connection. The connection has to be a LINK, not a liveness gate:
+            // the key must have been issued by the same IncentiveSwift account this
+            // directory shows campaigns from (list_service_campaigns proxies with this
+            // directory's own IS account, resolved by the same email).
+            if check.account_id.is_empty() {
+                return Err(AppError::BadRequest(
+                    "IncentiveSwift did not say which account this API key belongs to, so it cannot be linked to this directory.".into(),
+                ));
+            }
+
+            match directory_is_account.as_deref() {
+                Some(owner) if owner == check.account_id => {}
+                Some(_) => {
+                    return Err(AppError::BadRequest(format!(
+                        "This API key belongs to a different IncentiveSwift account. Paste a key issued by the IncentiveSwift account registered to {} — that is the account this directory shows campaigns from.",
+                        email
+                    )))
+                }
+                None => {
+                    return Err(AppError::BadRequest(format!(
+                        "No IncentiveSwift account is registered with {}. Sign in to Multi-Directory with the email your IncentiveSwift account uses (or create that IncentiveSwift account first), then paste its API key.",
+                        email
+                    )))
+                }
             }
 
             // The IncentiveSwift API key is a CUSTOMER credential (it can revoke campaigns and touch
@@ -193,35 +256,19 @@ pub async fn disconnect_service(
 
     match svc.as_str() {
         "incentiveswift" => {
-            // If we have an API key, try to revoke it on IS side
-            let stored: Option<String> = sqlx::query_scalar(
-                "SELECT api_key_encrypted FROM connected_services WHERE user_id = $1 AND service = 'incentiveswift' AND is_active = true"
-            )
-            .bind(user_id)
-            .fetch_optional(&s.db)
-            .await
-            .map_err(|_| AppError::Internal("DB error".into()))?;
-
-            if let Some(stored) = stored.filter(|v| !v.is_empty()) {
-                // Read-for-USE: the column holds enc:v1 ciphertext, so decrypt before the value
-                // goes on the wire. An undecryptable value (missing/rotated master key) must never
-                // be sent to IncentiveSwift as if it were a credential — log it and skip the
-                // best-effort remote revoke, the local deactivate below still runs.
-                if let Some(api_key) =
-                    keycrypto::decrypt_for_use(&s.db, &stored, "incentiveswift").await
-                {
-                    let is_url = is_base_url();
-                    let url = format!("{}/api-keys/revoke", is_url);
-                    // Best-effort revocation
-                    let _ = http()
-                        .post(&url)
-                        .json(&json!({ "api_key": api_key }))
-                        .send()
-                        .await;
-                }
-            }
-
-            // Deactivate in MD
+            // NO remote revoke here, deliberately — and no read of the stored key either.
+            //
+            // connected_services.api_key_encrypted holds a SHARED customer credential:
+            // IncentiveSwift's own API-Keys screen hands the key out so the customer can paste
+            // it into several surfaces, so one consumer disconnecting must NEVER deactivate a
+            // key the others depend on. IncentiveSwift has no /api-keys/revoke route and is not
+            // going to get one (t_09e43d1a), so the old best-effort POST there could only ever
+            // 404 while putting the DECRYPTED key on the wire for nothing. Both are gone.
+            //
+            // Disconnect therefore only flips Multi-Directory's own flag: the campaigns view
+            // disappears here, and the key keeps working everywhere else the customer pasted
+            // it. The stored ciphertext is left untouched — it stays the record of which key was
+            // linked, encrypted at rest, and is no longer read by any code path.
             sqlx::query(
                 "UPDATE connected_services SET is_active = false, updated_at = NOW() WHERE user_id = $1 AND service = 'incentiveswift'"
             )
@@ -251,6 +298,12 @@ pub async fn disconnect_service(
 
 /// ── POST /api/v1/connected-services/verify ──
 /// Tests whether an API key is valid for the specified service.
+///
+/// For IncentiveSwift "valid for this service" means the key is live AND belongs to this
+/// directory's IncentiveSwift account: a key that is merely somebody's key would be refused
+/// by `connect_service`, so answering a bare `valid: true` here would send the UI down a path
+/// the connect endpoint then rejects. `key_valid`/`owned` are reported separately so the caller
+/// can tell "not a key at all" from "a valid key that is not ours".
 pub async fn verify_service_key(
     State(s): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -258,22 +311,21 @@ pub async fn verify_service_key(
 ) -> ApiResult<impl IntoResponse> {
     match body.service.as_str() {
         "incentiveswift" => {
-            let is_url = is_base_url();
-            let url = format!("{}/api-keys/verify", is_url);
+            let (_email, directory_is_account) =
+                resolve_is_account_owner(&s.db, &s.is_db, &claims).await?;
 
-            let resp = http()
-                .post(&url)
-                .json(&json!({ "api_key": body.api_key }))
-                .send()
-                .await
-                .map_err(|e| AppError::Internal(format!("IS request failed: {}", e)))?;
+            let check = verify_is_api_key(&body.api_key).await?;
 
-            let v: Value = resp.json().await.unwrap_or_default();
-            let valid = v.get("valid").and_then(|v| v.as_bool()).unwrap_or(false);
+            let owned = match (directory_is_account.as_deref(), check.account_id.as_str()) {
+                (Some(owner), key_owner) if !key_owner.is_empty() => owner == key_owner,
+                _ => false,
+            };
 
             Ok(Json(json!({
                 "service": "incentiveswift",
-                "valid": valid,
+                "valid": check.valid && owned,
+                "key_valid": check.valid,
+                "owned": owned,
             })))
         }
         "coreswift" => {
