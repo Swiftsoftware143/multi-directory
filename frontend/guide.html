@@ -672,7 +672,7 @@
 
 <h3>Subscribers &amp; Settings</h3>
 <div class="card">
-  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/email-settings</code> &mdash; Get email settings</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/email-settings</code> &mdash; Get email settings. Answers <code>200 {"configured": false}</code> (never a 404) when the directory has not configured email yet; <code>configured</code> is <code>true</code> on the stored settings.</p>
   <p><span class="badge put">PUT</span> <code>/api/v1/directories/:slug/email-settings</code> &mdash; Update email settings</p>
   <p><span class="badge delete">DELETE</span> <code>/api/v1/directories/:slug/email-settings</code> &mdash; Delete email settings</p>
   <p><span class="badge get">GET</span> <code>/api/v1/directories/:slug/subscribers</code> &mdash; List subscribers</p>

@@ -1490,6 +1490,27 @@
       });
     }
 
+    // "No row yet" is the normal state of a fresh directory, not an error: the API answers
+    // 200 {configured:false} for it (kanban t_6ef75a6a — it used to answer 404, which the browser
+    // logged as a console error on every panel load). Render it as the not-configured state.
+    function emShowNotConfigured(slug) {
+      ['em-smtp-host', 'em-smtp-username', 'em-from-name', 'em-from-email', 'em-reply-to'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      var p = document.getElementById('em-smtp-password');
+      if (p) p.value = '';
+      var port = document.getElementById('em-smtp-port');
+      if (port) port.value = 587;
+      var enc = document.getElementById('em-smtp-encryption');
+      if (enc) enc.value = 'tls';
+      var tr = document.getElementById('em-transport');
+      if (tr) tr.value = 'smtp';
+      var badge = document.getElementById('em-saved-badge');
+      if (badge) { badge.textContent = 'Not configured yet'; badge.classList.add('show'); }
+      emStatus(slug + ': no email settings saved yet — fill the form and Save', false);
+    }
+
     function loadEmailSettings() {
       var slug = emSlug();
       if (!slug) return;
@@ -1497,6 +1518,7 @@
       loadEmailSignature();
       apiGet('/directories/' + encodeURIComponent(slug) + '/email-settings')
         .then(function (s) {
+          if (!s || s.configured === false) { emShowNotConfigured(slug); return; }
           document.getElementById('em-transport').value = s.transport || 'smtp';
           document.getElementById('em-from-name').value = s.from_name || '';
           document.getElementById('em-from-email').value = s.from_email || '';
@@ -1511,13 +1533,10 @@
           badge.classList.add('show');
           emStatus(slug + ': settings loaded — password is stored and never returned', true);
         })
-        .catch(function () {
-          // 404 = nothing saved for this directory yet (not an error).
-          document.getElementById('em-smtp-password').value = '';
-          var badge = document.getElementById('em-saved-badge');
-          badge.textContent = 'Not configured yet';
-          badge.classList.add('show');
-          emStatus(slug + ': no email settings saved yet — fill the form and Save', false);
+        .catch(function (e) {
+          // A real failure (network, auth, 5xx) still lands here — show it, don't hide it.
+          emShowNotConfigured(slug);
+          emStatus(slug + ': could not load settings — ' + (e && e.message ? e.message : 'request failed'), false);
         });
     }
 

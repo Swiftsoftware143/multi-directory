@@ -422,14 +422,30 @@ pub async fn get_email_settings(
             let mut resp = serde_json::to_value(&s).unwrap();
             if let Some(obj) = resp.as_object_mut() {
                 obj.insert("smtp_password".into(), serde_json::json!("********"));
+                // Round 14 (kanban t_6ef75a6a): say "is this directory set up?" out loud, so a
+                // caller never has to infer it from which branch answered.
+                obj.insert("configured".into(), serde_json::json!(true));
             }
             Ok(Json(resp).into_response())
         }
-        None => Ok((
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "no email settings configured"})),
-        )
-            .into_response()),
+        // Round 14 (kanban t_6ef75a6a): "no row yet" is the NORMAL state of a fresh directory, not
+        // a failure. Answering 404 made the browser log a failed-resource console error on every
+        // admin-panel load (the browser logs any non-2xx response regardless of what the JS fetch
+        // handler does with it), which trains operators to ignore the console — exactly how a real
+        // error gets missed. 200 + {"configured": false} carries the same information, quietly.
+        None => Ok(Json(serde_json::json!({
+            "configured": false,
+            "transport": null,
+            "smtp_host": null,
+            "smtp_port": null,
+            "smtp_username": null,
+            "smtp_password": null,
+            "smtp_encryption": null,
+            "from_name": null,
+            "from_email": null,
+            "reply_to": null,
+        }))
+        .into_response()),
     }
 }
 
