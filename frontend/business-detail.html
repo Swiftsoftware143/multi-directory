@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Business Ã¢â‚¬â€ ZaarHub</title>
+<title>Business — ZaarHub</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>Ã°Å¸Å’Â</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -172,7 +172,7 @@ a:hover{text-decoration:underline}
 <body>
 <div class="detail-header">
   <div class="detail-header-inner">
-    <button class="back-btn" onclick="goBack()">Ã¢â€ Â Back to Directory</button>
+    <button class="back-btn" onclick="goBack()">← Back to Directory</button>
     <h1 id="headerTitle">Business</h1>
   </div>
 </div>
@@ -183,9 +183,9 @@ a:hover{text-decoration:underline}
 </div>
 
 <div id="errorState" class="error-state" style="display:none">
-  <h2>Ã¢ËœÂ¹Ã¯Â¸Â Business Not Found</h2>
+  <h2>☹️ Business Not Found</h2>
   <p id="errorMsg">We couldn't find this business listing.</p>
-  <button onclick="goBack()">Ã¢â€ Â Back to Directory</button>
+  <button onclick="goBack()">← Back to Directory</button>
 </div>
 
 <div id="contentArea" style="display:none">
@@ -195,7 +195,7 @@ a:hover{text-decoration:underline}
       <div class="hero-name" id="heroName"></div>
       <div class="hero-sub">
         <span id="heroCategory"></span>
-        <span>Ã¢â‚¬Â¢</span>
+        <span>•</span>
         <span id="heroCity"></span>
       </div>
     </div>
@@ -208,7 +208,7 @@ a:hover{text-decoration:underline}
         <!-- Gallery Card -->
         <div class="zh-gallery" id="zh-gallery">
           <div class="zh-gallery-hero" id="zh-gallery-hero" onclick="openGalleryLightbox(0)">
-            <div class="letter" id="galleryLetter">Ã°Å¸ÂÂª</div>
+            <div class="letter" id="galleryLetter">🏪</div>
             <div class="zh-gallery-count" id="galleryCount" style="display:none"></div>
           </div>
           <div class="zh-gallery-thumbs" id="zh-gallery-thumbs" style="display:none"></div>
@@ -235,53 +235,53 @@ a:hover{text-decoration:underline}
               </div>
             </div>
             <div id="saveButtonContainer">
-              <button class="action-btn" onclick="toggleSave()" id="saveBtn">Ã¢ÂÂ¤Ã¯Â¸Â Save</button>
+              <button class="action-btn" onclick="toggleSave()" id="saveBtn">❤️ Save</button>
             </div>
           </div>
           <div class="info-details">
-            <div class="info-item"><span class="icon">Ã°Å¸â€œÂ</span> <span id="bizAddress"></span></div>
-            <div class="info-item"><span class="icon">Ã°Å¸â€œÅ¾</span> <a id="bizPhone" href=""></a></div>
+            <div class="info-item"><span class="icon">📍</span> <span id="bizAddress"></span></div>
+            <div class="info-item"><span class="icon">📞</span> <a id="bizPhone" href=""></a></div>
           </div>
           <div class="actions-row">
-            <a class="action-btn" id="websiteLink" href="#" target="_blank" rel="noopener">Ã°Å¸Å’Â Website</a>
-            <button class="action-btn" onclick="openDirections()">Ã°Å¸â€”ÂºÃ¯Â¸Â Directions</button>
+            <a class="action-btn" id="websiteLink" href="#" target="_blank" rel="noopener">🌐 Website</a>
+            <button class="action-btn" onclick="openDirections()">🗺️ Directions</button>
           </div>
         </div>
 
         <!-- Business Hours -->
         <div class="card">
-          <div class="card-title">Ã°Å¸â€¢Â Business Hours</div>
+          <div class="card-title">🕐 Business Hours</div>
           <div id="hoursContent"><p style="color:var(--text-muted);font-size:.85rem">Hours information not yet available.</p></div>
         </div>
 
         <!-- About -->
         <div class="card">
-          <div class="card-title">Ã°Å¸â€œâ€“ About</div>
+          <div class="card-title">📖 About</div>
           <div class="description-text" id="bizDescription">No description available.</div>
         </div>
 
         <!-- Map -->
         <div class="card">
-          <div class="card-title">Ã°Å¸â€œÂ Location</div>
+          <div class="card-title">📍 Location</div>
           <div class="map-container" id="mapContainer"></div>
         </div>
 
 
         <!-- Deals -->
         <div class="card">
-          <div class="card-title">Ã°Å¸Å½Â Active Perks &amp; Deals</div>
+          <div class="card-title">🎁 Active Perks &amp; Deals</div>
           <div id="dealsContent"><p style="color:var(--text-muted);font-size:.85rem">No current deals available.</p></div>
         </div>
 
         <!-- Reviews -->
         <div class="card">
-          <div class="card-title">Ã¢Â­Â Reviews</div>
+          <div class="card-title">⭐ Reviews</div>
           <div id="reviewsContent"></div>
         </div>
 
         <!-- Owner Bio -->
         <div class="card" id="ownerCard" style="display:none">
-          <div class="card-title">Ã°Å¸Â¤Â Meet the Owner</div>
+          <div class="card-title">🤝 Meet the Owner</div>
           <div class="owner-card">
             <div class="owner-avatar" id="ownerAvatar">O</div>
             <div class="owner-info">
@@ -293,7 +293,7 @@ a:hover{text-decoration:underline}
 
         <!-- Message Form -->
         <div class="card">
-          <div class="card-title">Ã¢Å“â€°Ã¯Â¸Â Send a Message</div>
+          <div class="card-title">✉️ Send a Message</div>
           <form class="msg-form" id="msgForm" onsubmit="sendMessage(event)">
             <input type="text" id="msgName" placeholder="Your Name" required>
             <input type="email" id="msgEmail" placeholder="Your Email" required>
@@ -309,12 +309,12 @@ a:hover{text-decoration:underline}
       <div class="sidebar-col">
         <div class="sidebar-sticky">
           <div class="card claim-card">
-            <h3>Ã°Å¸Ââ€  Own This Business?</h3>
+            <h3>🏆 Own This Business?</h3>
             <p>Claim your listing to manage reviews, add photos, and reach more customers.</p>
             <button class="claim-btn" onclick="goToClaim()">Claim This Listing</button>
           </div>
           <div style="margin-top:12px;text-align:center">
-            <a href="/grow" style="font-size:.82rem;color:var(--text-muted)">Learn about ZaarHub for Business Ã¢â€ â€™</a>
+            <a href="/grow" style="font-size:.82rem;color:var(--text-muted)">Learn about ZaarHub for Business →</a>
           </div>
         </div>
       </div>
@@ -323,11 +323,11 @@ a:hover{text-decoration:underline}
 </div>
 
 <div class="detail-footer">
-  Powered by <a href="/zaarhub">ZaarHub</a> Ã¢â‚¬â€ Discover Your Local Community
+  Powered by <a href="/zaarhub">ZaarHub</a> — Discover Your Local Community
 </div>
 
 <script>
-// Ã¢â€â‚¬Ã¢â€â‚¬ Utility Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Utility ──
 function getUrlParam(name) {
   const params = new URLSearchParams(window.location.search);
   return params.get(name);
@@ -350,7 +350,7 @@ function renderStars(rating) {
   const full = Math.floor(rating);
   const half = rating - full >= 0.5;
   const empty = 5 - full - (half ? 1 : 0);
-  return 'Ã¢Ëœâ€¦'.repeat(full) + (half ? 'Ã‚Â½' : '') + 'Ã¢Ëœâ€ '.repeat(empty);
+  return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(empty);
 }
 
 function getBusinessIdFromPath() {
@@ -368,12 +368,12 @@ function goToClaim() {
   window.location.href = '/claim';
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ State Ã¢â€â‚¬Ã¢â€â‚¬
+// ── State ──
 let bizData = null;
 let reviews = [];
 let isSaved = false;
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Main Load Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Main Load ──
 async function loadBusiness() {
   const id = getBusinessIdFromPath() || getUrlParam('id');
   const slug = getUrlParam('slug');
@@ -417,14 +417,14 @@ async function loadBusiness() {
   }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Render Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Render ──
 function renderBusiness() {
   const b = bizData;
   const name = b.name || 'Business';
   
   // Header
   document.getElementById('headerTitle').textContent = name;
-  document.title = `${name} Ã¢â‚¬â€ ZaarHub`;
+  document.title = `${name} — ZaarHub`;
 
   // Hero
   document.getElementById('heroName').textContent = name;
@@ -439,7 +439,7 @@ function renderBusiness() {
   const rc = b.review_count || 0;
   document.getElementById('starsDisplay').textContent = renderStars(rating) + ' ' + rating.toFixed(1);
   document.getElementById('reviewCount').textContent = `(${rc} review${rc !== 1 ? 's' : ''})`;
-  document.getElementById('ratingBadge').textContent = rating >= 4 ? 'Ã°Å¸Ââ€  Great' : rating >= 3 ? 'Ã°Å¸â€˜Â Good' : 'Ã°Å¸â€œÅ  Average';
+  document.getElementById('ratingBadge').textContent = rating >= 4 ? '🏆 Great' : rating >= 3 ? '👍 Good' : '📊 Average';
 
   document.getElementById('bizAddress').textContent = [b.address, b.city, b.state].filter(Boolean).join(', ') || 'Location not listed';
   
@@ -486,7 +486,7 @@ function renderBusiness() {
   renderReviews();
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Map Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Map ──
 let mapInstance = null;
 function initMap(lat, lng, name) {
   const container = document.getElementById('mapContainer');
@@ -514,7 +514,7 @@ function openDirections() {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(bizData.address)}`, '_blank');
   }
 }
-// Ã¢â€â‚¬Ã¢â€â‚¬ Reviews Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Reviews ──
 function renderReviews() {
   const container = document.getElementById('reviewsContent');
   
@@ -539,7 +539,7 @@ function renderReviews() {
   container.innerHTML = html;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Save / Favorite Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Save / Favorite ──
 async function checkSaveStatus() {
   const token = localStorage.getItem('zh_token');
   if (!token || !bizData) return;
@@ -589,15 +589,15 @@ async function toggleSave() {
 function updateSaveButton() {
   const btn = document.getElementById('saveBtn');
   if (isSaved) {
-    btn.textContent = 'Ã¢ÂÂ¤Ã¯Â¸Â Saved';
+    btn.textContent = '❤️ Saved';
     btn.classList.add('saved');
   } else {
-    btn.textContent = 'Ã°Å¸Â¤Â Save';
+    btn.textContent = '🤍 Save';
     btn.classList.remove('saved');
   }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Message Form Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Message Form ──
 async function sendMessage(e) {
   e.preventDefault();
   const btn = document.getElementById('msgSubmit');
@@ -608,7 +608,7 @@ async function sendMessage(e) {
   
   const bizId = bizData ? bizData.id : null;
   if (!bizId) {
-    feedback.innerHTML = '<div class="msg-error">Ã¢ÂÅ’ Business not loaded yet.</div>';
+    feedback.innerHTML = '<div class="msg-error">❌ Business not loaded yet.</div>';
     btn.disabled = false;
     btn.textContent = 'Send Message';
     return;
@@ -633,34 +633,34 @@ async function sendMessage(e) {
     });
     
     if (resp.ok) {
-      feedback.innerHTML = '<div class="msg-success">Ã¢Å“â€¦ Message sent successfully!</div>';
+      feedback.innerHTML = '<div class="msg-success">✅ Message sent successfully!</div>';
       document.getElementById('msgForm').reset();
     } else {
       const errData = await resp.json().catch(() => null);
-      feedback.innerHTML = '<div class="msg-error">Ã¢ÂÅ’ ' + (errData?.message || 'Failed to send. Please try again.') + '</div>';
+      feedback.innerHTML = '<div class="msg-error">❌ ' + (errData?.message || 'Failed to send. Please try again.') + '</div>';
     }
   } catch (err) {
-    feedback.innerHTML = '<div class="msg-error">Ã¢ÂÅ’ Network error. Please try again.</div>';
+    feedback.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
   }
   
   btn.disabled = false;
   btn.textContent = 'Send Message';
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Gallery & Lightbox Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Gallery & Lightbox ──
 let _galleryImages = [];
 let _galleryIndex = 0;
 
 function initGallery(images, bizName) {
   _galleryImages = images;
-  const letter = bizName ? bizName[0].toUpperCase() : 'Ã°Å¸ÂÂª';
+  const letter = bizName ? bizName[0].toUpperCase() : '🏪';
   const hero = document.getElementById('zh-gallery-hero');
   const letterEl = document.getElementById('galleryLetter');
   const countEl = document.getElementById('galleryCount');
   const thumbs = document.getElementById('zh-gallery-thumbs');
 
   if (!images || images.length === 0) {
-    // No images Ã¢â‚¬â€ show gradient placeholder with initial
+    // No images — show gradient placeholder with initial
     hero.innerHTML = '<div class="letter">' + letter + '</div><div class="zh-gallery-count" style="display:none"></div>';
     hero.style.cursor = 'default';
     hero.onclick = null;
@@ -786,7 +786,7 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Init Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Init ──
 document.addEventListener('DOMContentLoaded', loadBusiness);
 </script>
 </body>
