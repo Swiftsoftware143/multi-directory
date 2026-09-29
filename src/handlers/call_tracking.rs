@@ -64,6 +64,10 @@ pub struct UpdateCallLeadRequest {
 pub struct ListQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Optional business scope. When present the caller must be an admin/claimant of that
+    /// business and sees only its calls; without it the listing is fleet-wide, i.e. an
+    /// operator view (kanban t_14927725 — the business portal needed its own logs).
+    pub business_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -149,18 +153,50 @@ pub struct BizIdPath {
 /// GET /api/v1/call-logs — list all call logs
 pub async fn list_call_logs(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<ListQuery>,
 ) -> ApiResult<impl IntoResponse> {
     let limit = q.limit.unwrap_or(50).min(200);
     let offset = q.offset.unwrap_or(0);
 
-    let logs = sqlx::query_as::<_, CallLog>(
-        "SELECT id, caller_number, called_number, direction, duration_seconds, call_status, recording_url, transcription, business_id, directory_id, lead_name, lead_email, lead_notes, lead_status, created_at FROM call_logs ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 "
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(&s.db)
-    .await?;
+    // A whole-table call log listing (caller numbers, recordings, transcriptions, lead
+    // contacts) is operator-only. A business asks for its own slice with ?business_id=,
+    // and is authorised against that business before a single row is read.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+
+    let logs = match q.business_id {
+        Some(business_id) => {
+            crate::handlers::tenant_scope::assert_business_admin_or_claimant(
+                &s.db,
+                &claims,
+                business_id,
+            )
+            .await?;
+            sqlx::query_as::<_, CallLog>(
+                "SELECT id, caller_number, called_number, direction, duration_seconds, call_status, recording_url, transcription, business_id, directory_id, lead_name, lead_email, lead_notes, lead_status, created_at FROM call_logs WHERE business_id = \x241 ORDER BY created_at DESC LIMIT \x242 OFFSET \x243 "
+            )
+            .bind(business_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&s.db)
+            .await?
+        }
+        None => {
+            if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+                // Same shape as the business-scoped 404 so a probe cannot tell a
+                // missing business from a forbidden one.
+                return Err(AppError::NotFound("Call logs not found".to_string()));
+            }
+            sqlx::query_as::<_, CallLog>(
+                "SELECT id, caller_number, called_number, direction, duration_seconds, call_status, recording_url, transcription, business_id, directory_id, lead_name, lead_email, lead_notes, lead_status, created_at FROM call_logs ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 "
+            )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&s.db)
+            .await?
+        }
+    };
 
     Ok(Json(logs))
 }
@@ -195,6 +231,7 @@ pub async fn create_call_log(
 /// GET /api/v1/call-logs/:id — get a single call log
 pub async fn get_call_log(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let log = sqlx::query_as::<_, CallLog>(
@@ -205,15 +242,61 @@ pub async fn get_call_log(
     .await?
     .ok_or_else(|| AppError::NotFound("Call log not found".to_string()))?;
 
+    // One call log is private to the business that owns it (plus the platform operator).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    match log.business_id {
+        Some(business_id) => {
+            crate::handlers::tenant_scope::assert_business_admin_or_claimant(
+                &s.db,
+                &claims,
+                business_id,
+            )
+            .await?
+        }
+        None => {
+            if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+                return Err(AppError::NotFound("Call log not found".to_string()));
+            }
+        }
+    }
+
     Ok(Json(log))
 }
 
 /// PUT /api/v1/call-logs/:id/lead — update lead info and status
 pub async fn update_call_lead(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateCallLeadRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Lead fields (name, email, notes, status) belong to the business that received the
+    // call. Without this check any signed-in account could rewrite another business's lead.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let owner_business: Option<Option<Uuid>> =
+        sqlx::query_scalar("SELECT business_id FROM call_logs WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?;
+    match owner_business {
+        None => return Err(AppError::NotFound("Call log not found".to_string())),
+        Some(Some(business_id)) => {
+            crate::handlers::tenant_scope::assert_business_admin_or_claimant(
+                &s.db,
+                &claims,
+                business_id,
+            )
+            .await?
+        }
+        Some(None) => {
+            if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+                return Err(AppError::NotFound("Call log not found".to_string()));
+            }
+        }
+    }
+
     // Build dynamic update query
     let mut updates: Vec<String> = Vec::new();
     let mut params: Vec<String> = Vec::new();

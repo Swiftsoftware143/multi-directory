@@ -221,6 +221,13 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <a href="#businessList" id="navBusinesses" class="active" onclick="showPortalView('businesses');return false;">🏪 My Businesses</a>
       <a href="#transfersSection" id="navTransfers" onclick="showPortalView('transfers');return false;">🔄 Ownership Transfers</a>
       <a href="#integrations" id="navIntegrations" onclick="showPortalView('integrations');return false;">🔌 Integrations</a>
+      <!-- Role-portal parity (kanban t_14927725): the capabilities below used to exist only as
+           curl-only routes (then operator-only in /admin-ops). Each is the business's OWN data,
+           so it gets a real control here. -->
+      <a href="#callsSection" id="navCalls" onclick="showPortalView('calls');return false;">📞 Calls &amp; Leads</a>
+      <a href="#listingToolsSection" id="navListing" onclick="showPortalView('listing');return false;">✅ Verify &amp; Categories</a>
+      <a href="#billingSection" id="navBilling" onclick="showPortalView('billing');return false;">💎 Plan &amp; Purchases</a>
+      <a href="#b2bSection" id="navB2B" onclick="showPortalView('b2b');return false;">🤝 B2B &amp; Co-op</a>
     </nav>
 
     <!-- My Businesses -->
@@ -269,9 +276,160 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div class="card-grid" id="integrationCenter"></div>
     </div>
 
+    <!-- 📞 Calls & Leads (view id: calls) — GET /businesses/:id/call-logs, GET /call-logs/:id,
+         PUT /call-logs/:id/lead. A business's call log is private to that business (the route is
+         tenant-scoped server-side); the portal shows its own slice and lets the owner record the
+         lead that came out of each call. -->
+    <div id="callsSection" style="margin-top:32px">
+      <div class="section-title">📞 Calls &amp; Leads</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        Every call this directory tracked for your business, newest first. Open a call to record who
+        it was and what happened — that record is what your dashboard and CRM push use.
+      </div>
+      <div class="form-group" style="max-width:420px">
+        <label>Business</label>
+        <select id="clBiz" onchange="loadCallLogs()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+      </div>
+      <div id="clList" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ✅ Verification & Categories (view id: listing) — GET /businesses/:id/verifications,
+         POST /verifications, POST /businesses/:id/category-requests. -->
+    <div id="listingToolsSection" style="margin-top:32px">
+      <div class="section-title">✅ Verification &amp; Categories</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        Ask the directory to verify your listing (a verified badge raises your ranking), and ask for a
+        category that is missing from your profile.
+      </div>
+      <div class="form-group" style="max-width:420px">
+        <label>Business</label>
+        <select id="vfBiz" onchange="loadVerifications();loadCategoryChoices();" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin:14px 0">
+        <h3 style="font-size:1rem;margin-bottom:12px">Request a verification</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>Method</label>
+            <select id="vfMethod" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+              <option value="manual">Manual review</option>
+              <option value="document">Document upload</option>
+              <option value="phone">Phone call</option>
+              <option value="postcard">Postcard</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Document URL (optional)</label>
+            <input type="url" id="vfDoc" placeholder="https://…/licence.pdf" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label>Note for the reviewer (optional)</label>
+          <input type="text" id="vfNotes" placeholder="e.g. business licence attached" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="requestVerification()">Request verification</button>
+        <div id="vfResult" style="margin-top:8px;font-size:.8rem"></div>
+      </div>
+      <div id="vfList"></div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
+        <h3 style="font-size:1rem;margin-bottom:12px">Ask for a category</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="crCategory" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+          </div>
+          <div class="form-group">
+            <label>Why (optional)</label>
+            <input type="text" id="crNotes" placeholder="e.g. we also do catering" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="requestCategory()">Send category request</button>
+        <div id="crResult" style="margin-top:8px;font-size:.8rem"></div>
+      </div>
+    </div>
+
+    <!-- 💎 Plan & Purchases (view id: billing) — GET/POST /subscriptions/upgrade|downgrade,
+         GET /checkout/sessions, POST /checkout/create. -->
+    <div id="billingSection" style="margin-top:32px">
+      <div class="section-title">💎 Plan &amp; Purchases</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        Change plan for one of your businesses, or cancel it. Everything you have paid for through the
+        directory's payment provider is listed underneath.
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div class="form-group" style="max-width:420px">
+          <label>Business</label>
+          <select id="pl2Biz" onchange="loadPurchases()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>Move to plan</label>
+            <select id="pl2Target" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+          </div>
+          <div class="form-group">
+            <label>Billing cycle</label>
+            <select id="pl2Cycle" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="changePlan('downgrade')">Switch to that plan</button>
+        <button class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="cancelPlan()">Cancel my plan</button>
+        <div id="pl2Result" style="margin-top:8px;font-size:.8rem"></div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
+        <h3 style="font-size:1rem;margin-bottom:12px">Pay for a listing upgrade</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>What are you buying?</label>
+            <input type="text" id="puType" value="listing_upgrade" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+          <div class="form-group">
+            <label>Amount (USD)</label>
+            <input type="number" id="puAmount" min="1" step="0.01" value="29.99" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="startCheckout()">Start checkout</button>
+        <div id="puResult" style="margin-top:8px;font-size:.8rem"></div>
+        <div id="puList" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <!-- 🤝 B2B & Co-op (view id: b2b) — POST /b2b/leads, GET /b2b/co-op/my-groups,
+         GET /b2b/co-op/groups/:id, POST /b2b/co-op/deals/:id/commit. -->
+    <div id="b2bSection" style="margin-top:32px">
+      <div class="section-title">🤝 B2B &amp; Co-op</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        Share a lead you cannot serve with other businesses in the network, and join buying groups to
+        hit supplier minimums together.
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <h3 style="font-size:1rem;margin-bottom:12px">Share a lead</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>Title</label><input type="text" id="blTitle" placeholder="Roof repair — 3 units, Coral Springs" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>
+          <div class="form-group"><label>Category</label><input type="text" id="blCategory" placeholder="Roofing" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>
+          <div class="form-group"><label>Location</label><input type="text" id="blLocation" placeholder="Coral Springs, FL" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>
+          <div class="form-group"><label>Estimated value (USD)</label><input type="number" id="blValue" min="0" step="0.01" placeholder="2500" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>
+        </div>
+        <div class="form-group" style="margin-top:10px"><label>Description</label><textarea id="blDesc" rows="3" placeholder="What the customer needs, and why you cannot take it." style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></textarea></div>
+        <div class="form-group" style="margin-top:10px;max-width:220px"><label>Expires in (days)</label><input type="number" id="blDays" min="1" value="30" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></div>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="shareB2bLead()">Share this lead</button>
+        <div id="blResult" style="margin-top:8px;font-size:.8rem"></div>
+      </div>
+      <div style="margin-top:16px">
+        <h3 style="font-size:1rem;margin-bottom:8px">My buying groups</h3>
+        <button class="btn btn-secondary btn-sm" onclick="loadCoopGroups()">Refresh my groups</button>
+        <div id="coopList" style="margin-top:12px"></div>
+      </div>
+    </div>
+
     <!-- Upgrade Plans -->
     <div id="upgradePlans" style="display:none">
       <div class="section-title">⬆️ Upgrade Plan</div>
+      <div class="form-group" style="max-width:420px;margin-bottom:12px">
+        <label>Business</label>
+        <select id="plBiz" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+      </div>
       <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Choose a plan to boost your listing visibility and access premium features.</div>
       <div id="plansGrid" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))"></div>
     </div>
@@ -795,6 +953,7 @@ async function loadDashboard() {
   try {
     var data = await g('/portal/business/profile');
     $('userInfo').textContent = 'You have ' + (data.claimed_businesses || []).length + ' claimed business(es)';
+    setMyBiz(data.claimed_businesses || []);
     renderBusinesses(data.claimed_businesses || []);
     hide('loadingState');
     show('dashboardContent');
@@ -886,24 +1045,23 @@ function showComingSoon(feature) {
 var _currentPlanBizId = null;
 
 function loadPlans() {
+  // The plans come from plan_tiers via the API. There is deliberately no hardcoded fallback:
+  // the old one carried fake ids ('listed'/'featured') that no upgrade accepted, so a failure
+  // looked like a working plan grid and only broke at the moment of payment.
   fetch(API + '/subscriptions/plans')
-    .then(function(r) { return r.json(); })
+    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(data) {
       var plans = data.plans || [];
-      if (plans.length === 0) { renderHardcodedPlans(); return; }
+      if (plans.length === 0) {
+        $('plansGrid').innerHTML = '<div class="card"><p>No plans are configured for this directory yet.</p></div>';
+        return;
+      }
       renderPlans(plans);
+      fillPlanTargets(plans);
     })
-    .catch(function() {
-      renderHardcodedPlans();
+    .catch(function(e) {
+      $('plansGrid').innerHTML = '<div class="card"><p>Could not load plans: ' + esc(e.message) + '</p></div>';
     });
-}
-
-function renderHardcodedPlans() {
-  renderPlans([
-    { id: 'listed', name: 'Listed', price_monthly: '0', price_yearly: '0', description: 'Free basic listing on the directory.', features: { listings: '1', photos: '3', support: 'Email' }, max_listings: 1 },
-    { id: 'featured', name: 'Featured', price_monthly: '29.99', price_yearly: '299.99', description: 'Featured placement with more photos and priority.', features: { listings: '3', photos: '10', support: 'Priority Email', badge: 'Featured Badge', analytics: 'Basic' }, max_listings: 3 },
-    { id: 'premium', name: 'Premium', price_monthly: '99.99', price_yearly: '999.99', description: 'Top priority placement with full feature access.', features: { listings: 'Unlimited', photos: 'Unlimited', support: '24/7 Priority', badge: 'Premium Badge', analytics: 'Advanced', deals: 'Deals & Coupons', spotlight: 'Spotlight Eligible' }, max_listings: 999 }
-  ]);
 }
 
 function renderPlans(plans) {
@@ -972,10 +1130,19 @@ function renderPlans(plans) {
   show('upgradePlans');
 }
 
-function showSubscribe(planIdx) {
+async function showSubscribe(planIdx) {
   var plans = window._cachedPlans || [];
-  // For now show the subscribe interaction as coming soon
-  showComingSoon('Subscription upgrade — plan: ' + (plans[planIdx] ? plans[planIdx].name : 'Plan #' + (planIdx+1)));
+  var p = plans[planIdx];
+  if (!p || !p.id) { alert('That plan could not be loaded — reload the page.'); return; }
+  var sel = document.getElementById('plBiz');
+  var bid = (sel && sel.value) || _selectedBizId;
+  if (!bid) { alert('No claimed business to change — claim your listing first.'); return; }
+  if (!confirm('Move ' + ((myBiz(bid) || {}).name || 'your business') + ' to the ' + p.name + ' plan ($' + money(p.price_monthly) + '/mo)?')) return;
+  try {
+    var r = await po('/subscriptions/upgrade', { business_id: bid, plan_id: p.id, billing_cycle: 'monthly' });
+    alert('Plan changed to ' + (r.plan || p.name) + '.');
+    loadDashboard();
+  } catch (e) { alert('Could not change plan: ' + e.message); }
 }
 
 // ════════════════════════════════════════════
@@ -1148,16 +1315,22 @@ var _icKeys = {};
 var _icCoreStatus = { connected: false };
 
 function showPortalView(view) {
-  var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations' };
+  var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations',
+              calls: 'callsSection', listing: 'listingToolsSection', billing: 'billingSection', b2b: 'b2bSection' };
   var id = map[view] || 'businessList';
   var el = document.getElementById(id);
   if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations' };
+  var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations',
+                calls: 'navCalls', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B' };
   Object.keys(links).forEach(function(k) {
     var a = document.getElementById(links[k]);
     if (a) a.className = (k === view) ? 'active' : '';
   });
   if (view === 'integrations') loadIntegrationCenter();
+  if (view === 'calls') loadCallLogs();
+  if (view === 'listing') { loadVerifications(); loadCategoryChoices(); }
+  if (view === 'billing') { loadPurchases(); getPlans().then(fillPlanTargets); }
+  if (view === 'b2b') loadCoopGroups();
 }
 
 function icKeyInputId(p) { return 'icKey_' + p; }
@@ -1836,6 +2009,368 @@ renderBusinesses = function(biz) {
     loadAdEarnings();
   }
 };
+
+// ════════════════════════════════════════════
+// Role-portal parity (kanban t_14927725)
+// Calls & Leads · Verification & Categories · Plan & Purchases · B2B & Co-op
+// Every control below calls the real route with the signed-in business's own token;
+// nothing is faked, nothing says "coming soon".
+// ════════════════════════════════════════════
+var _myBiz = [];
+
+function setMyBiz(list) {
+  _myBiz = (list || []).map(function (b) {
+    var biz = b.business || {};
+    var sub = b.subscription || {};
+    return {
+      id: biz.id || (b.claim || {}).business_id || b.id || null,
+      name: biz.name || 'My business',
+      plan: sub.tier_name || null
+    };
+  }).filter(function (b) { return !!b.id; });
+  ['clBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
+  // renderBusinesses used biz[0].id, which is undefined for /portal/business/profile rows —
+  // that silently disabled the ads/earnings block below. Point it at the real id.
+  if (_myBiz.length && !_selectedBizId) _selectedBizId = _myBiz[0].id;
+}
+
+function fillBizSelect(id) {
+  var sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = _myBiz.map(function (b) {
+    return '<option value="' + b.id + '">' + esc(b.name) + '</option>';
+  }).join('') || '<option value="">No claimed business</option>';
+}
+
+function bizOf(id) { var s = document.getElementById(id); return s ? s.value : ''; }
+function setNote(id, msg, bad) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.style.color = bad ? '#dc2626' : '#16a34a';
+  el.textContent = msg || '';
+}
+function money(v) { var n = parseFloat(v || 0); return isNaN(n) ? '0.00' : n.toFixed(2); }
+function myBiz(id) { var f = _myBiz.filter(function (b) { return b.id === id; }); return f.length ? f[0] : null; }
+
+// ── Calls & Leads ─────────────────────────────────────────────
+async function loadCallLogs() {
+  var bid = bizOf('clBiz');
+  var box = document.getElementById('clList');
+  if (!bid) { box.innerHTML = '<div class="card"><p>No claimed business on this account.</p></div>'; return; }
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading calls…</p>';
+  try {
+    var logs = await g('/businesses/' + bid + '/call-logs?limit=25');
+    if (!logs || !logs.length) {
+      box.innerHTML = '<div class="card"><p>No calls recorded for this business yet. Calls appear here as soon as the directory\'s tracking number takes one.</p></div>';
+      return;
+    }
+    var html = '<div class="card-grid">';
+    logs.forEach(function (l) {
+      html += '<div class="card"><h3>' + esc(l.caller_number || 'Unknown caller') + '</h3>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">' +
+          '<span class="badge ' + (l.call_status === 'completed' ? 'active' : 'warning') + '">' + esc(l.call_status || 'call') + '</span>' +
+          '<span class="badge">' + esc(l.direction || 'inbound') + '</span>' +
+          '<span class="badge">' + (l.duration_seconds || 0) + 's</span></div>' +
+        '<div class="meta">' + (l.created_at ? new Date(l.created_at).toLocaleString() : '') + '</div>' +
+        '<div id="leadline_' + l.id + '" style="margin-top:8px;font-size:.82rem">Lead: <b>' + esc(l.lead_name || 'not recorded') + '</b>' +
+          (l.lead_status ? ' · ' + esc(l.lead_status) : '') + '</div>' +
+        '<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="openLeadForm(\'' + l.id + '\')">Log the lead</button>' +
+        '<div id="lead_' + l.id + '" style="margin-top:8px"></div></div>';
+    });
+    box.innerHTML = html + '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p>Could not load calls: ' + esc(e.message) + '</p></div>';
+  }
+}
+
+function openLeadForm(id) {
+  document.getElementById('lead_' + id).innerHTML =
+    '<input type="text" id="ln_' + id + '" placeholder="Lead name" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:.8rem;margin-bottom:6px">' +
+    '<input type="email" id="le_' + id + '" placeholder="Lead email" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:.8rem;margin-bottom:6px">' +
+    '<select id="ls_' + id + '" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:.8rem;margin-bottom:6px">' +
+      ['new', 'contacted', 'qualified', 'won', 'lost'].map(function (s) { return '<option value="' + s + '">' + s + '</option>'; }).join('') +
+    '</select>' +
+    '<textarea id="lx_' + id + '" rows="2" placeholder="Notes" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:.8rem"></textarea>' +
+    '<button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="saveLead(\'' + id + '\')">Save lead</button>' +
+    '<div id="lr_' + id + '" style="font-size:.78rem;margin-top:6px"></div>';
+}
+
+async function saveLead(id) {
+  setNote('lr_' + id, 'Saving…', false);
+  var body = {};
+  var n = document.getElementById('ln_' + id).value.trim();
+  var e = document.getElementById('le_' + id).value.trim();
+  var s = document.getElementById('ls_' + id).value;
+  var x = document.getElementById('lx_' + id).value.trim();
+  if (n) body.lead_name = n;
+  if (e) body.lead_email = e;
+  if (s) body.lead_status = s;
+  if (x) body.lead_notes = x;
+  try {
+    await pu('/call-logs/' + id + '/lead', body);
+    var back = await g('/call-logs/' + id);   // read the row back from the server
+    document.getElementById('leadline_' + id).innerHTML = 'Lead: <b>' + esc(back.lead_name || 'not recorded') + '</b>' +
+      (back.lead_status ? ' · ' + esc(back.lead_status) : '');
+    setNote('lr_' + id, 'Saved. The server now holds: ' + (back.lead_name || '—') + ' / ' + (back.lead_status || '—'), false);
+  } catch (err) { setNote('lr_' + id, 'Could not save: ' + err.message, true); }
+}
+
+// ── Verification & categories ─────────────────────────────────
+async function loadVerifications() {
+  var bid = bizOf('vfBiz');
+  var box = document.getElementById('vfList');
+  if (!bid) { box.innerHTML = ''; return; }
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading your verifications…</p>';
+  try {
+    var rows = await g('/businesses/' + bid + '/verifications');
+    if (!rows || !rows.length) {
+      box.innerHTML = '<div class="card"><p>No verification on file for this business yet. Request one above.</p></div>';
+      return;
+    }
+    box.innerHTML = '<div class="card-grid">' + rows.map(function (v) {
+      var badge = v.status === 'approved' ? 'active' : (v.status === 'rejected' ? 'badge' : 'warning');
+      return '<div class="card"><h3>' + esc(v.method || 'verification') + '</h3>' +
+        '<span class="badge ' + badge + '">' + esc(v.status || 'pending') + '</span>' +
+        '<div class="meta">' + (v.created_at ? new Date(v.created_at).toLocaleDateString() : '') +
+        (v.verification_doc_url ? ' · <a href="' + esc(v.verification_doc_url) + '" target="_blank" rel="noopener">document</a>' : '') +
+        (v.notes ? '<br>Note: ' + esc(v.notes) : '') + '</div></div>';
+    }).join('') + '</div>';
+  } catch (e) { box.innerHTML = '<div class="card"><p>Could not load verifications: ' + esc(e.message) + '</p></div>'; }
+}
+
+async function requestVerification() {
+  var bid = bizOf('vfBiz');
+  if (!bid) { setNote('vfResult', 'No claimed business on this account.', true); return; }
+  setNote('vfResult', 'Sending…', false);
+  try {
+    var r = await po('/verifications', {
+      business_id: bid,
+      method: document.getElementById('vfMethod').value,
+      verification_doc_url: document.getElementById('vfDoc').value.trim() || null,
+      notes: document.getElementById('vfNotes').value.trim() || null
+    });
+    setNote('vfResult', 'Requested — status ' + (r.status || 'pending') + '. The directory admin reviews it.', false);
+    loadVerifications();
+  } catch (e) { setNote('vfResult', 'Could not request: ' + e.message, true); }
+}
+
+async function loadCategoryChoices() {
+  var sel = document.getElementById('crCategory');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Loading categories…</option>';
+  try {
+    var d = await g('/categories/filter-options');
+    var opts = [];
+    ((d && d.groups) || []).forEach(function (grp) {
+      (grp.categories || []).forEach(function (c) {
+        opts.push('<option value="' + c.id + '">' + esc((grp.group_name ? grp.group_name + ' · ' : '') + c.name) + '</option>');
+      });
+    });
+    sel.innerHTML = opts.join('') || '<option value="">No categories available</option>';
+  } catch (e) { sel.innerHTML = '<option value="">Could not load categories</option>'; }
+}
+
+async function requestCategory() {
+  var bid = bizOf('vfBiz');
+  var cid = document.getElementById('crCategory').value;
+  if (!bid) { setNote('crResult', 'No claimed business on this account.', true); return; }
+  if (!cid) { setNote('crResult', 'Pick a category first.', true); return; }
+  setNote('crResult', 'Sending…', false);
+  try {
+    var r = await po('/businesses/' + bid + '/category-requests', {
+      category_id: cid,
+      notes: document.getElementById('crNotes').value.trim() || null
+    });
+    setNote('crResult', 'Request sent (status ' + (r.status || 'pending') + '). The directory admin decides.', false);
+  } catch (e) { setNote('crResult', 'Could not send: ' + e.message, true); }
+}
+
+// ── Plan & purchases ──────────────────────────────────────────
+async function getPlans() {
+  var plans = window._cachedPlans || [];
+  if (!plans.length) plans = ((await g('/subscription-plans')).plans) || [];
+  window._cachedPlans = plans;
+  return plans;
+}
+
+function fillPlanTargets(plans) {
+  var sel = document.getElementById('pl2Target');
+  if (!sel) return;
+  var cur = sel.value;
+  sel.innerHTML = plans.map(function (p) {
+    return '<option value="' + p.id + '">' + esc(p.name) + ' — $' + money(p.price_monthly) + '/mo</option>';
+  }).join('');
+  if (cur) sel.value = cur;
+}
+
+async function changePlan() {
+  var bid = bizOf('pl2Biz');
+  var targetId = document.getElementById('pl2Target').value;
+  if (!bid || !targetId) { setNote('pl2Result', 'Pick a business and a plan.', true); return; }
+  setNote('pl2Result', 'Switching…', false);
+  try {
+    var plans = await getPlans();
+    var target = plans.filter(function (p) { return p.id === targetId; })[0] || {};
+    var mine = myBiz(bid) || {};
+    var current = plans.filter(function (p) { return p.name === mine.plan; })[0];
+    var goingUp = !current || parseFloat(target.price_monthly || 0) >= parseFloat(current.price_monthly || 0);
+    var r;
+    if (goingUp) {
+      r = await po('/subscriptions/upgrade', {
+        business_id: bid, plan_id: targetId,
+        billing_cycle: document.getElementById('pl2Cycle').value
+      });
+    } else {
+      r = await po('/subscriptions/downgrade', { business_id: bid, plan_id: targetId });
+    }
+    setNote('pl2Result', 'Done — ' + (r.plan || target.name || 'plan') + ' (' + (r.status || 'ok') + ').', false);
+    setTimeout(loadDashboard, 700);
+  } catch (e) { setNote('pl2Result', 'Could not switch plan: ' + e.message, true); }
+}
+
+async function cancelPlan() {
+  var bid = bizOf('pl2Biz');
+  if (!bid) { setNote('pl2Result', 'Pick a business first.', true); return; }
+  if (!confirm('Cancel the plan for ' + ((myBiz(bid) || {}).name || 'this business') + '?')) return;
+  setNote('pl2Result', 'Cancelling…', false);
+  try {
+    var r = await po('/subscriptions/downgrade', { business_id: bid });
+    setNote('pl2Result', 'Plan ' + (r.status || 'cancelled') + '.', false);
+    setTimeout(loadDashboard, 700);
+  } catch (e) { setNote('pl2Result', 'Could not cancel: ' + e.message, true); }
+}
+
+async function loadPurchases() {
+  var box = document.getElementById('puList');
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading your purchases…</p>';
+  try {
+    var d = await g('/checkout/sessions');
+    var rows = (d && d.sessions) || [];
+    if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Nothing bought through the directory yet.</p>'; return; }
+    box.innerHTML = '<table style="width:100%;font-size:.82rem;border-collapse:collapse">' +
+      '<thead><tr style="text-align:left;color:var(--text-secondary)"><th>Date</th><th>Item</th><th>Amount</th><th>Status</th></tr></thead><tbody>' +
+      rows.map(function (s) {
+        return '<tr style="border-top:1px solid var(--border)"><td>' + (s.created_at ? new Date(s.created_at).toLocaleDateString() : '') +
+          '</td><td>' + esc(s.purchasable_type || '') + '</td><td>$' + money(s.amount) + ' ' + esc(s.currency || '') +
+          '</td><td>' + esc(s.status || '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  } catch (e) { box.innerHTML = '<p style="font-size:.82rem;color:#dc2626">Could not load purchases: ' + esc(e.message) + '</p>'; }
+}
+
+async function startCheckout() {
+  var bid = bizOf('pl2Biz');
+  var amount = parseFloat(document.getElementById('puAmount').value || '0');
+  if (!bid) { setNote('puResult', 'Pick a business first.', true); return; }
+  if (!(amount > 0)) { setNote('puResult', 'Enter an amount above zero.', true); return; }
+  setNote('puResult', 'Starting checkout…', false);
+  try {
+    // The provider is whatever the directory admin configured — never hardcoded here.
+    var d = await g('/payment-providers');
+    var list = (d && (d.providers || d)) || [];
+    var active = list.filter(function (p) { return p.is_active && p.key_status !== 'not_configured'; });
+    if (!active.length) {
+      setNote('puResult', 'No payment provider is configured for this directory yet — ask the directory admin to add one in the admin panel.', true);
+      return;
+    }
+    var provider = active[0];
+    var r = await po('/checkout/create', {
+      provider_type: provider.provider_type,
+      purchasable_type: document.getElementById('puType').value.trim() || 'listing_upgrade',
+      amount: amount,
+      currency: 'USD',
+      success_url: window.location.origin + '/thank-you.html',
+      cancel_url: window.location.origin + '/business-portal.html',
+      metadata: { business_id: bid }
+    });
+    setNote('puResult', 'Checkout session ' + r.session_id + ' created with ' + r.provider_type + '.', false);
+    if (r.checkout_url) {
+      document.getElementById('puResult').innerHTML +=
+        ' <a href="' + esc(r.checkout_url) + '" target="_blank" rel="noopener"><b>Open the payment page →</b></a>';
+    }
+    loadPurchases();
+  } catch (e) { setNote('puResult', 'Could not start checkout: ' + e.message, true); }
+}
+
+// ── B2B & co-op ───────────────────────────────────────────────
+async function shareB2bLead() {
+  var title = document.getElementById('blTitle').value.trim();
+  var desc = document.getElementById('blDesc').value.trim();
+  if (!title || !desc) { setNote('blResult', 'A title and a description are required.', true); return; }
+  setNote('blResult', 'Sharing…', false);
+  try {
+    var value = parseFloat(document.getElementById('blValue').value || '0');
+    var r = await po('/b2b/leads', {
+      title: title,
+      description: desc,
+      category: document.getElementById('blCategory').value.trim() || null,
+      location: document.getElementById('blLocation').value.trim() || null,
+      estimated_value: value > 0 ? value : null,
+      source: 'business_portal',
+      expires_in_days: parseInt(document.getElementById('blDays').value || '30', 10)
+    });
+    setNote('blResult', 'Shared with the network (lead ' + (r.id || r.lead_id || 'created') + ').', false);
+    document.getElementById('blTitle').value = '';
+    document.getElementById('blDesc').value = '';
+  } catch (e) { setNote('blResult', 'Could not share: ' + e.message, true); }
+}
+
+async function loadCoopGroups() {
+  var box = document.getElementById('coopList');
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading your groups…</p>';
+  try {
+    var d = await g('/b2b/co-op/my-groups');
+    var rows = (d && d.my_groups) || [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="card"><p>You are not in a buying group yet. Join one from the co-op hub to pool orders with other businesses.</p>' +
+        '<a class="btn btn-secondary btn-sm" style="margin-top:8px" href="/coop-hub" target="_blank" rel="noopener">Open the co-op hub</a></div>';
+      return;
+    }
+    box.innerHTML = '<div class="card-grid">' + rows.map(function (gp) {
+      return '<div class="card"><h3>' + esc(gp.name) + '</h3>' +
+        '<p>' + esc(gp.description || '') + '</p>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">' +
+          '<span class="badge active">' + esc(gp.role || 'member') + '</span>' +
+          '<span class="badge">' + (gp.member_count || 0) + ' members</span></div>' +
+        '<button class="btn btn-secondary btn-sm" onclick="openCoopGroup(\'' + gp.id + '\')">Open group</button>' +
+        '<div id="cg_' + gp.id + '" style="margin-top:10px"></div></div>';
+    }).join('') + '</div>';
+  } catch (e) { box.innerHTML = '<div class="card"><p>Could not load your groups: ' + esc(e.message) + '</p></div>'; }
+}
+
+async function openCoopGroup(id) {
+  var el = document.getElementById('cg_' + id);
+  el.innerHTML = '<p style="font-size:.8rem">Loading…</p>';
+  try {
+    var d = await g('/b2b/co-op/groups/' + id);
+    var deals = d.active_deals || [];
+    var html = '<div style="font-size:.8rem"><b>' + (d.members || []).length + ' member(s)</b></div>';
+    if (!deals.length) {
+      html += '<p style="font-size:.8rem;color:var(--text-secondary)">No active deals in this group right now.</p>';
+    } else {
+      html += deals.map(function (dl) {
+        return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px">' +
+          '<div style="font-size:.85rem"><b>' + esc(dl.product_name || dl.title) + '</b></div>' +
+          '<div style="font-size:.78rem;color:var(--text-secondary)">$' + money(dl.group_price) + ' per ' + esc(dl.unit || 'unit') +
+            ' · min ' + (dl.min_quantity || 0) + ' · committed ' + (dl.current_quantity || 0) + '</div>' +
+          '<input type="number" id="cq_' + dl.id + '" min="1" value="' + Math.max(1, parseInt(dl.min_quantity || 1, 10)) + '" style="width:90px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:.8rem;margin-top:6px">' +
+          '<button class="btn btn-primary btn-sm" style="margin-left:6px" onclick="commitDeal(\'' + dl.id + '\',\'' + id + '\')">Commit quantity</button>' +
+          '<div id="cr_' + dl.id + '" style="font-size:.78rem;margin-top:4px"></div></div>';
+      }).join('');
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = '<p style="font-size:.8rem;color:#dc2626">Could not open the group: ' + esc(e.message) + '</p>'; }
+}
+
+async function commitDeal(dealId, groupId) {
+  var qty = parseInt(document.getElementById('cq_' + dealId).value || '0', 10);
+  if (!(qty > 0)) { setNote('cr_' + dealId, 'Enter a quantity above zero.', true); return; }
+  setNote('cr_' + dealId, 'Committing…', false);
+  try {
+    var r = await po('/b2b/co-op/deals/' + dealId + '/commit', { quantity: qty });
+    setNote('cr_' + dealId, 'Committed ' + qty + ' — deal is now at ' + (r.current_quantity || r.committed_quantity || 'updated') + '.', false);
+    openCoopGroup(groupId);
+  } catch (e) { setNote('cr_' + dealId, 'Could not commit: ' + e.message, true); }
+}
 
 // ── Walkthrough System (Business Portal) ──
 var BWT={

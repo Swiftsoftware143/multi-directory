@@ -537,8 +537,21 @@ pub struct UpdateVerificationRequest {
 /// POST /api/v1/verifications — create a business verification request
 pub async fn create_verification(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateVerificationRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // A verification request is made BY the business it belongs to: a stranger must not be
+    // able to open one against someone else's listing (kanban t_14927725 — the business
+    // portal now exposes "request a verification").
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(
+        &state.db,
+        &claims,
+        req.business_id,
+    )
+    .await?;
+
     // Check business exists
     let biz_exists: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM businesses WHERE id = $1)")

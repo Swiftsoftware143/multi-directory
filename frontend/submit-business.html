@@ -30,6 +30,14 @@
   #result.err{display:block;background:rgba(239,68,68,.12);border:1px solid var(--err);color:#fecaca}
   #result.warn{display:block;background:rgba(242,127,47,.12);border:1px solid var(--primary);color:#fed7aa}
   .hint{color:var(--muted);font-size:.82rem;margin-top:14px}
+  .ac-wrap{position:relative}
+  .ac-list{position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:280px;overflow-y:auto;background:#0f172a;border:1px solid var(--primary);border-radius:9px;box-shadow:0 12px 28px rgba(0,0,0,.45);z-index:50;display:none}
+  .ac-list.open{display:block}
+  .ac-opt{padding:10px 13px;font-size:.88rem;cursor:pointer;border-bottom:1px solid var(--border)}
+  .ac-opt:last-child{border-bottom:none}
+  .ac-opt:hover{background:rgba(242,127,47,.14)}
+  .ac-opt small{display:block;color:var(--muted);font-size:.76rem;margin-top:2px}
+  .ac-note{padding:10px 13px;font-size:.8rem;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -58,7 +66,11 @@
     </div>
     <div class="field">
       <label for="address">Street address</label>
-      <input type="text" id="address" maxlength="200" placeholder="123 Main St">
+      <div class="ac-wrap">
+        <input type="text" id="address" maxlength="200" placeholder="123 Main St" autocomplete="off">
+        <div class="ac-list" id="addressSuggest"></div>
+      </div>
+      <div class="hint" style="margin-top:6px" id="addressHint"></div>
     </div>
     <div class="row">
       <div class="field">
@@ -127,6 +139,86 @@
       })
       .catch(function(){});
   }
+
+  // ── Street-address suggestions ─────────────────────────────────────────────
+  // GET /api/v1/places/autocomplete was registered but nothing ever sent it an `input`,
+  // so the address box was a plain text field. It stays one: a suggestion just fills the
+  // fields for you. A directory with no Google key configured returns an error, and the
+  // box quietly behaves exactly as before (no dropdown, no console error).
+  var addrEl = document.getElementById('address');
+  var acList = document.getElementById('addressSuggest');
+  var acHint = document.getElementById('addressHint');
+  var acTimer = null, acSeq = 0, acQuiet = false;
+
+  function acClose(){ acList.classList.remove('open'); acList.innerHTML = ''; }
+
+  async function acFillFromPlace(placeId){
+    try {
+      var r = await fetch('/api/v1/places/details?place_id=' + encodeURIComponent(placeId));
+      if (!r.ok) return;
+      var j = await r.json();
+      var p = j.place || j.result || j;
+      if (p.formatted_address) addrEl.value = p.formatted_address;
+      var comps = p.address_components || [];
+      var want = { locality: 'city', postal_town: 'city', administrative_area_level_1: 'state', postal_code: 'zip' };
+      for (var i = 0; i < comps.length; i++) {
+        var types = comps[i].types || [];
+        for (var t = 0; t < types.length; t++) {
+          var target = want[types[t]];
+          if (!target) continue;
+          var el = document.getElementById(target);
+          if (!el) continue;
+          var v = comps[i].long_name || comps[i].short_name || '';
+          if (types[t] === 'administrative_area_level_1' && comps[i].short_name) v = comps[i].short_name;
+          if (v) el.value = v;
+          break;
+        }
+      }
+    } catch (e) { /* details are a bonus; the address alone is enough to submit */ }
+  }
+
+  function acRender(items, q){
+    if (!items.length) { acList.innerHTML = '<div class="ac-note">No address matches "' + esc(q) + '" — type it in yourself.</div>'; acList.classList.add('open'); return; }
+    acList.innerHTML = items.map(function(it, i){
+      var sub = it.name && it.formatted_address !== it.name ? it.name : '';
+      return '<div class="ac-opt" data-i="' + i + '" data-pid="' + esc(it.place_id) + '"><div>' + esc(it.formatted_address || it.name) + '</div>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div>';
+    }).join('');
+    acList.classList.add('open');
+  }
+
+  acList.addEventListener('click', function(ev){
+    var opt = ev.target.closest ? ev.target.closest('.ac-opt') : null;
+    if (!opt) return;
+    var pid = opt.getAttribute('data-pid');
+    var text = opt.querySelector('div');
+    if (text) addrEl.value = text.textContent.trim();
+    acClose();
+    if (pid) acFillFromPlace(pid);
+  });
+
+  addrEl.addEventListener('input', function(){
+    if (acQuiet) return;
+    var q = addrEl.value.trim();
+    if (acTimer) clearTimeout(acTimer);
+    if (q.length < 3) { acClose(); return; }
+    acTimer = setTimeout(function(){
+      var seq = ++acSeq;
+      var url = '/api/v1/places/autocomplete?input=' + encodeURIComponent(q)
+        + (dirId ? '&directory_id=' + encodeURIComponent(dirId) : '');
+      fetch(url).then(function(r){
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function(j){
+        if (seq !== acSeq) return;
+        acRender((j && j.results) || [], q);
+      }).catch(function(){
+        // Not configured / provider down: stop asking for this session, never block typing.
+        acQuiet = true; acClose();
+        acHint.textContent = 'Address suggestions are not available — type the address in manually.';
+      });
+    }, 250);
+  });
+  addrEl.addEventListener('blur', function(){ setTimeout(acClose, 180); });
 
   form.addEventListener('submit', async function(ev){
     ev.preventDefault();

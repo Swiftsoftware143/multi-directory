@@ -373,6 +373,22 @@ impl sqlx::FromRow<'_, sqlx::postgres::PgRow> for DomainMapping {
 pub struct RegisterDomainRequest {
     pub domain: String,
     pub domain_type: Option<String>,
+    /// Which directory this host (or host+path) serves. A mapping with no directory serves
+    /// nothing, so the handler refuses one. portal.html has always sent this field.
+    pub directory_id: Option<Uuid>,
+    /// Subfolder path for a `subfolder` mapping, e.g. "/palm-bay". Empty for whole-host mappings.
+    pub url_path: Option<String>,
+}
+
+/// PUT /api/v1/admin/domains/:id — every field optional: the handler keeps what is not sent.
+#[derive(Debug, Deserialize)]
+pub struct UpdateDomainRequest {
+    pub domain: Option<String>,
+    pub domain_type: Option<String>,
+    pub directory_id: Option<Uuid>,
+    pub url_path: Option<String>,
+    pub status: Option<String>,
+    pub ssl_enabled: Option<bool>,
 }
 
 // ── DirectoryBranding ────────────────────────────────────────────────────────

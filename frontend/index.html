@@ -849,6 +849,52 @@ function renderCityDropdown(q){
     html+='<div class="zh-city-opt" data-slug="'+esc(c.slug)+'" onclick="pickCity(this.dataset.slug)"><div>'+esc(c.name)+'</div><span class="zh-city-count">'+(c.count||0)+' spots</span></div>'
   }
   dd.innerHTML=html;dd.classList.add('open')
+  zhPlacesAugment(qs, dd)
+}
+
+// ── Google Places suggestions in the city box (GET /api/v1/places/autocomplete) ──
+// The route was registered but no field ever sent it an `input`. Network cities stay first
+// (they are the ones with listings); places Google knows that the network does not cover
+// yet are appended, and picking one runs the same text search a typed query would.
+var zhPlacesSeq=0
+async function zhPlacesAugment(q,dd){
+  if(!q||q.length<3)return
+  var seq=++zhPlacesSeq
+  var res
+  try{
+    var r=await fetch('/api/v1/places/autocomplete?input='+encodeURIComponent(q))
+    if(!r.ok)return
+    res=(await r.json())
+  }catch(e){return}   // not configured / offline: the box behaves exactly as before
+  if(seq!==zhPlacesSeq)return
+  var items=(res&&res.results)||[]
+  if(!items.length)return
+  var box=document.getElementById('zh-city-dropdown')
+  if(!box||!box.classList.contains('open'))return
+  var tail='<div class="zh-city-empty" style="border-top:1px solid var(--border-light)">Google Places</div>'
+  for(var i=0;i<items.length;i++){
+    var it=items[i];var label=it.name||it.formatted_address||''
+    var sub=(it.formatted_address&&it.formatted_address!==label)?it.formatted_address:''
+    tail+='<div class="zh-city-opt" data-place="'+esc(label)+'" data-sub="'+esc(sub)+'" onclick="pickPlace(this)"><div>📍 '+esc(label)+(sub?'<small style="display:block;color:var(--text-muted);font-weight:400">'+esc(sub)+'</small>':'')+'</div><span class="zh-city-count">'+(zhCitySlugFor(label)?'view':'search')+'</span></div>'
+  }
+  box.innerHTML+=tail
+}
+function zhCitySlugFor(label){
+  var q=(label||'').toLowerCase(),cities=getCityList()
+  for(var i=0;i<cities.length;i++){
+    var n=(cities[i].name||'').toLowerCase()
+    if(n&&(q===n||q.indexOf(n+' ')>-1||q.indexOf(n+',')>-1))return cities[i].slug
+  }
+  return ''
+}
+function pickPlace(el){
+  var label=el.getAttribute('data-place')||'',sub=el.getAttribute('data-sub')||''
+  closeCityDropdown()
+  var slug=zhCitySlugFor(label+' '+sub)
+  if(slug){pickCity(slug);return}
+  // No listing network there yet — run it as a text search instead of dead-ending.
+  var words=(label+' '+sub).split(',')
+  location.hash='#/search/'+encodeURIComponent((words[0]||label).trim())
 }
 function pickCity(slug){
   closeCityDropdown();

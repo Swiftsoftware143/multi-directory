@@ -3,7 +3,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -356,9 +356,17 @@ pub struct CategoryRequest {
 /// that admins must approve.
 pub async fn create_category_request(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
     Json(req): Json<CreateCategoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Only the business itself may ask for a category (kanban t_14927725: the ask-a-category
+    // control now lives in the business portal, so it must be bound to that business).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, business_id)
+        .await?;
+
     // Check category exists
     let cat_exists =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directory_categories WHERE id = $1")

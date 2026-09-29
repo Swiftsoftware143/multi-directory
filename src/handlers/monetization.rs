@@ -1055,8 +1055,21 @@ pub struct UpgradeRequest {
 
 pub async fn upgrade_subscription(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<UpgradeRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // A business changes only its OWN plan. Without this check any signed-in account could
+    // move another business onto (or off) a paid tier (kanban t_14927725 — the business
+    // portal now exposes the real upgrade control).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(
+        &s.db,
+        &claims,
+        req.business_id,
+    )
+    .await?;
+
     let plan = sqlx::query_as::<
         _,
         (
@@ -1079,16 +1092,36 @@ pub async fn upgrade_subscription(
         plan.1.try_into().unwrap_or(0.0)
     };
 
-    sqlx::query(
-        "INSERT INTO business_subscriptions (id, business_id, plan_name, price, currency, billing_cycle, status, start_date, auto_renew)          VALUES ($1, $2, $3, $4, 'USD', $5, 'active', NOW(), true)          ON CONFLICT (business_id) DO UPDATE SET plan_name = $3, price = $4, status = 'active', updated_at = NOW()"
+    // business_subscriptions carries tier_id (FK -> plan_tiers.id), price_paid and
+    // billing_cycle — there is no plan_name / price / updated_at column, and no unique index
+    // on business_id, so the previous INSERT ... ON CONFLICT (business_id) could never work:
+    // every upgrade 500'd. Set the tier on the row the business already has, else create one.
+    let cycle = req.billing_cycle.as_deref().unwrap_or("monthly");
+    let updated = sqlx::query(
+        "UPDATE business_subscriptions SET tier_id = $1, price_paid = $2, billing_cycle = $3, \
+         status = 'active', start_date = COALESCE(start_date, CURRENT_DATE) WHERE business_id = $4",
     )
-    .bind(Uuid::new_v4())
-    .bind(req.business_id)
-    .bind(&plan.0)
+    .bind(req.plan_id)
     .bind(price)
-    .bind(req.billing_cycle.as_deref().unwrap_or("monthly"))
+    .bind(cycle)
+    .bind(req.business_id)
     .execute(&s.db)
     .await?;
+
+    if updated.rows_affected() == 0 {
+        sqlx::query(
+            "INSERT INTO business_subscriptions \
+             (id, business_id, tier_id, price_paid, currency, billing_cycle, status, start_date, auto_renew) \
+             VALUES ($1, $2, $3, $4, 'USD', $5, 'active', CURRENT_DATE, true)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(req.business_id)
+        .bind(req.plan_id)
+        .bind(price)
+        .bind(cycle)
+        .execute(&s.db)
+        .await?;
+    }
 
     Ok(Json(
         json!({"status": "upgraded", "plan": plan.0, "price": price.to_string(), "features": plan.3}),
@@ -1104,8 +1137,19 @@ pub struct DowngradeRequest {
 
 pub async fn downgrade_subscription(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<DowngradeRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Same rule as the upgrade: you may only change your own business's plan.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(
+        &s.db,
+        &claims,
+        req.business_id,
+    )
+    .await?;
+
     if let Some(plan_id) = req.plan_id {
         // plan_tiers.price_monthly is numeric(10,2) and sqlx has no f64 decode for NUMERIC, so
         // this tuple failed every downgrade with a decode error (t_4f883b9a). Decimal is right.
@@ -1334,6 +1378,7 @@ pub async fn list_sponsors(
 /// POST /api/v1/monetization/sponsors — create a sponsor
 pub async fn create_sponsor(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateSponsorRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Get directory_id from the business
@@ -1342,6 +1387,14 @@ pub async fn create_sponsor(
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    // A sponsor row is the directory owner's own arrangement with one of its businesses, so
+    // only that directory's admin (or the platform operator) may create it (kanban
+    // t_14927725 — the admin panel now exposes "+ Add creative", which needs a sponsor, and
+    // without this guard any signed-in account could plant one in another directory).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_directory_admin(&s.db, &claims, dir_id).await?;
 
     let sponsor = sqlx::query_as::<_, Sponsor>(
         r#"INSERT INTO sponsors (directory_id, business_id, status, commission_rate, notes)
@@ -1364,9 +1417,26 @@ pub async fn create_sponsor(
 /// PUT /api/v1/monetization/sponsors/:id — update a sponsor
 pub async fn update_sponsor(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateSponsorRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Changing a sponsor's status/commission is the owning directory's call, not any
+    // signed-in account's (kanban t_14927725).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let owned_dir: Option<Option<Uuid>> =
+        sqlx::query_scalar("SELECT directory_id FROM sponsors WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?;
+    match owned_dir {
+        Some(Some(dir)) => {
+            crate::handlers::tenant_scope::assert_directory_admin(&s.db, &claims, dir).await?
+        }
+        _ => return Err(AppError::NotFound("Sponsor not found".to_string())),
+    }
+
     let sponsor = sqlx::query_as::<_, Sponsor>(
         r#"UPDATE sponsors SET
             status = COALESCE($1, status),
@@ -1390,8 +1460,24 @@ pub async fn update_sponsor(
 /// DELETE /api/v1/monetization/sponsors/:id — delete a sponsor
 pub async fn delete_sponsor(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Same rule as update: removing a sponsor is the owning directory's call.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let owned_dir: Option<Option<Uuid>> =
+        sqlx::query_scalar("SELECT directory_id FROM sponsors WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?;
+    match owned_dir {
+        Some(Some(dir)) => {
+            crate::handlers::tenant_scope::assert_directory_admin(&s.db, &claims, dir).await?
+        }
+        _ => return Err(AppError::NotFound("Sponsor not found".to_string())),
+    }
+
     let result = sqlx::query("DELETE FROM sponsors WHERE id = $1")
         .bind(id)
         .execute(&s.db)
@@ -1436,8 +1522,20 @@ pub struct CreateCreativeRequest {
 /// GET /api/v1/monetization/sponsors/:id/creatives — list creatives for a sponsor
 pub async fn list_creatives(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(sponsor_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Sponsor creatives belong to the directory that sponsors them (operator included).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let sponsor_dir: Option<Uuid> =
+        sqlx::query_scalar("SELECT directory_id FROM sponsors WHERE id = $1")
+            .bind(sponsor_id)
+            .fetch_optional(&s.db)
+            .await?;
+    let sponsor_dir = sponsor_dir.ok_or_else(|| AppError::NotFound("Sponsor not found".into()))?;
+    crate::handlers::tenant_scope::assert_directory_admin(&s.db, &claims, sponsor_dir).await?;
+
     let creatives = sqlx::query_as::<_, AdCreative>(
         r#"SELECT id, sponsor_id, name, image_url, target_url, width, height,
                   mime_type, file_size_bytes, status, rejection_reason, is_active, created_at
@@ -1456,9 +1554,21 @@ pub async fn list_creatives(
 /// Validates dimensions against available ad zone slots for the directory
 pub async fn create_creative(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(sponsor_id): Path<Uuid>,
     Json(req): Json<CreateCreativeRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Adding a creative is a directory-owner action on a sponsor that directory owns.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let owner_dir: Option<Uuid> =
+        sqlx::query_scalar("SELECT directory_id FROM sponsors WHERE id = $1")
+            .bind(sponsor_id)
+            .fetch_optional(&s.db)
+            .await?;
+    let owner_dir = owner_dir.ok_or_else(|| AppError::NotFound("Sponsor not found".into()))?;
+    crate::handlers::tenant_scope::assert_directory_admin(&s.db, &claims, owner_dir).await?;
+
     // Validate dimensions match an existing ad zone
     let sponsor_dir: Uuid = sqlx::query_scalar("SELECT directory_id FROM sponsors WHERE id = $1")
         .bind(sponsor_id)
@@ -1926,8 +2036,16 @@ pub struct AdEarningSummary {
 /// GET /api/v1/monetization/earnings/:directory_id — earnings summary
 pub async fn get_earnings_summary(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(dir_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Directory earnings are the directory owner's own numbers: revenue per ad zone. The
+    // operator console keeps working (is_platform_operator passes), but an unrelated signed-in
+    // account no longer reads another directory's revenue (kanban t_14927725).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_directory_admin(&s.db, &claims, dir_id).await?;
+
     let summary = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, i64, rust_decimal::Decimal)>(
         r#"SELECT z.id, z.name,
                   COALESCE(SUM(s.total_price) FILTER (WHERE s.status = 'active' OR s.status = 'completed'), 0) as total,

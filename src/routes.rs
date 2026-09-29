@@ -1298,11 +1298,26 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/domains/:domain_id",
             delete(domains::remove_domain)
+                .put(domains::update_domain)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/domains/:domain_id/verify",
             post(domains::verify_domain)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        // Feature 2 — is a mapping actually LIVE (DNS resolves + the URL answers)? Records what
+        // was observed and refuses to call a domain live while its DNS points elsewhere.
+        .route(
+            "/domains/:domain_id/check",
+            post(domains::check_domain_live)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        // Feature 2 — the per-directory view: every host/path attached to one directory, plus the
+        // subdomain to suggest under its network's root domain.
+        .route(
+            "/directories/:id/domains",
+            get(domains::list_directory_domains)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route("/branding/:directory_id", put(branding::update_branding))
@@ -1374,6 +1389,13 @@ pub fn create_router(s: AppState) -> Router {
             put(provider_keys_handler::upsert_provider_key)
                 .delete(provider_keys_handler::delete_provider_key),
         )
+        // B39 — the scoped view: what key is in force for ONE directory, and where it comes
+        // from (own / inherited from its network / platform). Masked previews only.
+        .route(
+            "/provider-keys/effective",
+            get(provider_keys_handler::list_effective_keys)
+                .route_layer(middleware::from_fn_with_state(s.clone(), tenant_guard)),
+        )
         .route(
             "/provider-keys/:provider/test",
             get(provider_keys_handler::test_provider_key)
@@ -1425,11 +1447,28 @@ pub fn create_router(s: AppState) -> Router {
         // Round 5 T0 — named keys: delete ONE key by id, and promote one key to default.
         .route(
             "/provider-keys/id/:id",
-            delete(provider_keys_handler::delete_provider_key_by_id),
+            delete(provider_keys_handler::delete_provider_key_by_id)
+                .put(provider_keys_handler::update_provider_key_by_id),
         )
         .route(
             "/provider-keys/id/:id/default",
             post(provider_keys_handler::set_default_provider_key),
+        )
+        // B39 — deactivate a key (the value stays; the resolver stops choosing it) or bring it back.
+        .route(
+            "/provider-keys/id/:id/active",
+            post(provider_keys_handler::set_provider_key_active),
+        )
+        // Feature 2 support — networks list + the root domain a subdomain mapping hangs off.
+        .route(
+            "/networks",
+            get(networks::list_networks)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/networks/:id/root-domain",
+            put(networks::set_root_domain)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         // ??? Payment provider management
         .route(
@@ -2073,7 +2112,32 @@ pub fn create_router(s: AppState) -> Router {
                             .fetch_optional(&_pool_for_host)
                             .await;
 
-                            if let Ok(Some((_dir_id, slug))) = result {
+                            let mut resolved_slug: Option<String> = match result {
+                                Ok(Some((_, slug))) => Some(slug),
+                                _ => None,
+                            };
+
+                            // Feature 2 — a network SUBDOMAIN (<directory-slug>.<root_domain>)
+                            // resolves without a mapping row of its own, so setting the network's
+                            // root domain lights up every city at once. Dormant while root_domain
+                            // is unset, so nothing that works today changes.
+                            if resolved_slug.is_none() {
+                                if let Ok(Some(slug)) = sqlx::query_scalar::<_, String>(
+                                    r#"SELECT d.slug FROM directories d
+                                       JOIN networks n ON n.id = d.network_id
+                                       WHERE n.root_domain IS NOT NULL AND n.root_domain <> ''
+                                         AND $1 = d.slug || '.' || n.root_domain
+                                       LIMIT 1"#,
+                                )
+                                .bind(&domain)
+                                .fetch_optional(&_pool_for_host)
+                                .await
+                                {
+                                    resolved_slug = Some(slug);
+                                }
+                            }
+
+                            if let Some(slug) = resolved_slug {
                                 if !path.starts_with(&format!("/d/{}", slug)) {
                                     let pq = req
                                         .uri()

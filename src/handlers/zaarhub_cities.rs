@@ -1,6 +1,7 @@
 /// ZaarHub City Pages & Directory Listing Handlers
 /// Phase 4 — Public API endpoints (no auth required)
 use axum::extract::{Path, Query, State};
+use axum::http::HeaderMap;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -503,8 +504,32 @@ pub async fn claim_offer(
 /// Get a visitor's claim history
 pub async fn visitor_claims(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(visitor_id): Path<String>,
 ) -> ApiResult<Json<Value>> {
+    // A claim carries the email and phone the visitor left at the till, plus the promo code
+    // they were given, so the list is readable only by that visitor (or the platform
+    // operator). A guessed visitor id is not enough (kanban t_14927725 — the visitor portal
+    // now shows "my claims").
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        let own_email: Option<String> =
+            sqlx::query_scalar("SELECT email FROM visitor_accounts WHERE id::text = $1")
+                .bind(&claims.sub)
+                .fetch_optional(&state.db)
+                .await
+                .unwrap_or(None);
+        let is_self = claims.sub == visitor_id
+            || own_email
+                .as_deref()
+                .map(|e| e.eq_ignore_ascii_case(&visitor_id))
+                .unwrap_or(false);
+        if !is_self {
+            return Err(AppError::NotFound("No claims found".into()));
+        }
+    }
+
     let rows = sqlx::query(
         "SELECT oc.*, co.offer_title, co.listing_id, bl.business_name \
          FROM offer_claims oc \

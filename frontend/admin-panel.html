@@ -521,6 +521,7 @@
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
+        <a href="#domains-section">🌐 Domains &amp; Subdomains</a>
         <a href="#payment-gateways-section">💳 Payment Gateways</a>
         <a href="#email-settings-section">✉️ Email / SMTP</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
@@ -529,6 +530,7 @@
         <a href="#transfers-section">🔄 Transfers</a>
         <a href="#data-enrichment-section">🧭 Data Enrichment</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
+        <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty &amp; IQS</a>
@@ -669,10 +671,53 @@
         <h3>🔑 Provider API Keys
           <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html" target="_blank" rel="noopener">📘 Full setup guide — all 23 providers →</a>
         </h3>
-        <p class="feature-subtitle">Paste your own keys here — saved per tenant, encrypted at rest, and shown masked. <b>Every key can be named</b>, so you can store several accounts for the same service and pick which one is the default. These power Google Places, email, payments, AI drafting and every other integration.</p>
+        <p class="feature-subtitle">Paste your own keys here — encrypted at rest and shown <b>masked</b> (first 4 and last 4 characters only; the full value never leaves the server). <b>Every key can be named</b>, so you can store several accounts for one provider side by side. Every key is also <b>scoped</b>: platform-wide, to one <b>network</b>, or to one <b>directory</b> — a directory with no key of its own <b>inherits its network's</b>, so one Google Places key set on the ZaarHub network serves all ten cities.</p>
         <div id="pk-loading" class="loading-state"><span class="spinner"></span> Loading providers...</div>
         <div id="pk-list"></div>
         <div class="feature-status" id="pk-status"></div>
+
+        <!-- B39 — which key is IN FORCE for one directory, and where it comes from. Two defects
+             this closes: an admin could not see the scope of a stored key at all, and nothing
+             showed whether a city was using its own key or inheriting the network's. -->
+        <div style="margin-top:16px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px">
+          <h4 style="margin:0 0 6px;font-size:.95rem">🔎 Which key is in force for a directory</h4>
+          <p class="pk-desc" style="margin-bottom:8px">Pick a directory to see, for every provider, whether a key is in force and whether it is the directory's <b>own</b>, <b>inherited from its network</b>, or the <b>platform</b> key. Values stay masked.</p>
+          <div class="pk-controls" style="margin-bottom:10px">
+            <select class="pk-input" id="pk-effective-directory" onchange="window.__pkEffective()"></select>
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__pkEffective()">↻ Refresh</button>
+          </div>
+          <div id="pk-effective"></div>
+          <div class="feature-status" id="pk-effective-status"></div>
+        </div>
+      </div>
+
+      <!-- 🌐 Domains, subdomains and subfolders per directory (Feature 2, 2026-09-29).
+           One directory may be served on a subdomain of its network's root domain, on its own
+           custom domain, or in a subfolder of a host. "Check live" records what was actually
+           observed, so a domain whose DNS still points elsewhere is never shown as working. -->
+      <div class="feature-card" id="domains-section">
+        <h3>🌐 Domains, Subdomains &amp; Subfolders</h3>
+        <p class="feature-subtitle">Serve any directory — inside a network or standing alone — on <b>a subdomain of its network</b> (palm-bay.zaarhub.com), on <b>its own custom domain</b>, or in <b>a subfolder of a host</b> (zaarhub.com/palm-bay). Each mapping has a status, and <b>Check live</b> records what was actually observed: a host whose DNS still points elsewhere is reported as <b>not live</b>, never as working.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="pk-input" id="dm-directory" onchange="window.__dmLoad()"></select>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__dmLoad()">↻ Refresh</button>
+        </div>
+        <div id="dm-network"></div>
+        <div id="dm-list"></div>
+        <div class="pk-addrow" style="margin-top:12px">
+          <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+            <select class="pk-input" id="dm-type" style="flex:0 1 200px" onchange="window.__dmTypeHint()">
+              <option value="subdomain">Subdomain of the network</option>
+              <option value="custom">Its own custom domain</option>
+              <option value="subfolder">Subfolder of a host</option>
+            </select>
+            <input class="pk-input" id="dm-host" placeholder="palm-bay.zaarhub.com">
+            <input class="pk-input" id="dm-path" placeholder="/palm-bay" style="flex:0 1 150px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__dmAdd()">＋ Add mapping</button>
+          </div>
+          <div class="pk-desc" id="dm-hint" style="margin-top:6px"></div>
+        </div>
+        <div class="feature-status" id="dm-status"></div>
       </div>
 
       <!-- 💳 Payment gateways (kanban t_3f82bba8). Before this the payment_providers API had NO
@@ -890,6 +935,31 @@
         </div>
         <div id="az-list"></div>
         <div class="feature-status" id="az-status"></div>
+      </div>
+
+      <!-- 💰 Ad Revenue & Sponsor Creatives (kanban t_14927725) — these two capabilities
+           (GET /earnings/:directory_id, GET|POST /sponsors/:id/creatives) were reachable only
+           by curl, then only from the operator console. They are the directory owner's own
+           numbers and banners, so the owner gets the controls here. -->
+      <div class="feature-card" id="ad-revenue-section">
+        <h3>💰 Ad Revenue &amp; Sponsor Creatives</h3>
+        <p class="feature-subtitle">What each ad slot has actually earned for this directory, and the banner files the sponsors behind it submitted. A creative must match a live ad-slot size — pick the slot and its size fills the request.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="pk-input" id="rev-directory" onchange="window.__revLoad()"></select>
+          <button class="btn btn-accent btn-sm" onclick="window.__revLoad()">↻ Refresh</button>
+        </div>
+        <div id="rev-earnings"></div>
+        <h4 style="margin:18px 0 6px;font-size:.95rem">Sponsor creatives</h4>
+        <div class="pk-controls" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="rev-sponsor" onchange="window.__revCreatives()"></select>
+          <select class="pk-input" id="rev-slot"></select>
+          <input class="pk-input" id="rev-name" placeholder="Creative name (e.g. Summer banner)">
+          <input class="pk-input" id="rev-image" placeholder="https://…/banner.png">
+          <input class="pk-input" id="rev-target" placeholder="https://…/page (optional)">
+          <button class="btn btn-accent btn-sm" onclick="window.__revCreateCreative()">+ Add creative</button>
+        </div>
+        <div id="rev-creatives"></div>
+        <div class="feature-status" id="rev-status"></div>
       </div>
 
       <!-- 🔄 Ownership Transfers (Round 11 / T2) — move a listing between owners.
@@ -1256,6 +1326,8 @@
     var pkProviders = [];
     var pkKeys = [];
     var pkGrouped = {};
+    var pkNetworks = [];
+    var dmMappings = [];
     var GUIDE_URL = '/guides/api-keys-setup.html';
 
     function pkStatus(msg, ok) {
@@ -1288,11 +1360,15 @@
       var loading = document.getElementById('pk-loading');
       var wrap = document.getElementById('pk-list');
       if (!wrap) return;
-      Promise.all([apiGet('/available-providers'), apiGet('/provider-keys')])
+      // /networks is only used to name the scope of a key; a non-operator gets nothing from it,
+      // so its failure must never take the key list down with it.
+      Promise.all([apiGet('/available-providers'), apiGet('/provider-keys'),
+                   apiGet('/networks').catch(function () { return []; })])
         .then(function (res) {
           pkProviders = (res[0] && res[0].data) || [];
           pkKeys = (res[1] && res[1].data) || [];
           pkGrouped = (res[1] && res[1].grouped) || {};
+          pkNetworks = Array.isArray(res[2]) ? res[2] : ((res[2] && res[2].data) || []);
           renderProviderKeys();
           if (loading) loading.classList.add('hidden');
           var named = pkKeys.filter(function (k) { return k.label && k.label !== 'default'; }).length;
@@ -1345,21 +1421,77 @@
             '<input class="pk-input" id="pk-label-' + key + '" placeholder="Name this key (e.g. Primary, Test account)" style="flex:0 1 220px">' +
             '<input class="pk-input" id="pk-key-' + key + '" type="password" placeholder="Paste API key">' +
             baseField +
+            '<select class="pk-input" id="pk-scope-' + key + '" title="Where this key applies" style="flex:0 1 250px">' + pkScopeOptions('platform') + '</select>' +
             '<button class="btn btn-accent btn-sm" type="button" data-pk-action="save" data-pk-provider="' + key + '">＋ Add ' + (mine.length ? 'another' : '') + ' key</button>' +
           '</div>' +
         '</div>';
     }
 
+    // Every scope a key can be given, in ONE select: the platform, a named network
+    // (all of its directories inherit), or a single directory (it overrides the network).
+    function pkScopeOptions(selected) {
+      var sel = selected || 'platform';
+      function o(val, text) {
+        return '<option value="' + val + '"' + (val === sel ? ' selected' : '') + '>' + pkEsc(text) + '</option>';
+      }
+      var html = o('platform', 'Scope: platform-wide');
+      if (pkNetworks.length) {
+        html += '<optgroup label="A network — every directory in it inherits">';
+        pkNetworks.forEach(function (n) {
+          html += o('net:' + n.id, (n.name || n.slug) + ' network' + (n.root_domain ? ' (' + n.root_domain + ')' : ''));
+        });
+        html += '</optgroup>';
+      }
+      if (directories.length) {
+        html += '<optgroup label="One directory — overrides its network">';
+        directories.forEach(function (d) {
+          html += o('dir:' + d.id, (d.name || d.slug) + ' (' + (d.slug || '') + ')');
+        });
+        html += '</optgroup>';
+      }
+      return html;
+    }
+
+    function pkKeyScopeValue(k) {
+      if (k.directory_id) return 'dir:' + k.directory_id;
+      if (k.network_id) return 'net:' + k.network_id;
+      return 'platform';
+    }
+
+    /// Turn the select value back into the request fields the API expects.
+    function pkScopeBody(value) {
+      if (String(value).indexOf('net:') === 0) return { scope: 'network', network_id: String(value).slice(4) };
+      if (String(value).indexOf('dir:') === 0) return { scope: 'directory', directory_id: String(value).slice(4) };
+      return { scope: 'platform' };
+    }
+
     function renderKeyLine(k) {
       var label = k.label && k.label !== 'default' ? k.label : 'Unnamed';
+      // Where the key applies, spelled out — an admin must be able to tell an OWN key from one
+      // INHERITED from the network without reading the database (B39c).
+      var kind = k.scope_kind || 'platform';
+      var scopeBadge = kind === 'directory'
+        ? '<span class="pk-badge pk-ok">Directory · ' + pkEsc(k.scope_name || '') + '</span>'
+        : kind === 'network'
+          ? '<span class="pk-badge pk-def">Network · ' + pkEsc(k.scope_name || '') + '</span>'
+          : '<span class="pk-badge pk-missing">Platform-wide</span>';
+      var changed = k.updated_at ? String(k.updated_at).replace('T', ' ').slice(0, 16) : '';
+      var inactive = k.is_active === false;
       return '<div class="pk-keyline">' +
           '<span class="pk-keyname">' + pkEsc(label) + '</span>' +
           (k.is_default ? '<span class="pk-badge pk-def">Default</span>' : '') +
-          '<code>' + pkEsc(k.api_key) + '</code>' +
+          scopeBadge +
+          (inactive ? '<span class="pk-badge pk-missing">Inactive</span>' : '') +
+          '<code title="masked preview — the full value is never sent to the browser">' + pkEsc(k.api_key) + '</code>' +
           (k.base_url ? '<code>' + pkEsc(k.base_url) + '</code>' : '') +
+          (changed ? '<span class="pk-desc" style="font-size:.72rem">changed ' + pkEsc(changed) + '</span>' : '') +
           '<span class="spacer"></span>' +
+          '<input class="pk-input" id="pk-rot-' + k.id + '" type="password" placeholder="paste a new value to replace" style="flex:0 1 230px">' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="rotate" data-pk-provider="' + pkEsc(k.provider) + '" data-pk-id="' + k.id + '">💾 Save new value</button>' +
+          '<select class="pk-input" data-pk-move="' + k.id + '" data-pk-provider="' + pkEsc(k.provider) + '" title="Move this key to another scope" style="flex:0 1 210px">' + pkScopeOptions(pkKeyScopeValue(k)) + '</select>' +
           '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="test" data-pk-provider="' + pkEsc(k.provider) + '">Test</button>' +
           (k.is_default ? '' : '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="default" data-pk-provider="' + pkEsc(k.provider) + '" data-pk-id="' + k.id + '">Set as default</button>') +
+          '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="toggleactive" data-pk-provider="' + pkEsc(k.provider) + '" data-pk-id="' + k.id + '" data-pk-active="' + (inactive ? '0' : '1') + '">' + (inactive ? 'Activate' : 'Deactivate') + '</button>' +
           '<button class="btn btn-ghost btn-sm" type="button" data-pk-action="delete" data-pk-provider="' + pkEsc(k.provider) + '" data-pk-id="' + k.id + '" data-pk-label="' + pkEsc(label) + '">Delete</button>' +
         '</div>';
     }
@@ -1375,25 +1507,64 @@
       if (action === 'save') pkSave(provider);
       else if (action === 'test') pkTest(provider);
       else if (action === 'default') pkSetDefault(provider, btn.getAttribute('data-pk-id'));
+      else if (action === 'rotate') pkRotate(provider, btn.getAttribute('data-pk-id'));
+      else if (action === 'toggleactive') pkToggleActive(btn.getAttribute('data-pk-id'), btn.getAttribute('data-pk-active') === '1');
       else if (action === 'delete') pkDelete(provider, btn.getAttribute('data-pk-id'), btn.getAttribute('data-pk-label'));
+    });
+
+    // A key's scope is edited with a select, so it needs the change event (not click).
+    document.addEventListener('change', function (ev) {
+      var sel = ev.target && ev.target.getAttribute ? ev.target : null;
+      if (!sel || !sel.getAttribute('data-pk-move')) return;
+      window.__pkMove(sel.getAttribute('data-pk-move'), sel.value);
     });
 
     function pkSave(provider) {
       var keyEl = document.getElementById('pk-key-' + provider);
       var labelEl = document.getElementById('pk-label-' + provider);
       var baseEl = document.getElementById('pk-base-' + provider);
+      var scopeEl = document.getElementById('pk-scope-' + provider);
       var apiKey = keyEl ? keyEl.value.trim() : '';
       if (!apiKey) { pkStatus('Paste a key for ' + provider + ' first', false); return; }
       var body = { provider: provider, api_key: apiKey };
       if (labelEl && labelEl.value.trim()) body.label = labelEl.value.trim();
       if (baseEl && baseEl.value.trim()) body.base_url = baseEl.value.trim();
+      var scopeBody = pkScopeBody(scopeEl ? scopeEl.value : 'platform');
+      body.scope = scopeBody.scope;
+      if (scopeBody.network_id) body.network_id = scopeBody.network_id;
+      if (scopeBody.directory_id) body.directory_id = scopeBody.directory_id;
       apiPost('/provider-keys', body)
         .then(function () {
-          pkStatus(provider + ' key saved' + (body.label ? ' as "' + body.label + '"' : ''), true);
+          pkStatus(provider + ' key saved' + (body.label ? ' as "' + body.label + '"' : '') +
+                   ' (' + body.scope + ' scope)', true);
           showToast(provider + ' key saved');
           loadProviderKeys();
         })
         .catch(function (e) { pkStatus('Save failed: ' + e.message, false); showToast('Save failed: ' + e.message); });
+    }
+
+    // Replace a stored value without ever needing the old one (B39b). The server re-encrypts and
+    // the new masked preview comes back with the list.
+    function pkRotate(provider, id) {
+      var el = document.getElementById('pk-rot-' + id);
+      var value = el ? el.value.trim() : '';
+      if (!value) { pkStatus('Paste the new value for ' + provider + ' first', false); return; }
+      apiPut('/provider-keys/id/' + id, { api_key: value })
+        .then(function () {
+          pkStatus(provider + ' key replaced and re-encrypted', true);
+          showToast(provider + ' key replaced');
+          loadProviderKeys();
+        })
+        .catch(function (e) { pkStatus('Replace failed: ' + e.message, false); });
+    }
+
+    function pkToggleActive(id, wasActive) {
+      apiPost('/provider-keys/id/' + id + '/active', { is_active: !wasActive })
+        .then(function () {
+          pkStatus(wasActive ? 'Key deactivated — the value is kept' : 'Key activated', true);
+          loadProviderKeys();
+        })
+        .catch(function (e) { pkStatus('Could not change state: ' + e.message, false); });
     }
 
     function pkTest(provider) {
@@ -1415,6 +1586,264 @@
         .then(function () { pkStatus(label + ' ' + provider + ' key deleted', true); loadProviderKeys(); })
         .catch(function (e) { pkStatus('Delete failed: ' + e.message, false); });
     }
+
+    // Move a stored key to another scope (platform / network / directory) — same PUT that
+    // rotates a value, so one code path handles both.
+    window.__pkMove = function (id, value) {
+      var body = pkScopeBody(value);
+      apiPut('/provider-keys/id/' + id, body)
+        .then(function () { pkStatus('Key scope updated (' + body.scope + ')', true); showToast('Key scope updated'); loadProviderKeys(); })
+        .catch(function (e) { pkStatus('Could not change scope: ' + e.message, false); });
+    };
+
+    // "Scope is in force" report: for one directory, every provider, where the key comes from and
+    // its masked preview. This is the screen that PROVES inheritance (B39c).
+    window.__pkEffective = function () {
+      var sel = document.getElementById('pk-effective-directory');
+      var box = document.getElementById('pk-effective');
+      var st = document.getElementById('pk-effective-status');
+      if (!sel) return;
+      if (!sel.value) { if (st) st.textContent = 'Pick a directory first'; return; }
+      if (box) box.innerHTML = '<div class="loading-state"><span class="spinner"></span> Resolving…</div>';
+      apiGet('/provider-keys/effective?directory_id=' + encodeURIComponent(sel.value))
+        .then(function (r) {
+          var net = r.network
+            ? ((r.network.name || r.network.slug) + (r.network.root_domain ? ' · ' + r.network.root_domain : ' (no root domain yet)'))
+            : 'no network — standalone directory';
+          var rows = (r.data || []).map(function (p) {
+            var badge;
+            if (!p.has_key) badge = '<span class="pk-badge pk-missing">not configured</span>';
+            else if (p.source === 'directory') badge = '<span class="pk-badge pk-ok">own key</span>';
+            else if (p.source === 'network') badge = '<span class="pk-badge pk-def">inherited from network</span>';
+            else badge = '<span class="pk-badge pk-def">platform key</span>';
+            return '<tr><td>' + pkEsc(p.name || p.provider) + '</td><td>' + badge + '</td><td><code>' +
+              pkEsc(p.masked || '—') + '</code></td><td>' + pkEsc(p.source_label || '') + '</td><td>' +
+              pkEsc(p.source_name || '') + '</td></tr>';
+          }).join('');
+          if (box) {
+            box.innerHTML = '<div class="pk-desc" style="margin-bottom:6px">Directory <b>' +
+              pkEsc(r.directory ? (r.directory.name || r.directory.slug) : '') + '</b> · network: ' + pkEsc(net) +
+              '</div><div class="table-wrap"><table><tr><th>Provider</th><th>Source</th><th>Masked value</th><th>Label</th><th>Supplied by</th></tr>' +
+              rows + '</table></div>';
+          }
+          var n = (r.data || []).filter(function (p) { return p.has_key; }).length;
+          if (st) st.textContent = n + ' of ' + (r.data || []).length + ' provider(s) have a key in force here';
+        })
+        .catch(function (e) { if (box) box.innerHTML = ''; if (st) st.textContent = 'Could not resolve: ' + e.message; });
+    };
+
+    // Fill the two directory pickers (keys + domains) once the directory list has arrived.
+    function dirOptionsHtml(selected) {
+      return (directories || []).map(function (d) {
+        var text = (d.name || d.slug) + ' (' + (d.slug || '') + ')';
+        if (d.network_id && pkNetworks.length) {
+          var net = pkNetworks.filter(function (n) { return n.id === d.network_id; })[0];
+          if (net) text += ' · ' + (net.name || net.slug);
+        }
+        return '<option value="' + d.id + '"' + (d.id === selected ? ' selected' : '') + '>' + pkEsc(text) + '</option>';
+      }).join('');
+    }
+    window.__mdFillDirectorySelects = function () {
+      var a = document.getElementById('pk-effective-directory');
+      if (a && !a.value) a.innerHTML = dirOptionsHtml();
+      var b = document.getElementById('dm-directory');
+      if (b && !b.value) b.innerHTML = dirOptionsHtml();
+    };
+
+    // ===== 🌐 Domains, subdomains & subfolders per directory (Feature 2) =====
+    function dmStatus(msg, ok) {
+      var el = document.getElementById('dm-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function dmTypeOptions(selected) {
+      var opts = [['subdomain', 'Subdomain of the network'], ['custom', 'Custom domain'], ['subfolder', 'Subfolder of a host']];
+      return opts.map(function (o) {
+        return '<option value="' + o[0] + '"' + (o[0] === selected ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('');
+    }
+
+    function dmStatusOptions(selected) {
+      return ['pending', 'active'].map(function (s) {
+        return '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+    }
+
+    window.__dmTypeHint = function () {
+      var t = document.getElementById('dm-type');
+      var host = document.getElementById('dm-host');
+      var path = document.getElementById('dm-path');
+      var hint = document.getElementById('dm-hint');
+      if (!t || !host || !path || !hint) return;
+      if (t.value === 'subdomain') {
+        host.placeholder = 'palm-bay.zaarhub.com';
+        path.value = '';
+        path.disabled = true;
+        hint.textContent = 'Must end with the network root domain below. If the root domain is empty, set it first.';
+      } else if (t.value === 'custom') {
+        host.placeholder = 'www.theplumber.com';
+        path.value = '';
+        path.disabled = true;
+        hint.textContent = 'The owner points their own domain here (A or CNAME to this server), then press Check live.';
+      } else {
+        host.placeholder = 'zaarhub.com';
+        path.disabled = false;
+        path.placeholder = '/palm-bay';
+        hint.textContent = 'Several directories may share one host under different paths.';
+      }
+    };
+
+    window.__dmLoad = function () {
+      var sel = document.getElementById('dm-directory');
+      var list = document.getElementById('dm-list');
+      var netBox = document.getElementById('dm-network');
+      if (!sel || !list) return;
+      var id = sel.value || (directories[0] && directories[0].id);
+      if (!id) { list.innerHTML = '<div class="empty-state"><p>No directories yet.</p></div>'; return; }
+      sel.value = id;
+      list.innerHTML = '<div class="loading-state"><span class="spinner"></span> Loading domains…</div>';
+      apiGet('/directories/' + id + '/domains')
+        .then(function (r) {
+          dmMappings = r.data || [];
+          if (netBox) {
+            if (r.network) {
+              netBox.innerHTML = '<div class="pk-controls" style="margin-bottom:8px;flex-wrap:wrap;gap:8px">' +
+                '<span class="pk-desc">Network <b>' + pkEsc(r.network.name || r.network.slug) + '</b> · root domain:</span>' +
+                '<input class="pk-input" id="dm-root" value="' + pkEsc(r.network.root_domain || '') + '" placeholder="zaarhub.com" style="flex:0 1 230px">' +
+                '<button class="btn btn-ghost btn-sm" type="button" data-dm-action="setroot" data-dm-net="' + r.network.id + '">Save root domain</button>' +
+                (r.suggested_subdomain
+                  ? '<span class="pk-desc">a city subdomain would be <code>' + pkEsc(r.suggested_subdomain) + '</code></span>'
+                  : '<span class="pk-desc">set the root domain to turn on network subdomains</span>') +
+                '</div>';
+            } else {
+              netBox.innerHTML = '<div class="pk-desc" style="margin-bottom:8px">This directory stands alone (no network) — it can still use its own custom domain or a subfolder.</div>';
+            }
+          }
+          if (!dmMappings.length) {
+            list.innerHTML = '<div class="empty-state"><p>No domain attached to <b>' + pkEsc(r.directory.name || r.directory.slug) + '</b> yet.</p></div>';
+          } else {
+            list.innerHTML = dmMappings.map(function (m) {
+              var live = m.live_status === 'live'
+                ? '<span class="pk-badge pk-ok">live</span>'
+                : m.live_status
+                  ? '<span class="pk-badge pk-missing">' + pkEsc(m.live_status) + '</span>'
+                  : '<span class="pk-badge pk-missing">not checked</span>';
+              var stat = m.status === 'active' ? '<span class="pk-badge pk-ok">active</span>' : '<span class="pk-badge pk-missing">pending</span>';
+              return '<div class="pk-keyline" data-dm="' + m.id + '">' +
+                '<input class="pk-input" id="dm-host-' + m.id + '" value="' + pkEsc(m.domain || '') + '" style="flex:0 1 220px">' +
+                '<input class="pk-input" id="dm-path-' + m.id + '" value="' + pkEsc(m.url_path || '') + '" placeholder="(whole host)" style="flex:0 1 130px">' +
+                '<select class="pk-input" id="dm-type-' + m.id + '" style="flex:0 1 165px">' + dmTypeOptions(m.type) + '</select>' +
+                '<select class="pk-input" id="dm-status-' + m.id + '" style="flex:0 1 115px">' + dmStatusOptions(m.status) + '</select>' +
+                stat + live +
+                '<span class="spacer"></span>' +
+                '<button class="btn btn-ghost btn-sm" type="button" data-dm-action="save" data-dm-id="' + m.id + '">💾 Save</button>' +
+                '<button class="btn btn-ghost btn-sm" type="button" data-dm-action="check" data-dm-id="' + m.id + '">🩺 Check live</button>' +
+                '<button class="btn btn-ghost btn-sm" type="button" data-dm-action="verify" data-dm-id="' + m.id + '">Verify DNS</button>' +
+                '<button class="btn btn-ghost btn-sm" type="button" data-dm-action="delete" data-dm-id="' + m.id + '">Delete</button>' +
+                '<div class="pk-desc" style="flex:1 1 100%;font-size:.72rem">' +
+                  'serves <code>' + pkEsc(m.url || '') + '</code> · ' +
+                  (m.last_checked_at ? 'checked ' + pkEsc(m.last_checked_at) : 'never checked') +
+                  (m.last_check_detail ? ' · ' + pkEsc(m.last_check_detail) : '') +
+                '</div>' +
+              '</div>';
+            }).join('');
+          }
+          dmStatus(dmMappings.length + ' mapping(s) on this directory', true);
+          window.__dmTypeHint();
+        })
+        .catch(function (e) {
+          list.innerHTML = '<div class="empty-state"><p>Could not load domains.</p></div>';
+          dmStatus('Could not load domains: ' + e.message, false);
+        });
+    };
+
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('[data-dm-action]') : null;
+      if (!btn) return;
+      ev.preventDefault();
+      var action = btn.getAttribute('data-dm-action');
+      var id = btn.getAttribute('data-dm-id');
+      if (action === 'save') window.__dmSave(id);
+      else if (action === 'check') window.__dmCheck(id);
+      else if (action === 'verify') window.__dmVerify(id);
+      else if (action === 'delete') window.__dmDelete(id);
+      else if (action === 'setroot') window.__dmSetRoot(btn.getAttribute('data-dm-net'));
+    });
+
+    window.__dmAdd = function () {
+      var sel = document.getElementById('dm-directory');
+      var typeEl = document.getElementById('dm-type');
+      var host = (document.getElementById('dm-host').value || '').trim();
+      var path = (document.getElementById('dm-path').value || '').trim();
+      if (!sel || !sel.value) { dmStatus('Pick a directory first', false); return; }
+      if (!host) { dmStatus('Enter the domain or subdomain to attach', false); return; }
+      var body = { domain: host, domain_type: typeEl.value, directory_id: sel.value };
+      if (typeEl.value === 'subfolder') body.url_path = path;
+      apiPost('/domains', body)
+        .then(function () {
+          dmStatus('Mapping added (pending until its DNS is verified and live-checked)', true);
+          showToast('Domain mapping added');
+          document.getElementById('dm-host').value = '';
+          document.getElementById('dm-path').value = '';
+          window.__dmLoad();
+        })
+        .catch(function (e) { dmStatus('Could not add mapping: ' + e.message, false); });
+    };
+
+    window.__dmSave = function (id) {
+      var hostEl = document.getElementById('dm-host-' + id);
+      var pathEl = document.getElementById('dm-path-' + id);
+      var typeEl = document.getElementById('dm-type-' + id);
+      var statusEl = document.getElementById('dm-status-' + id);
+      var body = {};
+      if (hostEl && hostEl.value.trim()) body.domain = hostEl.value.trim();
+      if (pathEl) body.url_path = pathEl.value.trim();
+      if (typeEl) body.domain_type = typeEl.value;
+      if (statusEl) body.status = statusEl.value;
+      apiPut('/domains/' + id, body)
+        .then(function () { dmStatus('Mapping updated', true); showToast('Mapping updated'); window.__dmLoad(); })
+        .catch(function (e) { dmStatus('Could not update: ' + e.message, false); });
+    };
+
+    window.__dmCheck = function (id) {
+      dmStatus('Checking DNS and the live URL…', true);
+      apiPost('/domains/' + id + '/check', {})
+        .then(function (r) {
+          var ok = r.live_status === 'live';
+          dmStatus((ok ? 'LIVE — ' : 'NOT LIVE — ') + r.detail, ok);
+          showToast(r.live_status);
+          window.__dmLoad();
+        })
+        .catch(function (e) { dmStatus('Check failed: ' + e.message, false); });
+    };
+
+    window.__dmVerify = function (id) {
+      apiPost('/domains/' + id + '/verify', {})
+        .then(function (r) {
+          dmStatus((r.message || 'Verified') + ' · nginx: ' + (r.nginx_configured ? 'ok' : 'skipped') +
+                   ' · ssl: ' + (r.ssl_configured ? 'ok' : 'skipped'), true);
+          window.__dmLoad();
+        })
+        .catch(function (e) { dmStatus('Verification failed: ' + e.message, false); });
+    };
+
+    window.__dmDelete = function (id) {
+      if (!confirm('Delete this domain mapping? The public site keeps serving the directory on zaarhub.com.')) return;
+      apiFetch('DELETE', '/domains/' + id)
+        .then(function () { dmStatus('Mapping removed', true); window.__dmLoad(); })
+        .catch(function (e) { dmStatus('Could not delete: ' + e.message, false); });
+    };
+
+    window.__dmSetRoot = function (networkId) {
+      var el = document.getElementById('dm-root');
+      var value = el ? el.value.trim() : '';
+      if (!value) { dmStatus('Enter the network root domain, e.g. zaarhub.com', false); return; }
+      apiPut('/networks/' + networkId + '/root-domain', { root_domain: value })
+        .then(function () { dmStatus('Root domain saved — subdomain mappings for this network now check out', true); window.__dmLoad(); })
+        .catch(function (e) { dmStatus('Could not save root domain: ' + e.message, false); });
+    };
 
     // ===== ✉️ Email / SMTP (Round 6 / U3) =====
     // Transport list comes from the email service itself — never hardcoded here.
@@ -1949,6 +2378,11 @@
           renderDirectories(directories);
           loadB2bFeatures();
           loadAdZones();
+          // kanban t_14927725: ad revenue + sponsor creatives are directory-scoped too.
+          loadAdRevenue();
+          // Feature 1/2 (2026-09-29): the key-scope and domain panels are directory-scoped, so
+          // their pickers can only be filled once the directory list exists.
+          window.__mdFillDirectorySelects();
           // Round 11 / T3: the clearinghouse selector is built from this list, so it
           // must load after the directories arrive (not before, when it would be empty).
           loadClearinghouse();
@@ -2183,6 +2617,157 @@
     }
 
     window.__azLoad = loadAdZones;
+
+    // ===== Ad Revenue + Sponsor Creatives (kanban t_14927725) =====
+    // GET /earnings/:directory_id — the owner's own numbers per ad slot.
+    // GET|POST /sponsors/:id/creatives — the banners the sponsors behind those slots sent in.
+    // Both were curl-only (then operator-console-only). Nothing here is invented: the money
+    // comes from ad_schedules, the sizes come from the directory's live ad_zones, and a
+    // creative that does not match a live slot is refused by the server (we tell you first).
+    var revSponsors = [], revSlots = [];
+
+    function revStatus(msg, ok) {
+      var el = document.getElementById('rev-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? 'var(--ok, #22c55e)' : 'var(--err, #ef4444)';
+    }
+    function revFillDirectories() {
+      var sel = document.getElementById('rev-directory');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '';
+      (directories || []).forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d.id;
+        o.textContent = (d.name || 'Directory') + ' (' + (d.slug || '') + ')';
+        sel.appendChild(o);
+      });
+      if (current) sel.value = current;
+    }
+
+    function revRenderEarnings(rows) {
+      var box = document.getElementById('rev-earnings');
+      if (!box) return;
+      if (!rows.length) { box.innerHTML = '<div class="empty-state"><p>No ad slots for this directory yet — add one under Ad Zones.</p></div>'; return; }
+      var total = 0, pending = 0;
+      var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.85rem">' +
+        '<thead><tr><th style="text-align:left;padding:6px 8px">Ad slot</th><th style="text-align:right;padding:6px 8px">Earned</th><th style="text-align:right;padding:6px 8px">Active</th><th style="text-align:right;padding:6px 8px">Pending</th></tr></thead><tbody>';
+      rows.forEach(function (r) {
+        total += parseFloat(r.total_earned || 0);
+        pending += parseFloat(r.pending_amount || 0);
+        html += '<tr><td style="padding:6px 8px;border-top:1px solid var(--border)">' + pkEsc(r.zone_name) + '</td>' +
+          '<td style="padding:6px 8px;border-top:1px solid var(--border);text-align:right">$' + parseFloat(r.total_earned || 0).toFixed(2) + '</td>' +
+          '<td style="padding:6px 8px;border-top:1px solid var(--border);text-align:right">' + (r.active_schedules || 0) + '</td>' +
+          '<td style="padding:6px 8px;border-top:1px solid var(--border);text-align:right">$' + parseFloat(r.pending_amount || 0).toFixed(2) + '</td></tr>';
+      });
+      html += '<tr><td style="padding:6px 8px;border-top:2px solid var(--border);font-weight:600">Total</td>' +
+        '<td style="padding:6px 8px;border-top:2px solid var(--border);text-align:right;font-weight:600">$' + total.toFixed(2) + '</td><td style="border-top:2px solid var(--border)"></td>' +
+        '<td style="padding:6px 8px;border-top:2px solid var(--border);text-align:right">$' + pending.toFixed(2) + '</td></tr>';
+      html += '</tbody></table>';
+      box.innerHTML = html;
+    }
+
+    function revRenderCreatives(rows) {
+      var box = document.getElementById('rev-creatives');
+      if (!box) return;
+      if (!rows.length) { box.innerHTML = '<div class="empty-state"><p>This sponsor has no creatives yet — add one above.</p></div>'; return; }
+      box.innerHTML = rows.map(function (c) {
+        return '<div class="pk-row"><div class="pk-head">' +
+            '<div class="pk-title">' + pkEsc(c.name) + ' <span class="pk-badge ' + (c.status === 'approved' ? 'pk-ok' : 'pk-missing') + '">' + pkEsc(c.status) + '</span>' +
+            (c.is_active === false ? ' <span class="pk-badge pk-missing">inactive</span>' : '') + '</div>' +
+            '<div class="pk-desc">' + (c.width || '?') + '×' + (c.height || '?') + (c.target_url ? ' · <code>' + pkEsc(c.target_url) + '</code>' : '') + '</div></div>' +
+          '<div class="pk-desc" style="margin-top:4px"><a href="' + pkEsc(c.image_url) + '" target="_blank" rel="noopener">' + pkEsc(c.image_url) + '</a></div></div>';
+      }).join('');
+    }
+
+    function loadAdRevenue() {
+      revFillDirectories();
+      var sel = document.getElementById('rev-directory');
+      var did = sel ? sel.value : '';
+      if (!did) { revStatus('Waiting for the directory list…', false); return; }
+      revStatus('Loading…', true);
+      Promise.all([apiGet('/earnings/' + did), apiGet('/sponsors?directory_id=' + did), apiGet('/ad-zones')])
+        .then(function (res) {
+          var earnings = res[0] || [];
+          revSponsors = res[1] || [];
+          var allZones = (res[2] && res[2].data) || res[2] || [];
+          if (!Array.isArray(allZones)) allZones = [];
+          var seen = {};
+          revSlots = [];
+          allZones.filter(function (z) { return z.directory_id === did; }).forEach(function (z) {
+            var key = z.width + 'x' + z.height;
+            if (seen[key]) return;
+            seen[key] = true;
+            revSlots.push({ key: key, label: z.name + ' — ' + z.width + '×' + z.height, width: z.width, height: z.height });
+          });
+          revRenderEarnings(earnings);
+
+          var ssel = document.getElementById('rev-sponsor');
+          if (ssel) {
+            ssel.innerHTML = revSponsors.length ? '' : '<option value="">— no sponsors for this directory —</option>';
+            revSponsors.forEach(function (sp) {
+              var o = document.createElement('option');
+              o.value = sp.id;
+              o.textContent = (sp.business_name || 'Business') + ' · ' + (sp.status || 'pending');
+              ssel.appendChild(o);
+            });
+          }
+          var lsel = document.getElementById('rev-slot');
+          if (lsel) {
+            lsel.innerHTML = revSlots.length ? '' : '<option value="">— no ad slot sizes —</option>';
+            revSlots.forEach(function (s) {
+              var o = document.createElement('option');
+              o.value = s.key;
+              o.textContent = s.label;
+              lsel.appendChild(o);
+            });
+          }
+          revStatus(revSponsors.length + ' sponsor(s) · ' + revSlots.length + ' slot size(s)', true);
+          window.__revCreatives();
+        })
+        .catch(function (e) { revStatus('Could not load ad revenue: ' + e.message, false); });
+    }
+
+    function loadCreatives() {
+      var ssel = document.getElementById('rev-sponsor');
+      var sid = ssel ? ssel.value : '';
+      var box = document.getElementById('rev-creatives');
+      if (!sid) { if (box) box.innerHTML = '<div class="empty-state"><p>No sponsor selected — a creative belongs to a sponsor.</p></div>'; return Promise.resolve(); }
+      return apiGet('/sponsors/' + sid + '/creatives')
+        .then(function (rows) { revRenderCreatives(rows || []); })
+        .catch(function (e) { revStatus('Could not load creatives: ' + e.message, false); });
+    }
+
+    function createCreative() {
+      var ssel = document.getElementById('rev-sponsor');
+      var lsel = document.getElementById('rev-slot');
+      var name = (document.getElementById('rev-name').value || '').trim();
+      var image = (document.getElementById('rev-image').value || '').trim();
+      var target = (document.getElementById('rev-target').value || '').trim();
+      var sid = ssel ? ssel.value : '', key = lsel ? lsel.value : '';
+      if (!sid) { revStatus('Pick a sponsor first.', false); return; }
+      if (!name) { revStatus('Give the creative a name.', false); return; }
+      if (!image) { revStatus('A creative needs an image URL.', false); return; }
+      var slot = null;
+      for (var i = 0; i < revSlots.length; i++) { if (revSlots[i].key === key) slot = revSlots[i]; }
+      if (!slot) { revStatus('Pick a live ad-slot size — creatives must match a slot.', false); return; }
+      apiPost('/sponsors/' + sid + '/creatives', {
+        name: name, image_url: image, target_url: target || null, width: slot.width, height: slot.height
+      })
+        .then(function () {
+          revStatus('Creative "' + name + '" saved (' + slot.width + '×' + slot.height + ').', true);
+          document.getElementById('rev-name').value = '';
+          document.getElementById('rev-image').value = '';
+          document.getElementById('rev-target').value = '';
+          return loadCreatives();
+        })
+        .catch(function (e) { revStatus('Could not save creative: ' + e.message, false); });
+    }
+
+    window.__revLoad = loadAdRevenue;
+    window.__revCreatives = loadCreatives;
+    window.__revCreateCreative = createCreative;
 
     // ===== Demand Analytics (Round 11 / T1) =====
     // Filters come from the server (window choices, categories, directories are all

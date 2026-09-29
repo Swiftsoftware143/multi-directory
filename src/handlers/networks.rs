@@ -25,6 +25,46 @@ pub async fn list_networks(State(s): State<AppState>) -> ApiResult<impl IntoResp
     Ok(Json(json!(networks)))
 }
 
+/// Body for PUT /api/v1/networks/:id/root-domain.
+#[derive(Debug, serde::Deserialize)]
+pub struct RootDomainRequest {
+    pub root_domain: String,
+}
+
+/// PUT /api/v1/networks/:id/root-domain — the domain a network's directories hang their
+/// subdomains off (`palm-bay.<root_domain>`). Without it a network has no subdomain space, so
+/// Feature 2 refuses subdomain mappings until it is set.
+pub async fn set_root_domain(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<RootDomainRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let root = req
+        .root_domain
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+        .replace("https://", "")
+        .replace("http://", "");
+    let root = root.split('/').next().unwrap_or("").to_string();
+    if root.is_empty() || !root.contains('.') || root.contains(' ') {
+        return Err(AppError::Validation(
+            "Enter a bare domain, e.g. zaarhub.com".into(),
+        ));
+    }
+
+    let network = sqlx::query_as::<_, Network>(
+        "UPDATE networks SET root_domain = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+    )
+    .bind(&root)
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or(AppError::NotFound(format!("Network '{}' not found", id)))?;
+
+    Ok(Json(json!(network)))
+}
+
 /// GET /api/v1/networks/:id
 pub async fn get_network(
     State(s): State<AppState>,
