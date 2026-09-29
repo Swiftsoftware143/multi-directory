@@ -100,6 +100,11 @@ pub struct AvailableProviderResponse {
     pub field_label: Option<String>,
     /// One-line hint shown with that extra input (NULL = no hint).
     pub field_help: Option<String>,
+    /// TRUE for a provider whose credential has to travel to the VISITOR'S BROWSER (e.g. the
+    /// Google Maps JavaScript API key). The panel and the guide label such a provider
+    /// BROWSER-ONLY from this flag — it must be restricted by HTTP referrer and never used
+    /// for server-side calls. Data-driven: the flag lives on the provider catalogue.
+    pub browser_only: bool,
     pub requires_metadata: Value,
     pub icon: Option<String>,
 }
@@ -566,7 +571,8 @@ pub async fn delete_provider_key(
 /// GET /api/v1/available-providers
 pub async fn list_available_providers(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let rows = sqlx::query(
-        "SELECT key, name, description, requires_base_url, field_label, field_help, requires_metadata, icon \
+        "SELECT key, name, description, requires_base_url, field_label, field_help, requires_metadata, icon, \
+                COALESCE(browser_only, false) AS browser_only \
          FROM available_providers \
          ORDER BY name ASC",
     )
@@ -582,6 +588,9 @@ pub async fn list_available_providers(State(s): State<AppState>) -> ApiResult<im
             requires_base_url: row.get("requires_base_url"),
             field_label: row.get("field_label"),
             field_help: row.get("field_help"),
+            // try_get so a database that has not yet run migration 105 degrades to
+            // "not browser-only" instead of panicking the whole provider list.
+            browser_only: row.try_get("browser_only").unwrap_or(false),
             requires_metadata: row.get("requires_metadata"),
             icon: row.get("icon"),
         })
