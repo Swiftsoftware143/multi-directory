@@ -2904,7 +2904,7 @@ async function loadBizPage(){
 }
 
 function renderBizPage(d){
-  var b=d.business;var bizId=b.id||state.bizId
+  var b=d;var bizId=b.id||state.bizId
   var el=document.getElementById('zh-content')
   var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
   var phoneHref=b.phone?'tel:'+b.phone.replace(/[^\d+]/g,''):''
@@ -2921,7 +2921,7 @@ function renderBizPage(d){
   '<div class="zh-section"><div class="zh-section-inner"><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px"><div>'+
   (b.description?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">About</h3><p style="color:var(--text-light);line-height:1.7">'+esc(b.description)+'</p></div>':'')+
   (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(b.address)+'<br>'+esc(b.city)+', '+esc(b.state)+'</p></div>':'')+
-  (b.hours?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🕐 Hours</h3><p style="color:var(--text-light);white-space:pre-wrap;font-size:.85rem">'+esc(JSON.stringify(b.hours,null,2))+'</p></div>':'')+
+  (d.hours?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🕐 Hours</h3><p style="color:var(--text-light);white-space:pre-wrap;font-size:.85rem">'+esc(JSON.stringify(b.hours,null,2))+'</p></div>':'')+
   '</div><div>'+
   (d.deals&&d.deals.length?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🎁 Current Deals</h3>'+d.deals.map(function(dl){return '<div style="background:var(--bg-teal);padding:14px;border-radius:8px;margin-bottom:8px"><strong>'+esc(dl.title)+'</strong>'+(dl.deal_price?'<div style="color:var(--teal);font-weight:700;margin-top:4px">$'+esc(dl.deal_price)+(dl.original_price?' <span style="text-decoration:line-through;color:var(--text-muted)">$'+esc(dl.original_price)+'</span>':'')+'</div>':'')+(dl.description?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(dl.description)+'</div>':'')+'</div>'}).join('')+'</div>':'')+
   '<!-- Reviews Section --><div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">⭐ Reviews '+(d.reviews?'('+d.reviews.length+')':'')+'</h3>'+

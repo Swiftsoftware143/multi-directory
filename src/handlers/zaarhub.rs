@@ -8,6 +8,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
@@ -1268,6 +1269,87 @@ pub async fn search_businesses(
     })))
 }
 
+/// One business detail, from EITHER source table, normalised to ONE shape.
+///
+/// The detail page and the SPA both read these fields FLAT off the response root, so the
+/// normalisation happens here instead of leaking a nested object into the contract.
+struct BizDetail {
+    id: Uuid,
+    name: String,
+    slug: String,
+    description: Option<String>,
+    phone: Option<String>,
+    website: Option<String>,
+    address: Option<String>,
+    city: Option<String>,
+    state: Option<String>,
+    zip: Option<String>,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+    rating: Option<f64>,
+    review_count: i32,
+    category_id: Option<Uuid>,
+    /// Only the legacy `business_listings` source carries a text category.
+    category_name: Option<String>,
+    images: Vec<String>,
+    logo_url: Option<String>,
+    cover_url: Option<String>,
+    claimed: bool,
+    verified: bool,
+    /// TRUE when the row came from `business_listings` (a different UUID space).
+    is_listing: bool,
+}
+
+/// Where uploaded business images actually live (the container mounts this path at the
+/// SAME path — see the docker mount for /opt/swift/www/zaarhub.com/uploads).
+const UPLOADS_ROOT: &str = "/opt/swift/www/zaarhub.com/uploads";
+
+/// TRUE only for a photo reference the browser can really load.
+///
+/// The `images` column holds THREE different things and only some of them are URLs:
+/// absolute `http(s)://` uploads, root-relative `/uploads/...` paths, and Google Places photo
+/// RESOURCE NAMES (`places/ChIJ.../photos/AWC...`) which are not fetchable URLs at all — an
+/// `<img src>` on one is a guaranteed broken image. A dead photo is worse than no photo, so a
+/// root-relative path counts only when the file is on disk.
+fn photo_is_renderable(url: &str) -> bool {
+    let u = url.trim();
+    if u.starts_with("http://") || u.starts_with("https://") {
+        return true;
+    }
+    match u.strip_prefix("/uploads/") {
+        Some(rel) if !rel.is_empty() && !rel.contains("..") => {
+            std::path::Path::new(UPLOADS_ROOT).join(rel).is_file()
+        }
+        _ => false,
+    }
+}
+
+/// Accepts both shapes a photos column takes in this database: `["url", ...]` and
+/// `[{"url": ...}, ...]`, and keeps only references that will actually render (see
+/// `photo_is_renderable`). Nothing is ever invented or substituted.
+fn image_urls(v: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(arr) = v.as_array() {
+        for item in arr {
+            let url = match item {
+                Value::String(s) => Some(s.clone()),
+                Value::Object(o) => o
+                    .get("url")
+                    .or_else(|| o.get("photo_reference"))
+                    .and_then(|u| u.as_str())
+                    .map(str::to_string),
+                _ => None,
+            };
+            if let Some(u) = url {
+                if photo_is_renderable(&u) && !out.contains(&u) {
+                    out.push(u);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// GET /api/v1/zaarhub/business/:slug/:id — business detail page
 pub async fn get_business_detail(
     State(s): State<AppState>,
@@ -1297,29 +1379,17 @@ pub async fn get_business_detail(
         }
     };
 
-    // Try UUID lookup first, then slug
-    let business = if let Ok(bid) = Uuid::parse_str(&id) {
-        sqlx::query_as::<
-            _,
-            (
-                Uuid,
-                String,
-                String,
-                Option<String>,
-                Option<String>,
-                Option<f64>,
-                Option<i32>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<f64>,
-                Option<f64>,
-                Option<Uuid>,
-            ),
-        >(
-            r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.rating, b.review_count,
-                      b.website, b.address, b.city, b.state, b.latitude, b.longitude, b.category_id
+    // Try UUID lookup first, then slug. Columns are read BY NAME (never as a positional
+    // tuple): a positional tuple shifts every field onto the wrong column when one is added,
+    // which is exactly how a `name` ends up rendering as somebody's phone number.
+    let brow = if let Ok(bid) = Uuid::parse_str(&id) {
+        sqlx::query(
+            r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.website, b.address,
+                      b.city, b.state, b.zip,
+                      COALESCE(b.latitude, b.lat)  AS latitude,
+                      COALESCE(b.longitude, b.lng) AS longitude,
+                      b.rating, b.review_count, b.category_id,
+                      b.images, b.logo_url, b.cover_url, b.claimed, b.verified
                FROM businesses b
                WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1328,27 +1398,13 @@ pub async fn get_business_detail(
         .fetch_optional(&s.db)
         .await?
     } else {
-        sqlx::query_as::<
-            _,
-            (
-                Uuid,
-                String,
-                String,
-                Option<String>,
-                Option<String>,
-                Option<f64>,
-                Option<i32>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<f64>,
-                Option<f64>,
-                Option<Uuid>,
-            ),
-        >(
-            r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.rating, b.review_count,
-                      b.website, b.address, b.city, b.state, b.latitude, b.longitude, b.category_id
+        sqlx::query(
+            r#"SELECT b.id, b.name, b.slug, b.description, b.phone, b.website, b.address,
+                      b.city, b.state, b.zip,
+                      COALESCE(b.latitude, b.lat)  AS latitude,
+                      COALESCE(b.longitude, b.lng) AS longitude,
+                      b.rating, b.review_count, b.category_id,
+                      b.images, b.logo_url, b.cover_url, b.claimed, b.verified
                FROM businesses b
                WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1358,52 +1414,101 @@ pub async fn get_business_detail(
         .await?
     };
 
-    // The business cards on city pages are built from the `business_listings` table,
-    // whose IDs live in a different UUID space than `businesses`. When a card is clicked,
-    // the SPA routes here with a `business_listings.id`, so fall back to that table before 404.
-    let (
-        biz_id,
-        biz_name,
-        biz_slug,
-        biz_desc,
-        biz_phone,
-        biz_rating,
-        biz_review_count,
-        biz_website,
-        biz_address,
-        biz_city,
-        biz_state,
-        biz_lat,
-        biz_lng,
-        biz_cat_id,
-    ) = if let Some(b) = business {
-        b
+    // The business cards on city pages are built from the `business_listings` table, whose IDs
+    // live in a different UUID space than `businesses`. When a card is clicked, the SPA routes
+    // here with a `business_listings.id`, so fall back to that table before 404.
+    let biz: BizDetail = if let Some(r) = brow {
+        BizDetail {
+            id: r.try_get("id")?,
+            name: r.try_get("name")?,
+            slug: r.try_get("slug")?,
+            description: r.try_get("description")?,
+            phone: r.try_get("phone")?,
+            website: r.try_get("website")?,
+            address: r.try_get("address")?,
+            city: r.try_get("city")?,
+            state: r.try_get("state")?,
+            zip: r.try_get("zip")?,
+            latitude: r.try_get("latitude")?,
+            longitude: r.try_get("longitude")?,
+            rating: r.try_get("rating")?,
+            review_count: r.try_get::<Option<i32>, _>("review_count")?.unwrap_or(0),
+            category_id: r.try_get("category_id")?,
+            category_name: None,
+            images: image_urls(
+                &r.try_get::<Option<Value>, _>("images")?
+                    .unwrap_or(Value::Null),
+            ),
+            logo_url: r.try_get("logo_url")?,
+            cover_url: r.try_get("cover_url")?,
+            claimed: r.try_get::<Option<bool>, _>("claimed")?.unwrap_or(false),
+            verified: r.try_get::<Option<bool>, _>("verified")?.unwrap_or(false),
+            is_listing: false,
+        }
     } else if let Ok(bid) = Uuid::parse_str(&id) {
-        sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<f64>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>, Option<Uuid>)>(
-                r#"SELECT bl.id, bl.business_name, bl.business_name, bl.description, bl.phone, bl.rating, bl.review_count,
-                          bl.website, bl.address, cp.city_name, cp.state, bl.coordinates_lat, bl.coordinates_lng, NULL::uuid
-                   FROM business_listings bl
-                   JOIN city_pages cp ON bl.city_page_id = cp.id
-                   WHERE bl.id = $1 AND cp.city_slug = $2"#
-            )
-            .bind(bid)
-            .bind(&slug)
-            .fetch_optional(&s.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?
+        let r = sqlx::query(
+            r#"SELECT bl.id, bl.business_name, bl.category, bl.description, bl.phone,
+                      bl.website, bl.address, cp.city_name, cp.state, bl.rating,
+                      bl.review_count, bl.coordinates_lat, bl.coordinates_lng,
+                      bl.logo_url, bl.cover_image_url, bl.is_claimed
+               FROM business_listings bl
+               JOIN city_pages cp ON bl.city_page_id = cp.id
+               WHERE bl.id = $1 AND cp.city_slug = $2"#,
+        )
+        .bind(bid)
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+        let listing_logo: Option<String> = r.try_get("logo_url")?;
+        let listing_cover: Option<String> = r.try_get("cover_image_url")?;
+        let mut listing_images: Vec<String> = Vec::new();
+        for u in [listing_logo.clone(), listing_cover.clone()]
+            .into_iter()
+            .flatten()
+        {
+            if photo_is_renderable(&u) && !listing_images.contains(&u) {
+                listing_images.push(u);
+            }
+        }
+
+        BizDetail {
+            id: r.try_get("id")?,
+            name: r.try_get("business_name")?,
+            slug: slug.clone(),
+            description: r.try_get("description")?,
+            phone: r.try_get("phone")?,
+            website: r.try_get("website")?,
+            address: r.try_get("address")?,
+            city: r.try_get("city_name")?,
+            state: r.try_get("state")?,
+            zip: None,
+            latitude: r.try_get("coordinates_lat")?,
+            longitude: r.try_get("coordinates_lng")?,
+            rating: r.try_get("rating")?,
+            review_count: r.try_get::<Option<i32>, _>("review_count")?.unwrap_or(0),
+            category_id: None,
+            category_name: r.try_get("category")?,
+            images: listing_images,
+            logo_url: listing_logo,
+            cover_url: listing_cover,
+            claimed: r.try_get::<Option<bool>, _>("is_claimed")?.unwrap_or(false),
+            verified: false,
+            is_listing: true,
+        }
     } else {
         return Err(AppError::NotFound("Business not found".to_string()));
     };
 
-    // Get category name
-    let category_name: Option<String> = if let Some(cat_id) = biz_cat_id {
-        sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
+    // Category name: `businesses` stores a category_id, a legacy listing stores the text.
+    let category_name: Option<String> = match biz.category_id {
+        Some(cat_id) => sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
             .bind(cat_id)
             .fetch_optional(&s.db)
             .await?
-            .flatten()
-    } else {
-        None
+            .flatten(),
+        None => biz.category_name.clone(),
     };
 
     // Get directory name
@@ -1430,7 +1535,7 @@ pub async fn get_business_detail(
            ORDER BY created_at DESC
            LIMIT 10"#,
     )
-    .bind(biz_id)
+    .bind(biz.id)
     .fetch_all(&s.db)
     .await?;
 
@@ -1465,7 +1570,7 @@ pub async fn get_business_detail(
            WHERE business_id = $1 AND status = 'active'
            ORDER BY created_at DESC"#,
     )
-    .bind(biz_id)
+    .bind(biz.id)
     .fetch_all(&s.db)
     .await?;
 
@@ -1482,49 +1587,115 @@ pub async fn get_business_detail(
         )
         .collect();
 
-    // Check if business is verified/claimed
-    let is_claimed: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM claimed_businesses WHERE business_id = $1)",
-    )
-    .bind(biz_id)
-    .fetch_one(&s.db)
-    .await
-    .unwrap_or(false);
+    // Claimed if the businesses row says so OR a claim record exists (the claim table is the
+    // older path and both are live).
+    let is_claimed: bool = biz.claimed
+        || sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM claimed_businesses WHERE business_id = $1)",
+        )
+        .bind(biz.id)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(false);
 
-    // Hours
-    let hours: Option<Value> = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT hours FROM business_meta WHERE business_id = $1 AND hours IS NOT NULL LIMIT 1",
+    // Hours. The previous query selected a `hours` COLUMN from business_meta, which has never
+    // existed on that table (its payload lives in `meta_data`), so it errored on EVERY request
+    // and `.ok()` swallowed it: a dead query that cost a round trip and served nothing.
+    let hours: Option<Value> = sqlx::query_scalar::<_, Option<Value>>(
+        r#"SELECT COALESCE(meta_data->'hours', meta_data->'opening_hours')
+           FROM business_meta
+           WHERE business_id = $1
+             AND (meta_data ? 'hours' OR meta_data ? 'opening_hours')
+           LIMIT 1"#,
     )
-    .bind(biz_id)
+    .bind(biz.id)
     .fetch_optional(&s.db)
-    .await
-    .ok()
+    .await?
     .flatten();
 
+    // Photos: the stored `images` array, plus a cover image if one is set. Never a placeholder
+    // image — an empty list is what tells the page to hide the gallery block entirely.
+    let mut photos: Vec<String> = biz.images.clone();
+    if let Some(cover) = biz.cover_url.clone() {
+        if photo_is_renderable(&cover) && !photos.contains(&cover) {
+            photos.push(cover);
+        }
+    }
+    let image_url = photos.first().cloned();
+
+    // Nearby businesses in the SAME city of the SAME directory. Empty means "hide the block" —
+    // the page never shows an empty shell.
+    let nearby: Vec<Value> = if let Some(city) = biz.city.as_deref() {
+        let rows = sqlx::query(
+            r#"SELECT b.id, b.name, b.slug, b.rating, b.review_count, c.name AS category
+               FROM businesses b
+               LEFT JOIN directory_categories c ON c.id = b.category_id
+               WHERE b.directory_id = $1
+                 AND b.is_active = true
+                 AND b.id <> $2
+                 AND b.city = $3
+               ORDER BY b.rating DESC NULLS LAST, b.review_count DESC, b.name ASC
+               LIMIT 6"#,
+        )
+        .bind(dir_id)
+        .bind(biz.id)
+        .bind(city)
+        .fetch_all(&s.db)
+        .await?;
+
+        rows.iter()
+            .map(|r| {
+                json!({
+                    "id": r.try_get::<Uuid, _>("id").ok(),
+                    "name": r.try_get::<String, _>("name").ok(),
+                    "slug": r.try_get::<String, _>("slug").ok(),
+                    "rating": r.try_get::<Option<f64>, _>("rating").ok().flatten(),
+                    "review_count": r.try_get::<Option<i32>, _>("review_count").ok().flatten(),
+                    "category": r.try_get::<Option<String>, _>("category").ok().flatten(),
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // ONE FLAT shape. This is the contract every consumer reads (`bizData.name`, `b.name`), so
+    // the business fields sit at the TOP LEVEL next to deals / reviews / hours — there is no
+    // nested `business` object any more. `lat`/`lng` are aliases of latitude/longitude because
+    // the database itself carries both column pairs and callers used one each.
     Ok(Json(json!({
-        "business": {
-            "id": biz_id,
-            "name": biz_name,
-            "slug": biz_slug,
-            "description": biz_desc,
-            "phone": biz_phone,
-            "website": biz_website,
-            "address": biz_address,
-            "city": biz_city,
-            "state": biz_state,
-            "latitude": biz_lat,
-            "longitude": biz_lng,
-            "category": category_name,
-            "rating": biz_rating,
-            "review_count": biz_review_count,
-            "is_claimed": is_claimed,
-            "image_url": null,
-        },
+        "id": biz.id,
+        "name": biz.name,
+        "slug": biz.slug,
+        "description": biz.description,
+        "phone": biz.phone,
+        "website": biz.website,
+        "address": biz.address,
+        "city": biz.city,
+        "state": biz.state,
+        "zip": biz.zip,
+        "latitude": biz.latitude,
+        "longitude": biz.longitude,
+        "lat": biz.latitude,
+        "lng": biz.longitude,
+        "rating": biz.rating,
+        "review_count": biz.review_count,
+        "category_name": category_name.clone(),
+        "category": category_name,
+        "is_claimed": is_claimed,
+        "is_verified": biz.verified,
+        "source": if biz.is_listing { "listing" } else { "business" },
+        "images": photos.clone(),
+        "photos": photos,
+        "image_url": image_url,
+        "logo_url": biz.logo_url,
+        "cover_url": biz.cover_url,
         "directory_name": dir_name,
         "directory_slug": slug,
         "reviews": review_list,
         "deals": deal_list,
         "hours": hours,
+        "nearby": nearby,
     })))
 }
 
