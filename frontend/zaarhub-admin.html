@@ -104,6 +104,7 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
         <a href="/guides/api-keys-setup.html#provider-google_places" target="_blank" rel="noopener" style="float:right;font-size:12px;font-weight:600;color:var(--brand)">How do I get this key? →</a>
       </h2>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Save your Google Places API key here — it's stored encrypted. The Populate search below uses it to find businesses that match a category + city + radius.</p>
+      <p style="font-size:12px;color:var(--text-muted);margin:-8px 0 14px;line-height:1.55">Use a <b>Places API (New)</b> key, restricted in Google Cloud by <b>server IP address</b> (never by website referrer) — this is the <b>server</b> key. A <b>Maps JavaScript</b> key is a different, browser-side key and does not go here. Keys are encrypted and shown masked. <a href="/guides/admin-guide.html#google-api-keys" target="_blank" rel="noopener" style="font-weight:600;color:var(--brand)">Which Google key for which job? →</a></p>
       <div class="form-row">
         <div class="form-group"><label>Google Places API Key</label>
           <input id="gplaces-key" placeholder="AIza..." style="font-family:monospace">

@@ -673,6 +673,17 @@
         </h3>
         <p class="feature-subtitle">Paste your own keys here — encrypted at rest and shown <b>masked</b> (first 4 and last 4 characters only; the full value never leaves the server). <b>Every key can be named</b>, so you can store several accounts for one provider side by side. Every key is also <b>scoped</b>: platform-wide, to one <b>network</b>, or to one <b>directory</b> — a directory with no key of its own <b>inherits its network's</b>, so one Google Places key set on the ZaarHub network serves all ten cities.</p>
         <div id="pk-loading" class="loading-state"><span class="spinner"></span> Loading providers...</div>
+        <!-- Which Google key goes where (2026-09-23). The single most common setup error is
+             pasting a Maps JavaScript (browser) key into the server-side Places row, so the rule
+             is stated where the key is actually pasted, not only in the guide. -->
+        <div class="pk-desc" style="margin:0 0 12px;padding:10px 12px;border:1px solid #b45309;border-left:4px solid #f59e0b;border-radius:8px;background:rgba(245,158,11,.10);line-height:1.6">
+          <b>⚠ Google is <u>two</u> keys, not one.</b>
+          The <b>Google Places</b> key on this card is used by the <b>server</b> for business search, discovery and data enrichment &mdash; restrict it in Google Cloud by <b>server IP address</b>, <b>never</b> by website referrer.
+          A <b>Maps JavaScript API</b> key is only needed when a map is drawn in a visitor's browser; it is visible in the page source, so it must be restricted by <b>website / HTTP referrer</b> to your own domains, it <b>cannot</b> do the search job, and it belongs in the directory's <b>Google Maps API Key</b> (SEO settings) &mdash; <b>not here</b>.
+          Do <b>not</b> create one &ldquo;master&rdquo; key with both APIs enabled: it can be tightened to neither, so one leak exposes everything.
+          Never paste a key into a chat or a ticket &mdash; enter it here. Keys are encrypted and only a <b>masked preview (first 4 + last 4)</b> is shown; a blank field never means &ldquo;no key&rdquo; &mdash; each row says when a key is stored and when it last changed.
+          <a href="/guides/admin-guide.html#google-api-keys" target="_blank" rel="noopener">Which key for which job? →</a>
+        </div>
         <div id="pk-list"></div>
         <div class="feature-status" id="pk-status"></div>
 

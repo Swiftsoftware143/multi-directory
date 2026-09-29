@@ -645,6 +645,56 @@ a:hover{text-decoration:underline}
   </details>
 </div>
 
+<!-- 19. Google API keys — which key for which job (2026-09-23 guidance) -->
+<div class="card" id="google-api-keys">
+  <h3><span class="emoji">🔑</span> 19. Google API keys — two different keys, two different jobs</h3>
+  <p>Google does not give you one key. It gives you a key <strong>per API</strong>, and the mistake we see most often is using the wrong one — which is what breaks business discovery. There are two, and they are <strong>not</strong> interchangeable.</p>
+
+  <div class="warn-box">
+    <strong>🔒 Places API (New) — the SERVER key.</strong> This is the key that powers <strong>business search, discovery and the data-enrichment cycle</strong> inside the app. Those calls are made by the <strong>server</strong>, so in the Google Cloud console this key must be restricted by <strong>server IP address</strong> — <strong>never</strong> by website referrer. Google's console may list the API as <strong>Places API</strong> or <strong>Places API (New)</strong>: enable the Places API, and if both names appear, both.
+  </div>
+
+  <div class="tip-box">
+    <strong>🗺️ Maps JavaScript API — the BROWSER key.</strong> Only needed if a <strong>map is actually drawn on a page in the visitor's browser</strong>. Because that key travels to the browser and is visible in the page source, it <strong>must</strong> be restricted by <strong>website / HTTP referrer</strong> to your own domains (<code>*.zaarhub.com</code> plus any custom domains). It <strong>cannot</strong> do the server-side search job — a Maps JavaScript key sitting in the Places field is the single most common cause of "The provided API key is invalid".
+  </div>
+
+  <div class="danger-box">
+    <strong>🚫 Do not use one "master" key with both APIs enabled.</strong> It is convenient and it is the <strong>least safe</strong> option. A key that has to work from both a browser and a server cannot be tightened to either, so one leak exposes everything — and the browser copy is public by nature. Create <strong>two</strong> keys, each properly restricted, and never a combined one. (David deleted his combined key for exactly this reason — don't add one back.)
+  </div>
+
+  <h4>Where each key goes — exact screens and fields</h4>
+  <ul>
+    <li><strong>Places API (New) — server key:</strong> <strong>Admin Panel → 🔑 Provider API Keys → the "Google Places" row → "Paste API key" → ＋ Add key</strong>. The same key can also be saved from <strong>ZaarHub Admin → Populate tab → "Google Places API Key" → Save Key</strong>. Both write the same stored key.</li>
+    <li><strong>Maps JavaScript API — browser key:</strong> the directory's <strong>SEO settings → "Google Maps API Key"</strong> field (it feeds map embeds). ZaarHub's public maps are drawn with Leaflet/OpenStreetMap and need <em>no</em> Google key at all — set this one only if a page actually renders a Google map, and keep it on referrer restriction when you do.</li>
+  </ul>
+
+  <h4>Set it once — not once per city</h4>
+  <p>A key is <strong>scoped</strong>: platform-wide, to one <strong>network</strong>, or to one <strong>directory</strong>. A key saved at <strong>network level is inherited by every city in that network</strong>, so the ZaarHub Google Places key is pasted <strong>once</strong> and all cities use it — do not paste the same key into every city. A standalone directory that is not inside a network keeps its own key. Pick the scope in the <strong>Scope</strong> dropdown in the row (platform-wide / a network / one directory) before pressing <strong>＋ Add key</strong>; the <strong>🔎 Which key is in force for a directory</strong> panel below it then shows, per provider, whether the winning key is the directory's <strong>own</strong>, <strong>inherited from its network</strong>, or the <strong>platform</strong> key — always masked.</p>
+
+  <h4>Changing a key — you do not need the old value</h4>
+  <ul>
+    <li><strong>Just paste the new one</strong> into the same field and save. There is no "confirm the old key first" step.</li>
+    <li>Keys are <strong>stored encrypted</strong> on the server, and the panel only ever shows a <strong>masked preview — the first 4 and last 4 characters</strong>. The full value is never sent back to the browser.</li>
+    <li>An <strong>empty field never means "no key"</strong>. The row itself states whether a key is stored and <strong>when it was last changed</strong> — read that, not the blank input.</li>
+  </ul>
+
+  <h4>Never paste a key into a chat, a ticket, a document or a code file</h4>
+  <p>Keys are entered <strong>in the panel</strong>, full stop. If a key has ever been shared anywhere — a chat, an email, a doc, a screenshot, in source code — treat it as leaked and <strong>rotate it</strong>: create a new key in Google Cloud, save it in the panel, then delete the old one in Google Cloud.</p>
+
+  <h4>Wrong key type, or restricted wrong — the symptom and the fix</h4>
+  <ul>
+    <li><strong>"The provided API key is invalid"</strong> on a search or an enrichment run → the wrong <em>type</em> of key, most often a <strong>Maps JavaScript</strong> key pasted into the <strong>Google Places</strong> field, or a key that was deleted/regenerated in Google Cloud. Create a <strong>Places API (New)</strong> key and paste that instead.</li>
+    <li><strong>"… is not authorized to use this service"</strong> / <strong>"API not enabled"</strong> → the Places API is not enabled on that Google Cloud project, or the key's <em>API restrictions</em> exclude it. Enable the Places API and add it to the key's allowed APIs.</li>
+    <li><strong>"Requests from referrer … are blocked"</strong> on a server-side search → the key is restricted by <strong>website referrer</strong> instead of the server's IP. Switch the restriction to <strong>IP addresses</strong> and enter the server's IP.</li>
+    <li><strong>"This IP, site or mobile application is not authorized…"</strong> when a map loads in the browser → the browser key is IP-restricted, or your domain is missing from it. Switch it to <strong>HTTP referrers</strong> and add <code>*.zaarhub.com</code> plus each custom domain.</li>
+    <li><strong>Search works but the map is blank</strong> → the server key is fine and the <strong>browser</strong> key is missing or wrong. Set the directory's <strong>Google Maps API Key</strong> in SEO settings.</li>
+  </ul>
+
+  <div class="tip-box">
+    <strong>📘 Full detail:</strong> <a href="api-keys-setup.html#google-two-keys">the API Keys Setup Guide — "Which Google key for which job"</a>, and the click-by-click Cloud-console steps under <a href="api-keys-setup.html#provider-google_places">Google Places</a>.
+  </div>
+</div>
+
 <a href="/guides/index.html" class="back-link">← Back to All Guides</a>
 
 </div>
