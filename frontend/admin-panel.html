@@ -534,6 +534,7 @@
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty &amp; IQS</a>
+        <a class="nav-out" href="/guides/admin-guide.html#david-setup-checklist">✅ Setup Checklist</a>
         <a href="/admin-ops">🧰 Operator Console</a>
         <span class="nav-sep">|</span>
         <a class="nav-out" href="/zaarhub-admin.html">🔍 Discovery / Populate</a>
@@ -1268,11 +1269,15 @@
         <a href="/portal" class="btn btn-accent" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem">Open Business Portal →</a>
         <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">Surveys tab available in the business portal loyalty section.</p>
       </div>
+      <!-- The CoreSwift connection is server-side only so far: the API exists
+           (/integrations/coreswift/connection[/targets|/test]) but there is NO screen for it yet.
+           This link used to point at "#integrations-section", which does not exist on this page —
+           a link to nowhere. Point it at the guide's setup checklist, where the gap is written
+           down as PENDING, and say so plainly here. -->
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-        <h3 style="font-size:1rem;margin-bottom:8px">⚙️ Survey Funnels (IQS)</h3>
-        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Intelligent qualifying surveys are proxied to IncentiveSwift. Configure the connection under Integrations (the address and key are settings, not constants).</p>
-        <a href="#integrations-section" class="btn btn-ghost" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem;border-color:var(--border);color:var(--text-secondary)">Integration settings →</a>
-        <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">Runs on the server; there is no separate dashboard to open.</p>
+        <h3 style="font-size:1rem;margin-bottom:8px">🔌 Integrations &amp; CRM (CoreSwift)</h3>
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Leads, onboarding answers and qualifying surveys are pushed to <b>CoreSwift</b>/<b>IncentiveSwift</b> over a server-side connection. <b>There is no connection screen in this panel yet</b> — the endpoints exist but no UI control does, so it cannot be wired from here today.</p>
+        <a href="/guides/admin-guide.html#david-setup-checklist" target="_blank" rel="noopener" class="btn btn-ghost" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem;border-color:var(--border);color:var(--text-secondary)">Setup checklist — item 7 (pending) ↗</a>
       </div>
     </div>
   </div>

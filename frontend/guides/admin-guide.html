@@ -695,6 +695,136 @@ a:hover{text-decoration:underline}
   </div>
 </div>
 
+<!-- 20. What only the owner can do — the setup checklist (2026-09-23).
+     Items 1-6 are panel-only and a VA can do them; 7 needs a decision, 8 needs DNS access.
+     Item 7 is deliberately marked PENDING: the CoreSwift connection API exists but has no
+     admin screen yet, so the guide must NOT send anyone to a screen that is not there. -->
+<div class="card" id="david-setup-checklist">
+  <h3><span class="emoji">✅</span> 20. What only you can do — the setup checklist</h3>
+  <p>Everything below needs something a machine can't supply: a key from a provider console, a business
+     decision (which gateway, which CRM account), or a DNS record. <strong>None of it is done yet</strong>,
+     and none of it can be done from code. Tick each line as it's finished — every line names the
+     <strong>exact panel screen</strong>, so a VA can work straight down the list.</p>
+  <p style="font-size:.85rem">The panel lives at <code>https://zaarhub.com/admin-panel.html</code>. Each
+     screen below is a section on that page, in the order the links appear at the top.</p>
+
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Rotate the two Google keys.</strong></label><br>
+      <strong>Why:</strong> the keys were shared in a chat/message, so treat them as <strong>seen</strong> and replace them.<br>
+      <strong>How:</strong> Google Cloud console → <strong>Credentials</strong> → create a new key → restrict it
+      (<strong>Places API (New)</strong> by <strong>server IP address</strong>; <strong>Maps JavaScript</strong> by
+      <strong>website / HTTP referrer</strong>) → paste it into the matching labelled field below → then
+      <strong>delete the old key</strong> in Google Cloud. Which key is which is section 19 above.<br>
+      <strong>Where:</strong> the server key goes in <strong>Admin Panel → 🔑 Provider API Keys → the "Google Places"
+      row → "Paste API key" → ＋ Add key</strong>; the browser key goes in the directory's
+      <strong>SEO settings → "Google Maps API Key"</strong>.<br>
+      <strong>Rule:</strong> keys are entered <em>in the panel</em> — never in a chat, ticket, document or code
+      file. The panel only ever shows a <strong>masked preview (first 4 + last 4 characters)</strong>, and an
+      <strong>empty box never means "no key"</strong>; the row itself says when a key is stored and when it last changed.</p>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Pick a payment provider and enter its key.</strong></label><br>
+      <strong>Why:</strong> <strong>no gateway is set</strong>, so checkout refuses and payouts stay pending.<br>
+      <strong>Where:</strong> <strong>Admin Panel → 💳 Payment Gateways</strong> — connect Stripe and/or PayPal.
+      A gateway <strong>cannot be switched on without its webhook verification value</strong>, and the receiver
+      refuses any event it can't verify, so enter that too.</p>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Enter email credentials, per directory.</strong></label><br>
+      <strong>Why:</strong> with none set, <strong>statement emails and reminders are skipped</strong> — the panel
+      reports the service as "not configured".<br>
+      <strong>Where:</strong> <strong>Admin Panel → ✉️ Email / SMTP</strong> — choose the directory, fill
+      <strong>From name</strong>, <strong>From email</strong>, <strong>Reply-to</strong> and the transport
+      credentials, then press <strong>Send test email</strong> and confirm it arrives.</p>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Turn ZaarCash earning ON.</strong></label><br>
+      <strong>Why:</strong> the <strong>points-per-redemption rate is still 0</strong>, so customers earn
+      <strong>nothing</strong> when they redeem.<br>
+      <strong>Where:</strong> <strong>Admin Panel → ⭐ Loyalty Programmes</strong> — set the units per
+      <strong>redemption</strong> (and per <strong>check-in</strong> and <strong>visit</strong> if you use them).
+      A rate of <strong>0 switches that source off</strong>, so a 0 here is a deliberate "no earning", not a default.</p>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Set the clearinghouse settlement settings.</strong></label><br>
+      <strong>Where:</strong> <strong>Admin Panel → 🏦 Clearinghouse Settlement</strong> — set
+      <strong>Settlement enabled</strong>, <strong>Cycle day (1–28)</strong>, the issue/redeem rates, minimum
+      payout and <strong>points expiry (days)</strong>, then <strong>Save settlement settings</strong>.<br>
+      <strong>Note:</strong> with no payment provider configured (item 2) a settlement run cannot pay out — it
+      stays <strong>pending</strong>, by design.</p>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">6</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Author the onboarding questionnaire(s), then test the flow.</strong></label><br>
+      <strong>Where:</strong> <strong>Admin Panel → ✍️ Onboarding Questionnaires</strong> — write the questions
+      for each audience (<strong>customer, supplier, business</strong>), then <strong>Publish</strong> it: a
+      <strong>draft never reaches the public</strong>. Finally walk each onboarding flow end to end yourself.<br>
+      <strong>What it does:</strong> completing a questionnaire credits the network currency
+      (<strong>100 units = US$1</strong>) through the native loyalty programme and pushes the answers to
+      CoreSwift; if the CRM is unreachable the answers and the currency still land, and the reason is recorded
+      on the response.</p>
+    </div>
+  </div>
+
+  <div class="step-item" style="border-color:#fcd34d;background:#fffbeb">
+    <div class="step-num" style="background:#d97706">7</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Decide the canonical CoreSwift account for the ZaarHub network, and connect it.</strong> <span style="color:#d97706;font-weight:700">⏳ PENDING — not yet a screen in the panel</span></label><br>
+      <strong>Decision (do this now):</strong> from the candidates in the audit, choose the <strong>one</strong>
+      CoreSwift account the ZaarHub network should own its leads in.<br>
+      <strong>Connect (wait for the screen):</strong> the server already exposes the connection endpoints
+      (<code>/api/v1/integrations/coreswift/connection</code>, <code>…/connection/targets</code>,
+      <code>…/connection/test</code>) but there is <strong>no admin screen for them yet</strong> — the
+      "Integration settings →" button on the panel points at a section that does not exist. Until that screen
+      ships, the connection <strong>cannot be made from the panel</strong>. This is written down here as
+      <strong>pending</strong> rather than sending you to a screen that is not there; an endpoint with no UI
+      control is a defect to close, and this line is the reminder.</p>
+    </div>
+  </div>
+
+  <div class="step-item">
+    <div class="step-num">8</div>
+    <div class="step-text">
+      <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Point DNS for whatever domain mapping is chosen.</strong></label><br>
+      <strong>Where:</strong> <strong>Admin Panel → 🌐 Domains, Subdomains &amp; Subfolders</strong> — choose
+      <strong>a subdomain of the network</strong> (e.g. <code>palm-bay.zaarhub.com</code>), <strong>its own
+      custom domain</strong>, or <strong>a subfolder of a host</strong> (e.g. <code>zaarhub.com/palm-bay</code>),
+      then <strong>＋ Add mapping</strong>.<br>
+      <strong>Why it needs you:</strong> the code side can be done from the panel, but a mapping only goes live
+      once <strong>DNS resolves</strong>. After creating the record, press <strong>Check live</strong> — a host
+      whose DNS still points elsewhere is reported <strong>not live</strong>, never as working.</p>
+    </div>
+  </div>
+
+  <div class="tip-box">
+    <strong>✅ How to use this list:</strong> items <strong>1–6</strong> are panel-only work a VA can complete
+    with a provider login. Item <strong>7</strong> needs your decision first (and a screen that doesn't exist
+    yet). Item <strong>8</strong> needs the domain's DNS access. Nothing below item 1 is optional — until each
+    is done, the matching feature is silent, refusing, or earning zero.
+  </div>
+</div>
+
 <a href="/guides/index.html" class="back-link">← Back to All Guides</a>
 
 </div>
