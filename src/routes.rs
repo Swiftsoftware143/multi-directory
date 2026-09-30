@@ -503,6 +503,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/seo/regenerate-sitemap", post(seo::regenerate_sitemap))
         .route("/sitemap.xml", get(seo::generate_sitemap))
         .route("/robots.txt", get(seo::get_robots_txt))
+        // Subfolder routing clash report — directories whose slug shadows a
+        // top-level route and therefore cannot be served at /<slug>.
+        .route("/seo/subfolder-clashes", get(subfolder::clashes_handler))
         .route("/search/filters/:directory_id", get(search::get_filters))
         .route(
             "/search/config",
@@ -2046,6 +2049,11 @@ pub fn create_router(s: AppState) -> Router {
         // ??? ZaarHub SEO (sitemap + robots)
         .route("/zaarhub-sitemap.xml", get(zaarhub_seo::sitemap_xml))
         .route("/zaarhub-robots.txt", get(zaarhub_seo::robots_txt))
+        // ??? Subfolder SEO (2026-09-23): dynamic sitemap + robots that carry the
+        // `/<directory-slug>/...` URLs. These shadow the static files of the same
+        // name on purpose — the static copies are single-URL placeholders.
+        .route("/sitemap.xml", get(subfolder::sitemap_handler))
+        .route("/robots.txt", get(subfolder::robots_handler))
         .nest("/api/v1", all_routes)
         .fallback_service(tower::service_fn(
             move |req: axum::http::Request<axum::body::Body>| {
@@ -2735,6 +2743,33 @@ pub fn create_router(s: AppState) -> Router {
                                 .body(axum::body::Body::empty())
                                 .unwrap(),
                         );
+                    }
+
+                    // ── Subfolder SEO pages (2026-09-23) ──
+                    // Directories are served at /<slug> (e.g. /palm-bay) with their
+                    // sub-pages under the same prefix. Server-rendered with canonical,
+                    // OG/Twitter tags and JSON-LD so search engines see exactly one URL
+                    // per record, generated automatically from the record's own fields.
+                    // Reserved top-level names and static assets are skipped inside.
+                    {
+                        let query = req.uri().query().unwrap_or("");
+                        let proto = req
+                            .headers()
+                            .get("x-forwarded-proto")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("https");
+                        if let Some(resp) = crate::handlers::subfolder::try_render_with_query(
+                            &_pool_for_host,
+                            host.as_deref(),
+                            proto,
+                            &_base_domain,
+                            &path,
+                            query,
+                        )
+                        .await
+                        {
+                            return Ok::<_, std::convert::Infallible>(resp);
+                        }
                     }
 
                     // SPA fallback: serve full index.html for all unmatched routes

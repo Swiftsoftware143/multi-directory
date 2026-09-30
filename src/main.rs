@@ -75,6 +75,26 @@ async fn main() {
 
     let state = AppState::new(pool, config.clone(), is_db);
 
+    // Subfolder SEO: report any directory whose slug shadows a top-level route
+    // (that directory can then not be reached at `/<slug>`). Silent when clean;
+    // also queryable at GET /api/v1/seo/subfolder-clashes.
+    {
+        let clashes = handlers::subfolder::find_clashes(&state.db).await;
+        for (slug, against) in &clashes {
+            tracing::warn!(
+                "SUBFOLDER CLASH: directory slug '{}' is shadowed by the top-level '{}' route — \
+                 /{} will not serve the directory home (use /d/{})",
+                slug,
+                against,
+                slug,
+                slug
+            );
+        }
+        if !clashes.is_empty() {
+            tracing::warn!("{} subfolder slug clash(es) detected", clashes.len());
+        }
+    }
+
     // Start background reminder cron
     reminders::start_reminder_cron(state.db.clone());
 
