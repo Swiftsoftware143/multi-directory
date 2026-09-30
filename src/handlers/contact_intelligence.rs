@@ -290,7 +290,9 @@ async fn enrich_via_google_places(
     _client: &Client,
     biz: &UnclaimedBusiness,
 ) -> Result<Option<Vec<String>>, String> {
-    let api_key = match std::env::var("GOOGLE_PLACES_API_KEY") {
+    // Key comes from the DB at call time (per-directory → network → platform); the env var is
+    // only a last resort. A server-wide env key must never shadow the configured provider key.
+    let api_key = match crate::handlers::data_company::get_google_api_key(state, None).await {
         Ok(k) => k,
         Err(_) => return Ok(None), // No key configured, skip
     };
@@ -308,14 +310,28 @@ async fn enrich_via_google_places(
         api_key
     );
 
-    let resp = reqwest::get(&url)
-        .await
-        .map_err(|e| format!("Google Places request failed: {}", e))?;
+    let resp = reqwest::get(&url).await.map_err(|e| {
+        crate::handlers::places_client::transport_error(
+            crate::handlers::places_client::PlacesCall::FindPlace,
+            0,
+            &format!("request failed: {e}"),
+        )
+        .to_string()
+    })?;
+    let http_status = resp.status().as_u16();
 
     let result: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| format!("Failed to parse Places response: {}", e))?;
+        .map_err(|e| format!("Failed to parse Places response: {e}"))?;
+
+    // HTTP 200 does not mean "found nothing" — a rejected key answers 200 too. Surface it.
+    crate::handlers::places_client::check_response(
+        &result,
+        http_status,
+        crate::handlers::places_client::PlacesCall::FindPlace,
+    )
+    .map_err(|e| e.to_string())?;
 
     let candidates = result
         .get("candidates")
@@ -424,6 +440,18 @@ async fn enrich_via_google_places(
         .map(|a| a.iter().filter_map(|v| v.to_string().into()).collect())
         .unwrap_or_default();
     let opening_hours = place.get("opening_hours").cloned();
+    // Coordinates must come from `geometry` — the previous code wrote the RATING into the
+    // cache's latitude column and the review count into longitude, poisoning the cache.
+    let latitude = place
+        .get("geometry")
+        .and_then(|g| g.get("location"))
+        .and_then(|l| l.get("lat"))
+        .and_then(|v| v.as_f64());
+    let longitude = place
+        .get("geometry")
+        .and_then(|g| g.get("location"))
+        .and_then(|l| l.get("lng"))
+        .and_then(|v| v.as_f64());
 
     if let Some(place_id) = place.get("place_id").and_then(|v| v.as_str()) {
         let _ = sqlx::query(
@@ -440,8 +468,8 @@ async fn enrich_via_google_places(
         .bind(formatted_address)
         .bind(phone)
         .bind(website)
-        .bind(rating) // reuse lat field as rating for cache
-        .bind(user_ratings_total)
+        .bind(latitude)
+        .bind(longitude)
         .bind(rating)
         .bind(user_ratings_total)
         .bind(&types)

@@ -55,6 +55,8 @@ pub use automation::*;
 pub use data_company::*;
 pub mod provider_keys_handler;
 pub use provider_keys_handler::*;
+// Places responses: HTTP status + Google's own status/error, never swallowed (card B78).
+pub mod places_client;
 
 // Integration Center — canonical CoreSwift spoke endpoints (fleet standard
 // /opt/swift/docs/integration-center-standard-2026-09-20.md).

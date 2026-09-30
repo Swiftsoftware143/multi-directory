@@ -231,7 +231,13 @@ fn phone_from_text(text: &str) -> Option<String> {
     None
 }
 
-async fn http_json(url: &str, headers: &[(&str, &str)]) -> Result<Value, String> {
+/// GET a JSON API and return `(http_status, parsed_body)`.
+///
+/// Returning the HTTP status (rather than throwing the body away) is what lets a caller report
+/// Google's own `status`/`error_message` alongside the transport code (card B78). A non-2xx
+/// answer comes back as an `Err` naming the status; a 2xx answer is parsed and handed to the
+/// caller, which must still run it through `places_client::check_response`.
+async fn http_json(url: &str, headers: &[(&str, &str)]) -> Result<(u16, Value), String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
@@ -247,13 +253,14 @@ async fn http_json(url: &str, headers: &[(&str, &str)]) -> Result<Value, String>
         let peek: String = body.chars().take(200).collect();
         return Err(format!("HTTP {}: {}", status.as_u16(), peek));
     }
-    serde_json::from_str(&body).map_err(|e| {
+    let parsed = serde_json::from_str(&body).map_err(|e| {
         format!(
             "json: {} | {}",
             e,
             body.chars().take(160).collect::<String>()
         )
-    })
+    })?;
+    Ok((status.as_u16(), parsed))
 }
 
 /// Ask the configured provider about one business. `Err` means the provider
@@ -273,17 +280,18 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
                 q,
                 cfg.api_key
             );
-            let v = http_json(&url, &[]).await?;
-            let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
-            if status != "OK" && status != "ZERO_RESULTS" {
-                // REQUEST_DENIED / INVALID_REQUEST / OVER_QUERY_LIMIT — an error, never a fake match.
-                return Err(format!(
-                    "google_places status {} ({})",
-                    status,
-                    v.get("error_message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("-")
-                ));
+            let (http_status, v) = http_json(&url, &[]).await?;
+            // Google answers HTTP 200 even when it refuses: check the body's own `status` and
+            // report the HTTP code + Google's status + Google's error message (card B78).
+            crate::handlers::places_client::check_response(
+                &v,
+                http_status,
+                crate::handlers::places_client::PlacesCall::FindPlace,
+            )
+            .map_err(|e| e.to_string())?;
+            let status = crate::handlers::places_client::provider_status(&v);
+            if status == "ZERO_RESULTS" {
+                return Ok(None);
             }
             let p = match v
                 .get("candidates")
@@ -332,7 +340,7 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
                 q,
                 cfg.api_key
             );
-            let v = http_json(&url, &[]).await?;
+            let (_http_status, v) = http_json(&url, &[]).await?;
             if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
                 return Err(format!("serpapi: {}", err));
             }
@@ -379,7 +387,8 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
                 base.trim_end_matches('/'),
                 q
             );
-            let v = http_json(&url, &[("Ocp-Apim-Subscription-Key", cfg.api_key.as_str())]).await?;
+            let (_http_status, v) =
+                http_json(&url, &[("Ocp-Apim-Subscription-Key", cfg.api_key.as_str())]).await?;
             let p = match v
                 .get("localBusinesses")
                 .and_then(|l| l.get("value"))
@@ -453,7 +462,7 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
                 urlencoding(&cx),
                 q
             );
-            let v = http_json(&url, &[]).await?;
+            let (_, v) = http_json(&url, &[]).await?;
             if let Some(err) = v.get("error") {
                 return Err(format!(
                     "google_cse: {}",

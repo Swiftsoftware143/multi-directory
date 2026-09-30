@@ -13,6 +13,9 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
+use crate::handlers::places_client::{
+    check_response, provider_status, transport_error, PlacesCall, PlacesError,
+};
 use crate::AppState;
 
 // ── Google Places Cache ──────────────────────────────────────────────────────
@@ -120,13 +123,28 @@ pub async fn places_autocomplete(
         }
     }
 
-    let resp = reqwest::get(&url)
-        .await
-        .map_err(|e| AppError::Internal(format!("Google Places request failed: {}", e)))?;
+    let resp = reqwest::get(&url).await.map_err(|e| {
+        transport_error(
+            PlacesCall::Autocomplete,
+            0,
+            &format!("request failed: {}", e),
+        )
+    })?;
+    let http_status = resp.status().as_u16();
 
     let body: serde_json::Value = resp.json().await.map_err(|e| {
-        AppError::Internal(format!("Failed to parse Google Places response: {}", e))
+        transport_error(
+            PlacesCall::Autocomplete,
+            http_status,
+            &format!("non-JSON body: {}", e),
+        )
     })?;
+
+    // A rejected/over-quota key answers HTTP 200 with an error `status` in the body — say so
+    // instead of returning a silent empty prediction list (card B78).
+    if let Err(e) = check_response(&body, http_status, PlacesCall::Autocomplete) {
+        return Err(AppError::BadRequest(e.to_string()));
+    }
 
     let predictions = body
         .get("predictions")
@@ -233,14 +251,22 @@ pub async fn place_details(
 
     let resp = reqwest::get(&url)
         .await
-        .map_err(|e| AppError::Internal(format!("Google Places details request failed: {}", e)))?;
+        .map_err(|e| transport_error(PlacesCall::Details, 0, &format!("request failed: {}", e)))?;
+    let http_status = resp.status().as_u16();
 
     let mut body: serde_json::Value = resp.json().await.map_err(|e| {
-        AppError::Internal(format!(
-            "Failed to parse Google Places details response: {}",
-            e
-        ))
+        transport_error(
+            PlacesCall::Details,
+            http_status,
+            &format!("non-JSON body: {}", e),
+        )
     })?;
+
+    // A refused details call (bad key / quota / bad place_id) answers HTTP 200 with an error
+    // `status` — surface it and cache NOTHING, or a corrected key stays masked (cards B78/B79).
+    if let Err(e) = check_response(&body, http_status, PlacesCall::Details) {
+        return Err(AppError::BadRequest(e.to_string()));
+    }
 
     let result = body.get_mut("result").cloned().unwrap_or_default();
 
@@ -694,7 +720,110 @@ pub struct DataEnrichmentLog {
     pub created_at: Option<DateTime<Utc>>,
 }
 
+/// GET a Places JSON endpoint. Returns `(http_status, body)`.
+///
+/// A transport failure or a non-JSON body is returned as a [`PlacesError`] — never as an empty
+/// body — so "Google refused / we never got an answer" can never be read as "no results"
+/// (card B78).
+async fn places_get_json(
+    url: &str,
+    call: PlacesCall,
+) -> Result<(u16, serde_json::Value), PlacesError> {
+    let resp = reqwest::get(url)
+        .await
+        .map_err(|e| transport_error(call, 0, &format!("request failed: {}", e)))?;
+    let http_status = resp.status().as_u16();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| transport_error(call, http_status, &format!("body read failed: {}", e)))?;
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(v) => Ok((http_status, v)),
+        Err(e) => Err(transport_error(
+            call,
+            http_status,
+            &format!(
+                "non-JSON body: {} | {}",
+                e,
+                text.chars().take(160).collect::<String>()
+            ),
+        )),
+    }
+}
+
+/// Write one `data_enrichment_logs` row. A logging failure is surfaced at WARN but never
+/// aborts the caller.
+async fn write_enrich_log(
+    db: &sqlx::PgPool,
+    business_id: Option<Uuid>,
+    directory_id: Option<Uuid>,
+    source: &str,
+    enrichment_type: &str,
+    data_before: Option<&serde_json::Value>,
+    data_after: Option<&serde_json::Value>,
+    confidence: Option<f64>,
+    status: &str,
+    error_message: Option<&str>,
+) {
+    let res = sqlx::query(
+        "INSERT INTO data_enrichment_logs \
+         (business_id, directory_id, source, enrichment_type, data_before, data_after, confidence, status, error_message) \
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)",
+    )
+    .bind(business_id)
+    .bind(directory_id)
+    .bind(source)
+    .bind(enrichment_type)
+    .bind(data_before)
+    .bind(data_after)
+    .bind(confidence)
+    .bind(status)
+    .bind(error_message)
+    .execute(db)
+    .await;
+    if let Err(e) = res {
+        tracing::warn!("[enrich] could not write data_enrichment_logs row: {}", e);
+    }
+}
+
+/// The Places search query for a directory record: `"<name>, <address>"`.
+///
+/// The directory `city` column is sometimes a truncated fragment (e.g. `"St."` for
+/// St. Petersburg, `"Palm"` for Palm Bay) which poisons a name+city+state query, so the full
+/// `address` is preferred and the loose city/state/zip are only a fallback.
+fn build_places_query(b: &crate::models::Business) -> String {
+    let mut parts: Vec<String> = vec![b.name.trim().to_string()];
+    let raw_addr = b.address.as_deref().unwrap_or("").trim();
+    let addr = raw_addr
+        .trim_end_matches(',')
+        .trim()
+        .trim_end_matches(", USA")
+        .trim_end_matches(", United States")
+        .trim()
+        .to_string();
+    if !addr.is_empty() {
+        parts.push(addr);
+    } else {
+        for v in [b.city.as_deref(), b.state.as_deref(), b.zip.as_deref()] {
+            if let Some(s) = v.map(str::trim).filter(|s| !s.is_empty()) {
+                parts.push(s.to_string());
+            }
+        }
+    }
+    parts.join(", ")
+}
+
+/// The distinguishable, loggable outcome of an enrichment attempt.
+const OUTCOME_MATCHED: &str = "matched";
+const OUTCOME_NO_RESULTS: &str = "no_results";
+const OUTCOME_UNCONFIGURED: &str = "unconfigured";
+
 /// POST /api/v1/enrich/business — enrich a business's data from Google Places
+///
+/// The response always names WHY it did or did not match (`outcome`, plus Google's own
+/// `provider_status`/`provider_error` on refusal) so "no listing found" and "Google rejected
+/// the key" are never the same answer (card B78). The same facts go to `data_enrichment_logs`,
+/// which the admin Data Enrichment card renders.
 pub async fn enrich_business(
     State(state): State<AppState>,
     Json(req): Json<EnrichmentRequest>,
@@ -722,40 +851,63 @@ pub async fn enrich_business(
         "longitude": business.longitude,
     });
 
-    // Try Google Places enrichment
-    let api_key = match std::env::var("GOOGLE_PLACES_API_KEY") {
+    // The key is resolved from the DB at call time (per-directory → network → platform); the
+    // server-wide env var is only a last resort. Reading `GOOGLE_PLACES_API_KEY` first is how a
+    // dead env key shadowed the working DB key and every refusal went unnoticed (card B78).
+    let dir_scope = req.directory_id.map(|d| d.to_string());
+    let api_key = match get_google_api_key(&state, dir_scope.as_deref()).await {
         Ok(k) => k,
         Err(_) => {
+            let msg = "No Google Places API key configured. Add one in admin > Provider API Keys \
+                       (or scope one to this directory), then retry. Nothing was enriched.";
+            write_enrich_log(
+                &state.db,
+                Some(req.business_id),
+                req.directory_id,
+                &source,
+                "places_enrichment",
+                Some(&data_before),
+                None,
+                None,
+                "skipped",
+                Some(msg),
+            )
+            .await;
             return Ok(Json(serde_json::json!({
-                "status": "skipped",
-                "message": "GOOGLE_PLACES_API_KEY not configured",
                 "business_id": req.business_id,
+                "enrichment": {
+                    "source": source,
+                    "matched": false,
+                    "confidence": 0.0,
+                    "outcome": OUTCOME_UNCONFIGURED,
+                    "provider_status": serde_json::Value::Null,
+                    "provider_error": msg,
+                }
             })));
         }
     };
 
     // Search for the business
-    let search_query = format!(
-        "{} {} {} {}",
-        business.name,
-        business.city.as_deref().unwrap_or(""),
-        business.state.as_deref().unwrap_or(""),
-        business.zip.as_deref().unwrap_or(""),
-    );
+    let search_query = build_places_query(&business);
 
     let search_url = format!(
         "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id,name,formatted_address,formatted_phone_number,website,geometry,rating,user_ratings_total&key={}",
-        urlencoding(&search_query.trim()),
+        urlencoding(&search_query),
         api_key
     );
 
-    let resp = reqwest::get(&search_url)
-        .await
-        .map_err(|e| AppError::Internal(format!("Places search failed: {}", e)))?;
+    let (http_status, result) = match places_get_json(&search_url, PlacesCall::FindPlace).await {
+        Ok(v) => v,
+        Err(e) => return Ok(refused_enrichment(&state, req, &source, &data_before, e).await),
+    };
 
-    let result: serde_json::Value = resp.json().await.map_err(|e| {
-        AppError::Internal(format!("Failed to parse Places search response: {}", e))
-    })?;
+    // Google answers HTTP 200 even when it refuses: the refusal is in the body's `status`.
+    // Surface it (WARN log + API field + enrichment-log row) instead of reading it as a miss.
+    if let Err(e) = check_response(&result, http_status, PlacesCall::FindPlace) {
+        return Ok(refused_enrichment(&state, req, &source, &data_before, e).await);
+    }
+
+    let pstatus = provider_status(&result);
 
     let candidates = result
         .get("candidates")
@@ -763,6 +915,40 @@ pub async fn enrich_business(
         .cloned()
         .unwrap_or_default();
     let place = candidates.first();
+
+    if place.is_none() {
+        // An honest, distinguishable "no such listing" — provider answered, found nothing.
+        let msg = format!(
+            "google_places place/findplacefromtext answered provider_status={} for query \"{}\" — \
+             no listing matched. This is a real no-result, not a provider error.",
+            pstatus, search_query
+        );
+        write_enrich_log(
+            &state.db,
+            Some(req.business_id),
+            req.directory_id,
+            &source,
+            "places_enrichment",
+            Some(&data_before),
+            None,
+            None,
+            "no_match",
+            Some(&msg),
+        )
+        .await;
+        return Ok(Json(serde_json::json!({
+            "business_id": req.business_id,
+            "enrichment": {
+                "source": source,
+                "matched": false,
+                "confidence": 0.0,
+                "outcome": OUTCOME_NO_RESULTS,
+                "provider_status": pstatus.clone(),
+                "provider_error": serde_json::Value::Null,
+                "query": search_query,
+            }
+        })));
+    }
 
     let enrichment_result = if let Some(p) = place {
         let enriched_name = p.get("name").and_then(|v| v.as_str());
@@ -840,7 +1026,10 @@ pub async fn enrich_business(
             "source": "google_places",
             "matched": true,
             "confidence": confidence,
+            "outcome": OUTCOME_MATCHED,
+            "provider_status": pstatus,
             "place_id": p.get("place_id"),
+            "places_call": PlacesCall::FindPlace.as_str(),
             "data_after": data_after,
         })
     } else {
@@ -848,29 +1037,86 @@ pub async fn enrich_business(
             "source": "google_places",
             "matched": false,
             "confidence": 0.0,
+            "outcome": OUTCOME_NO_RESULTS,
+            "provider_status": pstatus,
         })
     };
 
-    // Log the enrichment
-    sqlx::query(
-        "INSERT INTO data_enrichment_logs (business_id, directory_id, source, enrichment_type, data_before, data_after, confidence, status)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)"
+    // Log the enrichment, naming the outcome that was actually reached.
+    let log_status = if enrichment_result
+        .get("matched")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        "completed"
+    } else {
+        "no_match"
+    };
+    let log_note = enrichment_result
+        .get("provider_status")
+        .and_then(|v| v.as_str())
+        .map(|s| format!("provider_status={}", s));
+    write_enrich_log(
+        &state.db,
+        Some(req.business_id),
+        req.directory_id,
+        &source,
+        "places_enrichment",
+        Some(&data_before),
+        enrichment_result.get("data_after"),
+        enrichment_result.get("confidence").and_then(|v| v.as_f64()),
+        log_status,
+        log_note.as_deref(),
     )
-    .bind(req.business_id)
-    .bind(req.directory_id)
-    .bind(&source)
-    .bind("places_enrichment")
-    .bind(&data_before)
-    .bind(enrichment_result.get("data_after").cloned().unwrap_or_default())
-    .bind(enrichment_result.get("confidence").and_then(|v| v.as_f64()))
-    .bind(if enrichment_result.get("matched").and_then(|v| v.as_bool()).unwrap_or(false) { "completed" } else { "no_match" })
-    .execute(&state.db)
-    .await?;
+    .await;
 
     Ok(Json(serde_json::json!({
         "business_id": req.business_id,
         "enrichment": enrichment_result,
     })))
+}
+
+/// Record and return a Places REFUSAL — Google rejected the key, quota, or the request.
+///
+/// `check_response` already WARN-logged the HTTP status + Google's own status/error; this adds
+/// the durable `data_enrichment_logs` row (status `error`, the message in `error_message`, which
+/// the admin Data Enrichment card renders) and returns Google's own answer to the caller.
+/// Without this the refusal was indistinguishable from an empty directory (card B78).
+async fn refused_enrichment(
+    state: &AppState,
+    req: EnrichmentRequest,
+    source: &str,
+    data_before: &serde_json::Value,
+    e: PlacesError,
+) -> Json<serde_json::Value> {
+    let msg = e.to_string();
+    write_enrich_log(
+        &state.db,
+        Some(req.business_id),
+        req.directory_id,
+        source,
+        "places_enrichment",
+        Some(data_before),
+        None,
+        None,
+        "error",
+        Some(&msg),
+    )
+    .await;
+
+    Json(serde_json::json!({
+        "business_id": req.business_id,
+        "enrichment": {
+            "source": source,
+            "matched": false,
+            "confidence": 0.0,
+            "outcome": e.outcome(),
+            "provider_status": e.provider_status,
+            "provider_error": e.provider_error,
+            "http_status": e.http_status,
+            "places_call": e.call,
+        }
+    }))
 }
 
 /// GET /api/v1/enrich/logs — list enrichment logs
