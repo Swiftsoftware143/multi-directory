@@ -13,9 +13,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
-use crate::handlers::places_client::{
-    check_response, provider_status, transport_error, PlacesCall, PlacesError,
-};
+use crate::handlers::places_client::{check_response, transport_error, PlacesCall, PlacesError};
 use crate::AppState;
 
 // ── Google Places Cache ──────────────────────────────────────────────────────
@@ -720,37 +718,6 @@ pub struct DataEnrichmentLog {
     pub created_at: Option<DateTime<Utc>>,
 }
 
-/// GET a Places JSON endpoint. Returns `(http_status, body)`.
-///
-/// A transport failure or a non-JSON body is returned as a [`PlacesError`] — never as an empty
-/// body — so "Google refused / we never got an answer" can never be read as "no results"
-/// (card B78).
-async fn places_get_json(
-    url: &str,
-    call: PlacesCall,
-) -> Result<(u16, serde_json::Value), PlacesError> {
-    let resp = reqwest::get(url)
-        .await
-        .map_err(|e| transport_error(call, 0, &format!("request failed: {}", e)))?;
-    let http_status = resp.status().as_u16();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| transport_error(call, http_status, &format!("body read failed: {}", e)))?;
-    match serde_json::from_str::<serde_json::Value>(&text) {
-        Ok(v) => Ok((http_status, v)),
-        Err(e) => Err(transport_error(
-            call,
-            http_status,
-            &format!(
-                "non-JSON body: {} | {}",
-                e,
-                text.chars().take(160).collect::<String>()
-            ),
-        )),
-    }
-}
-
 /// Write one `data_enrichment_logs` row. A logging failure is surfaced at WARN but never
 /// aborts the caller.
 async fn write_enrich_log(
@@ -887,41 +854,94 @@ pub async fn enrich_business(
         }
     };
 
-    // Search for the business
+    // TWO-STEP Places lookup (card B80). Find Place From Text accepts ONLY the identifier fields
+    // (place_id / name / formatted_address / geometry / types / photos / business_status); phone,
+    // website, hours, rating and address components are Place **Details** fields. Sending
+    // `formatted_phone_number`/`website` to Find Place made Google answer INVALID_REQUEST, so
+    // Google refused the request and EVERY enrichment returned matched:false — the key and the
+    // provider were fine all along. Deleting the field names would silently lose the phone and
+    // website, so the resolved `place_id` is used for a second call instead.
     let search_query = build_places_query(&business);
 
-    let search_url = format!(
-        "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id,name,formatted_address,formatted_phone_number,website,geometry,rating,user_ratings_total&key={}",
-        urlencoding(&search_query),
-        api_key
-    );
-
-    let (http_status, result) = match places_get_json(&search_url, PlacesCall::FindPlace).await {
+    let outcome = match crate::handlers::places_client::find_place_then_details(
+        crate::handlers::places_client::LEGACY_PLACES_BASE,
+        &api_key,
+        &search_query,
+    )
+    .await
+    {
         Ok(v) => v,
         Err(e) => return Ok(refused_enrichment(&state, req, &source, &data_before, e).await),
     };
 
-    // Google answers HTTP 200 even when it refuses: the refusal is in the body's `status`.
-    // Surface it (WARN log + API field + enrichment-log row) instead of reading it as a miss.
-    if let Err(e) = check_response(&result, http_status, PlacesCall::FindPlace) {
-        return Ok(refused_enrichment(&state, req, &source, &data_before, e).await);
-    }
+    let found = match outcome {
+        crate::handlers::places_client::PlacesOutcome::Found(l) => *l,
+        crate::handlers::places_client::PlacesOutcome::NoMatch {
+            provider_status: ps,
+        } => {
+            // An honest, distinguishable "no such listing" — Google answered, found nothing.
+            let msg = format!(
+                "google_places place/findplacefromtext answered provider_status={} for query \
+                 \"{}\" — no listing matched. This is a real no-result, not a provider error.",
+                ps, search_query
+            );
+            write_enrich_log(
+                &state.db,
+                Some(req.business_id),
+                req.directory_id,
+                &source,
+                "places_enrichment",
+                Some(&data_before),
+                None,
+                None,
+                "no_match",
+                Some(&msg),
+            )
+            .await;
+            return Ok(Json(serde_json::json!({
+                "business_id": req.business_id,
+                "enrichment": {
+                    "source": source,
+                    "matched": false,
+                    "confidence": 0.0,
+                    "outcome": OUTCOME_NO_RESULTS,
+                    "provider_status": ps,
+                    "provider_error": serde_json::Value::Null,
+                    "http_status": serde_json::Value::Null,
+                    "query": search_query,
+                    "places_call": PlacesCall::FindPlace.as_str(),
+                    "places_calls": [PlacesCall::FindPlace.as_str(), PlacesCall::Details.as_str()],
+                }
+            })));
+        }
+    };
 
-    let pstatus = provider_status(&result);
+    let p = found.merged();
+    let pstatus = found.provider_status.clone();
+    let cand_name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let cand_address = p
+        .get("formatted_address")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
-    let candidates = result
-        .get("candidates")
-        .and_then(|c| c.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let place = candidates.first();
-
-    if place.is_none() {
-        // An honest, distinguishable "no such listing" — provider answered, found nothing.
+    // Defensible agreement before anything is written: a wrong phone number on a listing is worse
+    // than an empty one. Google's top candidate must share the name AND the locality (ZIP, else
+    // city, else state) with the directory row, or the match is refused as an honest no-match.
+    if !crate::handlers::places_client::listing_agrees(
+        &business.name,
+        business.address.as_deref().unwrap_or(""),
+        business.state.as_deref().unwrap_or(""),
+        cand_name,
+        cand_address,
+    ) {
         let msg = format!(
-            "google_places place/findplacefromtext answered provider_status={} for query \"{}\" — \
-             no listing matched. This is a real no-result, not a provider error.",
-            pstatus, search_query
+            "google_places resolved a candidate that does not defensibly agree with \"{}\" ({}) — \
+             Google offered \"{}\" ({}). Refusing to write a possibly-wrong phone/website. This is \
+             an honest no-match, not a provider error.",
+            business.name,
+            business.address.as_deref().unwrap_or("-"),
+            cand_name,
+            cand_address
         );
         write_enrich_log(
             &state.db,
@@ -943,14 +963,19 @@ pub async fn enrich_business(
                 "matched": false,
                 "confidence": 0.0,
                 "outcome": OUTCOME_NO_RESULTS,
-                "provider_status": pstatus.clone(),
+                "provider_status": pstatus,
                 "provider_error": serde_json::Value::Null,
+                "http_status": serde_json::Value::Null,
+                "matched_name": cand_name,
+                "matched_address": cand_address,
                 "query": search_query,
+                "places_call": PlacesCall::FindPlace.as_str(),
+                "places_calls": [PlacesCall::FindPlace.as_str(), PlacesCall::Details.as_str()],
             }
         })));
     }
 
-    let enrichment_result = if let Some(p) = place {
+    let enrichment_result = {
         let enriched_name = p.get("name").and_then(|v| v.as_str());
         let enriched_address = p.get("formatted_address").and_then(|v| v.as_str());
         let enriched_phone = p.get("formatted_phone_number").and_then(|v| v.as_str());
@@ -977,6 +1002,7 @@ pub async fn enrich_business(
             "longitude": lng,
             "rating": rating,
             "user_ratings_total": rating_total,
+            "opening_hours": p.get("opening_hours"),
         });
 
         let confidence = if enriched_phone.is_some() || enriched_website.is_some() {
@@ -1028,17 +1054,14 @@ pub async fn enrich_business(
             "confidence": confidence,
             "outcome": OUTCOME_MATCHED,
             "provider_status": pstatus,
+            "provider_error": serde_json::Value::Null,
+            "http_status": found.details_http_status,
+            "find_http_status": found.find_http_status,
             "place_id": p.get("place_id"),
-            "places_call": PlacesCall::FindPlace.as_str(),
+            "places_call": PlacesCall::Details.as_str(),
+            "places_calls": [PlacesCall::FindPlace.as_str(), PlacesCall::Details.as_str()],
+            "field_sources": found.field_sources(),
             "data_after": data_after,
-        })
-    } else {
-        serde_json::json!({
-            "source": "google_places",
-            "matched": false,
-            "confidence": 0.0,
-            "outcome": OUTCOME_NO_RESULTS,
-            "provider_status": pstatus,
         })
     };
 

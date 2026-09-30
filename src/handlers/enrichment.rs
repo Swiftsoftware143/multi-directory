@@ -275,7 +275,7 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
                 .clone()
                 .unwrap_or_else(|| DEFAULT_GOOGLE_PLACES_BASE.to_string());
             let url = format!(
-                "{}/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id,name,formatted_address,formatted_phone_number,website,geometry,rating&key={}",
+                "{}/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id,name,formatted_address,geometry,rating&key={}",
                 base.trim_end_matches('/'),
                 q,
                 cfg.api_key

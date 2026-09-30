@@ -305,7 +305,7 @@ async fn enrich_via_google_places(
     );
 
     let url = format!(
-        "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id,name,formatted_address,formatted_phone_number,website,opening_hours,photos,geometry,rating,user_ratings_total&key={}",
+        "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id,name,formatted_address,opening_hours,photos,geometry,rating,user_ratings_total&key={}",
         urlencoding(&search_query.trim()),
         api_key
     );
