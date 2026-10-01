@@ -792,6 +792,7 @@ function route(){
     // that already exists for it; anything else is the city landing view.
     if(MD_ENTRY_SUB==='deals'){state.page='deals';state.dealsCityFilter=MD_ENTRY_SLUG}
     else if(MD_ENTRY_SUB==='events'){state.page='events';state.eventsCityFilter=MD_ENTRY_SLUG}
+    else if(MD_ENTRY_SUB==='blog'){state.page='blog';state.slug=MD_ENTRY_SLUG}
     else{state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory=''}
   }else if(hash.startsWith('/city/')){
     var parts=hash.split('/')
@@ -800,6 +801,9 @@ function route(){
     }else{
       state.page='city';state.slug=parts[2];state.filterCategory=''
     }
+  }else if(hash.startsWith('/blog/')){
+    var parts=hash.split('/')
+    state.page='blog';state.slug=parts[2]||''
   }else if(hash.startsWith('/search/')){
     state.page='search';state.searchQuery=decodeURIComponent(hash.slice(8))
   }else if(hash==='/'||hash.startsWith('/?')){
@@ -974,6 +978,9 @@ async function load(){
           state.page='deals';state.dealsCityFilter=entrySlug;entryHash='#/deals/'+entrySlug
         }else if(entrySub==='events'){
           state.page='events';state.eventsCityFilter=entrySlug;entryHash='#/events/'+entrySlug
+        }else if(entrySub==='blog'){
+          state.page='blog';state.slug=entrySlug
+          entryHash='#/blog/'+entrySlug
         }else{
           state.page='city';state.slug=entrySlug;state.filterCategory=''
           if(entrySub)entryHash='#/city/'+entrySlug+'/'+entrySub
@@ -993,6 +1000,7 @@ async function load(){
     else if(state.page==='deals')await loadDealsPage()
     else if(state.page==='deal')await loadDealPage()
     else if(state.page==='events')await loadEventsPage()
+    else if(state.page==='blog')await loadBlogPage()
     else if(state.page==='biz')await loadBizPage()
     else if(state.page==='about')await loadAboutPage()
     else if(state.page==='notifications')await loadNotificationsPage()
@@ -1606,6 +1614,48 @@ function addBizToCollection(idx,name,slug,id,el){
   // Close picker
   var overlay=el.closest('.zh-modal-overlay')
   if(overlay)overlay.remove()
+}
+
+// ── City Blog List ──
+// /d/<slug>/blog — a city's PUBLISHED posts from the public feed
+// GET /api/v1/zaarhub/cities/:slug/blog-posts. Same page chrome, hero and
+// section components as the city / deals / events views; only the DATA is
+// city-scoped. Each card links to the existing per-post page (post.url).
+async function loadBlogPage(){
+  var el=document.getElementById('zh-content')
+  var slug=state.slug
+  if(!slug){renderError('No city selected');return}
+  var cityName=toTitle(slug)
+  // Loading state — identical hero + section chrome to the other sub-pages.
+  el.innerHTML='<div class="zh-search-hero"><div class="zh-search-hero-inner"><h1>📝 '+esc(cityName)+' Blog</h1><p style="color:#94a3b8">Local stories, news and guides from your community</p></div></div><div class="zh-section"><div class="zh-section-inner"><div class="zh-loading"><div class="zh-spinner"></div></div></div></div>'
+  try{
+    var d=await g('/zaarhub/cities/'+encodeURIComponent(slug)+'/blog-posts')
+    var posts=d.posts||[]
+    if(d.city&&d.city.name)cityName=d.city.name
+    var sec=el.querySelector('.zh-section .zh-section-inner')
+    if(!sec)return
+    if(!posts.length){
+      // Empty state — honest, and points back to the city landing page.
+      sec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">📝</div><h3 style="margin-bottom:6px">No posts yet</h3><p style="color:var(--text-light)">'+esc(cityName)+' has no published stories yet. Check back soon.</p><p style="margin-top:16px"><a href="#/city/'+esc(slug)+'" style="color:var(--primary);font-weight:600">← Back to '+esc(cityName)+'</a></p></div>'
+      return
+    }
+    var cards=''
+    for(var i=0;i<posts.length;i++){
+      var p=posts[i]
+      var dateStr=p.date?new Date(p.date).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}):''
+      var href=esc(p.url||'')
+      cards+='<article class="zh-story-card" onclick="location.href=\''+href+'\'">'+
+        '<h4>'+esc(p.title||'Untitled')+'</h4>'+
+        '<div class="owner">'+(dateStr?'📅 '+esc(dateStr):'')+(p.author_name?' · '+esc(p.author_name):'')+'</div>'+
+        (p.excerpt?'<p class="blurb">'+esc(p.excerpt)+'</p>':'')+
+        '<a href="'+href+'" onclick="event.stopPropagation()">Read more →</a>'+
+      '</article>'
+    }
+    sec.innerHTML='<div class="zh-section-header"><div><h2 class="zh-section-title">📝 '+esc(cityName)+' Blog</h2><p class="zh-section-sub">'+posts.length+' published '+(posts.length===1?'post':'posts')+'</p></div><a href="#/city/'+esc(slug)+'" style="font-size:.85rem;font-weight:600;color:var(--primary)">← Back to '+esc(cityName)+'</a></div><div class="zh-founders-grid">'+cards+'</div>'
+  }catch(e){
+    var sec2=el.querySelector('.zh-section .zh-section-inner')
+    if(sec2)sec2.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">📝</div><h3 style="margin-bottom:6px">Blog unavailable</h3><p style="color:var(--text-light)">'+esc(e.message)+'</p><p style="margin-top:16px"><a href="#/city/'+esc(slug)+'" style="color:var(--primary);font-weight:600">← Back to '+esc(cityName)+'</a></p></div>'
+  }
 }
 
 // ── City Page ──
