@@ -2695,6 +2695,18 @@ pub fn create_router(s: AppState) -> Router {
                                     "woff2" => "font/woff2",
                                     _ => "application/octet-stream",
                                 };
+                                // The homepage consumes the SAME brand tokens as
+                                // the server-rendered city pages (`brand_theme`),
+                                // so the two surfaces cannot drift apart again.
+                                let content = if clean_path.is_empty() && ext == "html" {
+                                    let theme =
+                                        crate::brand_theme::theme_for_home(&_pool_for_host).await;
+                                    theme
+                                        .inject(&String::from_utf8_lossy(&content))
+                                        .into_bytes()
+                                } else {
+                                    content
+                                };
                                 return Ok::<_, std::convert::Infallible>(
                                     axum::response::Response::builder()
                                         .status(axum::http::StatusCode::OK)
@@ -2785,6 +2797,10 @@ pub fn create_router(s: AppState) -> Router {
                             None
                         };
                         html = crate::branding_injector::inject_branding(&html, branding.as_ref());
+                        // Same shared brand tokens as `/` and the city pages.
+                        html = crate::brand_theme::theme_for_home(&_pool_for_host)
+                            .await
+                            .inject(&html);
                         return Ok(axum::response::Response::builder()
                             .status(axum::http::StatusCode::OK)
                             .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")

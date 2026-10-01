@@ -16,6 +16,7 @@
 //! derived value and every query failure degrades to "not found" rather than
 //! a 500.
 
+use crate::brand_theme::BrandTheme;
 use axum::body::Body;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
@@ -200,11 +201,15 @@ struct DirectoryRec {
     city: String,
     state: String,
     description: Option<String>,
+    /// The network this directory belongs to. `Some` ⇒ the directory is part
+    /// of a network and shares that network's brand (home + cities consistent);
+    /// `None` ⇒ standalone, so it uses its own `directory_branding` row.
+    network_id: Option<Uuid>,
 }
 
 async fn load_directory(pool: &PgPool, slug: &str) -> Option<DirectoryRec> {
     let r = sqlx::query(
-        "SELECT id, name, slug, city, state, description FROM directories \
+        "SELECT id, name, slug, city, state, description, network_id FROM directories \
          WHERE slug = $1 AND status = 'active' LIMIT 1",
     )
     .bind(slug)
@@ -238,7 +243,15 @@ async fn load_directory(pool: &PgPool, slug: &str) -> Option<DirectoryRec> {
         city: dir_city,
         state: dir_state,
         description: r.try_get("description").unwrap_or(None),
+        network_id: r.try_get("network_id").unwrap_or(None),
     })
+}
+
+/// The brand tokens this directory's pages render with. Resolved from the
+/// shared source of truth (`crate::brand_theme`) so a city page can never
+/// drift from the network homepage.
+async fn theme_for(pool: &PgPool, dir: &DirectoryRec) -> BrandTheme {
+    crate::brand_theme::theme_for_directory(pool, dir.id, dir.network_id).await
 }
 
 /// Admin-editable SEO override from `seo_meta` (the platform's existing store).
@@ -345,38 +358,43 @@ fn head_html(seo: &Seo, site_name: &str) -> String {
 
 const PAGE_CSS: &str = r#"
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Inter,system-ui,-apple-system,sans-serif;background:#f8f9fc;color:#1a1a2e;line-height:1.6}
-a{color:#0d9488;text-decoration:none}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6}
+a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
-header{background:#0f172a;color:#fff;padding:16px 24px}
+header{background:var(--dark);color:#fff;padding:16px 24px}
 header .inner{max-width:1120px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:16px}
 header .logo{font-size:20px;font-weight:800;color:#fff}
 header nav a{color:rgba(255,255,255,.8);font-size:14px;margin-left:18px}
 .wrap{max-width:1120px;margin:0 auto;padding:32px 24px}
-.crumbs{font-size:13px;color:#64748b;margin-bottom:18px}
-.crumbs a{color:#0d9488}
-h1{font-size:2rem;font-weight:800;color:#0f172a;margin-bottom:10px}
-.lede{color:#475569;max-width:760px;margin-bottom:24px}
+.crumbs{font-size:13px;color:var(--text-light);margin-bottom:18px}
+.crumbs a{color:var(--link)}
+h1{font-size:2rem;font-weight:800;color:var(--dark);margin-bottom:10px}
+.lede{color:var(--text-light);max-width:760px;margin-bottom:24px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;display:block}
-.card h3{font-size:1.05rem;color:#0f172a;margin-bottom:6px}
-.card .meta{font-size:.82rem;color:#64748b}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;display:block}
+.card h3{font-size:1.05rem;color:var(--dark);margin-bottom:6px}
+.card .meta{font-size:.82rem;color:var(--text-light)}
 .chips{margin:18px 0}
-.chip{display:inline-block;background:#e6fffb;color:#0f766e;border:1px solid #99f6e4;border-radius:999px;padding:5px 12px;font-size:.82rem;margin:0 8px 8px 0}
+.chip{display:inline-block;background:var(--primary-light);color:var(--primary-hover);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-size:.82rem;margin:0 8px 8px 0}
 .stars{color:#f59e0b;font-size:.9rem}
 .pager{margin:28px 0;display:flex;gap:12px}
-.btn{background:#0d9488;color:#fff;border-radius:10px;padding:10px 18px;font-weight:600}
-.detail{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px}
+.btn{background:var(--primary);color:#fff;border-radius:var(--radius);padding:10px 18px;font-weight:600}
+.detail{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px}
 .detail h1{margin-bottom:6px}
-.row{margin:8px 0;color:#334155}
-.article-body h2{font-size:1.25rem;margin:22px 0 10px;color:#0f766e}
+.row{margin:8px 0;color:var(--text)}
+.article-body h2{font-size:1.25rem;margin:22px 0 10px;color:var(--secondary)}
 .article-body p{margin-bottom:14px}
 .article-body ul,.article-body ol{margin:0 0 14px 22px}
-footer{background:#0f172a;color:rgba(255,255,255,.7);padding:28px 24px;margin-top:48px;font-size:13px;text-align:center}
-footer a{color:#5eead4}
+footer{background:var(--dark);color:rgba(255,255,255,.7);padding:28px 24px;margin-top:48px;font-size:13px;text-align:center}
+footer a{color:var(--primary-light)}
 "#;
 
-fn shell_start(seo: &Seo, site_name: &str, dir_label: Option<(&str, &str)>) -> String {
+fn shell_start(
+    seo: &Seo,
+    site_name: &str,
+    dir_label: Option<(&str, &str)>,
+    theme: &BrandTheme,
+) -> String {
     let nav = match dir_label {
         Some((slug, name)) => format!(
             "<nav><a href=\"/{}\">{}</a><a href=\"/{}/businesses\">All businesses</a><a href=\"/\">Home</a></nav>",
@@ -390,12 +408,14 @@ fn shell_start(seo: &Seo, site_name: &str, dir_label: Option<(&str, &str)>) -> S
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-{head}<style>{css}</style>
+{head}<style>{theme_root}
+{css}</style>
 </head>
 <body>
 <header><div class="inner"><a class="logo" href="/">{site}</a>{nav}</div></header>
 <div class="wrap">"#,
         head = head_html(seo, site_name),
+        theme_root = theme.css_block(),
         css = PAGE_CSS,
         site = h(site_name),
         nav = nav,
@@ -608,6 +628,8 @@ pub async fn directory_home(
     slug: &str,
 ) -> Option<Response<Body>> {
     let dir = load_directory(pool, slug).await?;
+    // Brand tokens for this page — shared with the network homepage.
+    let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = site_name_for(host, fallback_domain);
     let canonical = format!("{}/{}", base, dir.slug);
@@ -771,7 +793,12 @@ pub async fn directory_home(
 <h2 style="margin:24px 0 14px">Top rated in {city}</h2>
 <div class="grid">{cards}</div>
 {end}"#,
-        start = shell_start(&seo, &site, Some((dir.slug.as_str(), dir.name.as_str()))),
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
         crumbs = crumbs,
         city = h(&dir.city),
         state = h(&dir.state),
@@ -800,6 +827,8 @@ pub async fn businesses_page(
     query: &str,
 ) -> Option<Response<Body>> {
     let dir = load_directory(pool, slug).await?;
+    // Brand tokens for this page — shared with the network homepage.
+    let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = site_name_for(host, fallback_domain);
 
@@ -923,7 +952,12 @@ pub async fn businesses_page(
 <div class="grid">{cards}</div>
 {pager}
 {end}"#,
-        start = shell_start(&seo, &site, Some((dir.slug.as_str(), dir.name.as_str()))),
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
         crumbs = breadcrumbs(&[
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
@@ -954,6 +988,8 @@ pub async fn business_detail(
     ident: &str,
 ) -> Option<Response<Body>> {
     let dir = load_directory(pool, slug).await?;
+    // Brand tokens for this page — shared with the network homepage.
+    let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = site_name_for(host, fallback_domain);
 
@@ -1185,7 +1221,12 @@ pub async fn business_detail(
 <p class="row"><a href="{base}/{dslug}/businesses">← All businesses in {city}</a></p>
 </div>
 {end}"#,
-        start = shell_start(&seo, &site, Some((dir.slug.as_str(), dir.name.as_str()))),
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
         crumbs = breadcrumbs(&[
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
@@ -1223,6 +1264,8 @@ pub async fn article_page(
     article_slug: &str,
 ) -> Option<Response<Body>> {
     let dir = load_directory(pool, slug).await?;
+    // Brand tokens for this page — shared with the network homepage.
+    let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = site_name_for(host, fallback_domain);
 
@@ -1345,7 +1388,12 @@ pub async fn article_page(
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← More about {city}</a></p>
 </article>
 {end}"#,
-        start = shell_start(&seo, &site, Some((dir.slug.as_str(), dir.name.as_str()))),
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
         crumbs = breadcrumbs(&[
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
@@ -1377,6 +1425,8 @@ pub async fn blog_post_page(
     post_slug: &str,
 ) -> Option<Response<Body>> {
     let dir = load_directory(pool, slug).await?;
+    // Brand tokens for this page — shared with the network homepage.
+    let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = site_name_for(host, fallback_domain);
 
@@ -1521,7 +1571,12 @@ pub async fn blog_post_page(
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← More about {city}</a></p>
 </article>
 {end}"#,
-        start = shell_start(&seo, &site, Some((dir.slug.as_str(), dir.name.as_str()))),
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
         crumbs = breadcrumbs(&[
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),

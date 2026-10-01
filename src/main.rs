@@ -7,6 +7,7 @@ mod reminders;
 
 mod auth;
 mod beacon_middleware;
+mod brand_theme;
 mod branding_injector;
 mod business_types;
 mod config;
