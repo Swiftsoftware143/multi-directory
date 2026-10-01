@@ -761,19 +761,22 @@ function hasOwnerAccounts(){return false}
 
 // ── Router ──
 // Deep-link → directory. A city page is the homepage template with the data
-// scoped to one city, served as the very same document as `/`; the only thing
-// the SPA must do is route the *entry path* (not just the hash) to that view,
-// e.g. /palm-bay, /city/palm-bay or /d/palm-bay.
-var MD_ENTRY_SLUG=(function(){
+// scoped to one city, served as the very same document as `/`; the SPA routes
+// the *entry path* (not just the hash) to that view, e.g. /palm-bay,
+// /city/palm-bay or /d/palm-bay. The segment after the slug picks a directory
+// sub-view (/d/palm-bay/deals), so BOTH parts must survive parsing.
+var MD_ENTRY=(function(){
   try{
     var p=(location.pathname||'/').replace(/^\/+|\/+$/g,'')
-    if(!p)return ''
+    if(!p)return{slug:'',sub:''}
     var s=p.split('/')
-    if((s[0]==='city'||s[0]==='d')&&s[1])return s[1]
-    if(s.length===1)return s[0]
+    if((s[0]==='city'||s[0]==='d')&&s[1])return{slug:s[1],sub:(s[2]||'').toLowerCase()}
+    if(s.length===1)return{slug:s[0],sub:''}
   }catch(e){}
-  return ''
+  return{slug:'',sub:''}
 })()
+var MD_ENTRY_SLUG=MD_ENTRY.slug
+var MD_ENTRY_SUB=MD_ENTRY.sub
 var MD_ENTRY_PENDING=!!MD_ENTRY_SLUG
 function route(){
   // Hide splash screen immediately
@@ -784,8 +787,12 @@ function route(){
   
   let hash=location.hash.slice(1)||'/';
   if(MD_ENTRY_PENDING){
-    // Pending directory deep-link; load() validates it against the city list.
-    state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory=''
+    // Pending directory deep-link; load() validates the slug against the city
+    // list and confirms the sub-view. Dispatch the sub-segment to the loader
+    // that already exists for it; anything else is the city landing view.
+    if(MD_ENTRY_SUB==='deals'){state.page='deals';state.dealsCityFilter=MD_ENTRY_SLUG}
+    else if(MD_ENTRY_SUB==='events'){state.page='events';state.eventsCityFilter=MD_ENTRY_SLUG}
+    else{state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory=''}
   }else if(hash.startsWith('/city/')){
     var parts=hash.split('/')
     if(parts.length>=5&&parts[3]==='biz'){
@@ -952,14 +959,26 @@ async function load(){
     // re-runs of route() stay on the city view.
     if(MD_ENTRY_PENDING){
       MD_ENTRY_PENDING=false
-      var entrySlug=MD_ENTRY_SLUG,entryOk=false
+      var entrySlug=MD_ENTRY_SLUG,entrySub=MD_ENTRY_SUB,entryOk=false
       for(var mi=0;mi<state.cities.length;mi++){
         var mc=state.cities[mi]
         if((mc.slug||mc.city_slug)===entrySlug){entryOk=true;break}
       }
       if(entryOk){
-        state.page='city';state.slug=entrySlug;state.filterCategory=''
-        try{history.replaceState(null,'','#/city/'+entrySlug)}catch(e2){}
+        // Sub-segment → the loader that already exists for it: `businesses` is
+        // the city's business list (the city view carries it), `deals` and
+        // `events` reuse their own city-scoped pages. An unknown segment (e.g.
+        // `blog`, for which this document has no loader) keeps the city view.
+        var entryHash='#/city/'+entrySlug
+        if(entrySub==='deals'){
+          state.page='deals';state.dealsCityFilter=entrySlug;entryHash='#/deals/'+entrySlug
+        }else if(entrySub==='events'){
+          state.page='events';state.eventsCityFilter=entrySlug;entryHash='#/events/'+entrySlug
+        }else{
+          state.page='city';state.slug=entrySlug;state.filterCategory=''
+          if(entrySub)entryHash='#/city/'+entrySlug+'/'+entrySub
+        }
+        try{history.replaceState(null,'',entryHash)}catch(e2){}
       }else{
         state.page='home';state.slug=''
       }
