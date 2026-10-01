@@ -724,6 +724,9 @@ pub async fn events_page(
     let dir_id = q.directory_id;
 
     // Fetch directory info
+    // NOTE: `directories` has no `region` column (verified against the live schema);
+    // the human-readable region is stored in `city` (e.g. "Palm Bay, FL"). Selecting a
+    // non-existent column here made this handler 500 with "Database error" on every hit.
     let dir_row = sqlx::query_as::<
         _,
         (
@@ -731,12 +734,12 @@ pub async fn events_page(
             String,
             Option<String>,
             String,
-            String,
+            Option<String>,
             Option<serde_json::Value>,
             Option<String>,
         ),
     >(
-        r#"SELECT id, name, description, slug, template, color_scheme, region
+        r#"SELECT id, name, description, slug, template, color_scheme, city
            FROM directories WHERE id = $1"#,
     )
     .bind(dir_id)
@@ -748,6 +751,10 @@ pub async fn events_page(
             Some(r) => r,
             None => return Err(AppError::NotFound("Directory not found".to_string())),
         };
+    // Fall back to the directory name so the rendered title never ends in a dangling " - ".
+    let region = region
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or(dir_name.clone());
 
     let base_status = q.status.as_deref().unwrap_or("active");
 
