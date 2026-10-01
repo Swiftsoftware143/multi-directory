@@ -1631,12 +1631,14 @@ function renderCityPage(d){
     if(!groups[g])groups[g]=[]
     groups[g].push(ct)
   }
-  // Top 8 featured categories as clickable pills (fixed pinned order from backend)
-  var topPills=''
+  // B87: the city hero uses the HOMEPAGE's own component (zh-hero/zh-hero-cat/zh-hero-stats),
+  // not a lookalike, so the two surfaces cannot drift. Only the DATA is city-scoped.
+  var _pillActive=' style="background:rgba(255,255,255,.3);border-color:rgba(255,255,255,.5)"'
+  var heroPills=''
   for(var ti=0;ti<Math.min(cats.length,8);ti++){
     var tc=cats[ti];var icon=tc.icon||'📂'
-    var tActive=state.filterCategory===tc.slug?' active':''
-    topPills+='<span class="zh-filter-pill'+tActive+'" onclick="filterCity(\''+esc(tc.slug)+'\',this)">'+icon+' '+esc(tc.name)+' ('+(tc.business_count||0)+')</span>'
+    var tActive=state.filterCategory===tc.slug?_pillActive:''
+    heroPills+='<a class="zh-hero-cat" href="javascript:void(0)" onclick="filterCity(\''+esc(tc.slug)+'\',this)"'+tActive+'>'+icon+' '+esc(tc.name)+' ('+(tc.business_count||0)+')</a>'
   }
   // Full grouped dropdown next to view toggle
   var sortedGroups=Object.keys(groups).sort()
@@ -1765,16 +1767,20 @@ function renderCityPage(d){
   _cityMapInitialized=false;_cityMap=null
 
   el.innerHTML=`
-<div class="zh-city-hero zh-city-hero-enhanced">
-  <div class="zh-city-hero-inner">
-    <div class="weather" id="zh-city-weather">🌤️ ${cityName} — Loading...</div>
-    <h1>${cityName}</h1>
-    <p class="biz-stat"><strong>${bizCount}</strong> Verified Businesses in ${cityName}</p>
-    <p class="sub">${desc}</p>
-    <div class="zh-filter-bar" style="gap:8px;overflow-x:auto">
-      <span class="zh-filter-pill'+(state.filterCategory?'':' active')+'" onclick="filterCity(\'\',this)">All</span>
-      ${topPills}
-      <button onclick="requestNearMe()" style="display:inline-flex;align-items:center;gap:4px;padding:7px 14px;background:var(--primary);color:#fff;border:none;border-radius:100px;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s;min-height:44px;white-space:nowrap;flex-shrink:0">📍 Near Me</button>
+<div class="zh-hero">
+  <div class="zh-hero-inner">
+    <p id="zh-city-weather" style="font-size:.85rem;color:#94a3b8;margin-bottom:10px">🌤️ ${cityName} — Loading...</p>
+    <h1>Discover & Support <span>${cityName}</span></h1>
+    <p>${desc}</p>
+    <div class="zh-hero-categories">
+      <a class="zh-hero-cat" href="javascript:void(0)" onclick="filterCity('',this)"${state.filterCategory?'':_pillActive}>🔍 All${bizCount?' ('+bizCount+')':''}</a>
+      ${heroPills}
+      <a class="zh-hero-cat" href="javascript:void(0)" onclick="requestNearMe()">📍 Near Me</a>
+    </div>
+    <div class="zh-hero-stats">
+      <div class="zh-hero-stat"><span class="num">${(bizCount||0).toLocaleString()}</span><span class="label">Businesses in ${cityName}</span></div>
+      <div class="zh-hero-stat"><span class="num">${deals.length}</span><span class="label">Local Deals</span></div>
+      <div class="zh-hero-stat"><span class="num">${events.length}</span><span class="label">Upcoming Events</span></div>
     </div>
   </div>
 </div>
@@ -1787,15 +1793,16 @@ function renderCityPage(d){
   </div>
   <div id="zh-city-map"></div>
   ${nearBadgeHtml}
+  <div class="zh-section-header"><div><h2 class="zh-section-title">📍 Local Businesses</h2><p class="zh-section-sub">${bizCount||0} curated listings in ${cityName}</p></div></div>
   <div class="zh-biz-grid" id="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
   ${deals.length?`
   <div style="margin-top:24px">
-    <h3 style="margin-bottom:12px">🎁 Local Deals</h3>
+    <div class="zh-section-header"><div><h2 class="zh-section-title">🎁 Hot Local Deals</h2><p class="zh-section-sub">Exclusive perks and discounts from your community</p></div></div>
     <div class="zh-deal-sm-grid">${dealsHtml}</div>
   </div>`:''}
   ${events.length?`
   <div style="margin-top:24px">
-    <h3 style="margin-bottom:12px">📅 Events</h3>
+    <div class="zh-section-header"><div><h2 class="zh-section-title">📅 Upcoming Events</h2><p class="zh-section-sub">Weekend markets, workshops, and community meetups</p></div></div>
     <div class="zh-event-sm-grid">${eventsHtml}</div>
   </div>`:''}
   ${!biz.length&&!deals.length&&!events.length?`
