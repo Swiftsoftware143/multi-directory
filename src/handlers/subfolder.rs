@@ -500,17 +500,13 @@ fn xml_response(status: StatusCode, body: String) -> Response<Body> {
         .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
-/// The site/network label. Derived from the request host (no directory baked in).
-fn site_name_for(host: Option<&str>, fallback: &str) -> String {
-    let raw = host.filter(|h| !h.trim().is_empty()).unwrap_or(fallback);
-    let hostname = raw.trim().split(':').next().unwrap_or(raw);
-    let base = hostname.strip_prefix("www.").unwrap_or(hostname);
-    let label = base.split('.').next().unwrap_or(base);
-    let mut c = label.chars();
-    match c.next() {
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        None => "Directory".to_string(),
-    }
+/// The brand name this directory's pages carry — the `<title>` suffix, the
+/// footer, the breadcrumb root and `og:site_name`. Resolved from the shared
+/// brand source (`crate::brand_theme`: network → directory → platform default),
+/// so it can never be the request host and can never be hardcoded. A buyer
+/// renaming their directory (or network) updates every page.
+async fn brand_name_for(pool: &PgPool, dir: &DirectoryRec) -> String {
+    crate::brand_theme::brand_name_for_directory(pool, &dir.name, dir.network_id).await
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -669,7 +665,7 @@ pub async fn directory_home(
     // Brand tokens for this page — shared with the network homepage.
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
-    let site = site_name_for(host, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
     let canonical = format!("{}/{}", base, dir.slug);
 
     // City-page SEO row (the platform's existing city meta) is the derived default.
@@ -814,7 +810,7 @@ pub async fn businesses_page(
     // Brand tokens for this page — shared with the network homepage.
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
-    let site = site_name_for(host, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
 
     let params = parse_query(query);
     let page = params
@@ -975,7 +971,7 @@ pub async fn business_detail(
     // Brand tokens for this page — shared with the network homepage.
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
-    let site = site_name_for(host, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
 
     let by_uuid = Uuid::parse_str(ident).ok();
     let row = sqlx::query(
@@ -1251,7 +1247,7 @@ pub async fn article_page(
     // Brand tokens for this page — shared with the network homepage.
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
-    let site = site_name_for(host, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
 
     let row = sqlx::query(
         "SELECT id, title, slug, meta_description, content, keyword, business_id, created_at, updated_at \
@@ -1412,7 +1408,7 @@ pub async fn blog_post_page(
     // Brand tokens for this page — shared with the network homepage.
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
-    let site = site_name_for(host, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
 
     let row = sqlx::query(
         "SELECT id, title, slug, excerpt, content, meta_title, meta_description, canonical_url, \
@@ -1603,7 +1599,7 @@ pub async fn blog_list_page(
     // Brand tokens for this page — shared with the network homepage.
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
-    let site = site_name_for(host, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
     let canonical = format!("{}/{}/blog", base, dir.slug);
 
     let ov = seo_override(pool, "city_blog", dir.id).await;
@@ -1848,7 +1844,7 @@ pub async fn deals_page(
     // Brand tokens for this page — shared with the network homepage.
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
-    let site = site_name_for(host, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
     let canonical = format!("{}/{}/deals", base, dir.slug);
 
     let ov = seo_override(pool, "city_deals", dir.id).await;

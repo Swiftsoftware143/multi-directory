@@ -352,6 +352,59 @@ pub async fn theme_for_home(pool: &PgPool) -> BrandTheme {
     theme_for_network(pool, network_id).await
 }
 
+/// The admin-editable brand **name** a directory's pages carry — the suffix of
+/// every server-rendered page title (and the footer / breadcrumb root /
+/// `og:site_name`). Resolution order is
+///   1. the owning network's name (`networks.name`) — a network's home *and*
+///      every city under it share one brand,
+///   2. the directory's own name (`directories.name`) when it stands alone,
+///   3. the platform default (`zaarhub_site_config.site_name`).
+///
+/// The request host is deliberately **never** consulted: a page title must name
+/// the *brand* — which a buyer renames from the admin — not the hostname the
+/// request happened to arrive on (which renders as `127.0.0.1` locally and the
+/// bare domain in production).
+pub async fn brand_name_for_directory(
+    pool: &PgPool,
+    directory_name: &str,
+    network_id: Option<Uuid>,
+) -> String {
+    if let Some(nid) = network_id {
+        let name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM networks WHERE id = $1 LIMIT 1")
+                .bind(nid)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+        if let Some(n) = name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+            return n;
+        }
+    }
+
+    let dir = directory_name.trim();
+    if !dir.is_empty() {
+        return dir.to_string();
+    }
+
+    default_brand_name(pool).await
+}
+
+/// The platform's default brand name — the admin-editable
+/// `zaarhub_site_config.site_name` (never a compiled-in literal), used only
+/// when both the network and the directory carry no name.
+pub async fn default_brand_name(pool: &PgPool) -> String {
+    let name: Option<String> = sqlx::query_scalar(
+        "SELECT COALESCE(NULLIF(trim(site_name), ''), '') FROM zaarhub_site_config LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    name.filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Directory".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
