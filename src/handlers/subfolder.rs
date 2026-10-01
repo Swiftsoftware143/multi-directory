@@ -1584,6 +1584,503 @@ pub async fn blog_post_page(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// City blog index — GET /<slug>/blog  (server-rendered, no JS required)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The city's published blog posts as real HTML so the page is indexable and
+/// usable when JavaScript never runs. The post predicate is deliberately the
+/// same one the public feed uses (`GET /api/v1/zaarhub/cities/:slug/blog-posts`,
+/// `zaarhub::list_city_blog_posts`) so the no-JS page, the SPA's own city blog
+/// view and the JSON feed can never disagree about what is published.
+pub async fn blog_list_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    slug: &str,
+) -> Option<Response<Body>> {
+    let dir = load_directory(pool, slug).await?;
+    // Brand tokens for this page — shared with the network homepage.
+    let theme = theme_for(pool, &dir).await;
+    let base = origin(host, proto, fallback_domain);
+    let site = site_name_for(host, fallback_domain);
+    let canonical = format!("{}/{}/blog", base, dir.slug);
+
+    let ov = seo_override(pool, "city_blog", dir.id).await;
+    let title = ov
+        .as_ref()
+        .and_then(|o| o.title.clone())
+        .unwrap_or_else(|| format!("{} Local Blog — News & Guides | {}", dir.city, site));
+
+    // A failed read returns None (the caller falls back to the SPA) rather than
+    // painting a misleading "no posts yet" page over a query that never ran.
+    let rows = sqlx::query(
+        "SELECT slug, title, excerpt, scheduled_at, created_at, featured_image_url, \
+                author_name, blog_category \
+         FROM blog_posts \
+         WHERE directory_id = $1 AND published = true AND status = 'published' \
+           AND (scheduled_at IS NULL OR scheduled_at <= NOW()) \
+         ORDER BY COALESCE(scheduled_at, created_at) DESC LIMIT 50",
+    )
+    .bind(dir.id)
+    .fetch_all(pool)
+    .await
+    .ok()?;
+
+    struct BlogItem {
+        title: String,
+        url: String,
+        date: Option<chrono::DateTime<chrono::Utc>>,
+        excerpt: Option<String>,
+        image: Option<String>,
+        meta_bits: Vec<String>,
+    }
+
+    let items: Vec<BlogItem> = rows
+        .iter()
+        .filter_map(|r| {
+            let post_slug: String = r.try_get("slug").unwrap_or_default();
+            if post_slug.trim().is_empty() {
+                return None;
+            }
+            let title_raw: String = r.try_get("title").unwrap_or_default();
+            let excerpt: Option<String> = r.try_get("excerpt").unwrap_or(None);
+            let scheduled: Option<chrono::DateTime<chrono::Utc>> =
+                r.try_get("scheduled_at").unwrap_or(None);
+            let created: Option<chrono::DateTime<chrono::Utc>> =
+                r.try_get("created_at").unwrap_or(None);
+            let image: Option<String> = r.try_get("featured_image_url").unwrap_or(None);
+            let author: Option<String> = r.try_get("author_name").unwrap_or(None);
+            let category: Option<String> = r.try_get("blog_category").unwrap_or(None);
+            let date = scheduled.or(created);
+
+            let mut meta_bits = Vec::new();
+            if let Some(d) = date {
+                meta_bits.push(format!("📅 {}", d.format("%B %-d, %Y")));
+            }
+            if let Some(a) = author.filter(|a| !a.trim().is_empty()) {
+                meta_bits.push(format!("✍️ {}", a));
+            }
+            if let Some(c) = category.filter(|c| !c.is_empty() && c.as_str() != "general") {
+                meta_bits.push(format!("🏷️ {}", c));
+            }
+
+            Some(BlogItem {
+                title: title_raw,
+                url: format!("{}/{}/blog/{}", base, dir.slug, post_slug),
+                date,
+                excerpt: excerpt.filter(|e| !e.trim().is_empty()),
+                image: image.filter(|i| !i.trim().is_empty()),
+                meta_bits,
+            })
+        })
+        .collect();
+
+    let cards: String = items
+        .iter()
+        .map(|it| {
+            let img = it
+                .image
+                .as_ref()
+                .map(|src| {
+                    format!(
+                        "<img src=\"{}\" alt=\"{}\" style=\"width:100%;border-radius:10px;margin-bottom:10px\" loading=\"lazy\">",
+                        h(src),
+                        h(&it.title)
+                    )
+                })
+                .unwrap_or_default();
+            let meta = if it.meta_bits.is_empty() {
+                String::new()
+            } else {
+                format!("<div class=\"meta\">{}</div>", h(&it.meta_bits.join(" · ")))
+            };
+            let excerpt = it
+                .excerpt
+                .as_ref()
+                .map(|e| {
+                    format!(
+                        "<p class=\"lede\" style=\"margin:10px 0 0\">{}</p>",
+                        h(&clip(e, 200))
+                    )
+                })
+                .unwrap_or_default();
+            format!(
+                "<article class=\"card\">{img}<h3><a href=\"{url}\">{title}</a></h3>{meta}{excerpt}<p style=\"margin-top:10px\"><a href=\"{url}\" style=\"font-weight:600\">Read more →</a></p></article>",
+                img = img,
+                url = h(&it.url),
+                title = h(&it.title),
+                meta = meta,
+                excerpt = excerpt,
+            )
+        })
+        .collect();
+
+    let list_html = if cards.is_empty() {
+        format!(
+            "<div class=\"card\" style=\"text-align:center;padding:40px 24px\"><h3>📝 No posts yet</h3><p class=\"lede\" style=\"margin:8px auto 0\">{} has no published stories yet. Check back soon.</p><p style=\"margin-top:14px\"><a href=\"{}/{}\">← Back to {}</a></p></div>",
+            h(&dir.city),
+            h(&base),
+            h(&dir.slug),
+            h(&dir.city)
+        )
+    } else {
+        cards
+    };
+
+    let description = ov
+        .as_ref()
+        .and_then(|o| o.description.clone())
+        .unwrap_or_else(|| {
+            if items.is_empty() {
+                format!(
+                    "Local news, guides and stories for {}. No stories published yet — check back soon.",
+                    dir.city
+                )
+            } else {
+                format!(
+                    "{} local {} for {} — news, guides and stories from local businesses.",
+                    items.len(),
+                    if items.len() == 1 { "story" } else { "stories" },
+                    dir.city
+                )
+            }
+        });
+    let description = clip(&strip_tags(&description), 158);
+
+    let mut jsonld = Vec::new();
+    if let Some(cs) = ov.as_ref().and_then(|o| o.custom_schema.clone()) {
+        jsonld.push(cs);
+    } else {
+        jsonld.push(serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": "Blog",
+            "name": format!("{} Local Blog", dir.city),
+            "description": description.clone(),
+            "url": canonical.clone(),
+            "about": {
+                "@type": "City",
+                "name": dir.city,
+                "containedInPlace": {"@type": "AdministrativeArea", "name": dir.state},
+            },
+            "blogPost": items.iter().map(|it| serde_json::json!({
+                "@type": "BlogPosting",
+                "headline": it.title,
+                "url": it.url,
+                "datePublished": it.date.map(|d| d.to_rfc3339()),
+            })).collect::<Vec<_>>(),
+        }));
+        jsonld.push(breadcrumb_ld(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            ("Blog", &canonical),
+        ]));
+    }
+
+    let seo = Seo {
+        title,
+        description,
+        canonical: canonical.clone(),
+        og_type: "website".into(),
+        og_image: ov.as_ref().and_then(|o| o.og_image.clone()),
+        jsonld,
+    };
+
+    let label = format!("{} Blog", dir.city);
+    let lede = if items.is_empty() {
+        format!("Local stories, news and guides from {}.", dir.city)
+    } else {
+        format!(
+            "{} published {} from {} and neighbours.",
+            items.len(),
+            if items.len() == 1 { "story" } else { "stories" },
+            dir.city
+        )
+    };
+
+    let body = format!(
+        r#"{start}{crumbs}
+<h1>{label}</h1>
+<p class="lede">{lede}</p>
+<div class="grid">{list}</div>
+<p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← Back to {city}</a></p>
+{end}"#,
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
+        crumbs = breadcrumbs(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            ("Blog", &canonical),
+        ]),
+        label = h(&label),
+        lede = h(&lede),
+        list = list_html,
+        base = h(&base),
+        dslug = h(&dir.slug),
+        city = h(&dir.city),
+        end = shell_end(&site),
+    );
+
+    Some(html_response(StatusCode::OK, body))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// City deals — GET /<slug>/deals  (server-rendered, no JS required)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The city's active deals as real HTML. Same source and predicate as the city
+/// landing page's deal carousel (`active_deals` in
+/// `GET /api/v1/zaarhub/cities/:slug`, `zaarhub::get_city_page`): the deals tied
+/// to a business in this directory with `status = 'active'`. A city with no
+/// active deals renders an honest empty state, not a fabricated one.
+pub async fn deals_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    slug: &str,
+) -> Option<Response<Body>> {
+    let dir = load_directory(pool, slug).await?;
+    // Brand tokens for this page — shared with the network homepage.
+    let theme = theme_for(pool, &dir).await;
+    let base = origin(host, proto, fallback_domain);
+    let site = site_name_for(host, fallback_domain);
+    let canonical = format!("{}/{}/deals", base, dir.slug);
+
+    let ov = seo_override(pool, "city_deals", dir.id).await;
+    let title = ov
+        .as_ref()
+        .and_then(|o| o.title.clone())
+        .unwrap_or_else(|| format!("Deals & Coupons in {}, {} | {}", dir.city, dir.state, site));
+
+    let rows = sqlx::query(
+        "SELECT de.title, de.description, de.deal_price, de.original_price, \
+                de.discount_percent, de.image_url, de.end_date, de.featured, \
+                b.name AS business_name, b.slug AS business_slug \
+         FROM deals de JOIN businesses b ON b.id = de.business_id \
+         WHERE b.directory_id = $1 AND de.status = 'active' \
+         ORDER BY de.featured DESC NULLS LAST, de.created_at DESC LIMIT 60",
+    )
+    .bind(dir.id)
+    .fetch_all(pool)
+    .await
+    .ok()?;
+
+    struct DealItem {
+        title: String,
+        biz_name: String,
+        biz_url: String,
+        price: Option<String>,
+        was: Option<String>,
+        discount: Option<i32>,
+        description: Option<String>,
+        image: Option<String>,
+        until: Option<String>,
+    }
+
+    let items: Vec<DealItem> = rows
+        .iter()
+        .filter_map(|r| {
+            let title_raw: String = r.try_get("title").unwrap_or_default();
+            if title_raw.trim().is_empty() {
+                return None;
+            }
+            let biz_name: String = r.try_get("business_name").unwrap_or_default();
+            let biz_slug: String = r.try_get("business_slug").unwrap_or_default();
+            let biz_url = if biz_slug.trim().is_empty() {
+                format!("{}/{}/businesses", base, dir.slug)
+            } else {
+                format!("{}/{}/businesses/{}", base, dir.slug, biz_slug)
+            };
+            let end_date: Option<chrono::DateTime<chrono::Utc>> =
+                r.try_get("end_date").unwrap_or(None);
+            Some(DealItem {
+                title: title_raw,
+                biz_name,
+                biz_url,
+                price: r.try_get("deal_price").unwrap_or(None),
+                was: r.try_get("original_price").unwrap_or(None),
+                discount: r.try_get("discount_percent").unwrap_or(None),
+                description: r.try_get("description").unwrap_or(None),
+                image: r.try_get("image_url").unwrap_or(None),
+                until: end_date.map(|d| format!("Until {}", d.format("%B %-d, %Y"))),
+            })
+        })
+        .collect();
+
+    let cards: String = items
+        .iter()
+        .map(|it| {
+            let img = it
+                .image
+                .as_ref()
+                .map(|src| {
+                    format!(
+                        "<img src=\"{}\" alt=\"{}\" style=\"width:100%;border-radius:10px;margin-bottom:10px\" loading=\"lazy\">",
+                        h(src),
+                        h(&it.title)
+                    )
+                })
+                .unwrap_or_default();
+            let biz = format!(
+                "<div class=\"meta\"><a href=\"{}\">{}</a></div>",
+                h(&it.biz_url),
+                h(&it.biz_name)
+            );
+            let price = match (&it.price, &it.was) {
+                (Some(p), Some(w)) => format!(
+                    "<span class=\"chip\">{}</span> <s>{}</s>",
+                    h(p),
+                    h(w)
+                ),
+                (Some(p), None) => format!("<span class=\"chip\">{}</span>", h(p)),
+                _ => String::new(),
+            };
+            let discount = it
+                .discount
+                .map(|d| format!("<span class=\"chip\">-{}%</span>", d))
+                .unwrap_or_default();
+            let desc = it
+                .description
+                .as_ref()
+                .map(|d| {
+                    format!(
+                        "<p class=\"lede\" style=\"margin:8px 0 0\">{}</p>",
+                        h(&clip(d, 180))
+                    )
+                })
+                .unwrap_or_default();
+            let until = it
+                .until
+                .as_ref()
+                .map(|u| format!("<div class=\"meta\">{}</div>", h(u)))
+                .unwrap_or_default();
+            format!(
+                "<article class=\"card\">{img}<h3>{title}</h3>{biz}<div class=\"row\">{price}{discount}</div>{desc}{until}<p style=\"margin-top:10px\"><a href=\"{bizurl}\" style=\"font-weight:600\">View {bizname} →</a></p></article>",
+                img = img,
+                title = h(&it.title),
+                biz = biz,
+                price = price,
+                discount = discount,
+                desc = desc,
+                until = until,
+                bizurl = h(&it.biz_url),
+                bizname = h(&it.biz_name),
+            )
+        })
+        .collect();
+
+    let list_html = if cards.is_empty() {
+        format!(
+            "<div class=\"card\" style=\"text-align:center;padding:40px 24px\"><h3>🎁 No active deals right now</h3><p class=\"lede\" style=\"margin:8px auto 0\">{} has no active deals at the moment. Local businesses add new offers regularly — check back soon.</p><p style=\"margin-top:14px\"><a href=\"{}/{}/businesses\">Browse businesses in {} →</a></p></div>",
+            h(&dir.city),
+            h(&base),
+            h(&dir.slug),
+            h(&dir.city)
+        )
+    } else {
+        cards
+    };
+
+    let description = ov
+        .as_ref()
+        .and_then(|o| o.description.clone())
+        .unwrap_or_else(|| {
+            if items.is_empty() {
+                format!(
+                    "No active deals in {} right now. Browse local businesses and check back for new offers.",
+                    dir.city
+                )
+            } else {
+                format!(
+                    "{} active {} and coupons from local businesses in {}, {}. Save on dining, services and more.",
+                    items.len(),
+                    if items.len() == 1 { "deal" } else { "deals" },
+                    dir.city,
+                    dir.state
+                )
+            }
+        });
+    let description = clip(&strip_tags(&description), 158);
+
+    let label = format!("Deals & Coupons in {}, {}", dir.city, dir.state);
+    let lede = if items.is_empty() {
+        format!("No active deals in {} right now.", dir.city)
+    } else {
+        format!(
+            "{} active {} from local businesses.",
+            items.len(),
+            if items.len() == 1 { "deal" } else { "deals" }
+        )
+    };
+
+    let mut jsonld = Vec::new();
+    if let Some(cs) = ov.as_ref().and_then(|o| o.custom_schema.clone()) {
+        jsonld.push(cs);
+    } else {
+        jsonld.push(serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            "name": label,
+            "numberOfItems": items.len(),
+            "itemListElement": items.iter().enumerate().map(|(i, it)| serde_json::json!({
+                "@type": "ListItem",
+                "position": i + 1,
+                "name": it.title,
+                "url": it.biz_url,
+            })).collect::<Vec<_>>(),
+        }));
+        jsonld.push(breadcrumb_ld(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            ("Deals", &canonical),
+        ]));
+    }
+
+    let seo = Seo {
+        title,
+        description,
+        canonical: canonical.clone(),
+        og_type: "website".into(),
+        og_image: ov.as_ref().and_then(|o| o.og_image.clone()),
+        jsonld,
+    };
+
+    let body = format!(
+        r#"{start}{crumbs}
+<h1>{label}</h1>
+<p class="lede">{lede}</p>
+<div class="grid">{list}</div>
+<p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← Back to {city}</a></p>
+{end}"#,
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
+        crumbs = breadcrumbs(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            ("Deals", &canonical),
+        ]),
+        label = h(&label),
+        lede = h(&lede),
+        list = list_html,
+        base = h(&base),
+        dslug = h(&dir.slug),
+        city = h(&dir.city),
+        end = shell_end(&site),
+    );
+
+    Some(html_response(StatusCode::OK, body))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sitemap + robots
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1619,6 +2116,18 @@ pub async fn sitemap(
         ));
         xml.push_str(&format!(
             "  <url><loc>{base}/{slug}/businesses</loc><changefreq>daily</changefreq><priority>0.8</priority></url>\n",
+            base = h(&base),
+            slug = h(&dslug)
+        ));
+        // The server-rendered city blog index and deals index — the two
+        // sub-paths Google should index per city (subfolder canonical form).
+        xml.push_str(&format!(
+            "  <url><loc>{base}/{slug}/blog</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n",
+            base = h(&base),
+            slug = h(&dslug)
+        ));
+        xml.push_str(&format!(
+            "  <url><loc>{base}/{slug}/deals</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n",
             base = h(&base),
             slug = h(&dslug)
         ));
@@ -1768,8 +2277,12 @@ pub async fn try_render(
             [_, "articles", a] => article_page(pool, host, proto, fallback_domain, slug, a).await,
             [_, "blog", b] => blog_post_page(pool, host, proto, fallback_domain, slug, b).await,
             [_] => directory_home(pool, host, proto, fallback_domain, slug, spa_html).await,
-            // `/dir/articles` and `/dir/blog` have no index page yet — fall through.
-            [_, "articles"] | [_, "blog"] => None,
+            // `/dir/blog` and `/dir/deals` are server-rendered indexes (no JS
+            // required) so a crawler and a script-free visitor get the city's
+            // real posts and deals. `/dir/articles` has no index page yet.
+            [_, "blog"] => blog_list_page(pool, host, proto, fallback_domain, slug).await,
+            [_, "deals"] => deals_page(pool, host, proto, fallback_domain, slug).await,
+            [_, "articles"] => None,
             // `/dir/<business-slug>` (the short form) — 301 to the canonical
             // `/dir/businesses/<slug>` so a legacy/inferred URL is not a soft-404.
             // Guarded on a real directory: a path like `/city/palm-bay` must fall
