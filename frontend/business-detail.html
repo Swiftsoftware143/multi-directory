@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Business — ZaarHub</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="/leaflet.css" media="print" onload="this.media='all'" />
+<script defer src="/leaflet.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -328,6 +329,11 @@ a:hover{text-decoration:underline}
 
 <script>
 // ── Utility ──
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function getUrlParam(name) {
   const params = new URLSearchParams(window.location.search);
   return params.get(name);
@@ -395,10 +401,14 @@ async function loadBusiness() {
     if (!bizResp.ok) throw new Error('Not found');
     bizData = await bizResp.json();
 
-    // Fetch reviews
+    // Fetch this business's approved reviews. The public GET /api/v1/reviews is
+    // paginated ({data:[...]}) and now honours a business_id + status filter.
     try {
-      const revResp = await fetch(`/api/v1/reviews?business_id=${id}`);
-      if (revResp.ok) reviews = await revResp.json();
+      const revResp = await fetch(`/api/v1/reviews?status=approved&business_id=${encodeURIComponent(id)}&per_page=50`);
+      if (revResp.ok) {
+        const rd = await revResp.json();
+        reviews = Array.isArray(rd) ? rd : (rd && Array.isArray(rd.data) ? rd.data : []);
+      }
     } catch(e) { console.warn('Failed to fetch reviews', e); }
 
     // Render
@@ -491,20 +501,41 @@ let mapInstance = null;
 function initMap(lat, lng, name) {
   const container = document.getElementById('mapContainer');
   container.innerHTML = '';
-  
-  const mapEl = document.createElement('div');
-  mapEl.style.width = '100%';
-  mapEl.style.height = '260px';
-  container.appendChild(mapEl);
-  
-  mapInstance = L.map(mapEl).setView([lat, lng], 15);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19
-  }).addTo(mapInstance);
-  
-  L.marker([lat, lng]).addTo(mapInstance)
-    .bindPopup(`<b>${name}</b>`);
+
+  // Leaflet is served self-hosted as /leaflet.js (deferred). If it failed to load,
+  // degrade to a plain address + directions link instead of throwing — a map CDN
+  // hiccup must never take down the whole business page.
+  if (typeof L === 'undefined') {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:.85rem">' +
+      esc(streetLine()) + '<br><a href="#" onclick="openDirections();return false" style="color:var(--teal)">Get directions →</a></div>';
+    return;
+  }
+
+  try {
+    const mapEl = document.createElement('div');
+    mapEl.style.width = '100%';
+    mapEl.style.height = '260px';
+    container.appendChild(mapEl);
+
+    mapInstance = L.map(mapEl).setView([lat, lng], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(mapInstance);
+
+    L.marker([lat, lng]).addTo(mapInstance)
+      .bindPopup(`<b>${name}</b>`);
+  } catch (e) {
+    console.warn('Map init failed', e);
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:.85rem">' +
+      esc(streetLine()) + '<br><a href="#" onclick="openDirections();return false" style="color:var(--teal)">Get directions →</a></div>';
+  }
+}
+
+function streetLine() {
+  if (!bizData) return 'Map location not available.';
+  const line = [bizData.address, bizData.city, bizData.state].filter(Boolean).join(', ');
+  return line || 'Map location not available.';
 }
 
 function openDirections() {

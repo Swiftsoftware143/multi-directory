@@ -30,37 +30,31 @@ pub async fn list_reviews(
     let (page, per_page) = validate_pagination(Some(page), Some(per_page));
     let offset = (page - 1) * per_page;
 
-    let status_filter = params.get("status");
+    let status_filter: Option<&str> = params.get("status").map(|s| s.as_str());
+    // Optional business scoping. This route is public for GET and the business-detail
+    // page needs the reviews for ONE business; without a business filter it returned the
+    // newest reviews on the whole platform (i.e. somebody else's reviews on every page).
+    let business_id = params
+        .get("business_id")
+        .and_then(|v| Uuid::parse_str(v).ok());
 
-    let total = if let Some(ref st) = status_filter {
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews WHERE status = \x241 ")
-            .bind(st)
-            .fetch_one(&s.db)
-            .await?
-    } else {
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews ")
-            .fetch_one(&s.db)
-            .await?
-    };
+    let total = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) ",
+    )
+    .bind(status_filter)
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await?;
 
-    let reviews = if let Some(ref st) = status_filter {
-        sqlx::query_as::<_, Review>(
-            "SELECT * FROM reviews WHERE status = \x241 ORDER BY created_at DESC LIMIT \x242 OFFSET \x243 "
-        )
-        .bind(st)
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&s.db)
-        .await?
-    } else {
-        sqlx::query_as::<_, Review>(
-            "SELECT * FROM reviews ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 ",
-        )
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&s.db)
-        .await?
-    };
+    let reviews = sqlx::query_as::<_, Review>(
+        "SELECT * FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) ORDER BY created_at DESC LIMIT \x243 OFFSET \x244 ",
+    )
+    .bind(status_filter)
+    .bind(business_id)
+    .bind(per_page)
+    .bind(offset)
+    .fetch_all(&s.db)
+    .await?;
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i64;
 
