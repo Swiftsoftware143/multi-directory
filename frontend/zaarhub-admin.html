@@ -68,6 +68,7 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
     <button class="tab" onclick="switchTab(this,'picks')">Editor's Picks</button>
     <button class="tab" onclick="switchTab(this,'branding')">Branding</button>
     <button class="tab" onclick="switchTab(this,'populate')">Populate Businesses</button>
+    <button class="tab" onclick="switchTab(this,'queue')">Content Schedule</button>
   </div>
 
   <div id="tab-legal">
@@ -174,6 +175,55 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
     </div>
   </div>
 
+  <div id="tab-queue" style="display:none">
+    <div class="panel">
+      <h2>🗓️ Content Schedule</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+        Write content for later. Pick a directory, say what it is about, choose a day, and the
+        directory writes and publishes it for you on that day — no SQL and no scripts.
+      </p>
+      <form id="queue-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="cq-kind">What kind of content is it?</label>
+            <select id="cq-kind">
+              <option value="blog">A blog post about the topic</option>
+              <option value="trap_door">A local services page for the topic</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cq-directory">Which directory is it for?</label>
+            <select id="cq-directory"><option value="">Loading…</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="cq-topic">Topic (what should it be about?)</label>
+            <input id="cq-topic" placeholder="e.g. water heater repair" maxlength="120">
+          </div>
+          <div class="form-group">
+            <label for="cq-when">Publish on this day</label>
+            <input id="cq-when" type="datetime-local">
+          </div>
+        </div>
+        <div class="actions"><button type="submit" class="btn primary">Add to schedule</button></div>
+        <div id="cq-status" style="font-size:13px;color:var(--text-muted);margin-top:10px"></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <h2 style="margin-bottom:0">📋 What is scheduled</h2>
+        <button class="btn secondary small" onclick="loadContentQueue()">Refresh</button>
+      </div>
+      <div id="cq-list"><div class="loading">Loading…</div></div>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:12px">
+        Only items still waiting to run can be changed or cancelled. Anything already published
+        is shown for reference.
+      </p>
+    </div>
+  </div>
+
   <div id="tab-branding" style="display:none">
     <div class="panel">
       <h2>🎨 Site Branding</h2>
@@ -270,7 +320,12 @@ let popCityLatLng = {};
 let queueSnap = { items: [], counts: {} };
 let popDirectoryId = '';
 
-async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey();loadPopDirectories()}
+async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey();loadPopDirectories();
+  const cqWhen=document.getElementById('cq-when');
+  if(cqWhen&&!cqWhen.value)cqWhen.value=cqDefaultWhen();
+  const cqForm=document.getElementById('queue-form');
+  if(cqForm)cqForm.addEventListener('submit',addQueueItem);
+}
 
 // ── Google Places API Key ──
 async function loadGPlacesKey(){
@@ -381,10 +436,12 @@ function switchTab(btn,tab){
   document.getElementById('tab-picks').style.display=tab==='picks'?'block':'none';
   document.getElementById('tab-branding').style.display=tab==='branding'?'block':'none';
   document.getElementById('tab-populate').style.display=tab==='populate'?'block':'none';
+  document.getElementById('tab-queue').style.display=tab==='queue'?'block':'none';
   if(tab==='legal')loadLegalPages();
   else if(tab==='picks'){loadCitiesDropdown();loadEditorsPicks();}
   else if(tab==='branding')loadSiteConfig();
   else if(tab==='populate'){loadPopCities();loadPopCategories();loadPopDirectories();reloadQueue();}
+  else if(tab==='queue')openContentQueue();
 }
 
 async function loadCitiesDropdown(){
@@ -648,6 +705,161 @@ async function addSelectedToDirectory(){
     await reloadQueue();
   }catch(e){statusEl.innerHTML='<span style="color:#dc2626">Add failed. Check console.</span>';console.error(e);}
 }
+// ── Content Schedule ────────────────────────────────────────────────────────
+// The backend has had a full content queue since Phase 5 (POST/GET/PUT/DELETE
+// /api/v1/admin/content-queue) but the only control was the operator console, which
+// speaks in field names. This is the plain-English control: a non-technical admin
+// picks a directory, says what the content is about and which day it should go live.
+// Nothing here is a mock — the buttons call the same endpoints the console does.
+let cqDirs = [];
+let cqItems = [];
+let cqEditing = null; // id of the row currently being changed
+
+function cqDefaultWhen(){
+  const d = new Date(Date.now() + 60*60*1000);
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+function cqLocalInput(iso){
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+function cqWhenHuman(iso){
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+function cqTypeLabel(t){return t==='blog'?'Blog post':'Local services page';}
+function cqStatusLabel(s){
+  return {pending:'Waiting to run',generating:'Being written now',completed:'Published',
+          failed:'Failed',cancelled:'Cancelled'}[s]||s;
+}
+function cqDirName(id){
+  const d = cqDirs.find(x=>String(x.id)===String(id));
+  return d ? d.name : '—';
+}
+
+async function loadQueueDirectories(){
+  const sel = document.getElementById('cq-directory');
+  if (sel.options.length > 1 && cqDirs.length) return;
+  try{
+    const r = await fetch('/api/v1/directories?per_page=100');
+    const d = await r.json();
+    cqDirs = d.data||[];
+    sel.innerHTML = cqDirs.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')
+      || '<option value="">No directories found</option>';
+  }catch(e){sel.innerHTML='<option value="">Could not load directories</option>';console.error(e);}
+}
+
+async function loadContentQueue(){
+  const el = document.getElementById('cq-list');
+  try{
+    const r = await fetch('/api/v1/admin/content-queue?per_page=100');
+    const d = await r.json();
+    if(!r.ok){el.innerHTML='<div class="loading">Could not load the schedule ('+(d.error||r.status)+').</div>';return;}
+    cqItems = d.items||[];
+    renderContentQueue();
+  }catch(e){el.innerHTML='<div class="loading">Could not load the schedule.</div>';console.error(e);}
+}
+
+function renderContentQueue(){
+  const el = document.getElementById('cq-list');
+  if(!cqItems.length){
+    el.innerHTML='<div style="color:var(--text-muted);font-size:13px;padding:16px">Nothing is scheduled yet. Add one above and it will appear here.</div>';
+    return;
+  }
+  el.innerHTML = cqItems.map(it=>{
+    const pending = it.status==='pending';
+    const badge = it.status==='completed'?'published':(it.status==='failed'?'footer':'draft');
+    if(cqEditing===it.id){
+      return `<div class="page-list-item" style="display:block">
+        <div class="form-row" style="gap:12px">
+          <div class="form-group" style="margin-bottom:8px"><label>Topic</label>
+            <input id="cqe-topic-${esc(it.id)}" value="${esc(it.keyword)}" maxlength="120"></div>
+          <div class="form-group" style="margin-bottom:8px"><label>Publish on this day</label>
+            <input id="cqe-when-${esc(it.id)}" type="datetime-local" value="${esc(cqLocalInput(it.scheduled_for))}"></div>
+        </div>
+        <div class="actions" style="margin-top:0">
+          <button class="btn primary small" onclick="saveQueueEdit('${esc(it.id)}')">Save changes</button>
+          <button class="btn secondary small" onclick="cqEditing=null;renderContentQueue()">Discard</button>
+        </div>
+      </div>`;
+    }
+    const err = (it.status==='failed' && it.error_message)
+      ? `<small style="color:#dc2626">What went wrong: ${esc(it.error_message)}</small>` : '';
+    const buttons = pending
+      ? `<button class="btn secondary small" onclick="cqEditing='${esc(it.id)}';renderContentQueue()">Change</button>
+         <button class="btn danger small" onclick="cancelQueueItem('${esc(it.id)}')">Cancel</button>`
+      : '';
+    return `<div class="page-list-item">
+      <div class="info">
+        <strong>${esc(it.keyword)}</strong>
+        <small>${esc(cqTypeLabel(it.queue_type))} · ${esc(cqDirName(it.directory_id))} · goes live ${esc(cqWhenHuman(it.scheduled_for))}</small>
+        ${err}
+      </div>
+      <div class="status">
+        <span class="badge ${badge}">${esc(cqStatusLabel(it.status))}</span>
+        ${buttons}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addQueueItem(ev){
+  ev.preventDefault();
+  const statusEl = document.getElementById('cq-status');
+  const kind = document.getElementById('cq-kind').value;
+  const dir = document.getElementById('cq-directory').value;
+  const topic = document.getElementById('cq-topic').value.trim();
+  const when = document.getElementById('cq-when').value;
+  if(!dir){showToast('Pick a directory first',true);return;}
+  if(!topic){statusEl.textContent='Type what the content should be about.';return;}
+  if(!when){statusEl.textContent='Choose the day it should go live.';return;}
+  statusEl.textContent='Adding…';
+  try{
+    const r = await fetch('/api/v1/admin/content-queue',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({queue_type:kind,directory_id:dir,keyword:topic,scheduled_for:new Date(when).toISOString()})});
+    const d = await r.json();
+    if(!r.ok){statusEl.innerHTML='<span style="color:#dc2626">Could not schedule it: '+esc(d.error||r.status)+'</span>';showToast('Could not schedule it',true);return;}
+    statusEl.innerHTML='<span style="color:var(--green)">Scheduled — it will go live on '+esc(cqWhenHuman(d.scheduled_for))+'</span>';
+    showToast('Added to the content schedule');
+    document.getElementById('cq-topic').value='';
+    cqEditing=null;
+    await loadContentQueue();
+  }catch(e){statusEl.innerHTML='<span style="color:#dc2626">Could not schedule it. Check the connection.</span>';console.error(e);}
+}
+
+async function saveQueueEdit(id){
+  const topic = document.getElementById('cqe-topic-'+id).value.trim();
+  const when = document.getElementById('cqe-when-'+id).value;
+  if(!topic||!when){showToast('Topic and day are both needed',true);return;}
+  try{
+    const r = await fetch('/api/v1/admin/content-queue/'+encodeURIComponent(id),{method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({keyword:topic,scheduled_for:new Date(when).toISOString()})});
+    const d = await r.json();
+    if(!r.ok){showToast((d.error||'Could not save the change'),true);return;}
+    cqEditing=null;
+    showToast('Schedule updated');
+    document.getElementById('cq-status').innerHTML='<span style="color:var(--green)">Saved — "'+esc(d.keyword)+'" now goes live '+esc(cqWhenHuman(d.scheduled_for))+'.</span>';
+    await loadContentQueue();
+  }catch(e){showToast('Could not save the change',true);console.error(e);}
+}
+
+async function cancelQueueItem(id){
+  try{
+    const r = await fetch('/api/v1/admin/content-queue/'+encodeURIComponent(id),{method:'DELETE'});
+    const d = await r.json();
+    if(!r.ok){showToast((d.error||'Could not cancel it'),true);return;}
+    showToast('Cancelled');
+    document.getElementById('cq-status').innerHTML='<span style="color:var(--text-muted)">Cancelled “'+esc(d.keyword)+'”.</span>';
+    await loadContentQueue();
+  }catch(e){showToast('Could not cancel it',true);console.error(e);}
+}
+
 function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),2500)}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 init();
