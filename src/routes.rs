@@ -1691,6 +1691,11 @@ pub fn create_router(s: AppState) -> Router {
             "/zaarhub/cities/:slug/listings",
             get(zaarhub_cities::list_city_listings),
         )
+        // Public city blog listing (published posts only) — backs the city blog list view.
+        .route(
+            "/zaarhub/cities/:slug/blog-posts",
+            get(zaarhub::list_city_blog_posts),
+        )
         .route("/zaarhub/listings/:id", get(zaarhub_cities::get_listing))
         .route("/zaarhub/categories", get(zaarhub_cities::list_categories))
         .route("/zaarhub/search", get(zaarhub_cities::search_listings))

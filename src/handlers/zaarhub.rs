@@ -2081,3 +2081,93 @@ pub async fn toggle_spotlight_featured(
         ))),
     }
 }
+
+// ── Public city blog listing ────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CityBlogQuery {
+    /// Page size; defaulted and clamped server-side so the feed cannot be over-pulled.
+    pub limit: Option<i64>,
+}
+
+/// GET /api/v1/zaarhub/cities/:slug/blog-posts — PUBLIC blog listing for a city.
+///
+/// Backs the city blog list view. Resolves the city by slug exactly like the other
+/// public zaarhub city routes and 404s for an unknown slug rather than answering an
+/// empty 200. Returns ONLY published posts — both the `published` flag and the
+/// `status` enum must say published, and a future `scheduled_at` is excluded so a
+/// not-yet-live post can never leak early. Drafts, pending-review and archived rows
+/// are never selected.
+pub async fn list_city_blog_posts(
+    State(s): State<AppState>,
+    Path(slug): Path<String>,
+    Query(query): Query<CityBlogQuery>,
+) -> ApiResult<Json<Value>> {
+    let dir = sqlx::query_as::<_, (Uuid, String, String)>(
+        "SELECT id, name, slug FROM directories WHERE slug = $1",
+    )
+    .bind(&slug)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("City '{}' not found", slug)))?;
+
+    let (dir_id, dir_name, dir_slug) = dir;
+    let limit = query.limit.unwrap_or(20).clamp(1, 50);
+
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Option<String>,
+            String,
+            Option<String>,
+            Option<DateTime<Utc>>,
+            Option<DateTime<Utc>>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
+        r#"SELECT id, slug, title, excerpt, scheduled_at, created_at,
+                  featured_image_url, author_name, blog_category
+           FROM blog_posts
+           WHERE directory_id = $1
+             AND published = true
+             AND status = 'published'
+             AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+           ORDER BY COALESCE(scheduled_at, created_at) DESC
+           LIMIT $2"#,
+    )
+    .bind(dir_id)
+    .bind(limit)
+    .fetch_all(&s.db)
+    .await?;
+
+    let posts: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(id, post_slug, title, excerpt, scheduled_at, created_at, image, author, category)| {
+                let date = scheduled_at.or(created_at);
+                let post_slug = post_slug.unwrap_or_default();
+                json!({
+                    "id": id,
+                    "slug": post_slug,
+                    "title": title,
+                    "excerpt": excerpt,
+                    "date": date,
+                    "url": format!("/api/v1/d/{}/blog/{}", dir_slug, post_slug),
+                    "featured_image_url": image,
+                    "author_name": author,
+                    "category": category,
+                })
+            },
+        )
+        .collect();
+
+    let count = posts.len();
+    Ok(Json(json!({
+        "city": { "slug": dir_slug, "name": dir_name },
+        "count": count,
+        "posts": posts,
+    })))
+}
