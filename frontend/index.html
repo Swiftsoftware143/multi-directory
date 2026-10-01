@@ -760,6 +760,21 @@ function setRoleMode(m){try{localStorage.setItem('zh_role_mode',m)}catch(e){}}
 function hasOwnerAccounts(){return false}
 
 // ── Router ──
+// Deep-link → directory. A city page is the homepage template with the data
+// scoped to one city, served as the very same document as `/`; the only thing
+// the SPA must do is route the *entry path* (not just the hash) to that view,
+// e.g. /palm-bay, /city/palm-bay or /d/palm-bay.
+var MD_ENTRY_SLUG=(function(){
+  try{
+    var p=(location.pathname||'/').replace(/^\/+|\/+$/g,'')
+    if(!p)return ''
+    var s=p.split('/')
+    if((s[0]==='city'||s[0]==='d')&&s[1])return s[1]
+    if(s.length===1)return s[0]
+  }catch(e){}
+  return ''
+})()
+var MD_ENTRY_PENDING=!!MD_ENTRY_SLUG
 function route(){
   // Hide splash screen immediately
   var splash=document.getElementById('splash-load');
@@ -768,7 +783,10 @@ function route(){
   setTimeout(function(){var s=document.getElementById('splash-load');if(s)s.classList.add('hide')},5000);
   
   let hash=location.hash.slice(1)||'/';
-  if(hash.startsWith('/city/')){
+  if(MD_ENTRY_PENDING){
+    // Pending directory deep-link; load() validates it against the city list.
+    state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory=''
+  }else if(hash.startsWith('/city/')){
     var parts=hash.split('/')
     if(parts.length>=5&&parts[3]==='biz'){
       state.page='biz';state.slug=parts[2];state.bizId=parts[4]
@@ -927,6 +945,24 @@ async function load(){
   try{
     if(!state.cities.length){
       var c=await g('/zaarhub/cities');state.cities=c.cities||c||[]
+    }
+    // Resolve a directory entry path exactly once, against the real city list
+    // (so an unknown path like /portal keeps its normal behaviour). On success
+    // the SPA adopts the canonical in-app hash route so later navigation and
+    // re-runs of route() stay on the city view.
+    if(MD_ENTRY_PENDING){
+      MD_ENTRY_PENDING=false
+      var entrySlug=MD_ENTRY_SLUG,entryOk=false
+      for(var mi=0;mi<state.cities.length;mi++){
+        var mc=state.cities[mi]
+        if((mc.slug||mc.city_slug)===entrySlug){entryOk=true;break}
+      }
+      if(entryOk){
+        state.page='city';state.slug=entrySlug;state.filterCategory=''
+        try{history.replaceState(null,'','#/city/'+entrySlug)}catch(e2){}
+      }else{
+        state.page='home';state.slug=''
+      }
     }
     // Hide splash right before rendering content
     var splash=document.getElementById('splash-load');

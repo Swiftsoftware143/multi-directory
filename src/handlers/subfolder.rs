@@ -356,6 +356,43 @@ fn head_html(seo: &Seo, site_name: &str) -> String {
     s
 }
 
+/// Remove the first `open…close` span from `s` (e.g. the document's own
+/// `<title>…</title>`), leaving the rest untouched.
+fn strip_first_between(s: &str, open: &str, close: &str) -> String {
+    match (s.find(open), s.find(close)) {
+        (Some(a), Some(b)) if b >= a + open.len() => {
+            let mut out = String::with_capacity(s.len());
+            out.push_str(&s[..a]);
+            out.push_str(&s[b + close.len()..]);
+            out
+        }
+        _ => s.to_string(),
+    }
+}
+
+/// Render a city page by taking the **homepage document** (`frontend/index.html`,
+/// the shared component library) and giving it the city's own SEO head. The
+/// markup, CSS, navigation and component set are therefore byte-identical to the
+/// homepage — only the data (loaded by the SPA from the city endpoint) and the
+/// head tags are city-scoped. This is what stops the two surfaces drifting.
+fn inject_city_document(spa_html: &str, seo: &Seo, site_name: &str, theme: &BrandTheme) -> String {
+    let head = head_html(seo, site_name);
+    let theme_tag = format!("<style id=\"brand-theme\">{}</style>", theme.css_block());
+    // Drop the homepage's own <title> (the city's is the first line of `head`).
+    let base = strip_first_between(spa_html, "<title", "</title>");
+    match base.rfind("</head>") {
+        Some(pos) => {
+            let mut out = String::with_capacity(base.len() + head.len() + theme_tag.len());
+            out.push_str(&base[..pos]);
+            out.push_str(&head);
+            out.push_str(&theme_tag);
+            out.push_str(&base[pos..]);
+            out
+        }
+        None => base,
+    }
+}
+
 const PAGE_CSS: &str = r#"
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6}
@@ -626,6 +663,7 @@ pub async fn directory_home(
     proto: &str,
     fallback_domain: &str,
     slug: &str,
+    spa_html: &str,
 ) -> Option<Response<Body>> {
     let dir = load_directory(pool, slug).await?;
     // Brand tokens for this page — shared with the network homepage.
@@ -699,40 +737,9 @@ pub async fn directory_home(
         .unwrap_or(0)
     };
 
-    // Categories present in this directory (auto-generated, admin-editable via seo_meta).
-    let cats = sqlx::query(
-        "SELECT coalesce(category, '') AS category, COUNT(*) AS n FROM business_listings bl \
-         JOIN city_pages cp ON cp.id = bl.city_page_id \
-         WHERE cp.city_slug = $1 AND coalesce(category,'') <> '' \
-         GROUP BY 1 ORDER BY n DESC LIMIT 14",
-    )
-    .bind(&dir.slug)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-
+    // Top businesses for the ItemList JSON-LD below. (The visible listing is
+    // rendered by the shared homepage template from the city API.)
     let top = list_businesses(pool, &dir, None, 12, 0).await;
-
-    let mut chips = String::new();
-    for c in &cats {
-        let cat: String = c.try_get("category").unwrap_or_default();
-        if cat.is_empty() {
-            continue;
-        }
-        chips.push_str(&format!(
-            "<a class=\"chip\" href=\"{base}/{slug}/businesses?category={cat}\">{cat}</a>",
-            base = h(&base),
-            slug = h(&dir.slug),
-            cat = urlencode(&cat),
-        ));
-    }
-    let chips = if chips.is_empty() {
-        String::new()
-    } else {
-        format!("<div class=\"chips\">{}</div>", chips)
-    };
-
-    let cards: String = top.iter().map(|b| card_html(&base, &dir.slug, b)).collect();
 
     // JSON-LD: CollectionPage + ItemList + BreadcrumbList (or admin custom_schema).
     let mut jsonld = Vec::new();
@@ -783,33 +790,10 @@ pub async fn directory_home(
         jsonld,
     };
 
-    let crumbs = breadcrumbs(&[(&site, &format!("{}/", base)), (&dir.name, &canonical)]);
-    let body = format!(
-        r#"{start}{crumbs}
-<h1>Local Businesses in {city}, {state}</h1>
-<p class="lede">{desc}</p>
-<p class="lede">{total} businesses listed · <a href="{base}/{slug}/businesses">Browse all →</a></p>
-{chips}
-<h2 style="margin:24px 0 14px">Top rated in {city}</h2>
-<div class="grid">{cards}</div>
-{end}"#,
-        start = shell_start(
-            &seo,
-            &site,
-            Some((dir.slug.as_str(), dir.name.as_str())),
-            &theme
-        ),
-        crumbs = crumbs,
-        city = h(&dir.city),
-        state = h(&dir.state),
-        desc = h(&seo.description),
-        total = total,
-        base = h(&base),
-        slug = h(&dir.slug),
-        chips = chips,
-        cards = cards,
-        end = shell_end(&site),
-    );
+    // The city page IS the homepage document — identical markup, CSS, nav and
+    // components — carrying only the city's own <head>. The SPA scopes the data
+    // to this city from `/api/v1/zaarhub/cities/<slug>`, keyed off the path.
+    let body = inject_city_document(spa_html, &seo, &site, &theme);
 
     Some(html_response(StatusCode::OK, body))
 }
@@ -1749,6 +1733,7 @@ pub async fn try_render(
     proto: &str,
     fallback_domain: &str,
     path: &str,
+    spa_html: &str,
 ) -> Option<Response<Body>> {
     if !(path == "/" || path.is_empty()) {
         // Only GET-ish, no query noise, no assets.
@@ -1782,7 +1767,7 @@ pub async fn try_render(
             }
             [_, "articles", a] => article_page(pool, host, proto, fallback_domain, slug, a).await,
             [_, "blog", b] => blog_post_page(pool, host, proto, fallback_domain, slug, b).await,
-            [_] => directory_home(pool, host, proto, fallback_domain, slug).await,
+            [_] => directory_home(pool, host, proto, fallback_domain, slug, spa_html).await,
             // `/dir/articles` and `/dir/blog` have no index page yet — fall through.
             [_, "articles"] | [_, "blog"] => None,
             // `/dir/<business-slug>` (the short form) — 301 to the canonical
@@ -1816,6 +1801,7 @@ pub async fn try_render_with_query(
     fallback_domain: &str,
     path: &str,
     query: &str,
+    spa_html: &str,
 ) -> Option<Response<Body>> {
     let clean = path.trim_start_matches('/').trim_end_matches('/');
     if clean.is_empty() || looks_like_asset(clean) {
@@ -1835,7 +1821,7 @@ pub async fn try_render_with_query(
         [_, "businesses"] => {
             businesses_page(pool, host, proto, fallback_domain, segs[0], query).await
         }
-        _ => try_render(pool, host, proto, fallback_domain, path).await,
+        _ => try_render(pool, host, proto, fallback_domain, path, spa_html).await,
     }
 }
 

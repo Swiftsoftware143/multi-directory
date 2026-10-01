@@ -2777,6 +2777,7 @@ pub fn create_router(s: AppState) -> Router {
                             &_base_domain,
                             &path,
                             query,
+                            index_clone2.as_ref(),
                         )
                         .await
                         {
