@@ -552,10 +552,11 @@ pub async fn list_scraper_providers(State(s): State<AppState>) -> ApiResult<impl
     let providers = sqlx::query_as::<_, (String, String, bool)>(
         r#"SELECT ap.key, ap.name, pk.api_key IS NOT NULL as has_key
            FROM available_providers ap
-           LEFT JOIN provider_keys pk ON pk.provider = ap.key AND pk.tenant_id = '00000000-0000-0000-0000-000000000000'
+           LEFT JOIN provider_keys pk ON pk.provider = ap.key AND pk.tenant_id = $1
            WHERE ap.key IN ('google_places','brightlocal','yext','uberall')
-           ORDER BY ap.name"#
+           ORDER BY ap.name"#,
     )
+    .bind(uuid::Uuid::nil())
     .fetch_all(&s.db)
     .await?;
 

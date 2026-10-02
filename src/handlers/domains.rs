@@ -41,6 +41,25 @@ const SELECT_MAPPINGS: &str = r#"SELECT dm.id, dm.directory_id, dm.domain, dm.ty
      LEFT JOIN directories d ON d.id = dm.directory_id
      LEFT JOIN networks n ON n.id = d.network_id"#;
 
+/// Compile-time form of `SELECT_MAPPINGS` for gate rule 5d: `concat!` needs a LITERAL, not a
+/// const, so the same bytes are published as a macro and the statements that use it are
+/// assembled entirely at compile time (a run-time build is the defect the rule names).
+/// MUST stay byte-identical to `SELECT_MAPPINGS`.
+macro_rules! select_mappings {
+    () => {
+        r#"SELECT dm.id, dm.directory_id, dm.domain, dm.type, dm.status,
+        dm.ssl_enabled, dm.cloudflare_record_id, dm.dns_records, dm.verification_token,
+        dm.auto_configured, dm.url_path, dm.live_status,
+        dm.last_checked_at::text AS last_checked_at, dm.last_check_detail,
+        dm.created_at::text AS created_at, dm.updated_at::text AS updated_at,
+        d.slug AS directory_slug, d.name AS directory_name, d.network_id,
+        n.slug AS network_slug, n.root_domain
+     FROM domain_mappings dm
+     LEFT JOIN directories d ON d.id = dm.directory_id
+     LEFT JOIN networks n ON n.id = d.network_id"#
+    };
+}
+
 /// One mapping as JSON. `domain_type` is kept alongside `type` because the older SPA in
 /// portal.html reads either; nothing here is invented — every value comes from the row.
 fn mapping_json(row: &sqlx::postgres::PgRow) -> Value {
@@ -285,9 +304,13 @@ pub async fn register_domain(
 
 /// GET /api/v1/admin/domains — every mapping (bare array, the shape portal.html already reads).
 pub async fn list_domains(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let rows = sqlx::query(&format!("{} ORDER BY dm.created_at DESC", SELECT_MAPPINGS))
-        .fetch_all(&s.db)
-        .await?;
+    let rows = sqlx::query(concat!(
+        r#""#,
+        select_mappings!(),
+        r#" ORDER BY dm.created_at DESC"#
+    ))
+    .fetch_all(&s.db)
+    .await?;
     let out: Vec<Value> = rows.iter().map(mapping_json).collect();
     Ok(Json(json!(out)))
 }
@@ -309,9 +332,10 @@ pub async fn list_directory_domains(
     .await?
     .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
-    let rows = sqlx::query(&format!(
-        "{} WHERE dm.directory_id = $1 ORDER BY dm.created_at ASC",
-        SELECT_MAPPINGS
+    let rows = sqlx::query(concat!(
+        r#""#,
+        select_mappings!(),
+        r#" WHERE dm.directory_id = $1 ORDER BY dm.created_at ASC"#
     ))
     .bind(id)
     .fetch_all(&s.db)

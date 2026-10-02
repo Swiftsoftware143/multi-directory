@@ -20,6 +20,7 @@ mod providers;
 mod routes;
 mod security;
 mod state;
+mod system_tenant;
 mod template_engine;
 pub mod tracking_script;
 mod utils;

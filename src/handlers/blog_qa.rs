@@ -650,7 +650,7 @@ pub async fn list_keywords(
         data_query = data_query.bind(intent);
     }
     data_query = data_query.bind(per_page).bind(offset);
-    let keywords = data_query.fetch_all(&s.db).await.unwrap_or_default();
+    let keywords = data_query.fetch_all(&s.db).await?;
 
     Ok(Json(KeywordListResponse {
         keywords,

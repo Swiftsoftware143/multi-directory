@@ -489,7 +489,7 @@ pub async fn get_visitor_summary(State(s): State<AppState>) -> ApiResult<impl In
     // Locations
     let locations = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, i64)>(
         "SELECT city, region, country, COUNT(*) as count FROM visitors WHERE city IS NOT NULL GROUP BY city, region, country ORDER BY count DESC LIMIT 20"
-    ).fetch_all(&s.db).await.unwrap_or_default();
+    ).fetch_all(&s.db).await?;
 
     let locs: Vec<LocationCount> = locations
         .into_iter()
@@ -504,7 +504,7 @@ pub async fn get_visitor_summary(State(s): State<AppState>) -> ApiResult<impl In
     // Daily visitors last 30 days
     let daily = sqlx::query_as::<_, (String, i64)>(
         "SELECT to_char(started_at::date, 'YYYY-MM-DD') as date, COUNT(DISTINCT visitor_id) as count FROM visitor_sessions WHERE started_at >= NOW() - INTERVAL '30 days' GROUP BY started_at::date ORDER BY date"
-    ).fetch_all(&s.db).await.unwrap_or_default();
+    ).fetch_all(&s.db).await?;
 
     let days: Vec<DailyVisitorCount> = daily
         .into_iter()
@@ -633,7 +633,7 @@ pub async fn business_visitor_summary(
            GROUP BY ve.created_at::date ORDER BY date"#
     )
     .bind(business_id)
-    .fetch_all(&s.db).await.unwrap_or_default();
+    .fetch_all(&s.db).await?;
 
     let days: Vec<DailyVisitorCount> = daily
         .into_iter()

@@ -22,7 +22,11 @@ async fn footer_html(pool: &sqlx::PgPool) -> String {
 
     let rows = sqlx::query(
         "SELECT slug, title FROM zaarhub_legal_pages WHERE is_published = true AND show_in_footer = true ORDER BY display_order ASC, title ASC"
-    ).fetch_all(pool).await.unwrap_or_default();
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| eprintln!("b2b_ssr: footer legal-page links query failed: {e}"))
+    .unwrap_or_default();
 
     let mut links = String::from("<a href=\"/zaarhub\">Cities</a>");
     for r in &rows {
@@ -230,7 +234,11 @@ pub async fn render_coop_hub(State(state): State<AppState>) -> impl axum::respon
          LEFT JOIN businesses b ON g.founder_business_id = b.id \
          WHERE g.status != 'archived' \
          ORDER BY g.created_at DESC LIMIT 50"
-    ).fetch_all(&state.db).await.unwrap_or_default();
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| eprintln!("b2b_ssr: co-op hub groups query failed: {e}"))
+    .unwrap_or_default();
 
     let mut cards_html = String::new();
     for r in &rows {

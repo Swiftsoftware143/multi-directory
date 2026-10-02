@@ -255,7 +255,7 @@ pub async fn save_gplaces_key(
     .bind("google_places")
     .fetch_optional(&state.db)
     .await?
-    .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    .unwrap_or_else(crate::system_tenant::system_tenant_uuid);
 
     let label = payload
         .label

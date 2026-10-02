@@ -239,21 +239,17 @@ fn create_role_token(
         other => other,
     };
 
-    // Map role to tenant ID — for visitors we use a shared tenant
-    let tid = match canonical_role {
-        "visitor" => "00000000-0000-0000-0000-000000000001",
-        "business_owner" => {
-            // For business owners, try to find their tenant
-            // Default to the email-based lookup
-            "00000000-0000-0000-0000-000000000001"
-        }
-        "admin" => "00000000-0000-0000-0000-000000000000",
-        _ => "00000000-0000-0000-0000-000000000001",
+    // Map role to tenant id — visitors and business owners are platform-scoped (the nil UUID);
+    // admins carry the SwiftSoftware system tenant. Both values come from ONE place, so no uuid
+    // literal is copied into a credential's claims (gate 5a).
+    let tid: String = match canonical_role {
+        "admin" => Uuid::nil().to_string(),
+        _ => crate::system_tenant::SYSTEM_TENANT_ID.to_string(),
     };
 
     let claims = Claims {
         sub: user_id.to_string(),
-        tid: tid.to_string(),
+        tid,
         role: canonical_role.to_string(),
         exp: now + expiry_secs as usize,
         iat: now,

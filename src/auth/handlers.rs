@@ -209,7 +209,7 @@ pub async fn login(
             User {
                 id: vrow.try_get("id")?,
                 // Use the SwiftSoftware system tenant for visitor/business portal accounts
-                tenant_id: uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+                tenant_id: crate::system_tenant::system_tenant_uuid(),
                 email: vrow.try_get("email")?,
                 password_hash: vrow.try_get("password_hash")?,
                 name: vrow.try_get("name")?,

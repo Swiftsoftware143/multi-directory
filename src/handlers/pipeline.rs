@@ -352,7 +352,10 @@ pub async fn pipeline_ingest(
                 .bind(merged.get("rating").and_then(|v| v.as_f64()))
                 .bind(merged.get("review_count").and_then(|v| v.as_i64()).map(|v| v as i32))
                 .bind(existing)
-                .execute(&s.db).await.unwrap_or_default();
+                .execute(&s.db)
+                .await
+                .map_err(|e| eprintln!("pipeline: failed to update business {existing}: {e}"))
+                .unwrap_or_default();
                 updated += 1;
             } else {
                 skipped += 1;

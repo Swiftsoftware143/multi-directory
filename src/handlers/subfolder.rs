@@ -534,9 +534,23 @@ async fn list_businesses(
 ) -> Vec<BizCard> {
     const COLS: &str = "b.id, b.name, b.slug, b.description, b.logo_url, b.rating, \
                         b.review_count, b.address, b.city, b.state, dc.name AS category";
+
+    /// Compile-time form of `COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
+    /// const, so the same bytes are published as a macro and the statements that use it are
+    /// assembled entirely at compile time (a run-time build is the defect the rule names).
+    /// MUST stay byte-identical to `COLS`.
+    macro_rules! cols_lit {
+        () => {
+            "b.id, b.name, b.slug, b.description, b.logo_url, b.rating, \
+                        b.review_count, b.address, b.city, b.state, dc.name AS category"
+        };
+    }
+
     let rows = if let Some(cat) = category {
-        sqlx::query(&format!(
-            "SELECT {COLS} FROM businesses b \
+        sqlx::query(concat!(
+            "SELECT ",
+            cols_lit!(),
+            " FROM businesses b \
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
              WHERE b.directory_id = $1 AND b.is_active = true \
                AND lower(coalesce(dc.name,'')) = lower($2) \
@@ -550,8 +564,10 @@ async fn list_businesses(
         .fetch_all(pool)
         .await
     } else {
-        sqlx::query(&format!(
-            "SELECT {COLS} FROM businesses b \
+        sqlx::query(concat!(
+            "SELECT ",
+            cols_lit!(),
+            " FROM businesses b \
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
              WHERE b.directory_id = $1 AND b.is_active = true \
              ORDER BY b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \

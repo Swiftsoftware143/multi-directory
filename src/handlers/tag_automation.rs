@@ -732,7 +732,7 @@ pub async fn bulk_create_tracked_links(
             r#"INSERT INTO tracked_links (tenant_id, name, url, utm_source, utm_medium, utm_campaign, utm_content, short_code)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id"#
         )
-        .bind("00000000-0000-0000-0000-000000000000") // placeholder tenant — caller should set
+        .bind(Uuid::nil()) // placeholder tenant — caller should set
         .bind(&item.name)
         .bind(&item.url)
         .bind(&item.utm_source)

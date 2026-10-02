@@ -2103,27 +2103,33 @@ pub async fn list_approvals(
     let status_filter = q.get("status").map(|s| s.as_str()).unwrap_or("pending");
     let item_type = q.get("type");
 
-    let mut sql = String::from(
+    // Both statements are COMPILE-TIME literals and the filter is BOUND, never interpolated:
+    // `type` is a raw URL query parameter, so the old `format!(" AND aq.item_type = '{}'", itype)`
+    // let a caller inject SQL text (kanban t_9e938ad1, gate rule 5d / class 14 — found by reading
+    // every 5d site, not by the scanner, which only saw the statement literal here).
+    let sql: &str = if item_type.is_some() {
         r#"SELECT aq.id, aq.item_type, aq.item_id, aq.submitted_at, '{}'::jsonb as details
            FROM approval_queue aq
-           WHERE aq.directory_id = $1 AND aq.status = $2"#,
-    );
-    if let Some(itype) = item_type {
-        sql.push_str(&format!(" AND aq.item_type = '{}'", itype));
-    }
-    sql.push_str(" ORDER BY aq.submitted_at DESC LIMIT 50");
+           WHERE aq.directory_id = $1 AND aq.status = $2 AND aq.item_type = $3
+           ORDER BY aq.submitted_at DESC LIMIT 50"#
+    } else {
+        r#"SELECT aq.id, aq.item_type, aq.item_id, aq.submitted_at, '{}'::jsonb as details
+           FROM approval_queue aq
+           WHERE aq.directory_id = $1 AND aq.status = $2
+           ORDER BY aq.submitted_at DESC LIMIT 50"#
+    };
 
+    let mut q = sqlx::query_as(&sql).bind(dir_uuid).bind(status_filter);
+    if let Some(itype) = item_type {
+        q = q.bind(itype);
+    }
     let approvals: Vec<(
         Uuid,
         String,
         Uuid,
         chrono::DateTime<chrono::Utc>,
         serde_json::Value,
-    )> = sqlx::query_as(&sql)
-        .bind(dir_uuid)
-        .bind(status_filter)
-        .fetch_all(&s.db)
-        .await?;
+    )> = q.fetch_all(&s.db).await?;
 
     let result: Vec<ApprovalItem> = approvals
         .into_iter()

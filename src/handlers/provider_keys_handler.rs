@@ -199,6 +199,20 @@ const SELECT_KEYS: &str = "SELECT id, tenant_id, provider, label, is_default, \
         created_at::text, updated_at::text \
      FROM provider_keys";
 
+/// Compile-time form of `SELECT_KEYS` for gate rule 5d: `concat!` needs a LITERAL, not a
+/// const, so the same bytes are published as a macro and the statements that use it are
+/// assembled entirely at compile time (a run-time build is the defect the rule names).
+/// MUST stay byte-identical to `SELECT_KEYS`.
+macro_rules! select_keys {
+    () => {
+        "SELECT id, tenant_id, provider, label, is_default, \
+        api_key, base_url, \
+        metadata, is_active, scope, network_id, directory_id, \
+        created_at::text, updated_at::text \
+     FROM provider_keys"
+    };
+}
+
 /// Resolve "the key for provider X" for the SYSTEM tenant (platform-wide keys),
 /// falling back to any tenant that has an active key.
 /// Default row wins; otherwise the most recently updated active row.
@@ -206,11 +220,12 @@ pub async fn resolve_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<S
     let stored = sqlx::query_scalar::<_, String>(
         r#"SELECT api_key FROM provider_keys
            WHERE provider = $1 AND is_active = true
-           ORDER BY (tenant_id = '00000000-0000-0000-0000-000000000000'::uuid) DESC,
+           ORDER BY (tenant_id = $2) DESC,
                     is_default DESC, updated_at DESC
            LIMIT 1"#,
     )
     .bind(provider)
+    .bind(uuid::Uuid::nil())
     .fetch_optional(db)
     .await
     .ok()
@@ -229,12 +244,13 @@ pub async fn resolve_provider_key_for_tenant(
     let stored = sqlx::query_scalar::<_, String>(
         r#"SELECT api_key FROM provider_keys
            WHERE provider = $1 AND is_active = true
-             AND (tenant_id = $2 OR tenant_id = '00000000-0000-0000-0000-000000000000'::uuid)
+             AND (tenant_id = $2 OR tenant_id = $3)
            ORDER BY (tenant_id = $2) DESC, is_default DESC, updated_at DESC
            LIMIT 1"#,
     )
     .bind(provider)
     .bind(tenant_id)
+    .bind(uuid::Uuid::nil())
     .fetch_optional(db)
     .await
     .ok()
@@ -263,10 +279,11 @@ async fn fetch_keys(
     db: &sqlx::PgPool,
     tenant_id: Uuid,
 ) -> Result<Vec<ProviderKeyResponse>, AppError> {
-    let sql = format!(
-        "{} WHERE tenant_id = $1 \
-         ORDER BY provider ASC, is_default DESC, updated_at DESC",
-        SELECT_KEYS
+    let sql = concat!(
+        "",
+        select_keys!(),
+        " WHERE tenant_id = $1 \
+         ORDER BY provider ASC, is_default DESC, updated_at DESC"
     );
     let rows = sqlx::query(&sql).bind(tenant_id).fetch_all(db).await?;
     let mut out = Vec::with_capacity(rows.len());
@@ -414,8 +431,8 @@ pub async fn upsert_provider_key(
     // is missing this errors, it never stores the value the customer typed (migration 095's
     // CHECK constraint refuses a plaintext write anyway).
     let stored_api_key = keycrypto::encrypt_for_storage(&s.db, &req.api_key).await?;
-    let sql = format!(
-        "INSERT INTO provider_keys (tenant_id, provider, label, api_key, base_url, metadata, is_active, scope, is_default, network_id, directory_id) \
+    // A plain literal, not `format!`: the statement has no placeholders to fill (gate rule 5d).
+    let sql = "INSERT INTO provider_keys (tenant_id, provider, label, api_key, base_url, metadata, is_active, scope, is_default, network_id, directory_id) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
          ON CONFLICT (tenant_id, provider, label) \
          DO UPDATE SET api_key = EXCLUDED.api_key, \
@@ -430,8 +447,7 @@ pub async fn upsert_provider_key(
          RETURNING id, tenant_id, provider, label, is_default, \
                    api_key, base_url, \
                    metadata, is_active, scope, network_id, directory_id, \
-                   created_at::text, updated_at::text"
-    );
+                   created_at::text, updated_at::text";
     let row = sqlx::query(&sql)
         .bind(tenant_id)
         .bind(&req.provider)

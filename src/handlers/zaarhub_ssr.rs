@@ -23,7 +23,11 @@ async fn footer_html(pool: &sqlx::PgPool) -> String {
 
     let rows = sqlx::query(
         "SELECT slug, title FROM zaarhub_legal_pages WHERE is_published = true AND show_in_footer = true ORDER BY display_order ASC, title ASC"
-    ).fetch_all(pool).await.unwrap_or_default();
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| eprintln!("zaarhub_ssr: footer legal-page links query failed: {e}"))
+    .unwrap_or_default();
 
     let mut links = String::from("<a href=\"/zaarhub\">Cities</a>");
     for r in &rows {
@@ -96,7 +100,12 @@ pub async fn render_city_page(
          FROM business_listings bl \
          WHERE bl.city_page_id = $1 AND bl.is_editors_pick = true \
          ORDER BY bl.rating DESC NULLS LAST LIMIT 4"
-    ).bind(city_page_id).fetch_all(&state.db).await.unwrap_or_default();
+    )
+    .bind(city_page_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| eprintln!("zaarhub_ssr: city editor's-picks query failed: {e}"))
+    .unwrap_or_default();
 
     let mut city_picks_html = String::new();
     for p in &city_picks {
@@ -373,7 +382,11 @@ pub async fn render_cities_index(
          JOIN city_pages cp ON bl.city_page_id = cp.id \
          WHERE bl.is_editors_pick = true \
          ORDER BY bl.rating DESC NULLS LAST LIMIT 6"
-    ).fetch_all(&state.db).await.unwrap_or_default();
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| eprintln!("zaarhub_ssr: homepage editor's-picks query failed: {e}"))
+    .unwrap_or_default();
 
     let mut picks_html = String::new();
     for p in &pick_rows {

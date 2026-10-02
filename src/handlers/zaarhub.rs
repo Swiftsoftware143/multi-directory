@@ -880,8 +880,7 @@ pub async fn get_city_page(
                   c.icon, c.group_name
            FROM directory_categories c
            WHERE c.slug IN ('fitness-studio','day-spa','dentist','real-estate-agent','hair-salon','auto-repair','plumber')
-              OR c.parent_id = '8ad7286b-8be1-4224-b1d6-04dec038ac81'   -- Fine Dining children
-              OR c.parent_id = '3f44c007-771d-42a9-940d-227f46171cbf'   -- Food & Drink children
+              OR c.parent_id IN (SELECT id FROM directory_categories WHERE slug IN ('fine-dining','food-drink'))  -- Fine Dining / Food & Drink children (resolved by slug, never a copied id)
               OR EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true)
            ORDER BY
              CASE c.slug

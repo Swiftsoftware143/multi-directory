@@ -70,6 +70,19 @@ const TRANSFER_COLUMNS: &str =
      t.to_email, t.fee_cents, t.currency, t.fee_direction, t.host_stays, t.target_directory_id, \
      t.status, t.notes, t.requested_by, t.created_at, t.updated_at, t.decided_at";
 
+/// Compile-time form of `TRANSFER_COLUMNS` for gate rule 5d: `concat!` needs a LITERAL, not a
+/// const, so the same bytes are published as a macro and the statements that use it are
+/// assembled entirely at compile time (a run-time build is the defect the rule names).
+/// MUST stay byte-identical to `TRANSFER_COLUMNS`.
+macro_rules! transfer_columns {
+    () => {
+        "t.id, t.business_id, b.name AS business_name, b.slug AS business_slug, \
+     b.directory_id, t.from_tenant_id, t.from_user_id, t.from_email, t.to_tenant_id, t.to_user_id, \
+     t.to_email, t.fee_cents, t.currency, t.fee_direction, t.host_stays, t.target_directory_id, \
+     t.status, t.notes, t.requested_by, t.created_at, t.updated_at, t.decided_at"
+    };
+}
+
 fn is_admin(claims: &Claims) -> bool {
     // Round 13 IDOR audit: `admin` is the per-tenant role every business owner holds,
     // so treating it as "may act on anyone's transfer" let any tenant read, re-price,
@@ -206,9 +219,10 @@ fn sanitize_fee_direction(v: Option<String>, fallback: &str) -> String {
 }
 
 async fn fetch_transfer(db: &sqlx::PgPool, id: Uuid) -> ApiResult<Transfer> {
-    let sql = format!(
-        "SELECT {} FROM business_transfers t JOIN businesses b ON b.id = t.business_id WHERE t.id = $1",
-        TRANSFER_COLUMNS
+    let sql = concat!(
+        "SELECT ",
+        transfer_columns!(),
+        " FROM business_transfers t JOIN businesses b ON b.id = t.business_id WHERE t.id = $1"
     );
     sqlx::query_as::<_, Transfer>(&sql)
         .bind(id)
@@ -388,8 +402,7 @@ pub async fn list_transfers(
     let scope = q.scope.clone().unwrap_or_else(|| "all".to_string());
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
 
-    let sql = format!(
-        "SELECT {} FROM business_transfers t JOIN businesses b ON b.id = t.business_id \
+    let sql = concat!("SELECT ", transfer_columns!(), " FROM business_transfers t JOIN businesses b ON b.id = t.business_id \
          WHERE ($1::boolean \
                 OR t.to_user_id = $2 OR lower(coalesce(t.to_email, '')) = $3 \
                 OR t.from_user_id = $2 OR lower(coalesce(t.from_email, '')) = $3) \
@@ -402,9 +415,7 @@ pub async fn list_transfers(
            AND ($5::text IS NULL OR t.status = $5) \
            AND ($6::uuid IS NULL OR t.business_id = $6) \
            AND ($7::uuid IS NULL OR b.directory_id = $7) \
-         ORDER BY t.created_at DESC LIMIT $8",
-        TRANSFER_COLUMNS
-    );
+         ORDER BY t.created_at DESC LIMIT $8");
 
     let rows = sqlx::query_as::<_, Transfer>(&sql)
         .bind(admin)

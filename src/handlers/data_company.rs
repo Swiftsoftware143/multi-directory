@@ -449,7 +449,7 @@ pub async fn yelp_details(
     Ok(Json(body))
 }
 
-/// Get Yelp API key — per-directory with env var fallback
+/// Get Yelp API key — per-directory config, then the panel's provider key (never an env var)
 pub(crate) async fn get_yelp_api_key(
     state: &AppState,
     directory_id: Option<&str>,
@@ -485,20 +485,20 @@ pub(crate) async fn get_yelp_api_key(
         return Ok(key.clone());
     }
 
-    // Last fallback to env var. A missing provider key is a CONFIGURATION gap, not a
-    // crash: answer with an actionable message naming the screen that fixes it.
-    std::env::var("YELP_API_KEY").map_err(|_| {
-        tracing::warn!(
-            "yelp: no API key found (directory api_config.yelp_api_key, provider key 'yelp', or YELP_API_KEY)"
-        );
-        AppError::BadRequest(
-            "Yelp is not configured yet. Add your Yelp API key in the admin panel > Integrations > Yelp, then retry."
-                .to_string(),
-        )
-    })
+    // NO env fallback (RULES Part 1 / David's rule): a server-wide YELP_API_KEY is not a
+    // tenant-scoped credential and reading it was the hardcoded-key path the panel exists to
+    // replace. A missing provider key is a CONFIGURATION gap, not a crash: answer with an
+    // actionable message naming the screen that fixes it.
+    tracing::warn!(
+        "yelp: no API key found (directory api_config.yelp_api_key or provider key 'yelp')"
+    );
+    Err(AppError::BadRequest(
+        "Yelp is not configured yet. Add your Yelp API key in the admin panel > Integrations > Yelp, then retry."
+            .to_string(),
+    ))
 }
 
-/// Get Google Places API key — per-directory with env var fallback
+/// Get Google Places API key — per-directory config, then the panel's provider key (never an env var)
 pub(crate) async fn get_google_api_key(
     state: &AppState,
     directory_id: Option<&str>,
@@ -534,11 +534,18 @@ pub(crate) async fn get_google_api_key(
         return Ok(key.clone());
     }
 
-    std::env::var("GOOGLE_PLACES_API_KEY").map_err(|_| {
-        AppError::Internal(
-            "GOOGLE_PLACES_API_KEY not configured (set via Provider Keys or env var)".to_string(),
-        )
-    })
+    // NO env fallback (RULES Part 1 / David's rule): the active key lives in provider_keys,
+    // scoped per network or directory (here: the network-scoped LEGACY Places key the app's
+    // legacy-endpoint calls need). Reading GOOGLE_PLACES_API_KEY from the server environment was
+    // the root cause of "Google search broken while the panel key was valid" — a stale/absent env
+    // var silently shadowed a working panel key. Fail loudly by name instead.
+    tracing::warn!(
+        "google_places: no API key found (directory api_config.google_places_api_key or provider key 'google_places')"
+    );
+    Err(AppError::Internal(
+        "Google Places is not configured yet. Add your Google Places API key in the admin panel > Integrations (Provider Keys), then retry."
+            .to_string(),
+    ))
 }
 
 #[derive(Debug, Deserialize)]

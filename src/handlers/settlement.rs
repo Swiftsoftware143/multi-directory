@@ -554,6 +554,20 @@ const RUN_COLS: &str = "id, network_id, period_key, period_start, period_end, st
     platform_spread_cents, provider, provider_ref, provider_message, notes, created_at, completed_at, \
     triggered_by, statements_sent_at, statements_sent, statements_skipped, statements_message";
 
+/// Compile-time form of `RUN_COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
+/// const, so the same bytes are published as a macro and the statements that use it are
+/// assembled entirely at compile time (a run-time build is the defect the rule names).
+/// MUST stay byte-identical to `RUN_COLS`.
+macro_rules! run_cols {
+    () => {
+        "id, network_id, period_key, period_start, period_end, status, currency, \
+    rate_issue_per_point, rate_redeem_per_point, min_payout_cents, cycle_day, \
+    total_points_issued, total_points_redeemed, total_invoiced_cents, total_payout_cents, \
+    platform_spread_cents, provider, provider_ref, provider_message, notes, created_at, completed_at, \
+    triggered_by, statements_sent_at, statements_sent, statements_skipped, statements_message"
+    };
+}
+
 /// The outcome of one settlement attempt — the single result type shared by the
 /// manual endpoint and the scheduler, so the two can never report differently.
 #[derive(Debug, Serialize)]
@@ -692,8 +706,10 @@ pub async fn execute_settlement(
 
     let Some(run_id) = inserted else {
         // Period already settled — return the existing run, do not touch the ledger.
-        let existing = sqlx::query_as::<_, RunRow>(&format!(
-            "SELECT {RUN_COLS} FROM settlement_runs WHERE network_id = $1 AND period_start = $2 AND period_end = $3"
+        let existing = sqlx::query_as::<_, RunRow>(concat!(
+            "SELECT ",
+            run_cols!(),
+            " FROM settlement_runs WHERE network_id = $1 AND period_start = $2 AND period_end = $3"
         ))
         .bind(network_id)
         .bind(start)
@@ -876,8 +892,10 @@ pub async fn execute_settlement(
     .execute(db)
     .await?;
 
-    let run = sqlx::query_as::<_, RunRow>(&format!(
-        "SELECT {RUN_COLS} FROM settlement_runs WHERE id = $1"
+    let run = sqlx::query_as::<_, RunRow>(concat!(
+        "SELECT ",
+        run_cols!(),
+        " FROM settlement_runs WHERE id = $1"
     ))
     .bind(run_id)
     .fetch_optional(db)
@@ -982,8 +1000,10 @@ pub async fn settlement_runs(
     let network_id = resolve_network(&s.db, &slug).await?;
     let limit = q.limit.unwrap_or(24).clamp(1, 200);
 
-    let runs = sqlx::query_as::<_, RunRow>(&format!(
-        "SELECT {RUN_COLS} FROM settlement_runs WHERE network_id = $1 ORDER BY period_start DESC LIMIT $2"
+    let runs = sqlx::query_as::<_, RunRow>(concat!(
+        "SELECT ",
+        run_cols!(),
+        " FROM settlement_runs WHERE network_id = $1 ORDER BY period_start DESC LIMIT $2"
     ))
     .bind(network_id)
     .bind(limit)
@@ -1035,8 +1055,10 @@ pub async fn settlement_statements(
 ) -> ApiResult<impl IntoResponse> {
     let network_id = resolve_network(&s.db, &slug).await?;
 
-    let run = sqlx::query_as::<_, RunRow>(&format!(
-        "SELECT {RUN_COLS} FROM settlement_runs WHERE id = $1 AND network_id = $2"
+    let run = sqlx::query_as::<_, RunRow>(concat!(
+        "SELECT ",
+        run_cols!(),
+        " FROM settlement_runs WHERE id = $1 AND network_id = $2"
     ))
     .bind(run_id)
     .bind(network_id)

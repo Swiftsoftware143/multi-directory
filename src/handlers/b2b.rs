@@ -356,7 +356,7 @@ pub async fn b2b_register(
     let now_ts = Utc::now().timestamp() as usize;
     let claims = Claims {
         sub: visitor.id.to_string(),
-        tid: "00000000-0000-0000-0000-000000000000".to_string(),
+        tid: Uuid::nil().to_string(),
         role: "visitor".to_string(),
         exp: now_ts + s.config.jwt_access_expiry as usize,
         iat: now_ts,

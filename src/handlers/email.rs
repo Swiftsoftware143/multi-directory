@@ -100,9 +100,21 @@ pub struct EmailSignature {
 const TEMPLATE_COLS: &str =
     "id, name, subject, body, body_text, variables, category, directory_id, created_at, updated_at";
 
+/// Compile-time form of `TEMPLATE_COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
+/// const, so the same bytes are published as a macro and the statements that use it are
+/// assembled entirely at compile time (a run-time build is the defect the rule names).
+/// MUST stay byte-identical to `TEMPLATE_COLS`.
+macro_rules! template_cols {
+    () => {
+        "id, name, subject, body, body_text, variables, category, directory_id, created_at, updated_at"
+    };
+}
+
 pub async fn list_templates(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let templates = sqlx::query_as::<_, EmailTemplate>(&format!(
-        "SELECT {TEMPLATE_COLS} FROM email_templates ORDER BY created_at DESC"
+    let templates = sqlx::query_as::<_, EmailTemplate>(concat!(
+        "SELECT ",
+        template_cols!(),
+        " FROM email_templates ORDER BY created_at DESC"
     ))
     .fetch_all(&state.db)
     .await?;
@@ -113,8 +125,10 @@ pub async fn get_template(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let template = sqlx::query_as::<_, EmailTemplate>(&format!(
-        "SELECT {TEMPLATE_COLS} FROM email_templates WHERE id = $1"
+    let template = sqlx::query_as::<_, EmailTemplate>(concat!(
+        "SELECT ",
+        template_cols!(),
+        " FROM email_templates WHERE id = $1"
     ))
     .bind(id)
     .fetch_optional(&state.db)
@@ -128,7 +142,7 @@ pub async fn create_template(
     Json(body): Json<CreateTemplateRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let template = sqlx::query_as::<_, EmailTemplate>(
-        &format!("INSERT INTO email_templates (name, subject, body, body_text, variables, category, directory_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {TEMPLATE_COLS}")
+        concat!("INSERT INTO email_templates (name, subject, body, body_text, variables, category, directory_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ", template_cols!(), "")
     )
     .bind(&body.name).bind(&body.subject).bind(&body.body).bind(&body.body_text)
     .bind(&body.variables).bind(&body.category).bind(body.directory_id)
@@ -150,7 +164,7 @@ pub async fn update_template(
 
     // Build dynamic UPDATE — only include fields that were actually sent
     // Use COALESCE so unset fields keep their current value
-    let updated = sqlx::query_as::<_, EmailTemplate>(&format!(
+    let updated = sqlx::query_as::<_, EmailTemplate>(concat!(
         "UPDATE email_templates SET \
              name       = COALESCE($1, name), \
              subject    = COALESCE($2, subject), \
@@ -159,7 +173,9 @@ pub async fn update_template(
              variables  = COALESCE($5, variables), \
              category   = COALESCE($6, category), \
              directory_id = COALESCE($7, directory_id) \
-             WHERE id = $8 RETURNING {TEMPLATE_COLS}"
+             WHERE id = $8 RETURNING ",
+        template_cols!(),
+        ""
     ))
     .bind(&body.name)
     .bind(&body.subject)
@@ -192,9 +208,21 @@ pub async fn delete_template(
 
 const CAMP_COLS: &str = "id, name, template_id, recipient_filter, sent_count, opened_count, status, scheduled_at, sent_at, directory_id, created_at";
 
+/// Compile-time form of `CAMP_COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
+/// const, so the same bytes are published as a macro and the statements that use it are
+/// assembled entirely at compile time (a run-time build is the defect the rule names).
+/// MUST stay byte-identical to `CAMP_COLS`.
+macro_rules! camp_cols {
+    () => {
+        "id, name, template_id, recipient_filter, sent_count, opened_count, status, scheduled_at, sent_at, directory_id, created_at"
+    };
+}
+
 pub async fn list_campaigns(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let campaigns = sqlx::query_as::<_, EmailCampaign>(&format!(
-        "SELECT {CAMP_COLS} FROM email_campaigns ORDER BY created_at DESC"
+    let campaigns = sqlx::query_as::<_, EmailCampaign>(concat!(
+        "SELECT ",
+        camp_cols!(),
+        " FROM email_campaigns ORDER BY created_at DESC"
     ))
     .fetch_all(&state.db)
     .await?;
@@ -205,8 +233,10 @@ pub async fn get_campaign(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let campaign = sqlx::query_as::<_, EmailCampaign>(&format!(
-        "SELECT {CAMP_COLS} FROM email_campaigns WHERE id = $1"
+    let campaign = sqlx::query_as::<_, EmailCampaign>(concat!(
+        "SELECT ",
+        camp_cols!(),
+        " FROM email_campaigns WHERE id = $1"
     ))
     .bind(id)
     .fetch_optional(&state.db)
@@ -220,7 +250,7 @@ pub async fn create_campaign(
     Json(body): Json<CreateCampaignRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let campaign = sqlx::query_as::<_, EmailCampaign>(
-        &format!("INSERT INTO email_campaigns (name, template_id, recipient_filter, status, scheduled_at, directory_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING {CAMP_COLS}")
+        concat!("INSERT INTO email_campaigns (name, template_id, recipient_filter, status, scheduled_at, directory_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING ", camp_cols!(), "")
     )
     .bind(&body.name).bind(body.template_id).bind(&body.recipient_filter)
     .bind(&body.status).bind(body.scheduled_at).bind(body.directory_id)
@@ -240,7 +270,7 @@ pub async fn update_campaign(
         .await?
         .ok_or_else(|| AppError::NotFound(String::from("Email campaign not found")))?;
 
-    let updated = sqlx::query_as::<_, EmailCampaign>(&format!(
+    let updated = sqlx::query_as::<_, EmailCampaign>(concat!(
         "UPDATE email_campaigns SET \
              name = COALESCE($1, name), \
              template_id = COALESCE($2, template_id), \
@@ -248,7 +278,9 @@ pub async fn update_campaign(
              status = COALESCE($4, status), \
              scheduled_at = COALESCE($5, scheduled_at), \
              directory_id = COALESCE($6, directory_id) \
-             WHERE id = $7 RETURNING {CAMP_COLS}"
+             WHERE id = $7 RETURNING ",
+        camp_cols!(),
+        ""
     ))
     .bind(&body.name)
     .bind(body.template_id)
@@ -280,8 +312,10 @@ pub async fn send_campaign(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let campaign = sqlx::query_as::<_, EmailCampaign>(&format!(
-        "SELECT {CAMP_COLS} FROM email_campaigns WHERE id = $1"
+    let campaign = sqlx::query_as::<_, EmailCampaign>(concat!(
+        "SELECT ",
+        camp_cols!(),
+        " FROM email_campaigns WHERE id = $1"
     ))
     .bind(id)
     .fetch_optional(&state.db)
@@ -300,7 +334,7 @@ pub async fn send_campaign(
     }
 
     let updated = sqlx::query_as::<_, EmailCampaign>(
-        &format!("UPDATE email_campaigns SET status = 'sent', sent_count = COALESCE(sent_count, 0) + 1, sent_at = NOW() WHERE id = $1 RETURNING {CAMP_COLS}")
+        concat!("UPDATE email_campaigns SET status = 'sent', sent_count = COALESCE(sent_count, 0) + 1, sent_at = NOW() WHERE id = $1 RETURNING ", camp_cols!(), "")
     )
     .bind(id)
     .fetch_one(&state.db)

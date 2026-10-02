@@ -1425,9 +1425,7 @@ async fn lead_tenant_candidates(
     // MultiDirectory is platform-operated: the Admin Panel Integration Center
     // writes provider_keys under the platform tenant (the same place the
     // google_places / mailgun rows live), so it is a real tenant candidate.
-    if let Ok(platform) = Uuid::parse_str("00000000-0000-0000-0000-000000000001") {
-        add(Some(platform), &mut out);
-    }
+    add(Some(crate::system_tenant::system_tenant_uuid()), &mut out);
     add(Some(Uuid::nil()), &mut out);
     out
 }
