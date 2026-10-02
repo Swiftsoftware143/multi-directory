@@ -13,6 +13,11 @@ pub struct AppConfig {
     pub template_dir: String,
     pub base_domain: String,
     pub admin_email: String,
+    /// How long the body of a request that carries one may take to arrive before the request is
+    /// answered `408` and its task, connection and partially-read body buffer are released
+    /// (kanban t_52b9f3c7, `src/body_deadline.rs`). `BODY_READ_DEADLINE_SECS` overrides; clamped
+    /// below so neither a typo nor a fat finger can shed real traffic.
+    pub body_read_deadline_secs: u64,
 }
 
 impl AppConfig {
@@ -60,6 +65,14 @@ impl AppConfig {
         let admin_email =
             std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@example.com".to_string());
 
+        // Request-body read deadline. 30 s by default; clamped to 5..=300 so a typo cannot turn
+        // every form submission into a 408 and a fat finger cannot restore the unbounded hold.
+        let body_read_deadline_secs = std::env::var("BODY_READ_DEADLINE_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .unwrap_or(crate::body_deadline::DEFAULT_BODY_READ_DEADLINE_SECS)
+            .clamp(5, 300);
+
         Self {
             host,
             port,
@@ -72,6 +85,7 @@ impl AppConfig {
             template_dir,
             base_domain,
             admin_email,
+            body_read_deadline_secs,
         }
     }
 }

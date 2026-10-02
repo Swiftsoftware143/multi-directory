@@ -1991,6 +1991,27 @@ pub fn create_router(s: AppState) -> Router {
             get(messaging::unread_count),
         )
         .route("/messages/:id/read", patch(messaging::mark_read))
+        // ── Request-body read deadline (kanban t_52b9f3c7) ──────────────────────────────────
+        // Mounted INNERMOST: the FIRST layer added to a router is the one closest to the
+        // handler, so `auth_guard` (added on the next line, after this one) stays OUTSIDE it.
+        // A request with no credential is therefore answered 401 without the server ever
+        // waiting for its body — proved live (probe leg O1: protected route, declared-but-absent
+        // body, no credential -> 401 at t+0.01 s, while the same request WITH a session is
+        // answered 408 at the bound).
+        //
+        // `route_layer` and not `layer`: it applies to the routes registered here (every
+        // /api/v1 route) but NOT to this router's fallback, so a request that matches no route
+        // is still answered at once (probe leg S3: POST /api/v1/<unmatched> -> 404 at
+        // t+0.01 s, never held).
+        //
+        // Scope is decided by the middleware itself (method + declared body), so a route inside
+        // this router that reads no body is passed through untouched — measured, not asserted
+        // (probe legs N1/N2/S1/S2/S4, scope-census.txt). The deadline is NOT mounted on the
+        // outer router at all (every route there is a GET) nor on the SPA fallback.
+        .route_layer(middleware::from_fn_with_state(
+            crate::body_deadline::BodyReadDeadline::from_secs(s.config.body_read_deadline_secs),
+            crate::body_deadline::body_read_deadline_middleware,
+        ))
         .layer(middleware::from_fn_with_state(s.clone(), auth_guard));
 
     // ??? Serve SPA frontend at root

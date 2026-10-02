@@ -7,6 +7,7 @@ mod reminders;
 
 mod auth;
 mod beacon_middleware;
+mod body_deadline;
 mod brand_theme;
 mod branding_injector;
 mod business_types;
@@ -75,6 +76,15 @@ async fn main() {
     }
 
     let state = AppState::new(pool, config.clone(), is_db);
+
+    // Say the inbound body bound out loud at boot (kanban t_52b9f3c7): a client that sends a
+    // request head with a declared body and then stops is answered 408 at this bound instead of
+    // parking a task, a connection and a partially-read body buffer for ever.
+    tracing::info!(
+        "Request body-read deadline: {}s on every route that reads a body, 408 above that \
+         (BODY_READ_DEADLINE_SECS overrides, clamped 5..=300)",
+        config.body_read_deadline_secs
+    );
 
     // Subfolder SEO: report any directory whose slug shadows a top-level route
     // (that directory can then not be reached at `/<slug>`). Silent when clean;
