@@ -61,45 +61,44 @@ fn unbound_placeholders<'a>(fields: &[(&'a str, &'a str)]) -> Vec<&'a str> {
 /// Send a password reset email — tries the DB template first, falls back to inline.
 pub async fn send_reset_email(db: &PgPool, to: &str, token: &str) -> Result<(), String> {
     // Try to load a DB template for password_reset
-    let (subject, html_body, text_body) =
-        match sqlx::query_as::<_, (String, String, Option<String>)>(
-            "SELECT subject, body, body_text FROM email_templates \
-         WHERE name = 'password_reset' AND directory_id IS NULL \
-         ORDER BY created_at DESC LIMIT 1",
-        )
-        .fetch_optional(db)
-        .await
-        {
-            Ok(Some(t)) => {
-                // Replace template variables
-                let subject = t.0.replace("{{token}}", token).replace("{{code}}", token);
-                let html = t.1.replace("{{token}}", token).replace("{{code}}", token);
-                let text =
-                    t.2.map(|t| t.replace("{{token}}", token).replace("{{code}}", token));
+    let (subject, html_body, text_body) = match crate::handlers::email::resolve_system_template(
+        db,
+        "password_reset",
+        None,
+    )
+    .await
+    {
+        Some((subj, html_src, text_src)) => {
+            // Replace template variables
+            let subject = subj.replace("{{token}}", token).replace("{{code}}", token);
+            let html = html_src
+                .replace("{{token}}", token)
+                .replace("{{code}}", token);
+            let text = text_src.map(|t| t.replace("{{token}}", token).replace("{{code}}", token));
 
-                // Anything the whitelist above could not bind is drift, and a half-substituted
-                // email is a defect, not a silent default: NAME it, loudly (t_ba93aea4).
-                let mut fields: Vec<(&str, &str)> =
-                    vec![("subject", subject.as_str()), ("html", html.as_str())];
-                if let Some(body) = text.as_deref() {
-                    fields.push(("body_text", body));
-                }
-                let missing = unbound_placeholders(&fields);
-                if !missing.is_empty() {
-                    tracing::warn!(
-                        placeholders = %missing.join(", "),
-                        "password_reset email template placeholder(s) left unsubstituted — the recipient would receive them literally. \
-                         email_templates(name='password_reset') must only use {{token}} and {{code}}; fix the row in the admin panel",
-                    );
-                }
-
-                (subject, html, text)
+            // Anything the whitelist above could not bind is drift, and a half-substituted
+            // email is a defect, not a silent default: NAME it, loudly (t_ba93aea4).
+            let mut fields: Vec<(&str, &str)> =
+                vec![("subject", subject.as_str()), ("html", html.as_str())];
+            if let Some(body) = text.as_deref() {
+                fields.push(("body_text", body));
             }
-            _ => {
-                // Fallback to inline template
-                let subject = "Password Reset Request — Multi-Directory".to_string();
-                let html = format!(
-                    r#"<!DOCTYPE html>
+            let missing = unbound_placeholders(&fields);
+            if !missing.is_empty() {
+                tracing::warn!(
+                    placeholders = %missing.join(", "),
+                    "password_reset email template placeholder(s) left unsubstituted — the recipient would receive them literally. \
+                     email_templates(name='password_reset') must only use {{token}} and {{code}}; fix the row in the admin panel",
+                );
+            }
+
+            (subject, html, text)
+        }
+        None => {
+            // Fallback to inline template
+            let subject = "Password Reset Request — Multi-Directory".to_string();
+            let html = format!(
+                r#"<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:20px;">
 <div style="background:#f8f9fa;border-radius:12px;padding:32px;text-align:center;">
@@ -112,21 +111,33 @@ pub async fn send_reset_email(db: &PgPool, to: &str, token: &str) -> Result<(), 
 </div>
 <p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:16px;">Multi-Directory — Powered by SwiftSoftware</p>
 </body></html>"#,
-                    token
-                );
-                let text = format!(
+                token
+            );
+            let text = format!(
                 "Password Reset\n\nYour reset code is: {}\n\nThis code expires in 1 hour.\nIf you didn't request this, ignore this email.\n\n- Multi-Directory",
                 token
             );
-                (subject, html, Some(text))
-            }
-        };
+            (subject, html, Some(text))
+        }
+    };
 
+    send_rendered_email(to, &subject, &html_body, text_body.as_deref()).await
+}
+
+/// Send an already-rendered message through the in-house email service. Returns Err with the
+/// service's own words on failure; a "skipped" (unconfigured transport) is an Err because the
+/// caller asked for mail and it was not delivered — it must never look like a success.
+pub async fn send_rendered_email(
+    to: &str,
+    subject: &str,
+    html: &str,
+    text: Option<&str>,
+) -> Result<(), String> {
     let payload = json!({
         "to": to,
         "subject": subject,
-        "html": html_body,
-        "text": text_body,
+        "html": html,
+        "text": text,
     });
 
     let client = reqwest::Client::new();

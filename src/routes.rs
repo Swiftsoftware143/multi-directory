@@ -752,6 +752,21 @@ pub fn create_router(s: AppState) -> Router {
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
+            "/email/placeholders",
+            get(email::list_placeholders)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/email/templates/preview",
+            post(email::preview_template)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/email/templates/:id/test-send",
+            post(email::test_send_template)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
             "/email/campaigns",
             get(email::list_campaigns).post(email::create_campaign),
         )

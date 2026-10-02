@@ -27,8 +27,77 @@ pub struct EmailTemplate {
     pub variables: Option<Vec<String>>,
     pub category: Option<String>,
     pub directory_id: Option<Uuid>,
+    pub network_id: Option<Uuid>,
+    pub event_key: Option<String>,
+    pub is_active: bool,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// The system events a template can be bound to. An admin marks the template that is used
+/// for each event; the send path resolves directory -> network -> global by `event_key`.
+pub const SYSTEM_EVENTS: &[(&str, &str)] = &[
+    ("password_reset", "Password reset code"),
+    ("claim_verification", "Business claim / verification code"),
+    ("signup_confirmation", "Signup confirmation / welcome"),
+    ("statement", "Monthly statement"),
+    ("notification", "General notification"),
+    ("dashboard_reminder", "Inactivity dashboard reminder"),
+];
+
+/// Every `{{placeholder}}` the system can actually bind. A template containing a name that
+/// is not on this list is refused on save — the guard against the literal
+/// `{{directory_name}}` that once reached a customer (kanban t_ba93aea4).
+pub const KNOWN_PLACEHOLDERS: &[(&str, &str)] = &[
+    ("code", "One-time code (password reset, verification)"),
+    ("token", "One-time token / reset link token"),
+    ("reset_link", "Full password-reset URL"),
+    ("name", "Recipient's display name"),
+    ("email", "Recipient's email address"),
+    ("business_name", "Business name"),
+    ("business_slug", "Business URL slug"),
+    ("business_url", "Business page URL"),
+    ("owner_name", "Business owner's name"),
+    ("directory_name", "Directory / city name"),
+    ("directory_slug", "Directory / city slug"),
+    ("dashboard_url", "Business dashboard URL"),
+    ("review_link", "Leave-a-review URL"),
+    ("unsubscribe_link", "Unsubscribe URL"),
+    ("unsubscribe_url", "Unsubscribe URL"),
+    ("site_url", "Directory site URL"),
+    ("year", "Current year"),
+    ("primary_color", "Brand primary colour"),
+    ("accent_color", "Brand accent colour"),
+    ("background_color", "Brand background colour"),
+    ("text_color", "Brand text colour"),
+];
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTemplateRequest {
+    pub name: String,
+    pub subject: String,
+    pub body: String,              // HTML
+    pub body_text: Option<String>, // plain-text fallback
+    pub variables: Option<Vec<String>>,
+    pub category: Option<String>,
+    pub directory_id: Option<Uuid>,
+    pub network_id: Option<Uuid>,
+    pub event_key: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTemplateRequest {
+    pub name: Option<String>,
+    pub subject: Option<String>,
+    pub body: Option<String>,
+    pub body_text: Option<String>,
+    pub variables: Option<Vec<String>>,
+    pub category: Option<String>,
+    pub directory_id: Option<Uuid>,
+    pub network_id: Option<Uuid>,
+    pub event_key: Option<String>,
+    pub is_active: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -44,28 +113,6 @@ pub struct EmailCampaign {
     pub sent_at: Option<DateTime<Utc>>,
     pub directory_id: Option<Uuid>,
     pub created_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreateTemplateRequest {
-    pub name: String,
-    pub subject: String,
-    pub body: String,              // HTML
-    pub body_text: Option<String>, // plain-text fallback
-    pub variables: Option<Vec<String>>,
-    pub category: Option<String>,
-    pub directory_id: Option<Uuid>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateTemplateRequest {
-    pub name: Option<String>,
-    pub subject: Option<String>,
-    pub body: Option<String>,
-    pub body_text: Option<String>,
-    pub variables: Option<Vec<String>>,
-    pub category: Option<String>,
-    pub directory_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,8 +144,7 @@ pub struct EmailSignature {
 
 // ==================== Template Handlers ====================
 
-const TEMPLATE_COLS: &str =
-    "id, name, subject, body, body_text, variables, category, directory_id, created_at, updated_at";
+const TEMPLATE_COLS: &str = "id, name, subject, body, body_text, variables, category, directory_id, network_id, event_key, is_active, created_at, updated_at";
 
 /// Compile-time form of `TEMPLATE_COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
 /// const, so the same bytes are published as a macro and the statements that use it are
@@ -106,7 +152,7 @@ const TEMPLATE_COLS: &str =
 /// MUST stay byte-identical to `TEMPLATE_COLS`.
 macro_rules! template_cols {
     () => {
-        "id, name, subject, body, body_text, variables, category, directory_id, created_at, updated_at"
+        "id, name, subject, body, body_text, variables, category, directory_id, network_id, event_key, is_active, created_at, updated_at"
     };
 }
 
@@ -141,11 +187,23 @@ pub async fn create_template(
     State(state): State<AppState>,
     Json(body): Json<CreateTemplateRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Refuse a template that uses a placeholder the system cannot bind. This is the guard that
+    // stops a literal `{{directory_name}}` being mailed to a customer (kanban t_ba93aea4).
+    validate_placeholders(
+        &[("subject", &body.subject), ("body", &body.body)],
+        body.body_text.as_deref(),
+    )?;
+
+    if let Some(ref ev) = body.event_key {
+        validate_event_key(ev)?;
+    }
+
     let template = sqlx::query_as::<_, EmailTemplate>(
-        concat!("INSERT INTO email_templates (name, subject, body, body_text, variables, category, directory_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ", template_cols!(), "")
+        concat!("INSERT INTO email_templates (name, subject, body, body_text, variables, category, directory_id, network_id, event_key, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ", template_cols!(), "")
     )
     .bind(&body.name).bind(&body.subject).bind(&body.body).bind(&body.body_text)
     .bind(&body.variables).bind(&body.category).bind(body.directory_id)
+    .bind(body.network_id).bind(&body.event_key).bind(body.is_active.unwrap_or(true))
     .fetch_one(&state.db)
     .await?;
     Ok((StatusCode::CREATED, Json(template)))
@@ -156,11 +214,24 @@ pub async fn update_template(
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateTemplateRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let _existing = sqlx::query_scalar::<_, Uuid>("SELECT id FROM email_templates WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(String::from("Email template not found")))?;
+    // Load current subject/body/body_text so the guard validates the values that will actually
+    // be stored (sent fields override the stored ones; the rest stay as they are).
+    let current = sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT subject, body, body_text FROM email_templates WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound(String::from("Email template not found")))?;
+
+    let subject = body.subject.clone().unwrap_or(current.0);
+    let html = body.body.clone().unwrap_or(current.1);
+    let text = body.body_text.clone().or(current.2);
+    validate_placeholders(&[("subject", &subject), ("body", &html)], text.as_deref())?;
+
+    if let Some(ref ev) = body.event_key {
+        validate_event_key(ev)?;
+    }
 
     // Build dynamic UPDATE — only include fields that were actually sent
     // Use COALESCE so unset fields keep their current value
@@ -172,8 +243,12 @@ pub async fn update_template(
              body_text  = COALESCE($4, body_text), \
              variables  = COALESCE($5, variables), \
              category   = COALESCE($6, category), \
-             directory_id = COALESCE($7, directory_id) \
-             WHERE id = $8 RETURNING ",
+             directory_id = COALESCE($7, directory_id), \
+             network_id = COALESCE($8, network_id), \
+             event_key  = COALESCE($9, event_key), \
+             is_active  = COALESCE($10, is_active), \
+             updated_at = NOW() \
+             WHERE id = $11 RETURNING ",
         template_cols!(),
         ""
     ))
@@ -184,6 +259,9 @@ pub async fn update_template(
     .bind(&body.variables)
     .bind(&body.category)
     .bind(body.directory_id)
+    .bind(body.network_id)
+    .bind(&body.event_key)
+    .bind(body.is_active)
     .bind(id)
     .fetch_one(&state.db)
     .await?;
@@ -202,6 +280,249 @@ pub async fn delete_template(
         return Err(AppError::NotFound(String::from("Email template not found")));
     }
     Ok((StatusCode::OK, Json(serde_json::json!({"deleted": true}))))
+}
+
+// ==================== Placeholder guard, preview & test send ====================
+
+/// Pull the `{{name}}` tokens out of a chunk of template text, first-seen order, deduped.
+pub fn extract_placeholders(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut rest = text;
+    while let Some(open) = rest.find("{{") {
+        let after = &rest[open + 2..];
+        let Some(close) = after.find("}}") else { break };
+        let name = after[..close].trim();
+        if !name.is_empty() && !out.iter().any(|n| n == name) {
+            out.push(name.to_string());
+        }
+        rest = &after[close + 2..];
+    }
+    out
+}
+
+/// Placeholders a template uses that the system has no value for. Empty == safe to save.
+pub fn unknown_placeholders(fields: &[(&str, &str)]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (_, text) in fields {
+        for name in extract_placeholders(text) {
+            if !KNOWN_PLACEHOLDERS.iter().any(|(k, _)| *k == name) && !out.contains(&name) {
+                out.push(name);
+            }
+        }
+    }
+    out
+}
+
+fn validate_placeholders(fields: &[(&str, &str)], extra: Option<&str>) -> ApiResult<()> {
+    let mut all: Vec<(&str, &str)> = fields.to_vec();
+    if let Some(e) = extra {
+        all.push(("body_text", e));
+    }
+    let unknown = unknown_placeholders(&all);
+    if !unknown.is_empty() {
+        let known = KNOWN_PLACEHOLDERS
+            .iter()
+            .map(|(k, _)| *k)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(AppError::BadRequest(format!(
+            "Unknown placeholder(s): {}. A system email may only use placeholders the platform can fill: {}. \
+             Remove the extra braces — an unknown one would be mailed to a customer literally.",
+            unknown.join(", "),
+            known
+        )));
+    }
+    Ok(())
+}
+
+fn validate_event_key(ev: &str) -> ApiResult<()> {
+    if SYSTEM_EVENTS.iter().any(|(k, _)| *k == ev) {
+        Ok(())
+    } else {
+        let known = SYSTEM_EVENTS
+            .iter()
+            .map(|(k, _)| *k)
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(AppError::BadRequest(format!(
+            "Unknown system event '{}'. Use one of: {}",
+            ev, known
+        )))
+    }
+}
+
+/// Sample values so the editor can render a realistic preview before a template goes live.
+const SAMPLE_VALUES: &[(&str, &str)] = &[
+    ("code", "483920"),
+    ("token", "tok_9f3c1a2b7d"),
+    (
+        "reset_link",
+        "https://zaarhub.com/reset?token=tok_9f3c1a2b7d",
+    ),
+    ("name", "Alex Rivera"),
+    ("email", "alex@example.com"),
+    ("business_name", "Pink Shimmering Maids"),
+    ("business_slug", "pink-shimmering-maids"),
+    (
+        "business_url",
+        "https://zaarhub.com/palm-bay/business/pink-shimmering-maids",
+    ),
+    ("owner_name", "Alex Rivera"),
+    ("directory_name", "Palm Bay"),
+    ("directory_slug", "palm-bay"),
+    ("dashboard_url", "https://zaarhub.com/business-portal.html"),
+    ("review_link", "https://zaarhub.com/palm-bay/review"),
+    ("unsubscribe_link", "https://zaarhub.com/unsubscribe?u=demo"),
+    ("unsubscribe_url", "https://zaarhub.com/unsubscribe?u=demo"),
+    ("site_url", "https://zaarhub.com"),
+    ("year", "2026"),
+    ("primary_color", "#2563eb"),
+    ("accent_color", "#f59e0b"),
+    ("background_color", "#ffffff"),
+    ("text_color", "#1e293b"),
+];
+
+fn render_values(
+    sample: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Vec<(String, String)> {
+    SAMPLE_VALUES
+        .iter()
+        .map(|(k, v)| {
+            let val = sample
+                .and_then(|m| m.get(*k))
+                .and_then(|x| {
+                    if let Some(s) = x.as_str() {
+                        Some(s.to_string())
+                    } else if x.is_null() {
+                        None
+                    } else {
+                        Some(x.to_string())
+                    }
+                })
+                .unwrap_or_else(|| (*v).to_string());
+            ((*k).to_string(), val)
+        })
+        .collect()
+}
+
+fn render_text(text: &str, values: &[(String, String)]) -> String {
+    let mut out = text.to_string();
+    for (k, v) in values {
+        let needle = String::from("{{") + k + "}}";
+        out = out.replace(&needle, v);
+    }
+    out
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PreviewRequest {
+    pub subject: Option<String>,
+    pub body: Option<String>,
+    pub body_text: Option<String>,
+    pub sample_data: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+/// Render subject/HTML/text with sample data so the admin sees exactly what a customer receives.
+pub async fn preview_template(Json(req): Json<PreviewRequest>) -> ApiResult<impl IntoResponse> {
+    let subject = req.subject.unwrap_or_default();
+    let html = req.body.unwrap_or_default();
+    let text = req.body_text.unwrap_or_default();
+    let values = render_values(req.sample_data.as_ref());
+    let unknown =
+        unknown_placeholders(&[("subject", &subject), ("body", &html), ("body_text", &text)]);
+    Ok(Json(serde_json::json!({
+        "subject": render_text(&subject, &values),
+        "html": render_text(&html, &values),
+        "text": render_text(&text, &values),
+        "unknown_placeholders": unknown,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TestSendRequest {
+    pub to: String,
+    pub sample_data: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+/// Render the stored template with sample data and send it through the configured transport.
+/// Reports the real result — never a fake success.
+pub async fn test_send_template(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<TestSendRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let to = req.to.trim().to_string();
+    if to.is_empty() || !to.contains('@') {
+        return Err(AppError::BadRequest(
+            "A valid 'to' address is required to send a test".into(),
+        ));
+    }
+    let tpl = sqlx::query_as::<_, (String, String, String, Option<String>)>(
+        "SELECT name, subject, body, body_text FROM email_templates WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound(String::from("Email template not found")))?;
+
+    let values = render_values(req.sample_data.as_ref());
+    let subject = render_text(&tpl.1, &values);
+    let html = render_text(&tpl.2, &values);
+    let text = tpl.3.as_deref().map(|t| render_text(t, &values));
+
+    match crate::email::send_rendered_email(&to, &subject, &html, text.as_deref()).await {
+        Ok(()) => Ok(Json(serde_json::json!({
+            "sent": true, "to": to, "template": tpl.0, "subject": subject
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
+            "sent": false, "to": to, "template": tpl.0, "error": e
+        }))),
+    }
+}
+
+/// The placeholder + event catalogue, for the editor's pickers and its help text.
+pub async fn list_placeholders() -> ApiResult<impl IntoResponse> {
+    let placeholders: Vec<serde_json::Value> = KNOWN_PLACEHOLDERS
+        .iter()
+        .map(|(n, d)| serde_json::json!({"name": n, "description": d}))
+        .collect();
+    let events: Vec<serde_json::Value> = SYSTEM_EVENTS
+        .iter()
+        .map(|(k, d)| serde_json::json!({"key": k, "description": d}))
+        .collect();
+    Ok(Json(serde_json::json!({
+        "placeholders": placeholders, "events": events
+    })))
+}
+
+/// Resolve the active system template for `event_key`, honouring scope inheritance:
+/// directory template > network template > global, most recently updated first.
+pub async fn resolve_system_template(
+    db: &sqlx::PgPool,
+    event_key: &str,
+    directory_id: Option<Uuid>,
+) -> Option<(String, String, Option<String>)> {
+    sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT t.subject, t.body, t.body_text \
+         FROM email_templates t \
+         LEFT JOIN directories d ON d.id = $2::uuid \
+         WHERE t.is_active = true \
+           AND (t.event_key = $1 OR (t.event_key IS NULL AND t.name = $1)) \
+           AND (t.directory_id IS NULL OR t.directory_id = $2::uuid \
+                OR (d.network_id IS NOT NULL AND t.network_id = d.network_id)) \
+         ORDER BY \
+           CASE WHEN t.directory_id = $2::uuid THEN 0 \
+                WHEN d.network_id IS NOT NULL AND t.network_id = d.network_id THEN 1 \
+                ELSE 2 END, \
+           t.updated_at DESC NULLS LAST \
+         LIMIT 1",
+    )
+    .bind(event_key)
+    .bind(directory_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
 }
 
 // ==================== Campaign Handlers ====================
