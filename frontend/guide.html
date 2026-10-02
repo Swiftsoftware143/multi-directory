@@ -1837,15 +1837,19 @@
 
 <!-- 34. Industries -->
 <h2 id="industries">39. Industries</h2>
-<p>Manage industry categories for your directories. Filter available industries and assign specific industries to your account.</p>
+<p>The verticals a directory can be built on. The whole list is managed from the admin panel's
+<b>Industries</b> section — add, rename, re-describe, re-icon, reorder, publish or switch one off.
+Nothing here needs SQL or a code change.</p>
 
 <div class="card">
-  <p><span class="badge get">GET</span> <code>/api/v1/industries/available</code> &mdash; List all available industries</p>
-  <p><span class="badge get">GET</span> <code>/api/v1/industries</code> &mdash; List user industries</p>
-  <p><span class="badge post">POST</span> <code>/api/v1/industries</code> &mdash; Set user industry</p>
-  <p><span class="badge delete">DELETE</span> <code>/api/v1/industries/:slug</code> &mdash; Remove user industry</p>
-  <p><span class="badge get">GET</span> <code>/api/v1/industries/limit</code> &mdash; Get industry limit</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/industries/catalogue</code> &mdash; Every industry, published or not &middot; operator</p>
+  <p><span class="badge post">POST</span> <code>/api/v1/industries/catalogue</code> &mdash; Add an industry (the slug is derived from the name) &middot; operator</p>
+  <p><span class="badge put">PUT</span> <code>/api/v1/industries/catalogue/:slug</code> &mdash; Edit, reorder, publish or unpublish &middot; operator</p>
+  <p><span class="badge delete">DELETE</span> <code>/api/v1/industries/catalogue/:slug</code> &mdash; Unpublish (soft delete; nothing is erased) &middot; operator</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/industries/available</code> &mdash; The published list (active only), in display order &middot; authenticated</p>
 </div>
+
+<p style="font-size:.85rem;color:var(--text-secondary)">Where to click: <b>Admin Panel &rarr; 🏭 Industries</b>. Edit a row and press <b>Save</b>; use <b>&uarr;</b> / <b>&darr;</b> to reorder; untick <b>published</b> to hide an industry from the list; <b>＋ Add industry</b> creates one. <b>Preview published list</b> shows exactly what the published-list endpoint returns.</p>
 
 <!-- 35. Settings -->
 <h2 id="settings">40. Settings</h2>

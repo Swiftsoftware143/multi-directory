@@ -1148,7 +1148,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/webhooks/paypal", post(checkout_handler::paypal_webhook))
         // Data Pipeline (BL20) — public ingress endpoint
         .route("/pipeline/ingest", post(pipeline::pipeline_ingest))
-        // ??? Public industry listing (for signup forms)
+        // 🏭 Published industry list — the verticals a directory can be built on (is_active only).
+        // Read by the admin panel's Industries section; the route sits behind the app's normal
+        // auth guard (it is NOT on the public allowlist).
         .route(
             "/industries/available",
             get(industries::list_available_industries),
@@ -1495,18 +1497,22 @@ pub fn create_router(s: AppState) -> Router {
             "/checkout/session/:id",
             get(checkout_handler::get_checkout_session),
         )
-        // ??? Industry dashboard routes
+        // 🏭 Industry taxonomy (`template_categories`) — the verticals a directory can be built
+        // on. Managed end-to-end from the admin panel's Industries section: add, rename,
+        // re-describe, reorder, publish/unpublish — no SQL, no code change. Operator-guarded
+        // (these are the platform's own catalogue rows, not per-tenant data).
         .route(
-            "/industries",
-            get(industries::list_user_industries)
-                .post(industries::set_user_industry)
-                .route_layer(middleware::from_fn_with_state(s.clone(), tenant_guard)),
+            "/industries/catalogue",
+            get(industries::list_catalogue)
+                .post(industries::create_industry)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
-            "/industries/:slug",
-            delete(industries::remove_user_industry),
+            "/industries/catalogue/:slug",
+            put(industries::update_industry)
+                .delete(industries::deactivate_industry)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
-        .route("/industries/limit", get(industries::get_industry_limit))
         // ? Visitor account routes (no auth — self-contained)
         .route("/visitor/register", post(portal::visitor_register))
         .route("/visitor/login", post(portal::visitor_login))

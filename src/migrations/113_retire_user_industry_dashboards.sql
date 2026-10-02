@@ -1,0 +1,21 @@
+-- 113: retire the per-user industry-dashboard scaffolding.
+--
+-- Migration 012 created `user_industry_dashboards`, `plan_tiers.max_industries` and
+-- `tenants.industry_slug` for a "which industry dashboards has this user activated" feature
+-- copied from WorkflowSwift (its own comment said the slugs come from that app's DB). It was
+-- never wired to any UI and never used:
+--   * `user_industry_dashboards` holds 0 rows;
+--   * `tenants.industry_slug` is read by no code at all;
+--   * the four routes that served it (`GET`/`POST /api/v1/industries`,
+--     `DELETE /api/v1/industries/:slug`, `GET /api/v1/industries/limit`) had no frontend caller
+--     and several were mislabelled `/api/v1/admin/...` in their own doc comments.
+--
+-- The industry capability that DOES matter — the `template_categories` taxonomy a directory is
+-- built on (migration 108) — is now managed end-to-end from the admin panel's Industries section
+-- (`/api/v1/industries/catalogue`), so the dead scaffolding is removed rather than left behind as
+-- endpoints with no caller.
+--
+-- `plan_tiers.max_industries` and `tenants.industry_slug` are left in place: both are inert (no
+-- reader), and dropping columns risks unrelated queries for no benefit. Only the unused table goes.
+
+DROP TABLE IF EXISTS user_industry_dashboards;

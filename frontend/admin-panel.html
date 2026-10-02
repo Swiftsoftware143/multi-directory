@@ -521,6 +521,7 @@
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
+        <a href="#industries-section">🏭 Industries</a>
         <a href="#domains-section">🌐 Domains &amp; Subdomains</a>
         <a href="#payment-gateways-section">💳 Payment Gateways</a>
         <a href="#email-settings-section">✉️ Email / SMTP</a>
@@ -1140,6 +1141,43 @@
         <p>Create your first directory to get started.</p>
       </div>
       <div id="dir-error" class="form-error hidden" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- 🏭 Industries — the `template_categories` taxonomy a directory is built on. Before this card
+       the list was SQL-only: a buyer could not add, rename, reorder or switch off an industry
+       without a psql session (a defect under the sellable standard). Edited here end to end;
+       `is_active` is the publish switch the consumer list reads. -->
+  <div style="max-width:1200px;margin:24px auto;padding:0 24px">
+    <div class="section-label" id="industries-section">🏭 Industries</div>
+    <p style="font-size:.85rem;color:var(--text-secondary);margin:8px 0 0">
+      The verticals a directory can be built on — the list your signup and directory templates pick
+      from. Add, rename, re-icon, reorder or switch one off here; <b>no SQL and no code change</b>.
+      Switching an industry <b>off</b> removes it from the published list
+      (<code>GET /api/v1/industries/available</code>) without deleting anything.
+    </p>
+
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-top:12px">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <span id="ic-badge" class="badge">loading…</span>
+        <button class="btn btn-accent" type="button" id="ic-new-btn">＋ Add industry</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="ic-preview-btn">👁 Preview published list</button>
+        <span id="ic-status" style="font-size:.8rem;color:var(--text-secondary)"></span>
+      </div>
+
+      <div id="ic-add" style="display:none;margin-top:14px;padding:14px;border:1px dashed var(--border);border-radius:var(--radius)">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input class="input" id="ic-add-name" placeholder="Industry name (e.g. HVAC Services)" style="min-width:240px">
+          <input class="input" id="ic-add-icon" placeholder="Icon" style="width:70px" value="📁">
+          <input class="input" id="ic-add-desc" placeholder="Short description (optional)" style="min-width:280px">
+          <button class="btn btn-accent" type="button" id="ic-add-save">Create</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="ic-add-cancel">Cancel</button>
+        </div>
+        <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:6px">The web address (slug) is generated from the name — you never type it.</p>
+      </div>
+
+      <div id="ic-published" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius)"></div>
+      <div id="ic-list" style="margin-top:16px"></div>
     </div>
   </div>
 
@@ -2340,6 +2378,8 @@
       loadDataEnrichment();
       // Loyalty programme rates (points per redemption / check-in / visit) — native earning.
       loadLoyaltyPrograms();
+      // 🏭 Industry taxonomy — the template_categories list, editable with no SQL.
+      icLoad();
       // B65: the onboarding questionnaire builder + responses view.
       obInit();
     }
@@ -3175,6 +3215,150 @@
           if (b) saveLoyaltyProgram(b.getAttribute('data-save'));
         });
       }
+    })();
+
+    // ===== 🏭 Industries — the template_categories taxonomy (admin-editable, no SQL) =====
+    // Full management view: every row incl. unpublished, add / rename / re-describe / re-icon /
+    // reorder / publish-unpublish. The published subset is what /industries/available serves.
+    var icData = [];
+
+    function icEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+    function icStatus(msg) {
+      var el = document.getElementById('ic-status');
+      if (el) el.textContent = msg || '';
+    }
+    function icRow(r) {
+      return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px" data-industry="' + icEsc(r.slug) + '">' +
+        '<span style="font-size:1.3rem;width:32px;text-align:center" title="Icon">' + icEsc(r.icon || '📁') + '</span>' +
+        '<input class="input" style="width:70px" value="' + icEsc(r.icon || '') + '" data-f="icon" aria-label="Icon" title="Icon (emoji)">' +
+        '<input class="input" style="min-width:200px" value="' + icEsc(r.name) + '" data-f="name" aria-label="Name" title="Name">' +
+        '<input class="input" style="min-width:240px;flex:1" value="' + icEsc(r.description || '') + '" data-f="description" aria-label="Description" title="Description" placeholder="Description">' +
+        '<input class="input" type="number" style="width:70px" value="' + Number(r.sort_order || 0) + '" data-f="sort_order" aria-label="Sort order" title="Sort order (lower shows first)">' +
+        '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="is_active" ' + (r.is_active ? 'checked' : '') + '> published</label>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-move="-1" title="Move up">↑</button>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-move="1" title="Move down">↓</button>' +
+        '<button class="btn btn-accent btn-sm" type="button" data-save="1">Save</button>' +
+        '<code style="font-size:.7rem;color:var(--text-tertiary);width:100%">' + icEsc(r.slug) + '</code>' +
+      '</div>';
+    }
+    function icLoad() {
+      var list = document.getElementById('ic-list');
+      var badge = document.getElementById('ic-badge');
+      if (!list || !badge) return;
+      return apiGet('/industries/catalogue')
+        .then(function (rows) {
+          icData = (rows || []).slice();
+          var pub = icData.filter(function (r) { return r.is_active; }).length;
+          badge.textContent = icData.length + ' industr' + (icData.length === 1 ? 'y' : 'ies') + ' · ' + pub + ' published';
+          list.innerHTML = icData.length ? icData.map(icRow).join('')
+            : '<p style="font-size:.85rem;color:var(--text-secondary)">No industries yet — "Add industry" creates the first one.</p>';
+        })
+        .catch(function (e) {
+          badge.textContent = 'error';
+          list.innerHTML = '<p style="font-size:.85rem;color:#f87171">' + icEsc(e.message) + '</p>';
+        });
+    }
+    function icSave(slug) {
+      var box = document.querySelector('[data-industry="' + slug + '"]');
+      if (!box) return;
+      var body = {};
+      Array.prototype.forEach.call(box.querySelectorAll('[data-f]'), function (el) {
+        var f = el.getAttribute('data-f');
+        if (el.type === 'checkbox') body[f] = el.checked;
+        else if (el.type === 'number') body[f] = parseInt(el.value || '0', 10);
+        else body[f] = el.value;
+      });
+      icStatus('saving…');
+      return apiPut('/industries/catalogue/' + encodeURIComponent(slug), body)
+        .then(function () { icStatus('saved ✓'); icLoad(); })
+        .catch(function (e) { icStatus('save failed'); alert(e.message); });
+    }
+    function icMove(slug, dir) {
+      var rows = icData.slice();
+      var i = -1;
+      for (var k = 0; k < rows.length; k++) { if (rows[k].slug === slug) { i = k; break; } }
+      var j = i + dir;
+      if (i < 0 || j < 0 || j >= rows.length) return;
+      var tmp = rows[i]; rows[i] = rows[j]; rows[j] = tmp;
+      // Re-number every row to its display index so the order is unambiguous, then PUT only the
+      // rows that actually changed. Canonicalising 0..n-1 also repairs any duplicate sort_order.
+      var reqs = [];
+      rows.forEach(function (r, idx) {
+        if (Number(r.sort_order) !== idx) {
+          reqs.push(apiPut('/industries/catalogue/' + encodeURIComponent(r.slug), { sort_order: idx }));
+        }
+      });
+      if (!reqs.length) return;
+      icStatus('saving…');
+      Promise.all(reqs)
+        .then(function () { icStatus('saved ✓'); icLoad(); })
+        .catch(function (e) { icStatus('save failed'); alert(e.message); });
+    }
+    function icAdd() {
+      var name = document.getElementById('ic-add-name');
+      var icon = document.getElementById('ic-add-icon');
+      var desc = document.getElementById('ic-add-desc');
+      if (!name || !name.value.trim()) { alert('Give the industry a name.'); return; }
+      icStatus('creating…');
+      return apiPost('/industries/catalogue', {
+        name: name.value.trim(),
+        icon: icon ? icon.value.trim() : '',
+        description: desc ? desc.value.trim() : ''
+      }).then(function () {
+        name.value = '';
+        if (desc) desc.value = '';
+        icStatus('created ✓');
+        document.getElementById('ic-add').style.display = 'none';
+        icLoad();
+      }).catch(function (e) { icStatus('create failed'); alert(e.message); });
+    }
+    function icPreview() {
+      var box = document.getElementById('ic-published');
+      if (!box) return;
+      box.style.display = 'block';
+      box.innerHTML = '<span style="font-size:.8rem;color:var(--text-secondary)">Loading published list…</span>';
+      return apiGet('/industries/available')
+        .then(function (rows) {
+          rows = rows || [];
+          box.innerHTML = '<div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:8px">' +
+            'Published list — exactly what <code>GET /api/v1/industries/available</code> returns (' + rows.length + '):</div>' +
+            (rows.map(function (r) {
+              return '<span class="badge" style="margin:2px">' + icEsc(r.icon || '📁') + ' ' + icEsc(r.name) + '</span>';
+            }).join('') || '<span style="font-size:.8rem;color:var(--text-tertiary)">(empty)</span>');
+        })
+        .catch(function (e) { box.innerHTML = '<span style="font-size:.8rem;color:#f87171">' + icEsc(e.message) + '</span>'; });
+    }
+    // Inline onclick cannot see the IIFE's scope, so wire the card's events here.
+    (function wireIndustriesCard() {
+      var list = document.getElementById('ic-list');
+      if (list) {
+        list.addEventListener('click', function (e) {
+          var t = e.target.closest ? e.target.closest('[data-save],[data-move]') : null;
+          if (!t) return;
+          var box = t.closest('[data-industry]');
+          if (!box) return;
+          var slug = box.getAttribute('data-industry');
+          if (t.hasAttribute('data-save')) icSave(slug);
+          else icMove(slug, parseInt(t.getAttribute('data-move'), 10));
+        });
+      }
+      var addBtn = document.getElementById('ic-new-btn');
+      if (addBtn) addBtn.addEventListener('click', function () {
+        var a = document.getElementById('ic-add');
+        if (a) a.style.display = (a.style.display === 'none' ? 'block' : 'none');
+      });
+      var addSave = document.getElementById('ic-add-save');
+      if (addSave) addSave.addEventListener('click', icAdd);
+      var addCancel = document.getElementById('ic-add-cancel');
+      if (addCancel) addCancel.addEventListener('click', function () {
+        var a = document.getElementById('ic-add'); if (a) a.style.display = 'none';
+      });
+      var pv = document.getElementById('ic-preview-btn');
+      if (pv) pv.addEventListener('click', icPreview);
     })();
 
     function chSlug() {
