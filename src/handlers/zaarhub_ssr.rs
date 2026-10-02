@@ -22,8 +22,11 @@ async fn footer_html(pool: &sqlx::PgPool) -> String {
     ).fetch_optional(pool).await.unwrap_or(None).unwrap_or(("ZaarHub".into(), "2026".into()));
 
     let rows = sqlx::query(
-        "SELECT slug, title FROM zaarhub_legal_pages WHERE is_published = true AND show_in_footer = true ORDER BY display_order ASC, title ASC"
+        "SELECT slug, title FROM zaarhub_legal_pages \
+         WHERE tenant_id = $1 AND is_published = true AND show_in_footer = true \
+         ORDER BY display_order ASC, title ASC",
     )
+    .bind(crate::system_tenant::system_tenant_uuid())
     .fetch_all(pool)
     .await
     .map_err(|e| eprintln!("zaarhub_ssr: footer legal-page links query failed: {e}"))
@@ -779,9 +782,11 @@ pub async fn render_legal_page(
     State(state): State<AppState>,
 ) -> impl axum::response::IntoResponse {
     let row = sqlx::query(
-        "SELECT title, content FROM zaarhub_legal_pages WHERE slug = $1 AND is_published = true",
+        "SELECT title, content FROM zaarhub_legal_pages \
+         WHERE slug = $1 AND tenant_id = $2 AND is_published = true",
     )
     .bind(&slug)
+    .bind(crate::system_tenant::system_tenant_uuid())
     .fetch_optional(&state.db)
     .await
     .unwrap_or(None);

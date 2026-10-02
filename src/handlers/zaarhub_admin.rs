@@ -29,10 +29,14 @@ pub struct LegalPagePayload {
 
 /// GET /api/v1/zaarhub/admin/legal — list all legal pages
 pub async fn list_legal_pages(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    // B95: legal pages belong to a tenant. This operator surface owns the platform's own
+    // (system) tenant, so it must never list another tenant's pages.
+    let tenant_id = crate::system_tenant::system_tenant_uuid();
     let rows = sqlx::query(
         "SELECT id, slug, title, is_published, show_in_footer, display_order, updated_at \
-         FROM zaarhub_legal_pages ORDER BY display_order ASC, title ASC",
+         FROM zaarhub_legal_pages WHERE tenant_id = $1 ORDER BY display_order ASC, title ASC",
     )
+    .bind(tenant_id)
     .fetch_all(&state.db)
     .await?;
 
@@ -56,10 +60,12 @@ pub async fn get_legal_page(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<Value>> {
+    // B95: resolve by (tenant, slug), never by slug alone.
+    let tenant_id = crate::system_tenant::system_tenant_uuid();
     let row = sqlx::query(
         "SELECT id, slug, title, content, is_published, show_in_footer, display_order, created_at, updated_at \
-         FROM zaarhub_legal_pages WHERE slug = $1"
-    ).bind(&slug).fetch_optional(&state.db).await?;
+         FROM zaarhub_legal_pages WHERE slug = $1 AND tenant_id = $2"
+    ).bind(&slug).bind(tenant_id).fetch_optional(&state.db).await?;
 
     match row {
         Some(r) => Ok(Json(json!({
@@ -82,10 +88,14 @@ pub async fn save_legal_page(
     State(state): State<AppState>,
     Json(payload): Json<LegalPagePayload>,
 ) -> ApiResult<Json<Value>> {
-    let existing = sqlx::query("SELECT id FROM zaarhub_legal_pages WHERE slug = $1")
-        .bind(&payload.slug)
-        .fetch_optional(&state.db)
-        .await?;
+    // B95: slug is unique PER TENANT, so both the lookup and the insert are tenant-scoped.
+    let tenant_id = crate::system_tenant::system_tenant_uuid();
+    let existing =
+        sqlx::query("SELECT id FROM zaarhub_legal_pages WHERE slug = $1 AND tenant_id = $2")
+            .bind(&payload.slug)
+            .bind(tenant_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     match existing {
         Some(r) => {
@@ -109,10 +119,10 @@ pub async fn save_legal_page(
         None => {
             let id = Uuid::new_v4();
             sqlx::query(
-                "INSERT INTO zaarhub_legal_pages (id, slug, title, content, is_published, show_in_footer, display_order) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)"
+                "INSERT INTO zaarhub_legal_pages (id, tenant_id, slug, title, content, is_published, show_in_footer, display_order) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
             )
-            .bind(id).bind(&payload.slug).bind(&payload.title).bind(&payload.content)
+            .bind(id).bind(tenant_id).bind(&payload.slug).bind(&payload.title).bind(&payload.content)
             .bind(payload.is_published).bind(payload.show_in_footer).bind(payload.display_order)
             .execute(&state.db).await?;
             Ok(Json(
@@ -127,8 +137,11 @@ pub async fn delete_legal_page(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    let result = sqlx::query("DELETE FROM zaarhub_legal_pages WHERE slug = $1")
+    // B95: only this tenant's page may be deleted by slug.
+    let tenant_id = crate::system_tenant::system_tenant_uuid();
+    let result = sqlx::query("DELETE FROM zaarhub_legal_pages WHERE slug = $1 AND tenant_id = $2")
         .bind(&slug)
+        .bind(tenant_id)
         .execute(&state.db)
         .await?;
     Ok(Json(

@@ -70,8 +70,10 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> impl axum::response::
 
     // Legal pages
     let legal = sqlx::query(
-        "SELECT slug FROM zaarhub_legal_pages WHERE is_published = true ORDER BY display_order",
+        "SELECT slug FROM zaarhub_legal_pages \
+         WHERE tenant_id = $1 AND is_published = true ORDER BY display_order",
     )
+    .bind(crate::system_tenant::system_tenant_uuid())
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
