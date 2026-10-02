@@ -234,7 +234,10 @@ pub async fn update_template(
     }
 
     // Build dynamic UPDATE — only include fields that were actually sent
-    // Use COALESCE so unset fields keep their current value
+    // Use COALESCE so unset fields keep their current value.
+    // Scope (directory_id / network_id), event_key and is_active are assigned DIRECTLY: the
+    // editor always sends the full object, and switching a template from network-scoped back to
+    // global must actually clear the scope — COALESCE would silently keep the old value.
     let updated = sqlx::query_as::<_, EmailTemplate>(concat!(
         "UPDATE email_templates SET \
              name       = COALESCE($1, name), \
@@ -243,9 +246,9 @@ pub async fn update_template(
              body_text  = COALESCE($4, body_text), \
              variables  = COALESCE($5, variables), \
              category   = COALESCE($6, category), \
-             directory_id = COALESCE($7, directory_id), \
-             network_id = COALESCE($8, network_id), \
-             event_key  = COALESCE($9, event_key), \
+             directory_id = $7, \
+             network_id = $8, \
+             event_key  = $9, \
              is_active  = COALESCE($10, is_active), \
              updated_at = NOW() \
              WHERE id = $11 RETURNING ",
