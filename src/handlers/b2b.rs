@@ -452,75 +452,77 @@ pub async fn search_products(
     let per_page = qs.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
-    let mut wheres = vec!["sp.is_active = true".to_string()];
-
-    if let Some(ref q) = qs.q {
-        if !q.is_empty() {
-            wheres.push(format!("(sp.name ILIKE '%' || $1 || '%' OR COALESCE(sp.description,'') ILIKE '%' || $1 || '%')"));
-        }
-    }
-    if let Some(ref _cat) = qs.category {
-        if !_cat.is_empty() {
-            wheres.push(format!("sp.category = $2"));
-        }
-    }
-    if qs.business_id.is_some() {
-        wheres.push(format!("sp.business_id = $3"));
-    }
-    if let Some(ref _area) = qs.delivery_area {
-        if !_area.is_empty() {
-            wheres.push(format!("$4 = ANY(sp.delivery_areas)"));
-        }
-    }
-    if qs.max_price.is_some() {
-        wheres.push(format!("COALESCE(sp.price, 0) <= $5"));
-    }
-
-    let where_clause = if wheres.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", wheres.join(" AND "))
-    };
-
-    // Count query
-    let count_sql = format!("SELECT COUNT(*) FROM supplier_products sp {}", where_clause);
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref q) = qs.q {
-        if !q.is_empty() {
-            count_q = count_q.bind(q);
-        }
-    }
-    if let Some(ref cat) = qs.category {
-        if !cat.is_empty() {
-            count_q = count_q.bind(cat);
-        }
-    }
-    if let Some(bid) = qs.business_id {
-        count_q = count_q.bind(bid);
-    }
-    if let Some(ref area) = qs.delivery_area {
-        if !area.is_empty() {
-            count_q = count_q.bind(area);
-        }
-    }
-    if let Some(mp) = qs.max_price {
-        count_q = count_q.bind(mp);
-    }
-    let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
-
-    // Data query
-    let data_sql = format!(
+    // Statement text is a compile-time literal; every optional filter is appended as a bind, so the
+    // SQL is never assembled at run time. Count and data share the exact same predicate set.
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT COUNT(*) FROM supplier_products sp WHERE sp.is_active = true",
+    );
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT sp.id, sp.business_id, sp.name, sp.description, sp.category, sp.price, sp.unit, sp.min_order, \
                 sp.currency, sp.delivery_areas, sp.is_active, sp.created_at, sp.updated_at, \
                 b.name as business_name, b.city, b.state \
          FROM supplier_products sp \
          LEFT JOIN businesses b ON b.id = sp.business_id \
-         {} ORDER BY sp.name ASC LIMIT 20 OFFSET {}",
-        where_clause, offset
+         WHERE sp.is_active = true",
     );
-    let mut data_q = sqlx::query_as::<
-        _,
-        (
+
+    if let Some(ref q) = qs.q {
+        if !q.is_empty() {
+            count_qb
+                .push(" AND (sp.name ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%' OR COALESCE(sp.description,'') ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%')");
+            data_qb
+                .push(" AND (sp.name ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%' OR COALESCE(sp.description,'') ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%')");
+        }
+    }
+    if let Some(ref cat) = qs.category {
+        if !cat.is_empty() {
+            count_qb.push(" AND sp.category = ").push_bind(cat);
+            data_qb.push(" AND sp.category = ").push_bind(cat);
+        }
+    }
+    if let Some(bid) = qs.business_id {
+        count_qb.push(" AND sp.business_id = ").push_bind(bid);
+        data_qb.push(" AND sp.business_id = ").push_bind(bid);
+    }
+    if let Some(ref area) = qs.delivery_area {
+        if !area.is_empty() {
+            count_qb
+                .push(" AND ")
+                .push_bind(area)
+                .push(" = ANY(sp.delivery_areas)");
+            data_qb
+                .push(" AND ")
+                .push_bind(area)
+                .push(" = ANY(sp.delivery_areas)");
+        }
+    }
+    if let Some(mp) = qs.max_price {
+        count_qb
+            .push(" AND COALESCE(sp.price, 0) <= ")
+            .push_bind(mp);
+        data_qb.push(" AND COALESCE(sp.price, 0) <= ").push_bind(mp);
+    }
+
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+
+    // LIMIT 20 mirrors the page size this endpoint has always used (it ignores per_page).
+    data_qb
+        .push(" ORDER BY sp.name ASC LIMIT 20 OFFSET ")
+        .push_bind(offset);
+    let rows = data_qb
+        .build_query_as::<(
             Uuid,
             Uuid,
             String,
@@ -537,31 +539,9 @@ pub async fn search_products(
             String,
             Option<String>,
             Option<String>,
-        ),
-    >(&data_sql);
-    if let Some(ref q) = qs.q {
-        if !q.is_empty() {
-            data_q = data_q.bind(q);
-        }
-    }
-    if let Some(ref cat) = qs.category {
-        if !cat.is_empty() {
-            data_q = data_q.bind(cat);
-        }
-    }
-    if let Some(bid) = qs.business_id {
-        data_q = data_q.bind(bid);
-    }
-    if let Some(ref area) = qs.delivery_area {
-        if !area.is_empty() {
-            data_q = data_q.bind(area);
-        }
-    }
-    if let Some(mp) = qs.max_price {
-        data_q = data_q.bind(mp);
-    }
-
-    let rows = data_q.fetch_all(&s.db).await?;
+        )>()
+        .fetch_all(&s.db)
+        .await?;
     let results: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|r| {
@@ -912,50 +892,65 @@ pub async fn my_orders(
 
     let role = qs.role.as_deref().unwrap_or("both");
 
-    let mut wheres: Vec<String> = Vec::new();
-
-    match role {
-        "buyer" => wheres.push(format!("buyer_business_id = $1")),
-        "supplier" => wheres.push(format!("supplier_business_id = $1")),
-        _ => wheres.push(format!(
-            "(buyer_business_id = $1 OR supplier_business_id = $1)"
-        )),
-    }
-
-    if let Some(ref st) = qs.status {
-        if !st.is_empty() {
-            wheres.push(format!("status = $2"));
-        }
-    }
-
-    let where_clause = format!("WHERE {}", wheres.join(" AND "));
-
-    // Count
-    let count_sql = format!("SELECT COUNT(*) FROM b2b_orders {}", where_clause);
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql).bind(biz_id);
-    if qs.status.as_ref().map_or(false, |s| !s.is_empty()) {
-        count_q = count_q.bind(qs.status.as_ref().unwrap());
-    }
-    let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
-
-    // Data query
-    let data_sql = format!(
+    // Statement text is a compile-time literal; the role/status filters are appended as binds.
+    let mut count_qb =
+        sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(*) FROM b2b_orders WHERE ");
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT o.*, sp.name as product_name, bb.name as buyer_name, sb.name as supplier_name \
          FROM b2b_orders o \
          LEFT JOIN supplier_products sp ON sp.id = o.product_id \
          LEFT JOIN businesses bb ON bb.id = o.buyer_business_id \
          LEFT JOIN businesses sb ON sb.id = o.supplier_business_id \
-         {} ORDER BY o.created_at DESC LIMIT {} OFFSET {}",
-        where_clause, per_page, offset
+         WHERE ",
     );
 
-    let mut data_q = sqlx::query_as::<_, B2bOrderRow>(&data_sql).bind(biz_id);
-
-    if qs.status.as_ref().map_or(false, |s| !s.is_empty()) {
-        data_q = data_q.bind(qs.status.as_ref().unwrap());
+    match role {
+        "buyer" => {
+            count_qb.push("buyer_business_id = ").push_bind(biz_id);
+            data_qb.push("buyer_business_id = ").push_bind(biz_id);
+        }
+        "supplier" => {
+            count_qb.push("supplier_business_id = ").push_bind(biz_id);
+            data_qb.push("supplier_business_id = ").push_bind(biz_id);
+        }
+        _ => {
+            count_qb
+                .push("(buyer_business_id = ")
+                .push_bind(biz_id)
+                .push(" OR supplier_business_id = ")
+                .push_bind(biz_id)
+                .push(")");
+            data_qb
+                .push("(buyer_business_id = ")
+                .push_bind(biz_id)
+                .push(" OR supplier_business_id = ")
+                .push_bind(biz_id)
+                .push(")");
+        }
     }
 
-    let rows = data_q.fetch_all(&s.db).await?;
+    if let Some(ref st) = qs.status {
+        if !st.is_empty() {
+            count_qb.push(" AND status = ").push_bind(st);
+            data_qb.push(" AND status = ").push_bind(st);
+        }
+    }
+
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+
+    data_qb
+        .push(" ORDER BY o.created_at DESC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = data_qb
+        .build_query_as::<B2bOrderRow>()
+        .fetch_all(&s.db)
+        .await?;
     let results: Vec<serde_json::Value> = rows.into_iter().map(|r| json!({
         "id": r.id, "buyer_business_id": r.buyer_business_id, "supplier_business_id": r.supplier_business_id,
         "product_id": r.product_id, "quantity": r.quantity, "unit_price": r.unit_price,
@@ -1205,30 +1200,34 @@ pub async fn my_b2b_messages(
     let per_page = qs.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
-    let mut wheres = vec!["to_business_id = $1".to_string()];
-    if let Some(read) = qs.is_read {
-        wheres.push(format!("is_read = $2"));
-    }
-    let where_clause = format!("WHERE {}", wheres.join(" AND "));
-
-    // Count
-    let count_sql = format!("SELECT COUNT(*) FROM business_messages {}", where_clause);
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql).bind(biz_id);
-    if qs.is_read.is_some() {
-        count_q = count_q.bind(qs.is_read.unwrap());
-    }
-    let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
-
-    // Data query — messages sent TO this business via B2B
-    let data_sql = format!(
-        "SELECT id, business_id, sender_business_id, sender_name, sender_email, subject, message, is_read, created_at \
-         FROM business_messages {} ORDER BY created_at DESC LIMIT {} OFFSET {}",
-        where_clause, per_page, offset
+    // Statement text is a compile-time literal; the is_read filter is appended as a bind.
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT COUNT(*) FROM business_messages WHERE to_business_id = ",
     );
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT id, business_id, sender_business_id, sender_name, sender_email, subject, message, is_read, created_at \
+         FROM business_messages WHERE to_business_id = ",
+    );
+    count_qb.push_bind(biz_id);
+    data_qb.push_bind(biz_id);
+    if let Some(read) = qs.is_read {
+        count_qb.push(" AND is_read = ").push_bind(read);
+        data_qb.push(" AND is_read = ").push_bind(read);
+    }
 
-    let mut data_q = sqlx::query_as::<
-        _,
-        (
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+
+    data_qb
+        .push(" ORDER BY created_at DESC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = data_qb
+        .build_query_as::<(
             Uuid,
             Uuid,
             Option<Uuid>,
@@ -1238,15 +1237,9 @@ pub async fn my_b2b_messages(
             String,
             bool,
             chrono::DateTime<chrono::Utc>,
-        ),
-    >(&data_sql)
-    .bind(biz_id);
-
-    if qs.is_read.is_some() {
-        data_q = data_q.bind(qs.is_read.unwrap());
-    }
-
-    let rows = data_q.fetch_all(&s.db).await?;
+        )>()
+        .fetch_all(&s.db)
+        .await?;
     let results: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|r| {
@@ -1344,85 +1337,15 @@ pub async fn marketplace(
     let offset = (page - 1) * per_page;
 
     let supplier_types = "'supplier','distributor','wholesaler','farm','association'";
-    let mut wheres: Vec<String> = vec![
-        "sp.is_active = true".to_string(),
-        format!("b.business_type IN ({})", supplier_types),
-        "b.is_active = COALESCE(b.is_active, true)".to_string(),
-    ];
 
-    // Dynamic parameter binding — track param index
-    let mut param_idx = 0u32;
-
-    if let Some(ref cat) = qs.category {
-        if !cat.is_empty() {
-            param_idx += 1;
-            wheres.push(format!("sp.category ILIKE '%' || ${} || '%'", param_idx));
-        }
-    }
-
-    if let Some(ref q) = qs.search {
-        if !q.is_empty() {
-            param_idx += 1;
-            wheres.push(format!(
-                "(sp.name ILIKE '%' || ${} || '%' OR COALESCE(sp.description,'') ILIKE '%' || ${} || '%' OR b.name ILIKE '%' || ${} || '%')",
-                param_idx, param_idx, param_idx
-            ));
-        }
-    }
-
-    if let Some(ref area) = qs.delivery_area {
-        if !area.is_empty() {
-            param_idx += 1;
-            wheres.push(format!("${} = ANY(sp.delivery_areas)", param_idx));
-        }
-    }
-
-    if qs.min_rating.is_some() {
-        param_idx += 1;
-        wheres.push(format!("COALESCE(sos.avg_rating, 0) >= ${}", param_idx));
-    }
-
-    let where_clause = format!("WHERE {}", wheres.join(" AND "));
-
-    // Determine sort order
-    let order = match qs.sort_by.as_deref() {
-        Some("price_desc") => "COALESCE(sp.price, 0) DESC",
-        Some("rating") => "COALESCE(sos.avg_rating, 0) DESC",
-        Some("newest") => "sp.created_at DESC",
-        _ => "COALESCE(sp.price, 0) ASC", // price_asc (default)
-    };
-
-    // Count total
-    let mut count_sql = format!(
+    // Statement text is a compile-time literal; every optional filter is appended as a bind.
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"SELECT COUNT(*) FROM supplier_products sp
            JOIN businesses b ON b.id = sp.business_id
            LEFT JOIN supplier_order_stats sos ON sos.supplier_business_id = sp.business_id
-           {}"#,
-        where_clause
+           WHERE sp.is_active = true AND b.business_type IN ("#,
     );
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref cat) = qs.category {
-        if !cat.is_empty() {
-            count_q = count_q.bind(cat);
-        }
-    }
-    if let Some(ref q) = qs.search {
-        if !q.is_empty() {
-            count_q = count_q.bind(q);
-        }
-    }
-    if let Some(ref area) = qs.delivery_area {
-        if !area.is_empty() {
-            count_q = count_q.bind(area);
-        }
-    }
-    if let Some(mr) = qs.min_rating {
-        count_q = count_q.bind(mr);
-    }
-    let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
-
-    // Fetch products
-    let data_sql = format!(
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"SELECT sp.id, sp.business_id, sp.name, sp.description, sp.category,
                   sp.price, sp.unit, sp.min_order, sp.delivery_areas, sp.is_active, sp.created_at,
                   b.name as business_name,
@@ -1430,31 +1353,91 @@ pub async fn marketplace(
            FROM supplier_products sp
            JOIN businesses b ON b.id = sp.business_id
            LEFT JOIN supplier_order_stats sos ON sos.supplier_business_id = sp.business_id
-           {} ORDER BY {} LIMIT {} OFFSET {}"#,
-        where_clause, order, per_page, offset
+           WHERE sp.is_active = true AND b.business_type IN ("#,
     );
+    count_qb.push(supplier_types);
+    count_qb.push(") AND b.is_active = COALESCE(b.is_active, true)");
+    data_qb.push(supplier_types);
+    data_qb.push(") AND b.is_active = COALESCE(b.is_active, true)");
 
-    let mut data_q = sqlx::query_as::<_, MarketplaceProductRow>(&data_sql);
     if let Some(ref cat) = qs.category {
         if !cat.is_empty() {
-            data_q = data_q.bind(cat);
+            count_qb
+                .push(" AND sp.category ILIKE '%' || ")
+                .push_bind(cat)
+                .push(" || '%'");
+            data_qb
+                .push(" AND sp.category ILIKE '%' || ")
+                .push_bind(cat)
+                .push(" || '%'");
         }
     }
     if let Some(ref q) = qs.search {
         if !q.is_empty() {
-            data_q = data_q.bind(q);
+            count_qb
+                .push(" AND (sp.name ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%' OR COALESCE(sp.description,'') ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%' OR b.name ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%')");
+            data_qb
+                .push(" AND (sp.name ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%' OR COALESCE(sp.description,'') ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%' OR b.name ILIKE '%' || ")
+                .push_bind(q)
+                .push(" || '%')");
         }
     }
     if let Some(ref area) = qs.delivery_area {
         if !area.is_empty() {
-            data_q = data_q.bind(area);
+            count_qb
+                .push(" AND ")
+                .push_bind(area)
+                .push(" = ANY(sp.delivery_areas)");
+            data_qb
+                .push(" AND ")
+                .push_bind(area)
+                .push(" = ANY(sp.delivery_areas)");
         }
     }
     if let Some(mr) = qs.min_rating {
-        data_q = data_q.bind(mr);
+        count_qb
+            .push(" AND COALESCE(sos.avg_rating, 0) >= ")
+            .push_bind(mr);
+        data_qb
+            .push(" AND COALESCE(sos.avg_rating, 0) >= ")
+            .push_bind(mr);
     }
 
-    let rows = data_q.fetch_all(&s.db).await?;
+    // Determine sort order (a closed set of compile-time literals).
+    let order = match qs.sort_by.as_deref() {
+        Some("price_desc") => "COALESCE(sp.price, 0) DESC",
+        Some("rating") => "COALESCE(sos.avg_rating, 0) DESC",
+        Some("newest") => "sp.created_at DESC",
+        _ => "COALESCE(sp.price, 0) ASC", // price_asc (default)
+    };
+
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+
+    data_qb
+        .push(" ORDER BY ")
+        .push(order)
+        .push(" LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = data_qb
+        .build_query_as::<MarketplaceProductRow>()
+        .fetch_all(&s.db)
+        .await?;
 
     let products: Vec<serde_json::Value> = rows
         .into_iter()
@@ -1925,116 +1908,20 @@ pub async fn discover_suppliers(
     let offset = (page - 1) * per_page;
 
     let supplier_types = "'supplier','distributor','wholesaler','farm','association'";
-    let mut wheres: Vec<String> = vec![
-        format!("b.business_type IN ({})", supplier_types),
-        "b.is_active = COALESCE(b.is_active, true)".to_string(),
-    ];
-    let mut having_clauses: Vec<String> = Vec::new();
-    let mut param_idx = 0u32;
 
-    if let Some(ref bt) = qs.business_type {
-        if !bt.is_empty() {
-            param_idx += 1;
-            wheres.push(format!("b.business_type = ${}", param_idx));
-        }
-    }
-
-    if let Some(ref search) = qs.search {
-        if !search.is_empty() {
-            param_idx += 1;
-            wheres.push(format!(
-                "(b.name ILIKE '%' || ${0} || '%' OR COALESCE(b.description,'') ILIKE '%' || ${0} || '%')",
-                0
-            ));
-            // Replace the $0 placeholder with the actual param index
-            wheres
-                .last_mut()
-                .map(|w| *w = w.replace("$0", &param_idx.to_string()));
-        }
-    }
-
-    if let Some(ref area) = qs.delivery_area {
-        if !area.is_empty() {
-            param_idx += 1;
-            // Check both supplier_fields->>'delivery_areas' and any text array columns
-            wheres.push(format!(
-                "(COALESCE(b.supplier_fields->>'delivery_areas','') ILIKE '%' || ${0} || '%')",
-                0
-            ));
-            wheres
-                .last_mut()
-                .map(|w| *w = w.replace("$0", &param_idx.to_string()));
-        }
-    }
-
-    if let Some(ref cat) = qs.category {
-        if !cat.is_empty() {
-            param_idx += 1;
-            // Filter via subquery on supplier_products category
-            having_clauses.push(format!("{} > 0", PRODUCT_COUNT_EXPR));
-            wheres.push(format!(
-                "EXISTS (SELECT 1 FROM supplier_products sp WHERE sp.business_id = b.id AND sp.is_active = true AND sp.category ILIKE '%' || ${0} || '%')",
-                0
-            ));
-            wheres
-                .last_mut()
-                .map(|w| *w = w.replace("$0", &param_idx.to_string()));
-        }
-    }
-
-    if let Some(min_p) = qs.min_products {
-        if min_p > 0 {
-            // Card B55: repeat the aggregate — HAVING cannot resolve the `product_count` alias.
-            having_clauses.push(format!("{} >= {}", PRODUCT_COUNT_EXPR, min_p));
-        }
-    }
-
-    let where_clause = format!("WHERE {}", wheres.join(" AND "));
-    let having_clause = if having_clauses.is_empty() {
-        String::new()
-    } else {
-        format!("HAVING {}", having_clauses.join(" AND "))
-    };
-
-    // Count total matching suppliers
-    let count_sql = format!(
+    // Statement text is a compile-time literal; every optional filter is appended as a bind.
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"SELECT COUNT(*) FROM (
             SELECT b.id,
                    COUNT(sp.id) FILTER (WHERE sp.is_active = true) as product_count
             FROM businesses b
             LEFT JOIN supplier_products sp ON sp.business_id = b.id
-            {}
-            GROUP BY b.id
-            {}
-        ) sub"#,
-        where_clause, having_clause
+            WHERE b.business_type IN ("#,
     );
+    count_qb.push(supplier_types);
+    count_qb.push(") AND b.is_active = COALESCE(b.is_active, true)");
 
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref bt) = qs.business_type {
-        if !bt.is_empty() {
-            count_q = count_q.bind(bt);
-        }
-    }
-    if let Some(ref search) = qs.search {
-        if !search.is_empty() {
-            count_q = count_q.bind(search);
-        }
-    }
-    if let Some(ref area) = qs.delivery_area {
-        if !area.is_empty() {
-            count_q = count_q.bind(area);
-        }
-    }
-    if let Some(ref cat) = qs.category {
-        if !cat.is_empty() {
-            count_q = count_q.bind(cat);
-        }
-    }
-    let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
-
-    // Fetch suppliers with product count and ratings
-    let data_sql = format!(
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"SELECT
             b.id as business_id,
             b.name,
@@ -2048,37 +1935,100 @@ pub async fn discover_suppliers(
         FROM businesses b
         LEFT JOIN supplier_products sp ON sp.business_id = b.id
         LEFT JOIN supplier_order_stats sos ON sos.supplier_business_id = b.id
-        {}
-        GROUP BY b.id, sos.avg_rating, sos.total_orders
-        {}
-        ORDER BY product_count DESC, avg_rating DESC
-        LIMIT {} OFFSET {}"#,
-        where_clause, having_clause, per_page, offset
+        WHERE b.business_type IN ("#,
     );
+    data_qb.push(supplier_types);
+    data_qb.push(") AND b.is_active = COALESCE(b.is_active, true)");
 
-    let mut data_q = sqlx::query_as::<_, SupplierDiscoveryRow>(&data_sql);
     if let Some(ref bt) = qs.business_type {
         if !bt.is_empty() {
-            data_q = data_q.bind(bt);
+            count_qb.push(" AND b.business_type = ").push_bind(bt);
+            data_qb.push(" AND b.business_type = ").push_bind(bt);
         }
     }
     if let Some(ref search) = qs.search {
         if !search.is_empty() {
-            data_q = data_q.bind(search);
+            count_qb
+                .push(" AND (b.name ILIKE '%' || ")
+                .push_bind(search)
+                .push(" || '%' OR COALESCE(b.description,'') ILIKE '%' || ")
+                .push_bind(search)
+                .push(" || '%')");
+            data_qb
+                .push(" AND (b.name ILIKE '%' || ")
+                .push_bind(search)
+                .push(" || '%' OR COALESCE(b.description,'') ILIKE '%' || ")
+                .push_bind(search)
+                .push(" || '%')");
         }
     }
     if let Some(ref area) = qs.delivery_area {
         if !area.is_empty() {
-            data_q = data_q.bind(area);
+            count_qb
+                .push(" AND (COALESCE(b.supplier_fields->>'delivery_areas','') ILIKE '%' || ")
+                .push_bind(area)
+                .push(" || '%')");
+            data_qb
+                .push(" AND (COALESCE(b.supplier_fields->>'delivery_areas','') ILIKE '%' || ")
+                .push_bind(area)
+                .push(" || '%')");
         }
     }
+    let category_filter = qs.category.as_ref().map_or(false, |c| !c.is_empty());
     if let Some(ref cat) = qs.category {
         if !cat.is_empty() {
-            data_q = data_q.bind(cat);
+            // The supplier-category filter rides an EXISTS subquery so it belongs to WHERE.
+            count_qb
+                .push(" AND EXISTS (SELECT 1 FROM supplier_products sp WHERE sp.business_id = b.id AND sp.is_active = true AND sp.category ILIKE '%' || ")
+                .push_bind(cat)
+                .push(" || '%')");
+            data_qb
+                .push(" AND EXISTS (SELECT 1 FROM supplier_products sp WHERE sp.business_id = b.id AND sp.is_active = true AND sp.category ILIKE '%' || ")
+                .push_bind(cat)
+                .push(" || '%')");
         }
     }
 
-    let rows = data_q.fetch_all(&s.db).await?;
+    // Card B55: HAVING repeats the aggregate — PostgreSQL cannot resolve the `product_count`
+    // alias there. min_products is BOUND, never inlined into the statement text.
+    let min_products = qs.min_products.filter(|m| *m > 0);
+
+    count_qb.push(" GROUP BY b.id");
+    data_qb.push(" GROUP BY b.id, sos.avg_rating, sos.total_orders");
+
+    if category_filter || min_products.is_some() {
+        count_qb.push(" HAVING ");
+        data_qb.push(" HAVING ");
+        if category_filter {
+            count_qb.push(PRODUCT_COUNT_EXPR).push(" > 0");
+            data_qb.push(PRODUCT_COUNT_EXPR).push(" > 0");
+            if min_products.is_some() {
+                count_qb.push(" AND ");
+                data_qb.push(" AND ");
+            }
+        }
+        if let Some(mp) = min_products {
+            count_qb.push(PRODUCT_COUNT_EXPR).push(" >= ").push_bind(mp);
+            data_qb.push(PRODUCT_COUNT_EXPR).push(" >= ").push_bind(mp);
+        }
+    }
+
+    count_qb.push(") sub");
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+
+    data_qb
+        .push(" ORDER BY product_count DESC, avg_rating DESC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = data_qb
+        .build_query_as::<SupplierDiscoveryRow>()
+        .fetch_all(&s.db)
+        .await?;
     let suppliers: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|r| {
@@ -2140,23 +2090,26 @@ pub async fn my_notifications(
     let per_page = qs.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
-    let mut wheres = vec!["business_id = $1".to_string()];
-    let mut param_idx = 1u32;
-
+    // Statement text is a compile-time literal; the is_read filter is appended as a bind.
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT COUNT(*) FROM b2b_notifications WHERE business_id = ",
+    );
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT id, business_id, type, title, body, related_order_id, related_message_id, is_read, created_at \
+         FROM b2b_notifications WHERE business_id = ",
+    );
+    count_qb.push_bind(biz_id);
+    data_qb.push_bind(biz_id);
     if let Some(read) = qs.is_read {
-        param_idx += 1;
-        wheres.push(format!("is_read = ${}", param_idx));
+        count_qb.push(" AND is_read = ").push_bind(read);
+        data_qb.push(" AND is_read = ").push_bind(read);
     }
 
-    let where_clause = format!("WHERE {}", wheres.join(" AND "));
-
-    // Count
-    let count_sql = format!("SELECT COUNT(*) FROM b2b_notifications {}", where_clause);
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql).bind(biz_id);
-    if qs.is_read.is_some() {
-        count_q = count_q.bind(qs.is_read.unwrap());
-    }
-    let total = count_q.fetch_one(&s.db).await.unwrap_or(0);
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
     // Unread count
     let unread_count: i64 = sqlx::query_scalar(
@@ -2167,16 +2120,13 @@ pub async fn my_notifications(
     .await
     .unwrap_or(0);
 
-    // Fetch notifications
-    let data_sql = format!(
-        "SELECT id, business_id, type, title, body, related_order_id, related_message_id, is_read, created_at \
-         FROM b2b_notifications {} ORDER BY is_read ASC, created_at DESC LIMIT {} OFFSET {}",
-        where_clause, per_page, offset
-    );
-
-    let mut data_q = sqlx::query_as::<
-        _,
-        (
+    data_qb
+        .push(" ORDER BY is_read ASC, created_at DESC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = data_qb
+        .build_query_as::<(
             Uuid,
             Uuid,
             String,
@@ -2186,14 +2136,9 @@ pub async fn my_notifications(
             Option<Uuid>,
             bool,
             chrono::DateTime<chrono::Utc>,
-        ),
-    >(&data_sql)
-    .bind(biz_id);
-    if qs.is_read.is_some() {
-        data_q = data_q.bind(qs.is_read.unwrap());
-    }
-
-    let rows = data_q.fetch_all(&s.db).await?;
+        )>()
+        .fetch_all(&s.db)
+        .await?;
     let notifications: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|r| {
