@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clearinghouse Admin Guide — ZaarHub Loyalty Network</title>
+<style>
+  :root {
+    --accent: #34d399; --accent-light: #6ee7b7; --accent-dark: #059669; --accent-glow: rgba(52,211,153,0.15);
+    --bg-dark: #0E0F12; --bg-card: #16181D; --bg-elevated: #1E2028; --border: #2A2D38;
+    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
+    --success: #22C55E; --warning: #F97316; --danger: #EF4444; --info: #3B82F6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: var(--bg-dark); color: var(--text-primary); line-height: 1.6; min-height: 100vh; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-dark); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  .app-layout { display: flex; min-height: 100vh; }
+
+  .sidebar { width: 260px; background: var(--bg-card); border-right: 1px solid var(--border); position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; z-index: 100; display: flex; flex-direction: column; }
+  .sidebar-logo { display: flex; align-items: center; gap: 12px; padding: 24px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo .logo-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--accent), #059669); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .sidebar-logo h1 { font-size: 17px; font-weight: 600; color: var(--text-primary); line-height: 1.2; }
+  .sidebar-logo p { font-size: 11px; color: var(--text-muted); }
+  .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+  .sidebar-nav .section-title { padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s ease; cursor: pointer; border: none; background: none; width: 100%; text-align: left; margin-bottom: 2px; }
+  .nav-item:hover { background: var(--border); color: var(--text-primary); }
+  .nav-item.active { background: var(--accent-glow); color: var(--accent); border-left: 2px solid var(--accent); }
+  .nav-item .nav-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; }
+  .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--text-muted); }
+
+  .main-content { margin-left: 260px; flex: 1; display: flex; flex-direction: column; }
+  .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar h2 { font-size: 16px; font-weight: 600; }
+  .topbar-badge { background: var(--accent-glow); color: var(--accent); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .content-area { flex: 1; padding: 28px; overflow-y: auto; max-width: 1100px; }
+
+  h1 { font-size: 30px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 24px; font-weight: 700; margin: 48px 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  h3 { font-size: 18px; font-weight: 600; margin: 28px 0 12px; color: var(--accent); }
+  h4 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  p { margin-bottom: 16px; color: var(--text-secondary); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .lead { font-size: 18px; color: var(--text-secondary); margin-bottom: 32px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .card-header .card-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #059669); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .card-header h3 { margin: 0; padding: 0; border: none; color: var(--text-primary); font-size: 16px; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 20px 0; }
+  .feature-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: border-color 0.2s; }
+  .feature-card:hover { border-color: var(--accent); }
+  .feature-card .fc-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--accent-glow); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 12px; }
+  .feature-card h4 { margin: 0 0 8px; font-size: 14px; }
+  .feature-card p { margin: 0; font-size: 13px; color: var(--text-muted); }
+
+  code { background: var(--bg-elevated); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+  pre { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 16px 0; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text-secondary); line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--text-secondary); }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-elevated); font-weight: 600; color: var(--text-primary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { color: var(--text-secondary); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--success); }
+  .badge-orange { background: rgba(249,115,22,0.15); color: var(--warning); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--info); }
+
+  .step-list { list-style: none; counter-reset: step; }
+  .step-list li { counter-increment: step; padding: 16px 16px 16px 52px; position: relative; margin-bottom: 8px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border); }
+  .step-list li::before { content: counter(step); position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .step-list li strong { color: var(--text-primary); }
+  .step-list li p { margin: 4px 0 0; font-size: 13px; }
+
+  .alert { padding: 14px 18px; border-radius: 8px; margin: 16px 0; border-left: 3px solid; font-size: 14px; }
+  .alert-info { background: rgba(59,130,246,0.08); border-color: var(--info); color: #93C5FD; }
+  .alert-warning { background: rgba(249,115,22,0.08); border-color: var(--warning); color: #FDBA74; }
+  .alert-success { background: rgba(34,197,94,0.08); border-color: var(--success); color: #86EFAC; }
+  .alert-danger { background: rgba(239,68,68,0.08); border-color: var(--danger); color: #FCA5A5; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0; }
+  .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-card .stat-value { font-size: 26px; font-weight: 700; color: var(--text-primary); }
+  .stat-card .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+  ul { color: var(--text-secondary); margin: 8px 0 16px 24px; }
+  ul li { margin-bottom: 6px; }
+
+  .mobile-menu-btn { display: none; position: fixed; top: 14px; left: 14px; z-index: 200; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 20px; align-items: center; justify-content: center; }
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+    .sidebar-overlay.open { display: block; }
+    .main-content { margin-left: 0; }
+    .mobile-menu-btn { display: flex; }
+    .topbar { padding: 14px 16px 14px 64px; }
+    .content-area { padding: 16px; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()">=</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileSidebar()"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🪙</div>
+      <div>
+        <h1>Clearinghouse Admin</h1>
+        <p>ZaarHub Loyalty Network</p>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="section-title">Getting Started</div>
+      <a href="#overview" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📖</span> Overview</a>
+      <a href="#first-setup" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🚀</span> First-Time Setup</a>
+      <a href="#economics" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💰</span> Economics &amp; Billing</a>
+      <div class="section-title">Admin Views</div>
+      <a href="#treasury" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📊</span> Treasury</a>
+      <a href="#caps" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎯</span> Category Caps</a>
+      <a href="#ledgers" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏪</span> Business Ledgers</a>
+      <a href="#logs" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📜</span> Clearing Logs</a>
+      <a href="#scan" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🛒</span> Scan Simulator</a>
+      <a href="#expire" class="nav-item" onclick="closeMobile()"><span class="nav-icon">⏳</span> Expire Points</a>
+      <div class="section-title">Support</div>
+      <a href="#faq" class="nav-item" onclick="closeMobile()"><span class="nav-icon">❓</span> FAQ</a>
+    </nav>
+    <div class="sidebar-footer">&copy; 2026 ZaarHub Clearinghouse</div>
+  </aside>
+  <div class="main-content">
+    <header class="topbar">
+      <h2>Clearinghouse Admin Guide</h2>
+      <span class="topbar-badge">v1.0 &middot; Setup &amp; Operations</span>
+    </header>
+    <div class="content-area">
+      <h1 id="overview">Clearinghouse Admin Guide</h1>
+      <p class="lead">A practical walkthrough of the ZaarHub loyalty clearinghouse admin panel — how to configure it, what every view does, and exactly how money moves so you can set things up with confidence.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">🪙</div>
+          <h4>ZaarCash</h4>
+          <p>1 ZaarCash = $0.01 (1¢) of purchasing value to the consumer. Points earn and redeem across every city in the network.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🏙️</div>
+          <h4>One Wallet, Many Cities</h4>
+          <p>A visitor earns in Palm Bay and redeems in St. Petersburg against the same member wallet and the same network treasury.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🎯</div>
+          <h4>Category Caps</h4>
+          <p>You control how much of an invoice can be paid with points per business category (e.g. 20% at grocery, 0% at tobacco).</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">⏳</div>
+          <h4>Rolling Expiry</h4>
+          <p>Points older than 365 days are expired automatically, protecting the treasury from stale liability.</p>
+        </div>
+      </div>
+
+      <h2 id="first-setup">🚀 First-Time Setup</h2>
+      <p>The admin panel lives at <code>https://directory.swiftsoftware.net/admin/</code>. It uses the same sign-in as the rest of the Multi-Directory platform.</p>
+      <ol class="step-list">
+        <li><strong>Open the admin URL</strong><p>Go to <code>https://directory.swiftsoftware.net/admin/</code> in your browser.</p></li>
+        <li><strong>Sign in</strong><p>Enter your Multi-Directory email and password. Any valid admin or operator account works — the clearinghouse routes are login-gated. (David's <code>swiftsoftware143@yahoo.com</code> super-admin account is a good default.)</p></li>
+        <li><strong>Pick a network</strong><p>Use the <strong>Network / City Directory</strong> dropdown in the top bar to select which network you're viewing. Options include <strong>ZaarHub (All Cities)</strong>, <strong>Palm Bay</strong>, <strong>St. Petersburg</strong>, and more as cities come online. Each network has its own treasury and caps.</p></li>
+        <li><strong>Review the Treasury</strong><p>Start on the <strong>📊 Treasury</strong> tab — confirm the live issued/redeemed numbers and economics for the network before changing anything.</p></li>
+        <li><strong>Set your category caps</strong><p>Go to <strong>🎯 Category Caps</strong> and make sure each business category has the redemption limit you want. This is the single most important configuration for controlling exposure.</p></li>
+      </ol>
+      <div class="alert alert-info"><strong>Signed out?</strong> The panel remembers your sign-in automatically (stored securely in your browser). If you get a 401 on any action, it will prompt you to sign in again.</div>
+
+      <h2 id="economics">💰 Economics &amp; Billing — Read This First</h2>
+      <p>This is the core of the clearinghouse. Every point creation and redemption has a real money side. The rules are fixed in the engine:</p>
+      <table>
+        <thead><tr><th>Event</th><th>Consumer gets</th><th>Issuing business billed</th><th>Redeeming business reimbursed</th><th>Platform keeps</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Issue</strong> (earn)</td><td>1 point on a $1.00 purchase</td><td><strong>$0.01 / pt</strong></td><td>—</td><td>—</td></tr>
+          <tr><td><strong>Redeem</strong> (spend)</td><td>$0.01 off per point</td><td>—</td><td><strong>$0.008 / pt</strong></td><td>—</td></tr>
+          <tr><td><strong>Spread on every redemption</strong></td><td>—</td><td>—</td><td>—</td><td><strong>$0.002 / pt</strong></td></tr>
+        </tbody>
+      </table>
+      <p>Working example: a $25.00 purchase issues <strong>25 points</strong>. The issuing business is billed <strong>$0.25</strong>. When that customer later redeems 10 points (worth $0.10 off), the redeeming business is reimbursed <strong>$0.08</strong>, and the platform keeps <strong>$0.02</strong> as the spread (covers fees + breakage from never-redeemed points).</p>
+      <div class="alert alert-success"><strong>How the platform is protected:</strong> 1 point issued = $0.01 liability, but full redemption only pays $0.008. That $0.002/point margin is the platform's buffer — plus rolling 365-day expiry removes points that are never redeemed.</div>
+      <div class="alert alert-warning"><strong>Billing is per-network</strong> and tracked per business. Use the <strong>Treasury</strong> and <strong>Business Ledgers</strong> views to see who owes what.</div>
+
+      <h2 id="treasury">📊 Treasury</h2>
+      <p>Your at-a-glance health readout for the selected network. Six key numbers:</p>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-value">#</div><div class="stat-label">Points Issued</div></div>
+        <div class="stat-card"><div class="stat-value">#</div><div class="stat-label">Points Redeemed</div></div>
+        <div class="stat-card"><div class="stat-value">$</div><div class="stat-label">Revenue Collected</div></div>
+        <div class="stat-card"><div class="stat-value">$</div><div class="stat-label">Reimbursements Paid</div></div>
+        <div class="stat-card"><div class="stat-value">$</div><div class="stat-label">Outstanding Liability</div></div>
+        <div class="stat-card"><div class="stat-value">$</div><div class="stat-label">Minimum Float</div></div>
+      </div>
+      <ul>
+        <li><strong>Points Issued / Redeemed</strong> — total life-time points earned and spent in this network.</li>
+        <li><strong>Revenue Collected</strong> — total billed to issuing businesses ($0.01/pt).</li>
+        <li><strong>Reimbursements Paid</strong> — total paid to redeeming businesses ($0.008/pt).</li>
+        <li><strong>Outstanding Liability</strong> — value of points currently in members' wallets that could still be redeemed.</li>
+        <li><strong>Minimum Float</strong> — the reserve you should keep on hand to cover that outstanding liability.</li>
+      </ul>
+      <p>The <strong>Program Economics</strong> card below the stats restates the exact rates so you always see the live configuration.</p>
+
+      <h2 id="caps">🎯 Category Caps</h2>
+      <p>Controls the maximum percentage of an invoice that can be settled with ZaarCash, per business category. This is the lever that limits how much a single redemption can "discount" a sale.</p>
+      <ul>
+        <li><strong>0%</strong> — no redemption allowed at that category (e.g. tobacco is typically 0%).</li>
+        <li><strong>100%</strong> — unlimited; an invoice could be fully paid with points.</li>
+        <li>Numbers in between limit the cap (e.g. 20% at grocery means at most $0.20 of every $1.00 can be points).</li>
+      </ul>
+      <h4>Canonical defaults (recommended):</h4>
+      <table>
+        <thead><tr><th>Category</th><th>Default cap</th><th>Rationale</th></tr></thead>
+        <tbody>
+          <tr><td>grocery</td><td><span class="badge badge-orange">20%</span></td><td>Low-margin — points capped at 20% of invoice</td></tr>
+          <tr><td>convenience</td><td><span class="badge badge-orange">20%</span></td><td>Low-margin</td></tr>
+          <tr><td>fuel</td><td><span class="badge badge-orange">20%</span></td><td>Low-margin / volatile</td></tr>
+          <tr><td>tobacco</td><td><span class="badge badge-red">0%</span></td><td>Policy restriction</td></tr>
+          <tr><td>restaurant</td><td><span class="badge badge-green">100%</span></td><td>Full redemption allowed</td></tr>
+          <tr><td>retail</td><td><span class="badge badge-green">100%</span></td><td>Full redemption allowed</td></tr>
+          <tr><td>services</td><td><span class="badge badge-green">100%</span></td><td>Full redemption allowed</td></tr>
+          <tr><td>homegoods</td><td><span class="badge badge-blue">50%</span></td><td>Mid-margin</td></tr>
+        </tbody>
+      </table>
+      <h4>To change a cap:</h4>
+      <ol class="step-list">
+        <li><strong>Open Category Caps</strong><p>Select the <strong>🎯 Category Caps</strong> tab for the network you're managing.</p></li>
+        <li><strong>Click Edit</strong><p>Next to the category row you want to change, click <strong>Edit</strong>.</p></li>
+        <li><strong>Set the percentage</strong><p>Enter a value between 0 and 100 and an optional description, then <strong>Save Cap</strong>. The change applies immediately and persists.</p></li>
+      </ol>
+      <div class="alert alert-warning"><strong>Tip:</strong> Put a descriptive note (like "Low-margin: points capped at 20% of invoice") so future admins understand why a cap is set.</div>
+
+      <h2 id="ledgers">🏪 Business Ledgers</h2>
+      <p>A per-business monthly net position: how many points it issued, how many it redeemed, its total billed ($0.01/pt), total reimbursed ($0.008/pt), and the resulting <strong>Net Position</strong> (reimbursed − billed) for the month.</p>
+      <ul>
+        <li><strong>Positive net position</strong> — the business redeemed more than it issued this month; it's owed money.</li>
+        <li><strong>Negative net position</strong> — the business issued more than it redeemed; it owes money (buy-in for the points it gave away).</li>
+      </ul>
+      <p>This is where you reconcile individual businesses before settling with them.</p>
+
+      <h2 id="logs">📜 Clearing Logs</h2>
+      <p>A chronological audit trail of every issue and redemption event in the network — who (member), which business, points, transaction amount, category, and timestamp. Use this for verification, disputes, and reconciliation. The view shows the most recent events (freshest first).</p>
+
+      <h2 id="scan">🛒 Scan Simulator</h2>
+      <p>A built-in test utility that exercises the clearinghouse engine end-to-end. Use it to verify the economics ("bill $0.01/pt issued, reimburse $0.008/pt redeemed") without real traffic.</p>
+      <p><strong>Issue (purchase / check-in):</strong> provide a visitor account UUID, business UUID + name, category, and transaction amount, then <strong>Issue ZaarCash</strong>. The engine awards points, bills the business, and logs the event.</p>
+      <p><strong>Redeem (spend points):</strong> provide the visitor, business, category, invoice amount, and points to redeem, then <strong>Redeem ZaarCash</strong>. The engine enforces the category cap and the member's balance.</p>
+      <div class="alert alert-danger"><strong>Gotcha:</strong> the <strong>Visitor Account UUID</strong> and <strong>Business UUID</strong> must reference rows that already exist in the database (<code>visitor_accounts(id)</code> and <code>businesses(id)</code>). Unregistered UUIDs return an error — this sim hits real production tables, so this is a testing tool, not a customer flow.</div>
+
+      <h2 id="expire">⏳ Expire Points</h2>
+      <p>Runs a rolling 12-month expiry: any ZaarCash earned more than 365 days ago is removed from member balances and the network's outstanding liability. This is the same endpoint that a scheduled cron can call automatically.</p>
+      <ol class="step-list">
+        <li><strong>Open Expire Points</strong><p>Select the <strong>⏳ Expire Points</strong> tab.</p></li>
+        <li><strong>Confirm the network</strong><p>The current network is shown. Expiry is per-network.</p></li>
+        <li><strong>Run Expiry Now</strong><p>Click the button. The result reports how many points were expired and how many members were affected.</p></li>
+      </ol>
+      <div class="alert alert-info"><strong>Automation:</strong> a scheduled job can call this endpoint on a daily/weekly cadence so expiry runs on its own. Right now it's manual (or cron-driven once wiring is confirmed).</div>
+
+      <h2 id="faq">❓ FAQ</h2>
+      <div class="badge-container"></div>
+      <div class="card">
+        <p><strong>Q: How much does issuing a point cost the business?</strong><br>A: $0.01 per point (1¢). A $25 purchase that yields 25 points bills the business $0.25.</p>
+      </div>
+      <div class="card">
+        <p><strong>Q: How much does a redemption reimburse the business?</strong><br>A: $0.008 per point. Redeeming 10 points reimburses $0.08 and removes $0.10 of liability, netting the platform $0.02.</p>
+      </div>
+      <div class="card">
+        <p><strong>Q: Can a customer use points in a different city than where they earned them?</strong><br>A: Yes. Members have one wallet per network, so they earn in Palm Bay and redeem in St. Petersburg against the same balance and treasury.</p>
+      </div>
+      <div class="card">
+        <p><strong>Q: What happens to points that are never redeemed?</strong><br>A: They expire after 365 days via the rolling expiry, which protects the treasury from growing stale liability.</p>
+      </div>
+      <div class="card">
+        <p><strong>Q: Do caps apply per business or per network?</strong><br>A: Per category, per network. You configure the cap for each category in the selected network, and it applies to every business in that category.</p>
+      </div>
+      <div class="card">
+        <p><strong>Q: My action returned 401.</strong><br>A: Your sign-in expired. Sign in again and retry — the panel will re-prompt you.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function closeMobile(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');}
+function toggleMobileSidebar(){var s=document.getElementById('sidebar');var o=document.getElementById('sidebarOverlay');s.classList.toggle('open');o.classList.toggle('open');}
+</script>
+</body>
+</html>
