@@ -10,9 +10,13 @@
 //! configures their own programs. Members are consumer visitor accounts.
 
 use crate::error::AppError;
+use crate::handlers::tenant_scope::{
+    caller_user, can_admin_business, claims_from_headers, is_platform_operator,
+};
 use crate::AppState;
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -935,6 +939,258 @@ pub async fn get_member(
         None => Ok(Json(json!({ "member": null }))),
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Counter scan — the server side of the browser scanner (zaarhub.com/scanner).
+// POST /api/v1/loyalty/scan
+//
+// A staff account scans the customer's wallet QR and asks for one of three things:
+//   checkin    — award the programme's per-check-in currency (daily-capped)
+//   purchase   — credit currency at the programme's admin-set earn rate for the spend
+//   redemption — spend currency, refused below the programme's minimum balance and
+//                clamped to its redemption cap when the bill is supplied
+// Every number comes from the programme the member actually belongs to, so a
+// network-wide programme (ZaarHub's) works at any city's counter and a buyer's own
+// programme works with their own numbers. Nothing is hardcoded (t_*: B102).
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CounterScanInput {
+    pub qr_code: Option<String>,
+    pub business_id: Option<String>,
+    pub business_name: Option<String>,
+    pub scan_type: Option<String>,
+    pub purchase_amount: Option<f64>,
+    pub transaction_amount: Option<f64>,
+    pub points: Option<i32>,
+    pub transaction_id: Option<String>,
+}
+
+/// POST /api/v1/loyalty/scan
+pub async fn counter_scan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CounterScanInput>,
+) -> Result<Json<Value>, AppError> {
+    let claims = claims_from_headers(&headers, &state.config.jwt_secret)?;
+
+    let qr = body
+        .qr_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::BadRequest("Scan a customer QR code first".into()))?;
+
+    // The wallet QR carries loyalty_members.qr_code; when a member has none the wallet falls
+    // back to the member id, so both are accepted.
+    let (member_id, program_id, visitor_account_id): (Uuid, Uuid, Uuid) = sqlx::query_as(
+        "SELECT id, program_id, visitor_account_id FROM loyalty_members
+          WHERE qr_code = $1 OR id::text = $1 LIMIT 1",
+    )
+    .bind(qr)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Loyalty card not recognised".into()))?;
+
+    // The business the scan belongs to. Never trust the body blindly: an operator may name any
+    // business, anyone else may name only one they administer — otherwise fall back to the
+    // business resolved from the caller's own account.
+    let named = body
+        .business_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| Uuid::parse_str(s).ok());
+    let business_id = match named {
+        Some(b) if is_platform_operator(&claims) => b,
+        Some(b) if can_admin_business(&state.db, &claims, b).await? => b,
+        _ => crate::handlers::b2b::resolve_buyer_business(&state.db, caller_user(&claims)?).await?,
+    };
+
+    let (db_business_name, directory_id): (String, Uuid) = sqlx::query_as(
+        "SELECT COALESCE(name, 'Business'), directory_id FROM businesses WHERE id = $1",
+    )
+    .bind(business_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("business not found".into()))?;
+
+    let business_name = body
+        .business_name
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(db_business_name);
+
+    let program = get_program(&state.db, &program_id).await?;
+
+    let member_name: Option<String> =
+        sqlx::query_scalar("SELECT name FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_account_id)
+            .fetch_optional(&state.db)
+            .await?
+            .flatten();
+
+    match body.scan_type.as_deref().unwrap_or("checkin") {
+        "purchase" => {
+            let amount = body
+                .purchase_amount
+                .or(body.transaction_amount)
+                .unwrap_or(0.0)
+                .max(0.0);
+            let units = if program.earn_rate > 0.0 {
+                (amount * program.earn_rate).floor() as i32
+            } else {
+                0
+            };
+            let description = format!(
+                "Earned {units} {} at {business_name}",
+                program.currency_name
+            );
+            let award = credit_visitor_units(
+                &state.db,
+                &directory_id,
+                &visitor_account_id,
+                units,
+                "purchase",
+                &description,
+            )
+            .await?;
+            let (awarded, balance) = match award {
+                Some(a) => (a.units, a.balance_after),
+                None => (0, 0),
+            };
+            Ok(Json(json!({
+                "status": "credited",
+                "points_awarded": awarded,
+                "points_balance": balance,
+                "member_name": member_name,
+                "currency_name": program.currency_name,
+                "currency_icon": program.currency_icon,
+                "message": if program.earn_rate > 0.0 {
+                    format!("{awarded} {} credited", program.currency_name)
+                } else {
+                    "Earning is switched off for this programme".to_string()
+                }
+            })))
+        }
+        "redemption" | "redeem" => {
+            let points = body
+                .points
+                .or_else(|| body.purchase_amount.map(|v| v.round() as i32))
+                .unwrap_or(0);
+            if points <= 0 {
+                return Err(AppError::BadRequest(
+                    "Enter how many units to redeem".into(),
+                ));
+            }
+            let balance: i32 = sqlx::query_scalar(
+                "SELECT COALESCE(points_balance, 0) FROM loyalty_members WHERE id = $1",
+            )
+            .bind(member_id)
+            .fetch_one(&state.db)
+            .await?;
+            if points > balance {
+                return Err(AppError::BadRequest(format!(
+                    "Not enough {} — balance is {balance}",
+                    program.currency_name
+                )));
+            }
+            if program.min_redeem_balance > 0 && balance < program.min_redeem_balance {
+                return Err(AppError::BadRequest(format!(
+                    "Minimum balance of {} {} (US${:.2}) is required to redeem — current balance is {balance}.",
+                    program.min_redeem_balance,
+                    program.currency_name,
+                    program.min_redeem_balance as f64 / UNITS_PER_DOLLAR
+                )));
+            }
+            if let Some(bill) = body.transaction_amount.filter(|b| *b > 0.0) {
+                let cap_units = (bill * program.redemption_cap_pct as f64 / 100.0
+                    * UNITS_PER_DOLLAR)
+                    .floor() as i32;
+                if program.redemption_cap_pct < 100 && points > cap_units {
+                    return Err(AppError::BadRequest(format!(
+                        "This bill allows at most {cap_units} {} ({}% of US${bill:.2})",
+                        program.currency_name, program.redemption_cap_pct
+                    )));
+                }
+            }
+            let mut tx = state.db.begin().await?;
+            let new_balance: i32 = sqlx::query_scalar(
+                "UPDATE loyalty_members SET points_balance = points_balance - $1,
+                        last_activity_date = NOW()
+                  WHERE id = $2 RETURNING points_balance",
+            )
+            .bind(points)
+            .bind(member_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            sqlx::query(
+                "INSERT INTO loyalty_activity (id, member_id, activity_type, description, points_earned)
+                 VALUES ($1, $2, 'redemption', $3, $4)",
+            )
+            .bind(Uuid::new_v4())
+            .bind(member_id)
+            .bind(format!(
+                "Redeemed {points} {} at {business_name}",
+                program.currency_name
+            ))
+            .bind(-i64::from(points))
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            Ok(Json(json!({
+                "status": "redeemed",
+                "points_awarded": -points,
+                "points_redeemed": points,
+                "points_balance": new_balance,
+                "member_name": member_name,
+                "currency_name": program.currency_name,
+                "currency_icon": program.currency_icon,
+                "message": format!("{points} {} redeemed", program.currency_name)
+            })))
+        }
+        _ => {
+            let today_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM loyalty_checkins WHERE member_id = $1 AND checked_in_at::date = CURRENT_DATE",
+            )
+            .bind(member_id)
+            .fetch_one(&state.db)
+            .await?;
+            if today_count >= program.max_checkins_per_day as i64 {
+                return Err(AppError::Validation("Daily check-in limit reached".into()));
+            }
+            record_checkin(
+                &state.db,
+                &program_id,
+                &member_id,
+                program.points_per_checkin,
+                "counter_scan",
+            )
+            .await?;
+            let milestone_units =
+                award_qualified_milestones(&state.db, &program, &member_id).await?;
+            let awarded = program
+                .points_per_checkin
+                .saturating_add(i32::try_from(milestone_units).unwrap_or(0));
+            let balance: i32 = sqlx::query_scalar(
+                "SELECT COALESCE(points_balance, 0) FROM loyalty_members WHERE id = $1",
+            )
+            .bind(member_id)
+            .fetch_one(&state.db)
+            .await?;
+            Ok(Json(json!({
+                "status": "checked_in",
+                "points_awarded": awarded,
+                "points_balance": balance,
+                "member_name": member_name,
+                "currency_name": program.currency_name,
+                "currency_icon": program.currency_icon,
+                "message": format!("Checked in — +{} {}", program.points_per_checkin, program.currency_name)
+            })))
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tiers, rewards, milestones (native — directory-scoped)
 // ─────────────────────────────────────────────────────────────────────────────

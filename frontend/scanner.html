@@ -293,7 +293,7 @@ async function doLogin() {
   err.style.display='none';
   var btn = event.target; btn.disabled=true; btn.textContent='Signing in...';
   try{
-    var r = await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:password})});
+    var r = await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pw})});
     var d = await r.json();
     if(!r.ok) throw new Error(d.message||d.error||'Login failed');
     setSession(d);
@@ -479,7 +479,6 @@ async function processTransaction() {
     qr_code: qrCode,
     business_id: _bizId,
     business_name: _bizName,
-    program_slug: 'zaarhub-rewards',
     scan_type: _scanType,
     business_category: _bizCategory,
     transaction_id: $('txId').value,
@@ -487,7 +486,7 @@ async function processTransaction() {
   };
 
   if(_scanType==='purchase'||_scanType==='redemption'){
-    body.purchase_amount = amount;
+    body.purchase_amount = parseFloat(amount);
   }
 
   try{

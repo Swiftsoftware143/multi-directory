@@ -123,6 +123,9 @@ pub fn create_router(s: AppState) -> Router {
             "/directories/:slug/loyalty/rewards/earned/:earned_id/approve",
             post(loyalty_native::approve_reward),
         )
+        // Counter scan — the browser scanner (zaarhub.com/scanner) credits/checks in/redeems
+        // against the member's own programme. Needs a staff bearer token.
+        .route("/loyalty/scan", post(loyalty_native::counter_scan))
         .route(
             "/networks/:slug/clear/scan",
             post(clearinghouse::clearhouse_scan),
