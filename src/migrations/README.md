@@ -24,7 +24,7 @@ fleet tooling, because a buyer installing this app does not have `/opt/swift`).
 
 | file | what it is |
 |---|---|
-| `000_baseline_live_schema.sql` | the live catalog — every table, column, constraint, index, sequence, view, function, trigger and column comment — generated from the live database. A fresh install runs this one file and nothing else. |
+| `000_baseline_live_schema.sql` | the live catalog — every table, column, constraint, index, sequence, view, function, trigger and column comment — generated from the live database. A fresh install runs this file first and every later, higher-numbered file on top of it. |
 
 ## Rules for a new change
 
