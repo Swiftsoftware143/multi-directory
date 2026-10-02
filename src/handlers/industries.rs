@@ -10,8 +10,8 @@
 //!   * `GET /api/v1/industries/available` — the *published* list (is_active = true), the contract
 //!     consumers/directories read. Authenticated by the app's global auth guard.
 //!   * `GET /api/v1/industries/catalogue`  — every row incl. unpublished, for the panel itself.
-//! Writes (`POST`/`PUT`/`DELETE /industries/catalogue…`) are operator-guarded because these are
-//! the platform's own catalogue rows.
+//! Writes (`POST`/`PUT /industries/catalogue…`) are operator-guarded because these are the
+//! platform's own catalogue rows.
 //!
 //! The former per-user `user_industry_dashboards` scaffolding (a table with 0 rows, a column
 //! `tenants.industry_slug` nothing read, and four routes with no caller) was retired in the same
@@ -184,7 +184,9 @@ pub async fn create_industry(
 }
 
 /// PUT /api/v1/industries/catalogue/:slug  (operator)
-/// Edits any field; a field left out is unchanged. `is_active` publishes/unpublishes.
+/// Edits any field; a field left out is unchanged. `is_active` publishes/unpublishes — the
+/// panel's "published" checkbox is the single control for that, so there is deliberately no
+/// separate DELETE route (an endpoint with no caller would be its own defect).
 pub async fn update_industry(
     State(s): State<AppState>,
     Path(slug): Path<String>,
@@ -225,26 +227,6 @@ pub async fn update_industry(
     .bind(icon)
     .bind(req.sort_order)
     .bind(req.is_active)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("No industry with slug '{slug}'")))?;
-
-    Ok(Json(json!(row)))
-}
-
-/// DELETE /api/v1/industries/catalogue/:slug  (operator)
-/// Unpublishes an industry (soft delete — keeps any historical references intact). Re-publish
-/// with `PUT … {"is_active": true}`.
-pub async fn deactivate_industry(
-    State(s): State<AppState>,
-    Path(slug): Path<String>,
-) -> ApiResult<impl IntoResponse> {
-    let row = sqlx::query_as::<_, IndustryCatalogueRow>(
-        "UPDATE template_categories SET is_active = false, updated_at = NOW() \
-         WHERE slug = $1 \
-         RETURNING id, slug, name, description, icon, sort_order, is_active, created_at, updated_at",
-    )
-    .bind(&slug)
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound(format!("No industry with slug '{slug}'")))?;

@@ -1510,7 +1510,6 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/industries/catalogue/:slug",
             put(industries::update_industry)
-                .delete(industries::deactivate_industry)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         // ? Visitor account routes (no auth — self-contained)
