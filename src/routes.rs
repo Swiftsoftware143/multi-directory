@@ -1623,10 +1623,9 @@ pub fn create_router(s: AppState) -> Router {
             "/connected-services/:service",
             delete(connected_services::disconnect_service),
         )
-        .route(
-            "/connected-services/:service/campaigns",
-            get(connected_services::list_service_campaigns),
-        )
+        // RETIRED 2026-09-23 (David): the IncentiveSwift campaigns proxy
+        // (`GET /connected-services/incentiveswift/campaigns`) was the only consumer of
+        // the IS connect flow and is gone with it. CoreSwift lives on the routes above.
         // ??? Event Provider Pipeline (Phase 2A)
         .route(
             "/admin/directories/:directory_id/event-providers",

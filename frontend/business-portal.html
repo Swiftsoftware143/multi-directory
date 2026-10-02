@@ -487,29 +487,6 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div class="section-title">🔗 Integration Features</div>
       <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Extra features unlocked by your connected services.</div>
 
-      <!-- Campaign Integration (IncentiveSwift) -->
-      <div id="campaignIntegration" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px">
-        <h3 style="font-size:1rem;margin-bottom:8px">🎯 Campaign Linking</h3>
-        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Link a loyalty campaign to your business listing for automated rewards.</p>
-        <div class="form-group">
-          <label>Campaign Type</label>
-          <select id="listingCampaignType" onchange="onCampaignTypeChange()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
-            <option value="">None — don't link a campaign</option>
-            <option value="sms">SMS Funnel</option>
-            <option value="spin">Spin-to-Win</option>
-            <option value="raffle">Raffle</option>
-            <option value="quiz">Quiz</option>
-          </select>
-        </div>
-        <div class="form-group" id="campaignPicker" style="display:none">
-          <label>Select Campaign</label>
-          <select id="listingCampaignId" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
-            <option value="">Loading campaigns...</option>
-          </select>
-        </div>
-        <div id="campaignLinkResult" style="margin-top:8px;font-size:.8rem"></div>
-      </div>
-
       <!-- Booking Integration (CoreSwift) -->
       <div id="bookingIntegration" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px">
         <h3 style="font-size:1rem;margin-bottom:8px">📅 Booking Integration</h3>
@@ -564,11 +541,9 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <option value="send_message">✉️ Send a Message</option>
             <option value="view_menu">📋 View Menu</option>
             <option value="view_catalog">📦 View Catalog</option>
-          </optgroup>
-          <optgroup label="──────── 🔒 Requires IncentiveSwift">
-            <option value="claim_deal" data-requires="incentiveswift">🎁 Claim This Deal</option>
-            <option value="join_rewards" data-requires="incentiveswift">⭐ Join Rewards</option>
-            <option value="rsvp" data-requires="incentiveswift">🎟️ RSVP Now</option>
+            <option value="claim_deal">🎁 Claim This Deal</option>
+            <option value="join_rewards">⭐ Join Rewards</option>
+            <option value="rsvp">🎟️ RSVP Now</option>
           </optgroup>
         </select>
       </div>
@@ -796,26 +771,6 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div class="section-title">🔗 Connected Services</div>
       <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Connect your other SwiftSoftware accounts to unlock features in your listings.</div>
       <div class="card-grid">
-        <!-- IncentiveSwift -->
-        <div class="card connected-service" id="svcIncentiveSwift">
-          <h3>🎯 IncentiveSwift</h3>
-          <p>Loyalty campaigns, SMS funnels, rewards, and smart surveys.</p>
-          <div id="isStatus" style="margin-top:10px">
-            <span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>
-          </div>
-          <div id="isConnectForm" style="display:none;margin-top:8px">
-            <div class="form-group">
-              <label>API Key</label>
-              <input type="password" id="isApiKey" placeholder="Paste your IncentiveSwift API key">
-              <small style="display:block;margin-top:4px;color:var(--text-secondary);font-size:.75rem">Use a key from the IncentiveSwift account registered to this directory's email — a key from any other IncentiveSwift account is refused.</small>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-primary btn-sm" onclick="connectService('incentiveswift')">✅ Connect</button>
-              <button class="btn btn-secondary btn-sm" onclick="cancelConnectForm('incentiveswift')">Cancel</button>
-            </div>
-            <div id="isConnectResult" style="margin-top:6px;font-size:.8rem"></div>
-          </div>
-        </div>
         <!-- CoreSwift CRM -->
         <div class="card connected-service" id="svcCoreSwift">
           <h3>📋 CoreSwift CRM</h3>
@@ -1178,9 +1133,7 @@ async function showSubscribe(planIdx) {
 var connectedServices = {};
 
 function loadConnectedServices() {
-  var isEl = document.getElementById('isStatus');
   var csEl = document.getElementById('csStatus');
-  if (isEl) isEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>';
   if (csEl) csEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>';
 
   g('/connected-services')
@@ -1190,7 +1143,6 @@ function loadConnectedServices() {
     })
     .catch(function(e) {
       console.error('Failed to load connected services:', e);
-      if (isEl) isEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⚠️ Unavailable</span>';
       if (csEl) csEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⚠️ Unavailable</span>';
       if (typeof updateIntegrationVisibility === 'function') updateIntegrationVisibility();
     });
@@ -1200,17 +1152,9 @@ function renderConnectedServiceStatus(data) {
   var dataObj = data || {};
   connectedServices = dataObj;
 
-  // IncentiveSwift
-  var isEl = document.getElementById('isStatus');
-  if (isEl && dataObj.incentiveswift) {
-    if (dataObj.incentiveswift.connected) {
-      isEl.innerHTML = '<span style="font-size:.82rem;color:var(--success);font-weight:600">✅ Connected</span>' +
-        (dataObj.incentiveswift.expires_at ? '<br><small style="color:var(--text-secondary)">Expires ' + new Date(dataObj.incentiveswift.expires_at).toLocaleDateString() + '</small>' : '') +
-        ' <button class="btn btn-danger btn-sm" style="margin-left:8px" onclick="disconnectService(\'incentiveswift\')">Disconnect</button>';
-    } else {
-      isEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="showConnectForm(\'incentiveswift\')">Connect</button>';
-    }
-  }
+  // CoreSwift is the only connected service — the IncentiveSwift connect flow was
+  // RETIRED 2026-09-23 (loyalty is native Multi-Directory, CoreSwift is the only
+  // external integration), so there is no IS card and no IS status to render.
 
   // CoreSwift
   var csEl = document.getElementById('csStatus');
@@ -1225,48 +1169,6 @@ function renderConnectedServiceStatus(data) {
 
   // Keep the unlocked-feature panels in sync with the freshly rendered status.
   if (typeof updateIntegrationVisibility === 'function') updateIntegrationVisibility();
-}
-
-function showConnectForm(service) {
-  if (service === 'incentiveswift') {
-    var form = document.getElementById('isConnectForm');
-    if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
-  }
-}
-
-function cancelConnectForm(service) {
-  if (service === 'incentiveswift') {
-    var form = document.getElementById('isConnectForm');
-    if (form) form.style.display = 'none';
-    var input = document.getElementById('isApiKey');
-    if (input) input.value = '';
-    var result = document.getElementById('isConnectResult');
-    if (result) result.innerHTML = '';
-  }
-}
-
-function connectService(service) {
-  if (service !== 'incentiveswift') return;
-  var apiKey = document.getElementById('isApiKey').value.trim();
-  var result = document.getElementById('isConnectResult');
-  if (!apiKey) {
-    if (result) result.innerHTML = '<span style="color:var(--danger)">❌ Please enter an API key</span>';
-    return;
-  }
-  if (result) result.innerHTML = '<span style="color:var(--text-secondary)">⏳ Verifying and connecting...</span>';
-
-  po('/connected-services/connect', { service: 'incentiveswift', api_key: apiKey })
-    .then(function(r) {
-      if (result) result.innerHTML = '<span style="color:var(--success)">✅ Connected to IncentiveSwift</span>';
-      var input = document.getElementById('isApiKey');
-      if (input) input.value = '';
-      // Refresh status
-      loadConnectedServices();
-      toast('Connected to IncentiveSwift successfully!', 'success');
-    })
-    .catch(function(e) {
-      if (result) result.innerHTML = '<span style="color:var(--danger)">❌ ' + esc(e.message || 'Connection failed') + '</span>';
-    });
 }
 
 function connectCoreSwift() {
@@ -1297,7 +1199,7 @@ function disconnectService(service) {
   })
   .then(function(r) { return r.json(); })
   .then(function() {
-    toast('Disconnected from ' + service + '. Your IncentiveSwift API key is unchanged — it stays valid everywhere else you use it.', 'success');
+    toast('Disconnected from ' + service + '.', 'success');
     loadConnectedServices();
   })
   .catch(function(e) {
@@ -1309,12 +1211,6 @@ function disconnectService(service) {
 function updateIntegrationVisibility() {
   var cs = connectedServices || {};
 
-  // IncentiveSwift campaigns
-  var campaignDiv = document.getElementById('campaignIntegration');
-  if (campaignDiv) {
-    campaignDiv.style.display = (cs.incentiveswift && cs.incentiveswift.connected) ? '' : 'none';
-  }
-
   // CoreSwift booking
   var bookingDiv = document.getElementById('bookingIntegration');
   if (bookingDiv) {
@@ -1324,9 +1220,7 @@ function updateIntegrationVisibility() {
   // Show/hide the entire integration section
   var integrationSection = document.getElementById('integrationFeatures');
   if (integrationSection) {
-    var isConnected = (cs.incentiveswift && cs.incentiveswift.connected) ||
-                      (cs.coreswift && cs.coreswift.connected);
-    integrationSection.style.display = isConnected ? '' : 'none';
+    integrationSection.style.display = (cs.coreswift && cs.coreswift.connected) ? '' : 'none';
   }
 }
 
@@ -1524,39 +1418,6 @@ async function icTest(provider) {
   }
 }
 
-// ── Campaign Picker ──
-function onCampaignTypeChange() {
-  var type = document.getElementById('listingCampaignType').value;
-  var picker = document.getElementById('campaignPicker');
-  var campaignSelect = document.getElementById('listingCampaignId');
-
-  if (!type) {
-    if (picker) picker.style.display = 'none';
-    return;
-  }
-
-  if (picker) picker.style.display = '';
-  if (campaignSelect) {
-    campaignSelect.innerHTML = '<option value="">⏳ Loading campaigns...</option>';
-
-    g('/connected-services/incentiveswift/campaigns')
-      .then(function(data) {
-        var campaigns = Array.isArray(data) ? data : (data.campaigns || []);
-        var options = '<option value="">— Select a campaign —</option>';
-        for (var i = 0; i < campaigns.length; i++) {
-          var c = campaigns[i];
-          options += '<option value="' + c.id + '">' + esc(c.name || 'Campaign ' + (i+1)) +
-            (c.status ? ' (' + c.status + ')' : '') + '</option>';
-        }
-        campaignSelect.innerHTML = options;
-      })
-      .catch(function(e) {
-        campaignSelect.innerHTML = '<option value="">⚠ Failed to load campaigns</option>';
-        console.error('Failed to load IS campaigns:', e);
-      });
-  }
-}
-
 // ── Booking Field Toggle ──
 function toggleBookingFields() {
   var checked = document.getElementById('listingEnableBooking').checked;
@@ -1587,8 +1448,6 @@ function onCtaTypeChange() {
   warnings.innerHTML = '';
   if (requires === 'coreswift' && !(connectedServices && connectedServices.coreswift && connectedServices.coreswift.connected)) {
     warnings.innerHTML = '<div style="background:#fff3cd;color:#856404;padding:8px 12px;border-radius:6px">⚠️ Requires <b>CoreSwift CRM</b> — <a href="#" onclick="switchTab(\'settings\');return false" style="color:var(--primary);text-decoration:underline">connect in Settings</a></div>';
-  } else if (requires === 'incentiveswift' && !(connectedServices && connectedServices.incentiveswift && connectedServices.incentiveswift.connected)) {
-    warnings.innerHTML = '<div style="background:#fff3cd;color:#856404;padding:8px 12px;border-radius:6px">⚠️ Requires <b>IncentiveSwift</b> — <a href="#" onclick="switchTab(\'settings\');return false" style="color:var(--primary);text-decoration:underline">connect in Settings</a></div>';
   } else if (val === 'visit_website') {
     warnings.innerHTML = '<div style="background:#fff3cd;color:#856404;padding:8px 12px;border-radius:6px">⚠️ Make sure your business has a website URL in its profile</div>';
   } else if (val === 'call_now') {

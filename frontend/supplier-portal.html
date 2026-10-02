@@ -356,9 +356,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <option value="call_now">ðŸ“± Call Now</option>
             <option value="send_message">âœ‰ï¸ Send a Message</option>
             <option value="view_catalog">ðŸ“¦ View Catalog</option>
-          </optgroup>
-          <optgroup label="â”€â”€â”€â”€â”€â”€â”€â”€ ðŸ”’ Requires IncentiveSwift">
-            <option value="claim_deal" data-requires="incentiveswift">ðŸŽ Claim This Deal</option>
+            <option value="claim_deal">🎁 Claim This Deal</option>
           </optgroup>
         </select>
       </div>
@@ -377,34 +375,12 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <h3 style="font-size:1rem;margin-bottom:12px">ðŸ”— Connected Services</h3>
       <div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:16px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px">
         <div>
-          <strong>ðŸŽ¯ IncentiveSwift</strong>
-          <p style="font-size:.8rem;color:var(--text-secondary);margin:4px 0 0">Loyalty campaigns &amp; deals for your supplier profile</p>
-        </div>
-        <div id="supplierIsStatus">
-          <span style="font-size:.82rem;color:var(--text-secondary)">â³ Checking...</span>
-        </div>
-      </div>
-      <div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:16px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px">
-        <div>
           <strong>ðŸ“… CoreSwift CRM</strong>
           <p style="font-size:.8rem;color:var(--text-secondary);margin:4px 0 0">Booking &amp; CRM for your supplier services</p>
         </div>
         <div id="supplierCsStatus">
           <span style="font-size:.82rem;color:var(--text-secondary)">â³ Checking...</span>
         </div>
-      </div>
-      <!-- IncentiveSwift Connect Form -->
-      <div id="supplierIsConnectForm" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
-        <div class="form-group">
-          <label>IncentiveSwift API Key</label>
-          <input type="password" id="supplierIsApiKey" placeholder="Enter your IncentiveSwift API key">
-          <small style="display:block;margin-top:4px;color:var(--text-secondary);font-size:.75rem">Use a key from the IncentiveSwift account registered to this login's email — a key from any other IncentiveSwift account is refused.</small>
-        </div>
-        <div style="margin-top:8px">
-          <button class="btn btn-primary btn-sm" onclick="supplierConnectIS()">Connect</button>
-          <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="document.getElementById('supplierIsConnectForm').style.display='none'">Cancel</button>
-        </div>
-        <div id="supplierIsConnectResult" style="margin-top:8px;font-size:.8rem"></div>
       </div>
     </div>
 
@@ -1195,18 +1171,8 @@ async function loadSupplierConnectedServices() {
 }
 
 function renderSupplierConnectedStatus(data) {
-  var isEl = document.getElementById('supplierIsStatus');
-  var csEl = document.getElementById('supplierCsStatus');
-  
-  if (isEl && data.incentiveswift) {
-    if (data.incentiveswift.connected) {
-      isEl.innerHTML = '<span style="font-size:.82rem;color:var(--success);font-weight:600">âœ… Connected</span>' +
-        ' <button class="btn btn-sm btn-danger" onclick="disconnectSupplierService(\'incentiveswift\')" style="font-size:.75rem;padding:4px 10px">Disconnect</button>';
-    } else {
-      isEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="showSupplierConnectForm(\'incentiveswift\')">Connect</button>';
-    }
-  }
-  
+  // CoreSwift is the only connected service — the IncentiveSwift connect flow
+  // was RETIRED 2026-09-23 (loyalty is native Multi-Directory).
   if (csEl && data.coreswift) {
     if (data.coreswift.connected) {
       csEl.innerHTML = '<span style="font-size:.82rem;color:var(--success);font-weight:600">âœ… Connected</span>' +
@@ -1214,32 +1180,6 @@ function renderSupplierConnectedStatus(data) {
     } else {
       csEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="supplierConnectCoreSwift()">Connect</button>';
     }
-  }
-}
-
-function showSupplierConnectForm(service) {
-  if (service === 'incentiveswift') {
-    document.getElementById('supplierIsConnectForm').style.display = '';
-  }
-}
-
-async function supplierConnectIS() {
-  var apiKey = document.getElementById('supplierIsApiKey').value.trim();
-  if (!apiKey) {
-    document.getElementById('supplierIsConnectResult').textContent = 'Please paste your IncentiveSwift API key';
-    return;
-  }
-  try {
-    var r = await fetch('/api/v1/connected-services/connect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ service: 'incentiveswift', api_key: apiKey })
-    });
-    if (!r.ok) throw new Error((await r.json()).message || 'Connection failed');
-    document.getElementById('supplierIsConnectForm').style.display = 'none';
-    loadSupplierConnectedServices();
-  } catch(e) {
-    document.getElementById('supplierIsConnectResult').textContent = 'âŒ ' + e.message;
   }
 }
 
@@ -1262,9 +1202,7 @@ async function disconnectSupplierService(service) {
   try {
     var r = await fetch('/api/v1/connected-services/' + service, { method: 'DELETE', headers: authHeaders() });
     if (!r.ok) throw new Error('Failed to disconnect');
-    toast(service === 'incentiveswift'
-      ? 'Disconnected. Your IncentiveSwift API key is unchanged — it stays valid everywhere else you use it.'
-      : 'Disconnected from ' + service, 'success');
+    toast('Disconnected from ' + service, 'success');
     loadSupplierConnectedServices();
   } catch(e) {
     toast('âŒ ' + e.message, 'error');

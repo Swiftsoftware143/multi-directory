@@ -233,14 +233,12 @@ Each business's CTA type is stored in its meta fields at `POST /api/v1/businesse
 
 ## Connected Services Management
 
-Configure directory-level connections between directories and SwiftSoftware products (IncentiveSwift and CoreSwift CRM) on behalf of business owners.
+Business owners connect their **CoreSwift CRM** account from their portal. The **IncentiveSwift connection flow was retired (2026-09-23)** — loyalty is native Multi-Directory (ZaarCash) and CoreSwift CRM is the only external integration this app connects to. There is no IncentiveSwift card, no API-key field and no IS key stored anywhere.
 
 ### How It Works
 
-Business owners connect their IncentiveSwift and CoreSwift accounts from their portal. As admin, you can:
-
-- **View connected services** per business — see who's connected to what
-- **Troubleshoot connections** — check verification status and API key validity
+- **View connected services** per business — who is connected to CoreSwift
+- **Troubleshoot connections** — check the connection status
 - **Disconnect services** — if a business owner leaves or needs support
 - **Configure connection defaults** — set which services are available per directory
 
@@ -248,17 +246,18 @@ Business owners connect their IncentiveSwift and CoreSwift accounts from their p
 
 - Go to **Directory Settings → Connected Services**
 - Toggle which services are available for this directory:
-  - **IncentiveSwift** — enable/disable campaign linking
   - **CoreSwift CRM** — enable/disable booking and inbox sync
 - Set default connection templates for new businesses
 
 ### Endpoints
 ```
-GET    /api/v1/connected-services                     — List all connections
-POST   /api/v1/connected-services/connect             — Connect a service (on behalf of business)
-POST   /api/v1/connected-services/verify              — Verify API key validity
-DELETE /api/v1/connected-services/disconnect           — Disconnect a service
+GET    /api/v1/connected-services                     — List the caller's connections
+POST   /api/v1/connected-services/connect             — Connect CoreSwift (service="coreswift")
+POST   /api/v1/connected-services/verify              — Verify a connection
+GET    /api/v1/connected-services/coreswift/check     — CoreSwift connection status
+DELETE /api/v1/connected-services/:service            — Disconnect a service
 ```
+`service="incentiveswift"` is refused with 400 on every one of these — the flow is retired and the database CHECK constraint (migration 110) no longer permits an IncentiveSwift row.
 
 ## Unified Inbox Routing
 

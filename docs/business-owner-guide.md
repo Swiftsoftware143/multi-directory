@@ -5,29 +5,22 @@ Sign into your dashboard through your city's directory page at `directory.swifts
 ## Your Dashboard
 Manage your listing, run deals, publish articles, engage with your community. The portal has tabs across the top: Dashboard, ZaarCash, Vouchers, Referrals, Rewards, PIN, Scanner, Pledges, Offers, Legal, **Settings**, and Surveys.
 
-## Connected Services — Unlock Campaigns & Bookings
+## Connected Services — Unlock Bookings
 
-Your portal can connect to two SwiftSoftware products that add powerful features to your listings. You need separate free accounts for each.
+Your portal can connect your CoreSwift CRM account to add booking and CRM features to your listings.
+
+**IncentiveSwift connections were retired (2026-09-23).** Loyalty is native to the directory (ZaarCash 💎) — there is nothing to connect for it. CoreSwift CRM is the only external service your listing connects to.
 
 ### Where to Find It
 **Business Portal → ⚙️ Settings tab → scroll down → 🔗 Connected Services**
 
-### Getting Your Free Accounts
+### Getting Your Free Account
 
 | Service | Sign Up At | What You Get |
 |---------|-----------|-------------|
-| **IncentiveSwift** | `https://incentiveswift.com` | Connected campaign/IQS funnel linking and smart surveys (the ZaarCash loyalty engine is native to the directory) |
 | **CoreSwift CRM** | `https://coreswiftcrm.com` | Calendar, bookings, contact management, CRM pipeline |
 
-Use the same email as your directory account so the system auto-detects you. If emails don't match, the service connection won't work and you won't be able to link services. Both sites have a "Get Started" / "Free Trial" button — the signup form is on the app login page.
-
-### Connecting IncentiveSwift
-
-1. **Sign up** at `incentiveswift.com` → click "Get Started" → create your free account
-2. Once signed in at `app.incentiveswift.com`, go to **Settings → API Keys** and generate an API key (use the same email as your ZaarHub account)
-3. In your directory portal: **Settings tab → 🎯 IncentiveSwift card → Connect**
-4. Paste your API key and click ✅ **Connect**
-5. The system verifies your key — you're connected
+Use the same email as your directory account so the system auto-detects you. If emails don't match, the connection won't work. The site has a "Free Trial" button — the signup form is on the app login page.
 
 ### Connecting CoreSwift CRM
 
@@ -37,11 +30,6 @@ Use the same email as your directory account so the system auto-detects you. If 
 4. You're connected
 
 ### What You Unlock After Connecting
-
-**IncentiveSwift — Campaign Linking**
-- In your listing editor, pick any active campaign from a dropdown (fetched live from IncentiveSwift)
-- The campaign is linked to your business and saved to your listing's meta fields
-- Ready for your directory template to render as a CTA on your listing — all on-site
 
 **CoreSwift CRM — Booking Integration**
 - Toggle "Book Now" on your business listing
@@ -56,19 +44,16 @@ The directory keeps customers on your branded directory — no external redirect
 | Feature | What Your Customer Sees | Where |
 |---------|----------------------|-------|
 | **Booking** | "Book Now" button → opens a booking page showing available slots, on your directory domain | Your directory site (`/book/:city/:business`) |
-| **Campaign** | Campaign CTA on your listing — engagement is tracked and synced to IncentiveSwift via API | Your directory site (on-listing) |
 
 ### Important: These Are Separate Apps (For Management Only)
 
-The campaign builder, calendar manager, and booking dashboard are managed in IncentiveSwift and CoreSwift CRM. The directory is the public-facing bridge — it renders these features on your listing without sending traffic elsewhere.
+The calendar manager and booking dashboard are managed in CoreSwift CRM. The directory is the public-facing bridge — it renders these features on your listing without sending traffic elsewhere.
 
 | Task | Where |
 |------|-------|
 | Create a loyalty campaign | Your directory (native ZaarCash loyalty engine) |
-| Build SMS funnels | IncentiveSwift |
 | Manage your calendar & bookings | CoreSwift CRM (sign in at `app.coreswiftcrm.com`) |
 | View/respond to bookings | CoreSwift CRM |
-| Link campaigns to your listing | MultiDirectory (business portal) |
 | Toggle Book Now on your listing | MultiDirectory (business portal) |
 | Customers see/use these features | Your directory site (on-site, no redirects) |
 
