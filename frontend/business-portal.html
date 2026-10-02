@@ -839,6 +839,26 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 function show(id) { document.getElementById(id).style.display = ''; }
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 
+// Minimal toast() used by the Connected Services connect/disconnect flows
+// (B57: these flows called toast() but no such helper was ever defined on this
+// page, so a successful connect threw "toast is not defined" and the card
+// bounced back to an error state).
+function toast(msg, type) {
+  type = type || 'info';
+  var colors = { success: '#16a34a', error: '#dc2626', info: '#f27f2f' };
+  var t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:10px;color:#fff;' +
+    'font-size:.85rem;font-weight:500;z-index:9999;max-width:360px;box-shadow:0 8px 24px rgba(0,0,0,.18);' +
+    'background:' + (colors[type] || colors.info) + ';opacity:0;transform:translateY(-10px);transition:all .3s';
+  document.body.appendChild(t);
+  requestAnimationFrame(function() { t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
+  setTimeout(function() {
+    t.style.opacity = '0'; t.style.transform = 'translateY(-10px)';
+    setTimeout(function() { t.remove(); }, 300);
+  }, 4000);
+}
+
 // ── Auth Tab Switching ──
 function switchAuthTab(tab) {
   if (tab === 'login') {
