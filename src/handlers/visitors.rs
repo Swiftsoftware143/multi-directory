@@ -1389,7 +1389,14 @@ async fn create_claim_deal(
     owner_phone: &Option<String>,
 ) -> Result<(), String> {
     // Get the business info
-    let biz = sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+    // t_c16b2e1e: directory_id is NULLABLE (14 live NULLs) and the bare `Uuid` element failed the
+    // whole-row decode with sqlx's "unexpected null; try decoding as an Option", so a claim on a
+    // business that belongs to no directory silently created no deal. Option<Uuid> is this app's
+    // own convention for the column (t_959ee844) and the pipeline lookup below already handles a
+    // NULL bind (`directory_id = $1 OR directory_id IS NULL` -> the network/global pipeline), so
+    // such a business still gets its deal instead of getting none. Read-side only: no DDL, no
+    // backfill.
+    let biz = sqlx::query_as::<_, (Option<uuid::Uuid>, String, String)>(
         "SELECT directory_id, name, COALESCE(city, '') FROM businesses WHERE id = $1",
     )
     .bind(business_id)

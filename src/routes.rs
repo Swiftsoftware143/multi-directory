@@ -2135,7 +2135,11 @@ pub fn create_router(s: AppState) -> Router {
                         {
                             let domain = host.split(':').next().unwrap_or(host).to_string();
 
-                            let result = sqlx::query_as::<_, (uuid::Uuid, String)>(
+                            // t_c16b2e1e: domain_mappings.directory_id is NULLABLE; the INNER JOIN
+                            // already excludes a NULL mapping (d.id is NOT NULL), so this is
+                            // LATENT, but the element is unused and Option keeps the decode
+                            // null-safe without changing the resolved slug.
+                            let result = sqlx::query_as::<_, (Option<uuid::Uuid>, String)>(
                                 r#"SELECT dm.directory_id, d.slug
                                    FROM domain_mappings dm
                                    JOIN directories d ON d.id = dm.directory_id
