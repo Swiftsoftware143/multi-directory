@@ -1580,33 +1580,10 @@ pub fn create_router(s: AppState) -> Router {
             "/portal/business/dashboard",
             get(business_dashboard::business_dashboard),
         )
-        // Campaigns Proxy Route (IS campaigns for dropdown picker)
-        .route("/campaigns/list", get(iqs_proxy::list_campaigns))
-        // IQS Proxy Routes (proxied to IncentiveSwift)
-        .route(
-            "/iqs/funnels",
-            get(iqs_proxy::list_funnels).post(iqs_proxy::create_funnel),
-        )
-        .route(
-            "/iqs/funnels/:id",
-            get(iqs_proxy::get_funnel)
-                .put(iqs_proxy::update_funnel)
-                .delete(iqs_proxy::delete_funnel),
-        )
-        .route("/iqs/funnels/:id/play", get(iqs_proxy::get_play_funnel))
-        .route("/iqs/funnels/:id/submit", post(iqs_proxy::submit_funnel))
-        .route(
-            "/iqs/funnels/:id/questions",
-            get(iqs_proxy::list_questions).post(iqs_proxy::create_question),
-        )
-        .route(
-            "/iqs/funnels/:id/questions/:question_id",
-            put(iqs_proxy::update_question).delete(iqs_proxy::delete_question),
-        )
-        .route(
-            "/iqs/funnels/:id/submissions",
-            get(iqs_proxy::list_submissions),
-        )
+        // The IQS funnel proxy and the IS campaigns proxy were RETIRED with the IncentiveSwift
+        // database coupling (kanban t_20e0bcd5). Loyalty is native Multi-Directory code and
+        // CoreSwift CRM is the only external integration — there is no /iqs/* or /campaigns/list
+        // route and no second database pool in this app any more.
         // Connected Services — API key integration for IS and CoreSwift
         .route(
             "/connected-services",

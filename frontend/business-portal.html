@@ -557,40 +557,9 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
     </div>
 
 
-    <div class="section-title" style="margin-top:32px">🧠 Business Tools</div>
-    <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Create surveys and deals for your business listing.</div>
+    <div class="section-title" style="margin-top:32px">🎁 Business Tools</div>
+    <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Create deals, discounts and coupons for your business listing.</div>
 
-    <div id="iqsPanel" class="loyalty-panel">
-      <div class="section-title">🧠 Smart Surveys</div>
-      <div class="section-subtitle">Create qualification funnels for visitors and customers.</div>
-      <div class="card-grid">
-        <div class="card">
-          <h3>Create Funnel</h3>
-          <div class="form-group">
-            <label>Funnel Name</label>
-            <input type="text" id="iqsFunnelName" placeholder="e.g. Customer Feedback">
-          </div>
-          <div class="form-group">
-            <label>Type</label>
-            <select id="iqsFunnelType">
-              <option value="survey">Survey</option>
-              <option value="quiz">Quiz</option>
-              <option value="questionnaire">Questionnaire</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Description</label>
-            <input type="text" id="iqsFunnelDesc" placeholder="Optional description">
-          </div>
-          <div id="iqsCreateResult" style="margin:8px 0"></div>
-          <button class="btn btn-primary btn-block" onclick="iqsCreateFunnel()">🧠 Create Funnel</button>
-        </div>
-        <div class="card">
-          <h3>Your Funnels</h3>
-          <div id="iqsFunnelsList"><div class="empty-state"><p>No funnels yet. Create one to start collecting survey responses!</p></div></div>
-        </div>
-      </div>
-    </div>
     <div id="dealsPanel" class="loyalty-panel">
       <div class="section-title">🎁 Deals &amp; Coupons</div>
       <div class="section-subtitle">Create deals, discounts, and coupons for your business. Visitors can browse and claim them from the directory.</div>
@@ -1483,7 +1452,6 @@ loadDashboard = function() {
       loadConnectedServices();
       if (_selectedBizId) {
         loadDealsTab();
-        loadIqsTab();
       }
       // Integration Center (view id: integrations) — live available_providers.
       loadIntegrationCenter();
@@ -2288,50 +2256,6 @@ function showBWalkthrough(p){
   document.body.appendChild(helpIcon);
 })();
 
-// ── Init ──
-// ── IQS Helper ────────────────────────────────────────────────────────────
-function iqsAPI(path, opts) {
-  var token = localStorage.getItem('bizToken');
-  var h = { 'Content-Type': 'application/json' };
-  if (token) h['Authorization'] = 'Bearer ' + token;
-  var fetchOpts = { headers: h, method: opts && opts.method ? opts.method : 'GET' };
-  if (opts && opts.body) fetchOpts.body = JSON.stringify(opts.body);
-  return fetch('/api/v1/iqs' + path, fetchOpts).then(function(r) {
-    if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || e.message || 'Request failed'); });
-    return r.json();
-  });
-}
-
-var _iqsFunnels = [];
-
-function loadIqsTab() {
-  iqsAPI('/funnels').then(function(d) {
-    _iqsFunnels = Array.isArray(d) ? d : (d.funnels || []);
-    renderIqsFunnels();
-  }).catch(function(e) {
-    document.getElementById('iqsFunnelsList').innerHTML = '<div class="empty-state"><p>Unable to load funnels. IncentiveSwift may not be running.</p></div>';
-  });
-}
-
-function renderIqsFunnels() {
-  var el = document.getElementById('iqsFunnelsList');
-  if (!_iqsFunnels.length) {
-    el.innerHTML = '<div class="empty-state"><p>No funnels yet. Create one to start collecting survey responses!</p></div>';
-    return;
-  }
-  var html = '';
-  for (var i = 0; i < _iqsFunnels.length; i++) {
-    var f = _iqsFunnels[i];
-    var statusBadge = f.status === 'active' ? 'active' : 'inactive';
-    html += '<div class="card"><h3>' + esc(f.name) + '</h3>' +
-      '<span class="badge ' + statusBadge + '">' + esc(f.status) + '</span> ' +
-      '<span style="font-size:.8rem;color:var(--text-secondary)">' + (f.response_count || 0) + ' responses</span>' +
-      '<div class="card-actions"><button class="btn btn-sm" onclick="iqsViewFunnel(\'' + f.id + '\')">📋 View</button>' +
-      '<button class="btn btn-sm btn-danger" onclick="iqsDeleteFunnel(\'' + f.id + '\')">🗑️</button></div></div>';
-  }
-  el.innerHTML = html;
-}
-
 // ── Gallery Editor Helpers ──
 function addGalleryRow() {
   var container = document.getElementById('galleryUrls');
@@ -2425,57 +2349,6 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function iqsCreateFunnel() {
-  var name = document.getElementById('iqsFunnelName').value.trim();
-  if (!name) { alert('Please enter a funnel name'); return; }
-  var body = {
-    name: name,
-    funnel_type: document.getElementById('iqsFunnelType').value,
-    description: document.getElementById('iqsFunnelDesc').value.trim()
-  };
-  iqsAPI('/funnels', { method: 'POST', body: body }).then(function(d) {
-    document.getElementById('iqsCreateResult').innerHTML = '<span style="color:#22c55e">✅ Funnel created!</span>';
-    document.getElementById('iqsFunnelName').value = '';
-    document.getElementById('iqsFunnelDesc').value = '';
-    loadIqsTab();
-  }).catch(function(e) {
-    document.getElementById('iqsCreateResult').innerHTML = '<span style="color:#ef4444">❌ ' + esc(e.message) + '</span>';
-  });
-}
-
-function iqsViewFunnel(id) {
-  iqsAPI('/funnels/' + id).then(function(f) {
-    var qs = '';
-    iqsAPI('/funnels/' + id + '/questions').then(function(qlist) {
-      var questions = Array.isArray(qlist) ? qlist : (qlist.questions || []);
-      for (var i = 0; i < questions.length; i++) {
-        qs += '<li>' + esc(questions[i].question_text) + ' <span style="font-size:.75rem;color:var(--text-secondary)">(' + esc(questions[i].question_type) + ')</span></li>';
-      }
-      var sub = '';
-      iqsAPI('/funnels/' + id + '/submissions').then(function(slist) {
-        var subs = Array.isArray(slist) ? slist : (slist.submissions || []);
-        sub = '<p style="font-size:.85rem;color:var(--text-secondary);margin-top:8px">' + subs.length + ' submissions</p>';
-        var html = '<div class="card"><h3>' + esc(f.name) + '</h3>' +
-          '<p>' + esc(f.description || '') + '</p>' +
-          '<p style="font-size:.85rem">Status: <span class="badge ' + (f.status === 'active' ? 'active' : 'inactive') + '">' + esc(f.status) + '</span> | Responses: ' + (f.response_count || 0) + '</p>' +
-          '<h4 style="font-size:.9rem;margin-top:12px">Questions</h4>' +
-          '<ul style="padding-left:18px;font-size:.85rem">' + (qs || '<li>No questions added</li>') + '</ul>' +
-          sub +
-          '<button class="btn btn-sm" style="margin-top:8px" onclick="loadIqsTab()">← Back</button></div>';
-        document.getElementById('iqsFunnelsList').innerHTML = html;
-      });
-    });
-  });
-}
-
-function iqsDeleteFunnel(id) {
-  if (!confirm('Delete this funnel and all its questions/submissions?')) return;
-  iqsAPI('/funnels/' + id, { method: 'DELETE' }).then(function() {
-    loadIqsTab();
-  }).catch(function(e) {
-    alert('Delete failed: ' + e.message);
-  });
-}
 
 // ── Ownership Transfers (T2) — the owner's side ──
 function _trEsc(s) {

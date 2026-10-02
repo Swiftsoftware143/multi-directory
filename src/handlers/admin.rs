@@ -125,8 +125,9 @@ pub async fn admin_members(State(s): State<AppState>) -> ApiResult<impl IntoResp
         std::collections::HashMap::new()
     };
 
-    // Check IS for loyalty enrollment via email lookup
-    // We batch-query IS to avoid N+1 requests
+    // Check native Multi-Directory loyalty enrollment (loyalty_members) via email lookup.
+    // This used to query the IncentiveSwift database directly; loyalty is native MD code
+    // (ZaarCash) and there is no second pool any more (kanban t_20e0bcd5).
     let emails: Vec<&str> = members.iter().map(|m| m.email.as_str()).collect();
     let loyalty_emails: std::collections::HashSet<String> = if !emails.is_empty() {
         match check_loyalty_enrollment(&s, &emails).await {
@@ -168,8 +169,9 @@ pub async fn admin_members(State(s): State<AppState>) -> ApiResult<impl IntoResp
     })))
 }
 
-/// Batch-check which emails are enrolled in IncentiveSwift loyalty.
-/// Queries IS DB directly for loyalty_members records.
+/// Batch-check which emails are enrolled in Multi-Directory's native loyalty programme.
+/// Reads the app's own `loyalty_members` joined to `visitor_accounts` — loyalty is native
+/// ZaarCash code, never another app's database (kanban t_20e0bcd5).
 async fn check_loyalty_enrollment(
     s: &AppState,
     emails: &[&str],
@@ -183,10 +185,10 @@ async fn check_loyalty_enrollment(
         .map(|(i, _)| format!("${}", i + 1))
         .collect();
     let query = format!(
-        r#"SELECT DISTINCT c.email
-           FROM contacts c
-           JOIN loyalty_members lm ON lm.contact_id = c.id
-           WHERE c.email IN ({})"#,
+        r#"SELECT DISTINCT va.email
+           FROM loyalty_members lm
+           JOIN visitor_accounts va ON va.id = lm.visitor_account_id
+           WHERE va.email IN ({})"#,
         placeholders.join(",")
     );
     let mut q = sqlx::query_scalar::<_, String>(&query);
@@ -194,9 +196,9 @@ async fn check_loyalty_enrollment(
         q = q.bind(*email);
     }
     let results = q
-        .fetch_all(&s.is_db)
+        .fetch_all(&s.db)
         .await
-        .map_err(|e| AppError::Internal(format!("IS lookup failed: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("loyalty lookup failed: {}", e)))?;
     Ok(results.into_iter().collect())
 }
 

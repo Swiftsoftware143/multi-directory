@@ -50,15 +50,12 @@ async fn main() {
     )
     .await;
 
-    // Connect to IncentiveSwift database as well
-    let is_db_url = std::env::var("IS_DATABASE_URL")
-        .expect("IS_DATABASE_URL must be set (IncentiveSwift DB for loyalty integration)");
-    let is_db = db::connect(
-        &is_db_url,
-        config.db_min_connections,
-        config.db_max_connections,
-    )
-    .await;
+    // There is deliberately NO second database connection here. Multi-Directory used to
+    // require IS_DATABASE_URL and open a live PgPool into the IncentiveSwift database for
+    // the retired IQS funnel proxy / incentive-loyalty lookup. That coupling is gone: loyalty
+    // is native Multi-Directory code (ZaarCash, tables loyalty_*) and CoreSwift CRM is the
+    // only external integration, reached over HTTP. A buyer's install therefore boots with
+    // DATABASE_URL alone.
 
     // Run migrations
     tracing::info!("Running database migrations...");
@@ -76,7 +73,7 @@ async fn main() {
         );
     }
 
-    let state = AppState::new(pool, config.clone(), is_db);
+    let state = AppState::new(pool, config.clone());
 
     // Say the inbound body bound out loud at boot (kanban t_52b9f3c7): a client that sends a
     // request head with a declared body and then stops is answered 408 at this bound instead of
