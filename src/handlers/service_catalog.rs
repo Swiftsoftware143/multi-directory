@@ -186,12 +186,14 @@ pub async fn create_service(
     }
 
     // Get directory_id from business
-    let directory_id: Uuid =
-        sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
-            .bind(req.business_id)
-            .fetch_optional(&s.db)
-            .await?
-            .ok_or(AppError::NotFound("Business not found".to_string()))?;
+    // t_959ee844: NULLABLE directory_id, T not Option -> a NULL row 500d before the insert.
+    let directory_id: Uuid = sqlx::query_scalar(
+        "SELECT directory_id FROM businesses WHERE id = $1 AND directory_id IS NOT NULL",
+    )
+    .bind(req.business_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or(AppError::NotFound("Business not found".to_string()))?;
 
     let row = sqlx::query_as::<_, BusinessServiceRow>(
         r#"INSERT INTO business_services (business_id, directory_id, name, description, price, currency, duration_minutes, category, sort_order)

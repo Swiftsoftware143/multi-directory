@@ -208,7 +208,11 @@ pub async fn generate_sitemap(
 
     // Add blog posts
     let posts: Vec<String> =
-        sqlx::query_scalar("SELECT slug FROM blog_posts WHERE directory_id=$1 AND published=true")
+        // t_959ee844: slug is NULLABLE and T is String -> one NULL slug 500d the whole sitemap.
+        // A post with no slug has no URL, so it is skipped (no migration, no backfill).
+        sqlx::query_scalar(
+            "SELECT slug FROM blog_posts WHERE directory_id=$1 AND published=true AND slug IS NOT NULL",
+        )
             .bind(dir_id)
             .fetch_all(&s.db)
             .await?;

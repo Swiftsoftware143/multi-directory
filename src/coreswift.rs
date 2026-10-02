@@ -354,12 +354,17 @@ pub async fn push_claimed_business(
     owner_name: Option<&str>,
     owner_phone: Option<&str>,
 ) -> Result<(), String> {
-    let dir_id = sqlx::query_scalar::<_, Uuid>("SELECT directory_id FROM businesses WHERE id = $1")
-        .bind(business_id)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| format!("DB error: {e}"))?
-        .ok_or_else(|| format!("Business {business_id} not found"))?;
+    // t_959ee844: directory_id is NULLABLE (14 live NULLs) and T was not Option, so a NULL row
+    // failed the decode and 500d the push. A business with no directory has no directory config
+    // to push to: read-side only, the row is "not found" (no migration, no backfill).
+    let dir_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT directory_id FROM businesses WHERE id = $1 AND directory_id IS NOT NULL",
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error: {e}"))?
+    .ok_or_else(|| format!("Business {business_id} not found"))?;
 
     let (tenant_id, claimed_list_id, _, _) = resolve_config(db, dir_id).await?;
     let base = coreswift_url();

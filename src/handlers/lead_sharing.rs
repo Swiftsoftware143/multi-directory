@@ -37,7 +37,7 @@ async fn resolve_business_id(db: &sqlx::PgPool, user_id: Uuid) -> ApiResult<Uuid
     let biz_id = sqlx::query_scalar::<_, Uuid>(
         r#"SELECT cb.business_id
            FROM claimed_businesses cb
-           WHERE cb.visitor_account_id = $1
+           WHERE cb.visitor_account_id = $1 AND cb.business_id IS NOT NULL
            ORDER BY cb.created_at DESC
            LIMIT 1"#,
     )
@@ -52,7 +52,7 @@ async fn resolve_business_id(db: &sqlx::PgPool, user_id: Uuid) -> ApiResult<Uuid
     let biz_id = sqlx::query_scalar::<_, Uuid>(
         r#"SELECT cb.business_id
            FROM claimed_businesses cb
-           WHERE cb.user_id = $1
+           WHERE cb.user_id = $1 AND cb.business_id IS NOT NULL
            ORDER BY cb.created_at DESC
            LIMIT 1"#,
     )

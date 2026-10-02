@@ -42,13 +42,18 @@ pub(crate) fn default_b2b_config() -> Value {
 
 pub(crate) async fn get_b2b_config(db: &sqlx::PgPool, directory_id: Option<Uuid>) -> Value {
     if let Some(dir_id) = directory_id {
-        let fc: Option<Value> =
-            sqlx::query_scalar("SELECT feature_config FROM directories WHERE id = $1")
-                .bind(dir_id)
-                .fetch_optional(db)
-                .await
-                .ok()
-                .flatten();
+        // t_959ee844: feature_config is NULLABLE and T=Value made the decode fail, swallowed by
+        // .ok(); T=Option<Value> makes "this directory has no config" explicit (defaults apply).
+        let fc: Option<Value> = sqlx::query_scalar::<_, Option<Value>>(
+            "SELECT feature_config FROM directories WHERE id = $1",
+        )
+        .bind(dir_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        // one flatten for the row layer (fetch_optional), one for the NULL layer (T=Option)
+        .flatten()
+        .flatten();
 
         if let Some(mut fc) = fc {
             // Merge with defaults so missing keys get default values
@@ -2301,7 +2306,7 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
         r#"SELECT cb.business_id
            FROM claimed_businesses cb
            JOIN businesses b ON b.id = cb.business_id
-           WHERE cb.visitor_account_id = $1
+           WHERE cb.visitor_account_id = $1 AND cb.business_id IS NOT NULL
              AND b.business_type IN ('supplier','distributor','wholesaler','farm','association')
            ORDER BY cb.created_at DESC
            LIMIT 1"#,
@@ -2319,7 +2324,7 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
         r#"SELECT cb.business_id
            FROM claimed_businesses cb
            JOIN businesses b ON b.id = cb.business_id
-           WHERE cb.user_id = $1
+           WHERE cb.user_id = $1 AND cb.business_id IS NOT NULL
              AND b.business_type IN ('supplier','distributor','wholesaler','farm','association')
            ORDER BY cb.created_at DESC
            LIMIT 1"#,
@@ -2367,7 +2372,7 @@ pub async fn resolve_buyer_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiResu
     let biz_id = sqlx::query_scalar::<_, Uuid>(
         r#"SELECT cb.business_id
            FROM claimed_businesses cb
-           WHERE cb.visitor_account_id = $1
+           WHERE cb.visitor_account_id = $1 AND cb.business_id IS NOT NULL
            ORDER BY cb.created_at DESC
            LIMIT 1"#,
     )
@@ -2383,7 +2388,7 @@ pub async fn resolve_buyer_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiResu
     let biz_id = sqlx::query_scalar::<_, Uuid>(
         r#"SELECT cb.business_id
            FROM claimed_businesses cb
-           WHERE cb.user_id = $1
+           WHERE cb.user_id = $1 AND cb.business_id IS NOT NULL
            ORDER BY cb.created_at DESC
            LIMIT 1"#,
     )

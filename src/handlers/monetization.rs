@@ -1382,11 +1382,15 @@ pub async fn create_sponsor(
     Json(req): Json<CreateSponsorRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Get directory_id from the business
-    let dir_id: Uuid = sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
-        .bind(req.business_id)
-        .fetch_optional(&s.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+    // t_959ee844: directory_id is NULLABLE (14 live NULLs) and T was not Option, so a NULL row
+    // 500d here before the admin check below. A business with no directory cannot be sponsored.
+    let dir_id: Uuid = sqlx::query_scalar(
+        "SELECT directory_id FROM businesses WHERE id = $1 AND directory_id IS NOT NULL",
+    )
+    .bind(req.business_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
     // A sponsor row is the directory owner's own arrangement with one of its businesses, so
     // only that directory's admin (or the platform operator) may create it (kanban

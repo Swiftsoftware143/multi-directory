@@ -72,11 +72,14 @@ pub async fn generate_answer_first(
         did
     } else if let Some(bid) = req.business_id {
         // Look up the directory from the business
-        let dir_id: Option<Uuid> =
-            sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
-                .bind(bid)
-                .fetch_optional(&app.db)
-                .await?;
+        // t_959ee844: NULLABLE directory_id, T (Uuid) not Option -> a NULL row failed the decode
+        // and 500d; the None arm below already answers 404 "Business not found".
+        let dir_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT directory_id FROM businesses WHERE id = $1 AND directory_id IS NOT NULL",
+        )
+        .bind(bid)
+        .fetch_optional(&app.db)
+        .await?;
         match dir_id {
             Some(did) => did,
             None => {

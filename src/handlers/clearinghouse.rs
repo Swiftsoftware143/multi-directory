@@ -400,7 +400,9 @@ async fn redeem(
 
     // Check balance
     let balance: i32 =
-        sqlx::query_scalar("SELECT points_balance FROM loyalty_members WHERE id = $1")
+        // t_959ee844: points_balance is NULLABLE and T was i32 -> a NULL balance 500d the redeem.
+        // A member with no balance has 0 points (typed default, read-side only).
+        sqlx::query_scalar("SELECT COALESCE(points_balance, 0) FROM loyalty_members WHERE id = $1")
             .bind(member_id)
             .fetch_one(sqlx)
             .await

@@ -190,13 +190,18 @@ pub async fn programme_for_directory(
 /// the single network-wide programme (no per-city programme, no external service). Best-effort by
 /// design — enrolment must never fail a signup.
 pub async fn enroll_visitor_in_network_loyalty(pool: &PgPool, visitor_account_id: &Uuid) {
-    let directory_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT directory_id FROM visitor_accounts WHERE id = $1")
-            .bind(visitor_account_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
+    // t_959ee844: directory_id is NULLABLE (37 live NULLs). T=Uuid made the decode fail and .ok()
+    // swallowed it; T=Option<Uuid> makes "this visitor has no city" an explicit state.
+    let directory_id: Option<Uuid> = sqlx::query_scalar::<_, Option<Uuid>>(
+        "SELECT directory_id FROM visitor_accounts WHERE id = $1",
+    )
+    .bind(visitor_account_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    // one flatten for the row layer (fetch_optional), one for the NULL layer (T=Option)
+    .flatten()
+    .flatten();
 
     // 1) the programme for the visitor's city's network, 2) otherwise the network programme itself
     let program_id: Option<Uuid> = match directory_id {

@@ -125,12 +125,17 @@ async fn current_owner(db: &sqlx::PgPool, business_id: Uuid) -> (Option<Uuid>, O
         }
     }
 
-    let owner = sqlx::query_scalar::<_, Uuid>("SELECT owner_id FROM businesses WHERE id = $1")
-        .bind(business_id)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten();
+    // t_959ee844: owner_id is NULLABLE (4002 live NULLs). T=Uuid made the decode fail and .ok()
+    // swallowed it; T=Option<Uuid> makes "this business has no owner" an explicit state.
+    let owner =
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT owner_id FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            // one flatten for the row layer (fetch_optional), one for the NULL layer (T=Option)
+            .flatten()
+            .flatten();
     match owner {
         Some(u) => (Some(u), user_email(db, u).await.map(|e| e.to_lowercase())),
         None => (None, None),
