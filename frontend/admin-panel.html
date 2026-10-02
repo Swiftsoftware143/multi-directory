@@ -526,6 +526,7 @@
         <a href="#domains-section">🌐 Domains &amp; Subdomains</a>
         <a href="#payment-gateways-section">💳 Payment Gateways</a>
         <a href="#email-settings-section">✉️ Email / SMTP</a>
+        <a href="#subscribers-section">📧 Subscribers</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
         <a href="#loyalty-programme-section">⭐ Loyalty Programmes</a>
@@ -1133,6 +1134,42 @@
           <span class="feature-status" id="ec-status"></span>
         </div>
         <div id="ec-list"></div>
+      </div>
+
+      <!-- The city's three built-in lists, list 1 of 3: Subscribers. GET/POST /directories/:slug/subscribers,
+           /import and /:id/unsubscribe shipped with no UI at all — a capability reachable only as an
+           endpoint. This is the free newsletter-signup list, per city. -->
+      <div class="feature-card" id="subscribers-section">
+        <h3>📧 Newsletter Subscribers</h3>
+        <p class="feature-subtitle">
+          <b>List 1 of the city's three built-in lists — free newsletter signups.</b> Each city keeps its own
+          list: pick the directory to work on. Every signup here is also pushed to <b>CoreSwift</b> as a contact
+          tagged with that city. Add one, paste a CSV to import, unsubscribe, or export the list as CSV.
+        </p>
+        <div class="em-grid">
+          <div class="em-field"><label>Directory (city)</label><select id="sub-dir" onchange="window.__subLoad()"></select></div>
+          <div class="em-field"><label>Status</label>
+            <select id="sub-status" onchange="window.__subLoad()">
+              <option value="active">Subscribed (active)</option>
+              <option value="unsubscribed">Unsubscribed</option>
+            </select>
+          </div>
+          <div class="em-field"><label>Per page</label><input id="sub-per" type="number" min="1" max="200" value="50"></div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subLoad()">Reload</button>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__subAdd()">＋ Add subscriber</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subExport()">⬇ Export CSV</button>
+          <span class="feature-status" id="sub-msg"></span>
+        </div>
+        <div id="sub-list"></div>
+        <div class="em-field" style="margin-top:12px">
+          <label>Import from CSV <span style="font-weight:400;color:var(--text-muted,#8aa0b8)">— one per line, <code>email,name</code> or just <code>email</code>. An existing unsubscribed address is re-subscribed.</span></label>
+          <textarea id="sub-csv" rows="4" placeholder="jane@example.com,Jane"></textarea>
+          <div class="pk-controls" style="margin-top:6px">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subImport()">Import pasted CSV</button>
+          </div>
+        </div>
       </div>
 
       <!-- Round 8: Scrape sources — GET /scraper/providers reported status with no UI -->
@@ -3305,6 +3342,7 @@
       var cap = lpNum(p.redemption_cap_pct, 10);
       var minBal = lpNum(p.min_redeem_balance, 100);
       var noFree = (p.exclude_free_items == null) ? true : !!p.exclude_free_items;
+      var msOn = !!p.milestones_enabled;
       return '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px" data-program="' + lpEsc(p.id) + '">' +
         '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">' +
           '<input class="input" style="min-width:200px" value="' + lpEsc(p.name) + '" data-f="name" placeholder="Programme name">' +
@@ -3313,6 +3351,15 @@
           '<label style="font-size:.8rem;color:var(--text-secondary)">per visit <input class="input" type="number" min="0" style="width:90px" value="' + (p.points_per_visit || 0) + '" data-f="points_per_visit"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="is_active" ' + (p.is_active ? 'checked' : '') + '> active</label>' +
           '<button class="btn btn-accent" type="button" data-save="' + lpEsc(p.id) + '">Save</button>' +
+        '</div>' +
+        // The currency itself is per-programme and admin-owned: a buyer running their own brand
+        // renames the points, picks the symbol and the colour here — nothing is hard-coded.
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">Points are called <input class="input" style="width:150px" value="' + lpEsc(p.currency_name || '') + '" data-f="currency_name" placeholder="ZaarCash"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">Symbol <input class="input" style="width:60px" value="' + lpEsc(p.currency_icon || '') + '" data-f="currency_icon" placeholder="💎"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">Colour <input type="color" style="width:44px;height:30px;padding:2px" value="' + lpColor(p.currency_color) + '" data-f="currency_color" title="Currency colour"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="milestones_enabled" ' + (msOn ? 'checked' : '') + '> milestones on</label>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-ms="' + lpEsc(p.id) + '">🏁 Milestones' + (msOn ? '' : ' (off)') + '</button>' +
         '</div>' +
         '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
           '<label style="font-size:.8rem;color:var(--text-secondary)">' + cur + ' earned per $1 spent <input class="input" type="number" min="0" step="0.1" style="width:90px" value="' + rate + '" data-f="earn_rate"></label>' +
@@ -3325,7 +3372,90 @@
           'Currency: ' + lpEsc(p.currency_name || 'Points') + ' ' + lpEsc(p.currency_icon || '') + ' · id ' + lpEsc(String(p.id).slice(0, 8)) +
           '<br>💱 100 ' + cur + ' = US$1.00 — ' + cur + ' per $1 spent = ' + lpUsd(rate) + ' earned, minimum balance = ' +
           minBal + ' (' + lpUsd(minBal) + '), cap = ' + cap + '% of a bill (' + cur + ' pays up to ' + lpUsd(cap * 100) + ' on a $100 bill).</p>' +
+        '<div id="lp-ms-' + lpEsc(p.id) + '" hidden></div>' +
       '</div>';
+    }
+    // A colour input only accepts #rrggbb; anything else (blank, a named colour) is left to the
+    // browser default rather than silently saved as black.
+    function lpColor(v) {
+      return (/^#[0-9a-fA-F]{6}$/.test(String(v || ''))) ? v : '#0ea5e9';
+    }
+    // Trigger labels an admin can pick. The evaluator (loyalty_native::award_qualified_milestones)
+    // reads exactly these, and treats any other stored label as "lifetime currency earned".
+    var LP_TRIGGERS = [
+      { v: 'checkin_count', label: 'check-ins completed' },
+      { v: 'lifetime_points', label: 'currency earned (lifetime)' },
+      { v: 'balance', label: 'balance held' }
+    ];
+    function lpTriggerLabel(v) {
+      for (var i = 0; i < LP_TRIGGERS.length; i++) { if (LP_TRIGGERS[i].v === v) return LP_TRIGGERS[i].label; }
+      return v + ' (treated as currency earned)';
+    }
+    function lpMsRows(pid, ms) {
+      var opts = LP_TRIGGERS.map(function (t) { return '<option value="' + t.v + '">' + lpEsc(t.label) + '</option>'; }).join('');
+      return '<div style="border:1px dashed var(--border);border-radius:var(--radius);padding:12px;margin-top:8px">' +
+        '<div style="font-size:.85rem;font-weight:600;margin-bottom:6px">🏁 Milestones — bonus currency credited automatically the moment a member crosses a threshold</div>' +
+        '<p style="font-size:.75rem;color:var(--text-tertiary);margin:0 0 8px">A bonus is paid once per member, on the earn event that crosses it. Milestones must be switched <b>on</b> above or they never fire.</p>' +
+        (ms.length ? ms.map(function (m) {
+          return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+            '<b style="font-size:.85rem;min-width:140px">' + lpEsc(m.name) + '</b>' +
+            '<span style="font-size:.8rem;color:var(--text-secondary)">when ' + lpEsc(lpTriggerLabel(m.trigger_type)) + ' reaches <b>' + Number(m.trigger_value || 0) + '</b></span>' +
+            '<span class="badge">+' + Number(m.bonus_points || 0) + ' bonus</span>' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-msdel="' + lpEsc(m.id) + '" data-msprog="' + lpEsc(pid) + '">Delete</button>' +
+          '</div>';
+        }).join('') : '<p style="font-size:.82rem;color:var(--text-secondary);margin:4px 0">No milestones yet.</p>') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">' +
+          '<input class="input" id="ms-name-' + lpEsc(pid) + '" placeholder="Milestone name (e.g. 10th visit)" style="min-width:180px">' +
+          '<select class="input" id="ms-trig-' + lpEsc(pid) + '">' + opts + '</select>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">reaches <input class="input" type="number" min="1" value="10" style="width:80px" id="ms-val-' + lpEsc(pid) + '"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">bonus <input class="input" type="number" min="0" value="50" style="width:80px" id="ms-bonus-' + lpEsc(pid) + '"></label>' +
+          '<button class="btn btn-accent btn-sm" type="button" data-msadd="' + lpEsc(pid) + '">＋ Add milestone</button>' +
+          '<span class="feature-status" id="ms-status-' + lpEsc(pid) + '"></span>' +
+        '</div>' +
+      '</div>';
+    }
+    function lpMsLoad(pid) {
+      var box = document.getElementById('lp-ms-' + pid);
+      var slug = lpSlug();
+      if (!box) return;
+      box.hidden = false;
+      box.innerHTML = '<p style="font-size:.82rem;color:var(--text-secondary)">loading milestones…</p>';
+      if (!slug) { box.innerHTML = '<p style="font-size:.82rem;color:#f87171">Pick a directory first.</p>'; return; }
+      return apiGet('/directories/' + encodeURIComponent(slug) + '/loyalty/programs/' + encodeURIComponent(pid) + '/milestones')
+        .then(function (res) { box.innerHTML = lpMsRows(pid, (res && res.milestones) || []); })
+        .catch(function (e) {
+          box.innerHTML = '<p style="font-size:.82rem;color:#f87171">Could not load milestones: ' + lpEsc(e.message) + '</p>';
+        });
+    }
+    function lpMsStatus(pid, msg) {
+      var el = document.getElementById('ms-status-' + pid);
+      if (el) el.textContent = msg || '';
+    }
+    function lpMsAdd(pid) {
+      var slug = lpSlug();
+      var name = (document.getElementById('ms-name-' + pid) || {}).value || '';
+      if (!slug) { return; }
+      if (!name.trim()) { lpMsStatus(pid, 'Give the milestone a name'); return; }
+      lpMsStatus(pid, 'saving…');
+      return apiPost('/directories/' + encodeURIComponent(slug) + '/loyalty/programs/' + encodeURIComponent(pid) + '/milestones', {
+        name: name,
+        trigger_type: (document.getElementById('ms-trig-' + pid) || {}).value || 'checkin_count',
+        trigger_value: parseInt((document.getElementById('ms-val-' + pid) || {}).value || '0', 10),
+        bonus_points: parseInt((document.getElementById('ms-bonus-' + pid) || {}).value || '0', 10),
+        once_per_member: true
+      }).then(function () { return lpMsLoad(pid); })
+        .then(function () { lpMsStatus(pid, 'added ✓'); })
+        .catch(function (e) { lpMsStatus(pid, 'failed: ' + e.message); });
+    }
+    function lpMsDelete(pid, mid) {
+      var slug = lpSlug();
+      if (!slug) { return; }
+      if (!confirm('Delete this milestone? Bonus currency members already earned stays with them.')) { return; }
+      lpMsStatus(pid, 'deleting…');
+      return apiFetch('DELETE', '/directories/' + encodeURIComponent(slug) + '/loyalty/programs/' + encodeURIComponent(pid) + '/milestones/' + encodeURIComponent(mid))
+        .then(function () { return lpMsLoad(pid); })
+        .then(function () { lpMsStatus(pid, 'deleted ✓'); })
+        .catch(function (e) { lpMsStatus(pid, 'failed: ' + e.message); });
     }
     function saveLoyaltyProgram(id) {
       var slug = lpSlug();
@@ -3366,7 +3496,13 @@
       if (list) {
         list.addEventListener('click', function (e) {
           var b = e.target.closest ? e.target.closest('[data-save]') : null;
-          if (b) saveLoyaltyProgram(b.getAttribute('data-save'));
+          if (b) { saveLoyaltyProgram(b.getAttribute('data-save')); return; }
+          var ms = e.target.closest ? e.target.closest('[data-ms]') : null;
+          if (ms) { lpMsLoad(ms.getAttribute('data-ms')); return; }
+          var add = e.target.closest ? e.target.closest('[data-msadd]') : null;
+          if (add) { lpMsAdd(add.getAttribute('data-msadd')); return; }
+          var del = e.target.closest ? e.target.closest('[data-msdel]') : null;
+          if (del) { lpMsDelete(del.getAttribute('data-msprog'), del.getAttribute('data-msdel')); return; }
         });
       }
     })();
@@ -4293,6 +4429,138 @@
       }).join('');
       sel.innerHTML = opts;
     }
+
+    // ---- Newsletter subscribers (GET/POST /directories/:slug/subscribers, /import, /:id/unsubscribe) ----
+    // The city's subscriber list is PII, so it is read through the directory-admin-scoped route and
+    // never cached anywhere else. `subRows` holds the page on screen so Export CSV needs no second call.
+    var subRows = [];
+    window.__subDirSelect = function () {
+      var sel = document.getElementById('sub-dir');
+      if (!sel) return;
+      var cur = sel.value;
+      sel.innerHTML = (directories || []).map(function (d) {
+        return '<option value="' + pkEsc(d.slug) + '">' + pkEsc(d.name || d.slug) + '</option>';
+      }).join('');
+      if (cur) { sel.value = cur; }
+    };
+    function subStatus(msg) {
+      var el = document.getElementById('sub-msg');
+      if (el) el.textContent = msg || '';
+    }
+    function subSlug() {
+      var sel = document.getElementById('sub-dir');
+      if (sel && !sel.options.length) window.__subDirSelect();
+      return (sel && sel.value) || '';
+    }
+    function subEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+    window.__subLoad = function () {
+      var box = document.getElementById('sub-list');
+      if (!box) return;
+      var slug = subSlug();
+      if (!slug) { box.innerHTML = '<p class="feature-subtitle">No directory selected.</p>'; return; }
+      var status = (document.getElementById('sub-status') || {}).value || 'active';
+      var per = parseInt((document.getElementById('sub-per') || {}).value || '50', 10);
+      subStatus('loading…');
+      return apiGet('/directories/' + encodeURIComponent(slug) + '/subscribers?status=' + encodeURIComponent(status) + '&per_page=' + per)
+        .then(function (r) {
+          subRows = (r && r.subscribers) || [];
+          var total = (r && r.total) != null ? r.total : subRows.length;
+          subStatus(total + ' ' + status + ' on ' + slug + ' (showing ' + subRows.length + ')');
+          if (!subRows.length) {
+            box.innerHTML = '<p class="feature-subtitle">No ' + subEsc(status) + ' subscribers on this city yet.</p>';
+            return;
+          }
+          box.innerHTML = subRows.map(function (s) {
+            return '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;margin-bottom:6px">' +
+              '<b style="font-size:.85rem;min-width:220px">' + subEsc(s.email) + '</b>' +
+              '<span style="font-size:.8rem;color:var(--text-secondary);min-width:140px">' + subEsc(s.name || '—') + '</span>' +
+              '<span class="badge">' + subEsc(s.status) + '</span>' +
+              '<span style="font-size:.75rem;color:var(--text-tertiary)">' + subEsc(String(s.subscribed_at || '').slice(0, 10)) + '</span>' +
+              (s.status === 'active' ? '<button class="btn btn-ghost btn-sm" type="button" data-subunsub="' + subEsc(s.id) + '">Unsubscribe</button>' : '') +
+            '</div>';
+          }).join('');
+        })
+        .catch(function (e) {
+          subStatus('load failed: ' + e.message);
+          box.innerHTML = '<p class="feature-subtitle" style="color:#f87171">Could not load subscribers: ' + subEsc(e.message) + '</p>';
+        });
+    };
+    window.__subAdd = function () {
+      var slug = subSlug();
+      if (!slug) { alert('Pick a directory first.'); return; }
+      var email = prompt('Subscriber email');
+      if (!email) return;
+      var name = prompt('Name (optional)') || null;
+      subStatus('saving…');
+      return apiPost('/directories/' + encodeURIComponent(slug) + '/subscribers', { email: email, name: name })
+        .then(function () { return window.__subLoad(); })
+        .then(function () { subStatus('added ✓'); })
+        .catch(function (e) { subStatus('add failed: ' + e.message); });
+    };
+    window.__subImport = function () {
+      var slug = subSlug();
+      if (!slug) { alert('Pick a directory first.'); return; }
+      var raw = ((document.getElementById('sub-csv') || {}).value || '').trim();
+      if (!raw) { subStatus('Nothing to import — paste CSV first.'); return; }
+      var subs = raw.split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean).map(function (line) {
+        var parts = line.split(',');
+        return { email: (parts[0] || '').trim(), name: (parts[1] || '').trim() || null };
+      }).filter(function (s) { return s.email.indexOf('@') > 0; });
+      if (!subs.length) { subStatus('No valid email addresses found in that CSV.'); return; }
+      subStatus('importing ' + subs.length + '…');
+      return apiPost('/directories/' + encodeURIComponent(slug) + '/subscribers/import', { subscribers: subs })
+        .then(function (r) {
+          subStatus('imported ' + ((r && r.added) || 0) + ' of ' + subs.length + ' (' + (((r && r.total) || subs.length) - ((r && r.added) || 0)) + ' already subscribed)');
+          return window.__subLoad();
+        })
+        .catch(function (e) { subStatus('import failed: ' + e.message); });
+    };
+    window.__subExport = function () {
+      if (!subRows.length) { subStatus('Nothing loaded to export — press Reload first.'); return; }
+      var csv = 'email,name,status,subscribed_at\n' + subRows.map(function (s) {
+        var f = [s.email, s.name || '', s.status, s.subscribed_at || ''].map(function (v) {
+          return '"' + String(v).replace(/"/g, '""') + '"';
+        });
+        return f.join(',');
+      }).join('\n');
+      var blob = new Blob([csv], { type: 'text/csv' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'subscribers-' + subSlug() + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      subStatus('exported ' + subRows.length + ' rows');
+    };
+    (function wireSubscribers() {
+      var list = document.getElementById('sub-list');
+      if (!list) return;
+      list.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-subunsub]') : null;
+        if (!b) return;
+        var slug = subSlug();
+        if (!slug) return;
+        if (!confirm('Unsubscribe this address? The record is kept and can be re-subscribed later.')) return;
+        subStatus('unsubscribing…');
+        apiPost('/directories/' + encodeURIComponent(slug) + '/subscribers/' + encodeURIComponent(b.getAttribute('data-subunsub')) + '/unsubscribe', {})
+          .then(function () { return window.__subLoad(); })
+          .then(function () { subStatus('unsubscribed ✓'); })
+          .catch(function (err) { subStatus('unsubscribe failed: ' + err.message); });
+      });
+      window.__subDirSelect();
+      // Load once the directory list has arrived (directories is filled by the panel's own bootstrap).
+      var tries = 0;
+      var t = setInterval(function () {
+        tries++;
+        if ((directories || []).length) { window.__subDirSelect(); window.__subLoad(); clearInterval(t); }
+        else if (tries > 40) { clearInterval(t); }
+      }, 250);
+    })();
 
     // ---- System email templates (GET/POST /email/templates, PUT/DELETE /email/templates/:id,
     //      GET /email/placeholders, POST /email/templates/preview, POST /email/templates/:id/test-send) ----

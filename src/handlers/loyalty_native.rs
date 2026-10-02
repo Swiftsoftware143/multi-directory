@@ -437,6 +437,20 @@ pub async fn credit_visitor_units(
 
     tx.commit().await?;
 
+    // Milestones are part of the same earn event: if this credit just pushed the member over a
+    // threshold that the admin configured, the bonus is credited now, in the same call, so a
+    // member never has to earn again to collect it. No-op unless the programme enables them.
+    let milestone_units = award_qualified_milestones(pool, &program, &member_id).await?;
+    let units = units.saturating_add(i32::try_from(milestone_units).unwrap_or(i32::MAX));
+    let balance_after = if milestone_units > 0 {
+        sqlx::query_scalar::<_, i32>("SELECT points_balance FROM loyalty_members WHERE id = $1")
+            .bind(member_id)
+            .fetch_one(pool)
+            .await?
+    } else {
+        balance_after
+    };
+
     Ok(Some(CreditedAward {
         member_id,
         program_id: program.id,
@@ -445,6 +459,124 @@ pub async fn credit_visitor_units(
         units,
         balance_after,
     }))
+}
+
+/// Award every milestone the member has just qualified for and has not completed yet.
+///
+/// A milestone is *met* when one of the member's running totals crosses its `trigger_value`:
+///   * `checkin_count` / `checkins` / `checkin` — lifetime check-ins
+///   * `balance` / `points_balance`             — current spendable balance
+///   * anything else (incl. `lifetime_points`)  — lifetime currency earned
+///
+/// Bonuses are applied in ascending `trigger_value` order and the running totals are advanced as
+/// they land, so a milestone unlocked by an earlier milestone's bonus fires in the same pass.
+/// `loyalty_milestones_completed`'s UNIQUE(member_id, milestone_id) is the once-per-member guard —
+/// a bonus is therefore credited at most once per member per milestone, even under a race.
+/// Returns the units credited by milestones (0 when the programme has them switched off).
+pub async fn award_qualified_milestones(
+    pool: &PgPool,
+    program: &LoyaltyProgram,
+    member_id: &Uuid,
+) -> Result<i64, AppError> {
+    if !program.milestones_enabled {
+        return Ok(0);
+    }
+
+    let pending: Vec<(Uuid, String, String, i64, i64)> = sqlx::query_as(
+        r#"SELECT m.id, m.name, m.trigger_type, m.trigger_value, m.bonus_points
+             FROM loyalty_milestones m
+            WHERE m.loyalty_program_id = $1
+              AND NOT EXISTS (
+                    SELECT 1 FROM loyalty_milestones_completed c
+                     WHERE c.milestone_id = m.id AND c.member_id = $2)
+            ORDER BY m.trigger_value ASC, m.created_at ASC"#,
+    )
+    .bind(program.id)
+    .bind(member_id)
+    .fetch_all(pool)
+    .await?;
+
+    if pending.is_empty() {
+        return Ok(0);
+    }
+
+    let (mut balance, mut lifetime, checkins): (i32, i32, i64) = sqlx::query_as(
+        r#"SELECT m.points_balance,
+                  m.lifetime_points,
+                  (SELECT COUNT(*) FROM loyalty_checkins c WHERE c.member_id = m.id)
+             FROM loyalty_members m WHERE m.id = $1"#,
+    )
+    .bind(member_id)
+    .fetch_one(pool)
+    .await?;
+
+    let mut credited: i64 = 0;
+    for (id, name, trigger_type, trigger_value, bonus_points) in pending {
+        let met = match trigger_type.as_str() {
+            "checkin_count" | "checkins" | "checkin" => checkins >= trigger_value,
+            "balance" | "points_balance" => i64::from(balance) >= trigger_value,
+            _ => i64::from(lifetime) >= trigger_value,
+        };
+        if !met {
+            continue;
+        }
+
+        let mut tx = pool.begin().await?;
+        let inserted = sqlx::query(
+            "INSERT INTO loyalty_milestones_completed (id, member_id, milestone_id, points_awarded)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (member_id, milestone_id) DO NOTHING",
+        )
+        .bind(Uuid::new_v4())
+        .bind(member_id)
+        .bind(id)
+        .bind(bonus_points)
+        .execute(&mut *tx)
+        .await?;
+
+        // already completed (a concurrent award won the race) — nothing left to credit
+        if inserted.rows_affected() == 0 {
+            tx.rollback().await?;
+            continue;
+        }
+
+        if bonus_points > 0 {
+            let units = i32::try_from(bonus_points).unwrap_or(i32::MAX);
+            sqlx::query(
+                "UPDATE loyalty_members
+                    SET points_balance = points_balance + $1,
+                        lifetime_points = lifetime_points + $1,
+                        last_activity_date = NOW()
+                  WHERE id = $2",
+            )
+            .bind(units)
+            .bind(member_id)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO loyalty_activity (id, member_id, activity_type, description, points_earned)
+                 VALUES ($1, $2, 'milestone', $3, $4)",
+            )
+            .bind(Uuid::new_v4())
+            .bind(member_id)
+            .bind(format!("Milestone reached: {name}"))
+            .bind(bonus_points)
+            .execute(&mut *tx)
+            .await?;
+
+            balance = balance.saturating_add(units);
+            lifetime = lifetime.saturating_add(units);
+            credited += bonus_points;
+        }
+
+        tx.commit().await?;
+    }
+
+    if credited > 0 {
+        tracing::info!("[loyalty] member {member_id} earned {credited} units via milestones");
+    }
+    Ok(credited)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -741,6 +873,10 @@ pub async fn checkin(
     )
     .await?;
 
+    // A check-in is an earn event too, so a `checkin_count` milestone the admin configured pays
+    // out the moment the member crosses it — in the same request, not on some later event.
+    let milestone_units = award_qualified_milestones(&state.db, &program, &member_id).await?;
+
     // Drill down into CoreSwift CRM (fire-and-forget)
     let db = state.db.clone();
     let dir = directory_id;
@@ -762,9 +898,11 @@ pub async fn checkin(
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(
-        json!({ "member": member, "points_awarded": program.points_per_checkin }),
-    ))
+    Ok(Json(json!({
+        "member": member,
+        "points_awarded": program.points_per_checkin,
+        "milestone_units": milestone_units
+    })))
 }
 
 /// GET /api/v1/directories/:slug/loyalty/members/:visitor_account_id — member summary
@@ -1186,4 +1324,25 @@ pub async fn create_milestone(
     .fetch_one(&state.db)
     .await?;
     Ok(Json(json!({ "milestone": milestone })))
+}
+
+/// DELETE /api/v1/directories/:slug/loyalty/programs/:program_id/milestones/:milestone_id
+///
+/// Removing a milestone cannot un-earn a bonus a member already collected (the completion rows
+/// cascade away with it, but the currency stays), so the caller confirms first.
+pub async fn delete_milestone(
+    State(state): State<AppState>,
+    Path((slug, program_id, milestone_id)): Path<(String, Uuid, Uuid)>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    let res =
+        sqlx::query("DELETE FROM loyalty_milestones WHERE id = $1 AND loyalty_program_id = $2")
+            .bind(milestone_id)
+            .bind(program_id)
+            .execute(&state.db)
+            .await?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("milestone not found".into()));
+    }
+    Ok(Json(json!({ "deleted": true })))
 }

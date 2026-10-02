@@ -112,6 +112,10 @@ pub fn create_router(s: AppState) -> Router {
             get(loyalty_native::list_milestones).post(loyalty_native::create_milestone),
         )
         .route(
+            "/directories/:slug/loyalty/programs/:program_id/milestones/:milestone_id",
+            delete(loyalty_native::delete_milestone),
+        )
+        .route(
             "/directories/:slug/loyalty/members/:member_id/rewards",
             get(loyalty_native::list_earned),
         )
