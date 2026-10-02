@@ -724,19 +724,73 @@ async fn create_paypal_session(
 // ──────────────────────────────────────────────
 
 /// POST /api/v1/webhooks/stripe
-/// Handle incoming Stripe webhook events
+/// Handle incoming Stripe webhook events.
+///
+/// Fail CLOSED and LOUD (kanban t_10d3ad0c — multi-directory's half of the class t_40b77d6a closed
+/// in WorkflowSwift).
+///
+/// CLOSED: this receiver used to answer "accept" whenever no webhook_secret was stored, so an
+/// anonymous POST could complete a pending checkout session for any gateway configured without one
+/// (t_3f82bba8 closed that). Nothing that is not a verified signature now reaches
+/// `handle_checkout_completed`: no active provider, no stored secret, no signature header, a wrong
+/// signature, or a signature outside the timestamp tolerance (replay) all REFUSE.
+///
+/// LOUD: every one of those refusals used to be answered `200 {"status":"ignored"}`. Stripe reads
+/// any 2xx as "delivered" and NEVER retries it, so a delivery that arrived while no signing secret
+/// was stored — or that failed verification for a transient reason — was lost for good, with only
+/// the `payment_webhook_events` row as evidence. That is a lost payment event, which is not a lost
+/// login. Per-arm contract, mirroring the receiver WorkflowSwift now uses (t_40b77d6a, `c537471`):
+///
+/// - no active `stripe` row in `payment_providers`, or one with no signing secret stored -> 503
+///   `stripe_not_configured`, audit row `not_configured`. The receiver cannot accept events at all
+///   and that is an operator-fixable panel state (Admin > Payment gateways); Stripe retries non-2xx
+///   with backoff for up to 3 days, so an event that arrives BEFORE the endpoint's `whsec_…` is
+///   pasted is delivered again afterwards instead of being lost.
+/// - a signing secret IS stored and `Stripe-Signature` is absent -> 503 `stripe_signature_missing`,
+///   audit row `signature_failed`. Nothing was presented to verify.
+/// - a signing secret IS stored and the signature does not verify -> 503
+///   `stripe_signature_verification_failed`, audit row `signature_failed`. The `t=` replay
+///   tolerance lives inside `verify_stripe_signature` and lands here too: the pair verified as an
+///   HMAC but is no longer fresh, and `verify_stripe_signature` logs the measured skew when it
+///   refuses one.
+///
+///   Why 503 here and not the 401 a PayPal receiver answers for the same-sounding arm: PayPal
+///   computes its own verdict, so a failed verification there is an authoritative third-party
+///   statement that the delivery is not a genuine PayPal event and no retry can change that.
+///   Stripe's verdict is computed HERE, as an HMAC over a secret this deployment stores, so a
+///   mismatch is at least as likely to be OUR misconfiguration — a wrong or stale secret, a
+///   rotation the panel has not applied yet — as a forged body, and the two are indistinguishable
+///   from the bytes we are handed. Stripe re-signs every retry attempt, so 503 is the only answer
+///   that lets a repaired secret recover an already-lost receipt; a permanently bad body costs a
+///   bounded number of retries (Stripe's own backoff, capped at 3 days) and is loud in three
+///   places: the ERROR line below, the audit row, and Stripe's dashboard, which flags the endpoint
+///   as failing and tells the account owner. 200 would make all of it silent.
+/// - a body that is not JSON -> 400 `Invalid JSON`, parsed BEFORE verification: a malformed body
+///   cannot be a Stripe event whatever the signature says, so 400 names the real problem (a proxy
+///   or a caller mangling the payload) instead of sending the operator to the signing secret. This
+///   arm writes no audit row — there is no event id and no structured body to store — so its record
+///   is the ERROR log line plus Stripe's dashboard.
+/// - verified -> 200 `processed`, unchanged.
+///
+/// NOTE (measured 2026-10-02, deliberately NOT changed by this card): `paypal_webhook` in this same
+/// file still answers 200 for its own refusal arms — the same silent-loss shape on the PayPal side,
+/// with its own card. Nothing in this comment describes that arm.
 pub async fn stripe_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> ApiResult<impl IntoResponse> {
+    // Parsed BEFORE verification, and deliberately kept 400: a body that is not JSON cannot be a
+    // Stripe event whatever the signature says. No audit row — no event id, no structured body.
     let event_body: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|e| AppError::BadRequest(format!("Invalid JSON: {}", e)))?;
 
     let event_type = event_body["type"].as_str().unwrap_or("unknown");
     let event_id = event_body["id"].as_str().unwrap_or("");
 
-    // Get the active Stripe provider for webhook secret verification
+    // Read per event, never cached: pasting the endpoint's signing secret in Admin > Payment
+    // gateways makes the very next delivery verify, which is what makes the 503 arm recoverable
+    // instead of permanent.
     let provider = get_active_provider(&state.db, "stripe").await?;
 
     // Extract the signature header for verification
@@ -747,37 +801,68 @@ pub async fn stripe_webhook(
 
     // FAIL CLOSED. This receiver used to answer "accept" whenever no webhook_secret was stored, so
     // an anonymous POST could complete a pending checkout session for any gateway configured
-    // without one. Every path that is not a verified signature now REJECTS: no active provider, no
-    // stored secret, no signature header, a wrong signature, or a signature outside the timestamp
-    // tolerance (replay).
-    let rejection: Option<&'static str> = match provider.as_ref() {
-        None => Some("no_active_stripe_provider_configured"),
-        Some(prov) if prov.webhook_secret.is_empty() => Some("no_webhook_secret_configured"),
-        Some(_) if signature.is_empty() => Some("missing_signature_header"),
-        Some(prov) if !verify_stripe_signature(&body, signature, &prov.webhook_secret) => {
-            Some("signature_verification_failed")
-        }
+    // without one. Every path that is not a verified signature now REJECTS.
+    //
+    // A refusal carries three things: the response `reason`, the audit row's `status` (so an
+    // operator can tell "nothing is configured" apart from "the signature did not verify"), and the
+    // HTTP status Stripe is answered with — none of them 2xx, because Stripe treats any 2xx as
+    // delivered and never retries it. The contract, arm by arm, is in this function's doc comment.
+    let rejection: Option<(&'static str, &'static str, StatusCode)> = match provider.as_ref() {
+        None => Some((
+            "stripe_not_configured",
+            "not_configured",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )),
+        Some(prov) if prov.webhook_secret.is_empty() => Some((
+            "stripe_not_configured",
+            "not_configured",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )),
+        Some(_) if signature.is_empty() => Some((
+            "stripe_signature_missing",
+            "signature_failed",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )),
+        Some(prov) if !verify_stripe_signature(&body, signature, &prov.webhook_secret) => Some((
+            "stripe_signature_verification_failed",
+            "signature_failed",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )),
         Some(_) => None,
     };
 
-    if let Some(reason) = rejection {
+    if let Some((reason, _, _)) = rejection {
         match reason {
-            // A misconfiguration the operator can fix from the panel: say so loudly.
-            "no_webhook_secret_configured" => tracing::error!(
+            // A misconfiguration the operator can fix from the panel: say so loudly, with the fix.
+            "stripe_not_configured" => tracing::error!(
                 provider = "stripe",
                 event_id,
-                "Stripe webhook REJECTED — the active Stripe provider has no signing secret stored, \
-                 so no event can be verified. Add the endpoint's whsec_… in Admin > Payment gateways."
+                "Stripe webhook receiver is NOT CONFIGURED — no active 'stripe' row in \
+                 payment_providers, or that row carries no signing secret, so no event can be \
+                 verified. Answering 503 so Stripe retries (up to 3 days); paste the endpoint's \
+                 whsec_… in Admin > Payment gateways and the retries verify."
             ),
-            _ => tracing::warn!(provider = "stripe", event_id, reason, "Stripe webhook rejected"),
+            // Everything else is a delivery that was refused. ERROR, not warn: a refusal that Stripe
+            // answers 2xx to is invisible, and this line plus the audit row plus Stripe's dashboard
+            // are the only three places it can show up.
+            _ => tracing::error!(
+                provider = "stripe",
+                event_id,
+                reason,
+                "Stripe webhook REJECTED — answering 503 so Stripe retries: if the stored signing \
+                 secret is wrong, stale or mid-rotation, the retry is the only way this receipt is \
+                 recovered; a forged body just gets retried and refused. Stripe marks the endpoint \
+                 failing after repeated non-2xx."
+            ),
         }
     }
 
-    // Log the event either way — a refusal is evidence and belongs in payment_webhook_events.
-    let db_status = if rejection.is_none() {
-        "received"
-    } else {
-        "failed"
+    // Log the event either way — a refusal is evidence and belongs in payment_webhook_events. The
+    // audit `status` separates "the receiver is not configured" from "the signature did not verify"
+    // (migration 109 widens the CHECK to admit both), and `error_message` carries the reason.
+    let db_status = match rejection {
+        None => "received",
+        Some((_, audit_status, _)) => audit_status,
     };
     sqlx::query(
         r#"INSERT INTO payment_webhook_events
@@ -789,14 +874,14 @@ pub async fn stripe_webhook(
     .bind(&event_body)
     .bind(&json!({"stripe-signature": signature}))
     .bind(db_status)
-    .bind(rejection)
+    .bind(rejection.map(|(reason, _, _)| reason))
     .execute(&state.db)
     .await?;
 
-    if let Some(reason) = rejection {
+    if let Some((reason, _, status)) = rejection {
         return Ok((
-            StatusCode::OK,
-            Json(json!({"status": "ignored", "reason": reason})),
+            status,
+            Json(json!({"status": "rejected", "reason": reason})),
         ));
     }
 
