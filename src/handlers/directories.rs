@@ -7,7 +7,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{validate_pagination, ApiResult, AppError};
+use crate::handlers::tenant_scope;
 use crate::models::*;
 use crate::template_engine;
 use crate::tracking_script;
@@ -24,6 +25,7 @@ use crate::AppState;
 /// GET /api/v1/directories
 pub async fn list_directories(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     let page = params
@@ -37,17 +39,62 @@ pub async fn list_directories(
     let (page, per_page) = validate_pagination(Some(page), Some(per_page));
     let offset = (page - 1) * per_page;
 
-    let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories")
+    // B120 — SELLABLE STANDARD: an ACTIVATED directory belongs to the buyer's tenant, and that
+    // tenant must see only its own directories. A tenant that has bought a directory is a
+    // directory operator and is scoped strictly to what it owns; the platform operator keeps the
+    // full list. A tenant that owns NO directory (business owners in the platform tenant, the
+    // shared /portal picker) is left unchanged — every shared city has `owner_id IS NULL`, so
+    // scoping them would empty those pickers.
+    let scope_tid = match tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret) {
+        Ok(claims) if !tenant_scope::is_platform_operator(&claims) => {
+            let tid = tenant_scope::caller_tenant(&claims)?;
+            let owns = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS (SELECT 1 FROM directories d JOIN users u ON u.id = d.owner_id \
+                 WHERE u.tenant_id = $1)",
+            )
+            .bind(tid)
+            .fetch_one(&s.db)
+            .await?;
+            if owns {
+                Some(tid)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
+    let (total, directories) = if let Some(tid) = scope_tid {
+        let total = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM directories WHERE owner_id IN \
+             (SELECT id FROM users WHERE tenant_id = $1)",
+        )
+        .bind(tid)
         .fetch_one(&s.db)
         .await?;
-
-    let directories = sqlx::query_as::<_, Directory>(
-        "SELECT * FROM directories ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 ",
-    )
-    .bind(per_page)
-    .bind(offset)
-    .fetch_all(&s.db)
-    .await?;
+        let rows = sqlx::query_as::<_, Directory>(
+            "SELECT * FROM directories WHERE owner_id IN \
+             (SELECT id FROM users WHERE tenant_id = $1) ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+        )
+        .bind(tid)
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(&s.db)
+        .await?;
+        (total, rows)
+    } else {
+        let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories")
+            .fetch_one(&s.db)
+            .await?;
+        let rows = sqlx::query_as::<_, Directory>(
+            "SELECT * FROM directories ORDER BY created_at DESC LIMIT \x241 OFFSET \x242 ",
+        )
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(&s.db)
+        .await?;
+        (total, rows)
+    };
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i64;
 
@@ -63,6 +110,7 @@ pub async fn list_directories(
 /// GET /api/v1/directories/:slug
 pub async fn get_directory(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
@@ -73,6 +121,27 @@ pub async fn get_directory(
             "Directory '{}' not found",
             slug
         )))?;
+
+    // B120 — a directory-owning tenant (a BUYER) may read only its own directories: the shared
+    // platform cities are not its business. A tenant that owns no directory (business owners in
+    // the platform tenant) keeps the existing read access, so their portal pickers still work.
+    let claims = tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    if !tenant_scope::is_platform_operator(&claims) {
+        let tid = tenant_scope::caller_tenant(&claims)?;
+        let owns = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM directories d JOIN users u ON u.id = d.owner_id \
+             WHERE u.tenant_id = $1)",
+        )
+        .bind(tid)
+        .fetch_one(&s.db)
+        .await?;
+        if owns && !tenant_scope::can_admin_directory(&s.db, &claims, directory.id).await? {
+            return Err(AppError::NotFound(format!(
+                "Directory '{}' not found",
+                slug
+            )));
+        }
+    }
 
     Ok(Json(json!(directory)))
 }
@@ -365,9 +434,14 @@ async fn resolve_network_config(
 /// PUT /api/v1/directories/:slug
 pub async fn update_directory(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
     Json(req): Json<UpdateDirectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // B120 — only the platform operator or the directory's own owning tenant may edit it.
+    let claims = tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    tenant_scope::assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
+
     let existing = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
         .bind(&slug)
         .fetch_optional(&s.db)
@@ -461,8 +535,18 @@ pub async fn update_directory(
 /// DELETE /api/v1/directories/:slug
 pub async fn delete_directory(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    // B120 — destroying a directory is the platform operator's call alone.
+    let claims = tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    if !tenant_scope::is_platform_operator(&claims) {
+        return Err(AppError::NotFound(format!(
+            "Directory '{}' not found",
+            slug
+        )));
+    }
+
     let result = sqlx::query("DELETE FROM directories WHERE slug = \x241")
         .bind(&slug)
         .execute(&s.db)

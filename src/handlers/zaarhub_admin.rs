@@ -1,6 +1,7 @@
 /// ZaarHub legal pages + site config management
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -643,4 +644,195 @@ fn mock_places_results() -> Vec<Value> {
         }));
     }
     out
+}
+
+// ── Directory activation / sale handover (kanban B120) ───────────────────────
+//
+// ADMIN ACCOUNT vs DIRECTORY IDENTITY. The login account (profile name + login email +
+// password) is private and belongs to whoever logs in; the directory identity (name, city,
+// support email, branding, site URL) is public and is what the site and the merge fields read.
+// They are deliberately separate: activating a directory NEVER copies the buyer's login email
+// into the directory, so the public support address is unchanged by the sale.
+
+#[derive(Deserialize)]
+pub struct ActivateDirectoryRequest {
+    pub owner_name: String,
+    pub owner_email: String,
+    pub owner_password: String,
+    /// Optional buyer organisation / tenant name; defaults to "<buyer>'s Directory".
+    pub tenant_name: Option<String>,
+}
+
+/// POST /api/v1/zaarhub/admin/directories/:slug/activate — operator-only.
+///
+/// The sale handover step: creates the buyer's own tenant + `admin` login and points
+/// `directories.owner_id` at it, so the directory becomes independent of the platform owner.
+/// Refuses to re-activate a directory that already has an owner, and refuses an address that
+/// already has an account (login resolves by email, so an address is globally unique).
+pub async fn activate_directory(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Json(req): Json<ActivateDirectoryRequest>,
+) -> ApiResult<Json<Value>> {
+    // Defence in depth: the route sits behind `operator_guard`, but re-check here so a route
+    // added outside that layer can never hand a directory over to a non-operator.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        return Err(AppError::Forbidden(
+            "Platform operator access required".to_string(),
+        ));
+    }
+
+    let owner_name = req.owner_name.trim().to_string();
+    if owner_name.is_empty() {
+        return Err(AppError::Validation("Buyer name is required".into()));
+    }
+    let owner_email =
+        crate::security::email_addr::normalize(&req.owner_email).map_err(AppError::Validation)?;
+    if req.owner_password.len() < 8 {
+        return Err(AppError::Validation(
+            "Buyer password must be at least 8 characters".into(),
+        ));
+    }
+    if req.owner_password.len() > 256 {
+        return Err(AppError::Validation("Buyer password is too long".into()));
+    }
+
+    let directory = sqlx::query(
+        "SELECT id, name, slug, city, state, owner_id FROM directories WHERE slug = $1",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("Directory '{slug}' not found")))?;
+    let directory_id: Uuid = directory.try_get("id")?;
+    let directory_name: String = directory.try_get("name")?;
+    let directory_slug: String = directory.try_get("slug")?;
+    let directory_city: Option<String> = directory.try_get("city").ok();
+    let directory_state: Option<String> = directory.try_get("state").ok();
+    if directory.try_get::<Option<Uuid>, _>("owner_id")?.is_some() {
+        return Err(AppError::Duplicate(
+            "This directory is already activated — it has its own admin account.".into(),
+        ));
+    }
+
+    let taken = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+        .bind(&owner_email)
+        .fetch_one(&state.db)
+        .await?;
+    if taken > 0 {
+        return Err(AppError::Duplicate(format!(
+            "An account already exists for {owner_email} — use a different login address."
+        )));
+    }
+
+    use argon2::{
+        password_hash::{rand_core::OsRng, SaltString},
+        Argon2, PasswordHasher,
+    };
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(req.owner_password.as_bytes(), &salt)
+        .map_err(|e| AppError::Hash(e.to_string()))?
+        .to_string();
+
+    let tenant_name = req
+        .tenant_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{owner_name}'s Directory"));
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    let base: String = tenant_name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let base = base.trim_matches('-').to_string();
+    let base: String = if base.is_empty() {
+        "directory".to_string()
+    } else {
+        base.chars().take(40).collect()
+    };
+    let suffix = user_id.simple().to_string();
+
+    let mut tx = state.db.begin().await?;
+
+    let mut tenant_slug = base.clone();
+    let slug_taken = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tenants WHERE slug = $1")
+        .bind(&tenant_slug)
+        .fetch_one(&mut *tx)
+        .await?;
+    if slug_taken > 0 {
+        tenant_slug = format!("{base}-{}", &suffix[..8]);
+    }
+
+    sqlx::query(
+        "INSERT INTO tenants (id, name, slug, is_active, created_at, updated_at) \
+         VALUES ($1, $2, $3, true, $4, $4)",
+    )
+    .bind(tenant_id)
+    .bind(&tenant_name)
+    .bind(&tenant_slug)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, \
+         created_at, updated_at) VALUES ($1, $2, $3, $4, $5, 'admin', true, $6, $6)",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(&owner_email)
+    .bind(&password_hash)
+    .bind(&owner_name)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+
+    let updated = sqlx::query(
+        "UPDATE directories SET owner_id = $1, updated_at = NOW() \
+         WHERE id = $2 AND owner_id IS NULL",
+    )
+    .bind(user_id)
+    .bind(directory_id)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::Duplicate(
+            "This directory was activated by another request — nothing was changed.".into(),
+        ));
+    }
+
+    tx.commit().await?;
+
+    Ok(Json(json!({
+        "activated": true,
+        "directory": {
+            "id": directory_id,
+            "slug": directory_slug,
+            "name": directory_name,
+            "city": directory_city,
+            "state": directory_state,
+        },
+        "owner": {
+            "id": user_id,
+            "name": owner_name,
+            "email": owner_email,
+            "role": "admin",
+        },
+        "tenant": {
+            "id": tenant_id,
+            "name": tenant_name,
+            "slug": tenant_slug,
+        },
+        "login_url": "/admin-panel.html",
+    })))
 }

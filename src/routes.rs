@@ -1776,6 +1776,14 @@ pub fn create_router(s: AppState) -> Router {
             get(zaarhub_admin::places_text_search)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // B120 — SELLABLE STANDARD: the sale handover. Activating a directory (operator-only)
+        // creates the buyer's own admin login and transfers ownership of that ONE directory to
+        // them; the public directory identity is untouched.
+        .route(
+            "/zaarhub/admin/directories/:slug/activate",
+            post(zaarhub_admin::activate_directory)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // Round 5 T3 - discovery queue: persisted per directory, franchise-filtered,
         // deduped against the directory's own businesses.
         .route(

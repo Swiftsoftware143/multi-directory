@@ -2536,6 +2536,26 @@
             '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>' + bc + ' businesses</span>' +
           '</div>';
 
+        // B120 — the sale handover control (platform operator only). An ACTIVATED directory shows
+        // a "Sold" state instead: its buyer owns it and its public identity is unchanged.
+        if (user && user.role === 'super_admin') {
+          var actions = document.createElement('span');
+          actions.className = 'dir-card-actions';
+          actions.style.cssText = 'display:block;margin-top:10px';
+          if (dir.owner_id) {
+            actions.innerHTML = '<span class="badge" style="background:rgba(56,189,248,.15);color:#38bdf8">🔑 Activated — owned by a buyer</span>';
+          } else {
+            var sell = document.createElement('span');
+            sell.className = 'btn btn-sm btn-primary';
+            sell.textContent = 'Sell / activate';
+            sell.setAttribute('role', 'button');
+            sell.style.cssText = 'display:inline-block;cursor:pointer';
+            sell.onclick = function (e) { e.preventDefault(); e.stopPropagation(); mdOpenActivateModal(dir); };
+            actions.appendChild(sell);
+          }
+          card.appendChild(actions);
+        }
+
         dirGrid.appendChild(card);
       });
 
@@ -2553,6 +2573,95 @@
       div.textContent = str;
       return div.innerHTML;
     }
+
+    // ===== B120 — Sell / activate a directory (admin account vs directory identity) =====
+    // The panel action that hands ONE directory to a buyer: it creates the buyer's own login
+    // (private) and nothing else — the directory's public identity, including its support
+    // email, is untouched, so the site looks identical after the sale.
+    var MD_PUBLIC_SUPPORT_EMAIL = 'support@zaarhub.com';
+
+    function mdEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function mdOpenActivateModal(dir) {
+      if (!dir || !dir.slug) { showToast('Pick a directory first', 'error'); return; }
+      if (dir.owner_id) {
+        showToast('This directory is already activated — it has its own admin account.', 'error');
+        return;
+      }
+      var old = document.getElementById('md-activate-overlay');
+      if (old) old.remove();
+      var overlay = document.createElement('div');
+      overlay.id = 'md-activate-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+      var place = (dir.city || '') + (dir.state ? ((dir.city ? ', ' : '') + dir.state) : '');
+      overlay.innerHTML =
+        '<div style="width:100%;max-width:540px;background:var(--bg-card,#0f172a);border:1px solid var(--border,#1e293b);border-radius:14px;padding:22px;color:var(--text,#e2e8f0);max-height:90vh;overflow:auto">' +
+          '<h3 style="margin:0 0 4px;font-size:1.15rem">Sell / activate &ldquo;' + mdEsc(dir.name) + '&rdquo;</h3>' +
+          '<p style="margin:0 0 14px;font-size:.85rem;color:var(--text-secondary,#94a3b8)">Creates the buyer&rsquo;s own login and hands them this ONE directory. The public directory identity does not change.</p>' +
+          '<div style="background:rgba(148,163,184,.08);border:1px solid var(--border,#1e293b);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.82rem">' +
+            '<div style="font-weight:600;margin-bottom:4px">Directory identity &mdash; public, unchanged</div>' +
+            '<div>' + mdEsc(dir.name) + (place ? ' &middot; ' + mdEsc(place) : '') + '</div>' +
+            '<div>Public support email: <b>' + mdEsc(MD_PUBLIC_SUPPORT_EMAIL) + '</b> &mdash; the login below is separate</div>' +
+          '</div>' +
+          '<div style="font-weight:600;margin-bottom:6px;font-size:.85rem">Buyer admin account &mdash; private login</div>' +
+          '<input id="md-act-name" class="pk-input" placeholder="Buyer name" style="width:100%;margin-bottom:8px">' +
+          '<input id="md-act-email" class="pk-input" type="email" placeholder="Buyer login email (not the public support email)" style="width:100%;margin-bottom:8px">' +
+          '<input id="md-act-pass" class="pk-input" type="password" placeholder="Password (at least 8 characters)" style="width:100%;margin-bottom:8px">' +
+          '<input id="md-act-tenant" class="pk-input" placeholder="Organisation / tenant name (optional)" style="width:100%;margin-bottom:12px">' +
+          '<div id="md-act-msg" style="font-size:.82rem;margin-bottom:10px;color:var(--text-secondary,#94a3b8)"></div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<button type="button" class="btn btn-ghost" id="md-act-cancel">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" id="md-act-submit">Activate directory</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      document.getElementById('md-act-cancel').onclick = function () { overlay.remove(); };
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+      document.getElementById('md-act-submit').onclick = function () { mdSubmitActivation(dir, overlay); };
+    }
+
+    function mdSubmitActivation(dir, overlay) {
+      var name = (document.getElementById('md-act-name').value || '').trim();
+      var email = (document.getElementById('md-act-email').value || '').trim();
+      var pass = document.getElementById('md-act-pass').value || '';
+      var tenant = (document.getElementById('md-act-tenant').value || '').trim();
+      var msg = document.getElementById('md-act-msg');
+      var btn = document.getElementById('md-act-submit');
+      if (!name || !email || !pass) {
+        msg.style.color = '#fca5a5';
+        msg.textContent = 'Name, login email and password are all required.';
+        return;
+      }
+      if (pass.length < 8) {
+        msg.style.color = '#fca5a5';
+        msg.textContent = 'Password must be at least 8 characters.';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Activating…';
+      msg.style.color = 'var(--text-secondary,#94a3b8)';
+      msg.textContent = 'Creating the buyer account and transferring ownership…';
+      var body = { owner_name: name, owner_email: email, owner_password: pass };
+      if (tenant) body.tenant_name = tenant;
+      apiPost('/zaarhub/admin/directories/' + encodeURIComponent(dir.slug) + '/activate', body)
+        .then(function (r) {
+          overlay.remove();
+          var who = (r && r.owner && r.owner.email) ? r.owner.email : email;
+          showToast('“' + dir.name + '” activated for ' + who + '. They log in separately and see only this directory.', 'success');
+          loadDirectories();
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.textContent = 'Activate directory';
+          msg.style.color = '#fca5a5';
+          msg.textContent = err.message || 'Activation failed.';
+        });
+    }
+    window.__mdOpenActivateModal = mdOpenActivateModal;
 
     // ===== B2B Feature Toggles =====
     var b2bToggles = {
