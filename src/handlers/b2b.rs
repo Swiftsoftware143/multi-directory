@@ -192,12 +192,18 @@ pub async fn b2b_register(
         )));
     }
 
-    let existing =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE email = $1")
-            .bind(&req.email)
-            .fetch_one(&s.db)
-            .await
-            .unwrap_or(0);
+    // Trim + lowercase + refuse anything that is not an address, BEFORE the first SELECT. This one
+    // value feeds the duplicate check, the businesses row, the visitor_accounts row (the login
+    // identity) and the auto-claim row — they must never disagree (t_01f183b1).
+    let email = crate::security::email_addr::normalize(&req.email).map_err(AppError::Validation)?;
+
+    let existing = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_accounts WHERE lower(email) = $1",
+    )
+    .bind(&email)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
 
     if existing > 0 {
         return Err(AppError::Duplicate(
@@ -257,7 +263,7 @@ pub async fn b2b_register(
     )
     .bind(business_id)
     .bind(biz_name)
-    .bind(&req.email)
+    .bind(&email)
     .bind(&req.phone)
     .bind(&biz_slug)
     .bind(&bt_lower)
@@ -284,7 +290,7 @@ pub async fn b2b_register(
         "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, business_type) \
          VALUES ($1, $2, $3, $4, NULL, $5) RETURNING *"
     )
-    .bind(&req.email)
+    .bind(&email)
     .bind(&password_hash)
     .bind(&req.name)
     .bind(&req.phone)
@@ -299,7 +305,7 @@ pub async fn b2b_register(
          ON CONFLICT (business_id) DO NOTHING"
     )
     .bind(business_id)
-    .bind(&req.email)
+    .bind(&email)
     .bind(&req.name)
     .bind(&req.phone)
     .bind(visitor.id)

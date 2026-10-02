@@ -1076,6 +1076,12 @@ pub async fn claim_business(
     Path(business_id): Path<Uuid>,
     Json(req): Json<ClaimBusinessRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // The claimant's address is the login identity of the visitor_account this may mint and the
+    // address every claim notice goes to. Trim + lowercase + refuse a non-address BEFORE the first
+    // SELECT, and use it everywhere below (t_01f183b1).
+    let owner_email =
+        crate::security::email_addr::normalize(&req.owner_email).map_err(AppError::Validation)?;
+
     let exists = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM claimed_businesses WHERE business_id = $1",
     )
@@ -1091,7 +1097,7 @@ pub async fn claim_business(
         "INSERT INTO claimed_businesses (business_id, owner_email, owner_name, owner_phone) VALUES ($1, $2, $3, $4) RETURNING *"
     )
     .bind(business_id)
-    .bind(&req.owner_email)
+    .bind(&owner_email)
     .bind(&req.owner_name)
     .bind(&req.owner_phone)
     .fetch_one(&s.db)
@@ -1100,7 +1106,7 @@ pub async fn claim_business(
     // Push to CoreSwift CRM (fire-and-forget, log on failure)
     let db = s.db.clone();
     let biz_id = business_id;
-    let email = req.owner_email.clone();
+    let email = owner_email.clone();
     let name = req.owner_name.clone();
     let phone = req.owner_phone.clone();
     tokio::spawn(async move {
@@ -1122,7 +1128,7 @@ pub async fn claim_business(
     // Look up business city + directory slug, then fire the tag sync
     let ts_db = s.db.clone();
     let ts_biz_id = business_id;
-    let ts_email = req.owner_email.clone();
+    let ts_email = owner_email.clone();
     let ts_name = req.owner_name.clone();
     let ts_phone = req.owner_phone.clone();
     tokio::spawn(async move {
@@ -1182,7 +1188,7 @@ pub async fn claim_business(
         &s.db,
         business_id,
         &req.owner_name,
-        &req.owner_email,
+        &owner_email,
         &req.owner_phone,
     )
     .await;
@@ -1237,11 +1243,11 @@ pub async fn claim_business(
 
     // Check business email field match
     if let Some(ref be) = biz_email {
-        if be.to_lowercase() == req.owner_email.to_lowercase() {
+        if be.to_lowercase() == owner_email.to_lowercase() {
             auto_approved = true;
             tracing::info!(
                 "[claim] Auto-approved {} — email matches business email field",
-                req.owner_email
+                owner_email
             );
         }
     }
@@ -1268,7 +1274,7 @@ pub async fn claim_business(
                 auto_approved = true;
                 tracing::info!(
                     "[claim] Auto-approved {} — domain {} matches website {}",
-                    req.owner_email,
+                    owner_email,
                     owner_email_domain,
                     host_clean
                 );
@@ -1345,7 +1351,7 @@ pub async fn claim_business(
                        VALUES ($1, $2, $3, $4, $5, true, 'merchant')
                        ON CONFLICT (email) DO NOTHING"#
                 )
-                .bind(&req.owner_email)
+                .bind(&owner_email)
                 .bind(&password_hash)
                 .bind(&owner_name)
                 .bind(&owner_phone)

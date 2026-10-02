@@ -281,13 +281,18 @@ pub async fn visitor_register(
         ));
     }
 
+    // Trim + lowercase + refuse anything that is not an address, BEFORE the first SELECT: this is
+    // the value the duplicate check must see and the value the INSERT will store (t_01f183b1).
+    let email = crate::security::email_addr::normalize(&req.email).map_err(AppError::Validation)?;
+
     // Check if visitor already exists
-    let existing =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE email = $1")
-            .bind(&req.email)
-            .fetch_one(&s.db)
-            .await
-            .unwrap_or(0);
+    let existing = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM visitor_accounts WHERE lower(email) = $1",
+    )
+    .bind(&email)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
 
     if existing > 0 {
         return Err(AppError::Duplicate(
@@ -325,7 +330,7 @@ pub async fn visitor_register(
     let visitor = sqlx::query_as::<_, VisitorAccount>(
         "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id) VALUES ($1, $2, $3, $4, $5) RETURNING *"
     )
-    .bind(&req.email)
+    .bind(&email)
     .bind(&password_hash)
     .bind(&req.name)
     .bind(&req.phone)
@@ -442,15 +447,20 @@ pub async fn visitor_login(
         ));
     }
 
-    let visitor =
-        sqlx::query_as::<_, VisitorAccount>("SELECT * FROM visitor_accounts WHERE email = $1")
-            .bind(&req.email)
-            .fetch_optional(&s.db)
-            .await?
-            .ok_or_else(|| {
-                tracing::warn!("Visitor login failed: user not found for {}", &req.email);
-                AppError::InvalidCredentials
-            })?;
+    // Same trim+lowercase as the writers, with lower(email) on the column so rows stored before
+    // the normalisation existed still resolve (t_01f183b1).
+    let email_key = crate::security::email_addr::lookup_key(&req.email);
+
+    let visitor = sqlx::query_as::<_, VisitorAccount>(
+        "SELECT * FROM visitor_accounts WHERE lower(email) = $1",
+    )
+    .bind(&email_key)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| {
+        tracing::warn!("Visitor login failed: user not found for {}", &req.email);
+        AppError::InvalidCredentials
+    })?;
 
     if !visitor.is_active {
         return Err(AppError::Forbidden("Account is deactivated".to_string()));

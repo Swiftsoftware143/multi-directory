@@ -32,12 +32,18 @@ pub async fn register(
         ));
     }
 
+    // The login identity: trim + lowercase + refuse anything that is not an address, BEFORE the
+    // first SELECT. `users.email` is the only address a credentials mail can ever reach, and the
+    // duplicate check below must see the same value the INSERT will store (t_01f183b1).
+    let email = crate::security::email_addr::normalize(&req.email).map_err(AppError::Validation)?;
+
     // Check if user already exists
-    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = \x241")
-        .bind(&req.email)
-        .fetch_one(&s.db)
-        .await
-        .unwrap_or(0);
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+            .bind(&email)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
 
     if existing > 0 {
         return Err(AppError::Duplicate(
@@ -88,7 +94,7 @@ pub async fn register(
     )
     .bind(user_id)
     .bind(tenant_id)
-    .bind(&req.email)
+    .bind(&email)
     .bind(&password_hash)
     .bind(&req.name)
     .bind(now)
@@ -127,7 +133,7 @@ pub async fn register(
     let user_response = UserResponse {
         id: user_id,
         tenant_id,
-        email: req.email,
+        email,
         name: req.name,
         role: "admin".to_string(),
         is_active: true,
@@ -163,10 +169,14 @@ pub async fn login(
     // Try users table first, then fall back to visitor_accounts
     use sqlx::Row;
 
+    // Same trim+lowercase as the writers, paired with lower(email) on the column so rows stored
+    // before the normalisation existed still resolve (t_01f183b1).
+    let email_key = crate::security::email_addr::lookup_key(&req.email);
+
     let row = sqlx::query(
-        "SELECT id, tenant_id, email, password_hash, name, role, is_active, last_login_at, created_at, updated_at FROM users WHERE email = \x241"
+        "SELECT id, tenant_id, email, password_hash, name, role, is_active, last_login_at, created_at, updated_at FROM users WHERE lower(email) = $1"
     )
-    .bind(&req.email)
+    .bind(&email_key)
     .fetch_optional(&s.db)
     .await?;
 
@@ -189,9 +199,9 @@ pub async fn login(
     } else {
         // Fall back to visitor_accounts (ZaarHub business portal users)
         let vrow = sqlx::query(
-            "SELECT id, email, password_hash, name, is_active FROM visitor_accounts WHERE email = \x241"
+            "SELECT id, email, password_hash, name, is_active FROM visitor_accounts WHERE lower(email) = $1"
         )
-        .bind(&req.email)
+        .bind(&email_key)
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| {
@@ -398,8 +408,13 @@ pub async fn forgot_password(
     State(s): State<AppState>,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let row_opt = sqlx::query("SELECT id FROM users WHERE email = \x241")
-        .bind(&req.email)
+    // Read-side: the same trim+lowercase as the writers, so an address stored normalised resolves
+    // no matter how the caller typed it (t_01f183b1). A malformed value matches nothing and the
+    // endpoint keeps its generic response — never an account-existence oracle.
+    let email_key = crate::security::email_addr::lookup_key(&req.email);
+
+    let row_opt = sqlx::query("SELECT id FROM users WHERE lower(email) = $1")
+        .bind(&email_key)
         .fetch_optional(&s.db)
         .await?;
 
@@ -426,11 +441,11 @@ pub async fn forgot_password(
         .execute(&s.db)
         .await?;
 
-        match send_reset_email(&s.db, &req.email, &token).await {
-            Ok(_) => tracing::info!("Password reset email sent to {}", req.email),
+        match send_reset_email(&s.db, &email_key, &token).await {
+            Ok(_) => tracing::info!("Password reset email sent to {}", email_key),
             Err(e) => tracing::error!(
                 "Failed to send password reset email to {}: {}",
-                req.email,
+                email_key,
                 e
             ),
         }
