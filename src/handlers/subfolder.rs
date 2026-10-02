@@ -247,6 +247,47 @@ async fn load_directory(pool: &PgPool, slug: &str) -> Option<DirectoryRec> {
     })
 }
 
+/// B88: every active directory as a real, crawlable `<a href="/{slug}">` link,
+/// wrapped in a "Cities we cover" section. Injected into the homepage HTML by
+/// the SPA fallback (see `routes.rs`) so the full city list is present in the
+/// served document — crawlable and readable with no JavaScript at all. The SPA
+/// removes this node once it boots and renders its own grid pointing at the
+/// same `/<slug>` URLs, so a JS visitor never sees two lists.
+///
+/// Read live from `directories` on every request: adding or renaming a city
+/// changes the list with no code change and no manual edit.
+pub async fn city_links_html(pool: &PgPool) -> String {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT name, slug FROM directories \
+         WHERE (status = 'active' OR status IS NULL) \
+           AND slug IS NOT NULL AND slug <> '' \
+         ORDER BY name",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    if rows.is_empty() {
+        return String::new();
+    }
+
+    let mut links = String::new();
+    for (name, slug) in &rows {
+        links.push_str(&format!(
+            "<a href=\"/{slug}\" style=\"display:inline-block;color:inherit;text-decoration:none;padding:6px 12px;border:1px solid var(--border,#e5e7eb);border-radius:999px;font-weight:600;font-size:.9rem\">{name}</a>",
+            slug = h(slug),
+            name = h(name)
+        ));
+    }
+
+    format!(
+        "<section id=\"zh-cities-ssr\" aria-label=\"Cities we cover\" style=\"max-width:1100px;margin:8px auto 40px;padding:0 20px\">\
+<h2 style=\"font-size:1.05rem;margin:0 0 12px\">\u{1f3d9}\u{fe0f} Cities we cover</h2>\
+<nav style=\"display:flex;flex-wrap:wrap;gap:8px\">{links}</nav>\
+</section>"
+    )
+}
+
 /// The brand tokens this directory's pages render with. Resolved from the
 /// shared source of truth (`crate::brand_theme`) so a city page can never
 /// drift from the network homepage.

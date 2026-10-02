@@ -144,6 +144,7 @@ a:hover{text-decoration:underline}
 .zh-city-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
 .zh-city-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
 .zh-city-card:hover{box-shadow:var(--shadow);border-color:var(--primary);transform:translateY(-2px)}
+a.zh-city-card{display:block;text-decoration:none;color:inherit}
 .zh-city-card .emoji{font-size:2rem;margin-bottom:8px}
 .zh-city-card h3{font-size:1.05rem;font-weight:700;margin-bottom:4px}
 .zh-city-card p{font-size:.82rem;color:var(--text-light);margin-bottom:8px}
@@ -845,11 +846,35 @@ function onCitySelect(slug){
 }
 
 // ── Searchable city typeahead ──
+// Match on name, the slug and common aliases so 'st cloud', 'saint cloud' and
+// 'st-cloud' all find St. Cloud, and 'pb' finds Palm Bay (David, 2026-10-01).
+function cityNorm(s){
+  return (s||'').toLowerCase()
+    .replace(/[^a-z0-9 ]+/g,' ')
+    .replace(/\bsaint\b/g,'st')
+    .replace(/\s+/g,' ').trim()
+}
+function cityInitials(name){
+  var w=cityNorm(name).split(' ').filter(Boolean),out=''
+  for(var i=0;i<w.length;i++)out+=w[i].charAt(0)
+  return out
+}
+function cityMatches(c,q){
+  var qn=cityNorm(q)
+  if(!qn)return true
+  var nn=cityNorm(c.name),sn=(c.slug||'').toLowerCase().replace(/-/g,' ')
+  if(nn.indexOf(qn)>=0)return true
+  if(sn.indexOf(qn)>=0)return true
+  var packed=qn.replace(/ /g,'')
+  var init=cityInitials(c.name)
+  if(packed.length>=2&&init&&init.indexOf(packed)===0)return true
+  return false
+}
 function getCityList(){
   var out=[]
   for(var i=0;i<state.cities.length;i++){
     var c=state.cities[i]
-    out.push({slug:(c.slug||c.city_slug), name:(c.name||c.city_name), count:(c.business_count!=null?c.business_count:(c.listing_count!=null?c.listing_count:0))})
+    out.push({slug:(c.slug||c.city_slug), name:(c.name||c.city_name), state:(c.state||''), count:(c.business_count!=null?c.business_count:(c.listing_count!=null?c.listing_count:0))})
   }
   return out
 }
@@ -863,22 +888,23 @@ function closeCityDropdown(){
 function filterCityDropdown(q){
   renderCityDropdown(q||'')
 }
+var zhCityActive=-1
 function renderCityDropdown(q){
   var dd=document.getElementById('zh-city-dropdown');if(!dd)return
-  var cities=getCityList();var qs=(q||'').toLowerCase()
-  var filtered=[]
+  var cities=getCityList();var filtered=[]
   for(var i=0;i<cities.length;i++){
-    var c=cities[i]
-    if(!qs||(c.name||'').toLowerCase().indexOf(qs)>=0||(c.slug||'').toLowerCase().indexOf(qs)>=0)filtered.push(c)
+    if(cityMatches(cities[i],q))filtered.push(cities[i])
   }
+  zhCityActive=-1
   if(!filtered.length){dd.innerHTML='<div class="zh-city-empty">No cities match "'+esc(q)+'"</div>';dd.classList.add('open');return}
   var html='<div class="zh-city-opt" data-slug="" onclick="pickCity(this.dataset.slug)"><div>🌐 All Cities</div></div>'
   for(var j=0;j<filtered.length;j++){
     var c=filtered[j]
-    html+='<div class="zh-city-opt" data-slug="'+esc(c.slug)+'" onclick="pickCity(this.dataset.slug)"><div>'+esc(c.name)+'</div><span class="zh-city-count">'+(c.count||0)+' spots</span></div>'
+    var region=c.state?('<small style="display:block;color:var(--text-muted);font-weight:400">'+esc(c.state)+'</small>'):''
+    html+='<div class="zh-city-opt" data-slug="'+esc(c.slug)+'" onclick="pickCity(this.dataset.slug)"><div>'+esc(c.name)+region+'</div><span class="zh-city-count">'+(c.count||0)+' spots</span></div>'
   }
   dd.innerHTML=html;dd.classList.add('open')
-  zhPlacesAugment(qs, dd)
+  zhPlacesAugment(cityNorm(q), dd)
 }
 
 // ── Google Places suggestions in the city box (GET /api/v1/places/autocomplete) ──
@@ -931,11 +957,20 @@ function pickCity(slug){
   else location.hash='#/'
 }
 function onCityKeydown(e){
+  var dd=document.getElementById('zh-city-dropdown')
+  var opts=dd?dd.querySelectorAll('.zh-city-opt'):[]
   if(e.key==='Escape'){closeCityDropdown();return}
+  if((e.key==='ArrowDown'||e.key==='ArrowUp')&&opts.length){
+    var dir=e.key==='ArrowDown'?1:-1
+    zhCityActive=(zhCityActive+dir+opts.length)%opts.length
+    for(var i=0;i<opts.length;i++)opts[i].classList.toggle('hl',i===zhCityActive)
+    e.preventDefault();return
+  }
   if(e.key==='Enter'){
-    var q=e.target.value.trim().toLowerCase();
+    if(zhCityActive>=0&&opts[zhCityActive]){pickCity(opts[zhCityActive].dataset.slug);return}
+    var q=e.target.value.trim();
     var cities=getCityList();
-    for(var i=0;i<cities.length;i++){if((cities[i].name||'').toLowerCase()===q){pickCity(cities[i].slug);return}}
+    for(var j=0;j<cities.length;j++){if(cityMatches(cities[j],q)){pickCity(cities[j].slug);return}}
   }
 }
 document.addEventListener('click',function(e){
@@ -952,6 +987,10 @@ function onSearchInput(e){
 
 // ── Load ──
 async function load(){
+  // Server-rendered "Cities we cover" list (present in the HTML for SEO / no-JS).
+  // The SPA renders the same cities as real /<slug> links in the Explore grid below,
+  // so drop the server copy once JS is running to avoid showing two identical lists.
+  var _ssrCities=document.getElementById('zh-cities-ssr');if(_ssrCities)_ssrCities.remove()
   state.loading=true
   try{
     if(!state.cities.length){
@@ -1301,13 +1340,13 @@ function renderHomepageContent(d){
   var emojis=['🌴','☀️','🏖️','🌆','🌲','🏙️','🌳','🏘️','⛰️','🌺']
   for(var i=0;i<cities.length;i++){
     var ct=cities[i];var em=emojis[i%emojis.length]
-    cityCards+='<div class="zh-city-card" onclick="location.hash=\'#/city/'+ct.slug+'\'">'+
+    cityCards+='<a class="zh-city-card" href="/'+esc(ct.slug)+'">'+
       '<div class="emoji">'+em+'</div>'+
       '<h3>'+esc(ct.name)+'</h3>'+
       '<p>'+esc(ct.description||((ct.name?ct.name+' ':'')+'business directory'))+'</p>'+
       '<span class="count">'+(ct.business_count||0)+' local spots</span>'+
       (ct.featured_image?'<div class="zh-featured-badge">⭐ Featured</div>':'')+
-    '</div>'
+    '</a>'
   }
 
   // Deals

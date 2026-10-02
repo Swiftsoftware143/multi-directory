@@ -2727,9 +2727,24 @@ pub fn create_router(s: AppState) -> Router {
                                 let content = if clean_path.is_empty() && ext == "html" {
                                     let theme =
                                         crate::brand_theme::theme_for_home(&_pool_for_host).await;
-                                    theme
-                                        .inject(&String::from_utf8_lossy(&content))
-                                        .into_bytes()
+                                    let mut themed =
+                                        theme.inject(&String::from_utf8_lossy(&content));
+                                    // B88: the homepage carries a server-rendered "Cities we
+                                    // cover" list — every active directory as a real crawlable
+                                    // `<a href="/{slug}">`, read live from the DB, so the city
+                                    // list is in the served HTML with no JavaScript and every
+                                    // city the homepage points to is linked for search engines.
+                                    let cities_nav = crate::handlers::subfolder::city_links_html(
+                                        &_pool_for_host,
+                                    )
+                                    .await;
+                                    if !cities_nav.is_empty() {
+                                        match themed.rfind("</body>") {
+                                            Some(pos) => themed.insert_str(pos, &cities_nav),
+                                            None => themed.push_str(&cities_nav),
+                                        }
+                                    }
+                                    themed.into_bytes()
                                 } else {
                                     content
                                 };
@@ -2852,6 +2867,22 @@ pub fn create_router(s: AppState) -> Router {
                         html = crate::brand_theme::theme_for_home(&_pool_for_host)
                             .await
                             .inject(&html);
+                        // B88: on the homepage, append the server-rendered "Cities we
+                        // cover" list — every active directory as a real crawlable
+                        // `<a href="/{slug}">`, read live from the DB, so the city list
+                        // is in the served HTML with no JavaScript and every city the
+                        // homepage points to is linked for search engines. The SPA
+                        // removes this node when it boots (frontend/index.html).
+                        if path == "/" {
+                            let cities_nav =
+                                crate::handlers::subfolder::city_links_html(&_pool_for_host).await;
+                            if !cities_nav.is_empty() {
+                                match html.rfind("</body>") {
+                                    Some(pos) => html.insert_str(pos, &cities_nav),
+                                    None => html.push_str(&cities_nav),
+                                }
+                            }
+                        }
                         return Ok(axum::response::Response::builder()
                             .status(axum::http::StatusCode::OK)
                             .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
