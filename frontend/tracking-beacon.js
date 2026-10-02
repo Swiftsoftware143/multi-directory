@@ -48,12 +48,35 @@
     return 'zh' + Math.abs(h).toString(36) + '-' + raw.length.toString(36);
   }
 
+  // Telemetry must survive the page it was fired from. The old implementation was a
+  // fetch(keepalive:true); Chromium owns those requests only while the document lives, so
+  // every page-view / event came back as `net::ERR_ABORTED` in the console (card B63) — the
+  // operator was trained to ignore real console noise.
+  //   * navigator.sendBeacon is queued by the browser OUTSIDE the document lifetime, so a
+  //     navigation can no longer abort the request.
+  //   * the body must be a Blob carrying `application/json`: a plain string is sent as
+  //     text/plain and the JSON-only API answers 415 (the 2026-09-20 session-end bug).
+  //   * fetch(keepalive:true) stays as the fallback when sendBeacon is unavailable or refuses
+  //     the payload (its 64 KB limit), which is why it is still wrapped in the same try.
   function send(path, body) {
+    var url = API + path;
+    var json;
     try {
-      return fetch(API + path, {
+      json = JSON.stringify(body);
+    } catch (e) {
+      return null;
+    }
+    if (navigator.sendBeacon) {
+      try {
+        var blob = new Blob([json], { type: 'application/json' });
+        if (navigator.sendBeacon(url, blob)) return Promise.resolve();
+      } catch (e) {}
+    }
+    try {
+      return fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: json,
         keepalive: true
       }).catch(function () {});
     } catch (e) {
