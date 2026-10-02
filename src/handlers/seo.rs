@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
+use rust_decimal::Decimal;
 
 // ── Models ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,12 @@ pub struct SitemapConfig {
     pub id: Uuid,
     pub directory_id: Option<Uuid>,
     pub auto_generate: Option<bool>,
-    pub priority: Option<f64>, // DECIMAL(2,1) maps to f64 via sqlx
+    // sitemap_config.priority is NUMERIC (arbitrary-precision decimal). The old
+    // `Option<f64>` + `CAST(priority AS DOUBLE PRECISION)` pair was a lossy mapping and
+    // broke the moment the column widened (kanban t_8c2c7c29). rust_decimal::Decimal is
+    // the type the app already uses for every other numeric column (crm.rs, b2b.rs,
+    // supplier.rs) and sqlx decodes NUMERIC into it natively - no cast, no rounding.
+    pub priority: Option<Decimal>,
     pub change_freq: Option<String>,
     pub last_generated: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
@@ -60,7 +66,7 @@ pub struct SitemapConfig {
 #[derive(Debug, Deserialize)]
 pub struct UpdateSitemapConfigRequest {
     pub auto_generate: Option<bool>,
-    pub priority: Option<f64>,
+    pub priority: Option<Decimal>,
     pub change_freq: Option<String>,
 }
 
@@ -159,7 +165,7 @@ pub async fn update_seo_meta(
 pub async fn list_all_sitemap_configs(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let configs = sqlx::query_as::<_, SitemapConfig>(
         "SELECT id, directory_id, auto_generate, \
-         CAST(priority AS DOUBLE PRECISION) as priority, \
+         priority, \
          change_freq, last_generated, created_at \
          FROM sitemap_config ORDER BY created_at DESC",
     )
@@ -176,7 +182,7 @@ pub async fn get_sitemap_config(
 ) -> ApiResult<impl IntoResponse> {
     let config = sqlx::query_as::<_, SitemapConfig>(
         "SELECT id, directory_id, auto_generate, \
-         CAST(priority AS DOUBLE PRECISION) as priority, \
+         priority, \
          change_freq, last_generated, created_at \
          FROM sitemap_config WHERE directory_id = \x241",
     )
@@ -189,7 +195,7 @@ pub async fn get_sitemap_config(
         None => Ok(Json(serde_json::json!({
             "directory_id": directory_id,
             "auto_generate": true,
-            "priority": 0.5,
+            "priority": Decimal::new(5, 1),
             "change_freq": "weekly",
             "last_generated": null
         }))),
@@ -210,7 +216,7 @@ pub async fn update_sitemap_config(
          priority = COALESCE(\x243::DECIMAL(2,1), sitemap_config.priority), \
          change_freq = COALESCE(\x244, sitemap_config.change_freq) \
          RETURNING id, directory_id, auto_generate, \
-         CAST(priority AS DOUBLE PRECISION) as priority, \
+         priority, \
          change_freq, last_generated, created_at",
     )
     .bind(directory_id)
@@ -296,8 +302,8 @@ pub async fn generate_sitemap(State(s): State<AppState>) -> impl IntoResponse {
 
     // Directories
     for (dir_id, slug) in &dirs {
-        let cfg = sqlx::query_as::<_, (Option<f64>, Option<String>)>(
-            "SELECT CAST(priority AS DOUBLE PRECISION), change_freq FROM sitemap_config WHERE directory_id = \x241",
+        let cfg = sqlx::query_as::<_, (Option<Decimal>, Option<String>)>(
+            "SELECT priority, change_freq FROM sitemap_config WHERE directory_id = \x241",
         )
         .bind(dir_id)
         .fetch_optional(&s.db)
