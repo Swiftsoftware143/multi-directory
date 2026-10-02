@@ -1192,9 +1192,9 @@ pub async fn check_feature_access(
     Query(qs): Query<FeatureCheckQuery>,
 ) -> ApiResult<impl IntoResponse> {
     let features = sqlx::query_as::<_, (Option<String>, Option<serde_json::Value>, Option<i32>)>(
-        r#"SELECT bs.plan_name, pt.feature_access, pt.max_listings
+        r#"SELECT pt.name, pt.feature_access, pt.max_listings
            FROM business_subscriptions bs
-           LEFT JOIN plan_tiers pt ON LOWER(pt.name) = LOWER(bs.plan_name)
+           LEFT JOIN plan_tiers pt ON pt.id = bs.tier_id
            WHERE bs.business_id = $1 AND bs.status = 'active'"#,
     )
     .bind(qs.business_id)
@@ -1237,7 +1237,7 @@ pub async fn update_business_categories(
 ) -> ApiResult<impl IntoResponse> {
     // Check max categories from subscription
     let sub_info = sqlx::query_as::<_, (Option<i32>,)>(
-        "SELECT pt.max_listings FROM business_subscriptions bs          LEFT JOIN plan_tiers pt ON LOWER(pt.name) = LOWER(bs.plan_name)          WHERE bs.business_id = $1 AND bs.status = 'active'"
+        "SELECT pt.max_listings FROM business_subscriptions bs          LEFT JOIN plan_tiers pt ON pt.id = bs.tier_id          WHERE bs.business_id = $1 AND bs.status = 'active'"
     )
     .bind(id)
     .fetch_optional(&s.db)

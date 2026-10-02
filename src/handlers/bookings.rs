@@ -1061,12 +1061,14 @@ async fn notify_business_owners(
         "notes": notes,
     });
 
+    // directory_events has no business_id/payload columns — the business is the entity
+    // (entity_type/entity_id) and the payload is the jsonb `data` column.
     let result = sqlx::query(
-        "INSERT INTO directory_events (directory_id, business_id, event_type, payload)
-         VALUES ((SELECT directory_id FROM businesses WHERE id = $1), $1, 'service_booking_created', $2)"
+        "INSERT INTO directory_events (directory_id, event_type, entity_type, entity_id, data)
+         VALUES ((SELECT directory_id FROM businesses WHERE id = $1), 'service_booking_created', 'business', $1, $2)"
     )
     .bind(business_id)
-    .bind(event_payload.to_string())
+    .bind(&event_payload)
     .execute(&s.db)
     .await;
 
@@ -1134,18 +1136,23 @@ async fn send_booking_notification_email(
         "type": "booking_notification",
     });
 
-    sqlx::query(
-        "INSERT INTO directory_events (directory_id, business_id, event_type, payload)
+    let logged = sqlx::query(
+        "INSERT INTO directory_events (directory_id, event_type, entity_type, entity_id, data)
          VALUES (
             (SELECT directory_id FROM businesses WHERE id = $1),
-            $1, 'email_notification', $2
+            'email_notification', 'business', $1, $2
         )",
     )
     .bind(business_id)
-    .bind(email_payload.to_string())
+    .bind(&email_payload)
     .execute(&s.db)
-    .await
-    .ok();
+    .await;
+    if let Err(e) = logged {
+        tracing::warn!(
+            "[notifications] Failed to create email_notification event: {}",
+            e
+        );
+    }
 
     Ok(())
 }

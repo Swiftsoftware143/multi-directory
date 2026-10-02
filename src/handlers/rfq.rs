@@ -660,7 +660,7 @@ pub async fn get_rfq_messages(
         };
         if !ok {
             let bidders: Vec<(Uuid,)> =
-                sqlx::query_as("SELECT business_id FROM rfq_bids WHERE rfq_id = $1")
+                sqlx::query_as("SELECT bidder_business_id FROM rfq_bids WHERE rfq_id = $1")
                     .bind(rfq_id)
                     .fetch_all(&state.db)
                     .await

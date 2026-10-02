@@ -814,12 +814,28 @@ pub async fn generate_schema_markup(
 
     // Get directory info for publisher data
     let dir_info: Option<(String, String)> = if let Some(did) = post.directory_id {
-        sqlx::query_as::<_, (String, String)>("SELECT name, domain FROM directories WHERE id = $1")
-            .bind(did)
-            .fetch_optional(&s.db)
-            .await
-            .ok()
-            .flatten()
+        // `directories` has no `domain` column: the public host is custom_domain when set,
+        // otherwise the subdomain form <url_value>.<base_domain> (same rule as blog_pages.rs).
+        sqlx::query_as::<_, (String, Option<String>, Option<String>, String)>(
+            "SELECT name, custom_domain, url_value, slug FROM directories WHERE id = $1",
+        )
+        .bind(did)
+        .fetch_optional(&s.db)
+        .await
+        .ok()
+        .flatten()
+        .map(|(name, custom_domain, url_value, slug)| {
+            let host = custom_domain
+                .filter(|d| !d.trim().is_empty())
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}.{}",
+                        url_value.as_deref().unwrap_or(slug.as_str()),
+                        s.config.base_domain
+                    )
+                });
+            (name, host)
+        })
     } else {
         None
     };
