@@ -533,6 +533,7 @@
         <a href="#ad-zones-section">📢 Ad Zones</a>
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
+        <a href="#sitemap-config-section">🗺️ Sitemaps</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty &amp; IQS</a>
         <a class="nav-out" href="/guides/admin-guide.html#david-setup-checklist">✅ Setup Checklist</a>
@@ -1124,6 +1125,27 @@
           <span class="feature-status" id="sp-status"></span>
         </div>
         <div id="sp-list"></div>
+      </div>
+
+      <!-- 🗺 Sitemap configuration — kanban t_1e2d0099. The four live routes
+           GET /seo/sitemap-config (list), GET /seo/sitemap-config/:directory_id,
+           PUT /seo/sitemap-config/:directory_id (priority + change_freq + auto_generate)
+           and POST /seo/regenerate-sitemap had NO panel control at all: the only way to
+           change a city's sitemap priority was curl + a JWT, which fails the sellable
+           standard (no capability may exist only as an endpoint). One row per city.
+           NOTE the wire shape: priority is a NUMERIC(2,1) and rust_decimal serialises it
+           as a JSON STRING ("0.9"), so it is displayed as-is and sent back as a JSON
+           NUMBER, which is what UpdateSitemapConfigRequest deserialises. -->
+      <div class="feature-card" id="sitemap-config-section">
+        <h3>🗺 Sitemap Configuration</h3>
+        <p class="feature-subtitle">How each city's pages are advertised to Google. <b>Priority</b> (0.0–1.0) and <b>change frequency</b> stamp every URL that city contributes to <code>/sitemap.xml</code>; <b>auto-generate</b> decides whether the city is included when sitemaps are regenerated. Edit any row below and Save — no curl, no SQL.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__smRegenerate()">🔄 Regenerate sitemaps</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__smLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sm-status"></span>
+        </div>
+        <div id="sm-loading" class="loading-state"><span class="spinner"></span> Loading sitemap configs…</div>
+        <div id="sm-list"></div>
       </div>
 
       <!-- Directory Cards -->
@@ -2368,6 +2390,8 @@
       loadEmailTemplates();
       loadEmailCampaigns();
       loadScraperProviders();
+      // 🗺 Sitemap config (priority / change frequency / auto-generate + regenerate).
+      loadSitemapConfigs();
       // Round 11 / T1: demand analytics card (filters, matrix, chart, exports).
       loadDemandAnalytics();
       // Round 11 / T3: clearinghouse settlement card (settings, preview, run, statements).
@@ -4376,6 +4400,130 @@
     }
 
     window.__spLoad = loadScraperProviders;
+
+    // ===== 🗺 Sitemap configuration (kanban t_1e2d0099) =====
+    // Replaces curl+JWT for the four /seo/sitemap-config* routes. One row per city:
+    // priority (numeric(2,1) → JSON string on the wire, sent back as a JSON number),
+    // change_freq, auto_generate, plus POST /seo/regenerate-sitemap behind one button.
+    var smConfigs = [];
+    var smFreqs = ['always', 'hourly', 'daily', 'weekly', 'monthly', 'yearly', 'never'];
+
+    function smDirLabel(cfg, dirs) {
+      var id = cfg.directory_id;
+      for (var i = 0; i < dirs.length; i++) {
+        if (dirs[i].id === id) {
+          return pkEsc(dirs[i].name || dirs[i].slug) +
+            ' <span style="color:var(--text-muted,#8aa0b8)">(' + pkEsc(dirs[i].slug) + ')</span>';
+        }
+      }
+      return '<code>' + pkEsc(id || '—') + '</code>';
+    }
+
+    function smFreqOptions(cur) {
+      var v = cur || 'weekly';
+      var head = smFreqs.indexOf(v) === -1
+        ? '<option value="' + pkEsc(v) + '" selected>' + pkEsc(v) + '</option>' : '';
+      return head + smFreqs.map(function (f) {
+        return '<option value="' + f + '"' + (f === v ? ' selected' : '') + '>' + f + '</option>';
+      }).join('');
+    }
+
+    function smRender(dirs) {
+      var box = document.getElementById('sm-list');
+      var loading = document.getElementById('sm-loading');
+      if (loading) loading.style.display = 'none';
+      if (!box) return;
+      if (!smConfigs.length) {
+        box.innerHTML = '<p class="feature-subtitle">No sitemap configs yet.</p>';
+        return;
+      }
+      var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:8px 6px">City</th>' +
+        '<th style="text-align:left;padding:8px 6px">Priority</th>' +
+        '<th style="text-align:left;padding:8px 6px">Change frequency</th>' +
+        '<th style="text-align:left;padding:8px 6px">Auto-generate</th>' +
+        '<th style="text-align:left;padding:8px 6px">Last generated</th>' +
+        '<th style="text-align:left;padding:8px 6px"></th></tr></thead><tbody>';
+      for (var i = 0; i < smConfigs.length; i++) {
+        var c = smConfigs[i];
+        var pr = c.priority == null ? '' : String(c.priority);
+        var last = c.last_generated ? String(c.last_generated).replace('T', ' ').slice(0, 19) : 'never';
+        h += '<tr data-dir="' + pkEsc(c.directory_id || '') + '">' +
+          '<td style="padding:8px 6px">' + smDirLabel(c, dirs) + '</td>' +
+          '<td style="padding:8px 6px"><input class="input sm-pri" type="number" step="0.1" min="0" max="1" value="' + pkEsc(pr) + '" style="width:80px"></td>' +
+          '<td style="padding:8px 6px"><select class="input sm-freq">' + smFreqOptions(c.change_freq) + '</select></td>' +
+          '<td style="padding:8px 6px"><input type="checkbox" class="sm-auto"' + (c.auto_generate ? ' checked' : '') + '></td>' +
+          '<td style="padding:8px 6px;color:var(--text-muted,#8aa0b8)">' + pkEsc(last) + '</td>' +
+          '<td style="padding:8px 6px"><button class="btn btn-accent btn-sm" type="button" onclick="window.__smSave(' + i + ')">Save</button></td>' +
+          '</tr>';
+      }
+      box.innerHTML = h + '</tbody></table>';
+    }
+
+    function loadSitemapConfigs() {
+      var loading = document.getElementById('sm-loading');
+      if (!document.getElementById('sm-list')) return;
+      if (loading) loading.style.display = '';
+      var dirsP = apiGet('/directories?per_page=100').catch(function () { return { data: [] }; });
+      return Promise.all([apiGet('/seo/sitemap-config'), dirsP])
+        .then(function (res) {
+          smConfigs = res[0] || [];
+          smRender((res[1] && res[1].data) || []);
+          r8Status('sm-status', smConfigs.length + ' cit' + (smConfigs.length === 1 ? 'y' : 'ies') + ' configured', true);
+        })
+        .catch(function (e) {
+          if (loading) loading.style.display = 'none';
+          var box = document.getElementById('sm-list');
+          if (box) box.innerHTML = '<p class="feature-subtitle" style="color:#f87171">Could not load sitemap configs: ' + pkEsc(e.message) + '</p>';
+          r8Status('sm-status', 'Could not load sitemap configs: ' + e.message, false);
+        });
+    }
+
+    function saveSitemapConfig(i) {
+      var c = smConfigs[i];
+      if (!c || !c.directory_id) return;
+      var row = null;
+      var rows = document.querySelectorAll('#sm-list tbody tr');
+      for (var k = 0; k < rows.length; k++) {
+        if (rows[k].getAttribute('data-dir') === c.directory_id) { row = rows[k]; break; }
+      }
+      if (!row) return;
+      var pri = parseFloat(row.querySelector('.sm-pri').value);
+      var freq = row.querySelector('.sm-freq').value;
+      var auto = !!row.querySelector('.sm-auto').checked;
+      if (isNaN(pri) || pri < 0 || pri > 1) {
+        r8Status('sm-status', 'Priority must be a number between 0.0 and 1.0', false);
+        return;
+      }
+      // JSON numbers, not strings — UpdateSitemapConfigRequest.priority: Option<Decimal>.
+      return apiPut('/seo/sitemap-config/' + encodeURIComponent(c.directory_id), {
+        priority: pri, change_freq: freq, auto_generate: auto
+      }).then(function (saved) {
+        if (saved) { c.priority = saved.priority; c.change_freq = saved.change_freq; c.auto_generate = saved.auto_generate; }
+        r8Status('sm-status', 'Saved — priority ' + pri + ', ' + freq + (auto ? ', auto-generate on' : ', auto-generate off'), true);
+        showToast('Sitemap config saved');
+      }).catch(function (e) {
+        r8Status('sm-status', 'Save failed: ' + e.message, false);
+        showToast('Save failed: ' + e.message);
+      });
+    }
+
+    function regenerateSitemap() {
+      r8Status('sm-status', 'Regenerating…', false);
+      return apiPost('/seo/regenerate-sitemap', {})
+        .then(function (r) {
+          showToast('Sitemap regeneration triggered');
+          return loadSitemapConfigs().then(function () {
+            r8Status('sm-status', 'Regenerated ' + ((r && r.directories_updated) || 0) + ' sitemaps', true);
+          });
+        })
+        .catch(function (e) { r8Status('sm-status', 'Regenerate failed: ' + e.message, false); });
+    }
+
+    window.__smLoad = loadSitemapConfigs;
+    window.__smSave = saveSitemapConfig;
+    window.__smRegenerate = regenerateSitemap;
 
     // ===== ✍️ Onboarding Questionnaire Builder (card B65) =====
     // The admin authors the questionnaire per audience and per directory, and reads the
