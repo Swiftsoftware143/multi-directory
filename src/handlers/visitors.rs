@@ -1809,13 +1809,17 @@ pub async fn business_visitor_events(
             Option<Uuid>,
             Option<String>,
             Option<String>,
-            DateTime<Utc>,
+            // t_ea0306e3: created_at is NULLABLE (visitor_events, default now(); 0 live NULLs) and was
+            // decoded as a bare DateTime<Utc>, so one NULL row fails the whole-row decode and this 500s.
+            // "no timestamp" is a real state here -> Option, serialized as null in the export.
+            Option<DateTime<Utc>>,
         ),
     >(
+        // t_ea0306e3: NULLS LAST, same convention as my_redeemed_perks (earned_at) below.
         r#"SELECT id, event_type, visitor_id, event_value, page_url, created_at
            FROM visitor_events
            WHERE business_id = $1
-           ORDER BY created_at DESC
+           ORDER BY created_at DESC NULLS LAST
            LIMIT 500"#,
     )
     .bind(business_id)
