@@ -513,13 +513,16 @@ pub async fn update_directory(
     .bind(&new_description)
     .bind(&new_status)
     .bind(&new_template)
-    .bind(&new_color_scheme.map(|v| v.to_string()).unwrap_or_default())
+    // B120 — bind `Option<String>` so a NULL color_scheme/template_config stays SQL NULL.
+    // Binding `""` (the old unwrap_or_default) is invalid JSON and made every PUT on a
+    // directory with a NULL jsonb column fail with `invalid input syntax for type json`.
+    .bind(new_color_scheme.as_ref().map(|v| v.to_string()))
     .bind(&new_network_id)
     .bind(&new_url_type)
     .bind(&new_url_value)
     .bind(&new_custom_domain)
     .bind(&new_city)
-    .bind(&new_template_config.map(|v| v.to_string()).unwrap_or_default())
+    .bind(new_template_config.as_ref().map(|v| v.to_string()))
     .bind(existing.id)
     .bind(&new_head_injection)
     .bind(&new_body_injection)
