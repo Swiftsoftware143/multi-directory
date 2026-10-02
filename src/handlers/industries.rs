@@ -42,37 +42,18 @@ pub struct IndustryOption {
     pub sort_order: Option<i32>,
 }
 
-/// GET /api/v1/admin/industries/available
-/// Lists industries available (from workflowswift template_categories via hardcoded sync,
-/// or from a dedicated industries table). For now we return the canonical list.
-/// This syncs with template_categories in workflowswift DB.
+/// GET /api/v1/industries/available
+/// The industries/verticals a directory can be built on. Source of truth is this app's own
+/// `template_categories` table (migration 108) — a real, admin-editable table. The old code
+/// SELECTed a `template_categories` that only existed in the workflowswift database, so the
+/// query always failed and a hardcoded list was served; errors now propagate instead.
 pub async fn list_available_industries(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    // Try to fetch from workflowswift DB first (cross-database query)
     let industries = sqlx::query_as::<_, IndustryOption>(
-        "SELECT slug, name, description, icon, sort_order::int FROM template_categories WHERE is_active = true ORDER BY sort_order ASC"
+        "SELECT slug, name, description, icon, sort_order::int FROM template_categories \
+         WHERE is_active = true ORDER BY sort_order ASC, name ASC",
     )
     .fetch_all(&s.db)
-    .await
-    .unwrap_or_else(|_| {
-        // Fallback: return hardcoded list matching template_categories
-        vec![
-            IndustryOption { slug: "sales-lead-gen".into(), name: "Sales & Lead Generation".into(), description: Some("Lead capture, nurturing, and sales pipeline automation".into()), icon: Some("💼".into()), sort_order: Some(0) },
-            IndustryOption { slug: "service-businesses".into(), name: "Service Businesses".into(), description: Some("Estimate, schedule, invoice workflows".into()), icon: Some("🔧".into()), sort_order: Some(1) },
-            IndustryOption { slug: "recruitment-staffing".into(), name: "Recruitment & Staffing".into(), description: Some("Resume screening, interview coordination, placements".into()), icon: Some("👥".into()), sort_order: Some(2) },
-            IndustryOption { slug: "marketing-agencies".into(), name: "Marketing Agencies".into(), description: Some("Content calendars, ad campaigns, reporting".into()), icon: Some("📣".into()), sort_order: Some(3) },
-            IndustryOption { slug: "professional-services".into(), name: "Professional Services".into(), description: Some("Tax, legal, consulting workflows".into()), icon: Some("⚖️".into()), sort_order: Some(4) },
-            IndustryOption { slug: "ecommerce-retail".into(), name: "Ecommerce & Retail".into(), description: Some("Order fulfillment, inventory, dropshipping".into()), icon: Some("🛒".into()), sort_order: Some(5) },
-            IndustryOption { slug: "healthcare-wellness".into(), name: "Healthcare & Wellness".into(), description: Some("Patient intake, appointments, treatment planning".into()), icon: Some("🏥".into()), sort_order: Some(6) },
-            IndustryOption { slug: "construction-development".into(), name: "Construction & Development".into(), description: Some("Permit management, subcontractor bidding, development".into()), icon: Some("🏗️".into()), sort_order: Some(7) },
-            IndustryOption { slug: "grant-funding".into(), name: "Grant & Funding".into(), description: Some("Grant writing, research, submission tracking".into()), icon: Some("💰".into()), sort_order: Some(8) },
-            IndustryOption { slug: "education-training".into(), name: "Education & Training".into(), description: Some("Course creation, enrollment, certificates".into()), icon: Some("📚".into()), sort_order: Some(9) },
-            IndustryOption { slug: "publishing-media".into(), name: "Publishing & Media".into(), description: Some("Content approval, newsletters, editorial calendars".into()), icon: Some("📰".into()), sort_order: Some(10) },
-            IndustryOption { slug: "site-flipping".into(), name: "Site Flipping".into(), description: Some("Website flipping, marketplace listings, TinyBrander funnel".into()), icon: Some("🔄".into()), sort_order: Some(11) },
-            IndustryOption { slug: "government-contracting".into(), name: "Government Contracting".into(), description: Some("Opportunity discovery, bidding, contract management".into()), icon: Some("🏛️".into()), sort_order: Some(12) },
-            IndustryOption { slug: "content-creation".into(), name: "Content Creation".into(), description: Some("AI video, images, voiceover workflows".into()), icon: Some("🎬".into()), sort_order: Some(13) },
-            IndustryOption { slug: "newsletter".into(), name: "Newsletter".into(), description: Some("Email newsletter creation and management".into()), icon: Some("📧".into()), sort_order: Some(14) },
-        ]
-    });
+    .await?;
 
     Ok(Json(json!(industries)))
 }

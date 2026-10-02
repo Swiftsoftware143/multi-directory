@@ -565,15 +565,17 @@ pub async fn set_selection(
 }
 
 /// POST /api/v1/zaarhub/admin/discovery/queue/category — override the mapped category.
-/// The category name is read from the `categories` table, never trusted from the client.
+/// The category name is read from the `directory_categories` table (the queue's own category
+/// taxonomy and the FK target of mapped_category_id), never trusted from the client.
 pub async fn set_category(
     State(s): State<AppState>,
     Json(req): Json<QueueCategoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let name: Option<String> = sqlx::query_scalar("SELECT name FROM categories WHERE id = $1")
-        .bind(req.category_id)
-        .fetch_optional(&s.db)
-        .await?;
+    let name: Option<String> =
+        sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
+            .bind(req.category_id)
+            .fetch_optional(&s.db)
+            .await?;
     let Some(name) = name else {
         return Err(AppError::BadRequest("unknown category".into()));
     };
