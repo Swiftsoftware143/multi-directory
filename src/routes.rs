@@ -2790,6 +2790,30 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // ── Hard 404 for a missing static asset ──
+                    // A file-shaped path that does not resolve to a file on disk used to
+                    // fall through to the SPA shell below and be answered `200 text/html`.
+                    // Cloudflare then stored that 200 text/html for the whole edge TTL
+                    // (14400 s), so a file published at that path afterwards stayed
+                    // invisible for up to 4 h — and a JS asset delivered as HTML breaks the
+                    // page ("Unexpected token '<'"). A *route* may legitimately be answered
+                    // by the shell; a *missing file* never may.
+                    // No Cache-Control header here on purpose: the vhost includes
+                    // security-headers.conf, whose negative-cache guard already sends
+                    // `no-store` on 404 — a second app-level header would conflict at the edge.
+                    if !file_path.exists() && is_asset_path(&path) {
+                        return Ok::<_, std::convert::Infallible>(
+                            axum::response::Response::builder()
+                                .status(axum::http::StatusCode::NOT_FOUND)
+                                .header(
+                                    axum::http::header::CONTENT_TYPE,
+                                    "text/plain; charset=utf-8",
+                                )
+                                .body(axum::body::Body::from("Not found"))
+                                .unwrap(),
+                        );
+                    }
+
                     // SPA fallback: serve full index.html for all unmatched routes
                     {
                         // White-label: if the path targets a directory (/d/{slug}),
@@ -3065,6 +3089,87 @@ async fn operator_guard(
     }
     req.extensions_mut().insert(claims);
     Ok(next.run(req).await)
+}
+
+/// True when the last segment of `path` claims a static-asset file extension.
+///
+/// Used by the SPA fallback: a request for `<something>.<asset-ext>` that resolves to no
+/// file on disk must be a 404, never the SPA shell (the shell is only a valid answer for a
+/// *route*). The match is case-insensitive, and a bare dot without a stem (`.env`) does not
+/// count, so no existing page path changes behaviour.
+fn is_asset_path(path: &str) -> bool {
+    let last = path.rsplit('/').next().unwrap_or("");
+    let Some((stem, ext)) = last.rsplit_once('.') else {
+        return false;
+    };
+    if stem.is_empty() || ext.is_empty() {
+        return false;
+    }
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "ico"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "svg"
+            | "webp"
+            | "avif"
+            | "css"
+            | "js"
+            | "mjs"
+            | "json"
+            | "zip"
+            | "woff"
+            | "woff2"
+            | "ttf"
+            | "otf"
+            | "eot"
+            | "map"
+            | "txt"
+            | "xml"
+            | "webmanifest"
+    )
+}
+
+#[cfg(test)]
+mod asset_path_tests {
+    use super::is_asset_path;
+
+    #[test]
+    fn asset_shaped_paths_are_detected() {
+        for p in [
+            "/t-c76-probe-1234567.ico",
+            "/frontend/admin-abc123.js",
+            "/leaflet.css",
+            "/a/b/logo.PNG",
+            "/favicon.svg",
+            "/palm-bay/hero.webp",
+            "/fonts/inter.woff2",
+            "/bundle.js.map",
+            "/site.webmanifest",
+        ] {
+            assert!(is_asset_path(p), "{p} should be asset-shaped");
+        }
+    }
+
+    #[test]
+    fn spa_routes_are_never_asset_shaped() {
+        for p in [
+            "/",
+            "/login",
+            "/portal",
+            "/pricing",
+            "/palm-bay",
+            "/palm-bay/businesses/joes-pizza",
+            "/d/zaarhub",
+            "/st.cloud",
+            "/cities",
+            "/blog/some-post",
+        ] {
+            assert!(!is_asset_path(p), "{p} should not be asset-shaped");
+        }
+    }
 }
 
 /// Card B56 — the internal key accepted on `/cron/*`.
