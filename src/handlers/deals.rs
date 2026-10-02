@@ -868,6 +868,7 @@ pub async fn get_deal_page(
             d.max_claims, d.claims_count,
             d.highlights,
             d.premium_features, d.redemption_type, d.booking_url, d.show_qr,
+            d.per_user_limit,
             b.name AS business_name,
             b.address AS business_address,
             b.city AS business_city,
