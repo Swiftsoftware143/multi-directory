@@ -772,9 +772,11 @@ async fn create_paypal_session(
 ///   is the ERROR log line plus Stripe's dashboard.
 /// - verified -> 200 `processed`, unchanged.
 ///
-/// NOTE (measured 2026-10-02, deliberately NOT changed by this card): `paypal_webhook` in this same
-/// file still answers 200 for its own refusal arms — the same silent-loss shape on the PayPal side,
-/// with its own card. Nothing in this comment describes that arm.
+/// NOTE (2026-10-02): `paypal_webhook` in this same file USED to answer 200 for its own refusal
+/// arms — the same silent-loss shape on the PayPal side. It no longer does: it answers 503/401 per
+/// arm under its own contract (kanban t_89975eff), documented on that function. The two receivers
+/// are deliberately NOT identical (PayPal's verdict is computed by PayPal, Stripe's here), and both
+/// doc comments say why.
 pub async fn stripe_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -907,8 +909,154 @@ pub async fn stripe_webhook(
     Ok((StatusCode::OK, Json(json!({"status": "processed"}))))
 }
 
+/// Why a PayPal verification call produced no verdict. The two arms are answered DIFFERENTLY
+/// (401 vs 503) and carry different log detail, so they cannot collapse into one string: an honest
+/// answer has to say whether PayPal answered at all (kanban t_89975eff).
+enum PaypalVerifyError {
+    /// PayPal answered the call — the OAuth token request or the verification request — non-2xx.
+    ApiError(String),
+    /// The call could not complete: DNS, TLS, connect, timeout.
+    Unreachable(String),
+}
+
+impl PaypalVerifyError {
+    /// PayPal's own status/body, or the transport error. Diagnostic only — never a credential.
+    fn detail(&self) -> &str {
+        match self {
+            PaypalVerifyError::ApiError(detail) | PaypalVerifyError::Unreachable(detail) => detail,
+        }
+    }
+}
+
+/// A refusal: (the response `reason`, the audit row's `status`, the HTTP status).
+type PaypalRefusal = (&'static str, &'static str, StatusCode);
+
+/// The refusal arms that need NO call to PayPal, in the order they are decided; `None` means "keep
+/// going" (the receiver is configured AND the delivery carries enough headers to ask PayPal). Pure —
+/// no I/O — so every arm is covered by `paypal_contract_tests` without a network.
+fn paypal_precheck_refusal(
+    provider: Option<&ActiveProvider>,
+    headers_present: bool,
+) -> Option<PaypalRefusal> {
+    match provider {
+        None => Some((
+            "paypal_not_configured",
+            "not_configured",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )),
+        // `webhook_secret` holds the operator's PayPal **Webhook ID** on this provider (see
+        // `verify_paypal_webhook`): without it PayPal cannot be asked about THIS endpoint, so no
+        // delivery can be verified. A row without a Webhook ID is the same refusal as no row.
+        Some(prov) if prov.webhook_secret.is_empty() => Some((
+            "paypal_not_configured",
+            "not_configured",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )),
+        Some(_) if !headers_present => Some((
+            "missing_paypal_signature_headers",
+            "signature_failed",
+            StatusCode::UNAUTHORIZED,
+        )),
+        Some(_) => None,
+    }
+}
+
+/// The refusal arm for the one call to PayPal. Pure, for the same reason.
+fn paypal_verdict_refusal(verdict: &Result<bool, PaypalVerifyError>) -> Option<PaypalRefusal> {
+    match verdict {
+        Ok(true) => None,
+        Ok(false) => Some((
+            "signature_verification_failed",
+            "signature_failed",
+            StatusCode::UNAUTHORIZED,
+        )),
+        Err(PaypalVerifyError::ApiError(_)) => Some((
+            "paypal_verification_api_error",
+            "signature_failed",
+            StatusCode::UNAUTHORIZED,
+        )),
+        Err(PaypalVerifyError::Unreachable(_)) => Some((
+            "paypal_verification_unreachable",
+            "signature_failed",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )),
+    }
+}
+
 /// POST /api/v1/webhooks/paypal
-/// Handle incoming PayPal webhook events
+/// Handle incoming PayPal webhook events.
+///
+/// FAILS CLOSED — nothing unverified is dispatched (t_3f82bba8) — and answers every refusal with its
+/// OWN status (t_89975eff, retargeted from the contract WorkflowSwift's receiver ships under
+/// t_5cf44e1b). Before this, every refusal was answered `200 {"status":"ignored"}`: PayPal reads any
+/// 2xx as DELIVERED and does not retry it, so a `PAYMENT.CAPTURE.COMPLETED` that arrived while the
+/// merchant had not pasted the Webhook ID yet — or whose verification failed for a transient reason
+/// — was lost for good, with only a `payment_webhook_events` row as evidence. A lost payment event,
+/// not a lost login.
+///
+/// The arms, in the order they are decided, with the reason each status was chosen:
+///
+/// - no active `paypal` row in `payment_providers`, OR one whose stored Webhook ID is empty ->
+///   503 `paypal_not_configured`. There is nothing to verify against, so PayPal is not called at
+///   all, and the status is 503 rather than 401 because nothing about THIS delivery is known to be
+///   wrong: the receiver cannot accept events yet. This is the arm a merchant hits before pasting
+///   the Webhook ID in Admin > Payment gateways, so it is precisely the one that must be retried to
+///   be recoverable.
+/// - the row IS configured and any of the five headers PayPal signs with (`paypal-transmission-id`,
+///   `paypal-transmission-time`, `paypal-transmission-sig`, `paypal-cert-url`, `paypal-auth-algo`)
+///   is absent -> 401 `missing_paypal_signature_headers`. PayPal signs with all five, so a delivery
+///   carrying fewer is not a signed PayPal transmission and no verification could accept it. The
+///   log names the missing one(s).
+/// - PayPal answered our own verification call non-2xx -> 401 `paypal_verification_api_error`
+///   (PayPal's status and message are in the log line).
+/// - the verification call could not complete (DNS, TLS, connect, timeout) -> 503
+///   `paypal_verification_unreachable`.
+/// - PayPal answered 2xx and `verification_status != "SUCCESS"` -> 401
+///   `signature_verification_failed`.
+/// - verified -> 200 `processed`; only then does anything reach `handle_checkout_completed`.
+/// - a body that is not JSON -> 400 `Invalid JSON`, parsed BEFORE verification (kept deliberately):
+///   a malformed body cannot be a PayPal event whatever the headers say, so 400 names the real
+///   problem instead of sending the operator to the Webhook ID. This arm writes no audit row — no
+///   event id, no structured body to store — so its record is the ERROR log line alone.
+///
+/// WHY 401 FOR THE VERDICT ARMS WHERE THE STRIPE ARM ANSWERS 503. PayPal's verdict is computed BY
+/// PayPal, from the transmission headers and the Webhook ID it was configured with, and it is
+/// authoritative: `verification_status != "SUCCESS"` is a third-party statement that this delivery
+/// is not a signed event of this endpoint, and no retry can change it. The same holds for the
+/// non-2xx arm: PayPal answered, and its answer is about this request's credentials/webhook id.
+/// Stripe's receiver answers 503 for the same-sounding case because there the HMAC is computed HERE
+/// over a secret THIS deployment stores, so a mismatch is at least as likely to be our own
+/// misconfiguration as a forgery, and Stripe re-signs every retry. There is no local secret to be
+/// wrong on the PayPal side. Answering 401 does not lose the event either: PayPal redelivers a
+/// delivery whose endpoint did not accept it (any non-2xx), so a repaired configuration recovers
+/// it, and every refusal is loud in three places — this ERROR line, the audit row, and PayPal's own
+/// webhook event log.
+///
+/// WHY `paypal_verification_unreachable` IS THE ONE 503 (the deliberate decision for this app; it is
+/// the arm WorkflowSwift answers 401 for — DECIDED here, not ported). It is the only case where
+/// PayPal said NOTHING: no verdict exists, the delivery may be perfectly genuine, and the cause is
+/// on the path between this host and PayPal — DNS, TLS, egress, a stalled connection, or PayPal's
+/// own outage. None of those is a statement about the delivery, all of them are transient, and 503
+/// ("I could not ask; send it again") is the honest answer AND the only one that turns a refused
+/// event into a redelivery, which is exactly how a genuine receipt that arrived while this host
+/// could not reach PayPal is recovered. 401 would assert a verdict that was never received; 200
+/// (what this receiver used to answer) throws the event away silently. WorkflowSwift can afford 401
+/// there because its receiver reads `PAYPAL_API_BASE` per request and its own test legs point it at
+/// a stub, so "unreachable" is usually an injected condition; here the host is derived from the
+/// merchant's sandbox/live flag, so "we could not reach PayPal" is squarely a receiver-side
+/// condition and is reported as one. The operator sees `503` + `paypal_verification_unreachable`,
+/// the transport error in the log, and `signature_failed|paypal_verification_unreachable` in the
+/// audit row. A PayPal 5xx is still classified as "PayPal answered" (`paypal_verification_api_error`
+/// , 401) because the split that matters to the operator is "PayPal answered" vs "PayPal said
+/// nothing"; PayPal's own status is in the log line and PayPal redelivers non-2xx regardless.
+///
+/// Both calls to PayPal are bounded (10 s, see `verify_paypal_webhook`): this receiver used to have
+/// no timeout at all, so a stalled PayPal left the webhook request hanging instead of refusing it.
+/// A timeout lands in the transport arm, which is a refusal, so the failure direction stays closed.
+///
+/// Every refusal except the malformed body still records its delivery in `payment_webhook_events`,
+/// with a `status` naming WHICH arm fired (`not_configured` vs `signature_failed` — migration 109
+/// widened the CHECK and no third value is written) and the reason in `error_message`.
 pub async fn paypal_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -935,23 +1083,24 @@ pub async fn paypal_webhook(
     let cert_url = hdr("paypal-cert-url");
     let auth_algo = hdr("paypal-auth-algo");
     let transmission_sig = hdr("paypal-transmission-sig");
+    let headers_present = !(transmission_id.is_empty()
+        || transmission_time.is_empty()
+        || cert_url.is_empty()
+        || auth_algo.is_empty()
+        || transmission_sig.is_empty());
 
+    // Read per event, never cached: pasting the Webhook ID in Admin > Payment gateways makes the
+    // very next delivery verify — that is what makes the 503 not-configured arm recoverable.
     let provider = get_active_provider(&state.db, "paypal").await?;
 
-    let rejection: Option<&'static str> = match provider.as_ref() {
-        None => Some("no_active_paypal_provider_configured"),
-        Some(prov) if prov.webhook_secret.is_empty() => Some("no_webhook_id_configured"),
-        Some(_)
-            if transmission_id.is_empty()
-                || transmission_time.is_empty()
-                || cert_url.is_empty()
-                || auth_algo.is_empty()
-                || transmission_sig.is_empty() =>
-        {
-            Some("missing_transmission_headers")
-        }
-        Some(prov) => {
-            match verify_paypal_webhook(
+    // FAIL CLOSED, and name the arm: the tuple is (response reason, audit `status`, HTTP status).
+    // The contract, arm by arm, is in this function's doc comment. The two prechecks are pure
+    // (`paypal_precheck_refusal`, unit-tested in `paypal_contract_tests`); only the arm that passes
+    // both of them talks to PayPal at all.
+    let mut refusal = paypal_precheck_refusal(provider.as_ref(), headers_present);
+    let verdict = match (refusal.as_ref(), provider.as_ref()) {
+        (None, Some(prov)) => Some(
+            verify_paypal_webhook(
                 prov,
                 &event_body,
                 transmission_id,
@@ -960,44 +1109,89 @@ pub async fn paypal_webhook(
                 auth_algo,
                 transmission_sig,
             )
-            .await
-            {
-                Ok(true) => None,
-                Ok(false) => Some("signature_verification_failed"),
-                // PayPal could not be asked (network, bad client credentials, unknown webhook id).
-                // An event that cannot be verified is an event that is not acted on.
-                Err(e) => {
-                    tracing::error!(
-                        error = %e,
-                        provider = "paypal",
-                        event_id,
-                        "PayPal webhook verification could not be completed — rejecting"
-                    );
-                    Some("verification_unavailable")
-                }
-            }
-        }
+            .await,
+        ),
+        _ => None,
     };
+    if let Some(verdict) = verdict.as_ref() {
+        refusal = paypal_verdict_refusal(verdict);
+    }
 
-    if let Some(reason) = rejection {
-        if reason == "no_webhook_id_configured" {
-            tracing::error!(
+    if let Some((reason, _, _)) = refusal {
+        // Diagnostic detail for the log: PayPal's own status/body, or the transport error. Never a
+        // credential — `PaypalVerifyError` carries only what PayPal said or failed to say.
+        let detail = match verdict.as_ref() {
+            Some(Err(e)) => e.detail().to_string(),
+            _ => String::new(),
+        };
+        let missing_headers = [
+            ("paypal-transmission-id", transmission_id),
+            ("paypal-transmission-time", transmission_time),
+            ("paypal-transmission-sig", transmission_sig),
+            ("paypal-cert-url", cert_url),
+            ("paypal-auth-algo", auth_algo),
+        ]
+        .iter()
+        .filter(|(_, value)| value.is_empty())
+        .map(|(name, _)| *name)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+        match reason {
+            // A misconfiguration the operator can fix from the panel: say so loudly, with the fix.
+            "paypal_not_configured" => tracing::error!(
                 provider = "paypal",
                 event_id,
-                "PayPal webhook REJECTED — the active PayPal provider has no Webhook ID stored, so \
-                 no event can be verified. Add it in Admin > Payment gateways."
-            );
-        } else {
-            tracing::warn!(
+                "PayPal webhook receiver is NOT CONFIGURED — no active 'paypal' row in \
+                 payment_providers, or that row carries no Webhook ID, so no event can be \
+                 verified. Answering 503 so PayPal redelivers; paste the Webhook ID in \
+                 Admin > Payment gateways and the retries verify."
+            ),
+            "missing_paypal_signature_headers" => tracing::error!(
                 provider = "paypal",
                 event_id,
-                reason,
-                "PayPal webhook rejected"
-            );
+                missing = %missing_headers,
+                "PayPal webhook REJECTED — missing_paypal_signature_headers: the receiver IS \
+                 configured, but this delivery does not carry all five headers PayPal signs with. \
+                 Answering 401 — a delivery that is not a signed PayPal transmission could not be \
+                 verified by anyone."
+            ),
+            "paypal_verification_unreachable" => tracing::error!(
+                provider = "paypal",
+                event_id,
+                detail = %detail,
+                "PayPal webhook REJECTED — paypal_verification_unreachable: the call to PayPal's \
+                 verify-webhook-signature endpoint could not complete, so NO verdict was reached \
+                 and nothing is known to be wrong with this delivery. Answering 503 so PayPal \
+                 redelivers — a genuine event that arrived while this host could not reach PayPal \
+                 is recovered by exactly that retry."
+            ),
+            "paypal_verification_api_error" => tracing::error!(
+                provider = "paypal",
+                event_id,
+                detail = %detail,
+                "PayPal webhook REJECTED — paypal_verification_api_error: PayPal answered the \
+                 verification call non-2xx (its own status is in this line), so no signature \
+                 verdict exists. Answering 401; check the client id/secret and the Webhook ID in \
+                 Admin > Payment gateways."
+            ),
+            // Signature verdicts PayPal itself made. ERROR, not warn: a refusal that PayPal was
+            // told was delivered would be invisible, and this line plus the audit row plus PayPal's
+            // own webhook log are the only three places it can show up.
+            _ => tracing::error!(
+                provider = "paypal",
+                event_id,
+                "PayPal webhook REJECTED — signature_verification_failed: PayPal ran the check and \
+                 did not return SUCCESS, which is PayPal's own authoritative verdict on this \
+                 delivery and no retry can change it. Answering 401."
+            ),
         }
     }
 
-    // Log the event either way — a refusal is evidence and belongs in payment_webhook_events.
+    // Log the event either way — a refusal is evidence and belongs in payment_webhook_events. The
+    // audit `status` separates "the receiver is not configured" from "the delivery did not verify"
+    // (migration 109 widened the CHECK; no third value is written), and `error_message` carries the
+    // exact response reason.
     let hdrs = json!({
         "paypal-transmission-id": transmission_id,
         "paypal-transmission-time": transmission_time,
@@ -1005,10 +1199,9 @@ pub async fn paypal_webhook(
         "paypal-cert-url": cert_url,
         "paypal-auth-algo": auth_algo,
     });
-    let db_status = if rejection.is_none() {
-        "received"
-    } else {
-        "failed"
+    let db_status = match refusal {
+        None => "received",
+        Some((_, audit_status, _)) => audit_status,
     };
     sqlx::query(
         r#"INSERT INTO payment_webhook_events
@@ -1020,14 +1213,14 @@ pub async fn paypal_webhook(
     .bind(&event_body)
     .bind(&hdrs)
     .bind(db_status)
-    .bind(rejection)
+    .bind(refusal.map(|(reason, _, _)| reason))
     .execute(&state.db)
     .await?;
 
-    if let Some(reason) = rejection {
+    if let Some((reason, _, status)) = refusal {
         return Ok((
-            StatusCode::OK,
-            Json(json!({"status": "ignored", "reason": reason})),
+            status,
+            Json(json!({"status": "rejected", "reason": reason})),
         ));
     }
 
@@ -1263,8 +1456,16 @@ fn paypal_api_base(is_test_mode: bool) -> &'static str {
 /// secret to compare locally — `provider.webhook_secret` holds the operator's PayPal **Webhook ID**
 /// and `provider.api_key` holds the `client_id:secret` pair the call authenticates with.
 ///
-/// Returns `Ok(true)` only for PayPal's own `verification_status: SUCCESS`. Every other outcome —
-/// a FAILURE, or an error from the call itself — must be treated as "not verified" by the caller.
+/// Returns `Ok(true)` only for PayPal's own `verification_status: SUCCESS`. Every other outcome is an
+/// `Err`, typed (t_89975eff) so the caller can answer the two of them differently: `ApiError` when
+/// PayPal ANSWERED and the answer was a refusal — its status and body are carried for the log, since
+/// a bad client id/secret is the operator's cue — and `Unreachable` when the call never completed.
+/// The type decides the HTTP STATUS, never the verdict: both are "not verified".
+///
+/// Both requests are bounded (10 s). This receiver used to have no timeout at all, so a stalled
+/// PayPal left the webhook request hanging instead of refusing it. A timeout lands in the
+/// `Unreachable` arm, which is a refusal, so the failure direction stays closed. (WorkflowSwift's
+/// receiver has carried the same bound since t_5cf44e1b.)
 async fn verify_paypal_webhook(
     provider: &ActiveProvider,
     event_body: &serde_json::Value,
@@ -1273,7 +1474,9 @@ async fn verify_paypal_webhook(
     cert_url: &str,
     auth_algo: &str,
     transmission_sig: &str,
-) -> Result<bool, AppError> {
+) -> Result<bool, PaypalVerifyError> {
+    const PAYPAL_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
     let client = reqwest::Client::new();
     let api_base = paypal_api_base(provider.is_test_mode);
 
@@ -1285,17 +1488,30 @@ async fn verify_paypal_webhook(
         )
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body("grant_type=client_credentials")
+        .timeout(PAYPAL_CALL_TIMEOUT)
         .send()
         .await
-        .map_err(|e| AppError::Internal(format!("PayPal auth error: {}", e)))?;
+        .map_err(|e| {
+            PaypalVerifyError::Unreachable(format!("PayPal auth call could not complete: {}", e))
+        })?;
 
-    let token_body: serde_json::Value = token_resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to parse PayPal auth response: {}", e)))?;
+    let token_status = token_resp.status();
+    let token_raw = token_resp.text().await.unwrap_or_default();
+    if !token_status.is_success() {
+        // PayPal answered. Its status and message are diagnostic — a rejected client id/secret is
+        // the common one, and it is the operator's cue — but the message is PayPal's, so it is
+        // clipped before it reaches a log line.
+        return Err(PaypalVerifyError::ApiError(format!(
+            "PayPal auth answered HTTP {}: {}",
+            token_status,
+            clip_for_log(&token_raw, 300)
+        )));
+    }
 
+    let token_body: serde_json::Value = serde_json::from_str(&token_raw).unwrap_or_default();
     let access_token = token_body["access_token"].as_str().ok_or_else(|| {
-        AppError::Internal("Failed to get a PayPal access token for webhook verification".into())
+        // 2xx with no token is still PayPal answering — an answer we cannot use, not a silent line.
+        PaypalVerifyError::ApiError("PayPal auth answered 2xx without an access_token".to_string())
     })?;
 
     let payload = json!({
@@ -1316,27 +1532,44 @@ async fn verify_paypal_webhook(
         .header("Authorization", format!("Bearer {}", access_token))
         .header("Content-Type", "application/json")
         .json(&payload)
+        .timeout(PAYPAL_CALL_TIMEOUT)
         .send()
         .await
-        .map_err(|e| AppError::Internal(format!("PayPal verify-webhook-signature error: {}", e)))?;
+        .map_err(|e| {
+            PaypalVerifyError::Unreachable(format!(
+                "PayPal verify-webhook-signature call could not complete: {}",
+                e
+            ))
+        })?;
 
     let http_status = resp.status();
-    let body: serde_json::Value = resp.json().await.unwrap_or_else(|_| json!({}));
+    let raw = resp.text().await.unwrap_or_default();
 
     if !http_status.is_success() {
-        // PayPal answers 4xx when it cannot even run the check (unknown Webhook ID, rejected client
-        // credentials). That is NOT a pass: refuse the event and name the reason.
-        return Err(AppError::Internal(format!(
-            "PayPal verify-webhook-signature returned HTTP {}: {}",
+        // PayPal answered 4xx when it could not even run the check (unknown Webhook ID, rejected
+        // client credentials) — that is NOT a pass, and it is not a signature verdict either. The
+        // body is PayPal's own error message, so it is clipped and carried for the log.
+        return Err(PaypalVerifyError::ApiError(format!(
+            "PayPal verify-webhook-signature answered HTTP {}: {}",
             http_status,
-            body["message"]
-                .as_str()
-                .or_else(|| body["error_description"].as_str())
-                .unwrap_or("no detail")
+            clip_for_log(&raw, 300)
         )));
     }
 
+    // A 2xx whose body carries no `SUCCESS` is Ok(false) → "PayPal did not verify this delivery",
+    // which is the same arm as an explicit FAILURE verdict.
+    let body: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
     Ok(body["verification_status"].as_str() == Some("SUCCESS"))
+}
+
+/// Clip a third-party response body for a log line: the status is the point, the body is context,
+/// and PayPal's error text is not worth a screenful in the log.
+fn clip_for_log(value: &str, max_chars: usize) -> String {
+    let mut clipped: String = value.chars().take(max_chars).collect();
+    if value.chars().count() > max_chars {
+        clipped.push('…');
+    }
+    clipped
 }
 
 /// Verify a Stripe webhook signature: HMAC-SHA256 over `"{timestamp}.{body}"`, compared in constant
@@ -1510,4 +1743,145 @@ pub async fn get_checkout_session(
         "currency": currency,
         "login_url": "/admin",
     })))
+}
+
+#[cfg(test)]
+mod paypal_contract_tests {
+    //! The PayPal refusal contract of t_89975eff, arm by arm.
+    //!
+    //! Four of the six arms are also exercised LIVE against the deployed container by
+    //! `/opt/swift/bin/md-t_89975eff-paypal-contract-proof.py` (no row / no Webhook ID, each missing
+    //! header, PayPal answering non-2xx, PayPal unreachable). The two arms a live run cannot reach
+    //! without real PayPal credentials — `verification_status: "SUCCESS"` and PayPal's own FAILURE
+    //! verdict — are covered here, and this module is what keeps the status/audit-status pairing
+    //! honest: the mapping is pure, so it cannot be "proved" by a network that happens to answer.
+    use super::*;
+
+    fn configured(webhook_id: &str) -> ActiveProvider {
+        ActiveProvider {
+            api_key: "probe-client:probe-secret".to_string(),
+            webhook_secret: webhook_id.to_string(),
+            is_test_mode: true,
+        }
+    }
+
+    #[test]
+    fn no_row_and_no_webhook_id_are_one_503_paypal_not_configured_arm() {
+        let want = (
+            "paypal_not_configured",
+            "not_configured",
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
+        // No row at all, and a row whose Webhook ID is empty, collapse to ONE arm (as the Stripe
+        // receiver's no-row/no-secret pair does): both mean "nothing here can be verified", and
+        // both are answered 503 so PayPal redelivers once the Webhook ID is pasted in.
+        assert_eq!(paypal_precheck_refusal(None, true), Some(want));
+        assert_eq!(paypal_precheck_refusal(None, false), Some(want));
+        assert_eq!(
+            paypal_precheck_refusal(Some(&configured("")), true),
+            Some(want),
+            "a configured row with no Webhook ID is the SAME refusal as no row"
+        );
+    }
+
+    #[test]
+    fn configured_but_a_header_missing_is_401_signature_failed() {
+        assert_eq!(
+            paypal_precheck_refusal(Some(&configured("WEBHOOKID-PROBE")), false),
+            Some((
+                "missing_paypal_signature_headers",
+                "signature_failed",
+                StatusCode::UNAUTHORIZED
+            )),
+            "a delivery that is not a signed PayPal transmission is refused 401"
+        );
+    }
+
+    #[test]
+    fn a_configured_delivery_carrying_all_five_headers_has_no_precheck_refusal() {
+        // `None` = go and ask PayPal. This is the ONLY path that reaches the network.
+        assert_eq!(
+            paypal_precheck_refusal(Some(&configured("WEBHOOKID-PROBE")), true),
+            None
+        );
+    }
+
+    #[test]
+    fn verified_events_are_not_refused() {
+        assert_eq!(paypal_verdict_refusal(&Ok(true)), None);
+    }
+
+    #[test]
+    fn paypals_own_failure_verdict_is_401_signature_verification_failed() {
+        // PayPal ran the check and answered a non-SUCCESS verdict: computed BY PayPal, so it is
+        // authoritative and no retry can change it.
+        assert_eq!(
+            paypal_verdict_refusal(&Ok(false)),
+            Some((
+                "signature_verification_failed",
+                "signature_failed",
+                StatusCode::UNAUTHORIZED
+            ))
+        );
+    }
+
+    #[test]
+    fn paypal_answering_non_2xx_is_401_paypal_verification_api_error() {
+        assert_eq!(
+            paypal_verdict_refusal(&Err(PaypalVerifyError::ApiError(
+                "PayPal auth answered HTTP 401".to_string()
+            ))),
+            Some((
+                "paypal_verification_api_error",
+                "signature_failed",
+                StatusCode::UNAUTHORIZED
+            ))
+        );
+    }
+
+    #[test]
+    fn paypal_unreachable_is_503_not_401() {
+        // The deliberate decision for THIS app (t_89975eff, where it differs from WorkflowSwift):
+        // no verdict was reached, the cause is on our side of the path, and 503 is the only answer
+        // that makes PayPal redeliver — which is how a genuine event is recovered.
+        assert_eq!(
+            paypal_verdict_refusal(&Err(PaypalVerifyError::Unreachable(
+                "connect refused".to_string()
+            ))),
+            Some((
+                "paypal_verification_unreachable",
+                "signature_failed",
+                StatusCode::SERVICE_UNAVAILABLE
+            ))
+        );
+    }
+
+    #[test]
+    fn every_refusal_is_a_non_2xx_with_an_audit_status_migration_109_admits() {
+        // migration 109's CHECK admits not_configured | signature_failed; a third value would make
+        // the INSERT fail and lose the audit row this contract exists to keep. And no refusal may
+        // ever be a 2xx: PayPal reads 2xx as delivered and never retries it.
+        let arms = [
+            paypal_precheck_refusal(None, true),
+            paypal_precheck_refusal(Some(&configured("")), true),
+            paypal_precheck_refusal(Some(&configured("WEBHOOKID-PROBE")), false),
+            paypal_verdict_refusal(&Ok(false)),
+            paypal_verdict_refusal(&Err(PaypalVerifyError::ApiError("HTTP 500".to_string()))),
+            paypal_verdict_refusal(&Err(PaypalVerifyError::Unreachable("timeout".to_string()))),
+        ];
+        for arm in arms {
+            let (reason, audit_status, status) = arm.expect("each of these is a refusal arm");
+            assert!(
+                audit_status == "not_configured" || audit_status == "signature_failed",
+                "audit status {} is not in migration 109's CHECK",
+                audit_status
+            );
+            assert!(!status.is_success(), "{} answered a 2xx", reason);
+            assert!(
+                status.is_client_error() || status.is_server_error(),
+                "{} answered neither 4xx nor 5xx",
+                reason
+            );
+        }
+    }
 }
