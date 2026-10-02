@@ -792,7 +792,8 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
     </div>
       <!-- Connected Services -->
-      <div class="section-title" style="margin-top:24px">🔗 Connected Services</div>
+      <div id="connectedServicesSection" style="margin-top:24px">
+      <div class="section-title">🔗 Connected Services</div>
       <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Connect your other SwiftSoftware accounts to unlock features in your listings.</div>
       <div class="card-grid">
         <!-- IncentiveSwift -->
@@ -823,7 +824,8 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
             <span style="font-size:.82rem;color:var(--text-secondary)">⏳ Checking...</span>
           </div>
         </div>
-    </div>
+      </div>
+      </div>
   </div>
 </div>
 
@@ -946,7 +948,11 @@ async function loadDashboard() {
   if (!token) { show('authScreen'); hide('dashboard'); return; }
   
   hide('authScreen');
-  show('dashboard');
+  // B57: `.dashboard{display:none}` in the stylesheet means clearing the inline
+  // style (show('dashboard') -> style.display='') falls back to the hidden CSS
+  // rule, so the whole portal stayed blank and the Connected Services section
+  // never rendered. Set an explicit display value that beats the class.
+  document.getElementById('dashboard').style.display = 'block';
   show('loadingState');
   hide('dashboardContent');
   
@@ -1166,6 +1172,7 @@ function loadConnectedServices() {
       console.error('Failed to load connected services:', e);
       if (isEl) isEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⚠️ Unavailable</span>';
       if (csEl) csEl.innerHTML = '<span style="font-size:.82rem;color:var(--text-secondary)">⚠️ Unavailable</span>';
+      if (typeof updateIntegrationVisibility === 'function') updateIntegrationVisibility();
     });
 }
 
@@ -1195,6 +1202,9 @@ function renderConnectedServiceStatus(data) {
       csEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="connectCoreSwift()">Connect</button>';
     }
   }
+
+  // Keep the unlocked-feature panels in sync with the freshly rendered status.
+  if (typeof updateIntegrationVisibility === 'function') updateIntegrationVisibility();
 }
 
 function showConnectForm(service) {
@@ -1586,16 +1596,12 @@ loadDashboard = function() {
   var check = setInterval(function() {
     if (document.getElementById('dashboardContent').style.display !== 'none') {
       clearInterval(check);
-      g('/connected-services')
-        .then(function(r) {
-          connectedServices = r;
-          updateIntegrationVisibility();
-        })
-        .catch(function() {
-          // Connected services unavailable — hide integration features
-          connectedServices = {};
-          updateIntegrationVisibility();
-        });
+      // B57: actually render the Connected Services status cards, which is what
+      // populates the CoreSwift one-click Connect button (and calls
+      // updateIntegrationVisibility once the response lands). Previously only
+      // updateIntegrationVisibility() was called, so the status stayed
+      // "Checking..." and no Connect control rendered.
+      loadConnectedServices();
       if (_selectedBizId) {
         loadDealsTab();
         loadIqsTab();
