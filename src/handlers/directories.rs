@@ -583,6 +583,55 @@ pub async fn delete_directory(
     ))
 }
 
+/// POST /api/v1/directories/:id/primary — make this directory its network's PRIMARY directory.
+///
+/// B97: "the main directory admin = the first city" was an IMPLICIT convention based on
+/// created_at ordering — fragile, and confusing to a buyer. This endpoint makes the choice
+/// explicit and admin-settable: exactly one holder per network, defaulting to the first-created
+/// directory (seeded by migration 132). A standalone directory has no network, so there is
+/// nothing to delegate to → 400.
+pub async fn set_primary_directory(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let claims = tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    tenant_scope::assert_directory_admin(&s.db, &claims, id).await?;
+
+    let network_id =
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT network_id FROM directories WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("directory not found".to_string()))?;
+
+    let Some(network_id) = network_id else {
+        return Err(AppError::BadRequest(
+            "This directory is not part of a network, so it has no primary to set.".to_string(),
+        ));
+    };
+
+    // Clear first, then set, in one transaction: the partial unique index
+    // `directories_one_primary_per_network` must never observe two primaries at once.
+    let mut tx = s.db.begin().await?;
+    sqlx::query("UPDATE directories SET is_primary = false WHERE network_id = $1 AND is_primary")
+        .bind(network_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE directories SET is_primary = true, updated_at = now() WHERE id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE id = $1")
+        .bind(id)
+        .fetch_one(&s.db)
+        .await?;
+
+    Ok(Json(json!({ "ok": true, "directory": directory })))
+}
+
 /// GET /api/v1/directories/:slug/render — render directory page with template
 pub async fn render_directory(
     State(s): State<AppState>,

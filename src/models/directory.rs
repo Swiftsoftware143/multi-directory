@@ -18,6 +18,9 @@ pub struct Directory {
     pub template: Option<String>,
     pub color_scheme: Option<serde_json::Value>,
     pub network_id: Option<Uuid>,
+    /// B97 — the network's designated "primary"/main directory (exactly one holder per network,
+    /// admin-settable). Never derive this from created_at ordering.
+    pub is_primary: Option<bool>,
     pub url_type: Option<String>,
     pub url_value: Option<String>,
     pub custom_domain: Option<String>,

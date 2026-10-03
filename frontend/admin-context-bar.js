@@ -256,14 +256,23 @@
   }
 
   function onPick(sel) {
-    S.scope = sel.value;
+    setScope(sel.value);
+  }
+
+  // B97 — programmatic scope switch, so a block-out notice can send an admin to the network
+  // admin. Same work onPick does, but callable from another module.
+  function setScope(scope) {
+    if (!exists(scope)) return false;
+    S.scope = scope;
     S.userChosen = true;
     try { localStorage.setItem(KEY, S.scope); } catch (e) {}
+    render();
     banner();
     syncSelects();
     emit();
     var anchor = document.getElementById('sec-directories');
     if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
   }
 
   function fetchData() {
@@ -317,6 +326,8 @@
     },
     refresh: fetchData,
     dirsForScope: dirsForScope,
+    setScope: setScope,
+    networkName: nm,
     scope: function () { return resolveScope(); },
     state: S
   };

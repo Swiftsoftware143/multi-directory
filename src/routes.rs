@@ -32,6 +32,12 @@ pub fn create_router(s: AppState) -> Router {
                 .put(directories::update_directory)
                 .delete(directories::delete_directory),
         )
+        // B97 — the network's PRIMARY directory is an explicit, admin-settable choice on the
+        // directory id, never derived from created_at ordering (see migration 132).
+        .route(
+            "/directories/:id/primary",
+            post(directories::set_primary_directory),
+        )
         // Legacy /directory/:slug alias (used by older frontend code)
         .route("/directory/:slug", get(directories::get_directory))
         .route(

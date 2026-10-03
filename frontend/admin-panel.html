@@ -459,6 +459,8 @@
     }
   </style>
   <script src="/admin-context-bar.js"></script>
+  <!-- B97 — block out network-owned controls when a city of a network is the selected scope. -->
+  <script src="/admin-network-scope.js"></script>
 </head>
 <body>
   <!-- ===== LOGIN PAGE ===== -->
@@ -3168,6 +3170,7 @@
         card.innerHTML =
           '<div class="dir-card-header">' +
             '<span class="dir-card-name">' + escapeHtml(dir.name || 'Unnamed') + '</span>' +
+            (dir.is_primary ? '<span class="badge" style="background:rgba(245,158,11,.18);color:#fbbf24" title="This is the network\u2019s primary directory">\u2605 Primary</span>' : '') +
             '<span class="badge ' + statusClass + '">' + statusLabel + '</span>' +
           '</div>' +
           '<div class="dir-card-slug">' + escapeHtml(dir.slug || '') + '</div>' +
@@ -3194,6 +3197,23 @@
             actions.appendChild(sell);
           }
           card.appendChild(actions);
+        }
+
+        // B97 — the network's PRIMARY directory is an explicit, admin-settable choice, never the
+        // created_at convention. A city of a network can be marked primary; a standalone
+        // directory has no network to lead, so the control is not offered.
+        if (dir.network_id && !dir.is_primary) {
+          var pa = document.createElement('span');
+          pa.className = 'dir-card-actions';
+          pa.style.cssText = 'display:block;margin-top:10px';
+          var pmk = document.createElement('span');
+          pmk.className = 'btn btn-sm btn-ghost';
+          pmk.textContent = '\u2605 Make primary for this network';
+          pmk.setAttribute('role', 'button');
+          pmk.style.cssText = 'display:inline-block;cursor:pointer';
+          pmk.onclick = function (e) { e.preventDefault(); e.stopPropagation(); mdMakePrimary(dir); };
+          pa.appendChild(pmk);
+          card.appendChild(pa);
         }
 
         dirGrid.appendChild(card);
@@ -3224,6 +3244,21 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
       });
+    }
+
+    // B97 — mark a directory as its network's PRIMARY directory. The flag is real and explicit,
+    // so nothing depends on created_at ordering any more.
+    function mdMakePrimary(dir) {
+      if (!dir || !dir.id) { showToast('Pick a directory first', 'error'); return; }
+      apiPost('/directories/' + dir.id + '/primary', {})
+        .then(function () {
+          showToast('\u201c' + (dir.name || 'Directory') + '\u201d is now the network\u2019s primary directory', 'success');
+          loadDirectories();
+          if (window.MDContextBar) window.MDContextBar.refresh();
+        })
+        .catch(function (err) {
+          showToast('Could not set primary: ' + (err.message || 'Unknown error'), 'error');
+        });
     }
 
     function mdOpenActivateModal(dir) {
@@ -4391,11 +4426,22 @@
       var current = sel.value;
       sel.innerHTML = '';
       (directories || []).forEach(function (d) {
+        // B97 follow-up: settlement/clearinghouse is a NETWORK feature. A standalone directory has
+        // no network, so it has no settlement settings; offering it here called
+        // /networks/<slug>/settlement/settings with a non-network identifier and logged a 400.
+        // Only directories that belong to a network are offered.
+        if (!d.network_id) return;
         var o = document.createElement('option');
         o.value = d.slug;
         o.textContent = (d.name || 'Directory') + ' (' + (d.slug || '') + ')';
         sel.appendChild(o);
       });
+      if (!sel.options.length) {
+        var none = document.createElement('option');
+        none.value = '';
+        none.textContent = 'No network directory available';
+        sel.appendChild(none);
+      }
       if (current) sel.value = current;
     }
 
