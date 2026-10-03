@@ -26,6 +26,7 @@ pub struct PlanTier {
     pub max_listings: Option<i32>,
     pub max_deals: Option<i32>,
     pub max_photos: Option<i32>,
+    pub monthly_point_allowance: Option<i32>,
     pub has_reviews: Option<bool>,
     pub has_analytics: Option<bool>,
     pub has_crm: Option<bool>,
@@ -141,10 +142,12 @@ pub async fn create_tier(
 
     let tier = sqlx::query_as::<_, PlanTier>(
         r#"INSERT INTO plan_tiers (name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
+            monthly_point_allowance,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
             featured_listing, description, plan_sales_page_url, payment_provider)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
+            monthly_point_allowance,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
             featured_listing, description, plan_sales_page_url, payment_provider, created_at"#
     )
@@ -155,6 +158,7 @@ pub async fn create_tier(
     .bind(body.get("max_listings").and_then(|v| v.as_i64()).map(|v| v as i32))
     .bind(body.get("max_deals").and_then(|v| v.as_i64()).map(|v| v as i32))
     .bind(body.get("max_photos").and_then(|v| v.as_i64()).map(|v| v as i32))
+    .bind(body.get("monthly_point_allowance").and_then(|v| v.as_i64()).map(|v| v as i32))
     .bind(body.get("has_reviews").and_then(|v| v.as_bool()))
     .bind(body.get("has_analytics").and_then(|v| v.as_bool()))
     .bind(body.get("has_crm").and_then(|v| v.as_bool()))
@@ -217,9 +221,11 @@ pub async fn update_tier(
             has_import_export = $13, has_api_access = $14,
             featured_listing = $15, description = $16,
             plan_sales_page_url = $17,
-            payment_provider = $18
-        WHERE id = $19
+            payment_provider = $18,
+            monthly_point_allowance = $19
+        WHERE id = $20
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
+            monthly_point_allowance,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
             featured_listing, description, plan_sales_page_url, payment_provider, created_at"#
     )
@@ -245,6 +251,7 @@ pub async fn update_tier(
     .bind(body.get("description").and_then(|v| v.as_str()).or(existing.description.as_deref()))
     .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()).or(existing.plan_sales_page_url.as_deref()))
     .bind(body.get("payment_provider").and_then(|v| v.as_str()).or(existing.payment_provider.as_deref()))
+    .bind(body.get("monthly_point_allowance").and_then(|v| v.as_i64()).map(|v| v as i32).or(existing.monthly_point_allowance))
     .bind(id)
     .fetch_one(&s.db)
     .await?;
@@ -1059,8 +1066,8 @@ pub async fn monetization_dashboard(State(s): State<AppState>) -> ApiResult<impl
 
 /// GET /api/v1/subscriptions/plans — list available plan tiers with feature access
 pub async fn list_plans(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let plans = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, rust_decimal::Decimal, Option<String>, Option<serde_json::Value>, Option<i32>)>(
-        "SELECT id, name, price_monthly, price_yearly, description, feature_access, max_listings FROM plan_tiers ORDER BY price_monthly ASC"
+    let plans = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, rust_decimal::Decimal, Option<String>, Option<serde_json::Value>, Option<i32>, Option<i32>)>(
+        "SELECT id, name, price_monthly, price_yearly, description, feature_access, max_listings, monthly_point_allowance FROM plan_tiers ORDER BY price_monthly ASC"
     )
     .fetch_all(&s.db)
     .await?;
@@ -1070,7 +1077,8 @@ pub async fn list_plans(State(s): State<AppState>) -> ApiResult<impl IntoRespons
         .map(|p| {
             json!({
                 "id": p.0, "name": p.1, "price_monthly": p.2, "price_yearly": p.3,
-                "description": p.4, "features": p.5, "max_listings": p.6
+                "description": p.4, "features": p.5, "max_listings": p.6,
+                "monthly_point_allowance": p.7
             })
         })
         .collect();

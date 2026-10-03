@@ -540,6 +540,7 @@
         <a href="#transfers-section">🔄 Transfers</a>
         <a href="#data-enrichment-section">🧭 Data Enrichment</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
+        <a href="#plan-tiers-section">💠 Plan Tiers</a>
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
@@ -966,6 +967,21 @@
         </div>
         <div id="az-list"></div>
         <div class="feature-status" id="az-status"></div>
+      </div>
+
+      <!-- 💠 Plan Tiers (card B113) — plan_tiers carried a full API and NO admin control at all,
+           so changing a plan's price, limits or feature gates was curl-only. That is a defect by
+           David's own rule ("everything configurable in the admin panel, no SQL, no script").
+           This card is the control. The "Monthly point allowance" field is the loyalty points the
+           subscription prepays per month — size it against the $0.008/point payout cost, not the
+           $0.01 face value (Premium = 12,000, NOT 15,000). -->
+      <div class="feature-card" id="plan-tiers-section">
+        <h3>💠 Plan Tiers
+          <span class="pk-badge pk-missing" id="pt-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">The plans a business can choose from, and what each one unlocks. Edit a tier's price, its limits and its feature gates here — then Save. Changes take effect immediately for every directory using the tier.</p>
+        <div id="pt-list"></div>
+        <div class="feature-status" id="pt-status"></div>
       </div>
 
       <!-- 💰 Ad Revenue & Sponsor Creatives (kanban t_14927725) — these two capabilities
@@ -2657,6 +2673,110 @@
     }
 
     loadPaymentGateways();
+
+    // ===== Plan Tiers (card B113) =====
+    // plan_tiers had a complete API and no admin control, so the plans a business buys could only
+    // be changed by curl. This is the missing control; it reads GET /tiers and PUTs /tiers/:id.
+    var PLAN_NUM_FIELDS = [
+      ['price_monthly', 'Monthly price ($)'],
+      ['price_yearly', 'Yearly price ($)'],
+      ['max_listings', 'Max listings'],
+      ['max_deals', 'Max deals'],
+      ['max_photos', 'Max photos'],
+      ['monthly_point_allowance', 'Monthly point allowance']
+    ];
+    var PLAN_BOOL_FIELDS = [
+      ['has_reviews', 'Reviews'],
+      ['has_analytics', 'Analytics'],
+      ['has_crm', 'CRM'],
+      ['has_email', 'Email'],
+      ['has_call_tracking', 'Call tracking'],
+      ['has_import_export', 'Import / export'],
+      ['has_api_access', 'API access'],
+      ['featured_listing', 'Featured listing']
+    ];
+
+    function ptEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function loadPlanTiers() {
+      var host = document.getElementById('pt-list');
+      if (!host) return;
+      host.innerHTML = '<div class="loading-state"><span class="spinner"></span> Loading plan tiers…</div>';
+      apiGet('/tiers')
+        .then(function (tiers) {
+          var list = Array.isArray(tiers) ? tiers : ((tiers && tiers.data) || []);
+          var badge = document.getElementById('pt-badge');
+          if (badge) {
+            badge.textContent = list.length + ' tier' + (list.length === 1 ? '' : 's');
+            badge.className = 'pk-badge pk-ok';
+          }
+          renderPlanTiers(list);
+        })
+        .catch(function (e) {
+          host.innerHTML = '<p style="color:var(--text-secondary)">Could not load plan tiers: ' + ptEsc(e.message) + '</p>';
+          var badge = document.getElementById('pt-badge');
+          if (badge) { badge.textContent = 'error'; badge.className = 'pk-badge pk-missing'; }
+        });
+    }
+
+    function renderPlanTiers(tiers) {
+      var host = document.getElementById('pt-list');
+      if (!tiers.length) {
+        host.innerHTML = '<p style="color:var(--text-secondary)">No plan tiers are configured yet.</p>';
+        return;
+      }
+      var html = '';
+      tiers.forEach(function (t) {
+        html += '<div class="plan-tier-row" data-id="' + ptEsc(t.id) + '" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">'
+              + '<strong>' + ptEsc(t.name) + '</strong>'
+              + '<code style="font-size:.75rem">' + ptEsc(t.slug) + '</code></div>';
+        html += '<div class="pk-controls" style="flex-wrap:wrap;gap:8px">';
+        PLAN_NUM_FIELDS.forEach(function (f) {
+          var v = t[f[0]];
+          html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">' + ptEsc(f[1])
+                + '<input class="pk-input pt-field" data-field="' + f[0] + '" type="number" step="0.01" value="'
+                + ptEsc(v == null ? '' : v) + '"></label>';
+        });
+        html += '</div><div class="pk-controls" style="flex-wrap:wrap;gap:10px;margin-top:10px">';
+        PLAN_BOOL_FIELDS.forEach(function (f) {
+          html += '<label style="font-size:.78rem;display:flex;align-items:center;gap:5px">'
+                + '<input type="checkbox" class="pt-field" data-field="' + f[0] + '"' + (t[f[0]] ? ' checked' : '')
+                + '> ' + ptEsc(f[1]) + '</label>';
+        });
+        html += '</div><div style="margin-top:10px">'
+              + '<button class="btn btn-accent btn-sm" onclick="window.__ptSave(\'' + ptEsc(t.id) + '\')">Save tier</button>'
+              + '</div></div>';
+      });
+      host.innerHTML = html;
+    }
+
+    function ptSave(id) {
+      var row = document.querySelector('.plan-tier-row[data-id="' + id + '"]');
+      if (!row) return;
+      var body = {};
+      Array.prototype.forEach.call(row.querySelectorAll('.pt-field'), function (el) {
+        var f = el.getAttribute('data-field');
+        if (el.type === 'checkbox') body[f] = el.checked;
+        else body[f] = (el.value === '' ? null : Number(el.value));
+      });
+      var st = document.getElementById('pt-status');
+      if (st) st.textContent = 'Saving…';
+      apiPut('/tiers/' + id, body)
+        .then(function (t) {
+          if (st) st.textContent = 'Saved ' + ((t && t.name) || 'tier') + ' at ' + new Date().toLocaleTimeString();
+          loadPlanTiers();
+        })
+        .catch(function (e) { if (st) st.textContent = 'Save failed: ' + e.message; });
+    }
+
+    window.__ptLoad = loadPlanTiers;
+    window.__ptSave = ptSave;
+    loadPlanTiers();
 
     window.__emLoad = loadEmailSettings;
     window.__emLoadService = loadEmailServiceStatus;
