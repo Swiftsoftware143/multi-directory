@@ -275,10 +275,10 @@ function renderDashboard(){
     g('/deals?directory_id='+did+'&limit=5',function(deals){
       var dcount=deals&&deals.data?deals.data.length:0;
       var dtotal=deals&&deals.total!==undefined?deals.total:dcount;
-      g('/admin/reviews?directory_id='+did+'&limit=5',function(reviews){
+      g('/reviews?directory_id='+did+'&limit=5',function(reviews){
         var rcount=reviews&&reviews.data?reviews.data.length:0;
         var rtotal=reviews&&reviews.total!==undefined?reviews.total:rcount;
-        g('/admin/ad-zones?directory_id='+did,function(zones){
+        g('/directories/'+slug+'/ad-zones',function(zones){
           var zcount=zones&&zones.length?zones.length:0;
           var tier=(CUR_DIR&&CUR_DIR.tier)||'free';
           el.innerHTML=
@@ -434,7 +434,7 @@ function renderReviews(){
   var el=document.getElementById('pageContent');
   var did=CUR_DIR.id;
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
-  g('/admin/reviews?directory_id='+did,function(r){
+  g('/reviews?directory_id='+did,function(r){
     var data=r.data||r||[];
     el.innerHTML=
     '<div class="card-header"><h3>Reviews</h3></div>'+
@@ -450,7 +450,7 @@ function renderReviews(){
 }
 function deleteReview(id){
   if(!confirm('Delete this review?'))return;
-  dl('/admin/reviews/'+id,function(){toast('Review deleted','success');renderReviews();},function(){toast('Failed','error');renderReviews();});
+  dl('/reviews/'+id,function(){toast('Review deleted','success');renderReviews();},function(){toast('Failed','error');renderReviews();});
 }
 
 
@@ -546,7 +546,7 @@ function renderBranding(){
       '<div class="form-group"><label>Upload Logo</label><input type="file" id="br_logo_file" accept="image/png,image/jpeg,image/svg+xml,image/webp"></div>'+
       '<div class="form-group"><label>Upload Favicon</label><input type="file" id="br_favicon_file" accept="image/svg+xml,image/png,image/x-icon"></div>'+
     '</div>'+
-    '<div class="form-group"><label>Custom Font</label><input id="br_font" value="'+esc(b.font_family||'')+'" placeholder="e.g. Inter, Lato (Google Fonts)"></div>'+
+    '<div class="form-group"><label>Custom Font</label><input id="br_font" value="'+esc(b.heading_font||'')+'" placeholder="e.g. Inter, Lato (Google Fonts)"></div>'+
     '</div>'+
     '<div class="card"><div class="card-header"><h3>🔍 Preview</h3></div><div class="preview-section" id="brandingPreview" style="background:'+esc(b.background_color||'#f5f3ff')+'">'+
       '<h3 style="color:'+esc(b.primary_color||'#7c3aed')+'">Preview Heading</h3>'+
@@ -587,9 +587,10 @@ function saveBranding(){
     background_color:document.getElementById('br_bg').value,
     logo_url:document.getElementById('br_logo').value,
     favicon_url:document.getElementById('br_favicon').value,
-    font_family:document.getElementById('br_font').value
+    heading_font:document.getElementById('br_font').value,
+    body_font:document.getElementById('br_font').value
   };
-  pu('/admin/branding/'+CUR_DIR.id,data,function(){toast('Branding saved','success');},function(){toast('Failed to save branding','error');});
+  pu('/branding/'+CUR_DIR.id,data,function(){toast('Branding saved','success');},function(){toast('Failed to save branding','error');});
 }
 function uploadBrandingAsset(kind){
   var input=document.getElementById(kind==='favicon'?'br_favicon_file':'br_logo_file');
@@ -597,7 +598,7 @@ function uploadBrandingAsset(kind){
   if(!file){toast('Select a file to upload','warning');return;}
   var fd=new FormData();
   fd.append(kind,file);
-  fetch('/admin/branding/'+CUR_DIR.id+'/upload',{method:'POST',body:fd})
+  fetch('/branding/'+CUR_DIR.id+'/upload',{method:'POST',body:fd})
     .then(function(r){return r.json();})
     .then(function(d){
       if(d&&d.saved){
@@ -765,7 +766,7 @@ function renderMonetization(){
   var did=CUR_DIR.id;
   var slug=CUR_DIR.slug;
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
-  g('/admin/ad-zones?directory_id='+did,function(zones){
+  g('/directories/'+slug+'/ad-zones',function(zones){
     var data=zones||[];
     var tier=(CUR_DIR&&CUR_DIR.tier)||'free';
     el.innerHTML=
@@ -776,7 +777,7 @@ function renderMonetization(){
     '<div class="card"><div class="card-header"><h3>📢 Ad Zones</h3></div>'+
       (data.length===0?'<p style="color:var(--text-secondary)">No ad zones configured.</p>':
       data.map(function(z){
-        return '<p><strong>'+esc(z.name||'Zone')+'</strong> — '+esc(z.position||'')+' — '+(z.active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</p>';
+        return '<p><strong>'+esc(z.name||'Zone')+'</strong> — '+esc(z.zone_key||'')+' — '+'<span class="badge '+(z.status==='available'?'inactive':'active')+'">'+esc(z.status||'available')+'</span>'+'</p>';
       }).join(''))+
     '</div>'+
     '<div class="card"><div class="card-header"><h3>⭐ Sponsored Listings</h3></div>'+

@@ -37,20 +37,28 @@ pub async fn list_reviews(
     let business_id = params
         .get("business_id")
         .and_then(|v| Uuid::parse_str(v).ok());
+    // Optional directory scoping (B91 — owner portal dashboard + Reviews moderation ask for a
+    // single directory's reviews). `reviews.directory_id` is a real column + index, so no join
+    // is required.
+    let directory_id = params
+        .get("directory_id")
+        .and_then(|v| Uuid::parse_str(v).ok());
 
     let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) ",
+        "SELECT COUNT(*) FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) AND (\x243::uuid IS NULL OR directory_id = \x243 OR business_id IN (SELECT id FROM businesses WHERE directory_id = \x243)) ",
     )
     .bind(status_filter)
     .bind(business_id)
+    .bind(directory_id)
     .fetch_one(&s.db)
     .await?;
 
     let reviews = sqlx::query_as::<_, Review>(
-        "SELECT * FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) ORDER BY created_at DESC LIMIT \x243 OFFSET \x244 ",
+        "SELECT * FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) AND (\x243::uuid IS NULL OR directory_id = \x243 OR business_id IN (SELECT id FROM businesses WHERE directory_id = \x243)) ORDER BY created_at DESC LIMIT \x244 OFFSET \x245 ",
     )
     .bind(status_filter)
     .bind(business_id)
+    .bind(directory_id)
     .bind(per_page)
     .bind(offset)
     .fetch_all(&s.db)
