@@ -1516,6 +1516,25 @@ pub fn create_router(s: AppState) -> Router {
             get(coreswift_integration_handler::coreswift_connection_lists)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Card B111: native per-entity sync — push ONE record or ALL of a kind in a directory,
+        // with resumable per-record state. Directory-admin scoped (claims_from_headers + assert
+        // directory admin, like the export routes), so the admin panel drives it with its own token.
+        .route(
+            "/integrations/coreswift/sync/kinds",
+            get(entity_sync::sync_kinds),
+        )
+        .route(
+            "/integrations/coreswift/sync/state",
+            get(entity_sync::sync_state),
+        )
+        .route(
+            "/integrations/coreswift/sync/push",
+            post(entity_sync::sync_push),
+        )
+        .route(
+            "/integrations/coreswift/sync/push-all",
+            post(entity_sync::sync_push_all),
+        )
         // Round 5 T0 — named keys: delete ONE key by id, and promote one key to default.
         .route(
             "/provider-keys/id/:id",

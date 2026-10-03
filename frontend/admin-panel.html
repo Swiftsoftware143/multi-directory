@@ -531,6 +531,7 @@
         <a href="#audience-section">👥 Audience Lists</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
         <a href="#entity-export-section">📦 Complete Export</a>
+        <a href="#entity-sync-section">🔗 CoreSwift Sync</a>
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
         <a href="#loyalty-programme-section">⭐ Loyalty Programmes</a>
         <a href="#transfers-section">🔄 Transfers</a>
@@ -1220,6 +1221,54 @@
           “Complete” is the whole live catalog: every table whose foreign key points at the record.
           Scoped to what you administer — an id you may not read returns a plain “not found”.
         </p>
+      </div>
+
+      <!-- B111 — native per-entity CoreSwift sync: push ONE record or ALL of a kind in a directory,
+           with honest per-record state (synced / error / not connected). Resumable and idempotent. -->
+      <div class="feature-card" id="entity-sync-section">
+        <h3>🔗 CoreSwift Sync — every entity, one record at a time</h3>
+        <p class="feature-subtitle">
+          Push a <b>business</b>, a <b>supplier</b> or a <b>customer/user</b> into the connected
+          CoreSwift account — <b>one record</b> or <b>every record of a kind in a directory</b>.
+          Each record keeps its own honest state (<b>synced</b>, <b>error</b>, <b>not connected</b>),
+          when it last pushed and why it failed, so a run is <b>resumable</b> — a synced record is
+          skipped unless you tick <b>Force</b>. Nothing is faked: if CoreSwift is not connected for the
+          directory, or the hub refuses, the row says so.
+        </p>
+        <div class="em-grid">
+          <div class="em-field"><label>Entity type</label>
+            <select id="cs-sync-kind">
+              <option value="business">Business</option>
+              <option value="supplier">Supplier</option>
+              <option value="customer">Customer / user</option>
+            </select>
+          </div>
+          <div class="em-field"><label>Directory</label>
+            <select id="cs-sync-dir"></select>
+          </div>
+          <div class="em-field"><label>Only show</label>
+            <select id="cs-sync-filter">
+              <option value="">All statuses</option>
+              <option value="synced">Synced</option>
+              <option value="error">Error</option>
+              <option value="not_configured">Not connected</option>
+              <option value="pending">Never pushed</option>
+            </select>
+          </div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__csSyncLoad()">🔄 Load records</button>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__csSyncPushAll(false)">⬆ Push all (skip synced)</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__csSyncPushAll(true)">⟳ Push all (force)</button>
+          <label style="margin-left:8px;font-size:.8rem"><input type="checkbox" id="cs-sync-force"> Force single push</label>
+          <span class="feature-status" id="cs-sync-msg"></span>
+        </div>
+        <div style="overflow:auto;max-height:360px">
+          <table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead><tr><th>Entity</th><th>Status</th><th>CoreSwift contact</th><th>Last push</th><th>Error</th><th></th></tr></thead>
+            <tbody id="cs-sync-rows"><tr><td colspan="6" style="color:var(--text-muted,#8aa0b8)">Pick a directory and click “Load records”.</td></tr></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- kanban t_63ffc2de — per-city audience lists, campaign sequences, media.
@@ -2121,6 +2170,8 @@
       if (a && !a.value) a.innerHTML = dirOptionsHtml();
       var b = document.getElementById('dm-directory');
       if (b && !b.value) b.innerHTML = dirOptionsHtml();
+      var c = document.getElementById('cs-sync-dir');
+      if (c && !c.value) c.innerHTML = dirOptionsHtml();
     };
 
     // ===== 🌐 Domains, subdomains & subfolders per directory (Feature 2) =====
@@ -3672,6 +3723,73 @@
       if (!did) { exStatus('Pick a directory for the bulk export.', false); return; }
       exDownload('/export/bulk/' + encodeURIComponent(kind) + '?directory_id=' + encodeURIComponent(did) + '&format=' + format,
         'bulk_' + kind + '_' + did + '.' + format, format);
+    };
+
+    // ===== 🔗 Native per-entity CoreSwift sync (B111) =====
+    // Push ONE record or ALL of a kind in a directory; each record keeps its own honest state, so a
+    // run is resumable and a synced record is skipped unless forced. No SQL, no script.
+    window.__csSyncInit = function () {
+      var sel = document.getElementById('cs-sync-dir');
+      if (!sel || sel.options.length) return;
+      sel.innerHTML = (directories || []).map(function (d) {
+        return '<option value="' + d.id + '">' + pkEsc((d.name || d.slug) + ' (' + (d.slug || '') + ')') + '</option>';
+      }).join('');
+    };
+    function csSyncStatus(msg, ok) {
+      var el = document.getElementById('cs-sync-msg');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok === false ? '#f87171' : '#22c55e';
+    }
+    window.__csSyncLoad = function () {
+      var kind = document.getElementById('cs-sync-kind').value;
+      var did = (document.getElementById('cs-sync-dir') || {}).value;
+      var filter = (document.getElementById('cs-sync-filter') || {}).value || '';
+      if (!did) { csSyncStatus('Pick a directory first.', false); return; }
+      csSyncStatus('loading…');
+      var q = '/integrations/coreswift/sync/state?kind=' + encodeURIComponent(kind) + '&directory_id=' + encodeURIComponent(did);
+      if (filter) q += '&status=' + encodeURIComponent(filter);
+      apiGet(q).then(function (res) {
+        var rows = res.rows || [];
+        var tb = document.getElementById('cs-sync-rows');
+        if (!tb) return;
+        if (!rows.length) {
+          tb.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted,#8aa0b8)">No records match.</td></tr>';
+        } else {
+          tb.innerHTML = rows.map(function (r) {
+            var cid = r.coreswift_contact_id || '';
+            var when = r.last_pushed_at ? String(r.last_pushed_at).replace('T', ' ').slice(0, 19) : '';
+            return '<tr><td>' + pkEsc(r.label || r.id) + '</td>' +
+              '<td>' + pkEsc(r.status || 'pending') + '</td>' +
+              '<td style="font-size:.72rem">' + pkEsc(cid) + '</td>' +
+              '<td style="font-size:.75rem">' + pkEsc(when) + '</td>' +
+              '<td style="font-size:.72rem;color:#f87171">' + pkEsc(r.last_error || '') + '</td>' +
+              '<td><button class="btn btn-ghost btn-sm" type="button" onclick="window.__csSyncPush(\'' + r.id + '\')">Push</button></td></tr>';
+          }).join('');
+        }
+        var c = res.counts || {};
+        csSyncStatus('loaded ' + rows.length + ' · synced ' + (c.synced || 0) + ', error ' + (c.error || 0) +
+          ', not connected ' + (c.not_configured || 0) + ', never pushed ' + (c.pending || 0), true);
+      }).catch(function (e) { csSyncStatus('load error: ' + e.message, false); });
+    };
+    window.__csSyncPush = function (id) {
+      var kind = document.getElementById('cs-sync-kind').value;
+      var force = !!(document.getElementById('cs-sync-force') || {}).checked;
+      csSyncStatus('pushing…');
+      apiPost('/integrations/coreswift/sync/push', { kind: kind, id: id, force: force }).then(function (r) {
+        csSyncStatus((r.status || '') + (r.error ? ': ' + r.error : ''), r.success);
+        window.__csSyncLoad();
+      }).catch(function (e) { csSyncStatus('push error: ' + e.message, false); });
+    };
+    window.__csSyncPushAll = function (force) {
+      var kind = document.getElementById('cs-sync-kind').value;
+      var did = (document.getElementById('cs-sync-dir') || {}).value;
+      if (!did) { csSyncStatus('Pick a directory first.', false); return; }
+      csSyncStatus('pushing batch…');
+      apiPost('/integrations/coreswift/sync/push-all', { kind: kind, directory_id: did, force: !!force, limit: 50 }).then(function (r) {
+        csSyncStatus('pushed ' + r.pushed + ', failed ' + r.failed + ', not connected ' + r.not_configured + ' of ' + r.attempted, r.failed === 0);
+        window.__csSyncLoad();
+      }).catch(function (e) { csSyncStatus('push-all error: ' + e.message, false); });
     };
 
     window.__daLoad = daLoad;

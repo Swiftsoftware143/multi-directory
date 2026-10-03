@@ -175,3 +175,5 @@ pub mod content_research;
 pub use content_research::*;
 pub mod entity_export;
 pub use entity_export::*;
+pub mod entity_sync;
+pub use entity_sync::*;
