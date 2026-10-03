@@ -865,5 +865,7 @@ function showToast(msg,err){const t=document.getElementById('toast');t.textConte
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 init();
 </script>
+<script src="/admin-context-bar.js"></script>
+<script>if (window.MDContextBar) MDContextBar.init({});</script>
 </body>
 </html>
