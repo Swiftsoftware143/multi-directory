@@ -14,6 +14,30 @@ fn h(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Shared public page-shell chrome (card B89): the entry-point bar and the
+/// inline newsletter signup, on every B2B public page too, reusing the exact
+/// markup/CSS/JS of the subfolder shell so the surfaces cannot drift.
+fn shell_chrome() -> String {
+    format!(
+        "<style>\
+.zh-topbar{{background:#111827;color:#e5e7eb;font-size:13px}}\
+.zh-topbar .inner{{max-width:1200px;margin:0 auto;padding:8px 20px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}}\
+.zh-topbar .zh-loc{{font-weight:600;opacity:.85}}\
+.zh-topbar nav{{display:flex;flex-wrap:wrap;gap:8px 18px}}\
+.zh-topbar nav a{{color:#e5e7eb;font-weight:600;text-decoration:none;white-space:nowrap;font-size:13px}}\
+.zh-topbar nav a:hover{{color:#fff;text-decoration:underline}}\
+.zh-newsletter{{max-width:1200px;margin:14px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px}}\
+.zh-newsletter .zh-nl-label{{font-weight:600;color:#1a1a2e}}\
+.zh-newsletter input[type=email]{{flex:1 1 220px;min-width:180px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}}\
+.zh-newsletter button{{background:#f27f2f;color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}}\
+.zh-newsletter .zh-nl-msg{{font-size:13px;color:#374151;flex-basis:100%}}\
+</style>{topbar}{newsletter}{js}",
+        topbar = crate::handlers::subfolder::public_topbar("ZaarHub", None),
+        newsletter = crate::handlers::subfolder::newsletter_block(None),
+        js = crate::handlers::subfolder::NEWSLETTER_JS,
+    )
+}
+
 /// Shared footer HTML
 async fn footer_html(pool: &sqlx::PgPool) -> String {
     let (site_name, copyright_year): (String, String) = sqlx::query_as(
@@ -205,7 +229,9 @@ pub async fn render_rfq_marketplace(
 <style>{css}</style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <body>
+{shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">B2B</span></a><nav><a href="/b2b-marketplace.html">Marketplace</a><a href="/coop-hub">Co-op Hub</a><a href="/lead-exchange">Lead Exchange</a></nav></div></header>
 <div class="hero"><h1>📋 <span>RFQ</span> Marketplace</h1><p>Businesses post what they need. Suppliers browse and bid. A B2B lead exchange that Google can't replicate.</p></div>
 <div class="container">
@@ -220,6 +246,7 @@ pub async fn render_rfq_marketplace(
 </body>
 </html>"#,
         css = SHARED_CSS,
+        shell = shell_chrome(),
         content = content,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
@@ -314,7 +341,9 @@ pub async fn render_coop_hub(State(state): State<AppState>) -> impl axum::respon
 <style>{css}</style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <body>
+{shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">B2B</span></a><nav><a href="/rfq-marketplace">RFQ</a><a href="/b2b-marketplace.html">Marketplace</a><a href="/lead-exchange">Lead Exchange</a></nav></div></header>
 <div class="hero"><h1>🤝 <span>Co-op</span> Buying Hub</h1><p>Pool purchasing power with other businesses. Group buying = lower prices, better terms. A marketplace Google can't touch.</p></div>
 <div class="container">
@@ -329,6 +358,7 @@ pub async fn render_coop_hub(State(state): State<AppState>) -> impl axum::respon
 </body>
 </html>"#,
         css = SHARED_CSS,
+        shell = shell_chrome(),
         content = content,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
@@ -428,7 +458,9 @@ pub async fn render_lead_exchange(
 <style>{css}</style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <body>
+{shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">B2B</span></a><nav><a href="/rfq-marketplace">RFQ</a><a href="/coop-hub">Co-op Hub</a><a href="/b2b-marketplace.html">Marketplace</a></nav></div></header>
 <div class="hero"><h1>📬 <span>Lead</span> Exchange</h1><p>Share leads you can't fulfill. Claim leads others can't handle. A referral economy built into the directory — untouchable by Google.</p></div>
 <div class="container">
@@ -443,6 +475,7 @@ pub async fn render_lead_exchange(
 </body>
 </html>"#,
         css = SHARED_CSS,
+        shell = shell_chrome(),
         content = content,
         footer = footer,
         cookie_banner = COOKIE_BANNER,

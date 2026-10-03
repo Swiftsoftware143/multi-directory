@@ -15,6 +15,33 @@ fn h(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Shared public page-shell chrome (card B89): the entry-point bar and the
+/// inline newsletter signup, rendered on every SSR public page. Reuses the
+/// exact same markup/CSS/JS as the subfolder shell so the surfaces cannot
+/// drift; the styles are injected inline here because these pages carry their
+/// own <style> block rather than the subfolder stylesheet.
+fn shell_chrome(slug: Option<&str>, label: &str) -> String {
+    let dir_label = slug.map(|s| (s, label));
+    format!(
+        "<style>\
+.zh-topbar{{background:#111827;color:#e5e7eb;font-size:13px}}\
+.zh-topbar .inner{{max-width:1200px;margin:0 auto;padding:8px 20px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}}\
+.zh-topbar .zh-loc{{font-weight:600;opacity:.85}}\
+.zh-topbar nav{{display:flex;flex-wrap:wrap;gap:8px 18px}}\
+.zh-topbar nav a{{color:#e5e7eb;font-weight:600;text-decoration:none;white-space:nowrap;font-size:13px}}\
+.zh-topbar nav a:hover{{color:#fff;text-decoration:underline}}\
+.zh-newsletter{{max-width:1200px;margin:14px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px}}\
+.zh-newsletter .zh-nl-label{{font-weight:600;color:#1a1a2e}}\
+.zh-newsletter input[type=email]{{flex:1 1 220px;min-width:180px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}}\
+.zh-newsletter button{{background:#f27f2f;color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}}\
+.zh-newsletter .zh-nl-msg{{font-size:13px;color:#374151;flex-basis:100%}}\
+</style>{topbar}{newsletter}{js}",
+        topbar = crate::handlers::subfolder::public_topbar("ZaarHub", dir_label),
+        newsletter = crate::handlers::subfolder::newsletter_block(dir_label),
+        js = crate::handlers::subfolder::NEWSLETTER_JS,
+    )
+}
+
 /// Build footer HTML from DB — loads site config + legal pages marked show_in_footer
 async fn footer_html(pool: &sqlx::PgPool) -> String {
     let (site_name, copyright_year): (String, String) = sqlx::query_as(
@@ -323,7 +350,9 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <body>
+{shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub-city.html" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:14px;font-weight:500">🔍 Search</a></nav></div></header>
 {hero}
 {city_picks}
@@ -342,6 +371,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         cookie_banner = COOKIE_BANNER,
         listings = listings_html,
         schema = schema,
+        shell = shell_chrome(Some(&slug), &city_name),
     ))
 }
 
@@ -490,7 +520,9 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <body>
+{shell}
 <header><span class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></span></header>
 <div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 10 Florida cities with thousands of listings, reviews, and deals.</p></div>
 {picks}
@@ -503,6 +535,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         cities = cities_html,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
+        shell = shell_chrome(None, ""),
     ))
 }
 
@@ -739,7 +772,9 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <body>
+{shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub/{slug}">← Back to {city_name}</a></nav></div></header>
 <div class="page">
 <div class="breadcrumb"><a href="/zaarhub">Cities</a> › <a href="/zaarhub/{slug}">{city_name}</a> › {name}</div>
@@ -773,6 +808,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         offers_html = offers_html,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
+        shell = shell_chrome(Some(&slug), &city_name),
     ))
 }
 
@@ -840,7 +876,9 @@ footer a{{color:#f27f2f;text-decoration:none}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <body>
+{shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
 <div class="page">{content}</div>
 {footer}
@@ -851,5 +889,6 @@ footer a{{color:#f27f2f;text-decoration:none}}
         content = content,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
+        shell = shell_chrome(None, ""),
     ))
 }

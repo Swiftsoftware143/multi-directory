@@ -500,6 +500,20 @@ header{background:var(--dark);color:#fff;padding:16px 24px}
 header .inner{max-width:1120px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:16px}
 header .logo{font-size:20px;font-weight:800;color:#fff}
 header nav a{color:rgba(255,255,255,.8);font-size:14px;margin-left:18px}
+/* ── Shared public page-shell: entry points + inline newsletter (card B89) ── */
+.zh-topbar{background:#111827;color:#e5e7eb;font-size:13px}
+.zh-topbar .inner{max-width:1120px;margin:0 auto;padding:8px 24px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.zh-topbar .zh-loc{font-weight:600;opacity:.85}
+.zh-topbar nav{display:flex;flex-wrap:wrap;gap:8px 18px}
+.zh-topbar nav a{color:#e5e7eb;font-weight:600;text-decoration:none;white-space:nowrap}
+.zh-topbar nav a:hover{color:#fff;text-decoration:underline}
+.zh-newsletter{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--primary-light,#eef2ff);border:1px solid var(--border,#e5e7eb);border-radius:12px;padding:12px 16px;margin:0 0 24px}
+.zh-newsletter .zh-nl-label{font-weight:600;color:var(--dark,#111827)}
+.zh-newsletter input[type=email]{flex:1 1 220px;min-width:180px;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
+.zh-newsletter button{background:var(--primary,#4f46e5);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer}
+.zh-newsletter .zh-nl-msg{font-size:13px;color:#374151;flex-basis:100%}
+.zh-fnav{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:10px}
+.zh-fnav a{color:var(--primary-light,#c7d2fe)}
 .wrap{max-width:1120px;margin:0 auto;padding:32px 24px}
 .crumbs{font-size:13px;color:var(--text-light);margin-bottom:18px}
 .crumbs a{color:var(--link)}
@@ -524,6 +538,70 @@ footer{background:var(--dark);color:rgba(255,255,255,.7);padding:28px 24px;margi
 footer a{color:var(--primary-light)}
 "#;
 
+/// One shared entry-point bar for EVERY public page (card B89): the customer
+/// sign-in/sign-up, the business owner and supplier entries, browse, and
+/// change-city. Every href is a real destination; editing this one function
+/// changes the chrome on every server-rendered public page at once.
+pub(crate) fn public_topbar(site_name: &str, dir_label: Option<(&str, &str)>) -> String {
+    let browse = match dir_label {
+        Some((slug, _)) => format!("/{}/businesses", h(slug)),
+        None => "/".to_string(),
+    };
+    format!(
+        "<div class=\"zh-topbar\"><div class=\"inner\">\
+<span class=\"zh-loc\">\u{1f4cd} {site}</span>\
+<nav>\
+<a href=\"{browse}\">\u{1f50d} Browse businesses</a>\
+<a href=\"/visitor\">\u{1f464} Customer sign in / sign up</a>\
+<a href=\"/portal\">\u{1f3ea} Business login / claim your listing</a>\
+<a href=\"/distributor\">\u{1f4e6} Supplier login</a>\
+<a href=\"/\">\u{1f5fa}\u{fe0f} Change city</a>\
+</nav></div></div>",
+        site = h(site_name),
+        browse = browse,
+    )
+}
+
+/// Inline newsletter signup — on EVERY public page, not just the footer
+/// (card B89). Posts to the per-directory subscriber endpoint when the page
+/// belongs to a city, and to the network/global endpoint otherwise.
+pub(crate) fn newsletter_block(dir_label: Option<(&str, &str)>) -> String {
+    let endpoint = match dir_label {
+        Some((slug, _)) => format!("/api/v1/directories/{}/subscribers", h(slug)),
+        None => "/api/v1/directories/newsletter".to_string(),
+    };
+    format!(
+        "<form class=\"zh-newsletter\" data-endpoint=\"{endpoint}\">\
+<label class=\"zh-nl-label\" for=\"zh-nl-email\">\u{1f4e7} Get local news &amp; deals by email</label>\
+<input id=\"zh-nl-email\" type=\"email\" name=\"email\" required placeholder=\"you@example.com\" aria-label=\"Email address\">\
+<button type=\"submit\">Subscribe</button>\
+<span class=\"zh-nl-msg\" role=\"status\" aria-live=\"polite\"></span>\
+</form>",
+        endpoint = endpoint,
+    )
+}
+
+/// Client-side handler for the inline newsletter form. One copy per page.
+pub(crate) const NEWSLETTER_JS: &str = r#"<script>
+(function(){
+  function bind(f){
+    f.addEventListener('submit', function(e){
+      e.preventDefault();
+      var input=f.querySelector('input[type=email]');
+      var msg=f.querySelector('.zh-nl-msg');
+      if(!input || !input.value){ return; }
+      msg.textContent='Subscribing\u2026';
+      fetch(f.getAttribute('data-endpoint'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:input.value})})
+        .then(function(r){ if(!r.ok){ throw new Error('HTTP '+r.status); } return r.json(); })
+        .then(function(){ msg.textContent='\u2705 Thanks \u2014 you are subscribed.'; f.reset(); })
+        .catch(function(){ msg.textContent='\u26a0\ufe0f That did not work \u2014 please try again.'; });
+    });
+  }
+  var forms=document.querySelectorAll('form.zh-newsletter');
+  for(var i=0;i<forms.length;i++){ bind(forms[i]); }
+})();
+</script>"#;
+
 fn shell_start(
     seo: &Seo,
     site_name: &str,
@@ -535,7 +613,7 @@ fn shell_start(
             "<nav><a href=\"/{}\">{}</a><a href=\"/{}/businesses\">All businesses</a><a href=\"/\">Home</a></nav>",
             h(slug), h(name), h(slug)
         ),
-        None => "<nav><a href=\"/\">Home</a></nav>".to_string(),
+        None => "<nav><a href=\"/\">Home</a><a href=\"/zaarhub\">All cities</a></nav>".to_string(),
     };
     format!(
         r#"<!DOCTYPE html>
@@ -545,23 +623,37 @@ fn shell_start(
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 {head}<style>{theme_root}
 {css}</style>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 </head>
 <body>
+{topbar}
 <header><div class="inner"><a class="logo" href="/">{site}</a>{nav}</div></header>
-<div class="wrap">"#,
+<div class="wrap">
+{newsletter}"#,
         head = head_html(seo, site_name),
         theme_root = theme.css_block(),
         css = PAGE_CSS,
         site = h(site_name),
         nav = nav,
+        topbar = public_topbar(site_name, dir_label),
+        newsletter = newsletter_block(dir_label),
     )
 }
 
 fn shell_end(site_name: &str) -> String {
     format!(
-        "</div><footer>© {} {} — local business directory</footer></body></html>",
-        chrono::Utc::now().format("%Y"),
-        h(site_name)
+        "{js}</div><footer><div class=\"zh-fnav\">\
+<a href=\"/\">Home</a>\
+<a href=\"/zaarhub\">All cities</a>\
+<a href=\"/visitor\">Customer sign in</a>\
+<a href=\"/portal\">Business login</a>\
+<a href=\"/distributor\">Supplier login</a>\
+<a href=\"/legal/terms\">Terms</a>\
+<a href=\"/legal/privacy\">Privacy</a></div>\
+<p>\u{00a9} {year} {site} \u{2014} local business directory</p></footer></body></html>",
+        js = NEWSLETTER_JS,
+        year = chrono::Utc::now().format("%Y"),
+        site = h(site_name)
     )
 }
 

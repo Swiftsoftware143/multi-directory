@@ -3079,8 +3079,11 @@ async fn auth_guard(
         || path == "/listings"
         || path.starts_with("/d/")
         || path.starts_with("/reviews/stats/")
-        // Public newsletter signup — no auth needed
-        || (path.contains("/subscribers") && req.method() == "POST")
+        // Public newsletter signup — no auth needed. Both the per-directory
+        // subscriber path and the network/global newsletter path accept an
+        // anonymous POST (card B89: signup is offered on every public page).
+        || ((path.contains("/subscribers") || path == "/directories/newsletter")
+            && req.method() == "POST")
         // Public directory search suggestions
         || path.ends_with("/suggestions")
         // Public directory listings — anonymous browsing of a city directory.
