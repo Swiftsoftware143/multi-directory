@@ -15,6 +15,7 @@ mod config;
 mod db;
 mod error;
 mod handlers;
+mod merge_fields;
 mod models;
 mod probe_harness;
 mod providers;

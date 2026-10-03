@@ -89,6 +89,19 @@ pub async fn save_legal_page(
     State(state): State<AppState>,
     Json(payload): Json<LegalPagePayload>,
 ) -> ApiResult<Json<Value>> {
+    // B119: the guard that stops a raw brace reaching a visitor. An unknown field is refused
+    // on save with a plain-English message, in the same place email templates already guard.
+    let unknown = crate::merge_fields::unknown_fields(&[&payload.title, &payload.content]);
+    if !unknown.is_empty() {
+        let known = crate::merge_fields::names().join(", ");
+        return Err(AppError::BadRequest(format!(
+            "Unknown merge field(s): {}. A legal page may only use fields the platform can fill: {}. \
+             Remove the extra braces — an unknown field would show blank to visitors.",
+            unknown.join(", "),
+            known
+        )));
+    }
+
     // B95: slug is unique PER TENANT, so both the lookup and the insert are tenant-scoped.
     let tenant_id = crate::system_tenant::system_tenant_uuid();
     let existing =
@@ -148,6 +161,46 @@ pub async fn delete_legal_page(
     Ok(Json(
         json!({ "deleted": result.rows_affected() > 0, "slug": slug }),
     ))
+}
+
+// ── Merge fields (B119) ──
+
+/// GET /api/v1/zaarhub/admin/merge-fields — the ONE shared vocabulary, for every editor's
+/// pick-list and its plain-English help text.
+pub async fn list_merge_fields() -> ApiResult<Json<Value>> {
+    let fields: Vec<Value> = crate::merge_fields::VOCABULARY
+        .iter()
+        .map(|(name, description)| json!({ "name": name, "description": description }))
+        .collect();
+    Ok(Json(json!({ "fields": fields })))
+}
+
+#[derive(Deserialize)]
+pub struct MergePreviewPayload {
+    pub content: String,
+    /// Optional: preview as a specific city/directory. Absent = the network (platform) scope.
+    #[serde(default)]
+    pub directory_id: Option<Uuid>,
+}
+
+/// POST /api/v1/zaarhub/admin/merge-fields/preview — render a template with the REAL values
+/// for a directory (or the network), so the author sees what a visitor will see.
+pub async fn preview_merge_fields(
+    State(state): State<AppState>,
+    Json(payload): Json<MergePreviewPayload>,
+) -> ApiResult<Json<Value>> {
+    let ctx = match payload.directory_id {
+        Some(id) => crate::merge_fields::MergeContext::for_directory(&state.db, id).await,
+        None => crate::merge_fields::MergeContext::for_network(&state.db).await,
+    };
+    let rendered = crate::merge_fields::render(&payload.content, &ctx);
+    let unknown = crate::merge_fields::unknown_fields(&[payload.content.as_str()]);
+    Ok(Json(json!({
+        "html": rendered.text,
+        "used": rendered.used,
+        "missing": rendered.missing,
+        "unknown": unknown,
+    })))
 }
 
 // ── Site Config ──

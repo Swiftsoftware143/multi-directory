@@ -803,6 +803,13 @@ pub async fn render_legal_page(
         }
     };
 
+    // B119: resolve merge fields at render time, per directory/city, so ONE template serves
+    // many cities. Network-scoped (system tenant) pages inherit the platform identity.
+    // `render()` never lets an unresolved token reach the visitor as raw braces.
+    let ctx = crate::merge_fields::MergeContext::for_network(&state.db).await;
+    let title = crate::merge_fields::render(&title, &ctx).text;
+    let content = crate::merge_fields::render(&content, &ctx).text;
+
     let footer = footer_html(&state.db).await;
     axum::response::Html(format!(
         r#"<!DOCTYPE html>

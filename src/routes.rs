@@ -1824,6 +1824,17 @@ pub fn create_router(s: AppState) -> Router {
                 .delete(zaarhub_admin::delete_legal_page)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // B119: shared merge-field vocabulary + real-value preview for every editor.
+        .route(
+            "/zaarhub/admin/merge-fields",
+            get(zaarhub_admin::list_merge_fields)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/zaarhub/admin/merge-fields/preview",
+            post(zaarhub_admin::preview_merge_fields)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route(
             "/zaarhub/admin/config",
             get(zaarhub_admin::get_site_config)

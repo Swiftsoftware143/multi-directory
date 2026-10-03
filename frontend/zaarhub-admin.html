@@ -277,7 +277,20 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
           <input type="checkbox" id="ed-footer"> Show in Footer
         </label>
       </div>
-      <div class="form-group"><label>Content (HTML)</label><textarea name="content" id="ed-content" required></textarea></div>
+      <div class="form-group">
+        <label>Content (HTML)</label>
+        <div id="mf-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px 10px;background:#f1f5f9;border:1px solid var(--border);border-radius:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--text-muted)">Merge fields</span>
+          <select id="mf-select" style="font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;max-width:240px">
+            <option value="">Loading…</option>
+          </select>
+          <button type="button" class="btn secondary small" onclick="insertMergeField()">Insert</button>
+          <button type="button" class="btn secondary small" onclick="previewMergeContent()">Preview</button>
+          <span style="font-size:11px;color:var(--text-muted)">≈ resolves to this city’s own name and colours — one template, many cities</span>
+        </div>
+        <textarea name="content" id="ed-content" required></textarea>
+        <div id="mf-preview" style="display:none;margin-top:8px;padding:12px;border:1px dashed var(--border);border-radius:8px;background:#fff;font-size:14px;max-height:220px;overflow:auto"></div>
+      </div>
       <div class="actions" style="justify-content:space-between">
         <button type="button" class="btn danger small" id="btn-delete" style="display:none" onclick="deletePage()">Delete Page</button>
         <div style="display:flex;gap:8px">
@@ -321,7 +334,7 @@ let popCityLatLng = {};
 let queueSnap = { items: [], counts: {} };
 let popDirectoryId = '';
 
-async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey();loadPopDirectories();
+async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey();loadPopDirectories();loadMergeFields();
   const cqWhen=document.getElementById('cq-when');
   if(cqWhen&&!cqWhen.value)cqWhen.value=cqDefaultWhen();
   const cqForm=document.getElementById('queue-form');
@@ -413,6 +426,51 @@ async function openEditor(slug){
   }
   document.getElementById('editor-overlay').classList.add('active')
 }
+// ── Merge fields (B119): one vocabulary, inserted into any editor, previewed with real values.
+let MF_FIELDS = [];
+async function loadMergeFields() {
+  const sel = document.getElementById('mf-select');
+  if (!sel) return;
+  try {
+    const r = await fetch(`${API}/merge-fields`);
+    const d = await r.json();
+    MF_FIELDS = d.fields || [];
+    sel.innerHTML = MF_FIELDS.map(f => `<option value="${esc(f.name)}">${esc(f.name)} — ${esc(f.description)}</option>`).join('')
+      || '<option value="">No fields</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">Unavailable</option>';
+  }
+}
+function insertMergeField() {
+  const sel = document.getElementById('mf-select');
+  const ta = document.getElementById('ed-content');
+  const name = sel && sel.value;
+  if (!name || !ta) return;
+  const token = '{' + name + '}';
+  const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? ta.value.length;
+  ta.value = ta.value.slice(0, s) + token + ta.value.slice(e);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = s + token.length;
+}
+async function previewMergeContent() {
+  const ta = document.getElementById('ed-content');
+  const box = document.getElementById('mf-preview');
+  if (!ta || !box) return;
+  box.style.display = 'block';
+  box.innerHTML = '<span style="color:var(--text-muted)">Rendering…</span>';
+  try {
+    const r = await fetch(`${API}/merge-fields/preview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: ta.value })
+    });
+    const d = await r.json();
+    const warn = (d.missing && d.missing.length)
+      ? `<div style="margin-bottom:8px;padding:6px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px">Blank for this directory: ${d.missing.map(esc).join(', ')} — set it, or remove it.</div>` : '';
+    box.innerHTML = warn + (d.html || '');
+  } catch (e) {
+    box.innerHTML = '<span style="color:#dc2626">Preview failed.</span>';
+  }
+}
 function closeEditor(){document.getElementById('editor-overlay').classList.remove('active')}
 document.getElementById('editor-form').addEventListener('submit',async e=>{
   e.preventDefault();
@@ -421,7 +479,7 @@ document.getElementById('editor-form').addEventListener('submit',async e=>{
     is_published:document.getElementById('ed-published').checked,show_in_footer:document.getElementById('ed-footer').checked};
   try{const r=await fetch(`${API}/legal`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.ok){showToast('Page saved ✓');closeEditor();loadLegalPages()}
-    else showToast('Save failed',true)}
+    else {let m='Save failed';try{const er=await r.json();if(er&&er.message)m=er.message}catch(_){}showToast(m,true)}}
   catch(e){showToast('Save failed',true)}
 })
 async function deletePage(){
