@@ -115,7 +115,6 @@ pub const RESERVED_TOP_LEVEL: &[&str] = &[
     "admin-panel.html",
     "admin-ops",
     "admin-ops.html",
-    "admin-seo.js",
     "admin-dashboard.html",
     "admin-login.html",
     "login",
