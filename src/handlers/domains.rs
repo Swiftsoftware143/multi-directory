@@ -37,6 +37,12 @@ use crate::AppState;
 /// `domain_mappings` (the plain table), `ins` (the INSERT … RETURNING CTE) and `upd` (the
 /// UPDATE … RETURNING CTE) — so the three expansions are byte-identical outside that one token,
 /// exactly what the old `SELECT_MAPPINGS.replace("FROM domain_mappings dm", …)` did at run time.
+///
+/// CAVEAT (the 500 this fixes): the expansion aliases its FROM target `dm`, so callers MUST NOT
+/// reference the CTE name (`ins`/`upd`) anywhere outside the CTE itself — a `WHERE dm.id = ins.id`
+/// after the expansion is `invalid reference to FROM-clause entry`, rejected by PostgreSQL before
+/// parse. `FROM ins dm` / `FROM upd dm` already restricts to the single RETURNING row, so no outer
+/// predicate is needed.
 macro_rules! select_mappings_from {
     ($src:literal) => {
         concat!(
@@ -284,7 +290,10 @@ pub async fn register_domain(
     let row = sqlx::query(concat!(
         "WITH ins AS ( INSERT INTO domain_mappings (directory_id, domain, type, url_path, status, verification_token) VALUES ($1, $2, $3, $4, 'pending', $5) RETURNING * ) ",
         select_mappings_from!("ins"),
-        " WHERE dm.id = ins.id"
+        // NO outer predicate: the macro expands to `FROM ins dm`, which already restricts this
+        // to the CTE's single inserted row. Referencing the CTE by NAME here (`dm.id = ins.id`)
+        // is invalid — once aliased `dm`, `ins` is out of scope — and PostgreSQL rejected it
+        // before parse, so the statement never even reached log_statement.
     ))
     .bind(directory_id)
     .bind(&host)
@@ -453,7 +462,8 @@ pub async fn update_domain(
     let row = sqlx::query(concat!(
         "WITH upd AS ( UPDATE domain_mappings SET domain = $1, type = $2, url_path = $3, directory_id = $4, status = $5, ssl_enabled = $6, updated_at = NOW() WHERE id = $7 RETURNING * ) ",
         select_mappings_from!("upd"),
-        " WHERE dm.id = upd.id"
+        // Same as register_domain: `FROM upd dm` is the restriction; naming the CTE in an outer
+        // WHERE (`dm.id = upd.id`) makes PostgreSQL reject the whole statement.
     ))
     .bind(&host)
     .bind(kind)
