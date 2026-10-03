@@ -321,6 +321,15 @@ pub fn create_router(s: AppState) -> Router {
             get(network_admin::network_entities)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Businesses: listings AND claimed businesses in ONE tab (kanban B73) ──
+        // One operator-guarded list carrying the city, claim state, the linked
+        // account/owner, rating and CoreSwift sync state per business, filterable by
+        // claim state. Scope is the context bar's network/directory.
+        .route(
+            "/admin/businesses",
+            get(admin_businesses::list_businesses)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/templates", get(directories::list_templates))
         // ??? Blog routes (Phase 3)
         .route(

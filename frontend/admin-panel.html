@@ -524,6 +524,7 @@
       </style>
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
+        <a href="#businesses-section">🏢 Businesses</a>
         <a href="#network-management-section">🗂 Network Management</a>
         <a href="#directory-details-section">🧾 Directory Details</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
@@ -1942,6 +1943,33 @@
 
       <p class="feature-subtitle" style="margin-top:16px"><b>Records</b> — <span id="nm-total">—</span>. Every row carries its city.</p>
       <div id="nm-rows" style="overflow:auto"></div>
+    </div>
+  </div>
+
+  <!-- ===== Businesses: directory listings AND claimed businesses in ONE tab (kanban B73) =====
+       David (2026-09-29): one list of the business listings AND the businesses that
+       claimed their listing, told apart and filterable, with the record's CoreSwift
+       sync state once the CRM is connected. -->
+  <div style="max-width:1200px;margin:24px auto;padding:0 24px">
+    <div class="feature-card" id="businesses-section">
+      <h3>🏢 Businesses</h3>
+      <p class="feature-subtitle">Every business listing <b>and</b> every claimed business in one place. Filter <b>claimed</b> vs <b>unclaimed</b>, scope by network/city in the context bar above, and see each record's CoreSwift sync state.</p>
+      <div class="pk-controls" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div class="em-field"><label>Show</label>
+          <select id="bz-claim">
+            <option value="all">All businesses</option>
+            <option value="claimed">Claimed — owner controls the record</option>
+            <option value="unclaimed">Unclaimed — directory listing</option>
+          </select>
+        </div>
+        <div class="em-field"><label>Search</label>
+          <input id="bz-q" placeholder="business or owner name, owner email…">
+        </div>
+        <button class="btn btn-accent btn-sm" type="button" id="bz-load">Load</button>
+        <span class="feature-status" id="bz-status"></span>
+      </div>
+      <p class="feature-subtitle" id="bz-summary">—</p>
+      <div id="bz-rows" style="overflow:auto"></div>
     </div>
   </div>
 
@@ -8282,6 +8310,113 @@
       setTimeout(nmReload, 500); // after MDContextBar has loaded directories
     });
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(nmReload, 500);
+  })();
+  </script>
+  <script>
+  /* ============================================================
+     Businesses card (kanban B73) — the business LISTINGS and the
+     CLAIMED businesses in one tab, filterable by claim state, each
+     row carrying its CoreSwift sync state. Reads the scope from the
+     persistent context bar (MDContextBar).
+     ============================================================ */
+  (function () {
+    var API = '/api/v1';
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function api(path) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      return fetch(API + path, { headers: h }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function qs(o) {
+      var parts = [];
+      Object.keys(o).forEach(function (k) {
+        if (o[k] != null && o[k] !== '') parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(o[k]));
+      });
+      return parts.length ? '?' + parts.join('&') : '';
+    }
+    function scopeParams() {
+      var p = {};
+      var sc = (window.MDContextBar && window.MDContextBar.scope()) || 'all:';
+      if (sc.indexOf('net:') === 0) p.network_id = sc.slice(4);
+      else if (sc.indexOf('dir:') === 0) p.directory_id = sc.slice(4);
+      return p;
+    }
+    var SYNC_LABEL = { synced: 'synced', pending: 'pending', error: 'error',
+                       not_configured: 'not connected', not_synced: 'not synced' };
+
+    function load() {
+      var el = document.getElementById('bz-rows');
+      if (!el) return;
+      var p = scopeParams();
+      p.claim = document.getElementById('bz-claim').value;
+      var q = document.getElementById('bz-q').value.trim(); if (q) p.q = q;
+      p.per_page = 100;
+      document.getElementById('bz-status').textContent = 'Loading…';
+      api('/admin/businesses' + qs(p)).then(function (d) {
+        var c = d.counts || {};
+        var conn = d.coreswift_connected
+          ? 'CoreSwift: <b>connected</b> — push individual records or a whole directory from the <a href="#entity-sync-section">🔗 CoreSwift Sync</a> section.'
+          : 'CoreSwift: <b>not connected</b> — records stay "not synced" until a connection is set up.';
+        document.getElementById('bz-summary').innerHTML =
+          (c.all || 0) + ' businesses — ' + (c.claimed || 0) + ' claimed, ' +
+          (c.unclaimed || 0) + ' unclaimed across the scope. ' + conn;
+        var rows = d.rows || [];
+        var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+          '<thead><tr><th>Business</th><th>City</th><th>Directory</th><th>Status</th>' +
+          '<th>Owner / account</th><th>Rating</th><th>CoreSwift</th><th></th></tr></thead><tbody>';
+        if (!rows.length) html += '<tr><td colspan="8" style="opacity:.6">No businesses in this scope.</td></tr>';
+        rows.forEach(function (r) {
+          var badge = r.claimed ? '<span class="badge">claimed</span>'
+                    : (r.verified ? '<span class="badge">verified</span>' : 'listed');
+          var owner = r.owner_name || r.owner_email || '';
+          if (r.has_account && !owner) owner = 'linked account';
+          if (!r.has_account) owner = '—';
+          var sync = '<span class="badge">' + esc(SYNC_LABEL[r.sync_status] || r.sync_status) + '</span>' +
+            (r.sync_last_pushed_at ? ' <span style="opacity:.6">' + esc(String(r.sync_last_pushed_at).slice(0, 10)) + '</span>' : '');
+          var view = r.directory_slug
+            ? '<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="/' +
+              esc(r.directory_slug) + '/businesses/' + esc(r.slug) + '">View</a>'
+            : '';
+          var rating = (r.review_count ? (Number(r.rating).toFixed(1) + ' (' + r.review_count + ')') : '—');
+          html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
+            '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
+            '<td>' + esc(r.directory_name || '') + '</td>' +
+            '<td>' + badge + '</td>' +
+            '<td>' + esc(owner) + '</td>' +
+            '<td>' + rating + '</td>' +
+            '<td>' + sync + '</td>' +
+            '<td>' + view + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+        document.getElementById('bz-status').textContent = '';
+      }).catch(function (e) {
+        document.getElementById('bz-status').textContent = 'Failed: ' + e.message;
+      });
+    }
+
+    function bzReload() { if (!document.getElementById('bz-rows')) return; load(); }
+
+    document.addEventListener('md-context-change', bzReload);
+    document.addEventListener('DOMContentLoaded', function () {
+      var b = document.getElementById('bz-load');
+      if (!b) return;
+      b.addEventListener('click', load);
+      document.getElementById('bz-claim').addEventListener('change', load);
+      document.getElementById('bz-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') load(); });
+      setTimeout(bzReload, 600);
+    });
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(bzReload, 600);
   })();
   </script>
 </body>
