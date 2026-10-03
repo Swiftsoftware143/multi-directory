@@ -141,166 +141,25 @@ pub async fn search_businesses(
     let (page, per_page) = validate_pagination(qs.page, qs.per_page);
     let offset = (page - 1) * per_page;
 
-    // Track parameter count — ONLY for parameterized clauses, not fixed SQL.
-    let mut param_count: i32 = 0;
-    let mut next_param = || {
-        param_count += 1;
-        param_count
-    };
-
-    let mut wheres: Vec<String> = Vec::new();
-    let mut extra_joins: Vec<String> = Vec::new();
-
-    // Determine if we need subcategory/group_name filtering via business_categories
+    // Statement heads, JOINs and WHERE clauses below are compile-time literals; every filter is
+    // appended as a BIND only, so no SQL is assembled at run time (class-14 paydown,
+    // kanban t_0d0e26a9). The ORDER BY is one of two hardcoded literals, never request text.
     let has_subcat_filter = qs.subcategory.as_ref().map_or(false, |v| !v.is_empty());
     let has_cat_filter = qs.category.as_ref().map_or(false, |v| !v.is_empty());
-
-    if has_subcat_filter {
-        // Filter by specific subcategory name through business_categories join
-        extra_joins.push(
-            "JOIN business_categories bc_filter ON bc_filter.business_id = b.id \
-             JOIN directory_categories dc_filter ON dc_filter.id = bc_filter.category_id"
-                .to_string(),
-        );
-        let p = next_param();
-        wheres.push(format!("LOWER(dc_filter.name) = LOWER(${})", p));
-    } else if has_cat_filter {
-        // Filter by group_name through business_categories join
-        extra_joins.push(
-            "JOIN business_categories bc_filter ON bc_filter.business_id = b.id \
-             JOIN directory_categories dc_filter ON dc_filter.id = bc_filter.category_id"
-                .to_string(),
-        );
-        let p = next_param();
-        wheres.push(format!(
-            "LOWER(COALESCE(dc_filter.group_name, '')) = LOWER(${})",
-            p
-        ));
-    }
-
-    if qs.directory.is_some() {
-        let p = next_param();
-        wheres.push(format!("b.directory_id = ${}", p));
-    }
-
-    if let Some(ref q) = qs.q {
-        if !q.is_empty() {
-            let p = next_param();
-            wheres.push(format!(
-                "(b.search_vector @@ plainto_tsquery('english', ${i}) \
-                 OR b.name ILIKE '%' || ${i} || '%' \
-                 OR COALESCE(b.description, '') ILIKE '%' || ${i} || '%' \
-                 OR COALESCE(cat.name, '') ILIKE '%' || ${i} || '%')",
-                i = p
-            ));
-        }
-    }
-
-    if let Some(ref city) = qs.city {
-        if !city.is_empty() {
-            let p = next_param();
-            wheres.push(format!("LOWER(COALESCE(b.city, '')) = LOWER(${})", p));
-        }
-    }
-
-    if let Some(ref st) = qs.state {
-        if !st.is_empty() {
-            let p = next_param();
-            wheres.push(format!("LOWER(COALESCE(b.state, '')) = LOWER(${})", p));
-        }
-    }
-
-    if let Some(ref bt) = qs.business_type {
-        if !bt.is_empty() {
-            let p = next_param();
-            wheres.push(format!("b.business_type = ${}", p));
-        }
-    } else if !qs.business_types.is_empty() {
-        // Multi-type filter (e.g. supplier/farm/wholesaler at once) — used by
-        // search/suppliers when no single business_type is specified.
-        let p = next_param();
-        wheres.push(format!("b.business_type = ANY(${})", p));
-    }
-
-    // This is NOT parameterized — just a fixed SQL condition string
-    wheres.push("COALESCE(b.is_active, true) = true".to_string());
-
-    let where_clause = format!("WHERE {}", wheres.join(" AND "));
-    let extra_join_clause = extra_joins.join(" ");
-    let cat_join = "LEFT JOIN directory_categories cat ON b.category_id = cat.id";
-
-    let all_joins = format!(
-        "{} {} {}",
-        cat_join,
-        if extra_join_clause.is_empty() {
-            ""
-        } else {
-            " "
-        },
-        extra_join_clause
-    );
-
-    // --- Count query ---
-    let count_sql = format!(
-        "SELECT COUNT(DISTINCT b.id) FROM businesses b {} {}",
-        all_joins, where_clause
-    );
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
-
-    // Bind parameters in the same order as the closure assigned them
-    if has_subcat_filter {
-        if let Some(ref sc) = qs.subcategory {
-            count_q = count_q.bind(sc);
-        }
-    } else if has_cat_filter {
-        if let Some(ref cat) = qs.category {
-            count_q = count_q.bind(cat);
-        }
-    }
-    if let Some(ref dir_id) = qs.directory {
-        count_q = count_q.bind(dir_id);
-    }
-    if let Some(ref q) = qs.q {
-        if !q.is_empty() {
-            count_q = count_q.bind(q);
-        }
-    }
-    if let Some(ref city) = qs.city {
-        if !city.is_empty() {
-            count_q = count_q.bind(city);
-        }
-    }
-    if let Some(ref st) = qs.state {
-        if !st.is_empty() {
-            count_q = count_q.bind(st);
-        }
-    }
-    if let Some(ref bt) = qs.business_type {
-        if !bt.is_empty() {
-            count_q = count_q.bind(bt);
-        }
-    } else if !qs.business_types.is_empty() {
-        count_q = count_q.bind(&qs.business_types);
-    }
-
-    let total: i64 = count_q.fetch_one(&s.db).await?;
-
-    // --- Data query ---
     let has_q = qs.q.as_ref().map_or(false, |q| !q.is_empty());
 
-    // Calculate the starting parameter index for LIMIT/OFFSET.
-    let lo_start = param_count + if has_q { 1 } else { 0 } + 1;
+    // --- Count query ---
+    let mut count_qb =
+        sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(DISTINCT b.id) FROM businesses b");
+    push_search_joins(&mut count_qb, has_subcat_filter, has_cat_filter);
+    push_search_where(&mut count_qb, &qs, has_subcat_filter, has_cat_filter, has_q);
 
-    let order_clause = if has_q {
-        let order_p = param_count + 1;
-        format!(
-            "ORDER BY ts_rank(b.search_vector, plainto_tsquery('english', ${})) DESC, b.name ASC",
-            order_p
-        )
-    } else {
-        "ORDER BY b.name ASC".to_string()
-    };
+    let total: i64 = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await?;
 
+    // --- Data query ---
     // Phase 2: include multi-category assignments as JSON subquery
     let categories_subquery = r#"(
         SELECT COALESCE(json_agg(json_build_object(
@@ -319,74 +178,36 @@ pub async fn search_businesses(
         ) bc
     )"#;
 
-    let data_sql = format!(
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT b.id, b.name, b.slug, b.description, cat.name AS category, \
                 b.city, b.state, b.phone, b.website, b.rating, \
                 d.name AS directory_name, d.slug AS directory_slug, \
-                b.business_type, b.address, \
-                {} AS categories \
-         FROM businesses b \
-         {} \
-         LEFT JOIN directories d ON b.directory_id = d.id \
-         {} {} \
-         LIMIT ${} OFFSET ${}",
-        categories_subquery,
-        all_joins,
-        where_clause,
-        order_clause,
-        lo_start,
-        lo_start + 1
+                b.business_type, b.address, ",
     );
-
-    let mut data_q = sqlx::query_as::<_, SearchResult>(&data_sql);
-
-    // Bind WHERE params in closure order
-    if has_subcat_filter {
-        if let Some(ref sc) = qs.subcategory {
-            data_q = data_q.bind(sc);
-        }
-    } else if has_cat_filter {
-        if let Some(ref cat) = qs.category {
-            data_q = data_q.bind(cat);
-        }
-    }
-    if let Some(ref dir_id) = qs.directory {
-        data_q = data_q.bind(dir_id);
-    }
-    if let Some(ref q) = qs.q {
-        if !q.is_empty() {
-            data_q = data_q.bind(q);
-        }
-    }
-    if let Some(ref city) = qs.city {
-        if !city.is_empty() {
-            data_q = data_q.bind(city);
-        }
-    }
-    if let Some(ref st) = qs.state {
-        if !st.is_empty() {
-            data_q = data_q.bind(st);
-        }
-    }
-    if let Some(ref bt) = qs.business_type {
-        if !bt.is_empty() {
-            data_q = data_q.bind(bt);
-        }
-    } else if !qs.business_types.is_empty() {
-        data_q = data_q.bind(&qs.business_types);
-    }
-    // ORDER BY tsquery param (duplicate of q for rank ordering)
+    data_qb.push(categories_subquery);
+    data_qb.push(" AS categories FROM businesses b");
+    push_search_joins(&mut data_qb, has_subcat_filter, has_cat_filter);
+    data_qb.push(" LEFT JOIN directories d ON b.directory_id = d.id");
+    push_search_where(&mut data_qb, &qs, has_subcat_filter, has_cat_filter, has_q);
+    // The full-text ORDER BY needs one more bind of the same query text than the WHERE uses.
     if has_q {
-        if let Some(ref q) = qs.q {
-            if !q.is_empty() {
-                data_q = data_q.bind(q);
-            }
-        }
+        data_qb
+            .push(" ORDER BY ts_rank(b.search_vector, plainto_tsquery('english', ")
+            .push_bind(qs.q.as_deref())
+            .push(")) DESC, b.name ASC");
+    } else {
+        data_qb.push(" ORDER BY b.name ASC");
     }
-    data_q = data_q.bind(per_page);
-    data_q = data_q.bind(offset);
+    data_qb
+        .push(" LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
-    let data = data_q.fetch_all(&s.db).await?;
+    let data = data_qb
+        .build_query_as::<SearchResult>()
+        .fetch_all(&s.db)
+        .await?;
 
     let total_pages = if per_page > 0 {
         (total + per_page - 1) / per_page
@@ -401,6 +222,129 @@ pub async fn search_businesses(
         total,
         total_pages,
     })))
+}
+
+/// The JOIN set shared by the count and data statements of `search_businesses`: the category
+/// join, plus — when a subcategory/category filter is active — the `business_categories` filter
+/// join. Every fragment is a compile-time literal; nothing here is built at run time.
+fn push_search_joins(
+    qb: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>,
+    has_subcat_filter: bool,
+    has_cat_filter: bool,
+) {
+    qb.push(" LEFT JOIN directory_categories cat ON b.category_id = cat.id");
+    if has_subcat_filter || has_cat_filter {
+        qb.push(
+            " JOIN business_categories bc_filter ON bc_filter.business_id = b.id \
+             JOIN directory_categories dc_filter ON dc_filter.id = bc_filter.category_id",
+        );
+    }
+}
+
+/// Push ` WHERE …` for `search_businesses`, keeping the predicate order (and therefore the bind
+/// order) the hand-built version used. Every fragment is a compile-time literal; only the filter
+/// VALUES are bound. `qs.directory`/`qs.subcategory`/`qs.category`/`qs.business_type` are read
+/// only in the branches that already established they are present and non-empty.
+fn push_search_where<'a>(
+    qb: &mut sqlx::QueryBuilder<'a, sqlx::Postgres>,
+    qs: &'a SearchQuery,
+    has_subcat_filter: bool,
+    has_cat_filter: bool,
+    has_q: bool,
+) {
+    qb.push(" WHERE ");
+    let mut first = true;
+
+    if has_subcat_filter {
+        if !first {
+            qb.push(" AND ");
+        }
+        first = false;
+        qb.push("LOWER(dc_filter.name) = LOWER(")
+            .push_bind(qs.subcategory.as_deref())
+            .push(")");
+    } else if has_cat_filter {
+        if !first {
+            qb.push(" AND ");
+        }
+        first = false;
+        qb.push("LOWER(COALESCE(dc_filter.group_name, '')) = LOWER(")
+            .push_bind(qs.category.as_deref())
+            .push(")");
+    }
+
+    if qs.directory.is_some() {
+        if !first {
+            qb.push(" AND ");
+        }
+        first = false;
+        qb.push("b.directory_id = ").push_bind(qs.directory);
+    }
+
+    if has_q {
+        if !first {
+            qb.push(" AND ");
+        }
+        first = false;
+        let q_text = qs.q.as_deref().unwrap_or("");
+        qb.push("(b.search_vector @@ plainto_tsquery('english', ")
+            .push_bind(q_text)
+            .push(") OR b.name ILIKE '%' || ")
+            .push_bind(q_text)
+            .push(" || '%' OR COALESCE(b.description, '') ILIKE '%' || ")
+            .push_bind(q_text)
+            .push(" || '%' OR COALESCE(cat.name, '') ILIKE '%' || ")
+            .push_bind(q_text)
+            .push(" || '%')");
+    }
+
+    if let Some(ref city) = qs.city {
+        if !city.is_empty() {
+            if !first {
+                qb.push(" AND ");
+            }
+            first = false;
+            qb.push("LOWER(COALESCE(b.city, '')) = LOWER(")
+                .push_bind(city.as_str())
+                .push(")");
+        }
+    }
+
+    if let Some(ref st) = qs.state {
+        if !st.is_empty() {
+            if !first {
+                qb.push(" AND ");
+            }
+            first = false;
+            qb.push("LOWER(COALESCE(b.state, '')) = LOWER(")
+                .push_bind(st.as_str())
+                .push(")");
+        }
+    }
+
+    if let Some(ref bt) = qs.business_type {
+        if !bt.is_empty() {
+            if !first {
+                qb.push(" AND ");
+            }
+            first = false;
+            qb.push("b.business_type = ").push_bind(bt.as_str());
+        }
+    } else if !qs.business_types.is_empty() {
+        if !first {
+            qb.push(" AND ");
+        }
+        first = false;
+        qb.push("b.business_type = ANY(")
+            .push_bind(&qs.business_types)
+            .push(")");
+    }
+
+    // This is NOT parameterized — just a fixed SQL condition string
+    if !first {
+        qb.push(" AND ");
+    }
+    qb.push("COALESCE(b.is_active, true) = true");
 }
 
 /// GET /api/v1/search/suppliers — search all supplier-type businesses (B2B back-office).

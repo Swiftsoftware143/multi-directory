@@ -35,75 +35,57 @@ pub async fn list_businesses(
     let offset = (page - 1) * per_page;
     let dir_id = dir.id;
 
-    // Build dynamic query.
+    // Statement text is a compile-time literal; every optional filter is appended as a
+    // BIND only, so nothing is assembled at run time (class-14 paydown, kanban t_0d0e26a9).
     // Public listing excludes non-local business types (suppliers, farms, wholesalers,
     // distributors, manufacturers, associations — all B2B, surfaced only in the back office)
     // and franchises/big chains (is_franchise = true). These are NOT part of the public
     // community directory.
-    let mut where_clauses = vec![
-        "b.directory_id = \x241".to_string(),
-        "COALESCE(b.business_type, 'local') = 'local'".to_string(),
-        "COALESCE(b.is_franchise, false) = false".to_string(),
-    ];
-    let mut param_idx = 2;
+    const COUNT_HEAD: &str = "SELECT COUNT(*) FROM businesses b WHERE b.directory_id = ";
+    const PUBLIC_FILTERS: &str = " AND COALESCE(b.business_type, 'local') = 'local' \
+                                   AND COALESCE(b.is_franchise, false) = false";
+
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(COUNT_HEAD);
+    count_qb.push_bind(dir_id).push(PUBLIC_FILTERS);
 
     if let Some(ref q) = qs.q {
         if !q.is_empty() {
-            where_clauses.push(format!(
-                "to_tsvector('english', b.name || ' ' || COALESCE(b.description, '')) @@ plainto_tsquery('english', ${})",
-                param_idx
-            ));
-            param_idx += 1;
-        }
-    }
-
-    if let Some(cat_id) = qs.category_id {
-        where_clauses.push(format!("b.category_id = ${}", param_idx));
-        param_idx += 1;
-    }
-
-    if let Some(ref city) = qs.city {
-        if !city.is_empty() {
-            where_clauses.push(format!("LOWER(b.city) = LOWER(${})", param_idx));
-            param_idx += 1;
-        }
-    }
-
-    if qs.lat.is_some() && qs.lng.is_some() && qs.radius.is_some() {
-        where_clauses.push(format!(
-            "b.latitude IS NOT NULL AND b.longitude IS NOT NULL AND \
-             (6371 * acos(cos(radians(${})) * cos(radians(b.latitude)) * \
-             cos(radians(b.longitude) - radians(${})) + sin(radians(${})) * sin(radians(b.latitude)))) < ${}",
-            param_idx, param_idx + 1, param_idx, param_idx + 2
-        ));
-        param_idx += 3;
-    }
-
-    let where_str = where_clauses.join(" AND ");
-
-    // Count query
-    let count_sql = format!("SELECT COUNT(*) FROM businesses b WHERE {}", where_str);
-
-    // Build query params for count
-    let mut count_q = sqlx::query_as::<_, (i64,)>(&count_sql).bind(dir_id);
-    if let Some(ref q) = qs.q {
-        if !q.is_empty() {
-            count_q = count_q.bind(q);
+            count_qb
+                .push(
+                    " AND to_tsvector('english', b.name || ' ' || COALESCE(b.description, '')) \
+                     @@ plainto_tsquery('english', ",
+                )
+                .push_bind(q.as_str())
+                .push(")");
         }
     }
     if let Some(cat_id) = qs.category_id {
-        count_q = count_q.bind(cat_id);
+        count_qb.push(" AND b.category_id = ").push_bind(cat_id);
     }
     if let Some(ref city) = qs.city {
         if !city.is_empty() {
-            count_q = count_q.bind(city);
+            count_qb
+                .push(" AND LOWER(b.city) = LOWER(")
+                .push_bind(city.as_str())
+                .push(")");
         }
     }
     if qs.lat.is_some() && qs.lng.is_some() && qs.radius.is_some() {
-        count_q = count_q.bind(qs.lat).bind(qs.lng).bind(qs.radius);
+        count_qb
+            .push(
+                " AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL AND \
+                 (6371 * acos(cos(radians(",
+            )
+            .push_bind(qs.lat)
+            .push(")) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians(")
+            .push_bind(qs.lng)
+            .push(")) + sin(radians(")
+            .push_bind(qs.lat)
+            .push(")) * sin(radians(b.latitude)))) < ")
+            .push_bind(qs.radius);
     }
 
-    let (total,): (i64,) = count_q.fetch_one(&s.db).await?;
+    let (total,): (i64,) = count_qb.build_query_as::<(i64,)>().fetch_one(&s.db).await?;
 
     // Sort
     let order_by = match qs.sort.as_deref() {
@@ -114,35 +96,62 @@ pub async fn list_businesses(
         _ => "b.name ASC",
     };
 
-    // Data query
-    let data_sql = format!(
-        "SELECT b.* FROM businesses b WHERE {} ORDER BY {} LIMIT ${} OFFSET ${}",
-        where_str,
-        order_by,
-        param_idx,
-        param_idx + 1
+    // Data query — same compile-time head and the same predicate set as the count above.
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT b.* FROM businesses b WHERE b.directory_id = ",
     );
+    data_qb.push_bind(dir_id).push(PUBLIC_FILTERS);
 
-    let mut data_q = sqlx::query_as::<_, Business>(&data_sql).bind(dir_id);
     if let Some(ref q) = qs.q {
         if !q.is_empty() {
-            data_q = data_q.bind(q);
+            data_qb
+                .push(
+                    " AND to_tsvector('english', b.name || ' ' || COALESCE(b.description, '')) \
+                     @@ plainto_tsquery('english', ",
+                )
+                .push_bind(q.as_str())
+                .push(")");
         }
     }
     if let Some(cat_id) = qs.category_id {
-        data_q = data_q.bind(cat_id);
+        data_qb.push(" AND b.category_id = ").push_bind(cat_id);
     }
     if let Some(ref city) = qs.city {
         if !city.is_empty() {
-            data_q = data_q.bind(city);
+            data_qb
+                .push(" AND LOWER(b.city) = LOWER(")
+                .push_bind(city.as_str())
+                .push(")");
         }
     }
     if qs.lat.is_some() && qs.lng.is_some() && qs.radius.is_some() {
-        data_q = data_q.bind(qs.lat).bind(qs.lng).bind(qs.radius);
+        data_qb
+            .push(
+                " AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL AND \
+                 (6371 * acos(cos(radians(",
+            )
+            .push_bind(qs.lat)
+            .push(")) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians(")
+            .push_bind(qs.lng)
+            .push(")) + sin(radians(")
+            .push_bind(qs.lat)
+            .push(")) * sin(radians(b.latitude)))) < ")
+            .push_bind(qs.radius);
     }
 
-    data_q = data_q.bind(per_page).bind(offset);
-    let businesses = data_q.fetch_all(&s.db).await?;
+    // `order_by` is one of five hardcoded literals chosen by the match above, never request text.
+    data_qb
+        .push(" ORDER BY ")
+        .push(order_by)
+        .push(" LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let businesses = data_qb
+        .build_query_as::<Business>()
+        .fetch_all(&s.db)
+        .await?;
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i64;
 

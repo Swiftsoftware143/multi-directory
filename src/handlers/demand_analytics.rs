@@ -194,16 +194,9 @@ impl Filters {
             .clamp(1, 100_000)
     }
 
-    /// The WHERE clause shared by every aggregation. Bind order:
-    /// $1 days, $2 directory_id, $3 category_id, $4 area, $5 city, $6 zip.
-    fn where_clause() -> &'static str {
-        "WHERE ve.created_at >= NOW() - make_interval(days => $1::int) \
-         AND ($2::uuid IS NULL OR ve.directory_id = $2) \
-         AND ($3::uuid IS NULL OR ve.category_id = $3) \
-         AND ($4::text IS NULL OR COALESCE(b.zip, b.city, '') ILIKE '%' || $4 || '%') \
-         AND ($5::text IS NULL OR b.city ILIKE '%' || $5 || '%') \
-         AND ($6::text IS NULL OR b.zip ILIKE '%' || $6 || '%')"
-    }
+    // The WHERE clause shared by every aggregation lives in `sql_where!` below (a macro, so
+    // `concat!` can splice it into a compile-time statement literal). Bind order:
+    // $1 days, $2 directory_id, $3 category_id, $4 area, $5 city, $6 zip.
 }
 
 /// Bind the six standard filter parameters, in the order `where_clause` expects.
@@ -219,19 +212,43 @@ fn bind_filters<'q, O>(
         .bind(f.zip.as_deref())
 }
 
-const JOINS: &str = "FROM visitor_events ve \
-     LEFT JOIN businesses b ON b.id = ve.business_id \
-     LEFT JOIN directory_categories dc ON dc.id = ve.category_id";
+/// The JOIN set every aggregation starts from. A macro rather than a `const` because `concat!`
+/// accepts only literals, and a run-time `format!` is exactly the defect gate rule 5d names —
+/// splicing this in keeps every statement a compile-time literal (class-14 paydown,
+/// kanban t_0d0e26a9).
+macro_rules! sql_joins {
+    () => {
+        "FROM visitor_events ve \
+         LEFT JOIN businesses b ON b.id = ve.business_id \
+         LEFT JOIN directory_categories dc ON dc.id = ve.category_id"
+    };
+}
 
-/// Standard zero-result predicate. Only an *explicit* zero counts: a search with
-/// no `result_count` metadata is unknown, not zero — claiming otherwise would
-/// invent unmet demand that was never measured. The regex guard keeps a
-/// non-numeric metadata value from throwing a cast error at query time.
-const ZERO_RESULT_PREDICATE: &str =
-    "(ve.event_type IN ('search_zero', 'no_results', 'zero_results') \
-     OR (ve.event_type IN ('search', 'search_submit') \
-         AND ve.metadata->>'result_count' ~ '^[0-9]+$' \
-         AND (ve.metadata->>'result_count')::int = 0))";
+/// The WHERE clause shared by every aggregation, as a macro for the same reason as
+/// `sql_joins!`. Bind order: $1 days, $2 directory_id, $3 category_id, $4 area, $5 city, $6 zip.
+macro_rules! sql_where {
+    () => {
+        "WHERE ve.created_at >= NOW() - make_interval(days => $1::int) \
+         AND ($2::uuid IS NULL OR ve.directory_id = $2) \
+         AND ($3::uuid IS NULL OR ve.category_id = $3) \
+         AND ($4::text IS NULL OR COALESCE(b.zip, b.city, '') ILIKE '%' || $4 || '%') \
+         AND ($5::text IS NULL OR b.city ILIKE '%' || $5 || '%') \
+         AND ($6::text IS NULL OR b.zip ILIKE '%' || $6 || '%')"
+    };
+}
+
+/// Standard zero-result predicate, as a macro for the same reason as `sql_joins!`.
+/// Only an *explicit* zero counts: a search with no `result_count` metadata is unknown, not
+/// zero — claiming otherwise would invent unmet demand that was never measured. The regex guard
+/// keeps a non-numeric metadata value from throwing a cast error at query time.
+macro_rules! sql_zero_result {
+    () => {
+        "(ve.event_type IN ('search_zero', 'no_results', 'zero_results') \
+         OR (ve.event_type IN ('search', 'search_submit') \
+             AND ve.metadata->>'result_count' ~ '^[0-9]+$' \
+             AND (ve.metadata->>'result_count')::int = 0))"
+    };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rows
@@ -332,7 +349,9 @@ async fn matrix_rows(
     bucket: &str,
     limit: i32,
 ) -> Result<Vec<DemandMatrixRow>, AppError> {
-    let sql = format!(
+    // Statement text is a compile-time literal: `concat!` is resolved by the compiler,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_0d0e26a9).
+    const SQL: &str = concat!(
         "SELECT \
             COALESCE(NULLIF(b.zip, ''), NULLIF(b.city, ''), 'unknown') AS area, \
             b.city AS city, b.state AS state, b.zip AS zip, \
@@ -360,16 +379,17 @@ async fn matrix_rows(
             COUNT(*) FILTER (WHERE ve.event_type IN ('search', 'search_submit'))::bigint AS searches, \
             COUNT(*) FILTER (WHERE ve.event_type = 'phone_click')::bigint AS phone_clicks, \
             COUNT(*) FILTER (WHERE ve.event_type = 'website_click')::bigint AS website_clicks, \
-            COUNT(*) FILTER (WHERE ve.event_type = 'direction_click')::bigint AS direction_clicks \
-         {} {} \
+            COUNT(*) FILTER (WHERE ve.event_type = 'direction_click')::bigint AS direction_clicks ",
+        sql_joins!(),
+        " ",
+        sql_where!(),
+        " \
          GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 \
          ORDER BY events DESC, area ASC, category ASC \
          LIMIT $8",
-        JOINS,
-        Filters::where_clause()
     );
 
-    let rows = bind_filters(sqlx::query_as::<_, DemandMatrixRow>(&sql), f)
+    let rows = bind_filters(sqlx::query_as::<_, DemandMatrixRow>(SQL), f)
         .bind(bucket.to_string())
         .bind(limit)
         .fetch_all(db)
@@ -383,18 +403,21 @@ async fn top_category_per_area(
     f: &Filters,
     top_n: i32,
 ) -> Result<Vec<AreaCategoryRow>, AppError> {
-    let sql = format!(
+    // Statement text is a compile-time literal: `concat!` is resolved by the compiler,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_0d0e26a9).
+    const SQL: &str = concat!(
         "SELECT DISTINCT ON (area) area, category, events FROM ( \
             SELECT COALESCE(NULLIF(b.zip, ''), NULLIF(b.city, ''), 'unknown') AS area, \
                    COALESCE(dc.name, 'Uncategorized') AS category, \
-                   COUNT(*)::bigint AS events \
-            {} {} GROUP BY 1, 2 \
+                   COUNT(*)::bigint AS events ",
+        sql_joins!(),
+        " ",
+        sql_where!(),
+        " GROUP BY 1, 2 \
          ) s ORDER BY area ASC, events DESC LIMIT $7",
-        JOINS,
-        Filters::where_clause()
     );
 
-    let rows = bind_filters(sqlx::query_as::<_, AreaCategoryRow>(&sql), f)
+    let rows = bind_filters(sqlx::query_as::<_, AreaCategoryRow>(SQL), f)
         .bind(top_n)
         .fetch_all(db)
         .await?;
@@ -407,18 +430,21 @@ async fn peak_hour_per_category(
     f: &Filters,
     top_n: i32,
 ) -> Result<Vec<PeakHourRow>, AppError> {
-    let sql = format!(
+    // Statement text is a compile-time literal: `concat!` is resolved by the compiler,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_0d0e26a9).
+    const SQL: &str = concat!(
         "SELECT DISTINCT ON (category) category, hour_of_day, events FROM ( \
             SELECT COALESCE(dc.name, 'Uncategorized') AS category, \
                    EXTRACT(HOUR FROM ve.created_at)::int AS hour_of_day, \
-                   COUNT(*)::bigint AS events \
-            {} {} GROUP BY 1, 2 \
+                   COUNT(*)::bigint AS events ",
+        sql_joins!(),
+        " ",
+        sql_where!(),
+        " GROUP BY 1, 2 \
          ) s ORDER BY category ASC, events DESC LIMIT $7",
-        JOINS,
-        Filters::where_clause()
     );
 
-    let rows = bind_filters(sqlx::query_as::<_, PeakHourRow>(&sql), f)
+    let rows = bind_filters(sqlx::query_as::<_, PeakHourRow>(SQL), f)
         .bind(top_n)
         .fetch_all(db)
         .await?;
@@ -427,7 +453,9 @@ async fn peak_hour_per_category(
 
 /// Search-vs-view mix. Counts are disjoint (FILTER, not CASE-guessed).
 async fn mix(db: &sqlx::PgPool, f: &Filters) -> Result<MixRow, AppError> {
-    let sql = format!(
+    // Statement text is a compile-time literal: `concat!` is resolved by the compiler,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_0d0e26a9).
+    const SQL: &str = concat!(
         "SELECT \
             COUNT(*) FILTER (WHERE ve.event_type IN ('search', 'search_submit'))::bigint AS searches, \
             COUNT(*) FILTER (WHERE ve.event_type IN ('page_view', 'listing_view', 'business_view'))::bigint AS views, \
@@ -436,13 +464,14 @@ async fn mix(db: &sqlx::PgPool, f: &Filters) -> Result<MixRow, AppError> {
                 ('search', 'search_submit', 'page_view', 'listing_view', 'business_view', \
                  'phone_click', 'website_click'))::bigint AS other_events, \
             COUNT(*) FILTER (WHERE ve.event_type = 'phone_click')::bigint AS phone_clicks, \
-            COUNT(*) FILTER (WHERE ve.event_type = 'website_click')::bigint AS website_clicks \
-         {} {}",
-        JOINS,
-        Filters::where_clause()
+            COUNT(*) FILTER (WHERE ve.event_type = 'website_click')::bigint AS website_clicks ",
+        sql_joins!(),
+        " ",
+        sql_where!(),
+        "",
     );
 
-    let row = bind_filters(sqlx::query_as::<_, MixRow>(&sql), f)
+    let row = bind_filters(sqlx::query_as::<_, MixRow>(SQL), f)
         .fetch_one(db)
         .await?;
     Ok(row)
@@ -454,17 +483,21 @@ async fn unmet_demand(
     f: &Filters,
     top_n: i32,
 ) -> Result<Vec<UnmetDemandRow>, AppError> {
-    let sql = format!(
+    // Statement text is a compile-time literal: `concat!` is resolved by the compiler,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_0d0e26a9).
+    const SQL: &str = concat!(
         "SELECT COALESCE(dc.name, 'Uncategorized') AS category, ve.event_value AS term, \
-                COUNT(*)::bigint AS zero_result_searches \
-         {} {} AND {} \
+                COUNT(*)::bigint AS zero_result_searches ",
+        sql_joins!(),
+        " ",
+        sql_where!(),
+        " AND ",
+        sql_zero_result!(),
+        " \
          GROUP BY 1, 2 ORDER BY zero_result_searches DESC LIMIT $7",
-        JOINS,
-        Filters::where_clause(),
-        ZERO_RESULT_PREDICATE
     );
 
-    let rows = bind_filters(sqlx::query_as::<_, UnmetDemandRow>(&sql), f)
+    let rows = bind_filters(sqlx::query_as::<_, UnmetDemandRow>(SQL), f)
         .bind(top_n)
         .fetch_all(db)
         .await?;
@@ -491,19 +524,22 @@ async fn supply(db: &sqlx::PgPool, directory_id: Option<Uuid>) -> Result<Vec<Sup
 }
 
 async fn summary(db: &sqlx::PgPool, f: &Filters) -> Result<SummaryRow, AppError> {
-    let sql = format!(
+    // Statement text is a compile-time literal: `concat!` is resolved by the compiler,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_0d0e26a9).
+    const SQL: &str = concat!(
         "SELECT COUNT(*)::bigint AS total_events, \
             COUNT(DISTINCT COALESCE(NULLIF(b.zip, ''), NULLIF(b.city, ''), 'unknown'))::bigint AS distinct_areas, \
             COUNT(DISTINCT COALESCE(dc.name, 'Uncategorized'))::bigint AS distinct_categories, \
             COUNT(DISTINCT ve.visitor_id)::bigint AS distinct_visitors, \
             MIN(ve.created_at) AS first_event_at, \
-            MAX(ve.created_at) AS last_event_at \
-         {} {}",
-        JOINS,
-        Filters::where_clause()
+            MAX(ve.created_at) AS last_event_at ",
+        sql_joins!(),
+        " ",
+        sql_where!(),
+        "",
     );
 
-    let row = bind_filters(sqlx::query_as::<_, SummaryRow>(&sql), f)
+    let row = bind_filters(sqlx::query_as::<_, SummaryRow>(SQL), f)
         .fetch_one(db)
         .await?;
     Ok(row)
