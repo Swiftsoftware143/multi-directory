@@ -330,6 +330,36 @@ pub fn create_router(s: AppState) -> Router {
             get(admin_businesses::list_businesses)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── B2B / suppliers: the second front made visible + moderatable (kanban B51) ──
+        // Suppliers are businesses tagged with a supplier business_type (they arrive by
+        // self-registration; this is NOT a sourcing engine). The operator can see the
+        // participating suppliers, their products and orders, the shared-lead queue, and
+        // suspend a supplier or remove a product. Scope = the context bar.
+        .route(
+            "/admin/b2b/suppliers",
+            get(admin_b2b::list_suppliers)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/b2b/suppliers/:id",
+            get(admin_b2b::get_supplier)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/b2b/suppliers/:id/status",
+            post(admin_b2b::set_supplier_status)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/b2b/products/:id/status",
+            post(admin_b2b::set_product_status)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/b2b/leads",
+            get(admin_b2b::list_leads)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/templates", get(directories::list_templates))
         // ??? Blog routes (Phase 3)
         .route(

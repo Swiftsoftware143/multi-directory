@@ -85,6 +85,7 @@ pub mod network_admin;
 pub use network_admin::*;
 pub mod admin_businesses;
 pub use admin_businesses::*;
+pub mod admin_b2b;
 pub mod networks;
 pub use networks::*;
 pub mod trap_doors;

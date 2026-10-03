@@ -525,6 +525,7 @@
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
         <a href="#businesses-section">🏢 Businesses</a>
+        <a href="#b2b-admin-section">🏬 Suppliers / B2B</a>
         <a href="#network-management-section">🗂 Network Management</a>
         <a href="#directory-details-section">🧾 Directory Details</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
@@ -2086,6 +2087,65 @@
       </div>
       <p class="feature-subtitle" id="bz-summary">—</p>
       <div id="bz-rows" style="overflow:auto"></div>
+    </div>
+
+    <!-- 🏬 Suppliers / B2B (kanban B51) — the second front, visible and moderatable.
+         Suppliers are businesses tagged with a supplier business_type (farm / distributor /
+         wholesaler / manufacturer / association / supplier). This is visibility + moderation
+         ONLY — no sourcing (suppliers self-register), per David 2026-09-22. -->
+    <div class="feature-card" id="b2b-admin-section">
+      <h3>🏬 Suppliers / B2B
+        <span class="pk-badge pk-missing" id="sb-badge" style="float:right">loading…</span>
+      </h3>
+      <p class="feature-subtitle">The <b>second front</b>: businesses that signed up for B2B. See who participates with their product and order volume, open one for its products and orders, and moderate — <b>suspend</b> a supplier or <b>remove</b> a product. Sourcing is deliberately not here: suppliers arrive by self-registration, so consent holds.</p>
+      <div class="pk-controls" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div class="em-field"><label>Show</label>
+          <select id="sb-status">
+            <option value="all">All suppliers</option>
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </div>
+        <div class="em-field"><label>Type</label>
+          <select id="sb-type">
+            <option value="">All types</option>
+            <option value="farm">Farm</option>
+            <option value="distributor">Distributor</option>
+            <option value="wholesaler">Wholesaler</option>
+            <option value="manufacturer">Manufacturer</option>
+            <option value="association">Association</option>
+            <option value="supplier">Supplier</option>
+          </select>
+        </div>
+        <div class="em-field"><label>Search</label>
+          <input id="sb-q" placeholder="supplier name…">
+        </div>
+        <button class="btn btn-accent btn-sm" type="button" id="sb-load">Load</button>
+        <span class="feature-status" id="sb-status-line"></span>
+      </div>
+      <p class="feature-subtitle" id="sb-summary">—</p>
+      <div id="sb-rows" style="overflow:auto"></div>
+
+      <div id="sb-detail" class="hidden" style="margin-top:16px;border-top:1px solid var(--border,#1e2a3a);padding-top:14px"></div>
+
+      <div style="margin-top:18px;border-top:1px solid var(--border,#1e2a3a);padding-top:14px">
+        <label style="font-size:.82rem;font-weight:600;display:block">📥 Shared-lead queue
+          <span class="feature-status" id="sl-status" style="float:right"></span>
+        </label>
+        <p class="feature-subtitle" style="margin:4px 0 8px">Leads businesses have shared with the network. Visibility for the operator; claiming stays in the supplier portal.</p>
+        <div class="pk-controls" style="margin:6px 0 10px;display:flex;gap:10px;align-items:flex-end">
+          <div class="em-field"><label>Status</label>
+            <select id="sl-filter">
+              <option value="all">All</option>
+              <option value="available">Available</option>
+              <option value="claimed">Claimed</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" type="button" id="sl-load">Load leads</button>
+        </div>
+        <div id="sl-rows" style="overflow:auto"></div>
+      </div>
     </div>
   </div>
 
@@ -8871,6 +8931,196 @@
       setTimeout(bzReload, 600);
     });
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(bzReload, 600);
+  })();
+
+  // ===== Suppliers / B2B admin section (kanban B51) =====
+  // Visibility + moderation over the second front. Self-contained so it never collides with
+  // the other panel IIFEs' scoped helpers.
+  (function () {
+    var API = '/api/v1';
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function req(method, path, body) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      var o = { method: method, headers: h };
+      if (body) o.body = JSON.stringify(body);
+      return fetch(API + path, o).then(function (r) {
+        if (r.status === 204) return null;
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function get(p) { return req('GET', p); }
+    function post(p, b) { return req('POST', p, b); }
+    function qs(o) {
+      var parts = [];
+      Object.keys(o).forEach(function (k) {
+        if (o[k] != null && o[k] !== '') parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(o[k]));
+      });
+      return parts.length ? '?' + parts.join('&') : '';
+    }
+    function scopeParams() {
+      var p = {};
+      var sc = (window.MDContextBar && window.MDContextBar.scope && window.MDContextBar.scope()) || 'all:';
+      if (sc.indexOf('net:') === 0) p.network_id = sc.slice(4);
+      else if (sc.indexOf('dir:') === 0) p.directory_id = sc.slice(4);
+      return p;
+    }
+    function money(v) {
+      if (v == null || v === '') return '—';
+      var n = Number(v);
+      return isNaN(n) ? esc(String(v)) : '$' + n.toFixed(2);
+    }
+    function setLine(el, msg, ok) {
+      var e = document.getElementById(el); if (!e) return;
+      e.textContent = msg || '';
+      e.style.color = ok ? 'var(--ok,#3ddc97)' : 'var(--warn,#ffb454)';
+    }
+
+    function loadSuppliers() {
+      var el = document.getElementById('sb-rows'); if (!el) return;
+      var p = scopeParams();
+      var st = document.getElementById('sb-status').value; if (st && st !== 'all') p.status = st;
+      var ty = document.getElementById('sb-type').value; if (ty) p.type = ty;
+      var q = document.getElementById('sb-q').value.trim(); if (q) p.q = q;
+      p.per_page = 100;
+      setLine('sb-status-line', 'Loading…', true);
+      get('/admin/b2b/suppliers' + qs(p)).then(function (d) {
+        var c = d.counts || {};
+        var badge = document.getElementById('sb-badge');
+        if (badge) { badge.textContent = (c.all || 0) + ' suppliers'; badge.className = 'pk-badge ' + ((c.all || 0) ? 'pk-set' : 'pk-missing'); }
+        document.getElementById('sb-summary').innerHTML =
+          '<b>' + (d.total || 0) + '</b> shown — ' + (c.active || 0) + ' active, ' + (c.suspended || 0) + ' suspended in this scope.';
+        var rows = d.rows || [];
+        var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+          '<thead><tr><th>Supplier</th><th>Type</th><th>City</th><th>Directory</th><th>Products</th><th>Orders</th><th>Volume</th><th>Rating</th><th>State</th><th></th></tr></thead><tbody>';
+        if (!rows.length) html += '<tr><td colspan="10" style="opacity:.6">No suppliers in this scope yet.</td></tr>';
+        rows.forEach(function (r) {
+          var ses = r.is_active ? '<span class="badge">active</span>' : '<span class="badge">suspended</span>';
+          html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
+            '<td>' + esc(r.type) + '</td>' +
+            '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
+            '<td>' + esc(r.directory_name || '') + '</td>' +
+            '<td>' + (r.product_count || 0) + '</td>' +
+            '<td>' + (r.order_count || 0) + '</td>' +
+            '<td>' + money(r.order_volume) + '</td>' +
+            '<td>' + (r.review_count ? Number(r.rating).toFixed(1) + ' (' + r.review_count + ')' : '—') + '</td>' +
+            '<td>' + ses + '</td>' +
+            '<td><button class="btn btn-ghost btn-sm" type="button" data-sb="' + esc(r.id) + '">Open</button></td></tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+        Array.prototype.forEach.call(el.querySelectorAll('[data-sb]'), function (b) {
+          b.addEventListener('click', function () { openSupplier(b.getAttribute('data-sb')); });
+        });
+        setLine('sb-status-line', '', true);
+      }).catch(function (e) { setLine('sb-status-line', 'Failed: ' + e.message, false); });
+    }
+
+    function openSupplier(id) {
+      var box = document.getElementById('sb-detail'); if (!box) return;
+      box.classList.remove('hidden');
+      box.innerHTML = '<p class="feature-subtitle">Loading supplier…</p>';
+      var p = scopeParams();
+      get('/admin/b2b/suppliers/' + encodeURIComponent(id) + qs(p)).then(function (d) {
+        var s = d.supplier || {};
+        var prods = d.products || [];
+        var orders = d.orders || [];
+        var html = '<h4 style="margin:0 0 6px">' + esc(s.name) + ' <span class="badge">' + esc(s.type) + '</span> ' +
+          (s.is_active ? '<span class="badge">active</span>' : '<span class="badge">suspended</span>') + '</h4>' +
+          '<p class="feature-subtitle" style="margin:0 0 8px">' + esc(s.city || '') + (s.state ? ', ' + esc(s.state) : '') +
+          (s.website ? ' · <a href="' + esc(s.website) + '" target="_blank" rel="noopener">website</a>' : '') +
+          (s.phone ? ' · ' + esc(s.phone) : '') + (s.email ? ' · ' + esc(s.email) : '') + '</p>' +
+          '<div class="pk-controls" style="margin:8px 0">' +
+          '<button class="btn btn-' + (s.is_active ? 'danger' : 'accent') + ' btn-sm" type="button" id="sb-toggle">' +
+          (s.is_active ? '🚫 Suspend supplier' : '✅ Reinstate supplier') + '</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="sb-close">Close</button>' +
+          '<span class="feature-status" id="sb-detail-status"></span></div>';
+
+        html += '<div style="font-weight:600;font-size:.84rem;margin:12px 0 6px">Products (' + prods.length + ')</div>' +
+          '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.8rem"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Unit</th><th>Min</th><th>State</th><th></th></tr></thead><tbody>';
+        if (!prods.length) html += '<tr><td colspan="7" style="opacity:.6">No products.</td></tr>';
+        prods.forEach(function (pr) {
+          html += '<tr><td>' + esc(pr.name) + '</td><td>' + esc(pr.category || '') + '</td><td>' + money(pr.price) + '</td><td>' + esc(pr.unit || '') + '</td><td>' + (pr.min_order == null ? '' : pr.min_order) + '</td>' +
+            '<td>' + (pr.is_active ? '<span class="badge">active</span>' : '<span class="badge">removed</span>') + '</td>' +
+            '<td><button class="btn btn-ghost btn-sm" type="button" data-prod="' + esc(pr.id) + '" data-on="' + (pr.is_active ? '0' : '1') + '">' + (pr.is_active ? 'Remove' : 'Approve') + '</button></td></tr>';
+        });
+        html += '</tbody></table>';
+
+        html += '<div style="font-weight:600;font-size:.84rem;margin:14px 0 6px">Recent orders (' + orders.length + ')</div>' +
+          '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.8rem"><thead><tr><th>Buyer</th><th>Product</th><th>Qty</th><th>Total</th><th>Status</th><th>Date</th></tr></thead><tbody>';
+        if (!orders.length) html += '<tr><td colspan="6" style="opacity:.6">No orders yet.</td></tr>';
+        orders.forEach(function (o) {
+          html += '<tr><td>' + esc(o.buyer_name || '') + '</td><td>' + esc(o.product_name || '') + '</td><td>' + (o.quantity == null ? '' : o.quantity) + '</td><td>' + money(o.total_amount) + '</td><td>' + esc(o.status) + '</td><td>' + esc(String(o.created_at || '').slice(0, 10)) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        box.innerHTML = html;
+
+        document.getElementById('sb-close').addEventListener('click', function () { box.classList.add('hidden'); box.innerHTML = ''; });
+        document.getElementById('sb-toggle').addEventListener('click', function () {
+          var want = !s.is_active;
+          setLine('sb-detail-status', want ? 'Reinstating…' : 'Suspending…', true);
+          var body = scopeParams(); body.is_active = want;
+          post('/admin/b2b/suppliers/' + encodeURIComponent(id) + '/status', body)
+            .then(function () { setLine('sb-detail-status', want ? 'Reinstated' : 'Suspended', true); loadSuppliers(); openSupplier(id); })
+            .catch(function (e) { setLine('sb-detail-status', 'Failed: ' + e.message, false); });
+        });
+        Array.prototype.forEach.call(box.querySelectorAll('[data-prod]'), function (b) {
+          b.addEventListener('click', function () {
+            var pid = b.getAttribute('data-prod');
+            var on = b.getAttribute('data-on') === '1';
+            setLine('sb-detail-status', on ? 'Approving…' : 'Removing…', true);
+            var body = scopeParams(); body.is_active = on;
+            post('/admin/b2b/products/' + encodeURIComponent(pid) + '/status', body)
+              .then(function () { setLine('sb-detail-status', on ? 'Product approved' : 'Product removed', true); openSupplier(id); })
+              .catch(function (e) { setLine('sb-detail-status', 'Failed: ' + e.message, false); });
+          });
+        });
+      }).catch(function (e) {
+        box.innerHTML = '<p class="feature-subtitle">Could not load supplier: ' + esc(e.message) + '</p>';
+      });
+    }
+
+    function loadLeads() {
+      var el = document.getElementById('sl-rows'); if (!el) return;
+      var p = scopeParams();
+      var st = document.getElementById('sl-filter').value; if (st && st !== 'all') p.status = st;
+      p.per_page = 100;
+      setLine('sl-status', 'Loading…', true);
+      get('/admin/b2b/leads' + qs(p)).then(function (d) {
+        var rows = d.rows || [];
+        var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.8rem">' +
+          '<thead><tr><th>Title</th><th>Category</th><th>Location</th><th>Value</th><th>Posted by</th><th>Status</th><th>Claimed by</th><th>Date</th></tr></thead><tbody>';
+        if (!rows.length) html += '<tr><td colspan="8" style="opacity:.6">No shared leads in this scope.</td></tr>';
+        rows.forEach(function (l) {
+          html += '<tr><td><b>' + esc(l.title) + '</b></td><td>' + esc(l.category || '') + '</td><td>' + esc(l.location || '') + '</td><td>' + money(l.estimated_value) + '</td><td>' + esc(l.poster_name || '') + '</td><td>' + esc(l.status) + '</td><td>' + esc(l.claimed_by_name || '—') + '</td><td>' + esc(String(l.created_at || '').slice(0, 10)) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+        setLine('sl-status', (d.total || 0) + ' leads', true);
+      }).catch(function (e) { setLine('sl-status', 'Failed: ' + e.message, false); });
+    }
+
+    function init() {
+      if (!document.getElementById('b2b-admin-section')) return;
+      var load = document.getElementById('sb-load');
+      if (load) load.addEventListener('click', loadSuppliers);
+      var sl = document.getElementById('sl-load');
+      if (sl) sl.addEventListener('click', loadLeads);
+      var q = document.getElementById('sb-q');
+      if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter') loadSuppliers(); });
+      document.addEventListener('md-context-change', function () { loadSuppliers(); loadLeads(); });
+      setTimeout(function () { if (document.getElementById('sb-rows')) loadSuppliers(); }, 700);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
   })();
   </script>
 </body>
