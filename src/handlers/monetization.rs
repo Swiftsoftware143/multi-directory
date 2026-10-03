@@ -842,13 +842,40 @@ RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is
     .bind(body.get("featured").and_then(|v| v.as_bool()).unwrap_or(false))
     .bind(body.get("badge_text").and_then(|v| v.as_str()))
     .bind(body.get("metadata").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new())))
-    .bind(body.get("plan_tier_id").and_then(|v| v.as_str()).and_then(|v| Uuid::parse_str(v).ok()))
-    .bind(body.get("external_plan_id").and_then(|v| v.as_str()))
-    .bind(body.get("external_checkout_url").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
+    // kanban t_63ffc2de: a new sponsored listing is the "they upgraded to sponsor" event. Push the
+    // business to the directory's CoreSwift Sponsors list (list 3 of 3) fire-and-forget, and stamp
+    // crm_pushed_at only when the push succeeded. The enquiry must not wait on the CRM.
+    if listing.is_active.unwrap_or(true) {
+        spawn_sponsor_push(s.db.clone(), listing.id, listing.business_id);
+    }
+
     Ok((StatusCode::CREATED, Json(json!(listing))))
+}
+
+/// Fire-and-forget Sponsors-list push for a sponsored listing. On success stamps
+/// `sponsored_listings.crm_pushed_at`, so the membership loop is auditable per listing.
+pub(crate) fn spawn_sponsor_push(db: sqlx::PgPool, listing_id: Uuid, business_id: Uuid) {
+    tokio::spawn(async move {
+        match crate::coreswift::push_sponsor_business(&db, business_id).await {
+            Ok(()) => {
+                let _ = sqlx::query(
+                    "UPDATE sponsored_listings SET crm_pushed_at = NOW() WHERE id = $1",
+                )
+                .bind(listing_id)
+                .execute(&db)
+                .await;
+                tracing::info!("[monetization] sponsor push ok for listing {listing_id}");
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[monetization] CoreSwift sponsor push failed for listing {listing_id} (business {business_id}): {e}"
+                );
+            }
+        }
+    });
 }
 
 pub async fn get_sponsored_listing(
@@ -913,6 +940,12 @@ RETURNING id, directory_id, business_id, slot_position, start_date, end_date, is
     .bind(id)
     .fetch_one(&s.db)
     .await?;
+
+    // kanban t_63ffc2de: (re)activating a sponsorship is the same "upgraded to sponsor" event as
+    // creating one — an expired or paused sponsorship turned back on must land in the Sponsors list.
+    if listing.is_active.unwrap_or(false) && existing.is_active != Some(true) {
+        spawn_sponsor_push(s.db.clone(), listing.id, listing.business_id);
+    }
 
     Ok(Json(json!(listing)))
 }

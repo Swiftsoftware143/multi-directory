@@ -480,6 +480,150 @@ pub async fn push_claimed_business(
     Ok(())
 }
 
+/// Push a business that upgraded to a SPONSORED listing to the CRM — creates a contact, adds it to
+/// the directory's "Sponsors" list (list 3 of 3, `coreswift_list_id_sponsors`) and tags it with the
+/// city's `{prefix}-sponsors` tag.
+///
+/// kanban t_63ffc2de: the Sponsors list was provisioned and its id stored, but NOTHING ever added a
+/// member to it, so the spec's "they upgrade to sponsor → moves to Sponsors → sponsor nurture
+/// starts" was dead. This is the missing membership push, modelled on `push_claimed_business`.
+///
+/// Unlike the claimed-business push (which warns and carries on when the list-add fails), a failed
+/// list-add here is returned as an error: the Sponsors membership IS the point of this call, and the
+/// caller records `sponsored_listings.crm_pushed_at` only on success.
+pub async fn push_sponsor_business(db: &PgPool, business_id: Uuid) -> Result<(), String> {
+    // Same guard as push_claimed_business: directory_id is NULLABLE and a business with no directory
+    // has no directory config to push to. Read-side only — the row is "not found".
+    let dir_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT directory_id FROM businesses WHERE id = $1 AND directory_id IS NOT NULL",
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error: {e}"))?
+    .ok_or_else(|| format!("Business {business_id} not found"))?;
+
+    let (tenant_id, _, _, sponsors_list_id) = resolve_config(db, dir_id).await?;
+
+    let (biz_name, biz_email, biz_phone): (String, Option<String>, Option<String>) =
+        sqlx::query_as("SELECT name, email, phone FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_one(db)
+            .await
+            .map_err(|e| format!("DB error: {e}"))?;
+
+    // A CRM contact needs an address. Never fabricate one: report the gap so the caller can log it.
+    let email = biz_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .ok_or_else(|| {
+            format!("Business {business_id} has no email on file — cannot push sponsor to CRM")
+        })?
+        .to_string();
+
+    let base = coreswift_url();
+    let key = internal_key();
+
+    // 1. Contact
+    let resp = HTTP
+        .post(format!("{base}/api/internal/contacts"))
+        .header("x-internal-key", &key)
+        .json(&json!({
+            "tenant_id": tenant_id.to_string(),
+            "first_name": biz_name,
+            "last_name": "Sponsor",
+            "email": email,
+            "phone": biz_phone,
+            "notes": format!("Sponsored listing — business {business_id}")
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("CoreSwift contact create failed: {e}"))?;
+
+    let c_status = resp.status();
+    if !c_status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!(
+            "CoreSwift contact create returned {c_status}: {body}"
+        ));
+    }
+
+    let contact_body: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("CoreSwift contact response parse: {e}"))?;
+
+    let contact_id_str = contact_body["id"]
+        .as_str()
+        .ok_or_else(|| format!("Missing contact id: {contact_body}"))?
+        .to_string();
+
+    // 2. THE SPONSORS LIST — the membership that was never pushed.
+    let resp = HTTP
+        .post(format!(
+            "{base}/api/internal/lists/{sponsors_list_id}/members"
+        ))
+        .header("x-internal-key", &key)
+        .json(&json!({
+            "tenant_id": tenant_id.to_string(),
+            "contact_id": contact_id_str,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("CoreSwift sponsors list add failed: {e}"))?;
+
+    let ls = resp.status();
+    if !ls.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("CoreSwift sponsors list add returned {ls}: {body}"));
+    }
+
+    // 3. City sponsor tag on the SAME tenant the list lives on (provision_city_tags planted
+    //    `{prefix}-sponsors`), so the sponsor nurture can be segmented by city.
+    let slug: Option<String> = sqlx::query_scalar::<_, String>(
+        "SELECT slug FROM directories WHERE id = $1 AND slug IS NOT NULL",
+    )
+    .bind(dir_id)
+    .fetch_optional(db)
+    .await
+    .unwrap_or(None);
+
+    if let Some(slug) = slug {
+        let prefix: String = slug
+            .split('-')
+            .filter_map(|w| w.chars().next())
+            .collect::<String>()
+            .to_lowercase();
+        if !prefix.is_empty() {
+            let tag_name = format!("{prefix}-sponsors");
+            let tag_id = match find_tag_by_name(tenant_id, &tag_name).await {
+                Ok(Some(id)) => Some(id),
+                Ok(None) => {
+                    // Plant it if the city was created before tag provisioning ran.
+                    create_tag_internal(tenant_id, &tag_name, "#10b981")
+                        .await
+                        .ok()
+                }
+                Err(e) => {
+                    tracing::warn!("[coreswift] Failed to look up tag '{tag_name}': {e}");
+                    None
+                }
+            };
+            if let (Some(tag_id), Ok(contact_uuid)) = (tag_id, Uuid::parse_str(&contact_id_str)) {
+                if let Err(e) = assign_contact_tag(tenant_id, contact_uuid, tag_id).await {
+                    tracing::warn!("[coreswift] Failed to assign '{tag_name}': {e}");
+                }
+            }
+        }
+    }
+
+    tracing::info!(
+        "[coreswift] Pushed sponsor business {business_id} to sponsors list {sponsors_list_id} ({email})"
+    );
+    Ok(())
+}
+
 /// Push a newsletter signup to the CRM — creates a contact and adds to "Newsletter Subscribers" list.
 /// Returns the CoreSwift contact ID so callers can assign tags.
 pub async fn push_newsletter_signup(
