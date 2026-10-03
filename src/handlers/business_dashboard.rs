@@ -101,17 +101,22 @@ pub async fn business_dashboard(
         let business_id = business_profile.id;
 
         // ── Query mention counts ──
-        let blog_all = count_blog_mentions(&s.db, business_id, None).await?;
-        let blog_week = count_blog_mentions(&s.db, business_id, Some("7 days")).await?;
-        let blog_month = count_blog_mentions(&s.db, business_id, Some("30 days")).await?;
+        let blog_all = count_blog_mentions(&s.db, business_id, MentionInterval::All).await?;
+        let blog_week = count_blog_mentions(&s.db, business_id, MentionInterval::Days7).await?;
+        let blog_month = count_blog_mentions(&s.db, business_id, MentionInterval::Days30).await?;
 
-        let article_all = count_article_mentions(&s.db, business_id, None).await?;
-        let article_week = count_article_mentions(&s.db, business_id, Some("7 days")).await?;
-        let article_month = count_article_mentions(&s.db, business_id, Some("30 days")).await?;
+        let article_all = count_article_mentions(&s.db, business_id, MentionInterval::All).await?;
+        let article_week =
+            count_article_mentions(&s.db, business_id, MentionInterval::Days7).await?;
+        let article_month =
+            count_article_mentions(&s.db, business_id, MentionInterval::Days30).await?;
 
-        let trapdoor_all = count_trapdoor_mentions(&s.db, business_id, None).await?;
-        let trapdoor_week = count_trapdoor_mentions(&s.db, business_id, Some("7 days")).await?;
-        let trapdoor_month = count_trapdoor_mentions(&s.db, business_id, Some("30 days")).await?;
+        let trapdoor_all =
+            count_trapdoor_mentions(&s.db, business_id, MentionInterval::All).await?;
+        let trapdoor_week =
+            count_trapdoor_mentions(&s.db, business_id, MentionInterval::Days7).await?;
+        let trapdoor_month =
+            count_trapdoor_mentions(&s.db, business_id, MentionInterval::Days30).await?;
 
         let metrics = BusinessMetrics {
             blog_post_mentions: MentionCounts {
@@ -189,124 +194,104 @@ pub async fn business_dashboard(
 
 // ── Helper query functions ──
 
+/// Time window for the dashboard mention counters. A closed compile-time set: each variant selects
+/// a COMPLETE statement literal, so no SQL text is ever assembled at run time (class-14 paydown,
+/// kanban t_faba8c76). The text is byte-identical to what the hand-built version sent per window.
+#[derive(Clone, Copy)]
+enum MentionInterval {
+    All,
+    Days7,
+    Days30,
+}
+
 async fn count_blog_mentions(
     db: &sqlx::PgPool,
     business_id: Uuid,
-    interval: Option<&str>,
+    interval: MentionInterval,
 ) -> ApiResult<i64> {
-    let (sql, bind_interval) = match interval {
-        Some(days) => (
-            format!(
-                "SELECT COUNT(*) FROM blog_posts \
-                 WHERE $1 = ANY(mentioned_business_ids) AND status = 'published' \
-                 AND created_at >= NOW() - INTERVAL '{}'",
-                days
-            ),
-            true,
+    let sql: &str = match interval {
+        MentionInterval::All => concat!(
+            "SELECT COUNT(*) FROM blog_posts ",
+            "WHERE $1 = ANY(mentioned_business_ids) AND status = 'published'"
         ),
-        None => (
-            "SELECT COUNT(*) FROM blog_posts \
-             WHERE $1 = ANY(mentioned_business_ids) AND status = 'published'"
-                .to_string(),
-            false,
+        MentionInterval::Days7 => concat!(
+            "SELECT COUNT(*) FROM blog_posts ",
+            "WHERE $1 = ANY(mentioned_business_ids) AND status = 'published' ",
+            "AND created_at >= NOW() - INTERVAL '7 days'"
+        ),
+        MentionInterval::Days30 => concat!(
+            "SELECT COUNT(*) FROM blog_posts ",
+            "WHERE $1 = ANY(mentioned_business_ids) AND status = 'published' ",
+            "AND created_at >= NOW() - INTERVAL '30 days'"
         ),
     };
 
-    let count: (i64,) = if bind_interval {
-        let (c,) = sqlx::query_as::<_, (i64,)>(&sql)
-            .bind(business_id)
-            .fetch_one(db)
-            .await?;
-        (c,)
-    } else {
-        let (c,) = sqlx::query_as::<_, (i64,)>(&sql)
-            .bind(business_id)
-            .fetch_one(db)
-            .await?;
-        (c,)
-    };
+    let (count,) = sqlx::query_as::<_, (i64,)>(sql)
+        .bind(business_id)
+        .fetch_one(db)
+        .await?;
 
-    Ok(count.0)
+    Ok(count)
 }
 
 async fn count_article_mentions(
     db: &sqlx::PgPool,
     business_id: Uuid,
-    interval: Option<&str>,
+    interval: MentionInterval,
 ) -> ApiResult<i64> {
-    let (sql, bind_interval) = match interval {
-        Some(days) => (
-            format!(
-                "SELECT COUNT(*) FROM business_articles \
-                 WHERE business_id = $1 AND status = 'published' \
-                 AND created_at >= NOW() - INTERVAL '{}'",
-                days
-            ),
-            true,
+    let sql: &str = match interval {
+        MentionInterval::All => concat!(
+            "SELECT COUNT(*) FROM business_articles ",
+            "WHERE business_id = $1 AND status = 'published'"
         ),
-        None => (
-            "SELECT COUNT(*) FROM business_articles \
-             WHERE business_id = $1 AND status = 'published'"
-                .to_string(),
-            false,
+        MentionInterval::Days7 => concat!(
+            "SELECT COUNT(*) FROM business_articles ",
+            "WHERE business_id = $1 AND status = 'published' ",
+            "AND created_at >= NOW() - INTERVAL '7 days'"
+        ),
+        MentionInterval::Days30 => concat!(
+            "SELECT COUNT(*) FROM business_articles ",
+            "WHERE business_id = $1 AND status = 'published' ",
+            "AND created_at >= NOW() - INTERVAL '30 days'"
         ),
     };
 
-    let count: (i64,) = if bind_interval {
-        let (c,) = sqlx::query_as::<_, (i64,)>(&sql)
-            .bind(business_id)
-            .fetch_one(db)
-            .await?;
-        (c,)
-    } else {
-        let (c,) = sqlx::query_as::<_, (i64,)>(&sql)
-            .bind(business_id)
-            .fetch_one(db)
-            .await?;
-        (c,)
-    };
+    let (count,) = sqlx::query_as::<_, (i64,)>(sql)
+        .bind(business_id)
+        .fetch_one(db)
+        .await?;
 
-    Ok(count.0)
+    Ok(count)
 }
 
 async fn count_trapdoor_mentions(
     db: &sqlx::PgPool,
     business_id: Uuid,
-    interval: Option<&str>,
+    interval: MentionInterval,
 ) -> ApiResult<i64> {
-    let (sql, bind_interval) = match interval {
-        Some(days) => (
-            format!(
-                "SELECT COUNT(*) FROM programmatic_pages \
-                 WHERE $1 = ANY(mentioned_business_ids) AND status = 'published' \
-                 AND created_at >= NOW() - INTERVAL '{}'",
-                days
-            ),
-            true,
+    let sql: &str = match interval {
+        MentionInterval::All => concat!(
+            "SELECT COUNT(*) FROM programmatic_pages ",
+            "WHERE $1 = ANY(mentioned_business_ids) AND status = 'published'"
         ),
-        None => (
-            "SELECT COUNT(*) FROM programmatic_pages \
-             WHERE $1 = ANY(mentioned_business_ids) AND status = 'published'"
-                .to_string(),
-            false,
+        MentionInterval::Days7 => concat!(
+            "SELECT COUNT(*) FROM programmatic_pages ",
+            "WHERE $1 = ANY(mentioned_business_ids) AND status = 'published' ",
+            "AND created_at >= NOW() - INTERVAL '7 days'"
+        ),
+        MentionInterval::Days30 => concat!(
+            "SELECT COUNT(*) FROM programmatic_pages ",
+            "WHERE $1 = ANY(mentioned_business_ids) AND status = 'published' ",
+            "AND created_at >= NOW() - INTERVAL '30 days'"
         ),
     };
 
-    let count: (i64,) = if bind_interval {
-        let (c,) = sqlx::query_as::<_, (i64,)>(&sql)
-            .bind(business_id)
-            .fetch_one(db)
-            .await?;
-        (c,)
-    } else {
-        let (c,) = sqlx::query_as::<_, (i64,)>(&sql)
-            .bind(business_id)
-            .fetch_one(db)
-            .await?;
-        (c,)
-    };
+    let (count,) = sqlx::query_as::<_, (i64,)>(sql)
+        .bind(business_id)
+        .fetch_one(db)
+        .await?;
 
-    Ok(count.0)
+    Ok(count)
 }
 
 // ── Local helper type (mirrors portal's ClaimedBusinessRow for local use) ──

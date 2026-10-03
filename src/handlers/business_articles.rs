@@ -260,69 +260,57 @@ pub async fn list_articles(
 
     use sqlx::Row;
 
-    let mut conditions = vec!["ba.directory_id=$1".to_string()];
-    let mut idx = 2;
+    // Statement text (head, WHERE keywords, ORDER BY, LIMIT/OFFSET) is a compile-time literal in
+    // this file; every filter value and the search triple travel as binds, so nothing is assembled
+    // at run time (class-14 paydown, kanban t_faba8c76). Count and data share ONE predicate set.
+    fn push_filters<'a>(
+        qb: &mut sqlx::QueryBuilder<'a, sqlx::Postgres>,
+        status: Option<&'a str>,
+        business_id: Option<Uuid>,
+        is_owner_article: Option<bool>,
+        search: Option<&'a str>,
+    ) {
+        if let Some(status) = status {
+            qb.push(" AND ba.status = ").push_bind(status);
+        }
+        if let Some(biz_id) = business_id {
+            qb.push(" AND ba.business_id = ").push_bind(biz_id);
+        }
+        if let Some(is_owner) = is_owner_article {
+            qb.push(" AND ba.is_owner_article = ").push_bind(is_owner);
+        }
+        if let Some(search) = search {
+            qb.push(" AND (ba.title ILIKE ")
+                .push_bind(format!("%{}%", search))
+                .push(" OR ba.keyword ILIKE ")
+                .push_bind(format!("%{}%", search))
+                .push(" OR ba.slug ILIKE ")
+                .push_bind(format!("%{}%", search))
+                .push(")");
+        }
+    }
 
-    if let Some(ref status) = params.status {
-        conditions.push(format!("ba.status=${}", idx));
-        idx += 1;
-    }
-    if let Some(ref biz_id) = params.business_id {
-        conditions.push(format!("ba.business_id=${}", idx));
-        idx += 1;
-    }
-    if let Some(ref is_owner) = params.is_owner_article {
-        conditions.push(format!("ba.is_owner_article=${}", idx));
-        idx += 1;
-    }
-    if let Some(ref search) = params.search {
-        conditions.push(format!(
-            "(ba.title ILIKE ${} OR ba.keyword ILIKE ${} OR ba.slug ILIKE ${})",
-            idx,
-            idx + 1,
-            idx + 2
-        ));
-        idx += 3;
-    }
-
-    let where_clause = conditions.join(" AND ");
-
-    let sql = format!(
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT ba.*, b.name as business_name \
          FROM business_articles ba \
          LEFT JOIN businesses b ON b.id = ba.business_id \
-         WHERE {} \
-         ORDER BY ba.updated_at DESC \
-         LIMIT ${} OFFSET ${}",
-        where_clause,
-        idx,
-        idx + 1
+         WHERE ba.directory_id = ",
     );
+    data_qb.push_bind(dir_id);
+    push_filters(
+        &mut data_qb,
+        params.status.as_deref(),
+        params.business_id,
+        params.is_owner_article,
+        params.search.as_deref(),
+    );
+    data_qb
+        .push(" ORDER BY ba.updated_at DESC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
-    let status_filter = params.status.clone();
-    let biz_id_filter = params.business_id;
-    let is_owner_filter = params.is_owner_article;
-    let search_filter = params.search.clone();
-
-    let mut query = sqlx::query(&sql).bind(dir_id);
-
-    if let Some(ref status) = status_filter {
-        query = query.bind(status.clone());
-    }
-    if let Some(ref biz_id) = biz_id_filter {
-        query = query.bind(biz_id);
-    }
-    if let Some(ref is_owner) = is_owner_filter {
-        query = query.bind(is_owner);
-    }
-    if let Some(ref search) = search_filter {
-        let s = format!("%{}%", search);
-        query = query.bind(s.clone()).bind(s.clone()).bind(s);
-    }
-
-    query = query.bind(limit).bind(offset);
-
-    let rows = query.fetch_all(&s.db).await?;
+    let rows = data_qb.build().fetch_all(&s.db).await?;
 
     let mut results: Vec<serde_json::Value> = Vec::new();
     for row in &rows {
@@ -347,29 +335,23 @@ pub async fn list_articles(
         }));
     }
 
-    // Count total (without pagination)
-    let count_sql = format!(
-        "SELECT COUNT(*) FROM business_articles ba WHERE {}",
-        conditions.join(" AND ")
+    // Count total (without pagination) — the same predicate set as the data query above.
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT COUNT(*) FROM business_articles ba WHERE ba.directory_id = ",
     );
-
-    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql).bind(dir_id);
-
-    if let Some(ref status) = status_filter {
-        count_query = count_query.bind(status.clone());
-    }
-    if let Some(ref biz_id) = biz_id_filter {
-        count_query = count_query.bind(biz_id);
-    }
-    if let Some(ref is_owner) = is_owner_filter {
-        count_query = count_query.bind(is_owner);
-    }
-    if let Some(ref search) = search_filter {
-        let s = format!("%{}%", search);
-        count_query = count_query.bind(s.clone()).bind(s.clone()).bind(s);
-    }
-
-    let total = count_query.fetch_one(&s.db).await.unwrap_or(0);
+    count_qb.push_bind(dir_id);
+    push_filters(
+        &mut count_qb,
+        params.status.as_deref(),
+        params.business_id,
+        params.is_owner_article,
+        params.search.as_deref(),
+    );
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
     Ok(Json(json!({
         "data": results,

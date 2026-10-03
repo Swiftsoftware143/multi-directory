@@ -104,23 +104,19 @@ pub async fn admin_members(State(s): State<AppState>) -> ApiResult<impl IntoResp
     .fetch_all(&s.db)
     .await?;
 
-    // Resolve directory slugs in one batch
+    // Resolve directory slugs in one batch. `= ANY($1)` with the id list bound as one uuid[]
+    // parameter: the statement text is a compile-time literal and only the VALUES travel as a
+    // bind, so no SQL is assembled at run time (class-14 paydown, kanban t_faba8c76).
     let dir_ids: Vec<uuid::Uuid> = members.iter().filter_map(|m| m.directory_id).collect();
     let dir_slugs: std::collections::HashMap<uuid::Uuid, String> = if !dir_ids.is_empty() {
-        let placeholders: Vec<String> = dir_ids
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("${}", i + 1))
-            .collect();
-        let query = format!(
-            "SELECT id, slug FROM directories WHERE id IN ({})",
-            placeholders.join(",")
-        );
-        let mut q = sqlx::query_as::<_, (uuid::Uuid, String)>(&query);
-        for id in &dir_ids {
-            q = q.bind(*id);
-        }
-        q.fetch_all(&s.db).await?.into_iter().collect()
+        sqlx::query_as::<_, (uuid::Uuid, String)>(
+            "SELECT id, slug FROM directories WHERE id = ANY($1)",
+        )
+        .bind(&dir_ids)
+        .fetch_all(&s.db)
+        .await?
+        .into_iter()
+        .collect()
     } else {
         std::collections::HashMap::new()
     };
@@ -179,26 +175,19 @@ async fn check_loyalty_enrollment(
     if emails.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let placeholders: Vec<String> = emails
-        .iter()
-        .enumerate()
-        .map(|(i, _)| format!("${}", i + 1))
-        .collect();
-    let query = format!(
+    // `= ANY($1)` with the email list bound as one text[] parameter: statement text is a
+    // compile-time literal, only the VALUES travel as a bind (class-14 paydown, kanban t_faba8c76).
+    let emails_owned: Vec<String> = emails.iter().map(|e| e.to_string()).collect();
+    let results = sqlx::query_scalar::<_, String>(
         r#"SELECT DISTINCT va.email
            FROM loyalty_members lm
            JOIN visitor_accounts va ON va.id = lm.visitor_account_id
-           WHERE va.email IN ({})"#,
-        placeholders.join(",")
-    );
-    let mut q = sqlx::query_scalar::<_, String>(&query);
-    for email in emails {
-        q = q.bind(*email);
-    }
-    let results = q
-        .fetch_all(&s.db)
-        .await
-        .map_err(|e| AppError::Internal(format!("loyalty lookup failed: {}", e)))?;
+           WHERE va.email = ANY($1)"#,
+    )
+    .bind(&emails_owned)
+    .fetch_all(&s.db)
+    .await
+    .map_err(|e| AppError::Internal(format!("loyalty lookup failed: {}", e)))?;
     Ok(results.into_iter().collect())
 }
 

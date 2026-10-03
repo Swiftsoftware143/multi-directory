@@ -121,66 +121,61 @@ pub async fn list_queue(
     let page = params.page.unwrap_or(1).max(1);
     let offset = (page - 1) * per_page;
 
-    let mut conditions = Vec::new();
-    let mut bind_idx = 1;
-
-    if let Some(ref status) = params.status {
-        conditions.push(format!("cq.status = ${}", bind_idx));
-        bind_idx += 1;
-    }
-    if let Some(dir_id) = params.directory_id {
-        conditions.push(format!("cq.directory_id = ${}", bind_idx));
-        bind_idx += 1;
-    }
-    if let Some(ref qt) = params.queue_type {
-        conditions.push(format!("cq.queue_type = ${}", bind_idx));
-        bind_idx += 1;
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
-
-    // Count query
-    let count_sql = format!("SELECT COUNT(*) FROM content_queue cq {}", where_clause,);
-    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
-
-    if let Some(ref status) = params.status {
-        count_query = count_query.bind(status.clone());
-    }
-    if let Some(dir_id) = params.directory_id {
-        count_query = count_query.bind(dir_id);
-    }
-    if let Some(ref qt) = params.queue_type {
-        count_query = count_query.bind(qt.clone());
+    // Every fragment of the statement text is a compile-time literal in this file; each optional
+    // filter and the page values travel as binds only, so no SQL is assembled at run time
+    // (class-14 paydown, kanban t_faba8c76). Count and data share ONE predicate builder.
+    fn push_filters<'a>(
+        qb: &mut sqlx::QueryBuilder<'a, sqlx::Postgres>,
+        status: Option<&'a str>,
+        directory_id: Option<Uuid>,
+        queue_type: Option<&'a str>,
+    ) {
+        let mut lead = " WHERE ";
+        if let Some(status) = status {
+            qb.push(lead).push("cq.status = ").push_bind(status);
+            lead = " AND ";
+        }
+        if let Some(dir_id) = directory_id {
+            qb.push(lead).push("cq.directory_id = ").push_bind(dir_id);
+            lead = " AND ";
+        }
+        if let Some(queue_type) = queue_type {
+            qb.push(lead).push("cq.queue_type = ").push_bind(queue_type);
+        }
     }
 
-    let total = count_query.fetch_one(&s.db).await.unwrap_or(0);
-
-    // Data query
-    let data_sql = format!(
-        "SELECT cq.* FROM content_queue cq {} ORDER BY cq.scheduled_for ASC LIMIT ${} OFFSET ${}",
-        where_clause,
-        bind_idx,
-        bind_idx + 1,
+    let mut count_qb =
+        sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(*) FROM content_queue cq");
+    push_filters(
+        &mut count_qb,
+        params.status.as_deref(),
+        params.directory_id,
+        params.queue_type.as_deref(),
     );
-    let mut data_query = sqlx::query_as::<_, ContentQueueItem>(&data_sql);
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
-    if let Some(ref status) = params.status {
-        data_query = data_query.bind(status.clone());
-    }
-    if let Some(dir_id) = params.directory_id {
-        data_query = data_query.bind(dir_id);
-    }
-    if let Some(ref qt) = params.queue_type {
-        data_query = data_query.bind(qt.clone());
-    }
+    let mut data_qb =
+        sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT cq.* FROM content_queue cq");
+    push_filters(
+        &mut data_qb,
+        params.status.as_deref(),
+        params.directory_id,
+        params.queue_type.as_deref(),
+    );
+    data_qb
+        .push(" ORDER BY cq.scheduled_for ASC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
-    data_query = data_query.bind(per_page).bind(offset);
-
-    let items = data_query.fetch_all(&s.db).await?;
+    let items = data_qb
+        .build_query_as::<ContentQueueItem>()
+        .fetch_all(&s.db)
+        .await?;
 
     Ok(Json(json!({
         "items": items,

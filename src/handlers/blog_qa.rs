@@ -584,73 +584,72 @@ pub async fn list_keywords(
     let per_page = 50;
     let offset = (page - 1) * per_page;
 
-    let mut where_clauses = Vec::new();
-    let mut bind_idx = 1i32;
-
-    if let Some(ref dir_id) = q.directory_id {
-        where_clauses.push(format!("directory_id = ${}", bind_idx));
-        bind_idx += 1;
+    // Every fragment of the statement text is a compile-time literal in this file; each optional
+    // filter and the page values travel as binds only, so no SQL is assembled at run time
+    // (class-14 paydown, kanban t_faba8c76). Count and data share ONE predicate builder.
+    fn push_filters<'a>(
+        qb: &mut sqlx::QueryBuilder<'a, sqlx::Postgres>,
+        directory_id: Option<Uuid>,
+        status: Option<&'a str>,
+        source: Option<&'a str>,
+        intent: Option<&'a str>,
+    ) {
+        let mut lead = " WHERE ";
+        if let Some(dir_id) = directory_id {
+            qb.push(lead).push("directory_id = ").push_bind(dir_id);
+            lead = " AND ";
+        }
+        if let Some(status) = status {
+            qb.push(lead).push("status = ").push_bind(status);
+            lead = " AND ";
+        }
+        if let Some(source) = source {
+            qb.push(lead).push("source = ").push_bind(source);
+            lead = " AND ";
+        }
+        if let Some(intent) = intent {
+            qb.push(lead).push("intent = ").push_bind(intent);
+        }
     }
-    if let Some(ref status) = q.status {
-        where_clauses.push(format!("status = ${}", bind_idx));
-        bind_idx += 1;
-    }
-    if let Some(ref source) = q.source {
-        where_clauses.push(format!("source = ${}", bind_idx));
-        bind_idx += 1;
-    }
-    if let Some(ref intent) = q.intent {
-        where_clauses.push(format!("intent = ${}", bind_idx));
-        bind_idx += 1;
-    }
-
-    let where_str = if where_clauses.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", where_clauses.join(" AND "))
-    };
 
     // Count query
-    let count_sql = format!("SELECT COUNT(*) FROM blog_qa_keywords {}", where_str);
-    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
-    if let Some(ref dir_id) = q.directory_id {
-        count_query = count_query.bind(dir_id);
-    }
-    if let Some(ref status) = q.status {
-        count_query = count_query.bind(status);
-    }
-    if let Some(ref source) = q.source {
-        count_query = count_query.bind(source);
-    }
-    if let Some(ref intent) = q.intent {
-        count_query = count_query.bind(intent);
-    }
-    let total = count_query.fetch_one(&s.db).await.unwrap_or(0);
+    let mut count_qb =
+        sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(*) FROM blog_qa_keywords");
+    push_filters(
+        &mut count_qb,
+        q.directory_id,
+        q.status.as_deref(),
+        q.source.as_deref(),
+        q.intent.as_deref(),
+    );
+    let total = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
 
     // Data query
-    let data_sql = format!(
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT id, directory_id, question, keyword, intent, source, frequency, status, \
                 target_category, created_at \
-         FROM blog_qa_keywords {} ORDER BY frequency DESC, created_at DESC LIMIT ${} OFFSET ${}",
-        where_str,
-        bind_idx,
-        bind_idx + 1
+         FROM blog_qa_keywords",
     );
-    let mut data_query = sqlx::query_as::<_, KeywordItem>(&data_sql);
-    if let Some(ref dir_id) = q.directory_id {
-        data_query = data_query.bind(dir_id);
-    }
-    if let Some(ref status) = q.status {
-        data_query = data_query.bind(status);
-    }
-    if let Some(ref source) = q.source {
-        data_query = data_query.bind(source);
-    }
-    if let Some(ref intent) = q.intent {
-        data_query = data_query.bind(intent);
-    }
-    data_query = data_query.bind(per_page).bind(offset);
-    let keywords = data_query.fetch_all(&s.db).await?;
+    push_filters(
+        &mut data_qb,
+        q.directory_id,
+        q.status.as_deref(),
+        q.source.as_deref(),
+        q.intent.as_deref(),
+    );
+    data_qb
+        .push(" ORDER BY frequency DESC, created_at DESC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let keywords = data_qb
+        .build_query_as::<KeywordItem>()
+        .fetch_all(&s.db)
+        .await?;
 
     Ok(Json(KeywordListResponse {
         keywords,
