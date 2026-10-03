@@ -17,47 +17,6 @@ fn service_url() -> String {
     std::env::var("EMAIL_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:3456".to_string())
 }
 
-/// `{{name}}`-shaped tokens that survived rendering — i.e. names this renderer failed
-/// to substitute. `send_reset_email` binds exactly `{{token}}` and `{{code}}`; any other
-/// double-brace name in the stored row is drift that would reach the recipient literally.
-/// This is not hypothetical: the global default `password_reset` row shipped
-/// `{{directory_name}}` in its subject, html and body_text and mailed it verbatim, with
-/// zero log lines, until kanban t_ba93aea4. Naming the leftover is the half that makes
-/// the next drift loud instead of silent.
-fn unresolved_placeholders(rendered: &str) -> Vec<&str> {
-    let mut out: Vec<&str> = Vec::new();
-    let mut rest = rendered;
-    while let Some(open) = rest.find("{{") {
-        let after = &rest[open + 2..];
-        let Some(close) = after.find("}}") else { break };
-        let name = after[..close].trim();
-        if !name.is_empty()
-            && name.len() < 64
-            && name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
-            && !out.contains(&name)
-        {
-            out.push(name);
-        }
-        rest = &after[close + 2..];
-    }
-    out
-}
-
-/// Every unresolved placeholder across the three rendered fields, deduped, in first-seen order.
-fn unbound_placeholders<'a>(fields: &[(&'a str, &'a str)]) -> Vec<&'a str> {
-    let mut out: Vec<&str> = Vec::new();
-    for (_, text) in fields {
-        for name in unresolved_placeholders(text) {
-            if !out.contains(&name) {
-                out.push(name);
-            }
-        }
-    }
-    out
-}
-
 /// Send a password reset email — tries the DB template first, falls back to inline.
 pub async fn send_reset_email(db: &PgPool, to: &str, token: &str) -> Result<(), String> {
     // Try to load a DB template for password_reset
@@ -69,30 +28,43 @@ pub async fn send_reset_email(db: &PgPool, to: &str, token: &str) -> Result<(), 
     .await
     {
         Some((subj, html_src, text_src)) => {
-            // Replace template variables
-            let subject = subj.replace("{{token}}", token).replace("{{code}}", token);
-            let html = html_src
-                .replace("{{token}}", token)
-                .replace("{{code}}", token);
-            let text = text_src.map(|t| t.replace("{{token}}", token).replace("{{code}}", token));
+            // B119: render through the SHARED merge-field engine so every field the save guard
+            // allows ({{directory_name}}, {{contact_email}}, …) actually resolves at send time,
+            // and an unresolved token is DROPPED — never mailed to the recipient as raw braces.
+            let mut ctx = crate::merge_fields::MergeContext::for_network(db).await;
+            ctx.set("token", token);
+            ctx.set("code", token);
+            ctx.set("year", chrono::Utc::now().format("%Y").to_string());
+            let base = ctx
+                .get("site_url")
+                .unwrap_or("https://zaarhub.com")
+                .to_string();
+            ctx.set(
+                "reset_link",
+                format!("{}/reset?token={}", base.trim_end_matches('/'), token),
+            );
 
-            // Anything the whitelist above could not bind is drift, and a half-substituted
-            // email is a defect, not a silent default: NAME it, loudly (t_ba93aea4).
-            let mut fields: Vec<(&str, &str)> =
-                vec![("subject", subject.as_str()), ("html", html.as_str())];
-            if let Some(body) = text.as_deref() {
-                fields.push(("body_text", body));
+            let r_subject = crate::merge_fields::render(&subj, &ctx);
+            let r_html = crate::merge_fields::render(&html_src, &ctx);
+            let r_text = text_src.map(|t| crate::merge_fields::render(&t, &ctx).text);
+
+            // Anything the field set could not bind is drift, and a half-substituted email is
+            // a defect, not a silent default: NAME it, loudly (t_ba93aea4).
+            let mut missing: Vec<String> = Vec::new();
+            for name in r_subject.missing.iter().chain(r_html.missing.iter()) {
+                if !missing.contains(name) {
+                    missing.push(name.clone());
+                }
             }
-            let missing = unbound_placeholders(&fields);
             if !missing.is_empty() {
                 tracing::warn!(
                     placeholders = %missing.join(", "),
-                    "password_reset email template placeholder(s) left unsubstituted — the recipient would receive them literally. \
-                     email_templates(name='password_reset') must only use {{token}} and {{code}}; fix the row in the admin panel",
+                    "password_reset email template placeholder(s) had no value and were omitted — \
+                     fix the row in the admin panel so a customer never sees a raw field name",
                 );
             }
 
-            (subject, html, text)
+            (r_subject.text, r_html.text, r_text)
         }
         None => {
             // Fallback to inline template

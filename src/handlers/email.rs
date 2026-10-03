@@ -70,6 +70,15 @@ pub const KNOWN_PLACEHOLDERS: &[(&str, &str)] = &[
     ("accent_color", "Brand accent colour"),
     ("background_color", "Brand background colour"),
     ("text_color", "Brand text colour"),
+    // B119: the shared merge-field vocabulary, so email and every other authored surface use
+    // ONE field set. These resolve from the directory/network at send time (src/merge_fields.rs).
+    ("city", "City name"),
+    ("city_name", "City name (same as {city})"),
+    ("network_name", "Network name"),
+    ("state", "State, e.g. FL"),
+    ("contact_email", "Support / contact email"),
+    ("contact_phone", "Contact phone"),
+    ("current_year", "Current year"),
 ];
 
 #[derive(Debug, Deserialize)]
@@ -413,6 +422,13 @@ const SAMPLE_VALUES: &[(&str, &str)] = &[
     ("accent_color", "#f59e0b"),
     ("background_color", "#ffffff"),
     ("text_color", "#1e293b"),
+    ("city", "Palm Bay"),
+    ("city_name", "Palm Bay"),
+    ("network_name", "ZaarHub"),
+    ("state", "FL"),
+    ("contact_email", "support@zaarhub.com"),
+    ("contact_phone", "(321) 555-0100"),
+    ("current_year", "2026"),
 ];
 
 fn render_values(
