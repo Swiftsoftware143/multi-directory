@@ -82,6 +82,10 @@ pub struct VisitorRegisterRequest {
     pub name: Option<String>,
     pub phone: Option<String>,
     pub directory_id: Option<Uuid>,
+    /// Card B48 — an optional referral code from `?ref=CODE`. When present and live, the
+    /// pending referral row for that code is attached to this new account.
+    #[serde(default)]
+    pub referral_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -343,6 +347,80 @@ pub async fn visitor_register(
         .bind(visitor.id)
         .execute(&s.db)
         .await?;
+
+    // Card B48 — attach a referral when the signup carried a code. The code's own row is
+    // adopted first; once that is used, each further signup writes its own referral row, so a
+    // member can refer more than one person. A bad/expired code never fails the registration.
+    if let Some(code) = req
+        .referral_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
+        let attached = sqlx::query(
+            "UPDATE referrals SET referee_type = 'visitor', referee_id = $1, referee_email = $2, \
+             referee_name = $3, status = 'pending', updated_at = now() \
+             WHERE referral_code = $4 AND referee_id IS NULL AND status = 'pending' \
+             RETURNING id",
+        )
+        .bind(visitor.id)
+        .bind(&email)
+        .bind(&req.name)
+        .bind(code)
+        .fetch_optional(&s.db)
+        .await;
+
+        match attached {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                use sqlx::Row as _;
+                let referrer = sqlx::query(
+                    "SELECT referrer_type, referrer_id, referrer_email FROM referrals \
+                     WHERE referral_code = $1 AND status <> 'expired' ORDER BY created_at ASC LIMIT 1",
+                )
+                .bind(code)
+                .fetch_optional(&s.db)
+                .await
+                .ok()
+                .flatten();
+                match referrer {
+                    Some(r) => {
+                        let rtype: String = r
+                            .try_get("referrer_type")
+                            .unwrap_or_else(|_| "visitor".to_string());
+                        let rid: Option<Uuid> = r.try_get("referrer_id").ok();
+                        let remail: Option<String> = r.try_get("referrer_email").unwrap_or(None);
+                        if let Some(rid) = rid {
+                            if let Err(e) = sqlx::query(
+                                "INSERT INTO referrals (referrer_type, referrer_id, referrer_email, \
+                                 referee_type, referee_id, referee_email, referee_name, referral_code, \
+                                 direction, status) \
+                                 VALUES ($1, $2, $3, 'visitor', $4, $5, $6, $7, 'inbound', 'pending')",
+                            )
+                            .bind(&rtype)
+                            .bind(rid)
+                            .bind(&remail)
+                            .bind(visitor.id)
+                            .bind(&email)
+                            .bind(&req.name)
+                            .bind(code)
+                            .execute(&s.db)
+                            .await
+                            {
+                                eprintln!("[referral] signup attach failed for code {code}: {e}");
+                            }
+                        }
+                    }
+                    None => {
+                        eprintln!(
+                            "[referral] signup code {code} matched no live referral — skipped"
+                        )
+                    }
+                }
+            }
+            Err(e) => eprintln!("[referral] signup attach failed for code {code}: {e}"),
+        }
+    }
 
     // Fire cross-platform tag sync for visitor signup (fire-and-forget)
     {

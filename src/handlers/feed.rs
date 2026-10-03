@@ -967,8 +967,7 @@ pub async fn generate_referral_code(
         sqlx::query(
             r#"INSERT INTO referrals
                    (referrer_type, referrer_id, referrer_email, referee_type, referral_code, direction, status)
-               VALUES ('visitor', $1, $2, 'visitor', $3, 'outbound', 'pending')
-               ON CONFLICT (referral_code) DO NOTHING"#,
+               VALUES ('visitor', $1, $2, 'visitor', $3, 'outbound', 'pending')"#,
         )
         .bind(visitor_id)
         .bind(&email)

@@ -143,14 +143,18 @@ err.classList.remove('show');
 btn.disabled = true;
 loading.style.display = 'block';
 try{
-var res = await fetch('/api/v1/visitor/register', {
-method: 'POST',
-headers: {'Content-Type': 'application/json'},
-body: JSON.stringify({
+var refCode = '';
+try { refCode = new URLSearchParams(window.location.search).get('ref') || ''; } catch(e) {}
+var regBody = {
 name: document.getElementById('reg-name').value,
 email: document.getElementById('reg-email').value,
 password: document.getElementById('reg-password').value
-})
+};
+if(refCode) regBody.referral_code = refCode;
+var res = await fetch('/api/v1/visitor/register', {
+method: 'POST',
+headers: {'Content-Type': 'application/json'},
+body: JSON.stringify(regBody)
 });
 var data = await res.json();
 if(!res.ok) throw new Error(data.error || data.message || 'Registration failed');
@@ -225,6 +229,9 @@ async function submitReset(){
     btn.textContent='Reset Password';btn.disabled=false;
   }
 }
+/* A referral link lands on /login?ref=CODE — open the sign-up tab so the visitor
+   completes registration (the ref code is picked up by the register handler above). */
+try { if(new URLSearchParams(window.location.search).get('ref')) showTab('register'); } catch(e) {}
 </script>
 <style>
 .overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;justify-content:center;align-items:center;padding:20px}

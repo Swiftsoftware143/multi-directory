@@ -1644,6 +1644,31 @@ pub fn create_router(s: AppState) -> Router {
             "/visitor/referrals/generate",
             post(feed::generate_referral_code),
         )
+        // ── Referral programme (card B48) — operator-guarded admin half ─────────────────────
+        // The visitor half (own code + stats) is directly above; these are the operator
+        // controls: the pending queue, verify/reject, and the per-directory reward amounts.
+        // Every call is operator-guarded, so the reward config can never be edited by a tenant.
+        .route(
+            "/admin/referrals",
+            get(referral::list_referrals)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/referrals/:id/verify",
+            post(referral::verify_referral)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/referrals/:id/reject",
+            post(referral::reject_referral)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/referral-settings",
+            get(referral::get_referral_settings)
+                .put(referral::put_referral_settings)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/visitor/loyalty/perks", get(visitors::my_redeemed_perks))
         // ? Anonymous tracking beacon (page views, sessions, events)
         .route("/visitors/track", post(visitors::track_visitor))

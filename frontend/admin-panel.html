@@ -544,6 +544,7 @@
         <a href="#ad-zones-section">📢 Ad Zones</a>
         <a href="#plan-tiers-section">💠 Plan Tiers</a>
         <a href="#loyalty-messaging-section">⭐ ZaarCash Messaging</a>
+        <a href="#referral-section">🎁 Referrals</a>
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
@@ -1049,6 +1050,43 @@
         </div>
         <div style="margin-top:10px"><button class="btn btn-accent btn-sm" onclick="window.__lmSave()">Save</button></div>
         <div class="feature-status" id="lm-status"></div>
+      </div>
+
+      <!-- 🎁 Referral programme (card B48) — a member's code is minted on the visitor side
+           (POST /visitor/referrals/generate); this is the operator half: the pending queue,
+           verify/reject, and the per-directory reward amounts. Amounts live on the directory
+           (zaarhub_config.referral_rewards) with working defaults, so a buyer tunes their own
+           programme from the panel — no SQL, no hardcoding. -->
+      <div class="feature-card" id="referral-section">
+        <h3>🎁 Referral Programme</h3>
+        <p class="feature-subtitle">A member shares their code (visitor portal → Refer a friend); every signup that uses it lands here as <b>pending</b>. Verifying a referral pays the referrer this directory's own reward — in the directory's currency — and records it on the row. Amounts are per directory and editable below.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Directory
+            <select class="pk-input" id="rf-dir" onchange="window.__rfLoad()"></select></label>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__rfLoad()">↻ Reload</button>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Visitor → visitor
+            <input class="pk-input" id="rf-v2v" type="number" min="0" step="1"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Business → business
+            <input class="pk-input" id="rf-b2b" type="number" min="0" step="1"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Business → visitor
+            <input class="pk-input" id="rf-b2v" type="number" min="0" step="1"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Visitor → business
+            <input class="pk-input" id="rf-v2b" type="number" min="0" step="1"></label>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__rfSaveRewards()">Save amounts</button>
+        </div>
+        <h4 style="margin:16px 0 6px;font-size:.95rem">Referrals for this directory</h4>
+        <div class="pk-controls" style="margin-bottom:8px;gap:8px">
+          <select class="pk-input" id="rf-status-filter" onchange="window.__rfLoad()">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="paid">Paid</option>
+            <option value="expired">Expired</option>
+          </select>
+        </div>
+        <div id="rf-list"></div>
+        <div class="feature-status" id="rf-status-msg"></div>
       </div>
 
       <!-- 💰 Ad Revenue &amp; Sponsor Creatives (kanban t_14927725) — these two capabilities
@@ -3058,6 +3096,123 @@
     window.__lmLoad = lmLoad;
     window.__lmSave = lmSave;
 
+    // ===== 🎁 Referral programme (card B48) =====
+    // The visitor half mints the code; this is the operator half. Amounts are per directory
+    // (directories.zaarhub_config.referral_rewards) with working defaults served by the API.
+    function rfStatus(msg, ok) {
+      var el = document.getElementById('rf-status-msg');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function rfFillDirs() {
+      var sel = document.getElementById('rf-dir');
+      if (!sel) return;
+      var keep = sel.value;
+      sel.innerHTML = '';
+      (directories || []).forEach(function (r) {
+        var o = document.createElement('option');
+        o.value = r.id;
+        o.textContent = (r.name || r.slug || r.id) + ' (' + (r.slug || '') + ')';
+        sel.appendChild(o);
+      });
+      if (keep) sel.value = keep;
+    }
+
+    function rfLoad() {
+      var dir = document.getElementById('rf-dir');
+      if (!dir) return;
+      if (!dir.options.length) rfFillDirs();
+      if (!dir.value) { rfStatus('No directory selected yet', false); return; }
+      rfStatus('Loading…', true);
+      apiGet('/admin/referral-settings?directory_id=' + encodeURIComponent(dir.value))
+        .then(function (d) {
+          var r = d.rewards || {};
+          document.getElementById('rf-v2v').value = r.visitor_to_visitor;
+          document.getElementById('rf-b2b').value = r.business_to_business;
+          document.getElementById('rf-b2v').value = r.business_to_visitor;
+          document.getElementById('rf-v2b').value = r.visitor_to_business;
+        })
+        .catch(function (e) { rfStatus('Amounts load failed: ' + e.message, false); });
+      var st = document.getElementById('rf-status-filter');
+      var q = '/admin/referrals?directory_id=' + encodeURIComponent(dir.value);
+      if (st && st.value) q += '&status=' + encodeURIComponent(st.value);
+      apiGet(q)
+        .then(function (d) {
+          var host = document.getElementById('rf-list');
+          var rows = d.referrals || [];
+          if (!rows.length) {
+            host.innerHTML = '<div style="font-size:.8rem;color:var(--text-secondary)">No referrals for this directory yet.</div>';
+            rfStatus('Loaded', true);
+            return;
+          }
+          host.innerHTML = rows.map(function (x) {
+            var actions = (x.status === 'paid')
+              ? ''
+              : (x.used
+                ? '<button class="btn btn-accent btn-sm" type="button" onclick="window.__rfVerify(\'' + x.id + '\')">Verify &amp; pay</button> '
+                  + '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__rfReject(\'' + x.id + '\')">Reject</button>'
+                : '<span style="font-size:.75rem;color:var(--text-secondary)">code not used yet</span>');
+            return '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-bottom:1px solid var(--border);padding:6px 0">'
+              + '<code>' + (x.referral_code || '') + '</code>'
+              + '<span>' + (x.referee_email || '') + '</span>'
+              + '<span style="color:var(--text-secondary)">' + (x.referee_name || '') + '</span>'
+              + '<span style="font-weight:600">' + (x.status || '') + '</span>'
+              + '<span>' + (x.zaarcash_earned || 0) + ' awarded</span>'
+              + '<span style="margin-left:auto">' + actions + '</span>'
+              + '</div>';
+          }).join('');
+          rfStatus('Loaded ' + rows.length + ' referral(s)', true);
+        })
+        .catch(function (e) { rfStatus('Referrals load failed: ' + e.message, false); });
+    }
+
+    function rfSaveRewards() {
+      var dir = document.getElementById('rf-dir');
+      if (!dir || !dir.value) { rfStatus('No directory selected', false); return; }
+      var num = function (id) {
+        var el = document.getElementById(id);
+        var v = parseInt(el ? el.value : '', 10);
+        return isNaN(v) || v < 0 ? 0 : v;
+      };
+      rfStatus('Saving…', true);
+      apiPut('/admin/referral-settings', {
+        directory_id: dir.value,
+        visitor_to_visitor: num('rf-v2v'),
+        business_to_business: num('rf-b2b'),
+        business_to_visitor: num('rf-b2v'),
+        visitor_to_business: num('rf-v2b')
+      }).then(function () {
+        rfStatus('Reward amounts saved for this directory.', true);
+        showToast('Referral rewards saved');
+        rfLoad();
+      }).catch(function (e) { rfStatus('Save failed: ' + e.message, false); });
+    }
+
+    function rfVerify(id) {
+      rfStatus('Verifying…', true);
+      apiPost('/admin/referrals/' + id + '/verify', {})
+        .then(function (d) {
+          rfStatus('Verified — ' + (d.reward || 0) + ' awarded to the referrer.', true);
+          showToast('Referral verified');
+          rfLoad();
+        })
+        .catch(function (e) { rfStatus('Verify failed: ' + e.message, false); });
+    }
+
+    function rfReject(id) {
+      rfStatus('Rejecting…', true);
+      apiPost('/admin/referrals/' + id + '/reject', {})
+        .then(function () { rfStatus('Referral rejected.', true); rfLoad(); })
+        .catch(function (e) { rfStatus('Reject failed: ' + e.message, false); });
+    }
+
+    window.__rfLoad = rfLoad;
+    window.__rfSaveRewards = rfSaveRewards;
+    window.__rfVerify = rfVerify;
+    window.__rfReject = rfReject;
+
     Promise.all([
       apiGet('/networks').catch(function () { return []; }),
       apiGet('/directories').catch(function () { return []; })
@@ -3067,6 +3222,7 @@
       if (list.length) directories = list;
       lmFillTargets();
       lmLoad();
+      rfFillDirs();
     });
 
     window.__emLoad = loadEmailSettings;
