@@ -369,63 +369,41 @@ pub async fn list_trap_door_pages(
 ) -> ApiResult<impl IntoResponse> {
     use sqlx::Row;
 
-    let mut conditions = vec!["pp.directory_id=$1".to_string()];
-    let mut idx = 2;
-
-    if let Some(ref status) = params.get("status") {
-        conditions.push(format!("pp.status=${}", idx));
-        idx += 1;
-    }
-    if let Some(ref day) = params.get("day_tag") {
-        conditions.push(format!("${} = ANY(pp.day_tags)", idx));
-        idx += 1;
-    }
-    if let Some(ref time) = params.get("time_tag") {
-        conditions.push(format!("${} = ANY(pp.time_tags)", idx));
-        idx += 1;
-    }
-    if let Some(ref search) = params.get("search") {
-        conditions.push(format!(
-            "(pp.title ILIKE ${} OR pp.slug ILIKE ${})",
-            idx,
-            idx + 1
-        ));
-        idx += 2;
-    }
-
-    let where_clause = conditions.join(" AND ");
-
-    let sql = format!(
+    // `sqlx::QueryBuilder` owns the `$N` numbering, so the WHERE mask is never assembled as text
+    // (gate rule 5d). Bind order is unchanged: directory_id, then status, day_tag, time_tag and
+    // the two search operands, each only when present.
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT pp.*, ds.name as service_name \
          FROM programmatic_pages pp \
          LEFT JOIN directory_services ds ON ds.id=pp.service_id \
-         WHERE {} \
-         ORDER BY pp.updated_at DESC",
-        where_clause
+         WHERE pp.directory_id=",
     );
+    qb.push_bind(dir_id);
 
-    let status_filter = params.get("status").cloned();
-    let day_filter = params.get("day_tag").cloned();
-    let time_filter = params.get("time_tag").cloned();
-    let search_filter = params.get("search").cloned();
+    if let Some(status) = params.get("status") {
+        qb.push(" AND pp.status=").push_bind(status.clone());
+    }
+    if let Some(day) = params.get("day_tag") {
+        qb.push(" AND ")
+            .push_bind(day.clone())
+            .push(" = ANY(pp.day_tags)");
+    }
+    if let Some(time) = params.get("time_tag") {
+        qb.push(" AND ")
+            .push_bind(time.clone())
+            .push(" = ANY(pp.time_tags)");
+    }
+    if let Some(search) = params.get("search") {
+        qb.push(" AND (pp.title ILIKE ")
+            .push_bind(search.clone())
+            .push(" OR pp.slug ILIKE ")
+            .push_bind(search.clone())
+            .push(")");
+    }
 
-    let mut query = sqlx::query(&sql).bind(dir_id);
+    qb.push(" ORDER BY pp.updated_at DESC");
 
-    if let Some(ref status) = status_filter {
-        query = query.bind(status.clone());
-    }
-    if let Some(ref day) = day_filter {
-        query = query.bind(day.clone());
-    }
-    if let Some(ref time) = time_filter {
-        query = query.bind(time.clone());
-    }
-    if let Some(ref search) = search_filter {
-        let s = search.clone();
-        query = query.bind(s.clone()).bind(s);
-    }
-
-    let rows = query.fetch_all(&s.db).await?;
+    let rows = qb.build().fetch_all(&s.db).await?;
 
     let mut results: Vec<serde_json::Value> = Vec::new();
     for row in &rows {

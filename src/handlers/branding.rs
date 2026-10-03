@@ -201,19 +201,21 @@ pub async fn upload_branding_asset(
         ));
     }
 
-    // Persist the URLs onto the directory_branding row (upsert).
-    for (asset_kind, url) in &saved {
-        let col = if asset_kind == "favicon" {
-            "favicon_url"
-        } else {
-            "logo_url"
-        };
-        let q = format!(
-            r#"INSERT INTO directory_branding (directory_id, {col})
+    // Persist the URLs onto the directory_branding row (upsert). Each asset kind has its own
+    // COMPLETE compile-time statement, so no statement text is built at run time (gate rule 5d).
+    const UPSERT_FAVICON_URL: &str = r#"INSERT INTO directory_branding (directory_id, favicon_url)
                VALUES ($1, $2)
-               ON CONFLICT (directory_id) DO UPDATE SET {col} = EXCLUDED.{col}, updated_at = NOW()"#
-        );
-        sqlx::query(&q)
+               ON CONFLICT (directory_id) DO UPDATE SET favicon_url = EXCLUDED.favicon_url, updated_at = NOW()"#;
+    const UPSERT_LOGO_URL: &str = r#"INSERT INTO directory_branding (directory_id, logo_url)
+               VALUES ($1, $2)
+               ON CONFLICT (directory_id) DO UPDATE SET logo_url = EXCLUDED.logo_url, updated_at = NOW()"#;
+    for (asset_kind, url) in &saved {
+        let q = if asset_kind == "favicon" {
+            UPSERT_FAVICON_URL
+        } else {
+            UPSERT_LOGO_URL
+        };
+        sqlx::query(q)
             .bind(directory_id)
             .bind(url)
             .execute(&s.db)

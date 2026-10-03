@@ -67,12 +67,25 @@ pub async fn assert_user_row_tenant(
         return Ok(());
     }
     let tid = caller_tenant(claims)?;
-    // `table` is a compile-time literal at every call site, never caller input.
-    let sql = format!(
-        "SELECT EXISTS (SELECT 1 FROM {table} t JOIN users u ON u.id = t.user_id \
-         WHERE t.id = $1 AND u.tenant_id = $2)"
-    );
-    let ok = sqlx::query_scalar::<_, bool>(&sql)
+    // `table` is a compile-time literal at every call site, never caller input, and the closed set
+    // is exactly two names — so the statement is one of two COMPLETE compile-time literals and no
+    // statement text is built at run time (gate rule 5d).
+    const ROW_TENANT_API_KEYS: &str =
+        "SELECT EXISTS (SELECT 1 FROM api_keys t JOIN users u ON u.id = t.user_id \
+         WHERE t.id = $1 AND u.tenant_id = $2)";
+    const ROW_TENANT_WEBHOOKS: &str =
+        "SELECT EXISTS (SELECT 1 FROM webhooks t JOIN users u ON u.id = t.user_id \
+         WHERE t.id = $1 AND u.tenant_id = $2)";
+    let sql = match table {
+        "api_keys" => ROW_TENANT_API_KEYS,
+        "webhooks" => ROW_TENANT_WEBHOOKS,
+        other => {
+            return Err(AppError::Internal(format!(
+                "assert_user_row_tenant: unknown table '{other}'"
+            )))
+        }
+    };
+    let ok = sqlx::query_scalar::<_, bool>(sql)
         .bind(id)
         .bind(tid)
         .fetch_one(db)

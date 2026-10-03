@@ -30,33 +30,34 @@ use crate::AppState;
 
 /// Mapping columns plus everything the panel needs to explain where a mapping points.
 /// Kept in one place so every handler returns the same shape.
-const SELECT_MAPPINGS: &str = r#"SELECT dm.id, dm.directory_id, dm.domain, dm.type, dm.status,
+///
+/// Gate rule 5d: `concat!` needs a LITERAL, not a `const`, so the statement is published as a
+/// macro and every statement that uses it is assembled entirely at compile time (a run-time build
+/// is the defect the rule names). `select_mappings_from!` differs ONLY in the FROM target —
+/// `domain_mappings` (the plain table), `ins` (the INSERT … RETURNING CTE) and `upd` (the
+/// UPDATE … RETURNING CTE) — so the three expansions are byte-identical outside that one token,
+/// exactly what the old `SELECT_MAPPINGS.replace("FROM domain_mappings dm", …)` did at run time.
+macro_rules! select_mappings_from {
+    ($src:literal) => {
+        concat!(
+            r#"SELECT dm.id, dm.directory_id, dm.domain, dm.type, dm.status,
         dm.ssl_enabled, dm.cloudflare_record_id, dm.dns_records, dm.verification_token,
         dm.auto_configured, dm.url_path, dm.live_status,
         dm.last_checked_at::text AS last_checked_at, dm.last_check_detail,
         dm.created_at::text AS created_at, dm.updated_at::text AS updated_at,
         d.slug AS directory_slug, d.name AS directory_name, d.network_id,
         n.slug AS network_slug, n.root_domain
-     FROM domain_mappings dm
-     LEFT JOIN directories d ON d.id = dm.directory_id
-     LEFT JOIN networks n ON n.id = d.network_id"#;
-
-/// Compile-time form of `SELECT_MAPPINGS` for gate rule 5d: `concat!` needs a LITERAL, not a
-/// const, so the same bytes are published as a macro and the statements that use it are
-/// assembled entirely at compile time (a run-time build is the defect the rule names).
-/// MUST stay byte-identical to `SELECT_MAPPINGS`.
-macro_rules! select_mappings {
-    () => {
-        r#"SELECT dm.id, dm.directory_id, dm.domain, dm.type, dm.status,
-        dm.ssl_enabled, dm.cloudflare_record_id, dm.dns_records, dm.verification_token,
-        dm.auto_configured, dm.url_path, dm.live_status,
-        dm.last_checked_at::text AS last_checked_at, dm.last_check_detail,
-        dm.created_at::text AS created_at, dm.updated_at::text AS updated_at,
-        d.slug AS directory_slug, d.name AS directory_name, d.network_id,
-        n.slug AS network_slug, n.root_domain
-     FROM domain_mappings dm
+     FROM "#,
+            $src,
+            r#" dm
      LEFT JOIN directories d ON d.id = dm.directory_id
      LEFT JOIN networks n ON n.id = d.network_id"#
+        )
+    };
+}
+macro_rules! select_mappings {
+    () => {
+        select_mappings_from!("domain_mappings")
     };
 }
 
@@ -280,14 +281,10 @@ pub async fn register_domain(
     }
 
     let verification_token = Uuid::new_v4().to_string();
-    let row = sqlx::query(&format!(
-        "WITH ins AS ( \
-           INSERT INTO domain_mappings \
-             (directory_id, domain, type, url_path, status, verification_token) \
-           VALUES ($1, $2, $3, $4, 'pending', $5) \
-           RETURNING * ) \
-         {} WHERE dm.id = ins.id",
-        SELECT_MAPPINGS.replace("FROM domain_mappings dm", "FROM ins dm")
+    let row = sqlx::query(concat!(
+        "WITH ins AS ( INSERT INTO domain_mappings (directory_id, domain, type, url_path, status, verification_token) VALUES ($1, $2, $3, $4, 'pending', $5) RETURNING * ) ",
+        select_mappings_from!("ins"),
+        " WHERE dm.id = ins.id"
     ))
     .bind(directory_id)
     .bind(&host)
@@ -453,13 +450,10 @@ pub async fn update_domain(
         .try_get::<Option<bool>, _>("ssl_enabled")
         .unwrap_or(None));
 
-    let row = sqlx::query(&format!(
-        "WITH upd AS ( \
-           UPDATE domain_mappings SET domain = $1, type = $2, url_path = $3, directory_id = $4, \
-                  status = $5, ssl_enabled = $6, updated_at = NOW() \
-           WHERE id = $7 RETURNING * ) \
-         {} WHERE dm.id = upd.id",
-        SELECT_MAPPINGS.replace("FROM domain_mappings dm", "FROM upd dm")
+    let row = sqlx::query(concat!(
+        "WITH upd AS ( UPDATE domain_mappings SET domain = $1, type = $2, url_path = $3, directory_id = $4, status = $5, ssl_enabled = $6, updated_at = NOW() WHERE id = $7 RETURNING * ) ",
+        select_mappings_from!("upd"),
+        " WHERE dm.id = upd.id"
     ))
     .bind(&host)
     .bind(kind)

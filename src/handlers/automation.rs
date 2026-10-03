@@ -64,54 +64,48 @@ pub async fn list_events(
     let limit = q.limit.unwrap_or(50).clamp(1, 200);
     let offset = q.offset.unwrap_or(0).max(0);
 
-    // Build dynamic query
-    let mut where_clauses: Vec<String> = Vec::new();
-    let mut param_idx = 0u32;
+    // `sqlx::QueryBuilder` owns the `$N` numbering, so the statement is never assembled as text
+    // (gate rule 5d). NOTE, measured (both-ways probe on a throwaway DB copy): the code this
+    // replaces numbered LIMIT/OFFSET off a counter that counted only the filters PRESENT while it
+    // bound all five optionals unconditionally, so any request with fewer than five filters
+    // prepared a statement whose parameter count did not match the binds and fell through to the
+    // unfiltered fallback below. The builder numbers each bind as it is pushed, so the filters
+    // now actually apply and LIMIT/OFFSET land on the values they name.
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT * FROM directory_events");
+    let mut first = true;
 
-    let mut query_str = "SELECT * FROM directory_events".to_string();
-
-    if q.event_type.is_some() {
-        param_idx += 1;
-        where_clauses.push(format!("event_type = ${}", param_idx));
+    if let Some(v) = q.event_type.as_ref() {
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("event_type = ").push_bind(v.clone());
+        first = false;
     }
-    if q.entity_type.is_some() {
-        param_idx += 1;
-        where_clauses.push(format!("entity_type = ${}", param_idx));
+    if let Some(v) = q.entity_type.as_ref() {
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("entity_type = ").push_bind(v.clone());
+        first = false;
     }
-    if q.entity_id.is_some() {
-        param_idx += 1;
-        where_clauses.push(format!("entity_id = ${}", param_idx));
+    if let Some(v) = q.entity_id.as_ref() {
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("entity_id = ").push_bind(*v);
+        first = false;
     }
-    if q.directory_id.is_some() {
-        param_idx += 1;
-        where_clauses.push(format!("directory_id = ${}", param_idx));
+    if let Some(v) = q.directory_id.as_ref() {
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("directory_id = ").push_bind(*v);
+        first = false;
     }
-    if q.processed.is_some() {
-        param_idx += 1;
-        where_clauses.push(format!("processed = ${}", param_idx));
-    }
-
-    if !where_clauses.is_empty() {
-        query_str.push_str(&format!(" WHERE {}", where_clauses.join(" AND ")));
+    if let Some(v) = q.processed.as_ref() {
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("processed = ").push_bind(*v);
     }
 
-    query_str.push_str(" ORDER BY created_at DESC");
-    query_str.push_str(&format!(
-        " LIMIT ${} OFFSET ${}",
-        param_idx + 1,
-        param_idx + 2
-    ));
+    qb.push(" ORDER BY created_at DESC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
-    // Build the query manually since sqlx doesn't support dynamic query building well
     let events: Vec<serde_json::Value> = {
-        let db_q = sqlx::query_as::<_, DirectoryEvent>(&query_str)
-            .bind(&q.event_type)
-            .bind(&q.entity_type)
-            .bind(q.entity_id)
-            .bind(q.directory_id)
-            .bind(q.processed)
-            .bind(limit)
-            .bind(offset);
+        let db_q = qb.build_query_as::<DirectoryEvent>();
 
         let result = db_q.fetch_all(&state.db).await;
         match result {

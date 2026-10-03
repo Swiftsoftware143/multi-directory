@@ -215,38 +215,33 @@ pub async fn upsert_payment_provider(
             !webhook_secret.is_empty() || stored_column_has_value(&stored_webhook_secret_col),
         )?;
         // Update — only overwrite api_key/webhook_secret if provided
-        let mut query = String::from(
-            "UPDATE payment_providers SET label = $1, is_active = $2, is_test_mode = $3, \
-             publishable_key = $4, config = $5, updated_at = NOW()",
-        );
-        let mut param_idx = 6u8;
+        // `sqlx::QueryBuilder` owns the `$N` numbering, so no statement text is assembled here
+        // (gate rule 5d) and the running-index bookkeeping is gone. Bind ORDER is unchanged:
+        // label, is_active, is_test_mode, publishable_key, config, [api_key], [webhook secret],
+        // and the id last.
+        let mut qb =
+            sqlx::QueryBuilder::<sqlx::Postgres>::new("UPDATE payment_providers SET label = ");
+        qb.push_bind(label)
+            .push(", is_active = ")
+            .push_bind(is_active)
+            .push(", is_test_mode = ")
+            .push_bind(is_test_mode)
+            .push(", publishable_key = ")
+            .push_bind(publishable_key)
+            .push(", config = ")
+            .push_bind(&config)
+            .push(", updated_at = NOW()");
 
         if !api_key.is_empty() {
-            query.push_str(&format!(", api_key_encrypted = ${}", param_idx));
-            param_idx += 1;
+            qb.push(", api_key_encrypted = ").push_bind(&stored_api_key);
         }
         if !webhook_secret.is_empty() {
-            query.push_str(&format!(", webhook_secret_encrypted = ${}", param_idx));
-            param_idx += 1;
+            qb.push(", webhook_secret_encrypted = ")
+                .push_bind(&stored_webhook_secret);
         }
-        query.push_str(&format!(" WHERE id = ${}", param_idx));
+        qb.push(" WHERE id = ").push_bind(provider_id);
 
-        let mut q = sqlx::query(&query)
-            .bind(label)
-            .bind(is_active)
-            .bind(is_test_mode)
-            .bind(publishable_key)
-            .bind(&config);
-
-        if !api_key.is_empty() {
-            q = q.bind(&stored_api_key);
-        }
-        if !webhook_secret.is_empty() {
-            q = q.bind(&stored_webhook_secret);
-        }
-        q = q.bind(provider_id);
-
-        q.execute(&state.db).await?;
+        qb.build().execute(&state.db).await?;
 
         Ok(Json(json!({
             "status": "updated",

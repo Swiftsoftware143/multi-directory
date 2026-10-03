@@ -690,32 +690,37 @@ pub async fn update_directory_features(
     .any(|&x| x);
 
     if any_zh {
-        let mut zh_patches = Vec::new();
+        // The patch set is a JSON OBJECT bound as a parameter, so the statement itself is one
+        // compile-time literal and nothing is built as text at run time (gate rule 5d). Semantics
+        // are unchanged: `jsonb || jsonb` merges the same keys (jsonb is order-insensitive), and
+        // the leading `|| '{}'::jsonb` that the old interpolated literal carried is kept verbatim.
+        let mut zh_patch = serde_json::Map::new();
         if let Some(v) = req.network_visible {
-            zh_patches.push(format!("\"network_visible\": {}", v));
+            zh_patch.insert("network_visible".to_string(), json!(v));
         }
         if let Some(v) = req.homepage_featured {
-            zh_patches.push(format!("\"homepage_featured\": {}", v));
+            zh_patch.insert("homepage_featured".to_string(), json!(v));
         }
         if let Some(v) = req.show_deals {
-            zh_patches.push(format!("\"show_deals\": {}", v));
+            zh_patch.insert("show_deals".to_string(), json!(v));
         }
         if let Some(v) = req.show_events {
-            zh_patches.push(format!("\"show_events\": {}", v));
+            zh_patch.insert("show_events".to_string(), json!(v));
         }
         if let Some(v) = req.show_reviews {
-            zh_patches.push(format!("\"show_reviews\": {}", v));
+            zh_patch.insert("show_reviews".to_string(), json!(v));
         }
         if let Some(v) = req.show_activity {
-            zh_patches.push(format!("\"show_activity\": {}", v));
+            zh_patch.insert("show_activity".to_string(), json!(v));
         }
 
-        if !zh_patches.is_empty() {
-            let zh_sql = format!(
-                "UPDATE directories SET zaarhub_config = zaarhub_config || '{{}}'::jsonb || '{{{}}}'::jsonb, updated_at = NOW() WHERE id = $1",
-                zh_patches.join(", ")
-            );
-            sqlx::query(&zh_sql).bind(id).execute(&s.db).await?;
+        if !zh_patch.is_empty() {
+            const ZH_PATCH_SQL: &str = "UPDATE directories SET zaarhub_config = zaarhub_config || '{}'::jsonb || $2::jsonb, updated_at = NOW() WHERE id = $1";
+            sqlx::query(ZH_PATCH_SQL)
+                .bind(id)
+                .bind(Value::Object(zh_patch))
+                .execute(&s.db)
+                .await?;
         }
     }
 

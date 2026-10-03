@@ -297,49 +297,49 @@ pub async fn update_call_lead(
         }
     }
 
-    // Build dynamic update query
-    let mut updates: Vec<String> = Vec::new();
-    let mut params: Vec<String> = Vec::new();
-    let mut param_idx = 1;
+    // `sqlx::QueryBuilder` owns the `$N` numbering, so the SET list is never built as text (gate
+    // rule 5d). Bind ORDER is unchanged: the present lead fields in this order, then the id.
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new("UPDATE call_logs SET ");
+    let mut first = true;
 
-    if body.lead_name.is_some() {
-        updates.push(format!("lead_name = ${}", param_idx));
-        params.push(body.lead_name.clone().unwrap_or_default());
-        param_idx += 1;
+    if let Some(v) = body.lead_name.as_ref() {
+        if !first {
+            qb.push(", ");
+        }
+        qb.push("lead_name = ").push_bind(v.clone());
+        first = false;
     }
-    if body.lead_email.is_some() {
-        updates.push(format!("lead_email = ${}", param_idx));
-        params.push(body.lead_email.clone().unwrap_or_default());
-        param_idx += 1;
+    if let Some(v) = body.lead_email.as_ref() {
+        if !first {
+            qb.push(", ");
+        }
+        qb.push("lead_email = ").push_bind(v.clone());
+        first = false;
     }
-    if body.lead_notes.is_some() {
-        updates.push(format!("lead_notes = ${}", param_idx));
-        params.push(body.lead_notes.clone().unwrap_or_default());
-        param_idx += 1;
+    if let Some(v) = body.lead_notes.as_ref() {
+        if !first {
+            qb.push(", ");
+        }
+        qb.push("lead_notes = ").push_bind(v.clone());
+        first = false;
     }
-    if body.lead_status.is_some() {
-        updates.push(format!("lead_status = ${}", param_idx));
-        params.push(body.lead_status.clone().unwrap_or_default());
-        param_idx += 1;
+    if let Some(v) = body.lead_status.as_ref() {
+        if !first {
+            qb.push(", ");
+        }
+        qb.push("lead_status = ").push_bind(v.clone());
+        first = false;
     }
 
-    if updates.is_empty() {
+    if first {
         return Err(AppError::Validation("No fields to update".to_string()));
     }
 
-    let query = format!(
-        "UPDATE call_logs SET {} WHERE id = ${} RETURNING id, caller_number, called_number, direction, duration_seconds, call_status, recording_url, transcription, business_id, directory_id, lead_name, lead_email, lead_notes, lead_status, created_at",
-        updates.join(", "),
-        param_idx
-    );
+    qb.push(" WHERE id = ").push_bind(id);
+    qb.push(" RETURNING id, caller_number, called_number, direction, duration_seconds, call_status, recording_url, transcription, business_id, directory_id, lead_name, lead_email, lead_notes, lead_status, created_at");
 
-    let mut q = sqlx::query_as::<_, CallLog>(&query);
-    for p in &params {
-        q = q.bind(p);
-    }
-    q = q.bind(id);
-
-    let log = q
+    let log = qb
+        .build_query_as::<CallLog>()
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Call log not found".to_string()))?;

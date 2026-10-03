@@ -1817,20 +1817,96 @@ impl LinkScope {
         }
     }
 
-    fn table(&self) -> &'static str {
+    /// The CALLER's own row in this scope. Named so every statement stays a compile-time literal
+    /// (gate rule 5d) instead of splicing `table()` into a `format!`.
+    fn read_link_sql(&self) -> &'static str {
         match self {
-            Self::Network => "networks",
-            Self::Directory => "directories",
+            Self::Network => READ_LINK_NETWORK,
+            Self::Directory => READ_LINK_DIRECTORY,
+        }
+    }
+
+    fn save_link_sql(&self) -> &'static str {
+        match self {
+            Self::Network => SAVE_LINK_NETWORK,
+            Self::Directory => SAVE_LINK_DIRECTORY,
+        }
+    }
+
+    fn clear_link_sql(&self) -> &'static str {
+        match self {
+            Self::Network => CLEAR_LINK_NETWORK,
+            Self::Directory => CLEAR_LINK_DIRECTORY,
         }
     }
 }
 
 /// The six list columns plus the tenant/base/key state, selected identically from both tables.
-const LINK_COLUMNS: &str = "coreswift_tenant_id, coreswift_base_url, coreswift_key_prefix, \
+/// Published as a MACRO, not a `const`, because `concat!` needs a LITERAL: that is what lets the
+/// statements below be assembled entirely at compile time (gate rule 5d — no statement text is
+/// built at run time). MUST stay byte-identical to the literal it replaced.
+macro_rules! link_columns {
+    () => {
+        "coreswift_tenant_id, coreswift_base_url, coreswift_key_prefix, \
      (coreswift_personal_key_encrypted IS NOT NULL \
       AND length(coreswift_personal_key_encrypted) > 0) AS key_configured, \
      coreswift_list_id_users, coreswift_list_id_businesses, coreswift_list_id_suppliers, \
-     coreswift_list_id_sponsors, coreswift_list_id_claimed, coreswift_list_id_newsletter";
+     coreswift_list_id_sponsors, coreswift_list_id_claimed, coreswift_list_id_newsletter"
+    };
+}
+
+/// One COMPLETE compile-time statement per side of `LinkScope` — the table name is chosen by a
+/// literal match, never spliced into a `format!` at run time.
+const READ_LINK_NETWORK: &str = concat!(
+    "SELECT name, ",
+    link_columns!(),
+    " FROM networks WHERE id = $1"
+);
+const READ_LINK_DIRECTORY: &str = concat!(
+    "SELECT name, ",
+    link_columns!(),
+    " FROM directories WHERE id = $1"
+);
+
+const SAVE_LINK_NETWORK: &str = "UPDATE networks SET \
+           coreswift_tenant_id = $2, \
+           coreswift_base_url = COALESCE($3, coreswift_base_url), \
+           coreswift_personal_key_encrypted = COALESCE($4::bytea, coreswift_personal_key_encrypted), \
+           coreswift_key_prefix = COALESCE($5, coreswift_key_prefix), \
+           coreswift_list_id_users = COALESCE($6::uuid, coreswift_list_id_users), \
+           coreswift_list_id_businesses = COALESCE($7::uuid, coreswift_list_id_businesses), \
+           coreswift_list_id_suppliers = COALESCE($8::uuid, coreswift_list_id_suppliers), \
+           coreswift_list_id_sponsors = COALESCE($9::uuid, coreswift_list_id_sponsors), \
+           coreswift_list_id_claimed = COALESCE($10::uuid, coreswift_list_id_claimed), \
+           coreswift_list_id_newsletter = COALESCE($11::uuid, coreswift_list_id_newsletter) \
+         WHERE id = $1";
+const SAVE_LINK_DIRECTORY: &str = "UPDATE directories SET \
+           coreswift_tenant_id = $2, \
+           coreswift_base_url = COALESCE($3, coreswift_base_url), \
+           coreswift_personal_key_encrypted = COALESCE($4::bytea, coreswift_personal_key_encrypted), \
+           coreswift_key_prefix = COALESCE($5, coreswift_key_prefix), \
+           coreswift_list_id_users = COALESCE($6::uuid, coreswift_list_id_users), \
+           coreswift_list_id_businesses = COALESCE($7::uuid, coreswift_list_id_businesses), \
+           coreswift_list_id_suppliers = COALESCE($8::uuid, coreswift_list_id_suppliers), \
+           coreswift_list_id_sponsors = COALESCE($9::uuid, coreswift_list_id_sponsors), \
+           coreswift_list_id_claimed = COALESCE($10::uuid, coreswift_list_id_claimed), \
+           coreswift_list_id_newsletter = COALESCE($11::uuid, coreswift_list_id_newsletter) \
+         WHERE id = $1";
+
+const CLEAR_LINK_NETWORK: &str = "UPDATE networks SET \
+           coreswift_tenant_id = NULL, coreswift_base_url = NULL, \
+           coreswift_personal_key_encrypted = NULL, coreswift_key_prefix = NULL, \
+           coreswift_list_id_users = NULL, coreswift_list_id_businesses = NULL, \
+           coreswift_list_id_suppliers = NULL, coreswift_list_id_sponsors = NULL, \
+           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL \
+         WHERE id = $1";
+const CLEAR_LINK_DIRECTORY: &str = "UPDATE directories SET \
+           coreswift_tenant_id = NULL, coreswift_base_url = NULL, \
+           coreswift_personal_key_encrypted = NULL, coreswift_key_prefix = NULL, \
+           coreswift_list_id_users = NULL, coreswift_list_id_businesses = NULL, \
+           coreswift_list_id_suppliers = NULL, coreswift_list_id_sponsors = NULL, \
+           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL \
+         WHERE id = $1";
 
 type LinkRow = (
     Option<Uuid>,
@@ -1879,11 +1955,7 @@ async fn read_link_row(
     scope: LinkScope,
     id: Uuid,
 ) -> Result<Option<(String, LinkRow)>, String> {
-    let sql = format!(
-        "SELECT name, {LINK_COLUMNS} FROM {} WHERE id = $1",
-        scope.table()
-    );
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(scope.read_link_sql())
         .bind(id)
         .fetch_optional(db)
         .await
@@ -1988,23 +2060,7 @@ pub async fn save_link(
     };
     let prefix: Option<String> = plain_key.map(|k| k.chars().take(12).collect());
 
-    let table = scope.table();
-    let sql = format!(
-        "UPDATE {table} SET \
-           coreswift_tenant_id = $2, \
-           coreswift_base_url = COALESCE($3, coreswift_base_url), \
-           coreswift_personal_key_encrypted = COALESCE($4::bytea, coreswift_personal_key_encrypted), \
-           coreswift_key_prefix = COALESCE($5, coreswift_key_prefix), \
-           coreswift_list_id_users = COALESCE($6::uuid, coreswift_list_id_users), \
-           coreswift_list_id_businesses = COALESCE($7::uuid, coreswift_list_id_businesses), \
-           coreswift_list_id_suppliers = COALESCE($8::uuid, coreswift_list_id_suppliers), \
-           coreswift_list_id_sponsors = COALESCE($9::uuid, coreswift_list_id_sponsors), \
-           coreswift_list_id_claimed = COALESCE($10::uuid, coreswift_list_id_claimed), \
-           coreswift_list_id_newsletter = COALESCE($11::uuid, coreswift_list_id_newsletter) \
-         WHERE id = $1"
-    );
-
-    let res = sqlx::query(&sql)
+    let res = sqlx::query(scope.save_link_sql())
         .bind(id)
         .bind(tenant_id)
         .bind(base_url.as_deref().map(str::trim).filter(|s| !s.is_empty()))
@@ -2038,17 +2094,7 @@ pub async fn save_link(
 /// Disconnect: clear every link column on this row. A directory inside a connected network
 /// falls back to inheriting the network again — that is the documented behaviour.
 pub async fn clear_link(db: &PgPool, scope: LinkScope, id: Uuid) -> Result<bool, String> {
-    let sql = format!(
-        "UPDATE {} SET \
-           coreswift_tenant_id = NULL, coreswift_base_url = NULL, \
-           coreswift_personal_key_encrypted = NULL, coreswift_key_prefix = NULL, \
-           coreswift_list_id_users = NULL, coreswift_list_id_businesses = NULL, \
-           coreswift_list_id_suppliers = NULL, coreswift_list_id_sponsors = NULL, \
-           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL \
-         WHERE id = $1",
-        scope.table()
-    );
-    let res = sqlx::query(&sql)
+    let res = sqlx::query(scope.clear_link_sql())
         .bind(id)
         .execute(db)
         .await

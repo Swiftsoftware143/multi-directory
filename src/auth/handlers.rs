@@ -246,17 +246,17 @@ pub async fn login(
         .verify_password(req.password.as_bytes(), &parsed_hash)
         .map_err(|_| AppError::InvalidCredentials)?;
 
-    // Update last_login
-    let table = if is_visitor {
-        "visitor_accounts"
+    // Update last_login. `table` is one of two hardcoded names, so the statement is one of two
+    // COMPLETE compile-time literals — no statement text is built at run time (gate rule 5d).
+    const TOUCH_LAST_LOGIN_USERS: &str = "UPDATE users SET last_login_at = NOW() WHERE id = \x241";
+    const TOUCH_LAST_LOGIN_VISITORS: &str =
+        "UPDATE visitor_accounts SET last_login_at = NOW() WHERE id = \x241";
+    let update_query = if is_visitor {
+        TOUCH_LAST_LOGIN_VISITORS
     } else {
-        "users"
+        TOUCH_LAST_LOGIN_USERS
     };
-    let update_query = format!(
-        "UPDATE {} SET last_login_at = NOW() WHERE id = \x241",
-        table
-    );
-    sqlx::query(&update_query)
+    sqlx::query(update_query)
         .bind(user.id)
         .execute(&s.db)
         .await?;

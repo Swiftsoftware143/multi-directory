@@ -80,50 +80,44 @@ pub async fn list_services(
     State(s): State<AppState>,
     Query(query): Query<ServicesQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    // Build query dynamically
-    let mut conditions = Vec::new();
-    let mut params: Vec<String> = Vec::new();
-    let mut param_idx = 1u32;
+    // `sqlx::QueryBuilder` owns the `$N` numbering, so the statement and its WHERE clause are
+    // never assembled as text (gate rule 5d). Bind order is unchanged: business_id,
+    // directory_id, category — each exactly as the old builder bound it (the ids bind as TEXT,
+    // as they did before).
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT id, business_id, directory_id, name, description, price, currency, \
+         duration_minutes, category, is_active, sort_order, created_at, updated_at \
+         FROM business_services",
+    );
+    let mut first = true;
 
     if let Some(biz_id) = query.business_id {
-        conditions.push(format!("business_id = ${}", param_idx));
-        params.push(biz_id.to_string());
-        param_idx += 1;
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("business_id = ").push_bind(biz_id.to_string());
+        first = false;
     }
     if let Some(dir_id) = query.directory_id {
-        conditions.push(format!("directory_id = ${}", param_idx));
-        params.push(dir_id.to_string());
-        param_idx += 1;
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("directory_id = ").push_bind(dir_id.to_string());
+        first = false;
     }
     if let Some(ref cat) = query.category {
-        conditions.push(format!("category = ${}", param_idx));
-        params.push(cat.clone());
-        param_idx += 1;
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("category = ").push_bind(cat.clone());
+        first = false;
     }
     let active_only = query.active_only.unwrap_or(true);
     if active_only {
-        conditions.push(format!("is_active = true"));
+        qb.push(if first { " WHERE " } else { " AND " });
+        qb.push("is_active = true");
     }
 
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
+    qb.push(" ORDER BY sort_order, name");
 
-    let sql = format!(
-        "SELECT id, business_id, directory_id, name, description, price, currency, \
-         duration_minutes, category, is_active, sort_order, created_at, updated_at \
-         FROM business_services {} ORDER BY sort_order, name",
-        where_clause
-    );
-
-    let mut query_builder = sqlx::query_as::<_, BusinessServiceRow>(&sql);
-    for p in &params {
-        query_builder = query_builder.bind(p.clone());
-    }
-
-    let services = query_builder.fetch_all(&s.db).await?;
+    let services = qb
+        .build_query_as::<BusinessServiceRow>()
+        .fetch_all(&s.db)
+        .await?;
 
     Ok(Json(json!({
         "success": true,
