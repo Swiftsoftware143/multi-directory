@@ -1855,6 +1855,53 @@ function renderCityPage(d){
       '</select></div>'
   }
 
+  // ── Community Buzz (city-scoped recent reviews) — the homepage's OWN component (B87) ──
+  // Same markup/classes as the homepage's activity list; only the DATA is city-scoped
+  // (d.recent_reviews from GET /zaarhub/cities/<slug>). Hidden when the city has none.
+  var cityReviews=d.recent_reviews||[]
+  var buzzHtml=''
+  for(var ri=0;ri<cityReviews.length;ri++){
+    var rv=cityReviews[ri]
+    var rr=parseInt(rv.rating)||0
+    var rStars=rr>0?'★'.repeat(Math.min(rr,5))+'☆'.repeat(5-Math.min(rr,5)):''
+    var rMsg=rStars?'<span class="stars">'+rStars+'</span> ':'<span class="stars">💬</span> '
+    rMsg+=esc(rv.comment||rv.business_name||'')
+    buzzHtml+='<div class="zh-activity-item" onclick="location.hash=\'#/city/'+esc(state.slug)+'\'">'+
+      '<div class="zh-activity-avatar">'+(rv.reviewer_name?esc(rv.reviewer_name[0]):'👤')+'</div>'+
+      '<div class="zh-activity-body">'+
+      '<div class="msg">'+rMsg+'</div>'+
+      '<div class="time">'+esc(rv.business_name||'')+(rv.created_at?' · '+ago(rv.created_at):'')+'</div>'+
+      '</div></div>'
+  }
+  var communityBuzzHtml=buzzHtml?`
+<div class="zh-section">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">💬 Community Buzz</h2><p class="zh-section-sub">See what your neighbors are saying</p></div>
+    </div>
+    <div class="zh-activity-list">${buzzHtml}</div>
+  </div>
+</div>`:''
+
+  // ── Always-on CTAs — byte-identical components to the homepage (B87). No data gate. ──
+  var ctaHtml=`
+<div class="zh-owner-cta" style="margin-bottom:16px">
+  <h2>🙋 Join Your Local Community</h2>
+  <p style="color:#94a3b8;font-size:.95rem;max-width:500px;margin:8px auto 20px">Save your favorite spots, write reviews, get deals, and stay connected to what's happening in your neighborhood.</p>
+  <a href="/visitor" class="zh-btn-primary" style="display:inline-block;padding:12px 28px;background:var(--secondary);color:#fff;border-radius:100px;font-weight:700">📝 Create Your Free Account →</a>
+  <p style="margin-top:12px"><a href="/visitor" style="color:rgba(255,255,255,.7);font-size:.85rem">Already have an account? Sign In</a></p>
+</div>
+<div class="zh-owner-cta">
+  <h2>📈 Grow Your Local Presence with ZaarHub</h2>
+  <div class="zh-owner-cta-features">
+    <span>✅ Free Listing</span>
+    <span>📢 Advertise</span>
+    <span>📊 Analytics</span>
+  </div>
+  <p class="count">Join <strong>${(bizCount||0).toLocaleString()}</strong> businesses already in ${cityName}</p>
+  <a href="/portal" class="zh-btn-primary">🚀 Claim Your Free Listing →</a>
+</div>`
+
   // Business cards (enhanced with badges, cover, save)
   // Filter by selected category if one is active. The synthetic "Places to Eat" pill
   // (slug 'dining') matches the whole per-city dining set (Fine Dining cuisines + Food &
@@ -1981,6 +2028,7 @@ ${loyaltySectionHtml()}
     <div class="zh-section-header"><div><h2 class="zh-section-title">🎁 Hot Local Deals</h2><p class="zh-section-sub">Exclusive perks and discounts from your community</p></div></div>
     <div class="zh-deal-sm-grid">${dealsHtml}</div>
   </div>`:''}
+  ${communityBuzzHtml}
   ${events.length?`
   <div style="margin-top:24px">
     <div class="zh-section-header"><div><h2 class="zh-section-title">📅 Upcoming Events</h2><p class="zh-section-sub">Weekend markets, workshops, and community meetups</p></div></div>
@@ -1992,7 +2040,8 @@ ${loyaltySectionHtml()}
     <p>This community is growing. Claim your business listing today!</p>
     <a href="/submit-business.html" class="zh-btn-primary">+ Add Your Business</a>
   </div>`:''}
-</div>`
+</div>
+${ctaHtml}`
 
   // Fetch weather for this city
   setTimeout(function(){
