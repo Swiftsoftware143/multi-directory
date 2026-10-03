@@ -34,11 +34,22 @@ use crate::AppState;
 /// The search adapters this app can actually speak. Which one RUNS is decided by
 /// `provider_keys` (+ the optional pin in `enrichment_settings.provider`).
 const SEARCH_ADAPTERS: [&str; 4] = ["google_places", "serpapi", "bing", "google_cse"];
+/// Adapters that must be EXPLICITLY pinned before they run (card B98). Apify scrapes on a
+/// metered, pay-per-use platform, so a live key must never be auto-selected as the rotating
+/// enrichment provider — the admin switches it on by pinning it in the Data Enrichment card.
+const OPT_IN_ADAPTERS: [&str; 1] = ["apify"];
+/// Every adapter this build speaks: the auto-eligible set plus the opt-in set. Kept as an
+/// explicit list (not a concat) so the two halves stay visible and independent.
+const ALL_ADAPTERS: [&str; 5] = ["google_places", "serpapi", "bing", "google_cse", "apify"];
 
 const DEFAULT_GOOGLE_PLACES_BASE: &str = "https://maps.googleapis.com/maps/api/place";
 const SERPAPI_BASE: &str = "https://serpapi.com";
 const BING_BASE: &str = "https://api.bing.microsoft.com";
 const GOOGLE_CSE_BASE: &str = "https://www.googleapis.com/customsearch/v1";
+const APIFY_BASE: &str = "https://api.apify.com";
+/// The public Apify actor used when the key's metadata names no `actor_id`. It returns Google
+/// Maps place records, which is exactly the shape the merge contract expects.
+const DEFAULT_APIFY_ACTOR: &str = "compass/crawler-google-places";
 
 fn is_admin(claims: &Claims) -> bool {
     claims.role == "admin" || claims.role == "super_admin"
@@ -140,7 +151,7 @@ pub async fn configured_search_providers(
          WHERE is_active = true AND provider = ANY($1) \
          ORDER BY is_default DESC, updated_at DESC",
     )
-    .bind(&SEARCH_ADAPTERS[..])
+    .bind(&ALL_ADAPTERS[..])
     .fetch_all(db)
     .await?;
 
@@ -179,14 +190,18 @@ async fn resolve_provider(
         }
     }
     if let Some(pin) = pinned {
-        if !SEARCH_ADAPTERS.contains(&pin) {
+        if !ALL_ADAPTERS.contains(&pin) {
             tracing::warn!(
                 "[enrich] configured provider '{}' is not a search adapter this build speaks; falling back to a configured one",
                 pin
             );
         }
     }
-    Ok(available.into_iter().next())
+    // Auto-selection NEVER picks an opt-in, metered adapter (card B98): a configured Apify
+    // key stays dormant until the admin pins it explicitly.
+    Ok(available
+        .into_iter()
+        .find(|c| !OPT_IN_ADAPTERS.contains(&c.provider.as_str())))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +273,36 @@ async fn http_json(url: &str, headers: &[(&str, &str)]) -> Result<(u16, Value), 
             "json: {} | {}",
             e,
             body.chars().take(160).collect::<String>()
+        )
+    })?;
+    Ok((status.as_u16(), parsed))
+}
+
+/// POST a JSON body and parse a JSON answer. Used by the Apify adapter, whose synchronous
+/// actor endpoint runs a scraper and returns the dataset items inline. The timeout is longer
+/// than a plain lookup because an actor run is real work, not a metadata read.
+async fn http_json_post(url: &str, body: &Value) -> Result<(u16, Value), String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("http client: {}", e))?;
+    let resp = client
+        .post(url)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| format!("request: {}", e))?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| format!("body: {}", e))?;
+    if !status.is_success() {
+        let peek: String = text.chars().take(200).collect();
+        return Err(format!("HTTP {}: {}", status.as_u16(), peek));
+    }
+    let parsed = serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "json: {} | {}",
+            e,
+            text.chars().take(160).collect::<String>()
         )
     })?;
     Ok((status.as_u16(), parsed))
@@ -493,6 +538,74 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
                     lat: None,
                     lng: None,
                     rating: None,
+                    confidence: 0.0,
+                }
+                .score(),
+            ))
+        }
+        "apify" => {
+            // Opt-in, METERED source (card B98). A synchronous actor run per business, capped at
+            // ONE place by default, so a cycle's spend is bounded by the batch size the admin set.
+            // Results flow through the SAME merge contract as every other source: they may only
+            // fill EMPTY fields and can never overwrite a value the owner or an admin typed.
+            // Suppliers are never produced here — an existing business listing is gap-filled only.
+            let base = cfg
+                .base_url
+                .clone()
+                .unwrap_or_else(|| APIFY_BASE.to_string());
+            let actor = cfg
+                .metadata
+                .get("actor_id")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(DEFAULT_APIFY_ACTOR);
+            let max_items = cfg
+                .metadata
+                .get("max_items_per_query")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1)
+                .clamp(1, 25);
+            let url = format!(
+                "{}/v2/acts/{}/run-sync-get-dataset-items?token={}",
+                base.trim_end_matches('/'),
+                // Apify addresses a public actor as `username~actor` in a URL path: a literal
+                // `/` adds a path segment and the API answers 404 (proven 2026-10-03).
+                actor.replace('/', "~"),
+                cfg.api_key
+            );
+            let body = json!({
+                "searchStringsArray": [query.trim()],
+                "maxCrawledPlacesPerSearch": max_items,
+                "language": "en",
+                "skipClosedPlaces": false
+            });
+            let (_http_status, v) = http_json_post(&url, &body).await?;
+            let item = match v.as_array().and_then(|a| a.first()) {
+                Some(i) => i,
+                None => return Ok(None),
+            };
+            Ok(Some(
+                Enriched {
+                    name: item.get("title").and_then(|x| x.as_str()).map(String::from),
+                    address: item
+                        .get("address")
+                        .and_then(|x| x.as_str())
+                        .map(String::from),
+                    phone: item.get("phone").and_then(|x| x.as_str()).map(String::from),
+                    website: item
+                        .get("website")
+                        .and_then(|x| x.as_str())
+                        .map(String::from),
+                    lat: item
+                        .get("location")
+                        .and_then(|l| l.get("lat"))
+                        .and_then(|x| x.as_f64()),
+                    lng: item
+                        .get("location")
+                        .and_then(|l| l.get("lng"))
+                        .and_then(|x| x.as_f64()),
+                    rating: item.get("totalScore").and_then(|x| x.as_f64()),
                     confidence: 0.0,
                 }
                 .score(),
@@ -960,7 +1073,7 @@ pub async fn get_enrichment_settings(
             .into_iter()
             .map(|(id, name, slug)| json!({ "id": id, "name": name, "slug": slug }))
             .collect::<Vec<_>>(),
-        "supported_adapters": SEARCH_ADAPTERS,
+        "supported_adapters": ALL_ADAPTERS,
         "configured_providers": providers,
         "active_provider": resolved.as_ref().map(|c| c.provider.clone()),
         "active_provider_label": resolved.as_ref().map(|c| c.label.clone()),
@@ -1126,7 +1239,7 @@ pub async fn enrichment_status(
             .collect::<Vec<_>>(),
         "active_provider": resolved.as_ref().map(|c| c.provider.clone()),
         "active_provider_label": resolved.as_ref().map(|c| c.label.clone()),
-        "supported_adapters": SEARCH_ADAPTERS,
+        "supported_adapters": ALL_ADAPTERS,
         "recent_logs": logs
             .into_iter()
             .map(|(id, business_id, source, enrichment_type, status, error_message, created_at)| json!({
