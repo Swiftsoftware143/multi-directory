@@ -1790,6 +1790,8 @@ pub fn create_router(s: AppState) -> Router {
         // ? Public endpoints (no auth required)
         .route("/messages/:business_id", post(messaging::send_message))
         .route("/businesses/:id/claim", post(visitors::claim_business))
+        // Two-step claim confirmation link (card B76) — the token IS the credential, so no JWT.
+        .route("/claims/verify/:token", get(visitors::verify_claim_email))
         .route(
             "/businesses/:id/images",
             post(businesses::upload_business_images),
@@ -3213,6 +3215,9 @@ async fn auth_guard(
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
         || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
+        // Two-step claim email confirmation (card B76) — GET only; the token from the email is the
+        // credential, so the link works from a mail client with no session.
+        || (path.starts_with("/claims/verify/") && req.method() == "GET")
         // Visitor favorites/bookmarks (handlers handle their own auth extraction)
         || (path == "/visitor/favorites" && req.method() == "GET")
         || (path.starts_with("/visitor/favorites/") && req.method() == "POST")

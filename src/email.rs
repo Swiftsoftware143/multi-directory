@@ -96,6 +96,102 @@ pub async fn send_reset_email(db: &PgPool, to: &str, token: &str) -> Result<(), 
     send_rendered_email(to, &subject, &html_body, text_body.as_deref()).await
 }
 
+/// Card B76 — the two-step claim verification mail.
+///
+/// `link` is the absolute confirm URL; when the claim was AUTO-accepted, `temp_password` carries
+/// the dashboard credentials so the same mail both proves ownership and hands over the login.
+/// Uses the DB template `claim_verification` when the admin has configured one; otherwise an
+/// inline fallback. Fails gracefully (an unconfigured transport is an Err the caller logs — the
+/// claim row is already saved and the token stays valid).
+pub async fn send_claim_verification_email(
+    db: &PgPool,
+    to: &str,
+    business_name: &str,
+    link: &str,
+    temp_password: Option<&str>,
+) -> Result<(), String> {
+    let (subject, html, text) = match crate::handlers::email::resolve_system_template(
+        db,
+        "claim_verification",
+        None,
+    )
+    .await
+    {
+        Some((subj, html_src, text_src)) => {
+            let mut ctx = crate::merge_fields::MergeContext::for_network(db).await;
+            ctx.set("business_name", business_name);
+            ctx.set("verify_link", link);
+            ctx.set("link", link);
+            ctx.set("email", to);
+            ctx.set_opt("temp_password", temp_password.map(str::to_string));
+            let r_subject = crate::merge_fields::render(&subj, &ctx);
+            let r_html = crate::merge_fields::render(&html_src, &ctx);
+            let r_text = text_src.map(|t| crate::merge_fields::render(&t, &ctx).text);
+            (r_subject.text, r_html.text, r_text)
+        }
+        None => {
+            let creds_block = match temp_password {
+                Some(p) => format!(
+                    "<p style=\"color:#1e293b;font-size:14px;\">Your account is ready. Sign in with this temporary password and change it after your first login:</p>\
+                     <div style=\"background:#fff;border:2px dashed #6366f1;border-radius:8px;padding:12px 20px;display:inline-block;margin:8px 0 16px;\"><code style=\"font-size:20px;font-weight:700;color:#6366f1;\">{p}</code></div>"
+                ),
+                None => "<p style=\"color:#1e293b;font-size:14px;\">We could not match your email domain to the listing automatically. Confirm you own this business by clicking below.</p>".to_string(),
+            };
+            let subject = format!("Confirm your listing: {business_name}");
+            let html = format!(
+                r#"<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:20px;">
+<div style="background:#f8f9fa;border-radius:12px;padding:32px;text-align:center;">
+  <h1 style="color:#1e293b;margin:0 0 8px;">Confirm your listing</h1>
+  <p style="color:#64748b;font-size:14px;margin:0 0 16px;">{business_name}</p>
+  {creds_block}
+  <p style="margin:24px 0;"><a href="{link}" style="background:#6366f1;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">Confirm ownership</a></p>
+  <p style="color:#94a3b8;font-size:12px;word-break:break-all;">{link}</p>
+</div>
+<p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:16px;">Multi-Directory — Powered by SwiftSoftware</p>
+</body></html>"#
+            );
+            let text = match temp_password {
+                Some(p) => format!(
+                    "Confirm your listing: {business_name}\n\nTemporary password: {p}\n\nConfirm ownership: {link}\n\n- Multi-Directory"
+                ),
+                None => format!(
+                    "Confirm your listing: {business_name}\n\nConfirm you own this business: {link}\n\n- Multi-Directory"
+                ),
+            };
+            (subject, html, Some(text))
+        }
+    };
+
+    send_rendered_email(to, &subject, &html, text.as_deref()).await
+}
+
+/// Card B76 — tell the platform admin a claim is waiting for MANUAL review (the domain did not
+/// match, so it was not auto-accepted). Best-effort: an unconfigured transport logs and moves on.
+pub async fn send_claim_review_notice(
+    admin_email: &str,
+    business_name: &str,
+    claimant_email: &str,
+    link: &str,
+) -> Result<(), String> {
+    let subject = format!("Claim needs review: {business_name}");
+    let html = format!(
+        r#"<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:520px;margin:40px auto;padding:20px;">
+<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:24px;">
+  <h2 style="color:#9a3412;margin:0 0 8px;">A claim needs manual review</h2>
+  <p style="color:#334155;font-size:14px;"><strong>{business_name}</strong> was claimed by <strong>{claimant_email}</strong>.</p>
+  <p style="color:#334155;font-size:14px;">The email domain did not match the listing, so it was not auto-accepted. Review it in the admin panel.</p>
+  <p style="margin:20px 0;"><a href="{link}" style="background:#6366f1;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:600;">Open the admin panel</a></p>
+</div>
+</body></html>"#
+    );
+    let text = format!(
+        "Claim needs manual review\n\n{business_name} was claimed by {claimant_email}.\nReview: {link}\n"
+    );
+    send_rendered_email(admin_email, &subject, &html, Some(&text)).await
+}
+
 /// Send an already-rendered message through the in-house email service. Returns Err with the
 /// service's own words on failure; a "skipped" (unconfigured transport) is an Err because the
 /// caller asked for mail and it was not delivered — it must never look like a success.

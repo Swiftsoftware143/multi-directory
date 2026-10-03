@@ -208,8 +208,8 @@ a:hover{text-decoration:underline}
     <div class="card" style="text-align:center">
       <div class="confirm-icon">🎉</div>
       <div class="confirm-title">Claim Submitted!</div>
-      <div class="confirm-text">
-        Thanks for claiming your business listing. We'll review and verify your ownership within <strong>24–48 hours</strong>. You'll receive an email notification when the verification is complete.
+      <div class="confirm-text" id="confirmText">
+        Thanks for claiming your business listing. We've emailed you a confirmation link — open it to confirm you own this business. If your email domain matches the listing it is verified at once; otherwise our team reviews it within 24 hours.
       </div>
       <div class="confirm-details">
         <div class="detail-row">
@@ -301,12 +301,15 @@ function goToStep2(biz) {
   document.getElementById('loginPrompt').style.display = 'none';
 }
 
-function goToStep3(bizName, ownerName, email) {
+function goToStep3(bizName, ownerName, email, message) {
   currentStep = 3;
   updateStepBar();
   document.getElementById('confirmBizName').textContent = bizName;
   document.getElementById('confirmOwnerName').textContent = ownerName;
   document.getElementById('confirmEmail').textContent = email;
+  if (message) {
+    document.getElementById('confirmText').textContent = message;
+  }
 }
 
 // ── Auth Check ──
@@ -423,7 +426,9 @@ async function submitClaim() {
     });
     
     if (resp.ok) {
-      goToStep3(selectedBusiness.name || 'Business', name, email);
+      let okData = {};
+      try { okData = await resp.json(); } catch(e) {}
+      goToStep3(selectedBusiness.name || 'Business', name, email, okData.message);
     } else {
       let errMsg = 'Failed to submit claim. Please try again.';
       try {

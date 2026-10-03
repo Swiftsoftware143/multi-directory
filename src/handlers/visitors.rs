@@ -4,7 +4,7 @@
 use axum::{
     extract::{ConnectInfo, Extension, Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{Html, IntoResponse},
     Json,
 };
 use chrono::{DateTime, Utc};
@@ -789,8 +789,14 @@ pub struct CategoryVisitorSummaryRow {
 
 #[derive(Debug, Deserialize)]
 pub struct ClaimBusinessRequest {
+    // `owner_*` is the canonical wire name; the public claim form historically posted
+    // `email`/`name`/`phone`, so accept those as aliases too (a missing owner_email used to make
+    // every browser submit a 422 — card B76 declared the whole flow broken).
+    #[serde(alias = "email")]
     pub owner_email: String,
+    #[serde(alias = "name")]
     pub owner_name: Option<String>,
+    #[serde(alias = "phone")]
     pub owner_phone: Option<String>,
     pub website: Option<String>,
 }
@@ -1250,15 +1256,15 @@ pub async fn claim_business(
         .to_lowercase();
 
     // Fetch existing business info from DB
-    let biz_domain_info = sqlx::query_as::<_, (Option<String>, Option<String>)>(
-        "SELECT website, email FROM businesses WHERE id = $1",
+    let biz_domain_info = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
+        "SELECT website, email, name FROM businesses WHERE id = $1",
     )
     .bind(business_id)
     .fetch_optional(&s.db)
     .await?
-    .unwrap_or((None, None));
+    .unwrap_or((None, None, None));
 
-    let (biz_website, biz_email) = biz_domain_info;
+    let (biz_website, biz_email, biz_name) = biz_domain_info;
 
     // The submitted website from the claim form takes priority over the DB website
     let submitted_website = req
@@ -1393,6 +1399,79 @@ pub async fn claim_business(
         }
     }
 
+    // ── Two-step email verification (card B76) ──
+    // Mint a confirm token and mail it. Fire-and-forget: the claim row is already saved and a
+    // delivery failure (no transport configured yet) must never fail the claim — the token stays
+    // valid and the claimant can be re-sent the link later. When the claim was auto-accepted the
+    // same mail also carries the temporary dashboard password.
+    let token = {
+        use rand::RngCore;
+        let mut bytes = [0u8; 24];
+        rand::rngs::OsRng.fill_bytes(&mut bytes);
+        hex::encode(bytes)
+    };
+    let _ = sqlx::query(
+        "UPDATE claimed_businesses SET verification_token = $1, verification_sent_at = NOW(), \
+         updated_at = NOW() WHERE id = $2",
+    )
+    .bind(&token)
+    .bind(cb.id)
+    .execute(&s.db)
+    .await;
+
+    let site_url = crate::merge_fields::MergeContext::for_network(&s.db)
+        .await
+        .get("site_url")
+        .unwrap_or("https://zaarhub.com")
+        .to_string();
+    let site_url = site_url.trim_end_matches('/').to_string();
+    let verify_link = format!("{}/api/v1/claims/verify/{}", site_url, token);
+    let admin_link = format!("{}/admin-panel.html#businesses", site_url);
+    let biz_name_final = biz_name
+        .clone()
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| "your listing".to_string());
+
+    {
+        let email_db = s.db.clone();
+        let to = owner_email.clone();
+        let bn = biz_name_final.clone();
+        let link = verify_link.clone();
+        let pwd = if auto_approved {
+            Some(temp_password.clone())
+        } else {
+            None
+        };
+        tokio::spawn(async move {
+            match crate::email::send_claim_verification_email(
+                &email_db,
+                &to,
+                &bn,
+                &link,
+                pwd.as_deref(),
+            )
+            .await
+            {
+                Ok(()) => tracing::info!("[claim] verification email sent to {to}"),
+                Err(e) => tracing::warn!("[claim] verification email NOT sent to {to}: {e}"),
+            }
+        });
+    }
+
+    // A claim the domain could not auto-accept needs a human — tell the platform admin (B76).
+    if !auto_approved {
+        let admin = s.config.admin_email.clone();
+        let bn = biz_name_final.clone();
+        let claimant = owner_email.clone();
+        let link = admin_link.clone();
+        tokio::spawn(async move {
+            match crate::email::send_claim_review_notice(&admin, &bn, &claimant, &link).await {
+                Ok(()) => tracing::info!("[claim] manual-review notice sent to the admin"),
+                Err(e) => tracing::warn!("[claim] manual-review notice NOT sent to the admin: {e}"),
+            }
+        });
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!({
@@ -1407,13 +1486,90 @@ pub async fn claim_business(
             "temp_password": if auto_approved { Some(&temp_password) } else { None },
             "no_website": if auto_approved { false } else { no_website },
             "message": if auto_approved {
-                "Your business has been verified! Check your email for login credentials."
+                "Your business has been verified! We just emailed you a confirmation link with your login credentials."
             } else if no_website {
                 "A website URL is required to claim a listing. Please provide your website."
             } else {
-                "We couldn't automatically verify your ownership. Our team will review your claim within 24 hours."
+                "We emailed you a confirmation link — click it to confirm you own this business. If the email domain matches your listing it is accepted at once; otherwise our team reviews it within 24 hours."
             }
         })),
+    ))
+}
+
+/// GET /api/v1/claims/verify/:token — step two of a business claim (card B76).
+///
+/// The claimant clicks the link from the verification email. A valid, unused token marks the
+/// claim's email verified and approves ownership (business_verifications + claimed_businesses), so
+/// the listing becomes theirs even when the domain could not be matched automatically. Idempotent:
+/// re-opening an already-confirmed link says so and changes nothing.
+pub async fn verify_claim_email(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let token = token.trim();
+    if token.is_empty() || token.len() > 128 {
+        return Err(AppError::Validation(
+            "invalid verification token".to_string(),
+        ));
+    }
+
+    let row = sqlx::query_as::<_, (Uuid, Uuid, String, Option<Uuid>, bool)>(
+        r#"SELECT cb.id, cb.business_id, cb.owner_email, b.directory_id,
+                  (cb.email_verified_at IS NOT NULL)
+           FROM claimed_businesses cb
+           JOIN businesses b ON b.id = cb.business_id
+           WHERE cb.verification_token = $1"#,
+    )
+    .bind(token)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("this verification link is not valid".to_string()))?;
+
+    let (claim_id, business_id, owner_email, directory_id, already) = row;
+
+    if !already {
+        sqlx::query(
+            "UPDATE claimed_businesses SET email_verified_at = NOW(), \
+             verified_at = COALESCE(verified_at, NOW()), verification_method = 'email_link', \
+             updated_at = NOW() WHERE id = $1",
+        )
+        .bind(claim_id)
+        .execute(&s.db)
+        .await?;
+
+        if let Some(dir) = directory_id {
+            let _ = sqlx::query(
+                r#"INSERT INTO business_verifications (business_id, directory_id, method, status, verified_at)
+                   VALUES ($1, $2, 'email_link', 'approved', NOW())
+                   ON CONFLICT (business_id) DO UPDATE
+                   SET status = 'approved', verified_at = NOW(), method = 'email_link', updated_at = NOW()"#,
+            )
+            .bind(business_id)
+            .bind(dir)
+            .execute(&s.db)
+            .await;
+        }
+
+        tracing::info!(
+            "[claim] {owner_email} confirmed ownership by email link (business {business_id})"
+        );
+    }
+
+    let body = if already {
+        "This listing was already verified — you're all set."
+    } else {
+        "Thanks — your ownership of this listing is confirmed."
+    };
+    Ok((
+        StatusCode::OK,
+        Html(format!(
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Listing verified</title></head>\
+<body style=\"font-family:Arial,sans-serif;max-width:520px;margin:60px auto;text-align:center;\">\
+<h1 style=\"color:#16a34a;\">Listing verified</h1>\
+<p style=\"color:#334155;\">{body}</p>\
+<p style=\"color:#94a3b8;font-size:13px;\">You can close this window.</p>\
+</body></html>"
+        )),
     ))
 }
 
