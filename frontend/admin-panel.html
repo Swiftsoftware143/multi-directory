@@ -537,6 +537,14 @@
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
+        <a href="#sc-svc-section">🧩 Services &amp; Cities</a>
+        <a href="#sc-prog-section">🧱 Programmatic Pages</a>
+        <a href="#sc-topic-section">🗓 Topics &amp; Authors</a>
+        <a href="#sc-seo-section">⚙️ SEO &amp; Schema</a>
+        <a href="#sc-reuse-section">♻️ Repurpose &amp; Links</a>
+        <a href="#sc-blog-section">📰 Blog Templates</a>
+        <a href="#sc-news-section">✉️ Newsletters</a>
+        <a href="#sc-land-section">🚀 Landing Pages</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty</a>
         <a class="nav-out" href="/guides/admin-guide.html#david-setup-checklist">✅ Setup Checklist</a>
@@ -1284,6 +1292,214 @@
         </div>
         <div id="sm-loading" class="loading-state"><span class="spinner"></span> Loading sitemap configs…</div>
         <div id="sm-list"></div>
+      </div>
+
+      <!-- ─────────────────────────────────────────────────────────────────────────────
+           🧩 SEO & Content families — kanban t_f3d857e1.
+           Ten per-directory SEO/content endpoint families were LIVE in src/routes.rs but
+           had no control anywhere in the reachable admin surface, so the capability
+           existed only as an endpoint (a fatal defect under the sellable standard: a
+           buyer has no curl and no JWT). These cards are those controls. Every call goes
+           through the panel's own apiGet/apiPost/apiPut/apiFetch helpers, so auth, tenant
+           scoping and server error text follow exactly the same path as the rest of the
+           console. Per-directory rows are scoped by the directory picker on each card —
+           nothing is hardcoded.
+           ───────────────────────────────────────────────────────────────────────────── -->
+
+      <div class="feature-card" id="sc-svc-section">
+        <h3>🧩 Services &amp; Locations</h3>
+        <p class="feature-subtitle">The service and city vocabulary a directory is built from — programmatic pages and topic suggestions are generated out of these two lists. Add, rename, switch off or delete a row, or paste a CSV list to import in bulk. No SQL.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="input" id="sc-svc-dir" onchange="window.__scSvcLoad()"></select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scSvcLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sc-svc-status"></span>
+        </div>
+        <div id="sc-svc-list"></div>
+        <div style="margin-top:14px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <div style="flex:1;min-width:280px">
+            <label class="feature-subtitle">Bulk import — one row per line: <code>name,slug,description</code> for services, <code>name,slug,state,region</code> for locations</label>
+            <textarea class="input sc-svc-csv" rows="3" placeholder="Roof Repair,roof-repair,Fix leaky roofs"></textarea>
+            <div style="margin-top:6px">
+              <select class="input sc-svc-target"><option value="services">services</option><option value="locations">locations</option></select>
+              <button class="btn btn-accent btn-sm" type="button" onclick="window.__scSvcImport()">Import rows</button>
+            </div>
+          </div>
+          <div class="feature-subtitle" id="sc-svc-import-out" style="flex:1;min-width:200px"></div>
+        </div>
+      </div>
+
+      <div class="feature-card" id="sc-prog-section">
+        <h3>🧱 Programmatic Pages</h3>
+        <p class="feature-subtitle">Every service × city combination, generated from the two lists on the card above. Generate a batch, then publish, draft or archive them in bulk. This directory currently has thousands — the table shows the newest <b>200</b> and the status filter narrows it further, so the browser stays responsive.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="input" id="sc-prog-dir" onchange="window.__scProgLoad()"></select>
+          <select class="input" id="sc-prog-filter" onchange="window.__scProgLoad()">
+            <option value="">all statuses</option>
+            <option value="draft">draft</option>
+            <option value="published">published</option>
+            <option value="archived">archived</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scProgLoad()">↻ Refresh</button>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scProgBulk('published')">✅ Publish selected</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scProgBulk('draft')">📝 Draft selected</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scProgBulk('archived')">🗄 Archive selected</button>
+          <span class="feature-status" id="sc-prog-status"></span>
+        </div>
+        <div id="sc-prog-list"></div>
+        <div id="sc-prog-detail" class="feature-subtitle" style="margin-top:8px"></div>
+        <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="feature-subtitle"><b>Generate pages</b> — tick services and cities, then generate. Existing combinations are skipped, never duplicated.</div>
+          <div id="sc-prog-picker" style="margin-top:8px"></div>
+          <div style="margin-top:8px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__scProgGenerate()">⚙️ Generate pages for the selected services × cities</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-card" id="sc-topic-section">
+        <h3>🗓 Topics &amp; Authors</h3>
+        <p class="feature-subtitle">The editorial calendar. Accept or dismiss machine suggestions, schedule a topic, and assign it to an author profile. A topic is what the blog generator turns into an article.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="input" id="sc-topic-dir" onchange="window.__scTopicLoad()"></select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scTopicLoad()">↻ Refresh</button>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scTopicSuggest()">💡 Suggestions</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scTopicBulk('accept')">✅ Schedule selected</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scTopicBulk('dismiss')">🚫 Dismiss selected</button>
+          <span class="feature-status" id="sc-topic-status"></span>
+        </div>
+        <div id="sc-topic-list"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div><label class="feature-subtitle">New topic title</label><input class="input sc-topic-new-title" placeholder="Best Accountant in Palm Bay — 2026 Guide"></div>
+          <div><label class="feature-subtitle">Service</label><select class="input sc-topic-new-service"></select></div>
+          <div><label class="feature-subtitle">City</label><select class="input sc-topic-new-city"></select></div>
+          <div><label class="feature-subtitle">Format</label><input class="input sc-topic-new-format" placeholder="List" style="width:110px"></div>
+          <div><label class="feature-subtitle">Keyword</label><input class="input sc-topic-new-kw" placeholder="accountant palm bay"></div>
+          <div><label class="feature-subtitle">Words</label><input class="input sc-topic-new-wc" type="number" value="1000" style="width:90px"></div>
+          <div><label class="feature-subtitle">Schedule</label><input class="input sc-topic-new-date" type="date"></div>
+          <div><label class="feature-subtitle">Author</label><select class="input sc-topic-new-author"></select></div>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scTopicCreate()">＋ Add topic</button>
+        </div>
+        <div id="sc-topic-suggestions" style="margin-top:12px"></div>
+        <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="feature-subtitle"><b>Authors</b> — the bylines article pages show.</div>
+          <div id="sc-author-list" style="margin-top:8px"></div>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div><label class="feature-subtitle">Name</label><input class="input sc-author-new-name" placeholder="Palm Bay Local Team"></div>
+            <div><label class="feature-subtitle">Role</label><input class="input sc-author-new-role" placeholder="editor" style="width:110px"></div>
+            <div><label class="feature-subtitle">Bio</label><input class="input sc-author-new-bio" placeholder="Local business experts…" style="width:260px"></div>
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__scAuthorCreate()">＋ Add author</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-card" id="sc-seo-section">
+        <h3>⚙️ SEO Settings, Schema &amp; Fallbacks</h3>
+        <p class="feature-subtitle">How this city's pages are titled, structured and interlinked. <b>SEO settings</b> drive slug shape, AI provider and word-count targets; <b>schema</b> controls the structured data emitted; <b>fallbacks</b> are the title/description used when a page has no better one. Nothing here needs SQL.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="input" id="sc-seo-dir" onchange="window.__scSeoLoad()"></select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scSeoLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sc-seo-status"></span>
+        </div>
+        <div id="sc-seo-form"></div>
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="feature-subtitle"><b>Schema configs</b> — structured data emitted on this directory's pages.</div>
+          <div id="sc-schema-list" style="margin-top:8px"></div>
+          <div style="margin-top:8px">
+            <input class="input sc-schema-new-type" placeholder="schema type (e.g. LocalBusiness)" style="width:240px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__scSchemaAdd()">＋ Add schema type</button>
+          </div>
+        </div>
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="feature-subtitle"><b>SEO fallbacks</b> — the title/description template used per page type when a page has no override. Placeholders like <code>{{city}}</code> are filled at render time.</div>
+          <div id="sc-fallback-list" style="margin-top:8px"></div>
+          <div style="margin-top:8px">
+            <input class="input sc-fallback-new-type" placeholder="page type (e.g. category)" style="width:240px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__scFallbackAdd()">＋ Add page type</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-card" id="sc-reuse-section">
+        <h3>♻️ Repurpose &amp; Internal Links</h3>
+        <p class="feature-subtitle">Turn a published article into a newsletter teaser, an FAQ block or a social pack — and see which of this city's own pages and listings an article should link to. Both are one click from here instead of curl.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="input" id="sc-reuse-dir" onchange="window.__scReuseLoad()"></select>
+          <select class="input" id="sc-reuse-post"></select>
+          <select class="input" id="sc-reuse-type">
+            <option value="email_teaser">email teaser</option>
+            <option value="faq_extract">FAQ extract</option>
+            <option value="social_pack">social pack</option>
+          </select>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scRepurpose()">♻️ Repurpose</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scInternalLinks()">🔗 Link suggestions</button>
+          <span class="feature-status" id="sc-reuse-status"></span>
+        </div>
+        <pre id="sc-reuse-out" style="white-space:pre-wrap;font-size:.82rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px;max-height:340px;overflow:auto;margin:0"></pre>
+        <div id="sc-links-out" style="margin-top:10px"></div>
+      </div>
+
+      <div class="feature-card" id="sc-blog-section">
+        <h3>📰 Blog Templates &amp; Generation</h3>
+        <p class="feature-subtitle">The article templates the generator fills in, which cities each template may publish to, and the generate button itself. Placeholders in a template (like <code>{city}</code>) are supplied as <code>key=value</code> lines when you generate.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scTplLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sc-blog-status"></span>
+        </div>
+        <div id="sc-tpl-list"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div><label class="feature-subtitle">Name</label><input class="input sc-tpl-new-name" placeholder="Local FAQ Schema"></div>
+          <div><label class="feature-subtitle">Slug</label><input class="input sc-tpl-new-slug" placeholder="local-faq-schema"></div>
+          <div><label class="feature-subtitle">Category</label><input class="input sc-tpl-new-cat" placeholder="faq" style="width:110px"></div>
+          <div><label class="feature-subtitle">Body</label><textarea class="input sc-tpl-new-body" rows="2" placeholder="<h1>{title}</h1>"></textarea></div>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scTplCreate()">＋ Add template</button>
+        </div>
+        <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="feature-subtitle"><b>Generate articles</b> — pick a template and the cities to publish into.</div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div><label class="feature-subtitle">Template</label><select class="input" id="sc-gen-template"></select></div>
+            <div><label class="feature-subtitle">Placeholder values (one <code>key=value</code> per line)</label><textarea class="input sc-gen-fields" rows="2" placeholder="city=Palm Bay&#10;industry_plural=accountants"></textarea></div>
+            <div><label class="feature-subtitle"><input type="checkbox" class="sc-gen-publish"> publish immediately</label></div>
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__scGenerate()">✍️ Generate</button>
+          </div>
+          <div id="sc-gen-dirs" style="margin-top:8px"></div>
+          <div id="sc-gen-out" class="feature-subtitle" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="feature-card" id="sc-news-section">
+        <h3>✉️ Newsletters</h3>
+        <p class="feature-subtitle">Per-city newsletter queue: write it (or let it assemble itself from the city's latest articles and deals), preview it, and send it to that city's active subscribers through the mail settings on the Email/SMTP card. Sending needs SMTP configured and at least one active subscriber — the panel tells you which is missing.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="input" id="sc-news-dir" onchange="window.__scNewsLoad()"></select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scNewsLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sc-news-status"></span>
+        </div>
+        <div id="sc-news-list"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div><label class="feature-subtitle">Title</label><input class="input sc-news-new-title" placeholder="Palm Bay monthly round-up"></div>
+          <div><label class="feature-subtitle">Intro</label><input class="input sc-news-new-intro" placeholder="What's new this month…" style="width:280px"></div>
+          <div><label class="feature-subtitle">Schedule</label><input class="input sc-news-new-date" type="datetime-local"></div>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scNewsCreate()">＋ Add newsletter</button>
+        </div>
+        <div id="sc-news-preview" class="feature-subtitle" style="margin-top:10px"></div>
+      </div>
+
+      <div class="feature-card" id="sc-land-section">
+        <h3>🚀 Landing Pages</h3>
+        <p class="feature-subtitle">Standalone marketing pages (a city pitch, a vendor-recruitment page, a campaign page) with their own hero, SEO title and publish switch. Publishing flags the page live on the public pages API; unpublishing takes it back down without deleting it.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__scLandLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sc-land-status"></span>
+        </div>
+        <div id="sc-land-list"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div><label class="feature-subtitle">Title</label><input class="input sc-land-new-title" placeholder="Advertise in Palm Bay"></div>
+          <div><label class="feature-subtitle">Slug</label><input class="input sc-land-new-slug" placeholder="advertise-palm-bay"></div>
+          <div><label class="feature-subtitle">Directory</label><select class="input sc-land-new-dir"></select></div>
+          <div><label class="feature-subtitle">Hero headline</label><input class="input sc-land-new-hero" placeholder="Reach Palm Bay customers"></div>
+          <div><label class="feature-subtitle">SEO title</label><input class="input sc-land-new-seotitle" placeholder="Advertise in Palm Bay | ZaarHub"></div>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scLandCreate()">＋ Add landing page</button>
+        </div>
       </div>
 
       <!-- Directory Cards -->
@@ -2546,6 +2762,10 @@
       icLoad();
       // B65: the onboarding questionnaire builder + responses view.
       obInit();
+      // 🧩 SEO & content families (t_f3d857e1): services/locations, programmatic pages,
+      // topics/authors, seo settings+schema+fallbacks, repurpose/internal links,
+      // blog templates + generation, newsletters, landing pages.
+      scInit();
     }
 
     // ===== Login Handler =====
@@ -5164,6 +5384,1006 @@
     window.__smLoad = loadSitemapConfigs;
     window.__smSave = saveSitemapConfig;
     window.__smRegenerate = regenerateSitemap;
+
+    // ===== 🧩 SEO & Content families (kanban t_f3d857e1) =====
+    // Ten per-directory SEO/content endpoint families were live in src/routes.rs with no control
+    // anywhere in the reachable admin surface — an "exists only as an endpoint" defect under the
+    // sellable standard. These are the controls. Auth, tenant scoping and server error text all
+    // ride the panel's own helpers (apiGet/apiPost/apiPut/apiFetch), so nothing here can drift from
+    // the rest of the console. Every per-directory call is scoped by the picker on its own card.
+    //
+    // Wire shapes (read out of the handlers, not guessed):
+    //   services/locations  POST/PUT/DELETE, CSV import takes {rows: [[..]], target}
+    //   programmatic pages  list (pp.* + service_name/location_name), generate {service_ids,
+    //                       location_ids} -> {created,skipped,total}, bulk {page_ids,status}
+    //   topics              list (ct.* + names), create/update/delete, bulk {topic_ids,action},
+    //                       suggestions -> [{service_name,location_name,title,format,target_keyword}]
+    //   authors             list/create/update/delete
+    //   seo-settings        GET/PUT flat 8-field object (google_maps_api_key omitted = unchanged)
+    //   schema-configs      GET list, PUT /:schema_type {enabled,config}
+    //   seo-fallbacks       GET list, PUT /:page_type {title_template,description_template}
+    //   repurpose           POST {post_id,output_type} -> {output_type,content}
+    //   internal-links      GET ?post_id= -> [{type,title,url}]
+    //   blog-templates      CRUD + /:id/directories GET/POST (array of directory ids)
+    //   blog-generate       POST {template_id,directory_ids,field_values,publish}
+    //   newsletters         GET ?directory_id= required, CRUD, /:id/generate, /:id/send
+    //   landing-pages       CRUD + POST /:slug/publish
+    var scDirs = [];
+    var scServices = [];
+    var scLocations = [];
+    var scAuthors = [];
+    var scTopics = [];
+    var scPages = [];
+    var scTemplates = [];
+    var scNews = [];
+    var scLands = [];
+    var scPosts = [];
+
+    var SC_PAGE_CAP = 200;      // programmatic_pages runs into thousands per city
+    var SC_SUGGEST_CAP = 40;    // /topics/suggestions returns 80k+ on a populated city
+
+    function scMsg(card, msg, ok) { r8Status('sc-' + card + '-status', msg, ok); }
+    function scTD(v) { return '<td style="padding:6px 6px;vertical-align:middle">' + v + '</td>'; }
+    function scBox(card) { return document.getElementById('sc-' + card + '-list'); }
+    function scInput(val, cls, type, w) {
+      return '<input class="input ' + (cls || '') + '" type="' + (type || 'text') + '" value="' +
+        pkEsc(val == null ? '' : val) + '"' + (w ? ' style="width:' + w + '"' : '') + '>';
+    }
+    function scSelect(cls, opts, cur, w) {
+      var h = '<select class="input ' + cls + '"' + (w ? ' style="width:' + w + '"' : '') + '>';
+      for (var i = 0; i < opts.length; i++) {
+        var o = opts[i];
+        h += '<option value="' + pkEsc(o[0]) + '"' + (String(o[0]) === String(cur) ? ' selected' : '') + '>' +
+          pkEsc(o[1]) + '</option>';
+      }
+      return h + '</select>';
+    }
+    function scRow(row, cls) { var el = row.querySelector('.' + cls); return el ? el.value : ''; }
+    function scChecked(row, cls) { var el = row.querySelector('.' + cls); return el ? !!el.checked : false; }
+    function scTr(id) {
+      var rows = document.querySelectorAll('[data-scrow]');
+      for (var i = 0; i < rows.length; i++) if (rows[i].getAttribute('data-scrow') === id) return rows[i];
+      return null;
+    }
+    function scTs(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : ''; }
+    function scIsoDate(v) { return v ? v + 'T00:00:00Z' : null; }
+
+    // Directory pickers: one per per-directory card, remembered locally so a refresh does not
+    // drop you back to another city. No UUID is hardcoded — the list comes from the API.
+    function scDirOptions(card) {
+      var saved = localStorage.getItem('sc_dir_' + card) || '';
+      if (!saved) {
+        for (var k = 0; k < scDirs.length; k++) if (scDirs[k].slug === 'palm-bay') saved = scDirs[k].id;
+        if (!saved && scDirs.length) saved = scDirs[0].id;
+      }
+      var h = '';
+      for (var i = 0; i < scDirs.length; i++) {
+        var d = scDirs[i];
+        h += '<option value="' + pkEsc(d.id) + '"' + (d.id === saved ? ' selected' : '') + '>' +
+          pkEsc(d.name || d.slug) + ' (' + pkEsc(d.slug) + ')</option>';
+      }
+      return h;
+    }
+    function scDir(card) {
+      var el = document.getElementById('sc-' + card + '-dir');
+      var v = el ? el.value : '';
+      if (v) localStorage.setItem('sc_dir_' + card, v);
+      return v;
+    }
+    function scDirSlug(id) {
+      for (var i = 0; i < scDirs.length; i++) if (scDirs[i].id === id) return scDirs[i].slug;
+      return '';
+    }
+    function scDirName(id) {
+      for (var i = 0; i < scDirs.length; i++) if (scDirs[i].id === id) return scDirs[i].name || scDirs[i].slug;
+      return id;
+    }
+
+    function scInit() {
+      if (!document.getElementById('sc-svc-list')) return;
+      return apiGet('/directories?per_page=100').then(function (r) {
+        scDirs = (r && r.data) || [];
+        ['svc', 'prog', 'topic', 'seo', 'reuse', 'news'].forEach(function (c) {
+          var el = document.getElementById('sc-' + c + '-dir');
+          if (el) el.innerHTML = scDirOptions(c);
+        });
+        var ld = document.querySelector('.sc-land-new-dir');
+        if (ld) {
+          ld.innerHTML = '<option value="">— none —</option>' + scDirs.map(function (d) {
+            return '<option value="' + pkEsc(d.id) + '">' + pkEsc(d.name || d.slug) + '</option>';
+          }).join('');
+        }
+        window.__scSvcLoad();
+        window.__scProgLoad();
+        window.__scTopicLoad();
+        window.__scSeoLoad();
+        window.__scReuseLoad();
+        window.__scTplLoad();
+        window.__scNewsLoad();
+        window.__scLandLoad();
+      }).catch(function (e) {
+        scMsg('svc', 'Could not list directories: ' + e.message, false);
+      });
+    }
+
+    // ── 1. Services & Locations ────────────────────────────────────────────────
+    function scSvcRender() {
+      var box = scBox('svc');
+      if (!box) return;
+      var h = '<div class="section-label" style="margin:10px 0 4px">Services (' + scServices.length + ')</div>';
+      h += '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+        ['Name', 'Slug', 'Description', 'On', ''].map(function (t) {
+          return '<th style="text-align:left;padding:6px">' + t + '</th>';
+        }).join('') + '</tr></thead><tbody>';
+      h += '<tr data-scrow="new-svc">' + scTD(scInput('', 'sc-svc-name')) + scTD(scInput('', 'sc-svc-slug', 'text', '140px')) +
+        scTD(scInput('', 'sc-svc-desc')) + scTD('') +
+        scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scSvcAdd()">＋ Add</button>') + '</tr>';
+      for (var i = 0; i < scServices.length; i++) {
+        var s = scServices[i];
+        h += '<tr data-scrow="' + pkEsc(s.id) + '">' +
+          scTD(scInput(s.name, 'sc-svc-name')) + scTD(scInput(s.slug, 'sc-svc-slug', 'text', '140px')) +
+          scTD(scInput(s.description, 'sc-svc-desc')) +
+          scTD('<input type="checkbox" class="sc-svc-active"' + (s.is_active ? ' checked' : '') + '>') +
+          scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scSvcSave(\'' + s.id + '\')">Save</button> ' +
+            '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scSvcDelete(\'' + s.id + '\')">Delete</button>') +
+          '</tr>';
+      }
+      h += '</tbody></table>';
+      h += '<div class="section-label" style="margin:14px 0 4px">Locations / cities (' + scLocations.length + ')</div>';
+      h += '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+        ['Name', 'Slug', 'State', 'Region', 'On', ''].map(function (t) {
+          return '<th style="text-align:left;padding:6px">' + t + '</th>';
+        }).join('') + '</tr></thead><tbody>';
+      h += '<tr data-scrow="new-loc">' + scTD(scInput('', 'sc-loc-name')) + scTD(scInput('', 'sc-loc-slug', 'text', '120px')) +
+        scTD(scInput('', 'sc-loc-state', 'text', '70px')) + scTD(scInput('', 'sc-loc-region', 'text', '120px')) + scTD('') +
+        scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scLocAdd()">＋ Add</button>') + '</tr>';
+      for (var j = 0; j < scLocations.length; j++) {
+        var l = scLocations[j];
+        h += '<tr data-scrow="' + pkEsc(l.id) + '">' +
+          scTD(scInput(l.name, 'sc-loc-name')) + scTD(scInput(l.slug, 'sc-loc-slug', 'text', '120px')) +
+          scTD(scInput(l.state, 'sc-loc-state', 'text', '70px')) + scTD(scInput(l.region, 'sc-loc-region', 'text', '120px')) +
+          scTD('<input type="checkbox" class="sc-loc-active"' + (l.is_active ? ' checked' : '') + '>') +
+          scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scLocSave(\'' + l.id + '\')">Save</button> ' +
+            '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scLocDelete(\'' + l.id + '\')">Delete</button>') +
+          '</tr>';
+      }
+      box.innerHTML = h + '</tbody></table>';
+    }
+    window.__scSvcLoad = function () {
+      var d = scDir('svc');
+      if (!d) { scMsg('svc', 'Pick a directory first', false); return; }
+      scMsg('svc', 'Loading…', false);
+      return Promise.all([apiGet('/directories/' + d + '/services'), apiGet('/directories/' + d + '/locations')])
+        .then(function (r) {
+          scServices = r[0] || []; scLocations = r[1] || [];
+          scSvcRender();
+          scMsg('svc', scServices.length + ' services, ' + scLocations.length + ' locations', true);
+        })
+        .catch(function (e) { scMsg('svc', 'Load failed: ' + e.message, false); });
+    };
+    window.__scSvcAdd = function () {
+      var d = scDir('svc'), row = scTr('new-svc');
+      if (!row) return;
+      var name = scRow(row, 'sc-svc-name');
+      if (!name) { scMsg('svc', 'A service name is required', false); return; }
+      var body = { name: name };
+      var sl = scRow(row, 'sc-svc-slug'); if (sl) body.slug = sl;
+      var de = scRow(row, 'sc-svc-desc'); if (de) body.description = de;
+      return apiPost('/directories/' + d + '/services', body)
+        .then(function () { showToast('Service added'); return window.__scSvcLoad(); })
+        .catch(function (e) { scMsg('svc', 'Add failed: ' + e.message, false); });
+    };
+    window.__scSvcSave = function (id) {
+      var d = scDir('svc'), row = scTr(id);
+      if (!row) return;
+      return apiPut('/directories/' + d + '/services/' + id, {
+        name: scRow(row, 'sc-svc-name'), slug: scRow(row, 'sc-svc-slug'),
+        description: scRow(row, 'sc-svc-desc'), is_active: scChecked(row, 'sc-svc-active')
+      }).then(function () { showToast('Service saved'); scMsg('svc', 'Saved', true); })
+        .catch(function (e) { scMsg('svc', 'Save failed: ' + e.message, false); });
+    };
+    window.__scSvcDelete = function (id) {
+      if (!confirm('Delete this service? Programmatic pages already generated for it are not removed.')) return;
+      var d = scDir('svc');
+      return apiFetch('DELETE', '/directories/' + d + '/services/' + id)
+        .then(function () { showToast('Service deleted'); return window.__scSvcLoad(); })
+        .catch(function (e) { scMsg('svc', 'Delete failed: ' + e.message, false); });
+    };
+    window.__scLocAdd = function () {
+      var d = scDir('svc'), row = scTr('new-loc');
+      if (!row) return;
+      var name = scRow(row, 'sc-loc-name');
+      if (!name) { scMsg('svc', 'A city name is required', false); return; }
+      var body = { name: name };
+      var sl = scRow(row, 'sc-loc-slug'); if (sl) body.slug = sl;
+      var st = scRow(row, 'sc-loc-state'); if (st) body.state = st;
+      var rg = scRow(row, 'sc-loc-region'); if (rg) body.region = rg;
+      return apiPost('/directories/' + d + '/locations', body)
+        .then(function () { showToast('City added'); return window.__scSvcLoad(); })
+        .catch(function (e) { scMsg('svc', 'Add failed: ' + e.message, false); });
+    };
+    window.__scLocSave = function (id) {
+      var d = scDir('svc'), row = scTr(id);
+      if (!row) return;
+      return apiPut('/directories/' + d + '/locations/' + id, {
+        name: scRow(row, 'sc-loc-name'), slug: scRow(row, 'sc-loc-slug'),
+        state: scRow(row, 'sc-loc-state'), region: scRow(row, 'sc-loc-region'),
+        is_active: scChecked(row, 'sc-loc-active')
+      }).then(function () { showToast('City saved'); scMsg('svc', 'Saved', true); })
+        .catch(function (e) { scMsg('svc', 'Save failed: ' + e.message, false); });
+    };
+    window.__scLocDelete = function (id) {
+      if (!confirm('Delete this city?')) return;
+      var d = scDir('svc');
+      return apiFetch('DELETE', '/directories/' + d + '/locations/' + id)
+        .then(function () { showToast('City deleted'); return window.__scSvcLoad(); })
+        .catch(function (e) { scMsg('svc', 'Delete failed: ' + e.message, false); });
+    };
+    window.__scSvcImport = function () {
+      var d = scDir('svc');
+      var ta = document.querySelector('.sc-svc-csv');
+      var target = document.querySelector('.sc-svc-target').value;
+      var rows = (ta.value || '').split(/\r?\n/).map(function (line) {
+        return line.split(',').map(function (c) { return c.trim(); });
+      }).filter(function (r) { return r.length && r[0]; });
+      var out = document.getElementById('sc-svc-import-out');
+      if (!rows.length) { if (out) out.textContent = 'Nothing to import — paste one row per line.'; return; }
+      return apiPost('/directories/' + d + '/' + target + '/import', { rows: rows, target: target })
+        .then(function (r) {
+          if (out) out.textContent = 'Imported: ' + (r && r.created || 0) + ' created, ' + (r && r.skipped || 0) +
+            ' skipped (already present).';
+          showToast('Import complete');
+          return window.__scSvcLoad();
+        })
+        .catch(function (e) { if (out) out.textContent = 'Import failed: ' + e.message; });
+    };
+
+    // ── 2. Programmatic pages ──────────────────────────────────────────────────
+    function scProgRender() {
+      var box = scBox('prog');
+      if (!box) { return; }
+      if (!scPages.length) { box.innerHTML = '<p class="feature-subtitle">No pages for this filter.</p>'; }
+      else {
+        var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+          ['', 'Slug', 'Title', 'Status', 'Views', 'Clicks', 'Conv.', ''].map(function (t) {
+            return '<th style="text-align:left;padding:6px">' + t + '</th>';
+          }).join('') + '</tr></thead><tbody>';
+        for (var i = 0; i < scPages.length && i < SC_PAGE_CAP; i++) {
+          var p = scPages[i];
+          h += '<tr data-scrow="' + pkEsc(p.id) + '">' +
+            scTD('<input type="checkbox" class="sc-prog-pick">') +
+            scTD('<code>' + pkEsc(p.slug) + '</code>') +
+            scTD(pkEsc(p.title || p.h1)) +
+            scTD(pkEsc(p.status)) +
+            scTD(pkEsc(p.impressions == null ? 0 : p.impressions)) +
+            scTD(pkEsc(p.clicks == null ? 0 : p.clicks)) +
+            scTD(pkEsc(p.conversions == null ? 0 : p.conversions)) +
+            scTD('<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scProgView(\'' + p.id + '\')">View</button>') +
+            '</tr>';
+        }
+        box.innerHTML = h + '</tbody></table>';
+      }
+      scProgPicker();
+    }
+    function scProgPicker() {
+      var box = document.getElementById('sc-prog-picker');
+      if (!box) return;
+      function cols(list, cls, label) {
+        if (!list.length) return '<div class="feature-subtitle">No ' + label + ' yet — add them on the Services &amp; Locations card.</div>';
+        return '<div style="max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:6px">' +
+          list.map(function (x) {
+            return '<label class="feature-subtitle" style="display:block"><input type="checkbox" class="' + cls + '" value="' + pkEsc(x.id) + '"> ' + pkEsc(x.name) + '</label>';
+          }).join('') + '</div>';
+      }
+      box.innerHTML = '<div style="display:flex;gap:14px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:200px"><div class="feature-subtitle"><b>Services</b></div>' + cols(scServices, 'sc-gen-svc', 'services') + '</div>' +
+        '<div style="flex:1;min-width:200px"><div class="feature-subtitle"><b>Cities</b></div>' + cols(scLocations, 'sc-gen-loc', 'cities') + '</div>' +
+        '</div>';
+    }
+    function scPick(cls) {
+      var out = [];
+      document.querySelectorAll('.' + cls).forEach(function (el) { if (el.checked) out.push(el.value); });
+      return out;
+    }
+    window.__scProgLoad = function () {
+      var d = scDir('prog');
+      if (!d) { scMsg('prog', 'Pick a directory first', false); return; }
+      var st = document.getElementById('sc-prog-filter');
+      var q = st && st.value ? '?status=' + encodeURIComponent(st.value) : '';
+      scMsg('prog', 'Loading…', false);
+      return Promise.all([
+        apiGet('/directories/' + d + '/programmatic-pages' + q),
+        apiGet('/directories/' + d + '/services'),
+        apiGet('/directories/' + d + '/locations')
+      ]).then(function (r) {
+        scPages = r[0] || []; scServices = r[1] || []; scLocations = r[2] || [];
+        scProgRender();
+        scMsg('prog', scPages.length + ' page(s)' + (scPages.length > SC_PAGE_CAP ? ' — showing the first ' + SC_PAGE_CAP : ''), true);
+      }).catch(function (e) { scMsg('prog', 'Load failed: ' + e.message, false); });
+    };
+    window.__scProgView = function (id) {
+      var d = scDir('prog'), box = document.getElementById('sc-prog-detail');
+      return apiGet('/directories/' + d + '/programmatic-pages/' + id).then(function (p) {
+        if (box) {
+          box.innerHTML = '<b>' + pkEsc(p.h1 || p.title) + '</b><br>slug: <code>' + pkEsc(p.slug) + '</code><br>' +
+            'meta title: ' + pkEsc(p.meta_title) + '<br>meta description: ' + pkEsc(p.meta_description) +
+            '<br>status: ' + pkEsc(p.status) + ' · day tags: ' + pkEsc((p.day_tags || []).join(', '));
+        }
+      }).catch(function (e) { if (box) box.textContent = 'Load failed: ' + e.message; });
+    };
+    window.__scProgBulk = function (status) {
+      var d = scDir('prog');
+      var ids = [];
+      document.querySelectorAll('#sc-prog-list tr').forEach(function (tr) {
+        var cb = tr.querySelector('.sc-prog-pick');
+        if (cb && cb.checked) ids.push(tr.getAttribute('data-scrow'));
+      });
+      if (!ids.length) { scMsg('prog', 'Tick the pages you want to change first', false); return; }
+      return apiPost('/directories/' + d + '/programmatic-pages/bulk-status', { page_ids: ids, status: status })
+        .then(function (r) {
+          showToast('Pages updated');
+          scMsg('prog', (r && r.updated || 0) + ' page(s) set to ' + status, true);
+          return window.__scProgLoad();
+        }).catch(function (e) { scMsg('prog', 'Update failed: ' + e.message, false); });
+    };
+    window.__scProgGenerate = function () {
+      var d = scDir('prog');
+      var svc = scPick('sc-gen-svc'), loc = scPick('sc-gen-loc');
+      if (!svc.length || !loc.length) { scMsg('prog', 'Tick at least one service and one city', false); return; }
+      scMsg('prog', 'Generating…', false);
+      return apiPost('/directories/' + d + '/programmatic-pages/generate', { service_ids: svc, location_ids: loc })
+        .then(function (r) {
+          scMsg('prog', 'Created ' + (r && r.created || 0) + ', skipped ' + (r && r.skipped || 0) +
+            ' of ' + (r && r.total || 0) + ' combinations', true);
+          showToast('Pages generated');
+          return window.__scProgLoad();
+        }).catch(function (e) { scMsg('prog', 'Generate failed: ' + e.message, false); });
+    };
+
+    // ── 3. Topics & Authors ────────────────────────────────────────────────────
+    function scAuthorOpts(cur) {
+      return '<select class="input sc-topic-author" style="width:150px">' + scAuthorOptsHtml(cur) + '</select>';
+    }
+    function scOpts(list, cur, none) {
+      var o = '<option value="' + pkEsc(none == null ? '' : none) + '">— none —</option>';
+      for (var i = 0; i < list.length; i++) {
+        o += '<option value="' + pkEsc(list[i].id) + '"' + (String(list[i].id) === String(cur) ? ' selected' : '') +
+          '>' + pkEsc(list[i].name) + '</option>';
+      }
+      return o;
+    }
+    function scAuthorOptsHtml(cur) {
+      var o = '<option value="">— none —</option>';
+      for (var i = 0; i < scAuthors.length; i++) {
+        o += '<option value="' + pkEsc(scAuthors[i].id) + '"' + (String(scAuthors[i].id) === String(cur) ? ' selected' : '') +
+          '>' + pkEsc(scAuthors[i].name) + '</option>';
+      }
+      return o;
+    }
+    function scTopicRender() {
+      var box = scBox('topic');
+      if (!box) return;
+      var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+        ['', 'Title', 'Service', 'City', 'Status', 'Scheduled', 'Words', 'Author', ''].map(function (t) {
+          return '<th style="text-align:left;padding:6px">' + t + '</th>';
+        }).join('') + '</tr></thead><tbody>';
+      for (var i = 0; i < scTopics.length; i++) {
+        var t = scTopics[i];
+        var statuses = ['suggested', 'scheduled', 'draft', 'published', 'archived'];
+        h += '<tr data-scrow="' + pkEsc(t.id) + '">' +
+          scTD('<input type="checkbox" class="sc-topic-pick">') +
+          scTD(scInput(t.title, 'sc-topic-title')) +
+          scTD(pkEsc(t.service_name || '—')) + scTD(pkEsc(t.location_name || '—')) +
+          scTD(scSelect('sc-topic-status-sel', statuses.map(function (s) { return [s, s]; }), t.status, '120px')) +
+          scTD('<input class="input sc-topic-date" type="date" value="' + pkEsc((t.scheduled_date || '').slice(0, 10)) + '">') +
+          scTD(scInput(t.word_count_target, 'sc-topic-wc', 'number', '80px')) +
+          scTD(scAuthorOpts(t.assigned_author_id)) +
+          scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scTopicSave(\'' + t.id + '\')">Save</button> ' +
+            '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scTopicDelete(\'' + t.id + '\')">Delete</button>') +
+          '</tr>';
+      }
+      box.innerHTML = h + '</tbody></table>';
+
+      var na = document.querySelector('.sc-topic-new-author');
+      if (na) na.innerHTML = scAuthorOptsHtml('');
+      var ns = document.querySelector('.sc-topic-new-service');
+      if (ns) ns.innerHTML = scOpts(scServices, '');
+      var nc = document.querySelector('.sc-topic-new-city');
+      if (nc) nc.innerHTML = scOpts(scLocations, '');
+    }
+    window.__scTopicLoad = function () {
+      var d = scDir('topic');
+      if (!d) { scMsg('topic', 'Pick a directory first', false); return; }
+      scMsg('topic', 'Loading…', false);
+      return Promise.all([
+        apiGet('/directories/' + d + '/topics'),
+        apiGet('/directories/' + d + '/authors'),
+        apiGet('/directories/' + d + '/services'),
+        apiGet('/directories/' + d + '/locations')
+      ]).then(function (r) {
+        scTopics = r[0] || []; scAuthors = r[1] || []; scServices = r[2] || []; scLocations = r[3] || [];
+        scTopicRender(); scAuthorRender();
+        scMsg('topic', scTopics.length + ' topic(s), ' + scAuthors.length + ' author(s)', true);
+      }).catch(function (e) { scMsg('topic', 'Load failed: ' + e.message, false); });
+    };
+    window.__scTopicCreate = function () {
+      var d = scDir('topic');
+      var title = document.querySelector('.sc-topic-new-title').value.trim();
+      if (!title) { scMsg('topic', 'A title is required', false); return; }
+      var body = { title: title, status: 'scheduled' };
+      var s = document.querySelector('.sc-topic-new-service').value; if (s) body.service_id = s;
+      var c = document.querySelector('.sc-topic-new-city').value; if (c) body.location_id = c;
+      var f = document.querySelector('.sc-topic-new-format').value.trim(); if (f) body.format_template = f;
+      var k = document.querySelector('.sc-topic-new-kw').value.trim(); if (k) body.target_keyword = k;
+      var w = document.querySelector('.sc-topic-new-wc').value; if (w) body.word_count_target = parseInt(w, 10);
+      var dt = document.querySelector('.sc-topic-new-date').value; if (dt) body.scheduled_date = scIsoDate(dt);
+      var a = document.querySelector('.sc-topic-new-author').value; if (a) body.assigned_author_id = a;
+      return apiPost('/directories/' + d + '/topics', body)
+        .then(function () { showToast('Topic added'); return window.__scTopicLoad(); })
+        .catch(function (e) { scMsg('topic', 'Add failed: ' + e.message, false); });
+    };
+    window.__scTopicSave = function (id) {
+      var d = scDir('topic'), row = scTr(id);
+      if (!row) return;
+      var body = {
+        title: scRow(row, 'sc-topic-title'),
+        status: row.querySelector('.sc-topic-status-sel').value,
+        word_count_target: parseInt(scRow(row, 'sc-topic-wc'), 10) || null,
+        assigned_author_id: row.querySelector('.sc-topic-author').value || null
+      };
+      var dt = scRow(row, 'sc-topic-date');
+      if (dt) body.scheduled_date = scIsoDate(dt);
+      return apiPut('/directories/' + d + '/topics/' + id, body)
+        .then(function () { showToast('Topic saved'); scMsg('topic', 'Saved', true); })
+        .catch(function (e) { scMsg('topic', 'Save failed: ' + e.message, false); });
+    };
+    window.__scTopicDelete = function (id) {
+      if (!confirm('Delete this topic?')) return;
+      var d = scDir('topic');
+      return apiFetch('DELETE', '/directories/' + d + '/topics/' + id)
+        .then(function () { showToast('Topic deleted'); return window.__scTopicLoad(); })
+        .catch(function (e) { scMsg('topic', 'Delete failed: ' + e.message, false); });
+    };
+    window.__scTopicBulk = function (action) {
+      var d = scDir('topic');
+      var ids = [];
+      document.querySelectorAll('#sc-topic-list tr').forEach(function (tr) {
+        var cb = tr.querySelector('.sc-topic-pick');
+        if (cb && cb.checked) ids.push(tr.getAttribute('data-scrow'));
+      });
+      if (!ids.length) { scMsg('topic', 'Tick the topics you want to change first', false); return; }
+      return apiPost('/directories/' + d + '/topics/bulk', { topic_ids: ids, action: action })
+        .then(function (r) {
+          scMsg('topic', (r && r.updated || 0) + ' topic(s) updated', true);
+          showToast('Topics updated');
+          return window.__scTopicLoad();
+        }).catch(function (e) { scMsg('topic', 'Update failed: ' + e.message, false); });
+    };
+    window.__scTopicSuggest = function () {
+      var d = scDir('topic');
+      var box = document.getElementById('sc-topic-suggestions');
+      if (box) box.innerHTML = '<span class="spinner"></span> Building suggestions…';
+      return apiGet('/directories/' + d + '/topics/suggestions').then(function (list) {
+        scSuggest = list || [];
+        if (!scSuggest.length) { if (box) box.textContent = 'No suggestions — add services and cities first.'; return; }
+        var h = '<div class="feature-subtitle"><b>' + scSuggest.length + ' suggestion(s)</b> — showing the first ' +
+          Math.min(SC_SUGGEST_CAP, scSuggest.length) + '. "Add" creates the topic on the calendar.</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:.85rem;margin-top:6px"><tbody>';
+        for (var i = 0; i < scSuggest.length && i < SC_SUGGEST_CAP; i++) {
+          var s = scSuggest[i];
+          h += '<tr>' + scTD(pkEsc(s.title)) + scTD('<code style="font-size:.75rem">' + pkEsc(s.target_keyword) + '</code>') +
+            scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scSuggestAdd(' + i + ')">＋ Add</button>') + '</tr>';
+        }
+        if (box) box.innerHTML = h + '</tbody></table>';
+      }).catch(function (e) {
+        if (box) box.innerHTML = '<span style="color:#f87171">Suggestions failed: ' + pkEsc(e.message) + '</span>';
+      });
+    };
+    window.__scSuggestAdd = function (i) {
+      var d = scDir('topic'), s = scSuggest[i];
+      if (!s) return;
+      var body = { title: s.title, status: 'suggested', target_keyword: s.target_keyword };
+      if (s.format) body.format_template = s.format;
+      for (var k = 0; k < scServices.length; k++) if (scServices[k].name === s.service_name) body.service_id = scServices[k].id;
+      for (var j = 0; j < scLocations.length; j++) if (scLocations[j].name === s.location_name) body.location_id = scLocations[j].id;
+      return apiPost('/directories/' + d + '/topics', body)
+        .then(function () { showToast('Topic added from suggestion'); return window.__scTopicLoad(); })
+        .catch(function (e) { scMsg('topic', 'Add failed: ' + e.message, false); });
+    };
+    var scSuggest = [];
+
+    function scAuthorRender() {
+      var box = document.getElementById('sc-author-list');
+      if (!box) return;
+      if (!scAuthors.length) { box.innerHTML = '<p class="feature-subtitle">No authors yet.</p>'; return; }
+      var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+        ['Name', 'Role', 'Bio', 'On', ''].map(function (t) {
+          return '<th style="text-align:left;padding:6px">' + t + '</th>';
+        }).join('') + '</tr></thead><tbody>';
+      for (var i = 0; i < scAuthors.length; i++) {
+        var a = scAuthors[i];
+        h += '<tr data-scrow="' + pkEsc(a.id) + '">' + scTD(scInput(a.name, 'sc-auth-name')) +
+          scTD(scInput(a.role, 'sc-auth-role', 'text', '110px')) + scTD(scInput(a.bio, 'sc-auth-bio')) +
+          scTD('<input type="checkbox" class="sc-auth-active"' + (a.is_active ? ' checked' : '') + '>') +
+          scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scAuthorSave(\'' + a.id + '\')">Save</button> ' +
+            '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scAuthorDelete(\'' + a.id + '\')">Delete</button>') +
+          '</tr>';
+      }
+      box.innerHTML = h + '</tbody></table>';
+    }
+    window.__scAuthorCreate = function () {
+      var d = scDir('topic');
+      var name = document.querySelector('.sc-author-new-name').value.trim();
+      if (!name) { scMsg('topic', 'An author name is required', false); return; }
+      var body = { name: name };
+      var r = document.querySelector('.sc-author-new-role').value.trim(); if (r) body.role = r;
+      var b = document.querySelector('.sc-author-new-bio').value.trim(); if (b) body.bio = b;
+      return apiPost('/directories/' + d + '/authors', body)
+        .then(function () { showToast('Author added'); return window.__scTopicLoad(); })
+        .catch(function (e) { scMsg('topic', 'Add failed: ' + e.message, false); });
+    };
+    window.__scAuthorSave = function (id) {
+      var d = scDir('topic'), row = scTr(id);
+      if (!row) return;
+      return apiPut('/directories/' + d + '/authors/' + id, {
+        name: scRow(row, 'sc-auth-name'), role: scRow(row, 'sc-auth-role'),
+        bio: scRow(row, 'sc-auth-bio'), is_active: scChecked(row, 'sc-auth-active')
+      }).then(function () { showToast('Author saved'); scMsg('topic', 'Saved', true); })
+        .catch(function (e) { scMsg('topic', 'Save failed: ' + e.message, false); });
+    };
+    window.__scAuthorDelete = function (id) {
+      if (!confirm('Delete this author profile?')) return;
+      var d = scDir('topic');
+      return apiFetch('DELETE', '/directories/' + d + '/authors/' + id)
+        .then(function () { showToast('Author deleted'); return window.__scTopicLoad(); })
+        .catch(function (e) { scMsg('topic', 'Delete failed: ' + e.message, false); });
+    };
+
+    // ── 4. SEO settings, schema configs, SEO fallbacks ─────────────────────────
+    function scMask(v) {
+      if (!v) return '<span style="color:var(--text-muted)">not set</span>';
+      var s = String(v);
+      return s.length <= 8 ? '••••' : pkEsc(s.slice(0, 4) + '…' + s.slice(-4));
+    }
+    window.__scSeoLoad = function () {
+      var d = scDir('seo');
+      if (!d) { scMsg('seo', 'Pick a directory first', false); return; }
+      scMsg('seo', 'Loading…', false);
+      return Promise.all([
+        apiGet('/directories/' + d + '/seo-settings'),
+        apiGet('/directories/' + d + '/schema-configs'),
+        apiGet('/directories/' + d + '/seo-fallbacks')
+      ]).then(function (r) {
+        var st = r[0] || {}, sc = r[1] || [], fb = r[2] || [];
+        var f = document.getElementById('sc-seo-form');
+        if (f) {
+          f.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px"><tbody>' +
+            '<tr>' + scTD('<b>Page slug pattern</b><br><span class="feature-subtitle">e.g. /{service}/{city}</span>') +
+            scTD(scInput(st.page_slug_pattern, 'sc-seo-slugpat', 'text', '220px')) +
+            scTD('<b>AI provider</b><br><span class="feature-subtitle">generation provider for this city</span>') +
+            scTD(scInput(st.ai_provider, 'sc-seo-aiprov', 'text', '160px')) + '</tr>' +
+            '<tr>' + scTD('<b>AI model</b>') + scTD(scInput(st.ai_model, 'sc-seo-aimodel', 'text', '220px')) +
+            scTD('<b>Word count min / max</b>') +
+            scTD(scInput(st.ai_word_count_min, 'sc-seo-wcmin', 'number', '80px') + ' ' +
+              scInput(st.ai_word_count_max, 'sc-seo-wcmax', 'number', '80px')) + '</tr>' +
+            '<tr>' + scTD('<b>Internal linking</b>') +
+            scTD('<input type="checkbox" class="sc-seo-il"' + (st.internal_linking_enabled ? ' checked' : '') + '> enabled') +
+            scTD('<b>Linking logic</b>') +
+            scTD(scInput(st.internal_linking_logic, 'sc-seo-illogic', 'text', '220px')) + '</tr>' +
+            '<tr>' + scTD('<b>Google Maps API key</b><br><span class="feature-subtitle">now: ' + scMask(st.google_maps_api_key) +
+              '</span>') +
+            scTD('<input class="input sc-seo-gmaps" type="password" placeholder="leave empty to keep the current key">') +
+            scTD('') + scTD('') + '</tr>' +
+            '</tbody></table>' +
+            '<div style="margin-top:8px"><button class="btn btn-accent btn-sm" type="button" onclick="window.__scSeoSave()">Save SEO settings</button></div>';
+        }
+        var sb = document.getElementById('sc-schema-list');
+        if (sb) {
+          if (!sc.length) sb.innerHTML = '<p class="feature-subtitle">No schema configs yet.</p>';
+          else {
+            var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+              ['Schema type', 'On', 'Config (JSON)', ''].map(function (t) {
+                return '<th style="text-align:left;padding:6px">' + t + '</th>';
+              }).join('') + '</tr></thead><tbody>';
+            for (var i = 0; i < sc.length; i++) {
+              var c = sc[i];
+              var cfg = c.config ? JSON.stringify(c.config) : '';
+              h += '<tr data-scrow="' + pkEsc(c.schema_type) + '">' + scTD('<code>' + pkEsc(c.schema_type) + '</code>') +
+                scTD('<input type="checkbox" class="sc-schema-on"' + (c.enabled ? ' checked' : '') + '>') +
+                scTD('<input class="input sc-schema-cfg" value="' + pkEsc(cfg) + '" style="width:320px">') +
+                scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scSchemaSave(\'' + pkEsc(c.schema_type) + '\')">Save</button>') +
+                '</tr>';
+            }
+            sb.innerHTML = h + '</tbody></table>';
+          }
+        }
+        var fbBox = document.getElementById('sc-fallback-list');
+        if (fbBox) {
+          if (!fb.length) fbBox.innerHTML = '<p class="feature-subtitle">No fallbacks yet.</p>';
+          else {
+            var h2 = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+              ['Page type', 'Title template', 'Description template', ''].map(function (t) {
+                return '<th style="text-align:left;padding:6px">' + t + '</th>';
+              }).join('') + '</tr></thead><tbody>';
+            for (var j = 0; j < fb.length; j++) {
+              var b = fb[j];
+              h2 += '<tr data-scrow="' + pkEsc(b.page_type) + '">' + scTD('<code>' + pkEsc(b.page_type) + '</code>') +
+                scTD(scInput(b.title_template, 'sc-fb-title', 'text', '260px')) +
+                scTD(scInput(b.description_template, 'sc-fb-desc', 'text', '300px')) +
+                scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scFallbackSave(\'' + pkEsc(b.page_type) + '\')">Save</button>') +
+                '</tr>';
+            }
+            fbBox.innerHTML = h2 + '</tbody></table>';
+          }
+        }
+        scMsg('seo', 'Loaded settings + ' + sc.length + ' schema + ' + fb.length + ' fallback(s)', true);
+      }).catch(function (e) { scMsg('seo', 'Load failed: ' + e.message, false); });
+    };
+    window.__scSeoSave = function () {
+      var d = scDir('seo');
+      var q = function (c) { var el = document.querySelector(c); return el ? el.value : ''; };
+      var body = {
+        page_slug_pattern: q('.sc-seo-slugpat') || null,
+        internal_linking_enabled: document.querySelector('.sc-seo-il').checked,
+        internal_linking_logic: q('.sc-seo-illogic') || null,
+        ai_provider: q('.sc-seo-aiprov') || null,
+        ai_model: q('.sc-seo-aimodel') || null,
+        ai_word_count_min: parseInt(q('.sc-seo-wcmin'), 10) || null,
+        ai_word_count_max: parseInt(q('.sc-seo-wcmax'), 10) || null
+      };
+      // An empty key field means "keep the current key" (the server COALESCEs), so it is omitted
+      // rather than sent as "" — an empty string would actually wipe the stored key.
+      var gk = q('.sc-seo-gmaps');
+      if (gk) body.google_maps_api_key = gk;
+      return apiPut('/directories/' + d + '/seo-settings', body)
+        .then(function () { showToast('SEO settings saved'); scMsg('seo', 'Saved', true); return window.__scSeoLoad(); })
+        .catch(function (e) { scMsg('seo', 'Save failed: ' + e.message, false); });
+    };
+    window.__scSchemaAdd = function () {
+      var d = scDir('seo');
+      var t = document.querySelector('.sc-schema-new-type').value.trim();
+      if (!t) { scMsg('seo', 'Enter a schema type first', false); return; }
+      return apiPut('/directories/' + d + '/schema-configs/' + encodeURIComponent(t), { enabled: true, config: {} })
+        .then(function () { showToast('Schema type added'); return window.__scSeoLoad(); })
+        .catch(function (e) { scMsg('seo', 'Add failed: ' + e.message, false); });
+    };
+    window.__scSchemaSave = function (type) {
+      var d = scDir('seo'), row = scTr(type);
+      if (!row) return;
+      var raw = scRow(row, 'sc-schema-cfg').trim();
+      var cfg = {};
+      if (raw) {
+        try { cfg = JSON.parse(raw); }
+        catch (err) { scMsg('seo', 'Config for ' + type + ' is not valid JSON', false); return; }
+      }
+      return apiPut('/directories/' + d + '/schema-configs/' + encodeURIComponent(type),
+        { enabled: scChecked(row, 'sc-schema-on'), config: cfg })
+        .then(function () { showToast('Schema saved'); scMsg('seo', 'Saved ' + type, true); })
+        .catch(function (e) { scMsg('seo', 'Save failed: ' + e.message, false); });
+    };
+    window.__scFallbackAdd = function () {
+      var d = scDir('seo');
+      var t = document.querySelector('.sc-fallback-new-type').value.trim();
+      if (!t) { scMsg('seo', 'Enter a page type first', false); return; }
+      return apiPut('/directories/' + d + '/seo-fallbacks/' + encodeURIComponent(t), {})
+        .then(function () { showToast('Page type added'); return window.__scSeoLoad(); })
+        .catch(function (e) { scMsg('seo', 'Add failed: ' + e.message, false); });
+    };
+    window.__scFallbackSave = function (pt) {
+      var d = scDir('seo'), row = scTr(pt);
+      if (!row) return;
+      return apiPut('/directories/' + d + '/seo-fallbacks/' + encodeURIComponent(pt), {
+        title_template: scRow(row, 'sc-fb-title'), description_template: scRow(row, 'sc-fb-desc')
+      }).then(function () { showToast('Fallback saved'); scMsg('seo', 'Saved ' + pt, true); })
+        .catch(function (e) { scMsg('seo', 'Save failed: ' + e.message, false); });
+    };
+
+    // ── 5. Repurpose + internal link suggestions ───────────────────────────────
+    window.__scReuseLoad = function () {
+      var d = scDir('reuse');
+      if (!d) { scMsg('reuse', 'Pick a directory first', false); return; }
+      var sel = document.getElementById('sc-reuse-post');
+      return apiGet('/directories/' + scDirSlug(d) + '/blog').then(function (posts) {
+        scPosts = posts || [];
+        if (sel) {
+          sel.innerHTML = scPosts.length
+            ? scPosts.map(function (p) { return '<option value="' + pkEsc(p.id) + '">' + pkEsc(p.title) + '</option>'; }).join('')
+            : '<option value="">— no articles in this city yet —</option>';
+        }
+        scMsg('reuse', scPosts.length + ' article(s)', true);
+      }).catch(function (e) { scMsg('reuse', 'Load failed: ' + e.message, false); });
+    };
+    window.__scRepurpose = function () {
+      var d = scDir('reuse'), sel = document.getElementById('sc-reuse-post');
+      var out = document.getElementById('sc-reuse-out');
+      if (!sel || !sel.value) { scMsg('reuse', 'Pick an article first', false); return; }
+      var type = document.getElementById('sc-reuse-type').value;
+      return apiPost('/directories/' + d + '/repurpose', { post_id: sel.value, output_type: type })
+        .then(function (r) {
+          if (out) out.textContent = JSON.stringify(r.content, null, 2);
+          scMsg('reuse', 'Repurposed as ' + type, true);
+        }).catch(function (e) { scMsg('reuse', 'Repurpose failed: ' + e.message, false); });
+    };
+    window.__scInternalLinks = function () {
+      var d = scDir('reuse'), sel = document.getElementById('sc-reuse-post');
+      var box = document.getElementById('sc-links-out');
+      var q = sel && sel.value ? '?post_id=' + encodeURIComponent(sel.value) : '';
+      return apiGet('/directories/' + d + '/internal-links' + q).then(function (list) {
+        if (!box) return;
+        if (!list || !list.length) { box.innerHTML = '<p class="feature-subtitle">No link suggestions for that article.</p>'; return; }
+        box.innerHTML = '<div class="feature-subtitle"><b>' + list.length + ' link suggestion(s)</b></div><ul style="margin:6px 0 0;font-size:.85rem">' +
+          list.map(function (s) {
+            return '<li><code>' + pkEsc(s.type) + '</code> <a href="' + pkEsc(s.url) + '" target="_blank">' +
+              pkEsc(s.title) + '</a></li>';
+          }).join('') + '</ul>';
+        scMsg('reuse', list.length + ' link suggestion(s)', true);
+      }).catch(function (e) { scMsg('reuse', 'Link suggestions failed: ' + e.message, false); });
+    };
+
+    // ── 6. Blog templates + generation ─────────────────────────────────────────
+    window.__scTplLoad = function () {
+      var box = document.getElementById('sc-tpl-list');
+      return apiGet('/blog-templates').then(function (list) {
+        scTemplates = list || [];
+        if (!box) return;
+        if (!scTemplates.length) { box.innerHTML = '<p class="feature-subtitle">No templates yet.</p>'; }
+        else {
+          var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+            ['Name', 'Slug', 'Category', 'Global', 'Template body', ''].map(function (t) {
+              return '<th style="text-align:left;padding:6px">' + t + '</th>';
+            }).join('') + '</tr></thead><tbody>';
+          for (var i = 0; i < scTemplates.length; i++) {
+            var t = scTemplates[i];
+            h += '<tr data-scrow="' + pkEsc(t.id) + '">' + scTD(scInput(t.name, 'sc-tpl-name', 'text', '170px')) +
+              scTD(scInput(t.slug, 'sc-tpl-slug', 'text', '150px')) +
+              scTD(scInput(t.category, 'sc-tpl-cat', 'text', '90px')) +
+              scTD('<input type="checkbox" class="sc-tpl-global"' + (t.is_global ? ' checked' : '') + '>') +
+              scTD('<textarea class="input sc-tpl-body" rows="2" style="width:280px">' + pkEsc(t.content_template) + '</textarea>') +
+              scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scTplSave(\'' + t.id + '\')">Save</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scTplDirs(\'' + t.id + '\')">Cities</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scTplDelete(\'' + t.id + '\')">Delete</button>') +
+              '</tr>';
+          }
+          box.innerHTML = h + '</tbody></table>';
+        }
+        var gs = document.getElementById('sc-gen-template');
+        if (gs) gs.innerHTML = scTemplates.map(function (t) {
+          return '<option value="' + pkEsc(t.id) + '">' + pkEsc(t.name) + ' (' + pkEsc(t.category) + ')</option>';
+        }).join('');
+        var gd = document.getElementById('sc-gen-dirs');
+        if (gd) gd.innerHTML = '<div class="feature-subtitle"><b>Publish into</b></div><div style="max-height:130px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:6px">' +
+          scDirs.map(function (d) {
+            return '<label class="feature-subtitle" style="display:block"><input type="checkbox" class="sc-gen-dir" value="' +
+              pkEsc(d.id) + '"> ' + pkEsc(d.name || d.slug) + '</label>';
+          }).join('') + '</div>';
+        scMsg('blog', scTemplates.length + ' template(s)', true);
+      }).catch(function (e) { scMsg('blog', 'Load failed: ' + e.message, false); });
+    };
+    window.__scTplCreate = function () {
+      var q = function (c) { var el = document.querySelector(c); return el ? el.value.trim() : ''; };
+      var name = q('.sc-tpl-new-name'), slug = q('.sc-tpl-new-slug'), cat = q('.sc-tpl-new-cat');
+      if (!name || !slug || !cat) { scMsg('blog', 'Name, slug and category are required', false); return; }
+      return apiPost('/blog-templates', {
+        name: name, slug: slug, category: cat,
+        content_template: q('.sc-tpl-new-body') || '<p>{title}</p>'
+      }).then(function () { showToast('Template added'); return window.__scTplLoad(); })
+        .catch(function (e) { scMsg('blog', 'Add failed: ' + e.message, false); });
+    };
+    window.__scTplSave = function (id) {
+      var row = scTr(id);
+      if (!row) return;
+      return apiPut('/blog-templates/' + id, {
+        name: scRow(row, 'sc-tpl-name'), slug: scRow(row, 'sc-tpl-slug'),
+        category: scRow(row, 'sc-tpl-cat'), is_global: scChecked(row, 'sc-tpl-global'),
+        content_template: row.querySelector('.sc-tpl-body').value
+      }).then(function () { showToast('Template saved'); scMsg('blog', 'Saved', true); })
+        .catch(function (e) { scMsg('blog', 'Save failed: ' + e.message, false); });
+    };
+    window.__scTplDelete = function (id) {
+      if (!confirm('Delete this template?')) return;
+      return apiFetch('DELETE', '/blog-templates/' + id)
+        .then(function () { showToast('Template deleted'); return window.__scTplLoad(); })
+        .catch(function (e) { scMsg('blog', 'Delete failed: ' + e.message, false); });
+    };
+    window.__scTplDirs = function (id) {
+      var box = document.getElementById('sc-gen-out');
+      return Promise.all([apiGet('/blog-templates/' + id + '/directories'), apiGet('/blog-templates/' + id)])
+        .then(function (r) {
+        var ids = r[0], tpl = r[1] || {};
+        var have = ids || [];
+        if (!box) return;
+        box.innerHTML = '<div class="feature-subtitle"><b>Cities for ' + pkEsc(tpl.name || 'template') + '</b> (currently ' + have.length + ')</div>' +
+          '<div style="max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:6px;margin-top:6px">' +
+          scDirs.map(function (d) {
+            return '<label class="feature-subtitle" style="display:block"><input type="checkbox" class="sc-tpldir-pick" value="' +
+              pkEsc(d.id) + '"' + (have.indexOf(d.id) !== -1 ? ' checked' : '') + '> ' + pkEsc(d.name || d.slug) + '</label>';
+          }).join('') + '</div>' +
+          '<button class="btn btn-accent btn-sm" type="button" style="margin-top:8px" onclick="window.__scTplDirsSave(\'' + id + '\')">Save cities</button>';
+      }).catch(function (e) { if (box) box.textContent = 'Load failed: ' + e.message; });
+    };
+    window.__scTplDirsSave = function (id) {
+      var ids = scPick('sc-tpldir-pick');
+      return apiPost('/blog-templates/' + id + '/directories', ids)
+        .then(function () { showToast('Cities saved for template'); scMsg('blog', ids.length + ' cities mapped', true); })
+        .catch(function (e) { scMsg('blog', 'Save failed: ' + e.message, false); });
+    };
+    window.__scGenerate = function () {
+      var tpl = document.getElementById('sc-gen-template').value;
+      var dirs = scPick('sc-gen-dir');
+      var out = document.getElementById('sc-gen-out');
+      if (!tpl) { scMsg('blog', 'Pick a template first', false); return; }
+      if (!dirs.length) { scMsg('blog', 'Tick at least one city to publish into', false); return; }
+      var fv = {};
+      (document.querySelector('.sc-gen-fields').value || '').split(/\r?\n/).forEach(function (line) {
+        var i = line.indexOf('=');
+        if (i > 0) fv[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+      });
+      scMsg('blog', 'Generating — this calls the configured AI provider…', false);
+      return apiPost('/blog-generate', {
+        template_id: tpl, directory_ids: dirs, field_values: fv,
+        publish: document.querySelector('.sc-gen-publish').checked
+      }).then(function (r) {
+        var n = (r && r.length) || 0;
+        scMsg('blog', n + ' article(s) generated', true);
+        if (out) out.textContent = n ? r.map(function (p) { return p.title + ' → ' + scDirName(p.directory_id); }).join('\n') : 'No articles returned.';
+        showToast('Generation complete');
+      }).catch(function (e) { scMsg('blog', 'Generate failed: ' + e.message, false); });
+    };
+
+    // ── 7. Newsletters ─────────────────────────────────────────────────────────
+    window.__scNewsLoad = function () {
+      var d = scDir('news');
+      var box = scBox('news');
+      if (!d) { scMsg('news', 'Pick a directory first', false); return; }
+      return apiGet('/newsletters?directory_id=' + d).then(function (list) {
+        scNews = list || [];
+        if (!box) return;
+        if (!scNews.length) { box.innerHTML = '<p class="feature-subtitle">No newsletters queued for this city yet.</p>'; }
+        else {
+          var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+            ['Title', 'Status', 'Scheduled', 'Sent', ''].map(function (t) {
+              return '<th style="text-align:left;padding:6px">' + t + '</th>';
+            }).join('') + '</tr></thead><tbody>';
+          for (var i = 0; i < scNews.length; i++) {
+            var n = scNews[i];
+            h += '<tr data-scrow="' + pkEsc(n.id) + '">' + scTD(scInput(n.title, 'sc-news-title')) +
+              scTD(scSelect('sc-news-status-sel', ['draft', 'scheduled', 'sending', 'sent'].map(function (s) { return [s, s]; }), n.status, '110px')) +
+              scTD(pkEsc(scTs(n.scheduled_at))) + scTD(pkEsc(scTs(n.sent_at))) +
+              scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scNewsSave(\'' + n.id + '\')">Save</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scNewsPreview(\'' + n.id + '\')">Preview</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scNewsSend(\'' + n.id + '\')">Send</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scNewsDelete(\'' + n.id + '\')">Delete</button>') +
+              '</tr>';
+          }
+          box.innerHTML = h + '</tbody></table>';
+        }
+        scMsg('news', scNews.length + ' newsletter(s)', true);
+      }).catch(function (e) { scMsg('news', 'Load failed: ' + e.message, false); });
+    };
+    window.__scNewsCreate = function () {
+      var d = scDir('news');
+      var q = function (c) { var el = document.querySelector(c); return el ? el.value.trim() : ''; };
+      var title = q('.sc-news-new-title');
+      if (!title) { scMsg('news', 'A title is required', false); return; }
+      var body = { directory_id: d, title: title, include_blog: true, include_deals: true };
+      var intro = q('.sc-news-new-intro'); if (intro) body.intro_text = intro;
+      var dt = q('.sc-news-new-date');
+      if (dt) { body.scheduled_at = new Date(dt).toISOString(); body.status = 'scheduled'; }
+      return apiPost('/newsletters', body)
+        .then(function () { showToast('Newsletter queued'); return window.__scNewsLoad(); })
+        .catch(function (e) { scMsg('news', 'Add failed: ' + e.message, false); });
+    };
+    window.__scNewsSave = function (id) {
+      var row = scTr(id);
+      if (!row) return;
+      return apiPut('/newsletters/' + id, {
+        title: scRow(row, 'sc-news-title'),
+        status: row.querySelector('.sc-news-status-sel').value
+      }).then(function () { showToast('Newsletter saved'); return window.__scNewsRefresh(id); })
+        .catch(function (e) { scMsg('news', 'Save failed: ' + e.message, false); });
+    };
+    // Reads the row back from the server (GET /newsletters/:id) so the card shows what was
+    // actually stored, not what the form hoped to store.
+    window.__scNewsRefresh = function (id) {
+      return apiGet('/newsletters/' + id).then(function (n) {
+        scMsg('news', 'Saved — status is now ' + (n && n.status) + (n && n.scheduled_at ? ', scheduled ' + scTs(n.scheduled_at) : '') , true);
+      }).catch(function (e) { scMsg('news', 'Saved, but could not read it back: ' + e.message, false); });
+    };
+    window.__scNewsPreview = function (id) {
+      var box = document.getElementById('sc-news-preview');
+      return apiGet('/newsletters/' + id + '/generate?format=html').then(function (html) {
+        if (box) box.innerHTML = '<b>Preview</b><div style="border:1px solid var(--border);border-radius:6px;padding:10px;background:#fff;color:#111;max-height:320px;overflow:auto">' + html + '</div>';
+      }).catch(function (e) { if (box) box.innerHTML = '<span style="color:#f87171">Preview failed: ' + pkEsc(e.message) + '</span>'; });
+    };
+    window.__scNewsSend = function (id) {
+      if (!confirm('Send this newsletter to every active subscriber of this city? This cannot be undone.')) return;
+      return apiPost('/newsletters/' + id + '/send', {})
+        .then(function (r) {
+          var n = (r && r.sent_count) || 0;
+          var bad = (r && r.failed_count) || 0;
+          scMsg('news', 'Sent to ' + n + ' of ' + ((r && r.total) || n) + ' subscriber(s)' + (bad ? ', ' + bad + ' failed' : ''), true);
+          showToast('Newsletter sent');
+          return window.__scNewsLoad();
+        }).catch(function (e) { scMsg('news', 'Send failed: ' + e.message, false); });
+    };
+    window.__scNewsDelete = function (id) {
+      if (!confirm('Delete this queued newsletter?')) return;
+      return apiFetch('DELETE', '/newsletters/' + id)
+        .then(function () { showToast('Newsletter deleted'); return window.__scNewsLoad(); })
+        .catch(function (e) { scMsg('news', 'Delete failed: ' + e.message, false); });
+    };
+
+    // ── 8. Landing pages ───────────────────────────────────────────────────────
+    window.__scLandLoad = function () {
+      var box = scBox('land');
+      return apiGet('/landing-pages').then(function (list) {
+        scLands = list || [];
+        if (!box) return;
+        if (!scLands.length) { box.innerHTML = '<p class="feature-subtitle">No landing pages yet.</p>'; }
+        else {
+          var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+            ['Title', 'Slug', 'City', 'Published', 'SEO title', ''].map(function (t) {
+              return '<th style="text-align:left;padding:6px">' + t + '</th>';
+            }).join('') + '</tr></thead><tbody>';
+          for (var i = 0; i < scLands.length; i++) {
+            var p = scLands[i];
+            h += '<tr data-scrow="' + pkEsc(p.id) + '">' + scTD(scInput(p.title, 'sc-land-title')) +
+              scTD(scInput(p.slug, 'sc-land-slug', 'text', '150px')) +
+              scTD(pkEsc(p.directory_id ? scDirName(p.directory_id) : '—')) +
+              scTD(p.published ? '✅ live' : '— draft') +
+              scTD(scInput(p.seo_title, 'sc-land-seotitle', 'text', '220px')) +
+              scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scLandSave(\'' + p.id + '\')">Save</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scLandPublish(\'' + pkEsc(p.slug) + '\')">' +
+                (p.published ? 'Unpublish' : 'Publish') + '</button> ' +
+                '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__scLandDelete(\'' + p.id + '\')">Delete</button>') +
+              '</tr>';
+          }
+          box.innerHTML = h + '</tbody></table>';
+        }
+        scMsg('land', scLands.length + ' landing page(s)', true);
+      }).catch(function (e) { scMsg('land', 'Load failed: ' + e.message, false); });
+    };
+    window.__scLandCreate = function () {
+      var q = function (c) { var el = document.querySelector(c); return el ? el.value.trim() : ''; };
+      var title = q('.sc-land-new-title'), slug = q('.sc-land-new-slug');
+      if (!title || !slug) { scMsg('land', 'Title and slug are required', false); return; }
+      var body = { title: title, slug: slug };
+      var d = q('.sc-land-new-dir'); if (d) body.directory_id = d;
+      var hero = q('.sc-land-new-hero'); if (hero) body.hero_title = hero;
+      var st = q('.sc-land-new-seotitle'); if (st) body.seo_title = st;
+      return apiPost('/landing-pages', body)
+        .then(function () { showToast('Landing page added'); return window.__scLandLoad(); })
+        .catch(function (e) { scMsg('land', 'Add failed: ' + e.message, false); });
+    };
+    window.__scLandSave = function (id) {
+      var row = scTr(id);
+      if (!row) return;
+      return apiPut('/landing-pages/' + id, {
+        title: scRow(row, 'sc-land-title'), slug: scRow(row, 'sc-land-slug'),
+        seo_title: scRow(row, 'sc-land-seotitle')
+      }).then(function () {
+        // Read the row back (GET /landing-pages/:id) before reloading the table, so the panel
+        // reports what the server stored rather than what was typed.
+        return apiGet('/landing-pages/' + id).then(function (p) {
+          showToast('Landing page saved');
+          scMsg('land', 'Saved — ' + (p && p.published ? 'published' : 'draft'), true);
+          return window.__scLandLoad();
+        });
+      }).catch(function (e) { scMsg('land', 'Save failed: ' + e.message, false); });
+    };
+    window.__scLandPublish = function (slug) {
+      return apiPost('/landing-pages/' + encodeURIComponent(slug) + '/publish', {})
+        .then(function (p) {
+          showToast(p && p.published ? 'Landing page published' : 'Landing page unpublished');
+          return window.__scLandLoad();
+        }).catch(function (e) { scMsg('land', 'Publish toggle failed: ' + e.message, false); });
+    };
+    window.__scLandDelete = function (id) {
+      if (!confirm('Delete this landing page?')) return;
+      return apiFetch('DELETE', '/landing-pages/' + id)
+        .then(function () { showToast('Landing page deleted'); return window.__scLandLoad(); })
+        .catch(function (e) { scMsg('land', 'Delete failed: ' + e.message, false); });
+    };
 
     // ===== ✍️ Onboarding Questionnaire Builder (card B65) =====
     // The admin authors the questionnaire per audience and per directory, and reads the
