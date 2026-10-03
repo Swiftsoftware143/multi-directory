@@ -165,6 +165,7 @@ pub struct B2bRegisterRequest {
 /// via email matching (resolve_supplier_business looks up by email for visitor accounts).
 pub async fn b2b_register(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<B2bRegisterRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.email.is_empty() || req.password.is_empty() || req.business_type.is_empty() {
@@ -235,6 +236,16 @@ pub async fn b2b_register(
             .await
             .map_err(|e| AppError::Internal(format!("Could not start registration: {}", e)))?;
 
+    // Fleet probe-residue policy convention (c) (kanban t_3c7f8623 / t_d5e5af7e): a harness that
+    // registers through this REAL route marks the three row families it mints in this one
+    // transaction — the business, the login account and the owner claim — with the
+    // `X-Swift-Harness` header value. Read from the HEADER only, never from the body, so a real
+    // supplier can never mark their own rows; NULL for every real registration, so their rows are
+    // byte-identical to before this column existed. Measured 2026-10-02: a headless-Chrome
+    // supplier-portal run minted 2 businesses + 2 accounts + 2 claims that were indistinguishable
+    // from a real supplier's, and a claim row alone lights the public "Verified Owner" badge.
+    let probe = crate::probe_harness::from_headers(&headers);
+
     // Create the business record for the supplier (linked to the account by email).
     // Inserted FIRST so a constraint rejection can never leave a committed account behind.
     let business_id = Uuid::new_v4();
@@ -258,8 +269,8 @@ pub async fn b2b_register(
     );
 
     sqlx::query(
-        "INSERT INTO businesses (id, name, email, phone, slug, business_type, description, is_active, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())",
+        "INSERT INTO businesses (id, name, email, phone, slug, business_type, description, is_active, created_at, updated_at, probe_harness) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW(), $8)",
     )
     .bind(business_id)
     .bind(biz_name)
@@ -268,6 +279,7 @@ pub async fn b2b_register(
     .bind(&biz_slug)
     .bind(&bt_lower)
     .bind(&biz_desc)
+    .bind(&probe)
     .execute(&mut *tx)
     .await
     .map_err(|e| {
@@ -287,21 +299,22 @@ pub async fn b2b_register(
 
     // Create visitor_account
     let visitor = sqlx::query_as::<_, crate::handlers::portal::VisitorAccount>(
-        "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, business_type) \
-         VALUES ($1, $2, $3, $4, NULL, $5) RETURNING *"
+        "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, business_type, probe_harness) \
+         VALUES ($1, $2, $3, $4, NULL, $5, $6) RETURNING *"
     )
     .bind(&email)
     .bind(&password_hash)
     .bind(&req.name)
     .bind(&req.phone)
     .bind(&bt_lower)
+    .bind(&probe)
     .fetch_one(&mut *tx)
     .await?;
 
     // Auto-claim: link the visitor account to the newly created business
     sqlx::query(
-        "INSERT INTO claimed_businesses (business_id, owner_email, owner_name, owner_phone, verified_at, is_active, visitor_account_id) \
-         VALUES ($1, $2, $3, $4, NOW(), true, $5) \
+        "INSERT INTO claimed_businesses (business_id, owner_email, owner_name, owner_phone, verified_at, is_active, visitor_account_id, probe_harness) \
+         VALUES ($1, $2, $3, $4, NOW(), true, $5, $6) \
          ON CONFLICT (business_id) DO NOTHING"
     )
     .bind(business_id)
@@ -309,6 +322,7 @@ pub async fn b2b_register(
     .bind(&req.name)
     .bind(&req.phone)
     .bind(visitor.id)
+    .bind(&probe)
     .execute(&mut *tx)
     .await?;
 

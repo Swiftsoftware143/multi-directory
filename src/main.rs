@@ -16,6 +16,7 @@ mod db;
 mod error;
 mod handlers;
 mod models;
+mod probe_harness;
 mod providers;
 mod routes;
 mod security;
@@ -26,6 +27,7 @@ pub mod tracking_script;
 mod utils;
 
 use axum::Router;
+use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::signal;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -130,10 +132,16 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("Server error");
+    // kanban t_d5e5af7e: serve with ConnectInfo so `POST /api/v1/visitors/track` can record the
+    // real request metadata instead of the placeholder "auto". The app binds 127.0.0.1 behind
+    // nginx, so the handler prefers X-Forwarded-For / X-Real-IP and falls back to this peer addr.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .expect("Server error");
 }
 
 async fn shutdown_signal() {

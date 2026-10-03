@@ -2,7 +2,7 @@
 //! Tracks anonymous visitors, sessions, events, and business owner claims.
 
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{ConnectInfo, Extension, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
@@ -10,6 +10,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
@@ -65,6 +66,9 @@ pub struct Visitor {
     pub is_claimed_owner: Option<bool>,
     pub first_seen_at: Option<DateTime<Utc>>,
     pub last_seen_at: Option<DateTime<Utc>>,
+    /// Fleet probe-residue marker (kanban t_d5e5af7e): the `X-Swift-Harness` header value when
+    /// this row was created by an automated harness, NULL for a real visitor. Never backfilled.
+    pub probe_harness: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -199,11 +203,22 @@ pub struct SearchQuery {
 /// POST /api/v1/visitors/track — called on every page load (no auth needed)
 pub async fn track_visitor(
     State(s): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<TrackVisitorRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get IP from request (inject via extension in middleware or use a placeholder)
-    let ip_addr = "auto".to_string();
-    let ua = "auto".to_string();
+    // kanban t_d5e5af7e: record the REAL request metadata. This used to be the literal "auto"
+    // for both columns, so all 19 live `visitors` rows had ip_address='auto' AND
+    // user_agent='auto' and the analytics columns were populated for nobody. The app binds
+    // 127.0.0.1 behind nginx, so `client_ip` prefers the proxy's X-Forwarded-For / X-Real-IP and
+    // falls back to the socket peer (connected via `into_make_service_with_connect_info`).
+    let ip_addr = crate::probe_harness::client_ip(&headers, Some(peer));
+    let ua = crate::probe_harness::user_agent(&headers);
+
+    // Fleet probe-residue policy convention (c) (kanban t_3c7f8623 / t_d5e5af7e): the marker is
+    // read from the `X-Swift-Harness` header ONLY — never invented from the fingerprint or the
+    // UA — and is NULL for every real visitor, so their rows are byte-identical to before.
+    let probe = crate::probe_harness::from_headers(&headers);
 
     // Upsert visitor by fingerprint
     let visitor = if let Some(ref fp) = req.fingerprint {
@@ -214,19 +229,23 @@ pub async fn track_visitor(
                 .await?;
 
         if let Some(v) = existing {
-            sqlx::query("UPDATE visitors SET last_seen_at = NOW(), user_agent = COALESCE($1, user_agent), ip_address = COALESCE($2, ip_address), language = COALESCE($3, language), screen_resolution = COALESCE($4, screen_resolution), timezone = COALESCE($5, timezone) WHERE id = $6")
+            // COALESCE semantics preserved: a request that carries no value never wipes one that
+            // is already stored. NULLIF(...,'auto') additionally heals rows written by the old
+            // placeholder code, so 'auto' degrades to NULL instead of surviving forever.
+            sqlx::query("UPDATE visitors SET last_seen_at = NOW(), user_agent = COALESCE($1, NULLIF(user_agent, 'auto')), ip_address = COALESCE($2, NULLIF(ip_address, 'auto')), language = COALESCE($3, language), screen_resolution = COALESCE($4, screen_resolution), timezone = COALESCE($5, timezone), probe_harness = COALESCE($6, probe_harness) WHERE id = $7")
                 .bind(&ua)
                 .bind(&ip_addr)
                 .bind(&req.language)
                 .bind(&req.screen_resolution)
                 .bind(&req.timezone)
+                .bind(&probe)
                 .bind(v.id)
                 .execute(&s.db)
                 .await?;
             v
         } else {
             sqlx::query_as::<_, Visitor>(
-                "INSERT INTO visitors (fingerprint, user_agent, ip_address, language, screen_resolution, timezone) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *"
+                "INSERT INTO visitors (fingerprint, user_agent, ip_address, language, screen_resolution, timezone, probe_harness) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *"
             )
             .bind(fp)
             .bind(&ua)
@@ -234,19 +253,21 @@ pub async fn track_visitor(
             .bind(&req.language)
             .bind(&req.screen_resolution)
             .bind(&req.timezone)
+            .bind(&probe)
             .fetch_one(&s.db)
             .await?
         }
     } else {
         // No fingerprint — create anonymous visitor
         sqlx::query_as::<_, Visitor>(
-            "INSERT INTO visitors (user_agent, ip_address, language, screen_resolution, timezone) VALUES ($1, $2, $3, $4, $5) RETURNING *"
+            "INSERT INTO visitors (user_agent, ip_address, language, screen_resolution, timezone, probe_harness) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *"
         )
         .bind(&ua)
         .bind(&ip_addr)
         .bind(&req.language)
         .bind(&req.screen_resolution)
         .bind(&req.timezone)
+        .bind(&probe)
         .fetch_one(&s.db)
         .await?
     };
