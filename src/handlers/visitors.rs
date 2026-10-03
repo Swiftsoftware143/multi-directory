@@ -836,13 +836,19 @@ pub async fn toggle_favorite(
 
     // Get the business's directory_id
     let biz_info =
-        sqlx::query_as::<_, (Uuid,)>("SELECT directory_id FROM businesses WHERE id = $1")
+        sqlx::query_as::<_, (Option<Uuid>,)>("SELECT directory_id FROM businesses WHERE id = $1")
             .bind(business_id)
             .fetch_optional(&s.db)
             .await?
             .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
-    let directory_id = biz_info.0;
+    // businesses.directory_id is NULLABLE (16 live rows carry NULL as of 2026-10-03) while
+    // visitor_favorites.directory_id is NOT NULL, so a directory-less business cannot be saved.
+    // Decoding it as a non-Option Uuid made sqlx error ("unexpected null") and the `?` below
+    // turned that into a 500. Decode as Option and refuse it exactly like a missing business.
+    let directory_id = biz_info
+        .0
+        .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
     // Check if already favorited
     let existing = sqlx::query_scalar::<_, i64>(
@@ -1015,13 +1021,17 @@ pub async fn toggle_bookmark(
 
     // Get the business's directory_id
     let biz_info =
-        sqlx::query_as::<_, (Uuid,)>("SELECT directory_id FROM businesses WHERE id = $1")
+        sqlx::query_as::<_, (Option<Uuid>,)>("SELECT directory_id FROM businesses WHERE id = $1")
             .bind(req.business_id)
             .fetch_optional(&s.db)
             .await?
             .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
-    let directory_id = biz_info.0;
+    // See toggle_favorite: a NULL directory_id must not 500 the decode (directory is NULLABLE,
+    // visitor_favorites.directory_id is NOT NULL). Refuse it like a missing business.
+    let directory_id = biz_info
+        .0
+        .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
 
     // Check if already favorited
     let existing = sqlx::query_scalar::<_, i64>(
