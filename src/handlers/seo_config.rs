@@ -38,7 +38,9 @@ pub struct UpsertSeoFallbackReq {
 pub async fn list_seo_fallbacks(
     State(s): State<AppState>,
     Path(dir_id): Path<Uuid>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin(&s.db, &claims, dir_id).await?;
     Ok(Json(
         sqlx::query_as::<_, SeoFallbackTemplate>(
             "SELECT * FROM seo_fallback_templates WHERE directory_id=$1 ORDER BY page_type",
@@ -52,8 +54,25 @@ pub async fn list_seo_fallbacks(
 pub async fn upsert_seo_fallback(
     State(s): State<AppState>,
     Path((dir_id, pt)): Path<(Uuid, String)>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<UpsertSeoFallbackReq>,
 ) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin(&s.db, &claims, dir_id).await?;
+    // B119: the same guard the legal-page editor has — an unknown merge field is refused on
+    // save with a plain-English message, so a raw `{brace}` can never reach a visitor.
+    let unknown = crate::merge_fields::unknown_fields(&[
+        req.title_template.as_deref().unwrap_or(""),
+        req.description_template.as_deref().unwrap_or(""),
+    ]);
+    if !unknown.is_empty() {
+        return Err(AppError::BadRequest(format!(
+            "Unknown merge field(s): {}. A title or description pattern may only use fields \
+             the platform can fill: {}. Remove the extra braces — an unknown field would show \
+             blank to visitors.",
+            unknown.join(", "),
+            crate::merge_fields::names().join(", ")
+        )));
+    }
     let t = sqlx::query_as::<_, SeoFallbackTemplate>(
         "INSERT INTO seo_fallback_templates (directory_id,page_type,title_template,description_template) VALUES($1,$2,$3,$4) ON CONFLICT (directory_id,page_type) DO UPDATE SET title_template=COALESCE($3,seo_fallback_templates.title_template),description_template=COALESCE($4,seo_fallback_templates.description_template),updated_at=NOW() RETURNING *"
     ).bind(dir_id).bind(&pt).bind(&req.title_template).bind(&req.description_template)

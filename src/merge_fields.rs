@@ -37,6 +37,11 @@ pub const VOCABULARY: &[(&str, &str)] = &[
     ("contact_phone", "Contact phone"),
     ("site_url", "Directory site URL"),
     ("current_year", "Current year"),
+    (
+        "category",
+        "Category / service category (on a category page)",
+    ),
+    ("service", "Service name (on a service page)"),
 ];
 
 /// True when `name` is a field the platform can fill.

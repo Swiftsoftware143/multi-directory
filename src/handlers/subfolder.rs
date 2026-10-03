@@ -328,6 +328,58 @@ async fn seo_override(pool: &PgPool, page_type: &str, page_id: Uuid) -> Option<S
 // Page shell
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Admin-authored SEO pattern for one page type (kanban B119), rendered through the
+/// shared merge-field engine. A single directory-wide pattern such as
+/// `{{city}} Business Directory | ZaarHub` therefore serves every city page, while an
+/// explicit per-page `seo_meta` override still wins. `extra` adds surface-specific
+/// values the directory context cannot know (e.g. `category`, `business_name`).
+/// A pattern that resolves to nothing usable returns `None`, so the caller's own
+/// default still renders instead of a blank title.
+async fn seo_pattern(
+    pool: &PgPool,
+    directory_id: Uuid,
+    page_type: &str,
+    extra: &[(&str, &str)],
+) -> (Option<String>, Option<String>) {
+    let row = sqlx::query(
+        "SELECT title_template, description_template FROM seo_fallback_templates \
+         WHERE directory_id = $1 AND page_type = $2 LIMIT 1",
+    )
+    .bind(directory_id)
+    .bind(page_type)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let Some(row) = row else {
+        return (None, None);
+    };
+    let raw_t: Option<String> = row.try_get("title_template").unwrap_or(None);
+    let raw_d: Option<String> = row.try_get("description_template").unwrap_or(None);
+
+    let mut ctx = crate::merge_fields::MergeContext::for_directory(pool, directory_id).await;
+    for (k, v) in extra {
+        if !v.trim().is_empty() {
+            ctx.set(*k, *v);
+        }
+    }
+
+    let render_one = |raw: Option<String>| -> Option<String> {
+        let raw = raw?;
+        if raw.trim().is_empty() {
+            return None;
+        }
+        let out = crate::merge_fields::render(&raw, &ctx);
+        let trimmed = out.text.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    };
+    (render_one(raw_t), render_one(raw_d))
+}
+
 struct Seo {
     title: String,
     description: String,
@@ -753,11 +805,15 @@ pub async fn directory_home(
     };
 
     let ov = seo_override(pool, "city", dir.id).await;
+    // B119: the directory's SEO pattern for city pages (e.g. `{city} Business
+    // Directory | ZaarHub`) is rendered here, so one pattern serves every city.
+    let (fb_title, fb_desc) = seo_pattern(pool, dir.id, "city", &[]).await;
 
     let title = ov
         .as_ref()
         .and_then(|o| o.title.clone())
         .or(city_title)
+        .or(fb_title)
         .unwrap_or_else(|| format!("Local Businesses in {}, {} | {}", dir.city, dir.state, site));
 
     let description = ov
@@ -765,6 +821,7 @@ pub async fn directory_home(
         .and_then(|o| o.description.clone())
         .or(city_desc)
         .or_else(|| dir.description.clone())
+        .or(fb_desc)
         .unwrap_or_else(|| {
             format!(
                 "Discover top-rated local businesses in {}, {}. Browse reviews, deals and services across every category.",
@@ -914,17 +971,26 @@ pub async fn businesses_page(
         Some(c) => format!("{} Businesses in {}, {}", c, dir.city, dir.state),
         None => format!("All Local Businesses in {}, {}", dir.city, dir.state),
     };
-    let title = format!("{} | {}", label, site);
-    let description = clip(
-        &format!(
-            "Browse {} of {} local businesses in {}, {}. Ratings, reviews, addresses and contact details.",
-            items.len(),
-            total,
-            dir.city,
-            dir.state
-        ),
-        158,
-    );
+    // B119: a category-page pattern (`{category} in {city} | ZaarHub`) applies only when a
+    // category is present, so the all-businesses view keeps its own default.
+    let (fb_title, fb_desc) = match &category {
+        Some(c) => seo_pattern(pool, dir.id, "category", &[("category", c.as_str())]).await,
+        None => (None, None),
+    };
+    let title = fb_title.unwrap_or_else(|| format!("{} | {}", label, site));
+    let description = fb_desc.unwrap_or_else(|| {
+        clip(
+            &format!(
+                "Browse {} of {} local businesses in {}, {}. Ratings, reviews, addresses and contact details.",
+                items.len(),
+                total,
+                dir.city,
+                dir.state
+            ),
+            158,
+        )
+    });
+    let description = clip(&description, 158);
 
     let mut jsonld = vec![serde_json::json!({
         "@context": "https://schema.org",
@@ -1108,9 +1174,19 @@ pub async fn business_detail(
     let canonical = format!("{}/{}/businesses/{}", base, dir.slug, biz_slug);
     let ov = seo_override(pool, "business", biz_id).await;
 
+    // B119: business-page pattern (e.g. `{business_name} in {city}, {state} | ZaarHub`).
+    let (fb_title, fb_desc) = seo_pattern(
+        pool,
+        dir.id,
+        "business",
+        &[("business_name", name.as_str())],
+    )
+    .await;
+
     let title = ov
         .as_ref()
         .and_then(|o| o.title.clone())
+        .or(fb_title)
         .unwrap_or_else(|| match &category {
             Some(c) => format!("{} — {} in {}, {} | {}", name, c, city, state, site),
             None => format!("{} in {}, {} | {}", name, city, state, site),
@@ -1119,6 +1195,7 @@ pub async fn business_detail(
     let description = ov
         .as_ref()
         .and_then(|o| o.description.clone())
+        .or(fb_desc)
         .unwrap_or_else(|| {
             if !description.trim().is_empty() {
                 strip_tags(&description)
@@ -1665,9 +1742,11 @@ pub async fn blog_list_page(
     let canonical = format!("{}/{}/blog", base, dir.slug);
 
     let ov = seo_override(pool, "city_blog", dir.id).await;
+    let (fb_title, fb_desc) = seo_pattern(pool, dir.id, "city_blog", &[]).await;
     let title = ov
         .as_ref()
         .and_then(|o| o.title.clone())
+        .or(fb_title)
         .unwrap_or_else(|| format!("{} Local Blog — News & Guides | {}", dir.city, site));
 
     // A failed read returns None (the caller falls back to the SPA) rather than
@@ -1789,6 +1868,7 @@ pub async fn blog_list_page(
     let description = ov
         .as_ref()
         .and_then(|o| o.description.clone())
+        .or(fb_desc)
         .unwrap_or_else(|| {
             if items.is_empty() {
                 format!(
@@ -1910,9 +1990,11 @@ pub async fn deals_page(
     let canonical = format!("{}/{}/deals", base, dir.slug);
 
     let ov = seo_override(pool, "city_deals", dir.id).await;
+    let (fb_title, fb_desc) = seo_pattern(pool, dir.id, "city_deals", &[]).await;
     let title = ov
         .as_ref()
         .and_then(|o| o.title.clone())
+        .or(fb_title)
         .unwrap_or_else(|| format!("Deals & Coupons in {}, {} | {}", dir.city, dir.state, site));
 
     let rows = sqlx::query(
@@ -2047,6 +2129,7 @@ pub async fn deals_page(
     let description = ov
         .as_ref()
         .and_then(|o| o.description.clone())
+        .or(fb_desc)
         .unwrap_or_else(|| {
             if items.is_empty() {
                 format!(

@@ -6240,7 +6240,12 @@
                 scTD('<button class="btn btn-accent btn-sm" type="button" onclick="window.__scFallbackSave(\'' + pkEsc(b.page_type) + '\')">Save</button>') +
                 '</tr>';
             }
-            fbBox.innerHTML = h2 + '</tbody></table>';
+            fbBox.innerHTML = h2 + '</tbody></table>' +
+              '<p class="feature-subtitle" style="margin-top:6px">Merge fields you can use: ' +
+              '<code>{city}</code> <code>{city_name}</code> <code>{directory_name}</code> <code>{network_name}</code> ' +
+              '<code>{state}</code> <code>{category}</code> <code>{business_name}</code> <code>{current_year}</code> ' +
+              '<code>{primary_color}</code> <code>{accent_color}</code> <code>{contact_email}</code> <code>{contact_phone}</code> ' +
+              '&mdash; each fills in from this directory, so one pattern serves every city. An unknown field is refused on save.</p>';
           }
         }
         scMsg('seo', 'Loaded settings + ' + sc.length + ' schema + ' + fb.length + ' fallback(s)', true);
