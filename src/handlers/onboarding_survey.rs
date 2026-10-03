@@ -348,13 +348,20 @@ async fn published_survey(
     Ok(config)
 }
 
-fn public_json(config: &SurveyConfig, slug: &str) -> Value {
+fn public_json(
+    config: &SurveyConfig,
+    slug: &str,
+    ctx: &crate::merge_fields::MergeContext,
+) -> Value {
     json!({
         "enabled": config.enabled,
         "audience": config.audience,
         "directory_slug": slug,
-        "title": config.title,
-        "description": config.description,
+        "title": crate::merge_fields::render(&config.title, ctx).text,
+        "description": config
+            .description
+            .as_deref()
+            .map(|d| crate::merge_fields::render(d, ctx).text),
         "questions": normalize_questions(&config.questions).unwrap_or(config.questions.clone()),
         "trigger_event": config.trigger_event,
         "required": config.required,
@@ -394,7 +401,10 @@ pub async fn public_get_survey(
         .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
 
     match published_survey(&s.db, dir.0, &audience).await? {
-        Some(c) => Ok(Json(public_json(&c, &slug))),
+        Some(c) => {
+            let ctx = crate::merge_fields::MergeContext::for_directory(&s.db, dir.0).await;
+            Ok(Json(public_json(&c, &slug, &ctx)))
+        }
         None => Ok(Json(empty_public_json(audience))),
     }
 }
@@ -427,7 +437,11 @@ pub async fn public_get_onboarding_network(
     match row {
         Some((directory_id, slug)) => match published_survey(&s.db, directory_id, &audience).await?
         {
-            Some(c) => Ok(Json(public_json(&c, &slug))),
+            Some(c) => {
+                let ctx =
+                    crate::merge_fields::MergeContext::for_directory(&s.db, directory_id).await;
+                Ok(Json(public_json(&c, &slug, &ctx)))
+            }
             None => Ok(Json(empty_public_json(audience))),
         },
         None => {
@@ -472,7 +486,12 @@ pub async fn public_get_onboarding_network(
                                 .collect();
                             let mut cfg = c.clone();
                             cfg.questions = Value::Array(filtered);
-                            Ok(Json(public_json(&cfg, &slug)))
+                            let ctx = crate::merge_fields::MergeContext::for_directory(
+                                &s.db,
+                                directory_id,
+                            )
+                            .await;
+                            Ok(Json(public_json(&cfg, &slug, &ctx)))
                         }
                         None => Ok(Json(empty_public_json(audience))),
                     }

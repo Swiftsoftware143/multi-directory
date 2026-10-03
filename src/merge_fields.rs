@@ -35,6 +35,11 @@ pub const VOCABULARY: &[(&str, &str)] = &[
     ("dashboard_url", "Business dashboard URL"),
     ("contact_email", "Support / contact email"),
     ("contact_phone", "Contact phone"),
+    (
+        "support_email",
+        "Support / help email (falls back to the contact email)",
+    ),
+    ("legal_name", "Legal / entity name"),
     ("site_url", "Directory site URL"),
     ("current_year", "Current year"),
     (
@@ -137,7 +142,9 @@ impl MergeContext {
         let mut ctx = MergeContext::for_network(db).await;
 
         let row = sqlx::query(
-            "SELECT d.name, d.city, d.state, d.color_scheme, d.url_value, d.custom_domain, n.name AS network_name \
+            "SELECT d.name, d.city, d.state, d.color_scheme, d.url_value, d.custom_domain, \
+                    d.support_email, d.contact_email, d.contact_phone, d.legal_name, \
+                    n.name AS network_name \
              FROM directories d LEFT JOIN networks n ON n.id = d.network_id WHERE d.id = $1",
         )
         .bind(directory_id)
@@ -159,6 +166,25 @@ impl MergeContext {
                     .ok()
                     .flatten(),
             );
+
+            // B119 — the Directory Details record is the canonical source: a city's own
+            // support email / contact details win, and a blank inherits the network context
+            // (which for_network() already loaded from zaarhub_site_config).
+            ctx.set_opt("contact_email", r.try_get("contact_email").ok());
+            ctx.set_opt("contact_phone", r.try_get("contact_phone").ok());
+            ctx.set_opt("legal_name", r.try_get("legal_name").ok());
+            match r
+                .try_get::<Option<String>, _>("support_email")
+                .ok()
+                .flatten()
+            {
+                Some(v) => ctx.set("support_email", v),
+                None => {
+                    if let Some(ce) = ctx.get("contact_email").map(|s| s.to_string()) {
+                        ctx.set("support_email", ce);
+                    }
+                }
+            }
 
             if let Ok(Some(scheme)) = r.try_get::<Option<serde_json::Value>, _>("color_scheme") {
                 for (field, json_key) in [

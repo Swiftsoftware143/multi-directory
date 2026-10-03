@@ -237,8 +237,8 @@ pub async fn create_directory(
     };
 
     let mut directory = sqlx::query_as::<_, Directory>(
-        r#"INSERT INTO directories (name, slug, description, status, template, color_scheme, network_id, url_type, url_value, custom_domain, city, template_config, head_injection, body_injection, footer_injection, email_signature_html, email_signature_text)
-           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17)
+        r#"INSERT INTO directories (name, slug, description, status, template, color_scheme, network_id, url_type, url_value, custom_domain, city, template_config, head_injection, body_injection, footer_injection, email_signature_html, email_signature_text, state, support_email, contact_email, contact_phone, legal_name)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
            RETURNING *"#
     )
     .bind(&req.name)
@@ -258,6 +258,11 @@ pub async fn create_directory(
     .bind(&req.footer_injection)
     .bind(&req.email_signature_html)
     .bind(&req.email_signature_text)
+    .bind(&req.state)
+    .bind(&req.support_email)
+    .bind(&req.contact_email)
+    .bind(&req.contact_phone)
+    .bind(&req.legal_name)
     .fetch_one(&s.db)
     .await?;
 
@@ -466,6 +471,11 @@ pub async fn update_directory(
     let new_url_value = req.url_value.or(existing.url_value);
     let new_custom_domain = req.custom_domain.or(existing.custom_domain);
     let new_city = req.city.or(existing.city);
+    let new_state = req.state.or(existing.state);
+    let new_support_email = req.support_email.or(existing.support_email);
+    let new_contact_email = req.contact_email.or(existing.contact_email);
+    let new_contact_phone = req.contact_phone.or(existing.contact_phone);
+    let new_legal_name = req.legal_name.or(existing.legal_name);
     let new_head_injection = req
         .head_injection
         .clone()
@@ -506,7 +516,7 @@ pub async fn update_directory(
     }
 
     let directory = sqlx::query_as::<_, Directory>(
-        "UPDATE directories SET name = $1, slug = $2, description = $3, status = $4, template = $5, color_scheme = $6::jsonb, network_id = $7, url_type = $8, url_value = $9, custom_domain = $10, city = $11, template_config = $12::jsonb, head_injection = $14, body_injection = $15, footer_injection = $16, email_signature_html = $17, email_signature_text = $18, updated_at = NOW() WHERE id = $13 RETURNING *"
+        "UPDATE directories SET name = $1, slug = $2, description = $3, status = $4, template = $5, color_scheme = $6::jsonb, network_id = $7, url_type = $8, url_value = $9, custom_domain = $10, city = $11, template_config = $12::jsonb, head_injection = $14, body_injection = $15, footer_injection = $16, email_signature_html = $17, email_signature_text = $18, state = $19, support_email = $20, contact_email = $21, contact_phone = $22, legal_name = $23, updated_at = NOW() WHERE id = $13 RETURNING *"
     )
     .bind(&new_name)
     .bind(&new_slug)
@@ -529,6 +539,11 @@ pub async fn update_directory(
     .bind(&new_footer_injection)
     .bind(&new_email_signature_html)
     .bind(&new_email_signature_text)
+    .bind(&new_state)
+    .bind(&new_support_email)
+    .bind(&new_contact_email)
+    .bind(&new_contact_phone)
+    .bind(&new_legal_name)
     .fetch_one(&s.db)
     .await?;
 

@@ -522,6 +522,7 @@
       </style>
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
+        <a href="#directory-details-section">🧾 Directory Details</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
         <a href="#industries-section">🏭 Industries</a>
         <a href="#domains-section">🌐 Domains &amp; Subdomains</a>
@@ -1607,6 +1608,68 @@
         <p>Create your first directory to get started.</p>
       </div>
       <div id="dir-error" class="form-error hidden" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- 🧾 Directory Details — the CANONICAL identity record (card B119). Every merge field across
+       legal pages, the website, the footer, emails, SEO and the onboarding survey reads from the
+       record edited here: ONE place to enter a directory's name, city, support email, contact
+       details and brand colours. A city in a network inherits the network's values unless it sets
+       its own, and the scope line below always says which entity is being edited. -->
+  <div style="max-width:1200px;margin:24px auto;padding:0 24px" id="directory-details-wrap">
+    <div class="section-label" id="directory-details-section">🧾 Directory Details</div>
+    <p style="font-size:.85rem;color:var(--text-secondary);margin:8px 0 0">
+      The one record every merge field pulls from. Fill these in once and
+      <code>{directory_name}</code>, <code>{city}</code>, <code>{support_email}</code>,
+      <code>{primary_color}</code> and the rest resolve everywhere — legal pages, the website, the
+      footer, emails, SEO and the onboarding survey. Leave a field blank to inherit from the network.
+    </p>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-top:12px">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <label style="font-size:.85rem;color:var(--text-secondary)">Editing</label>
+        <select id="dd-directory" style="min-width:280px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></select>
+        <span id="dd-scope" class="badge">—</span>
+        <span id="dd-status" style="font-size:.8rem;color:var(--text-secondary)"></span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Directory name</label>
+          <input id="dd-name" class="dd-mf-target" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">City</label>
+          <input id="dd-city" class="dd-mf-target" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">State / county</label>
+          <input id="dd-state" class="dd-mf-target" placeholder="FL" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Public site address (custom domain)</label>
+          <input id="dd-siteurl" class="dd-mf-target" placeholder="zaarhub.com" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Support email <span style="color:var(--warn,#ffb454)">(visitors write to this)</span></label>
+          <input id="dd-support-email" class="dd-mf-target" type="email" placeholder="support@yourdomain.com" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Contact email</label>
+          <input id="dd-contact-email" class="dd-mf-target" type="email" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Contact phone</label>
+          <input id="dd-phone" class="dd-mf-target" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Legal / entity name</label>
+          <input id="dd-legal-name" class="dd-mf-target" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-top:14px">
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Primary colour</label>
+          <input id="dd-primary" type="color" style="width:100%;height:36px;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Accent colour</label>
+          <input id="dd-accent" type="color" style="width:100%;height:36px;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Background colour</label>
+          <input id="dd-background" type="color" style="width:100%;height:36px;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Text colour</label>
+          <input id="dd-text" type="color" style="width:100%;height:36px;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a)"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <label style="font-size:.8rem;color:var(--text-secondary)">Insert merge field</label>
+        <select id="dd-mf" style="min-width:240px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></select>
+        <button class="btn btn-ghost btn-sm" type="button" id="dd-mf-insert">Insert into last field</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="dd-mf-preview">Preview with real values</button>
+        <button class="btn btn-accent" type="button" id="dd-save">Save Directory Details</button>
+      </div>
+      <div id="dd-preview" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle,#0b1220);font-size:.85rem"></div>
     </div>
   </div>
 
@@ -2818,6 +2881,142 @@
       localStorage.removeItem('md_admin_user');
     }
 
+    // ── 🧾 Directory Details (B119) — the CANONICAL identity record and the merge-field
+    // pick-list. One record per directory that every merge field reads from; the pick-list and
+    // the preview prove a template renders ITS OWN city's values before it is saved.
+    var ddDirs = [];
+    var ddLastField = null;
+    function ddEl(id) { return document.getElementById(id); }
+    function ddColor(v, fallback) { return /^#[0-9a-fA-F]{6}$/.test(v || '') ? v : fallback; }
+    function ddStatus(msg, ok) {
+      var el = ddEl('dd-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok === false ? 'var(--warn,#ffb454)' : 'var(--ok,#3ddc97)';
+    }
+    function ddFind(slug) {
+      for (var i = 0; i < ddDirs.length; i++) if (ddDirs[i].slug === slug) return ddDirs[i];
+      return null;
+    }
+    function ddScopeText(d) {
+      if (!d) return '—';
+      return d.network_id
+        ? 'City in a network — blank fields inherit the network'
+        : 'Standalone directory — owns its own values';
+    }
+    function ddLoad() {
+      var sel = ddEl('dd-directory');
+      var slug = sel ? sel.value : '';
+      if (!slug) return;
+      apiGet('/directories/' + encodeURIComponent(slug)).then(function (d) {
+        var cs = (d && d.color_scheme) || {};
+        ddEl('dd-name').value = (d && d.name) || '';
+        ddEl('dd-city').value = (d && d.city) || '';
+        ddEl('dd-state').value = (d && d.state) || '';
+        ddEl('dd-siteurl').value = (d && (d.custom_domain || d.url_value)) || '';
+        ddEl('dd-support-email').value = (d && d.support_email) || '';
+        ddEl('dd-contact-email').value = (d && d.contact_email) || '';
+        ddEl('dd-phone').value = (d && d.contact_phone) || '';
+        ddEl('dd-legal-name').value = (d && d.legal_name) || '';
+        ddEl('dd-primary').value = ddColor(cs.primary, '#2563eb');
+        ddEl('dd-accent').value = ddColor(cs.accent, '#f59e0b');
+        ddEl('dd-background').value = ddColor(cs.background, '#ffffff');
+        ddEl('dd-text').value = ddColor(cs.text, '#1e293b');
+        var sc = ddEl('dd-scope'); if (sc) sc.textContent = ddScopeText(d);
+        ddStatus(slug + ' loaded', true);
+      }).catch(function (e) { ddStatus('Could not load ' + slug + ': ' + e.message, false); });
+    }
+    function ddInit() {
+      var sel = ddEl('dd-directory');
+      if (!sel || sel.getAttribute('data-dd-wired')) return;
+      sel.setAttribute('data-dd-wired', '1');
+      sel.addEventListener('change', ddLoad);
+      Array.prototype.forEach.call(document.querySelectorAll('.dd-mf-target'), function (el) {
+        el.addEventListener('focus', function () { ddLastField = el; });
+      });
+      ddEl('dd-save').addEventListener('click', ddSave);
+      ddEl('dd-mf-insert').addEventListener('click', ddInsertField);
+      ddEl('dd-mf-preview').addEventListener('click', ddPreview);
+      apiGet('/zaarhub/admin/merge-fields').then(function (d) {
+        var fields = (d && d.fields) || [];
+        ddEl('dd-mf').innerHTML = fields.map(function (f) {
+          return '<option value="' + pkEsc(f.name) + '">' + pkEsc(f.name) + ' — ' + pkEsc(f.description) + '</option>';
+        }).join('') || '<option value="">No fields</option>';
+      }).catch(function () { ddEl('dd-mf').innerHTML = '<option value="">Unavailable</option>'; });
+      apiGet('/directories?per_page=100').then(function (r) {
+        ddDirs = (r && r.data) || [];
+        sel.innerHTML = ddDirs.map(function (d) {
+          return '<option value="' + pkEsc(d.slug) + '">' + pkEsc(d.name || d.slug) + ' (' + pkEsc(d.slug) + ')</option>';
+        }).join('') || '<option value="">No directories</option>';
+        if (ddDirs.length) ddLoad();
+      }).catch(function (e) {
+        sel.innerHTML = '<option value="">Could not load directories</option>';
+        ddStatus('Could not load directories: ' + e.message, false);
+      });
+    }
+    function ddSave() {
+      var sel = ddEl('dd-directory');
+      var slug = sel ? sel.value : '';
+      if (!slug) { ddStatus('Pick a directory first', false); return; }
+      var name = ddEl('dd-name').value.trim();
+      if (!name) { ddStatus('Directory name is required', false); return; }
+      var current = ddFind(slug);
+      var cs = (current && current.color_scheme) || {};
+      var body = {
+        name: name,
+        city: ddEl('dd-city').value.trim() || null,
+        state: ddEl('dd-state').value.trim() || null,
+        support_email: ddEl('dd-support-email').value.trim(),
+        contact_email: ddEl('dd-contact-email').value.trim(),
+        contact_phone: ddEl('dd-phone').value.trim(),
+        legal_name: ddEl('dd-legal-name').value.trim(),
+        color_scheme: Object.assign({}, cs, {
+          primary: ddEl('dd-primary').value,
+          accent: ddEl('dd-accent').value,
+          background: ddEl('dd-background').value,
+          text: ddEl('dd-text').value
+        })
+      };
+      var siteurl = ddEl('dd-siteurl').value.trim();
+      // Blank means "leave as-is" — sending an empty custom_domain would blank {site_url}.
+      if (siteurl) body.custom_domain = siteurl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      ddStatus('Saving…', true);
+      apiPut('/directories/' + encodeURIComponent(slug), body).then(function () {
+        ddStatus('✓ Saved — every merge field now reads these values', true);
+      }).catch(function (e) { ddStatus('Save failed: ' + e.message, false); });
+    }
+    function ddInsertField() {
+      var name = ddEl('dd-mf').value;
+      if (!name) return;
+      var ta = ddLastField || ddEl('dd-support-email');
+      if (!ta) return;
+      var token = '{' + name + '}';
+      var s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      var e = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+      ta.value = ta.value.slice(0, s) + token + ta.value.slice(e);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = s + token.length;
+      ddStatus('Inserted ' + token, true);
+    }
+    function ddPreview() {
+      var box = ddEl('dd-preview');
+      var slug = ddEl('dd-directory').value;
+      var current = ddFind(slug);
+      var tpl = ddEl('dd-support-email').value || ddEl('dd-legal-name').value || ddEl('dd-name').value;
+      if (!tpl) { ddStatus('Nothing to preview', false); return; }
+      box.style.display = 'block';
+      box.innerHTML = 'Rendering…';
+      apiPost('/zaarhub/admin/merge-fields/preview', {
+        content: tpl, directory_id: current ? current.id : null
+      }).then(function (d) {
+        var warn = (d.missing && d.missing.length)
+          ? '<div style="margin-bottom:8px;padding:6px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px">Blank for this directory: ' + d.missing.map(pkEsc).join(', ') + ' — set it, or remove it.</div>' : '';
+        var unk = (d.unknown && d.unknown.length)
+          ? '<div style="margin-bottom:8px;padding:6px 10px;background:#fee2e2;border:1px solid #dc2626;border-radius:6px">Unknown field(s): ' + d.unknown.map(pkEsc).join(', ') + ' — not a known merge field.</div>' : '';
+        box.innerHTML = warn + unk + pkEsc(d.html || '');
+      }).catch(function (e) { box.innerHTML = '<span style="color:#dc2626">Preview failed: ' + pkEsc(e.message) + '</span>'; });
+    }
+
     function showLogin() {
       loginPage.classList.remove('hidden');
       dashPage.classList.add('hidden');
@@ -2832,6 +3031,7 @@
       loadProviderKeys();
       loadEmailServiceStatus();
       loadEmailSettingsDirectories();
+      ddInit();
       loadAdZones();
       loadSubmissions();
       // Round 8: the three capabilities that had a live backend and no UI.
