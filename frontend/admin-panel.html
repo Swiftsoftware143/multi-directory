@@ -44,6 +44,16 @@
     /* === LAYOUT === */
     .hidden { display: none !important; }
 
+    /* === B99 CONTEXT BAR — WHAT you are managing is stated, never a convention === */
+    .ctx-bar{position:sticky;top:56px;z-index:90;background:linear-gradient(90deg,rgba(139,211,255,.12),rgba(139,211,255,.03));border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
+    .ctx-inner{max-width:1280px;margin:0 auto;padding:8px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:.82rem}
+    .ctx-label{color:var(--text-primary);font-weight:600}
+    .ctx-label strong{color:var(--accent)}
+    .ctx-pick{display:flex;align-items:center;gap:6px;margin-left:auto}
+    .ctx-pick-cap{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-tertiary)}
+    .ctx-switch{background:#12121a;color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 8px;font-size:.8rem;max-width:360px}
+    .ctx-hint{flex-basis:100%;color:var(--text-tertiary);font-size:.75rem;line-height:1.35}
+
     /* === HEADER === */
     .header {
       background: #0d0d14;
@@ -506,6 +516,22 @@
         </div>
       </div>
     </header>
+
+    <!-- B99 — persistent context banner + switcher. Always visible under the sticky header:
+         it NAMES the brand you are managing and lets you move between a network, its cities,
+         and any standalone directory. The scope filters the Directories list below. -->
+    <div class="ctx-bar" id="ctx-bar">
+      <div class="ctx-inner">
+        <span class="ctx-label" id="ctx-label">Managing: <strong>…</strong></span>
+        <label class="ctx-pick">
+          <span class="ctx-pick-cap">Switch to</span>
+          <select id="ctx-switch" class="ctx-switch" aria-label="Switch the network or directory you are managing">
+            <option value="all:">🌐 All networks and directories (platform view)</option>
+          </select>
+        </label>
+        <span class="ctx-hint" id="ctx-hint"></span>
+      </div>
+    </div>
 
     <div class="dashboard">
       <!-- ===== ONE ADMIN NAV (Round 6 / U5) =====
@@ -2735,6 +2761,7 @@
       loginPage.classList.add('hidden');
       dashPage.classList.remove('hidden');
       headerUser.textContent = user ? (user.email || user.name || 'User') : 'User';
+      ctxInit();
       loadDirectories();
       loadProviderKeys();
       loadEmailServiceStatus();
@@ -2803,6 +2830,230 @@
       showLogin();
     });
 
+    // ===== B99 — persistent context: WHAT you are managing is named, never a convention =====
+    // Seven admin surfaces existed and none of them said which brand you were editing, so the
+    // only thing identifying the current network was creation order. This bar sits under the
+    // sticky header, states the scope from live data, and switches between networks (with their
+    // cities nested beneath them) and standalone directories. The scope also filters the
+    // Directories list, so the records on screen belong to the brand the bar names.
+    var ctxState = { dirs: [], networks: [], scope: null, userChosen: false, loaded: false };
+
+    function ctxKey() { return 'md_admin_ctx'; }
+
+    function ctxEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // /networks is operator-only (403 for every other caller), so the switcher must still be able
+    // to group cities when a network's NAME is unavailable: synthesise the group from the
+    // directories' own network_id and label it plainly rather than hiding those cities.
+    function ctxNets() {
+      var seen = {}, out = [];
+      ctxState.networks.forEach(function (n) {
+        if (!n || !n.id || seen[n.id]) return;
+        seen[n.id] = true;
+        out.push({ id: n.id, name: n.name || n.slug || null });
+      });
+      ctxState.dirs.forEach(function (d) {
+        if (d.network_id && !seen[d.network_id]) {
+          seen[d.network_id] = true;
+          out.push({ id: d.network_id, name: null });
+        }
+      });
+      return out;
+    }
+    function ctxNet(id) {
+      return ctxNets().filter(function (n) { return n.id === id; })[0] || null;
+    }
+    // Bare name for prose. /networks (real names) is operator-only, so a buyer may only have the
+    // id — never emit "Network aaaaaaaa network": callers append the word only when it is a name.
+    function ctxNetNm(id) {
+      var n = ctxNet(id);
+      return (n && n.name) ? n.name : ('network ' + String(id).slice(0, 8));
+    }
+    function ctxNetIsNamed(id) {
+      var n = ctxNet(id);
+      return !!(n && n.name);
+    }
+    function ctxDirsOf(netId) {
+      return ctxState.dirs.filter(function (d) { return d.network_id === netId; });
+    }
+    function ctxExists(scope) {
+      if (!scope || scope === 'all:') return true;
+      if (scope.indexOf('net:') === 0) {
+        var nid = scope.slice(4);
+        return ctxState.networks.some(function (n) { return n.id === nid; }) ||
+               ctxState.dirs.some(function (d) { return d.network_id === nid; });
+      }
+      if (scope.indexOf('dir:') === 0) {
+        var did = scope.slice(4);
+        return ctxState.dirs.some(function (d) { return d.id === did; });
+      }
+      return false;
+    }
+
+    // The brand that actually owns directories is the safe default (ZaarHub today): landing on
+    // an empty network would hide everything and look broken. Never leave the scope unresolved.
+    function ctxDefaultScope() {
+      var best = null, bestN = -1;
+      ctxNets().forEach(function (n) {
+        var c = ctxDirsOf(n.id).length;
+        if (c > bestN) { bestN = c; best = n; }
+      });
+      if (best && bestN > 0) return 'net:' + best.id;
+      var standalone = ctxState.dirs.filter(function (d) { return !d.network_id; })[0];
+      if (standalone) return 'dir:' + standalone.id;
+      return 'all:';
+    }
+
+    function ctxResolveScope() {
+      if (ctxState.userChosen && ctxExists(ctxState.scope)) return;
+      var stored = null;
+      try { stored = localStorage.getItem(ctxKey()); } catch (e) {}
+      if (stored && ctxExists(stored)) {
+        ctxState.scope = stored;
+        ctxState.userChosen = true;
+        return;
+      }
+      ctxState.scope = ctxDefaultScope();
+    }
+
+    function ctxRender() {
+      var sel = document.getElementById('ctx-switch');
+      if (!sel) return;
+      if (!ctxState.loaded && !ctxState.dirs.length && !ctxState.networks.length) return;
+      ctxResolveScope();
+
+      var html = '<option value="all:">🌐 All networks and directories (platform view)</option>';
+      ctxNets().forEach(function (n) {
+        var nm = ctxNetNm(n.id);
+        var isNet = ctxNetIsNamed(n.id);
+        var cities = ctxDirsOf(n.id);
+        html += '<optgroup label="' + ctxEsc(nm) + (isNet ? ' — network' : '') +
+                (cities.length ? ' (' + cities.length + ' cities)' : ' (no cities yet)') + '">';
+        html += '<option value="net:' + ctxEsc(n.id) + '">🌐 Manage the whole ' +
+                ctxEsc(nm) + (isNet ? ' network' : '') + '</option>';
+        cities.forEach(function (d) {
+          html += '<option value="dir:' + ctxEsc(d.id) + '">\u00a0\u00a0↳ ' +
+                  ctxEsc(d.name || d.slug) + '</option>';
+        });
+        html += '</optgroup>';
+      });
+      var standalone = ctxState.dirs.filter(function (d) { return !d.network_id; });
+      if (standalone.length) {
+        html += '<optgroup label="Standalone directories (no network)">';
+        standalone.forEach(function (d) {
+          html += '<option value="dir:' + ctxEsc(d.id) + '">' + ctxEsc(d.name || d.slug) + '</option>';
+        });
+        html += '</optgroup>';
+      }
+      sel.innerHTML = html;
+      sel.value = ctxState.scope;
+      if (sel.value !== ctxState.scope) { sel.value = 'all:'; ctxState.scope = 'all:'; }
+      ctxBanner();
+    }
+
+    function ctxBanner() {
+      var lab = document.getElementById('ctx-label');
+      var hint = document.getElementById('ctx-hint');
+      if (!lab) return;
+      var s = ctxState.scope || 'all:';
+      if (s.indexOf('net:') === 0) {
+        var nid = s.slice(4);
+        var nm = ctxNetNm(nid);
+        var cities = ctxDirsOf(nid);
+        lab.innerHTML = 'Managing: <strong>' + ctxEsc(nm) + (ctxNetIsNamed(nid) ? ' network' : '') +
+                        '</strong> — ' + cities.length + ' cit' + (cities.length === 1 ? 'y' : 'ies');
+        hint.textContent = 'Network-owned settings (legal pages, branding, provider keys, loyalty, mail) ' +
+                           'belong to the whole network; a city owns only its local content. ' +
+                           'The Directories list below shows this network\u2019s cities only.';
+      } else if (s.indexOf('dir:') === 0) {
+        var did = s.slice(4);
+        var d = ctxState.dirs.filter(function (x) { return x.id === did; })[0];
+        var dn = d ? (d.name || d.slug) : 'this directory';
+        var where = (d && d.network_id)
+          ? ('a city in the ' + ctxNetNm(d.network_id) + (ctxNetIsNamed(d.network_id) ? ' network' : ''))
+          : 'a standalone directory';
+        lab.innerHTML = 'Managing: <strong>' + ctxEsc(dn) + '</strong> — ' + ctxEsc(where);
+        hint.textContent = (d && d.network_id)
+          ? 'This city inherits the network\u2019s legal pages, branding and keys \u2014 network-owned ' +
+            'controls live with the network (switch to the network above to change them).'
+          : 'A standalone directory owns all of its settings locally. ' +
+            'The Directories list below shows this directory only.';
+      } else {
+        lab.innerHTML = 'Managing: <strong>all networks and directories</strong>';
+        hint.textContent = 'Platform view \u2014 ' + ctxNets().length + ' network(s) \u00b7 ' +
+                           ctxState.dirs.length + ' directories. Pick a network or city above to ' +
+                           'scope the console to one brand.';
+      }
+    }
+
+    // The scope must actually DO something: filter the Directories grid to the selected brand.
+    function ctxRenderGrid() {
+      if (typeof renderDirectories !== 'function') return;
+      var s = ctxState.scope || 'all:';
+      var list = ctxState.dirs;
+      if (s.indexOf('net:') === 0) list = ctxDirsOf(s.slice(4));
+      else if (s.indexOf('dir:') === 0) list = ctxState.dirs.filter(function (d) { return d.id === s.slice(4); });
+      renderDirectories(list);
+    }
+
+    // Carry the chosen city into the directory-scoped panels that already have a picker.
+    function ctxSyncSelects() {
+      var s = ctxState.scope || 'all:';
+      var dirId = null;
+      if (s.indexOf('dir:') === 0) dirId = s.slice(4);
+      else if (s.indexOf('net:') === 0) {
+        var c = ctxDirsOf(s.slice(4));
+        if (c.length === 1) dirId = c[0].id;
+      }
+      if (!dirId) return;
+      if (window.__mdFillDirectorySelects) { try { window.__mdFillDirectorySelects(); } catch (e) {} }
+      ['pk-effective-directory', 'dm-directory'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var has = Array.prototype.some.call(el.options || [], function (o) { return o.value === dirId; });
+        if (has) el.value = dirId;
+      });
+    }
+
+    function ctxInit() {
+      var sel = document.getElementById('ctx-switch');
+      if (sel && !sel.__ctxBound) {
+        sel.__ctxBound = true;
+        sel.addEventListener('change', function () {
+          ctxState.scope = sel.value;
+          ctxState.userChosen = true;
+          try { localStorage.setItem(ctxKey(), ctxState.scope); } catch (e) {}
+          ctxBanner();
+          ctxRenderGrid();
+          ctxSyncSelects();
+          var anchor = document.getElementById('sec-directories');
+          if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      }
+      Promise.all([
+        apiGet('/networks').catch(function () { return []; }),
+        apiGet('/directories?per_page=100').catch(function () { return { data: [] }; })
+      ]).then(function (res) {
+        var nets = Array.isArray(res[0]) ? res[0] : ((res[0] && res[0].data) || []);
+        var dirs = (res[1] && res[1].data) || res[1] || [];
+        if (!Array.isArray(dirs)) dirs = [];
+        if (!Array.isArray(nets)) nets = [];
+        ctxState.networks = nets;
+        if (dirs.length) ctxState.dirs = dirs;
+        ctxState.loaded = true;
+        ctxRender();
+        ctxRenderGrid();
+        ctxSyncSelects();
+      }).catch(function () {
+        ctxState.loaded = true;
+        ctxRender();
+      });
+    }
+
     // ===== Load Directories =====
     function loadDirectories() {
       dirGrid.innerHTML = '';
@@ -2815,7 +3066,9 @@
         .then(function (data) {
           directories = data.data || data || [];
           if (!Array.isArray(directories)) directories = [];
-          renderDirectories(directories);
+          ctxState.dirs = directories;
+          ctxRender();
+          ctxRenderGrid();
           loadB2bFeatures();
           loadAdZones();
           // kanban t_14927725: ad revenue + sponsor creatives are directory-scoped too.
