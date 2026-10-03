@@ -330,6 +330,13 @@ pub fn create_router(s: AppState) -> Router {
             get(admin_businesses::list_businesses)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // Hand a draft/prospect record to its supplier (card B82): mint a one-time link that
+        // ADOPTS the existing business instead of creating a duplicate. Operator-guarded.
+        .route(
+            "/admin/businesses/:id/listing-invite",
+            post(listing_invite::create_listing_invite)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ── B2B / suppliers: the second front made visible + moderatable (kanban B51) ──
         // Suppliers are businesses tagged with a supplier business_type (they arrive by
         // self-registration; this is NOT a sourcing engine). The operator can see the
@@ -740,6 +747,17 @@ pub fn create_router(s: AppState) -> Router {
         .route("/b2b/co-op/deals/:id/commit", post(coop::commit_to_deal))
         // B2B Marketplace (Phase 4 — BL23)
         .route("/b2b/register", post(b2b::b2b_register))
+        // Supplier onboarding invite link (card B82) — the token is the credential, so these
+        // sit in `is_public` (mail-client links have no session). The admin mint above stays
+        // behind `operator_guard`.
+        .route(
+            "/listing-invites/:token",
+            get(listing_invite::get_listing_invite),
+        )
+        .route(
+            "/listing-invites/:token/complete",
+            post(listing_invite::complete_listing_invite),
+        )
         .route(
             "/b2b/products",
             get(b2b::search_products).post(b2b::create_product),
@@ -2664,6 +2682,32 @@ pub fn create_router(s: AppState) -> Router {
                     }
 
                     // ??? Serve supplier portal (B2B: distributors, wholesalers, farms, associations)
+                    // Supplier onboarding invite link (card B82) — the public "complete your
+                    // listing" page a one-time invite opens (no session needed).
+                    if path == "/complete-listing"
+                        || path == "/complete-listing/"
+                        || path == "/complete-listing.html"
+                    {
+                        let cl_path = std::path::Path::new(&frontend).join("complete-listing.html");
+                        if cl_path.exists() {
+                            match tokio::fs::read(&cl_path).await {
+                                Ok(content) => {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        axum::response::Response::builder()
+                                            .status(axum::http::StatusCode::OK)
+                                            .header(
+                                                axum::http::header::CONTENT_TYPE,
+                                                "text/html; charset=utf-8",
+                                            )
+                                            .body(axum::body::Body::from(content))
+                                            .unwrap(),
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+
                     if path == "/supplier"
                         || path == "/supplier/"
                         || path.starts_with("/supplier/dashboard")
@@ -3195,6 +3239,12 @@ async fn auth_guard(
             && (path == "/webhooks/stripe" || path == "/webhooks/paypal"))
         // Public B2B register (distributor/supplier signup)
         || (path == "/b2b/register" && req.method() == "POST")
+        // Supplier onboarding invite link (card B82) — the token IS the credential: GET the
+        // prefill and POST the completion, both from a mail client with no session. Nothing
+        // under /admin/ matches this prefix, so the mint stays operator-guarded.
+        || (path.starts_with("/listing-invites/")
+            && (req.method() == "GET"
+                || (req.method() == "POST" && path.ends_with("/complete"))))
         // Public pricing endpoint
         || path == "/pricing/public"
         // Public business message sending (guests can send messages)

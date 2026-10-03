@@ -8924,6 +8924,9 @@
               '" data-lc-dir="' + esc(r.directory_slug || '') + '">Publish</button>'
             : '<button class="btn btn-ghost btn-sm" type="button" data-lc-hide="' + esc(r.id) +
               '" data-lc-dir="' + esc(r.directory_slug || '') + '">Hide as draft</button>';
+          // Card B82: hand this record to its supplier — mint a one-time completion link.
+          var invite = '<button class="btn btn-ghost btn-sm" type="button" data-invite="' +
+            esc(r.id) + '" data-invite-name="' + esc(r.name || '') + '">Invite</button>';
           var rating = (r.review_count ? (Number(r.rating).toFixed(1) + ' (' + r.review_count + ')') : '—');
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
@@ -8932,7 +8935,7 @@
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + view + ' ' + toggle + '</td></tr>';
+            '<td>' + view + ' ' + toggle + ' ' + invite + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -8957,6 +8960,29 @@
         .catch(function (e) { document.getElementById('bz-status').textContent = 'Failed: ' + e.message; });
     }
 
+    // Card B82: mint a one-time "complete your listing" link for this business and hand it
+    // to the operator to forward. The supplier opens it and ADOPTS this same record.
+    function mintInvite(id, name) {
+      var st = document.getElementById('bz-status');
+      st.textContent = 'Creating invite link…';
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      fetch(API + '/admin/businesses/' + encodeURIComponent(id) + '/listing-invite', {
+        method: 'POST', headers: h, body: JSON.stringify({})
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      }).then(function (d) {
+        st.textContent = '';
+        var link = d.url || d.path;
+        try { if (navigator.clipboard) navigator.clipboard.writeText(link); } catch (e) {}
+        window.prompt('Invite link for "' + name + '" (valid ' + d.expires_in_days +
+          ' days). Copied to clipboard — send it to the supplier:', link);
+      }).catch(function (e) { st.textContent = 'Invite failed: ' + e.message; });
+    }
+
     // Publish (promote a hidden record) / Hide (demote a published one) — one field, card B81.
     document.addEventListener('click', function (ev) {
       if (!ev.target || !ev.target.closest) return;
@@ -8964,6 +8990,8 @@
       if (pub) { setLifecycle(pub.getAttribute('data-lc-publish'), pub.getAttribute('data-lc-dir'), 'active'); return; }
       var hide = ev.target.closest('[data-lc-hide]');
       if (hide) { setLifecycle(hide.getAttribute('data-lc-hide'), hide.getAttribute('data-lc-dir'), 'draft'); return; }
+      var inv = ev.target.closest('[data-invite]');
+      if (inv) { mintInvite(inv.getAttribute('data-invite'), inv.getAttribute('data-invite-name')); return; }
     });
 
     function bzReload() { if (!document.getElementById('bz-rows')) return; load(); }

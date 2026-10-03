@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Complete your listing — ZaarHub</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root { --brand:#0b5c6b; --ink:#12232b; --muted:#5b6b72; --line:#d9e2e5; --bg:#f4f7f8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.5; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:16px 20px; }
+  header .wrap { max-width:760px; margin:0 auto; display:flex; align-items:center; gap:10px; }
+  header b { font-size:1.05rem; }
+  main { max-width:760px; margin:0 auto; padding:24px 20px 60px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:24px; }
+  h1 { font-size:1.35rem; margin:0 0 6px; }
+  p.sub { color:var(--muted); margin:0 0 18px; }
+  label { display:block; font-weight:600; font-size:.86rem; margin:14px 0 4px; }
+  input, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+                     font-size:.95rem; font-family:inherit; background:#fff; }
+  textarea { min-height:88px; resize:vertical; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > div { flex:1 1 140px; }
+  button { margin-top:22px; width:100%; padding:13px; border:0; border-radius:8px; background:var(--brand);
+           color:#fff; font-weight:700; font-size:1rem; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  .note { font-size:.82rem; color:var(--muted); margin-top:10px; }
+  .msg { padding:12px 14px; border-radius:8px; margin-bottom:18px; display:none; }
+  .msg.err { display:block; background:#fdecea; color:#8a1c12; border:1px solid #f3c4bd; }
+  .msg.ok { display:block; background:#e9f6ec; color:#14532d; border:1px solid #bfe3c8; }
+  .hidden { display:none !important; }
+  a.cta { display:inline-block; margin-top:14px; color:var(--brand); font-weight:700; }
+</style>
+</head>
+<body>
+<header><div class="wrap"><b>ZaarHub</b><span style="color:var(--muted)">Supplier onboarding</span></div></header>
+<main>
+  <div class="card">
+    <div id="msg" class="msg"></div>
+    <div id="loading">Loading your invite…</div>
+
+    <div id="form-wrap" class="hidden">
+      <h1>Complete your listing</h1>
+      <p class="sub" id="biz-sub"></p>
+      <form id="cl-form" autocomplete="on">
+        <label for="f-name">Business name</label>
+        <input id="f-name" name="name" required maxlength="200">
+
+        <label for="f-contact">Your name</label>
+        <input id="f-contact" name="contact_name" maxlength="200" placeholder="Who should we credit as the owner?">
+
+        <div class="row">
+          <div>
+            <label for="f-email">Email (your login)</label>
+            <input id="f-email" name="email" type="email" required autocomplete="email">
+          </div>
+          <div>
+            <label for="f-phone">Phone</label>
+            <input id="f-phone" name="phone" maxlength="40">
+          </div>
+        </div>
+
+        <label for="f-website">Website</label>
+        <input id="f-website" name="website" maxlength="300" placeholder="https://">
+
+        <div class="row">
+          <div style="flex:2 1 240px">
+            <label for="f-address">Street address</label>
+            <input id="f-address" name="address" maxlength="300">
+          </div>
+          <div>
+            <label for="f-city">City</label>
+            <input id="f-city" name="city" maxlength="120">
+          </div>
+          <div style="flex:0 1 80px">
+            <label for="f-state">State</label>
+            <input id="f-state" name="state" maxlength="40">
+          </div>
+          <div style="flex:0 1 100px">
+            <label for="f-zip">ZIP</label>
+            <input id="f-zip" name="zip" maxlength="20">
+          </div>
+        </div>
+
+        <label for="f-description">Description</label>
+        <textarea id="f-description" name="description" maxlength="4000"></textarea>
+
+        <label for="f-password">Choose a password</label>
+        <input id="f-password" name="password" type="password" required minlength="6" autocomplete="new-password">
+        <div class="note">At least 6 characters. This is your supplier login.</div>
+
+        <button type="submit" id="cl-submit">Complete my listing</button>
+        <div class="note">Completing this publishes your listing and links your account to it.</div>
+      </form>
+    </div>
+
+    <div id="done-wrap" class="hidden">
+      <h1>You're all set 🎉</h1>
+      <p class="sub">Your listing has been completed and your account is linked. You're signed in.</p>
+      <a class="cta" id="done-link" href="/supplier/dashboard">Go to your supplier dashboard →</a>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var API = '/api/v1';
+  var token = new URLSearchParams(location.search).get('invite') || '';
+  var $ = function (id) { return document.getElementById(id); };
+
+  function showErr(m) { var e = $('msg'); e.className = 'msg err'; e.textContent = m; }
+  function showOk(m) { var e = $('msg'); e.className = 'msg ok'; e.textContent = m; }
+  function hide(ids, showIds) { ids.forEach(function (i) { $(i).classList.add('hidden'); });
+    (showIds || []).forEach(function (i) { $(i).classList.remove('hidden'); }); }
+
+  if (!token) { hide(['loading'], []); showErr('This link is missing its invite code. Please use the link from your invitation email.'); return; }
+
+  fetch(API + '/listing-invites/' + encodeURIComponent(token))
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok) { hide(['loading'], []); showErr((res.d && res.d.message) || 'This invite link is not valid.'); return; }
+      var d = res.d;
+      hide(['loading'], ['form-wrap']);
+      $('biz-sub').textContent = 'Invitation for ' + (d.name || 'your business') +
+        (d.directory_name ? ' in ' + d.directory_name : '') + '. Confirm the details below.';
+      $('f-name').value = d.name || '';
+      $('f-email').value = d.email || '';
+      $('f-phone').value = d.phone || '';
+      $('f-website').value = d.website || '';
+      $('f-address').value = d.address || '';
+      $('f-city').value = d.city || '';
+      $('f-state').value = d.state || '';
+      $('f-zip').value = d.zip || '';
+      $('f-description').value = d.description || '';
+    })
+    .catch(function () { hide(['loading'], []); showErr('Could not load the invite. Please try again.'); });
+
+  $('cl-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var f = ev.target;
+    var body = {
+      password: f.password.value,
+      contact_name: f.contact_name.value.trim() || null,
+      email: f.email.value.trim() || null,
+      phone: f.phone.value.trim() || null,
+      website: f.website.value.trim() || null,
+      description: f.description.value.trim() || null,
+      address: f.address.value.trim() || null,
+      city: f.city.value.trim() || null,
+      state: f.state.value.trim() || null,
+      zip: f.zip.value.trim() || null
+    };
+    $('cl-submit').disabled = true;
+    $('cl-submit').textContent = 'Saving…';
+    fetch(API + '/listing-invites/' + encodeURIComponent(token) + '/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          showErr((res.d && res.d.message) || 'Could not complete the listing.');
+          $('cl-submit').disabled = false; $('cl-submit').textContent = 'Complete my listing';
+          return;
+        }
+        try {
+          if (res.d.access_token) localStorage.setItem('md_visitor_token', res.d.access_token);
+        } catch (e) {}
+        hide(['form-wrap'], ['done-wrap']);
+      })
+      .catch(function () {
+        showErr('Network error — please try again.');
+        $('cl-submit').disabled = false; $('cl-submit').textContent = 'Complete my listing';
+      });
+  });
+})();
+</script>
+</body>
+</html>
