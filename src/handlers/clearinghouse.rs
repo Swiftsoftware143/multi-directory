@@ -621,10 +621,24 @@ pub async fn treasury_summary(
     };
     ensure_treasury(&state.db, network_id).await?;
 
-    let row = sqlx::query_as::<_, (i64, i64, Decimal, Decimal, Decimal, Decimal)>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            i64,
+            i64,
+            Decimal,
+            Decimal,
+            Decimal,
+            Decimal,
+            Decimal,
+            Decimal,
+            Decimal,
+        ),
+    >(
         "SELECT COALESCE(total_points_issued,0), COALESCE(total_points_redeemed,0),
                 COALESCE(total_revenue_collected,0), COALESCE(total_reimbursements_paid,0),
-                COALESCE(outstanding_liability,0), COALESCE(minimum_float,0)
+                COALESCE(outstanding_liability,0), COALESCE(minimum_float,0),
+                issuance_rate, redemption_rate, platform_spread_percent
          FROM point_treasury WHERE network_id = $1",
     )
     .bind(network_id)
@@ -632,17 +646,22 @@ pub async fn treasury_summary(
     .await
     .map_err(|e| AppError::Database(e))?;
 
+    // Every rate is read from the treasury row — nothing is baked into this handler, so an
+    // admin who changes a rate sees the change here without a deploy.
+    let spread_per_point = row.6 - row.7;
     Ok(Json(json!({
         "network_id": network_id,
         "total_points_issued": row.0,
         "total_points_redeemed": row.1,
         "revenue_collected": format!("{:.2}", row.2),
         "reimbursements_paid": format!("{:.2}", row.3),
+        "position": format!("{:.2}", row.2 - row.3),
         "outstanding_liability": format!("{:.2}", row.4),
         "minimum_float": format!("{:.2}", row.5),
-        "issuance_rate": "0.01",
-        "redemption_rate": "0.008",
-        "platform_spread_percent": "20.00"
+        "issuance_rate": format!("{:.4}", row.6),
+        "redemption_rate": format!("{:.4}", row.7),
+        "spread_per_point": format!("{:.4}", spread_per_point),
+        "platform_spread_percent": format!("{:.2}", row.8)
     })))
 }
 

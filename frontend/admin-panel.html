@@ -962,6 +962,13 @@
              cycle day and the expiry policy — all read from the API, none of it
              compiled into this page. -->
         <div id="ch-schedule" style="margin-top:12px"></div>
+        <!-- Treasury position — read straight from point_treasury (rates included),
+             nothing hardcoded: the admin sees the money the clearinghouse holds. -->
+        <div class="pk-controls" style="margin-top:12px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chTreasury()">🏦 Treasury position</button>
+          <span class="feature-status" id="ch-treasury-status"></span>
+        </div>
+        <div id="ch-treasury" style="margin-top:8px"></div>
         <div class="feature-status" id="ch-status">settlement not loaded yet</div>
         <div id="ch-preview"></div>
         <div id="ch-runs" style="margin-top:14px"></div>
@@ -5064,6 +5071,7 @@
             ' · cycle day ' + s.cycle_day + ' · min payout ' + s.minimum_payout_cents + 'c' +
             ' · settlement ' + (s.settlement_enabled ? 'enabled' : 'disabled');
           chLoadSchedule();
+          chTreasury();
           return chLoadRuns();
         })
         .catch(function (e) {
@@ -5153,6 +5161,38 @@
       return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/clear/expire', {})
         .then(function (r) { status.textContent = 'expiry sweep: ' + JSON.stringify(r).slice(0, 300); })
         .catch(function (e) { status.textContent = 'expiry error: ' + e.message; });
+    }
+
+    function chTreasury() {
+      var slug = chSlug();
+      var host = document.getElementById('ch-treasury');
+      var status = document.getElementById('ch-treasury-status');
+      if (!slug || !host) return Promise.resolve();
+      return apiGet('/networks/' + encodeURIComponent(slug) + '/clear/treasury')
+        .then(function (t) {
+          var cells = [
+            ['Points issued', t.total_points_issued],
+            ['Points redeemed', t.total_points_redeemed],
+            ['Revenue collected', t.revenue_collected],
+            ['Reimbursements paid', t.reimbursements_paid],
+            ['Position (collected − paid)', t.position],
+            ['Outstanding liability', t.outstanding_liability],
+            ['Minimum float', t.minimum_float],
+            ['Issue / redeem rate', t.issuance_rate + ' / ' + t.redemption_rate],
+            ['Spread per point', t.spread_per_point]
+          ];
+          host.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;font-size:.78rem">' +
+            cells.map(function (c) {
+              return '<div style="border:1px solid var(--border,#1e2a3a);border-radius:6px;padding:6px 8px">' +
+                '<div style="opacity:.65">' + c[0] + '</div><div style="font-weight:600">' + daEsc(String(c[1])) + '</div></div>';
+            }).join('') + '</div>';
+          var floatOk = parseFloat(t.position) >= parseFloat(t.minimum_float);
+          status.textContent = floatOk ? 'float OK (position ≥ minimum float)' : 'BELOW minimum float';
+          status.style.color = floatOk ? '' : '#e5484d';
+        })
+        .catch(function (e) {
+          host.innerHTML = '<div class="feature-status">could not load treasury: ' + daEsc(e.message) + '</div>';
+        });
     }
 
     function chLoadRuns() {
@@ -5319,6 +5359,7 @@
     window.__chCsv = chCsv;
     window.__chSendStatements = chSendStatements;
     window.__chLoadSchedule = chLoadSchedule;
+    window.__chTreasury = chTreasury;
 
     // ===== Ownership Transfers (Round 11 / T2) =====
     // Fee / currency / who-pays / host_stays come from the form (DB-backed), never
