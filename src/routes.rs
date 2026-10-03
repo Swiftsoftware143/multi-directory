@@ -307,6 +307,20 @@ pub fn create_router(s: AppState) -> Router {
         .route("/admin/media", get(audience::list_media))
         .route("/admin/media/upload", post(audience::upload_media))
         .route("/admin/media/:id", delete(audience::delete_media))
+        // ── Network admin: ONE management surface (kanban B96) ──────────────
+        // Every per-city dataset in one place, with the city visible and filterable on
+        // every row (businesses, suppliers, leads, claims, deals, events, articles,
+        // subscribers). Operator-guarded; scope is the context bar's network/directory.
+        .route(
+            "/admin/network/counts",
+            get(network_admin::network_counts)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/network/entities",
+            get(network_admin::network_entities)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/templates", get(directories::list_templates))
         // ??? Blog routes (Phase 3)
         .route(

@@ -78,6 +78,7 @@ pub use newsletter::*;
 pub mod blog_generator;
 pub mod blog_pages;
 pub use blog_generator::*;
+pub mod network_admin;
 pub mod networks;
 pub use networks::*;
 pub mod trap_doors;

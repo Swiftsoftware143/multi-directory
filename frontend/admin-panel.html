@@ -524,6 +524,7 @@
       </style>
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
+        <a href="#network-management-section">🗂 Network Management</a>
         <a href="#directory-details-section">🧾 Directory Details</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
         <a href="#industries-section">🏭 Industries</a>
@@ -1836,6 +1837,47 @@
         <span class="feature-status" id="obr-status"></span>
       </div>
       <div id="obr-list"></div>
+    </div>
+
+    <!-- ===== Network Management: ONE surface for every per-city dataset (kanban B96) =====
+         David's binding rule (2026-10-01): a NETWORK is ONE management surface. Every
+         business, supplier, lead, claim, deal, event, article and subscriber across the
+         whole network in ONE place — the city is shown on every row, filterable, with
+         per-city counts, so an operator can answer "which cities do these belong to?" at
+         a glance. Pick a network or city in the context bar above to scope it; "All
+         networks and directories" shows everything. -->
+    <div class="feature-card" id="network-management-section">
+      <h3>🗂 Network Management</h3>
+      <p class="feature-subtitle">Every per-city dataset across the whole network in <b>one place</b> — the city is on every row, filterable, with per-city counts. Scope it with the context bar above (a whole network, one city, or everything).</p>
+
+      <div class="pk-controls" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div class="em-field"><label>Dataset</label>
+          <select id="nm-kind">
+            <option value="businesses">Businesses (directory listings)</option>
+            <option value="suppliers">Suppliers (B2B)</option>
+            <option value="leads">Leads</option>
+            <option value="claims">Claimed businesses</option>
+            <option value="deals">Deals</option>
+            <option value="events">Events</option>
+            <option value="articles">Articles</option>
+            <option value="subscribers">Subscribers</option>
+          </select>
+        </div>
+        <div class="em-field"><label>City</label>
+          <select id="nm-city"><option value="">All cities in scope</option></select>
+        </div>
+        <div class="em-field"><label>Search</label>
+          <input id="nm-q" placeholder="name, email, category…">
+        </div>
+        <button class="btn btn-accent btn-sm" type="button" id="nm-load">Load</button>
+        <span class="feature-status" id="nm-status"></span>
+      </div>
+
+      <p class="feature-subtitle" style="margin-top:8px"><b>Per-city counts</b> — <span id="nm-scope-label">—</span></p>
+      <div id="nm-counts" style="overflow:auto"></div>
+
+      <p class="feature-subtitle" style="margin-top:16px"><b>Records</b> — <span id="nm-total">—</span>. Every row carries its city.</p>
+      <div id="nm-rows" style="overflow:auto"></div>
     </div>
   </div>
 
@@ -7884,6 +7926,142 @@
       showLogin();
     }
 
+  })();
+  </script>
+  <script>
+  /* ============================================================
+     Network Management card (kanban B96) — ONE surface for every
+     per-city dataset, city visible + filterable on every row.
+     Reads the scope from the persistent context bar (MDContextBar).
+     ============================================================ */
+  (function () {
+    var API = '/api/v1';
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function api(path) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      return fetch(API + path, { headers: h }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function qs(o) {
+      var parts = [];
+      Object.keys(o).forEach(function (k) {
+        if (o[k] != null && o[k] !== '') parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(o[k]));
+      });
+      return parts.length ? '?' + parts.join('&') : '';
+    }
+    // scope from the context bar: a whole network, one city, or everything
+    function scopeParams() {
+      var p = {};
+      var sc = (window.MDContextBar && window.MDContextBar.scope()) || 'all:';
+      if (sc.indexOf('net:') === 0) p.network_id = sc.slice(4);
+      else if (sc.indexOf('dir:') === 0) p.directory_id = sc.slice(4);
+      var city = document.getElementById('nm-city').value; // city filter wins over the scoped set
+      if (city) p.directory_id = city;
+      return p;
+    }
+    var TYPE_COL = { businesses: 'Type', suppliers: 'Type', leads: 'Category', claims: 'Owner',
+                     deals: 'Status', events: 'Status', articles: 'Status', subscribers: 'Status' };
+    var KINDS = ['businesses', 'suppliers', 'claims', 'leads', 'deals', 'events', 'articles', 'subscribers'];
+
+    function loadCounts() {
+      var p = scopeParams();
+      api('/admin/network/counts' + qs(p)).then(function (d) {
+        var rows = d.rows || [];
+        var label = rows.length === 1
+          ? (rows[0].directory_name + ' — ' + (rows[0].network_name || 'Standalone'))
+          : (rows.length + ' cities');
+        document.getElementById('nm-scope-label').textContent = label;
+        var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+          '<thead><tr><th>City</th><th>Network</th>' +
+          KINDS.map(function (k) {
+            return '<th style="text-align:right">' + esc(k.charAt(0).toUpperCase() + k.slice(1)) + '</th>';
+          }).join('') + '</tr></thead><tbody>';
+        var totals = {};
+        rows.forEach(function (r) {
+          html += '<tr><td><b>' + esc(r.directory_name) + '</b>' +
+            (r.is_primary ? ' <span class="badge">primary</span>' : '') +
+            (r.state ? ' <span style="opacity:.6">' + esc(r.state) + '</span>' : '') +
+            '</td><td>' + esc(r.network_name) + '</td>';
+          KINDS.forEach(function (k) {
+            var v = r[k] || 0; totals[k] = (totals[k] || 0) + v;
+            html += '<td style="text-align:right">' + v + '</td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody><tfoot><tr><td colspan="2"><b>Total</b></td>' +
+          KINDS.map(function (k) { return '<td style="text-align:right"><b>' + (totals[k] || 0) + '</b></td>'; }).join('') +
+          '</tr></tfoot></table>';
+        document.getElementById('nm-counts').innerHTML = html;
+      }).catch(function (e) {
+        document.getElementById('nm-counts').innerHTML =
+          '<p class="feature-subtitle">Counts unavailable: ' + esc(e.message) + '</p>';
+      });
+    }
+
+    function loadRows() {
+      var p = scopeParams();
+      p.kind = document.getElementById('nm-kind').value;
+      var q = document.getElementById('nm-q').value.trim(); if (q) p.q = q;
+      p.per_page = 100;
+      document.getElementById('nm-status').textContent = 'Loading…';
+      api('/admin/network/entities' + qs(p)).then(function (d) {
+        var rows = d.rows || [];
+        document.getElementById('nm-total').textContent =
+          d.total + ' record' + (d.total === 1 ? '' : 's');
+        var typeCol = TYPE_COL[p.kind] || 'Type';
+        var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+          '<thead><tr><th>Name</th><th>City</th><th>Directory</th><th>' + esc(typeCol) +
+          '</th><th>Status</th><th>Created</th></tr></thead><tbody>';
+        if (!rows.length) html += '<tr><td colspan="6" style="opacity:.6">No records in this scope.</td></tr>';
+        rows.forEach(function (r) {
+          html += '<tr><td>' + esc(r.name) + '</td>' +
+            '<td>' + esc(r.city) + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
+            '<td>' + esc(r.directory_name) + '</td><td>' + esc(r.type) + '</td>' +
+            '<td>' + esc(r.status) + '</td><td>' + esc(String(r.created_at || '').slice(0, 10)) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('nm-rows').innerHTML = html;
+        document.getElementById('nm-status').textContent = '';
+      }).catch(function (e) { document.getElementById('nm-status').textContent = 'Failed: ' + e.message; });
+    }
+
+    function fillCityFilter() {
+      var sel = document.getElementById('nm-city');
+      if (!sel) return;
+      var dirs = (window.MDContextBar && window.MDContextBar.dirsForScope()) || [];
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">All cities in scope</option>' + dirs.map(function (d) {
+        return '<option value="' + esc(d.id) + '">' + esc(d.name || d.slug) + '</option>';
+      }).join('');
+      sel.value = cur;
+    }
+
+    function nmReload() {
+      if (!document.getElementById('nm-counts')) return;
+      fillCityFilter(); loadCounts(); loadRows();
+    }
+
+    document.addEventListener('md-context-change', nmReload);
+    document.addEventListener('DOMContentLoaded', function () {
+      var load = document.getElementById('nm-load');
+      if (!load) return;
+      load.addEventListener('click', function () { loadCounts(); loadRows(); });
+      document.getElementById('nm-kind').addEventListener('change', loadRows);
+      document.getElementById('nm-city').addEventListener('change', function () { loadCounts(); loadRows(); });
+      document.getElementById('nm-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadRows(); });
+      setTimeout(nmReload, 500); // after MDContextBar has loaded directories
+    });
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(nmReload, 500);
   })();
   </script>
 </body>
