@@ -58,6 +58,9 @@ pub struct LoyaltyProgram {
     pub min_redeem_balance: i32,
     /// Free / fully-discounted items earn nothing. Default on.
     pub exclude_free_items: bool,
+    /// Minimum LIFETIME units earned before redemption is allowed, so a joining award cannot
+    /// be drained immediately. 0 = no floor. Admin-configurable. Default 0.
+    pub min_lifetime_floor: i32,
     pub tiers_enabled: bool,
     pub milestones_enabled: bool,
     pub streak_enabled: bool,
@@ -93,6 +96,8 @@ pub struct ProgramInput {
     pub min_redeem_balance: Option<i32>,
     /// Free / fully-discounted items earn nothing. Default true.
     pub exclude_free_items: Option<bool>,
+    /// Minimum LIFETIME units earned before redemption is allowed. Default 0.
+    pub min_lifetime_floor: Option<i32>,
     pub tiers_enabled: Option<bool>,
     pub milestones_enabled: Option<bool>,
     pub streak_enabled: Option<bool>,
@@ -137,6 +142,7 @@ pub async fn get_program(pool: &PgPool, program_id: &Uuid) -> Result<LoyaltyProg
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
                   earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items,
+                  min_lifetime_floor,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -171,6 +177,7 @@ pub async fn programme_for_directory(
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
                   earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items,
+                  min_lifetime_floor,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -383,7 +390,7 @@ pub async fn credit_visitor_units(
                           max_checkins_per_day, point_decay_days, points_expire_days,
                           currency_name, currency_icon, currency_color, points_per_visit,
                           points_per_redemption, earn_rate, redemption_cap_pct, min_redeem_balance,
-                          exclude_free_items, tiers_enabled, milestones_enabled, streak_enabled,
+                          exclude_free_items, min_lifetime_floor, tiers_enabled, milestones_enabled, streak_enabled,
                           streak_bonus, streak_days, referral_bonus, birthday_bonus,
                           social_share_points, is_active, created_at, updated_at
                    FROM loyalty_programs
@@ -602,6 +609,7 @@ pub async fn list_programs(
                   max_checkins_per_day, point_decay_days, points_expire_days,
                   currency_name, currency_icon, currency_color, points_per_visit, points_per_redemption,
                   earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items,
+                  min_lifetime_floor,
                   tiers_enabled, milestones_enabled, streak_enabled, streak_bonus,
                   streak_days, referral_bonus, birthday_bonus, social_share_points,
                   is_active, created_at, updated_at
@@ -644,8 +652,8 @@ pub async fn create_program(
     let id = Uuid::new_v4();
 
     sqlx::query(
-        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active, points_per_redemption, network_id, earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)",
+        "INSERT INTO loyalty_programs (id, directory_id, name, recognition_method, points_per_checkin, max_checkins_per_day, point_decay_days, points_expire_days, currency_name, currency_icon, currency_color, points_per_visit, tiers_enabled, milestones_enabled, streak_enabled, streak_bonus, streak_days, referral_bonus, birthday_bonus, social_share_points, is_active, points_per_redemption, network_id, earn_rate, redemption_cap_pct, min_redeem_balance, exclude_free_items, min_lifetime_floor)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)",
     )
     .bind(id)
     .bind(if network_id.is_some() { None } else { Some(directory_id) })
@@ -678,6 +686,7 @@ pub async fn create_program(
             .unwrap_or(100),
     )
     .bind(body.exclude_free_items.unwrap_or(true))
+    .bind(body.min_lifetime_floor.unwrap_or(0).max(0))
     .execute(&state.db)
     .await?;
 
@@ -758,6 +767,7 @@ pub async fn update_program(
             redemption_cap_pct = COALESCE($21, redemption_cap_pct),
             min_redeem_balance = COALESCE($22, min_redeem_balance),
             exclude_free_items = COALESCE($23, exclude_free_items),
+            min_lifetime_floor = COALESCE($24, min_lifetime_floor),
             updated_at = now()
          WHERE id = $1",
     )
@@ -784,6 +794,7 @@ pub async fn update_program(
     .bind(body.redemption_cap_pct.map(|v| v.clamp(0, 100)))
     .bind(body.min_redeem_balance.map(|v| v.max(0)))
     .bind(body.exclude_free_items)
+    .bind(body.min_lifetime_floor.map(|v| v.max(0)))
     .execute(&state.db)
     .await?;
 
@@ -1101,6 +1112,19 @@ pub async fn counter_scan(
                     program.min_redeem_balance,
                     program.currency_name,
                     program.min_redeem_balance as f64 / UNITS_PER_DOLLAR
+                )));
+            }
+            let lifetime: i32 = sqlx::query_scalar(
+                "SELECT COALESCE(lifetime_points, 0) FROM loyalty_members WHERE id = $1",
+            )
+            .bind(member_id)
+            .fetch_one(&state.db)
+            .await?;
+            if program.min_lifetime_floor > 0 && lifetime < program.min_lifetime_floor {
+                return Err(AppError::BadRequest(format!(
+                    "At least {} {} must be earned before redeeming — lifetime earned is {lifetime}.",
+                    program.min_lifetime_floor,
+                    program.currency_name
                 )));
             }
             if let Some(bill) = body.transaction_amount.filter(|b| *b > 0.0) {

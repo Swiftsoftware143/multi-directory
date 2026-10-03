@@ -4540,6 +4540,7 @@
           '<label style="font-size:.8rem;color:var(--text-secondary)">' + cur + ' earned per $1 spent <input class="input" type="number" min="0" step="0.1" style="width:90px" value="' + rate + '" data-f="earn_rate"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)">max % of a bill payable <input class="input" type="number" min="0" max="100" style="width:80px" value="' + cap + '" data-f="redemption_cap_pct"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)">minimum balance to redeem <input class="input" type="number" min="0" style="width:100px" value="' + minBal + '" data-f="min_redeem_balance"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">lifetime earned before redeeming <input class="input" type="number" min="0" style="width:100px" value="' + lpNum(p.min_lifetime_floor, 0) + '" data-f="min_lifetime_floor"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="exclude_free_items" ' + (noFree ? 'checked' : '') + '> free items earn nothing</label>' +
         '</div>' +
         '<p style="font-size:.75rem;color:var(--text-tertiary);margin-top:6px">' +
@@ -4656,7 +4657,7 @@
       if (!name) return;
       return apiPost('/directories/' + encodeURIComponent(slug) + '/loyalty/programs', {
         name: name, points_per_redemption: 0, points_per_checkin: 10, points_per_visit: 5, is_active: true,
-        earn_rate: 1, redemption_cap_pct: 10, min_redeem_balance: 100, exclude_free_items: true
+        earn_rate: 1, redemption_cap_pct: 10, min_redeem_balance: 100, min_lifetime_floor: 0, exclude_free_items: true
       }).then(loadLoyaltyPrograms).catch(function (e) { alert(e.message); });
     }
 
