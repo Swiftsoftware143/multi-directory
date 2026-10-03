@@ -84,6 +84,12 @@ pub struct SettlementSettings {
     pub minimum_payout_cents: i32,
     pub settlement_enabled: bool,
     pub payment_provider: Option<String>,
+    /// Dollars per point for points issued BEYOND a tier's monthly allowance.
+    pub overage_rate_per_point: Decimal,
+    /// 'bill' (consented overage billing) or 'pause' (earning stops at the allowance).
+    pub overage_mode: String,
+    /// Maximum overage points billable per month; NULL = uncapped.
+    pub overage_cap_points: Option<i32>,
 }
 
 /// Read the settings, creating the treasury row with sane defaults if the network
@@ -91,7 +97,8 @@ pub struct SettlementSettings {
 async fn get_settings(db: &PgPool, network_id: Uuid) -> Result<SettlementSettings, AppError> {
     let sql = "SELECT network_id, issuance_rate, redemption_rate, platform_spread_percent, \
                       minimum_float, default_expiry_days, cycle_day, currency, minimum_payout_cents, \
-                      settlement_enabled, payment_provider \
+                      settlement_enabled, payment_provider, overage_rate_per_point, overage_mode, \
+                      overage_cap_points \
                FROM point_treasury WHERE network_id = $1";
 
     let existing: Option<SettlementSettings> = sqlx::query_as::<_, SettlementSettings>(sql)
@@ -165,6 +172,12 @@ pub struct SettlementSettingsUpdate {
     /// Blank string clears it back to auto-detect.
     pub payment_provider: Option<String>,
     pub default_expiry_days: Option<i32>,
+    /// Dollars per point for points issued beyond a tier's monthly allowance.
+    pub overage_rate_per_point: Option<Decimal>,
+    /// 'bill' or 'pause'.
+    pub overage_mode: Option<String>,
+    /// Overage cap in points; send 0 to clear the cap (uncapped).
+    pub overage_cap_points: Option<i32>,
 }
 
 /// PUT /api/v1/networks/:slug/settlement/settings
@@ -219,10 +232,42 @@ pub async fn update_settlement_settings(
         None => current.payment_provider.clone(),
     };
 
+    // Allowance + metered overage. The overage rate may never exceed the issuance rate
+    // (you cannot bill an over-allowance point for more than its face value) and may not
+    // fall below the redemption rate (that would sell the point below its payout cost).
+    let overage_rate = req
+        .overage_rate_per_point
+        .unwrap_or(current.overage_rate_per_point);
+    if overage_rate < redeem || overage_rate > issue {
+        return Err(AppError::Validation(
+            "overage_rate_per_point must be between the redemption rate and the issuance rate"
+                .into(),
+        ));
+    }
+    let overage_mode = match req.overage_mode {
+        Some(m) => {
+            let m = m.trim().to_lowercase();
+            if m != "bill" && m != "pause" {
+                return Err(AppError::Validation(
+                    "overage_mode must be 'bill' or 'pause'".into(),
+                ));
+            }
+            m
+        }
+        None => current.overage_mode.clone(),
+    };
+    // 0 (or negative) clears the cap back to uncapped; omitted keeps the current cap.
+    let overage_cap = match req.overage_cap_points {
+        Some(v) if v > 0 => Some(v),
+        Some(_) => None,
+        None => current.overage_cap_points,
+    };
+
     sqlx::query(
         "UPDATE point_treasury SET issuance_rate = $2, redemption_rate = $3, cycle_day = $4, \
             currency = $5, minimum_payout_cents = $6, settlement_enabled = $7, \
-            payment_provider = $8, default_expiry_days = $9, updated_at = NOW() \
+            payment_provider = $8, default_expiry_days = $9, overage_rate_per_point = $10, \
+            overage_mode = $11, overage_cap_points = $12, updated_at = NOW() \
          WHERE network_id = $1",
     )
     .bind(network_id)
@@ -234,6 +279,9 @@ pub async fn update_settlement_settings(
     .bind(enabled)
     .bind(&provider)
     .bind(expiry)
+    .bind(overage_rate)
+    .bind(&overage_mode)
+    .bind(overage_cap)
     .execute(&s.db)
     .await?;
 
@@ -338,6 +386,10 @@ pub struct InvoicePreview {
     pub business_id: Option<Uuid>,
     pub business_name: String,
     pub points_issued: i64,
+    /// Points already funded by the business's plan allowance (never billed again).
+    pub allowance_points: i64,
+    /// Points beyond the allowance that this invoice actually bills.
+    pub billable_points: i64,
     pub amount_cents: String,
 }
 
@@ -348,6 +400,29 @@ pub struct PayoutPreview {
     pub points_redeemed: i64,
     pub amount_cents: String,
     pub below_minimum: bool,
+}
+
+/// The monthly point allowance each business's *active* subscription funds, keyed by
+/// business id. A business with no active subscription at the period end has no funded
+/// allowance (0), which preserves the pre-allowance behaviour exactly.
+async fn allowances_by_business(
+    db: &PgPool,
+    as_of: chrono::NaiveDate,
+) -> Result<std::collections::HashMap<Uuid, i64>, AppError> {
+    let rows: Vec<(Uuid, i64)> = sqlx::query_as(
+        "SELECT DISTINCT ON (bs.business_id) bs.business_id, \
+                COALESCE(t.monthly_point_allowance, 0)::bigint \
+         FROM business_subscriptions bs \
+         JOIN plan_tiers t ON t.id = bs.tier_id \
+         WHERE bs.status = 'active' \
+           AND bs.start_date <= $1 \
+           AND (bs.end_date IS NULL OR bs.end_date >= $1) \
+         ORDER BY bs.business_id, bs.start_date DESC",
+    )
+    .bind(as_of)
+    .fetch_all(db)
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 async fn build_preview(
@@ -369,14 +444,38 @@ async fn build_preview(
 > {
     let issued = issued_by_business(db, network_id, start, end).await?;
     let redeemed = redeemed_by_business(db, network_id, start, end).await?;
+    // Allowance is measured at the period end (the business's plan on the day the month closed).
+    let allowances = allowances_by_business(db, end).await?;
 
     let invoices: Vec<InvoicePreview> = issued
         .iter()
-        .map(|r| InvoicePreview {
-            business_id: r.business_id,
-            business_name: r.business_name.clone(),
-            points_issued: r.points,
-            amount_cents: format!("{:.2}", amount_cents(r.points, settings.issuance_rate)),
+        .map(|r| {
+            let allowance = r
+                .business_id
+                .and_then(|b| allowances.get(&b).copied())
+                .unwrap_or(0)
+                .max(0);
+            let overage = (r.points - allowance).max(0);
+            // 'pause' = earning stops at the allowance, so no overage is ever billed.
+            let billable = if settings.overage_mode == "pause" {
+                0
+            } else {
+                match settings.overage_cap_points {
+                    Some(cap) if cap > 0 => overage.min(cap as i64),
+                    _ => overage,
+                }
+            };
+            InvoicePreview {
+                business_id: r.business_id,
+                business_name: r.business_name.clone(),
+                points_issued: r.points,
+                allowance_points: allowance,
+                billable_points: billable,
+                amount_cents: format!(
+                    "{:.2}",
+                    amount_cents(billable, settings.overage_rate_per_point)
+                ),
+            }
         })
         .collect();
 
@@ -396,7 +495,8 @@ async fn build_preview(
 
     let total_issued: i64 = issued.iter().map(|r| r.points).sum();
     let total_redeemed: i64 = redeemed.iter().map(|r| r.points).sum();
-    let total_invoiced = amount_cents(total_issued, settings.issuance_rate);
+    let total_billable: i64 = invoices.iter().map(|r| r.billable_points).sum();
+    let total_invoiced = amount_cents(total_billable, settings.overage_rate_per_point);
     let total_payout = amount_cents(total_redeemed, settings.redemption_rate);
 
     Ok((
@@ -501,6 +601,9 @@ pub async fn settlement_preview(
         "rates": {
             "issue_per_point": format!("{:.4}", settings.issuance_rate),
             "redeem_per_point": format!("{:.4}", settings.redemption_rate),
+            "overage_rate_per_point": format!("{:.4}", settings.overage_rate_per_point),
+            "overage_mode": settings.overage_mode,
+            "overage_cap_points": settings.overage_cap_points,
             "currency": settings.currency,
             "minimum_payout_cents": settings.minimum_payout_cents,
         },
@@ -776,20 +879,25 @@ pub async fn execute_settlement(
     let (invoices, payouts, pts_issued, pts_redeemed, invoiced, payout_total) =
         build_preview(db, network_id, &settings, start, end).await?;
 
-    // Invoices: what each issuing business owes for the period.
-    for inv in &invoices {
-        let cents = amount_cents(inv.points_issued, settings.issuance_rate);
+    // Invoices: what each issuing business owes for the period. Points inside the plan
+    // allowance are already funded by the subscription, so only the overage is billed —
+    // and a business with no billable overage gets NO row (nothing owed, no noise).
+    for inv in invoices.iter().filter(|i| i.billable_points > 0) {
+        let cents = amount_cents(inv.billable_points, settings.overage_rate_per_point);
         sqlx::query(
             "INSERT INTO settlement_invoices \
-                (run_id, business_id, business_name, points_issued, rate_per_point, amount_cents, currency, status, due_date) \
-             VALUES ($1, (SELECT id FROM businesses WHERE id = $2), $3, $4, $5, $6, $7, 'pending', ($8::date + INTERVAL '30 days')::date) \
+                (run_id, business_id, business_name, points_issued, allowance_points, overage_points, \
+                 rate_per_point, amount_cents, currency, status, due_date) \
+             VALUES ($1, (SELECT id FROM businesses WHERE id = $2), $3, $4, $5, $6, $7, $8, $9, 'pending', ($10::date + INTERVAL '30 days')::date) \
              ON CONFLICT (run_id, business_id) DO NOTHING",
         )
         .bind(run_id)
         .bind(inv.business_id)
         .bind(&inv.business_name)
         .bind(inv.points_issued)
-        .bind(settings.issuance_rate)
+        .bind(inv.allowance_points)
+        .bind(inv.billable_points)
+        .bind(settings.overage_rate_per_point)
         .bind(cents)
         .bind(&settings.currency)
         .bind(end)
@@ -942,7 +1050,7 @@ pub async fn execute_settlement(
         status: run_status.to_string(),
         message: run_message,
         run,
-        invoices_created: invoices.len(),
+        invoices_created: invoices.iter().filter(|i| i.billable_points > 0).count(),
         payouts_created: payouts.len(),
         payouts_paid: paid,
         payouts_failed: failed,

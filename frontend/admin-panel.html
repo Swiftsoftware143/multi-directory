@@ -930,6 +930,12 @@
           <div class="em-field"><label>Currency</label><input id="ch-currency" placeholder="USD"></div>
           <div class="em-field"><label>Minimum payout (cents)</label><input id="ch-min-payout" type="number" min="0" placeholder="0"></div>
           <div class="em-field"><label>Points expiry (days)</label><input id="ch-expiry-days" type="number" min="1" placeholder="365"></div>
+          <div class="em-field"><label>Overage rate — $/point beyond a plan's allowance</label><input id="ch-overage-rate" placeholder="0.01"></div>
+          <div class="em-field"><label>Overage policy — beyond the allowance</label><select id="ch-overage-mode">
+            <option value="bill">Bill the overage (consented, capped)</option>
+            <option value="pause">Pause earning at the allowance</option>
+          </select></div>
+          <div class="em-field"><label>Overage cap (points; 0 = uncapped)</label><input id="ch-overage-cap" type="number" min="0" placeholder="0"></div>
           <div class="em-field"><label>Payment provider</label><select id="ch-provider">
             <option value="">Auto (first configured provider)</option>
             <option value="stripe">Stripe</option>
@@ -5037,6 +5043,9 @@
           document.getElementById('ch-currency').value = s.currency;
           document.getElementById('ch-min-payout').value = s.minimum_payout_cents;
           document.getElementById('ch-expiry-days').value = s.default_expiry_days;
+          document.getElementById('ch-overage-rate').value = s.overage_rate_per_point;
+          document.getElementById('ch-overage-mode').value = s.overage_mode || 'bill';
+          document.getElementById('ch-overage-cap').value = (s.overage_cap_points == null ? '' : s.overage_cap_points);
           document.getElementById('ch-provider').value = s.payment_provider || '';
           document.getElementById('ch-enabled').value = s.settlement_enabled ? 'true' : 'false';
 
@@ -5074,6 +5083,9 @@
         currency: document.getElementById('ch-currency').value,
         minimum_payout_cents: parseInt(document.getElementById('ch-min-payout').value, 10) || 0,
         default_expiry_days: parseInt(document.getElementById('ch-expiry-days').value, 10) || 365,
+        overage_rate_per_point: document.getElementById('ch-overage-rate').value,
+        overage_mode: document.getElementById('ch-overage-mode').value,
+        overage_cap_points: parseInt(document.getElementById('ch-overage-cap').value, 10) || 0,
         payment_provider: document.getElementById('ch-provider').value,
         settlement_enabled: document.getElementById('ch-enabled').value === 'true'
       };

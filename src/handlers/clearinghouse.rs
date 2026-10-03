@@ -283,6 +283,48 @@ pub async fn clearhouse_scan(
     }
 }
 
+/// Points the business may still issue this calendar month under the allowance + overage
+/// policy (B114). `None` = no ceiling — the default (mode 'bill', no cap) bills all overage,
+/// so issuance is unlimited and behaviour is unchanged.
+///
+/// * `pause` — earning stops at the tier's monthly allowance.
+/// * `bill` with a cap — allowance + cap is the hard ceiling (never an unbounded bill).
+async fn remaining_issuance_points(
+    db: &PgPool,
+    network_id: Uuid,
+    business_id: Uuid,
+) -> Result<Option<i64>, AppError> {
+    let row: Option<(String, Option<i32>, i64, i64)> = sqlx::query_as(
+        "SELECT t.overage_mode, t.overage_cap_points, \
+                COALESCE((SELECT pc.monthly_point_allowance \
+                          FROM business_subscriptions bs \
+                          JOIN plan_tiers pc ON pc.id = bs.tier_id \
+                          WHERE bs.business_id = $2 AND bs.status = 'active' \
+                            AND bs.start_date <= CURRENT_DATE \
+                            AND (bs.end_date IS NULL OR bs.end_date >= CURRENT_DATE) \
+                          ORDER BY bs.start_date DESC LIMIT 1), 0)::bigint, \
+                COALESCE((SELECT SUM(points_issued) FROM point_issuance_log \
+                          WHERE issuing_business_id = $2 AND network_id = $1 \
+                            AND created_at >= date_trunc('month', NOW())), 0)::bigint \
+         FROM point_treasury t WHERE t.network_id = $1",
+    )
+    .bind(network_id)
+    .bind(business_id)
+    .fetch_optional(db)
+    .await?;
+
+    let Some((mode, cap, allowance, mtd)) = row else {
+        return Ok(None);
+    };
+    let ceiling = match (mode.as_str(), cap) {
+        ("pause", _) => allowance,
+        ("bill", Some(c)) if c > 0 => allowance + c as i64,
+        // bill with no cap = unlimited overage — nothing to enforce.
+        _ => return Ok(None),
+    };
+    Ok(Some(ceiling - mtd))
+}
+
 async fn issue(
     state: &AppState,
     network_id: Uuid,
@@ -294,6 +336,28 @@ async fn issue(
     // Points = 1 per dollar spent (default), truncated down.
     let amount = req.transaction_amount.unwrap_or(Decimal::ZERO);
     let points = amount.trunc().to_i64().unwrap_or(0).max(0) as i32;
+
+    // B114: an unfunded reward promise must be impossible. Under a capped or 'pause'
+    // allowance policy a business may only issue up to what is funded (allowance +
+    // consented, capped overage); at the ceiling earning PAUSES instead of billing.
+    // The default policy (bill, uncapped) yields None and changes nothing.
+    let points = if points > 0 {
+        match remaining_issuance_points(&state.db, network_id, req.business_id).await? {
+            Some(remaining) if remaining <= 0 => {
+                return Ok(Json(json!({
+                    "status": "allowance_exhausted",
+                    "member_id": member_id,
+                    "points_awarded": 0,
+                    "business": business_name,
+                    "reason": "The issuing business has reached its funded point allowance and overage is paused or capped — no points were awarded."
+                })));
+            }
+            Some(remaining) => points.min(remaining.min(i32::MAX as i64) as i32),
+            None => points,
+        }
+    } else {
+        points
+    };
 
     let sqlx = &state.db;
     // Update member balance + lifetime
