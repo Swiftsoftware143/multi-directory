@@ -2148,6 +2148,17 @@ pub fn create_router(s: AppState) -> Router {
                 .put(loyalty_messaging::put_settings)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Homepage configuration (card B86) ──────────────────────────────────────────────
+        // Public read: the homepage fetches its resolved surface / hero / sections here.
+        // Admin read+write: operator-guarded (a buyer configures their own home from the panel,
+        // no SQL). The homepage belongs to the NETWORK or a standalone directory, never a city.
+        .route("/homepage/config", get(homepage_config::get_public))
+        .route(
+            "/homepage-config/settings",
+            get(homepage_config::get_settings)
+                .put(homepage_config::put_settings)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ── Request-body read deadline (kanban t_52b9f3c7) ──────────────────────────────────
         // Mounted INNERMOST: the FIRST layer added to a router is the one closest to the
         // handler, so `auth_guard` (added on the next line, after this one) stays OUTSIDE it.
@@ -3136,6 +3147,9 @@ async fn auth_guard(
         // ZaarCash loyalty messaging (card B92) — GET only: the homepage and every city page read
         // their resolved section here. The admin settings surface stays operator-guarded.
         || (path == "/loyalty/messaging" && req.method() == "GET")
+        // Homepage configuration (card B86) — GET only: the homepage reads its resolved
+        // surface/hero/sections here. The admin settings surface stays operator-guarded.
+        || (path == "/homepage/config" && req.method() == "GET")
         // Public submit-a-business form — POST only, rate-limited inside the handler
         || (path == "/submissions" && req.method() == "POST")
         // Public payment-confirmation lookup by checkout session id (unguessable id)

@@ -14,6 +14,7 @@ pub mod directories;
 pub mod discovery_queue;
 pub mod domains;
 pub mod email;
+pub mod homepage_config;
 pub mod host_resolver;
 pub mod import_export;
 pub mod legal;
