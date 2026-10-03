@@ -297,16 +297,6 @@ pub async fn create_directory(
         .execute(&s.db)
         .await?;
 
-        // Create default homepage hero section
-        sqlx::query(
-            r#"INSERT INTO homepage_sections (network_id, section_type, sort_order, title)
-               VALUES ($1, 'hero', 0, $2)"#,
-        )
-        .bind(network.id)
-        .bind(&req.name)
-        .execute(&s.db)
-        .await?;
-
         // Link directory to the new network
         sqlx::query("UPDATE directories SET network_id = $1 WHERE id = $2")
             .bind(network.id)

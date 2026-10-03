@@ -74,54 +74,6 @@ pub struct UpdateNetworkBrandingRequest {
     pub body_font: Option<String>,
 }
 
-// ── Homepage Section ─────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct HomepageSection {
-    pub id: Uuid,
-    pub network_id: Option<Uuid>,
-    pub directory_id: Option<Uuid>,
-    pub section_type: String,
-    pub sort_order: Option<i32>,
-    pub title: Option<String>,
-    pub subtitle: Option<String>,
-    pub content: Option<String>,
-    pub cta_text: Option<String>,
-    pub cta_url: Option<String>,
-    pub image_url: Option<String>,
-    pub is_active: Option<bool>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreateHomepageSectionRequest {
-    pub network_id: Option<Uuid>,
-    pub directory_id: Option<Uuid>,
-    pub section_type: String,
-    pub sort_order: Option<i32>,
-    pub title: Option<String>,
-    pub subtitle: Option<String>,
-    pub content: Option<String>,
-    pub cta_text: Option<String>,
-    pub cta_url: Option<String>,
-    pub image_url: Option<String>,
-    pub is_active: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateHomepageSectionRequest {
-    pub section_type: Option<String>,
-    pub sort_order: Option<i32>,
-    pub title: Option<String>,
-    pub subtitle: Option<String>,
-    pub content: Option<String>,
-    pub cta_text: Option<String>,
-    pub cta_url: Option<String>,
-    pub image_url: Option<String>,
-    pub is_active: Option<bool>,
-}
-
 // ── Extended Directory with network info ─────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

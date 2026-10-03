@@ -12,16 +12,6 @@ use crate::error::{ApiResult, AppError};
 use crate::models::*;
 use crate::AppState;
 
-/// GET /api/v1/admin/directories — list all directories (admin)
-pub async fn admin_list_directories(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let directories: Vec<Directory> =
-        sqlx::query_as::<_, Directory>("SELECT * FROM directories ORDER BY created_at DESC ")
-            .fetch_all(&s.db)
-            .await?;
-
-    Ok(Json(json!(directories)))
-}
-
 /// GET /api/v1/admin/dashboard/stats
 pub async fn dashboard_stats(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let total_directories = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories ")
