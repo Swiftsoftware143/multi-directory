@@ -1020,6 +1020,32 @@
           <textarea class="pk-input" id="lm-subheadline" rows="2" placeholder="One balance the whole network accepts — support participating local businesses, then spend your ZaarCash in any city."></textarea></label>
         <label style="font-size:.8rem;display:flex;align-items:center;gap:6px;margin-top:8px">
           <input type="checkbox" id="lm-show-earn"> Use the earn wording when a rate is set (untick to always show the "how it works" wording)</label>
+        <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+          <div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:8px">Tokens <code>{city}</code> and <code>{currency}</code> are filled in per page — a city page carries its own city name (and the subfolder SEO with it). Claims the product cannot yet deliver are never served: no per-job earnings, no "verified", no booking promise.</div>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-bottom:8px">Hero pill / badge
+            <input class="pk-input" id="lm-pill" placeholder="Local rewards programme"></label>
+          <div style="font-size:.8rem;font-weight:600;margin:6px 0 4px">Process cards — step 2 is replaced by an honest "opens soon" line while nothing can be earned</div>
+          <div id="lm-steps"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <label style="font-size:.75rem;flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px">Earn card title
+              <input class="pk-input" id="lm-earn-title" placeholder="Earn where you live"></label>
+            <label style="font-size:.75rem;flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px">Redeem card title
+              <input class="pk-input" id="lm-redeem-title" placeholder="Spend where you love"></label>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <label style="font-size:.75rem;flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px">Earn card body
+              <textarea class="pk-input" id="lm-earn-body" rows="2"></textarea></label>
+            <label style="font-size:.75rem;flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px">Redeem card body
+              <textarea class="pk-input" id="lm-redeem-body" rows="2"></textarea></label>
+          </div>
+          <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+            <label style="font-size:.8rem;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" id="lm-ticker-enabled"> Show the live impact ticker (real ledger numbers only — it hides itself below the threshold)</label>
+            <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-top:6px;max-width:300px">Hide the ticker below (local dollars reinvested)
+              <input class="pk-input" id="lm-ticker-threshold" type="number" min="0" step="1" placeholder="100"></label>
+            <div id="lm-ticker-preview" style="font-size:.78rem;color:var(--text-secondary);margin-top:6px"></div>
+          </div>
+        </div>
         <div style="margin-top:10px"><button class="btn btn-accent btn-sm" onclick="window.__lmSave()">Save</button></div>
         <div class="feature-status" id="lm-status"></div>
       </div>
@@ -2891,6 +2917,31 @@
 
     function lmScopeChange() { lmFillTargets(); lmLoad(); }
 
+    // The three process cards are edited as plain rows; the stored value is a JSON array of
+    // {title, body}. Blank rows are dropped on save so a two-step programme is valid too.
+    function lmRenderSteps(steps) {
+      var host = document.getElementById('lm-steps');
+      if (!host) return;
+      var rows = (Array.isArray(steps) ? steps : []).slice(0, 3);
+      while (rows.length < 3) rows.push({ title: '', body: '' });
+      host.innerHTML = rows.map(function (r, i) {
+        return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">'
+          + '<label style="font-size:.72rem;width:52px;display:flex;align-items:center;color:var(--text-secondary)">Step ' + (i + 1) + '</label>'
+          + '<input class="pk-input" id="lm-step-' + i + '-title" style="flex:1;min-width:180px" placeholder="Title" value="' + String(r.title || '').replace(/"/g, '&quot;') + '">'
+          + '<input class="pk-input" id="lm-step-' + i + '-body" style="flex:2;min-width:240px" placeholder="Body" value="' + String(r.body || '').replace(/"/g, '&quot;') + '">'
+          + '</div>';
+      }).join('');
+    }
+
+    function lmPreviewTicker(t) {
+      var el = document.getElementById('lm-ticker-preview');
+      if (!el) return;
+      t = t || {};
+      el.textContent = 'Real ledger: $' + Number(t.dollars || 0).toFixed(2) + ' reinvested · '
+        + Number(t.members || 0) + ' members · ticker currently '
+        + (t.visible ? 'VISIBLE' : 'hidden') + ' (threshold $' + Number(t.threshold || 0).toFixed(0) + ')';
+    }
+
     function lmLoad() {
       var scopeEl = document.getElementById('lm-scope');
       var sel = document.getElementById('lm-target');
@@ -2906,7 +2957,27 @@
           document.getElementById('lm-cta-label').value = row.cta_label || '';
           document.getElementById('lm-cta-url').value = row.cta_url || '';
           document.getElementById('lm-show-earn').checked = d.exists ? !!row.show_earn_claims : true;
-          lmStatus((d.exists ? 'Saved settings for ' : 'No settings yet — defaults shown for ') + scope +
+          document.getElementById('lm-pill').value = row.pill_text || '';
+          document.getElementById('lm-earn-title').value = row.earn_card_title || '';
+          document.getElementById('lm-earn-body').value = row.earn_card_body || '';
+          document.getElementById('lm-redeem-title').value = row.redeem_card_title || '';
+          document.getElementById('lm-redeem-body').value = row.redeem_card_body || '';
+          document.getElementById('lm-ticker-enabled').checked = d.exists ? !!row.ticker_enabled : true;
+          var thr = d.exists ? row.ticker_threshold : 100;
+          document.getElementById('lm-ticker-threshold').value = (thr === null || thr === undefined) ? 100 : thr;
+          var steps = (row && row.steps) ? row.steps : ((d.defaults && d.defaults.steps) || []);
+          lmRenderSteps(steps);
+          lmPreviewTicker(d.ticker);
+          var note;
+          if (d.exists) {
+            note = 'Saved settings for ';
+          } else if (d.inherited) {
+            note = 'No copy of its own — this page inherits the ' +
+              (d.inherited.directory_id ? 'directory' : 'network') + ' copy. Save to give it its own. ';
+          } else {
+            note = 'No settings yet — built-in defaults shown for ';
+          }
+          lmStatus(note + scope +
                    (d.currency_name ? ' · currency ' + d.currency_name : ''), true);
         })
         .catch(function (e) { lmStatus('Load failed: ' + e.message, false); });
@@ -2916,6 +2987,17 @@
       var scopeEl = document.getElementById('lm-scope');
       var sel = document.getElementById('lm-target');
       if (!scopeEl || !sel || !sel.value) { lmStatus('Pick a scope and a target first', false); return; }
+      var steps = [];
+      for (var i = 0; i < 3; i++) {
+        var t = document.getElementById('lm-step-' + i + '-title');
+        var b = document.getElementById('lm-step-' + i + '-body');
+        var tv = t ? t.value.trim() : '';
+        var bv = b ? b.value.trim() : '';
+        if (tv || bv) steps.push({ title: tv, body: bv });
+      }
+      var thrEl = document.getElementById('lm-ticker-threshold');
+      var thr = parseFloat(thrEl ? thrEl.value : '100');
+      if (isNaN(thr) || thr < 0) thr = 100;
       var body = {
         scope: scopeEl.value,
         id: sel.value,
@@ -2924,13 +3006,22 @@
         subheadline: document.getElementById('lm-subheadline').value,
         cta_label: document.getElementById('lm-cta-label').value,
         cta_url: document.getElementById('lm-cta-url').value,
-        show_earn_claims: document.getElementById('lm-show-earn').checked
+        show_earn_claims: document.getElementById('lm-show-earn').checked,
+        pill_text: document.getElementById('lm-pill').value,
+        steps: steps,
+        earn_card_title: document.getElementById('lm-earn-title').value,
+        earn_card_body: document.getElementById('lm-earn-body').value,
+        redeem_card_title: document.getElementById('lm-redeem-title').value,
+        redeem_card_body: document.getElementById('lm-redeem-body').value,
+        ticker_enabled: document.getElementById('lm-ticker-enabled').checked,
+        ticker_threshold: thr
       };
       lmStatus('Saving…', true);
       apiPut('/loyalty-messaging/settings', body)
         .then(function () {
           lmStatus('Saved — the homepage and every city page now show this.', true);
           showToast('Loyalty messaging saved');
+          lmLoad();
         })
         .catch(function (e) { lmStatus('Save failed: ' + e.message, false); });
     }
