@@ -546,6 +546,7 @@
         <a href="#plan-tiers-section">💠 Plan Tiers</a>
         <a href="#loyalty-messaging-section">⭐ ZaarCash Messaging</a>
         <a href="#referral-section">🎁 Referrals</a>
+        <a href="#signup-reward-section">🪙 Signup Rewards</a>
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
@@ -1166,6 +1167,30 @@
         </div>
         <div id="rf-list"></div>
         <div class="feature-status" id="rf-status-msg"></div>
+      </div>
+
+      <!-- 🪙 Signup rewards (card B49) — ONE per-directory rule fired by EVERY signup path
+           (customer register, supplier register, business claim). Amounts live on the
+           directory (zaarhub_config.signup_rewards); 0 = off, so nothing is promised until
+           the admin sets a number. No SQL, no hardcoding. -->
+      <div class="feature-card" id="signup-reward-section">
+        <h3>🪙 Signup Rewards</h3>
+        <p class="feature-subtitle">What a new account is credited, in this directory's currency, the moment it signs up — on <b>every</b> path: a customer registering, a supplier registering, or a business owner claiming a listing. Each value is per directory; <b>0 = off</b>. Nothing is credited until you set a number here.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Directory
+            <select class="pk-input" id="sr-dir" onchange="window.__srLoad()"></select></label>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__srLoad()">↻ Reload</button>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Customer signup
+            <input class="pk-input" id="sr-visitor" type="number" min="0" step="1"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Supplier signup
+            <input class="pk-input" id="sr-supplier" type="number" min="0" step="1"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Business claim
+            <input class="pk-input" id="sr-business" type="number" min="0" step="1"></label>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__srSave()">Save rewards</button>
+        </div>
+        <div class="feature-status" id="sr-status-msg"></div>
       </div>
 
       <!-- 💰 Ad Revenue &amp; Sponsor Creatives (kanban t_14927725) — these two capabilities
@@ -3359,6 +3384,82 @@
     window.__rfSaveRewards = rfSaveRewards;
     window.__rfVerify = rfVerify;
     window.__rfReject = rfReject;
+
+    // ===== 🪙 Signup rewards (card B49) =====
+    // ONE per-directory rule fired by EVERY signup path (customer register, supplier register,
+    // business claim). Amounts live on the directory (zaarhub_config.signup_rewards); 0 = off.
+    function srStatus(msg, ok) {
+      var el = document.getElementById('sr-status-msg');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function srFillDirs() {
+      var sel = document.getElementById('sr-dir');
+      if (!sel) return;
+      var keep = sel.value;
+      sel.innerHTML = '';
+      (directories || []).forEach(function (r) {
+        var o = document.createElement('option');
+        o.value = r.id;
+        o.textContent = (r.name || r.slug || r.id) + ' (' + (r.slug || '') + ')';
+        sel.appendChild(o);
+      });
+      if (keep) sel.value = keep;
+    }
+
+    function srLoad() {
+      var dir = document.getElementById('sr-dir');
+      if (!dir) return;
+      if (!dir.options.length) srFillDirs();
+      if (!dir.value) { srStatus('No directory selected yet', false); return; }
+      srStatus('Loading…', true);
+      apiGet('/admin/signup-reward-settings?directory_id=' + encodeURIComponent(dir.value))
+        .then(function (d) {
+          var r = d.rewards || {};
+          document.getElementById('sr-visitor').value = r.visitor;
+          document.getElementById('sr-supplier').value = r.supplier;
+          document.getElementById('sr-business').value = r.business;
+          srStatus('Loaded — 0 means that path awards nothing.', true);
+        })
+        .catch(function (e) { srStatus('Load failed: ' + e.message, false); });
+    }
+
+    function srSave() {
+      var dir = document.getElementById('sr-dir');
+      if (!dir || !dir.value) { srStatus('No directory selected', false); return; }
+      var num = function (id) {
+        var el = document.getElementById(id);
+        var v = parseInt(el ? el.value : '', 10);
+        return isNaN(v) || v < 0 ? 0 : v;
+      };
+      srStatus('Saving…', true);
+      apiPut('/admin/signup-reward-settings', {
+        directory_id: dir.value,
+        visitor: num('sr-visitor'),
+        supplier: num('sr-supplier'),
+        business: num('sr-business')
+      }).then(function () {
+        srStatus('Signup rewards saved for this directory.', true);
+        showToast('Signup rewards saved');
+        srLoad();
+      }).catch(function (e) { srStatus('Save failed: ' + e.message, false); });
+    }
+
+    window.__srLoad = srLoad;
+    window.__srSave = srSave;
+
+    function srInit() {
+      srFillDirs();
+      var d = document.getElementById('sr-dir');
+      if (d && d.value) srLoad();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { setTimeout(srInit, 1500); });
+    } else {
+      setTimeout(srInit, 1500);
+    }
 
     // ===== 🏠 Homepage (card B86) =====
     // The homepage belongs to the NETWORK (or a standalone directory), never a city. The back end

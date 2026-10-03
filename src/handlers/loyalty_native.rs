@@ -15,7 +15,7 @@ use crate::handlers::tenant_scope::{
 };
 use crate::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::HeaderMap,
     Json,
 };
@@ -195,6 +195,122 @@ pub async fn programme_for_directory(
     .await?;
 
     Ok(program)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Signup rewards (card B49) — a per-directory, admin-configurable award any signup path fires
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Default per-audience signup awards — ZERO, i.e. OFF until an admin sets a value.
+/// Nothing is credited by default: the panel says "off" rather than promising a currency
+/// the configuration does not deliver.
+pub fn default_signup_rewards() -> Value {
+    json!({ "visitor": 0, "supplier": 0, "business": 0 })
+}
+
+/// Resolve a directory's signup rewards: `zaarhub_config.signup_rewards` merged over the
+/// defaults, so every audience always resolves and a partly-configured directory works.
+pub async fn signup_reward_amounts(db: &PgPool, directory_id: Option<Uuid>) -> Value {
+    let mut out = default_signup_rewards();
+    let Some(dir) = directory_id else {
+        return out;
+    };
+    let row = sqlx::query("SELECT zaarhub_config FROM directories WHERE id = $1")
+        .bind(dir)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+    let Some(row) = row else {
+        return out;
+    };
+    use sqlx::Row as _;
+    let cfg: Option<Value> = row.try_get("zaarhub_config").unwrap_or(None);
+    if let Some(Value::Object(map)) = cfg {
+        if let Some(Value::Object(custom)) = map.get("signup_rewards") {
+            if let Some(dst) = out.as_object_mut() {
+                for (k, v) in custom.iter() {
+                    if v.is_i64() || v.is_u64() {
+                        dst.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The configured award for one audience on a directory (0 = off).
+pub async fn signup_reward_units(db: &PgPool, directory_id: Option<Uuid>, audience: &str) -> i32 {
+    signup_reward_amounts(db, directory_id)
+        .await
+        .get(audience)
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32
+}
+
+/// Award the signup reward for `audience` to a visitor account: once per account per signup
+/// path, and only when the directory's rule is switched on. Best-effort by contract — the
+/// caller logs a failure and the signup itself is never affected.
+///
+/// This is what makes EVERY signup path award, not just the visitor one: the caller passes
+/// "visitor", "supplier" or "business" and the same admin-configured rule applies, so a
+/// B2B supplier registration and a business claim credit the same balance as a customer.
+pub async fn award_signup_reward(
+    pool: &PgPool,
+    directory_id: Option<Uuid>,
+    visitor_account_id: &Uuid,
+    audience: &str,
+) -> Result<Option<CreditedAward>, AppError> {
+    // Resolve the city whose programme governs this award. A supplier registers network-wide
+    // with no city, so fall back to a directory of the active network programme.
+    let dir = match directory_id {
+        Some(d) => Some(d),
+        None => sqlx::query_scalar::<_, Uuid>(
+            "SELECT d.id FROM directories d \
+                 JOIN loyalty_programs p ON p.network_id = d.network_id \
+                 WHERE p.is_active AND p.network_id IS NOT NULL \
+                 ORDER BY d.is_primary DESC NULLS LAST, d.created_at LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None),
+    };
+    let Some(dir) = dir else {
+        return Ok(None);
+    };
+
+    let units = signup_reward_units(pool, Some(dir), audience).await;
+    if units <= 0 {
+        return Ok(None);
+    }
+
+    // Exactly one award per visitor account per signup path.
+    let activity_type = format!("signup_{audience}");
+    let already: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM loyalty_activity a \
+         JOIN loyalty_members m ON m.id = a.member_id \
+         WHERE m.visitor_account_id = $1 AND a.activity_type = $2",
+    )
+    .bind(visitor_account_id)
+    .bind(&activity_type)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    if already > 0 {
+        return Ok(None);
+    }
+
+    let description = format!("Signup reward ({audience})");
+    credit_visitor_units(
+        pool,
+        &dir,
+        visitor_account_id,
+        units,
+        &activity_type,
+        &description,
+    )
+    .await
 }
 
 /// Native, network-scoped loyalty enrolment. Called when a visitor signs up: the visitor joins
@@ -1625,4 +1741,73 @@ pub async fn delete_milestone(
         return Err(AppError::NotFound("milestone not found".into()));
     }
     Ok(Json(json!({ "deleted": true })))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Signup reward settings (card B49) — operator-guarded admin half
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct SignupRewardSettingsQuery {
+    pub directory_id: Option<Uuid>,
+}
+
+/// GET /api/v1/admin/signup-reward-settings?directory_id= — the per-directory signup awards.
+pub async fn get_signup_reward_settings(
+    State(s): State<AppState>,
+    Query(q): Query<SignupRewardSettingsQuery>,
+) -> Result<Json<Value>, AppError> {
+    let rewards = signup_reward_amounts(&s.db, q.directory_id).await;
+    Ok(Json(json!({
+        "directory_id": q.directory_id,
+        "defaults": default_signup_rewards(),
+        "rewards": rewards,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveSignupRewardsRequest {
+    pub directory_id: Uuid,
+    /// Currency units credited when a CUSTOMER registers. 0 = off.
+    pub visitor: Option<i64>,
+    /// Currency units credited when a SUPPLIER registers (POST /b2b/register). 0 = off.
+    pub supplier: Option<i64>,
+    /// Currency units credited when a BUSINESS OWNER claims a listing and the login is minted. 0 = off.
+    pub business: Option<i64>,
+}
+
+/// PUT /api/v1/admin/signup-reward-settings — per-directory signup award amounts.
+/// Zero (or an omitted field) means that signup path awards nothing. Nothing here is
+/// hardcoded: the admin sets the rule and every signup path fires it.
+pub async fn put_signup_reward_settings(
+    State(s): State<AppState>,
+    Json(b): Json<SaveSignupRewardsRequest>,
+) -> Result<Json<Value>, AppError> {
+    let mut rewards = signup_reward_amounts(&s.db, Some(b.directory_id)).await;
+    if let Some(obj) = rewards.as_object_mut() {
+        let mut set = |k: &str, v: Option<i64>| {
+            if let Some(n) = v {
+                obj.insert(k.to_string(), json!(n.max(0)));
+            }
+        };
+        set("visitor", b.visitor);
+        set("supplier", b.supplier);
+        set("business", b.business);
+    }
+
+    sqlx::query(
+        "UPDATE directories SET zaarhub_config = \
+         COALESCE(zaarhub_config, '{}'::jsonb) || \
+         jsonb_build_object('signup_rewards', $2::jsonb) WHERE id = $1",
+    )
+    .bind(b.directory_id)
+    .bind(rewards.to_string())
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({
+        "saved": true,
+        "directory_id": b.directory_id,
+        "rewards": rewards,
+    })))
 }

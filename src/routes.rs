@@ -1717,6 +1717,15 @@ pub fn create_router(s: AppState) -> Router {
                 .put(referral::put_referral_settings)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Signup rewards (card B49) — operator-guarded admin half ───────────────────────
+        // ONE per-directory rule, fired by EVERY signup path (customer, supplier, business
+        // owner). Operator-guarded so a tenant can never edit the award amounts.
+        .route(
+            "/admin/signup-reward-settings",
+            get(loyalty_native::get_signup_reward_settings)
+                .put(loyalty_native::put_signup_reward_settings)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route("/visitor/loyalty/perks", get(visitors::my_redeemed_perks))
         // ? Anonymous tracking beacon (page views, sessions, events)
         .route("/visitors/track", post(visitors::track_visitor))

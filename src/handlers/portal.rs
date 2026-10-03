@@ -480,6 +480,27 @@ pub async fn visitor_register(
         });
     }
 
+    // Card B49 — award the directory's CUSTOMER signup reward (once, only if the admin has
+    // switched it on). Best-effort: a failure is logged and can never fail the signup.
+    {
+        let db = s.db.clone();
+        let vid = visitor.id;
+        let dir = visitor.directory_id;
+        tokio::spawn(async move {
+            match crate::handlers::loyalty_native::award_signup_reward(&db, dir, &vid, "visitor")
+                .await
+            {
+                Ok(Some(a)) if a.units > 0 => tracing::info!(
+                    "[loyalty] signup reward: credited {} {} to visitor {vid}",
+                    a.units,
+                    a.currency_name
+                ),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("[loyalty] signup reward failed for visitor {vid}: {e}"),
+            }
+        });
+    }
+
     // Generate JWT with role=visitor
     let now_ts = Utc::now().timestamp() as usize;
     let claims = Claims {

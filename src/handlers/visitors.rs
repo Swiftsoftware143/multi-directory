@@ -1406,6 +1406,42 @@ pub async fn claim_business(
                 .execute(&s.db)
                 .await;
             }
+
+            // Card B49 — award the directory's BUSINESS signup reward once the owner's login
+            // exists (auto-approved claim). Best-effort: never fails the claim.
+            {
+                let db = s.db.clone();
+                let email_for_award = owner_email.clone();
+                tokio::spawn(async move {
+                    let acct: Option<Uuid> = sqlx::query_scalar(
+                        "SELECT id FROM visitor_accounts WHERE lower(email) = $1 ORDER BY created_at LIMIT 1",
+                    )
+                    .bind(&email_for_award)
+                    .fetch_optional(&db)
+                    .await
+                    .unwrap_or(None);
+                    if let Some(aid) = acct {
+                        match crate::handlers::loyalty_native::award_signup_reward(
+                            &db,
+                            Some(directory_id),
+                            &aid,
+                            "business",
+                        )
+                        .await
+                        {
+                            Ok(Some(a)) if a.units > 0 => tracing::info!(
+                                "[loyalty] business signup reward: credited {} {} to account {aid}",
+                                a.units,
+                                a.currency_name
+                            ),
+                            Ok(_) => {}
+                            Err(e) => tracing::warn!(
+                                "[loyalty] business signup reward failed for account {aid}: {e}"
+                            ),
+                        }
+                    }
+                });
+            }
         }
     }
 

@@ -372,6 +372,29 @@ pub async fn b2b_register(
         );
     });
 
+    // Card B49 — award the directory's SUPPLIER signup reward (once, only if switched on).
+    // A supplier registers network-wide (no city), so the award resolves the active network
+    // programme's directory itself. Best-effort: never fails the registration.
+    {
+        let db = s.db.clone();
+        let vid = visitor.id;
+        tokio::spawn(async move {
+            match crate::handlers::loyalty_native::award_signup_reward(&db, None, &vid, "supplier")
+                .await
+            {
+                Ok(Some(a)) if a.units > 0 => tracing::info!(
+                    "[loyalty] supplier signup reward: credited {} {} to account {vid}",
+                    a.units,
+                    a.currency_name
+                ),
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("[loyalty] supplier signup reward failed for account {vid}: {e}")
+                }
+            }
+        });
+    }
+
     // Generate JWT
     let now_ts = Utc::now().timestamp() as usize;
     let claims = Claims {
