@@ -1065,6 +1065,71 @@
         <div class="feature-status" id="lm-status"></div>
       </div>
 
+      <!-- 🏠 Homepage (card B86) — the homepage belongs to the NETWORK (or a standalone directory),
+           never to a city: "a city is not the home". This is where the admin sets what the root URL
+           serves — which surface, the hero, an announcement banner, which sections appear and in
+           what order, and which cities are highlighted. Every field is optional with a sensible
+           default, so an unconfigured network still renders a sane homepage, and nothing is
+           hardcoded (a buyer sets their own from the panel, no SQL). -->
+      <div class="feature-card" id="homepage-section">
+        <h3>🏠 Homepage</h3>
+        <p class="feature-subtitle">What the root URL serves. The homepage belongs to the network (or a standalone directory) — a city is not a home. Set the hero, an announcement banner, which sections appear and their order, and which cities are highlighted. Leave any field blank to keep the built-in default.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Scope
+            <select class="pk-input" id="hp-scope" onchange="window.__hpScopeChange()">
+              <option value="network">Network (all cities)</option>
+              <option value="directory">One directory</option>
+            </select></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Applies to
+            <select class="pk-input" id="hp-target" onchange="window.__hpLoad()"></select></label>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__hpLoad()">↻ Reload</button>
+        </div>
+        <label style="font-size:.8rem;display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <input type="checkbox" id="hp-enabled"> Use this homepage configuration</label>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <label style="font-size:.75rem;flex:1;min-width:220px;display:flex;flex-direction:column;gap:3px">Home surface
+            <select class="pk-input" id="hp-surface" onchange="window.__hpSurface()">
+              <option value="network">The network's own home</option>
+              <option value="city">Feature one city as the front page</option>
+            </select></label>
+          <label style="font-size:.75rem;flex:1;min-width:220px;display:flex;flex-direction:column;gap:3px" id="hp-city-wrap">Featured city
+            <select class="pk-input" id="hp-city"></select></label>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+          <label style="font-size:.75rem;flex:1;min-width:240px;display:flex;flex-direction:column;gap:3px">Hero headline
+            <input class="pk-input" id="hp-hero-headline" placeholder="Discover & Support Your Local Community"></label>
+          <label style="font-size:.75rem;flex:1;min-width:160px;display:flex;flex-direction:column;gap:3px">Hero button label
+            <input class="pk-input" id="hp-hero-cta-text" placeholder="Browse businesses"></label>
+          <label style="font-size:.75rem;flex:1;min-width:160px;display:flex;flex-direction:column;gap:3px">Hero button link
+            <input class="pk-input" id="hp-hero-cta-url" placeholder="/visitor"></label>
+        </div>
+        <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-top:8px">Hero sub-headline
+          <textarea class="pk-input" id="hp-hero-subheadline" rows="2" placeholder="Find the best local businesses, deals, and events in your neighborhood."></textarea></label>
+        <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-top:8px">Hero background image URL
+          <input class="pk-input" id="hp-hero-image" placeholder="https://…"></label>
+        <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+          <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">Announcement banner (optional — hidden when the text is blank)</div>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-bottom:8px">Banner text
+            <input class="pk-input" id="hp-ann-text" placeholder="e.g. Community market this Saturday in Palm Bay"></label>
+          <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+            <label style="font-size:.75rem;flex:1;min-width:180px;display:flex;flex-direction:column;gap:3px">Banner link label
+              <input class="pk-input" id="hp-ann-cta-text" placeholder="Learn more"></label>
+            <label style="font-size:.75rem;flex:1;min-width:180px;display:flex;flex-direction:column;gap:3px">Banner link
+              <input class="pk-input" id="hp-ann-cta-url" placeholder="/#/events"></label>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+          <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">Sections — tick to show, ↑/↓ to reorder</div>
+          <div id="hp-sections"></div>
+        </div>
+        <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+          <div style="font-size:.8rem;font-weight:600;margin-bottom:6px">Highlighted cities — click to feature, click a featured city to remove; featured cities lead the grid in this order</div>
+          <div id="hp-featured" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <div style="margin-top:10px"><button class="btn btn-accent btn-sm" type="button" onclick="window.__hpSave()">Save</button></div>
+        <div class="feature-status" id="hp-status"></div>
+      </div>
+
       <!-- 🎁 Referral programme (card B48) — a member's code is minted on the visitor side
            (POST /visitor/referrals/generate); this is the operator half: the pending queue,
            verify/reject, and the per-directory reward amounts. Amounts live on the directory
@@ -3226,6 +3291,183 @@
     window.__rfVerify = rfVerify;
     window.__rfReject = rfReject;
 
+    // ===== 🏠 Homepage (card B86) =====
+    // The homepage belongs to the NETWORK (or a standalone directory), never a city. The back end
+    // resolves directory -> network -> built-in defaults, so an unconfigured home still renders.
+    var hpState = { sections: [], featured: [], cities: [] };
+
+    function hpStatus(msg, ok) {
+      var el = document.getElementById('hp-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function hpFillTargets() {
+      var scopeEl = document.getElementById('hp-scope');
+      var sel = document.getElementById('hp-target');
+      if (!scopeEl || !sel) return;
+      var scope = scopeEl.value;
+      var keep = sel.value;
+      sel.innerHTML = '';
+      var rows = scope === 'network' ? lmNetworks : directories;
+      (rows || []).forEach(function (r) {
+        var o = document.createElement('option');
+        o.value = r.id;
+        o.textContent = (r.name || r.slug || r.id) + (scope === 'network' ? '' : ' (' + (r.slug || '') + ')');
+        sel.appendChild(o);
+      });
+      if (keep) sel.value = keep;
+    }
+
+    function hpScopeChange() { hpFillTargets(); hpLoad(); }
+
+    function hpSurface() {
+      var cityWrap = document.getElementById('hp-city-wrap');
+      var s = document.getElementById('hp-surface');
+      if (cityWrap && s) cityWrap.style.display = (s.value === 'city') ? '' : 'none';
+    }
+
+    function hpSectionLabel(k) {
+      return ({ spotlights: 'Featured Spotlights', loyalty: 'ZaarCash loyalty section',
+        cities: 'Explore Communities (city grid)', deals: 'Hot Local Deals',
+        buzz: 'Community Buzz', events: 'Upcoming Events',
+        cta_join: 'Join Your Local Community CTA', cta_owner: 'Grow Your Local Presence CTA' })[k] || k;
+    }
+
+    function hpRenderSections() {
+      var host = document.getElementById('hp-sections');
+      if (!host) return;
+      host.innerHTML = hpState.sections.map(function (s, i) {
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+          + '<input type="checkbox" data-hp-sec="' + i + '"' + (s.enabled ? ' checked' : '')
+          + ' onchange="window.__hpToggle(' + i + ',this.checked)">'
+          + '<span style="font-size:.82rem;flex:1">' + hpSectionLabel(s.key) + '</span>'
+          + '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__hpMove(' + i + ',-1)">↑</button>'
+          + '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__hpMove(' + i + ',1)">↓</button>'
+          + '</div>';
+      }).join('');
+    }
+
+    function hpToggle(i, on) { if (hpState.sections[i]) hpState.sections[i].enabled = !!on; }
+
+    function hpMove(i, d) {
+      var j = i + d;
+      if (j < 0 || j >= hpState.sections.length) return;
+      var t = hpState.sections[i];
+      hpState.sections[i] = hpState.sections[j];
+      hpState.sections[j] = t;
+      hpRenderSections();
+    }
+
+    function hpRenderFeatured() {
+      var host = document.getElementById('hp-featured');
+      if (!host) return;
+      var feat = hpState.featured;
+      var byslug = {};
+      hpState.cities.forEach(function (c) { byslug[c.slug] = c; });
+      var html = '';
+      feat.forEach(function (slug) {
+        var c = byslug[slug] || { slug: slug, name: slug };
+        html += '<button class="btn btn-accent btn-sm" type="button" onclick="window.__hpUnfeature(\'' + slug + '\')">★ ' + (c.name || slug) + '</button>';
+      });
+      hpState.cities.forEach(function (c) {
+        if (feat.indexOf(c.slug) !== -1) return;
+        html += '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__hpFeature(\'' + c.slug + '\')">' + (c.name || c.slug) + '</button>';
+      });
+      host.innerHTML = html || '<span style="font-size:.8rem;color:var(--text-secondary)">No cities to highlight</span>';
+    }
+
+    function hpFeature(slug) { if (hpState.featured.indexOf(slug) === -1) hpState.featured.push(slug); hpRenderFeatured(); }
+    function hpUnfeature(slug) { hpState.featured = hpState.featured.filter(function (s) { return s !== slug; }); hpRenderFeatured(); }
+
+    function hpFillCities() {
+      var sel = document.getElementById('hp-city');
+      if (!sel) return;
+      var keep = sel.value;
+      sel.innerHTML = '';
+      hpState.cities.forEach(function (c) {
+        var o = document.createElement('option');
+        o.value = c.slug;
+        o.textContent = (c.name || c.slug) + (c.city ? ' · ' + c.city : '');
+        sel.appendChild(o);
+      });
+      if (keep) sel.value = keep;
+    }
+
+    function hpLoad() {
+      var scopeEl = document.getElementById('hp-scope');
+      var sel = document.getElementById('hp-target');
+      if (!scopeEl || !sel || !sel.value) return;
+      hpStatus('Loading…', true);
+      apiGet('/homepage-config/settings?scope=' + encodeURIComponent(scopeEl.value) + '&id=' + encodeURIComponent(sel.value))
+        .then(function (d) {
+          var row = (d.exists ? d.row : (d.inherited || {})) || {};
+          document.getElementById('hp-enabled').checked = d.exists ? !!row.enabled : true;
+          document.getElementById('hp-surface').value = row.home_surface || 'network';
+          hpState.cities = d.cities || [];
+          hpState.featured = (row.featured_city_slugs || []).slice();
+          var secs = (row.sections && row.sections.length ? row.sections : ((d.defaults && d.defaults.sections) || []));
+          hpState.sections = secs.map(function (s) { return { key: s.key, enabled: s.enabled !== false }; });
+          document.getElementById('hp-hero-headline').value = row.hero_headline || '';
+          document.getElementById('hp-hero-subheadline').value = row.hero_subheadline || '';
+          document.getElementById('hp-hero-image').value = row.hero_image_url || '';
+          document.getElementById('hp-hero-cta-text').value = row.hero_cta_text || '';
+          document.getElementById('hp-hero-cta-url').value = row.hero_cta_url || '';
+          document.getElementById('hp-ann-text').value = row.announcement_text || '';
+          document.getElementById('hp-ann-cta-text').value = row.announcement_cta_text || '';
+          document.getElementById('hp-ann-cta-url').value = row.announcement_cta_url || '';
+          hpFillCities();
+          document.getElementById('hp-city').value = row.home_city_slug || '';
+          hpSurface();
+          hpRenderSections();
+          hpRenderFeatured();
+          var note = d.exists ? 'Saved for ' : (d.inherited ? 'No own settings — inherits the network. Save to override. ' : 'No settings yet — defaults shown for ');
+          hpStatus(note + (d.scope || ''), true);
+        })
+        .catch(function (e) { hpStatus('Load failed: ' + e.message, false); });
+    }
+
+    function hpSave() {
+      var scopeEl = document.getElementById('hp-scope');
+      var sel = document.getElementById('hp-target');
+      if (!scopeEl || !sel || !sel.value) { hpStatus('Pick a scope and a target first', false); return; }
+      var body = {
+        scope: scopeEl.value,
+        id: sel.value,
+        enabled: document.getElementById('hp-enabled').checked,
+        home_surface: document.getElementById('hp-surface').value,
+        home_city_slug: document.getElementById('hp-city').value || null,
+        hero_headline: document.getElementById('hp-hero-headline').value,
+        hero_subheadline: document.getElementById('hp-hero-subheadline').value,
+        hero_image_url: document.getElementById('hp-hero-image').value,
+        hero_cta_text: document.getElementById('hp-hero-cta-text').value,
+        hero_cta_url: document.getElementById('hp-hero-cta-url').value,
+        announcement_text: document.getElementById('hp-ann-text').value,
+        announcement_cta_text: document.getElementById('hp-ann-cta-text').value,
+        announcement_cta_url: document.getElementById('hp-ann-cta-url').value,
+        featured_city_slugs: hpState.featured,
+        sections: hpState.sections
+      };
+      hpStatus('Saving…', true);
+      apiPut('/homepage-config/settings', body)
+        .then(function () {
+          hpStatus('Saved — the homepage now serves this configuration.', true);
+          showToast('Homepage saved');
+          hpLoad();
+        })
+        .catch(function (e) { hpStatus('Save failed: ' + e.message, false); });
+    }
+
+    window.__hpScopeChange = hpScopeChange;
+    window.__hpLoad = hpLoad;
+    window.__hpSave = hpSave;
+    window.__hpSurface = hpSurface;
+    window.__hpToggle = hpToggle;
+    window.__hpMove = hpMove;
+    window.__hpFeature = hpFeature;
+    window.__hpUnfeature = hpUnfeature;
+
     Promise.all([
       apiGet('/networks').catch(function () { return []; }),
       apiGet('/directories').catch(function () { return []; })
@@ -3236,6 +3478,8 @@
       lmFillTargets();
       lmLoad();
       rfFillDirs();
+      hpFillTargets();
+      hpLoad();
     });
 
     window.__emLoad = loadEmailSettings;

@@ -670,6 +670,31 @@ async function loadLoyalty(dirId){
     return (d&&d.enabled)?d:null
   }catch(e){ return null }
 }
+// ── Homepage configuration (card B86) ────────────────────────────────────────────────────
+// What the root URL serves — surface, hero, announcement banner, section order and highlighted
+// cities — resolved by the back end (GET /homepage/config) directory -> network -> defaults. The
+// homepage belongs to the network (or a standalone directory), never a city. Fails silent: a
+// missing config leaves the built-in homepage untouched.
+async function loadHomeConfig(dirId){
+  try{
+    var q=dirId?('?directory_id='+encodeURIComponent(dirId)):''
+    var d=await g('/homepage/config'+q)
+    return (d&&d.enabled!==false)?d:null
+  }catch(e){ return null }
+}
+function hpCfg(){ return state.homeConfig||{} }
+function hpAnnounceHtml(){
+  var a=hpCfg().announcement||{}
+  if(!a.text)return ''
+  var cta=a.cta_text?('<a href="'+esc(a.cta_url||'#')+'" style="color:#fff;font-weight:700;text-decoration:underline;margin-left:8px">'+esc(a.cta_text)+' →</a>'):''
+  return '<div style="background:linear-gradient(90deg,#0d9488,#134e4a);color:#fff;text-align:center;padding:10px 16px;font-size:.9rem">'+esc(a.text)+cta+'</div>'
+}
+function hpOrderSections(map,fallbackOrder){
+  var c=hpCfg()
+  var order=(c.sections&&c.sections.length?c.sections:[]).filter(function(s){return s.enabled!==false}).map(function(s){return s.key})
+  if(!order.length)order=fallbackOrder
+  return order.map(function(k){return map[k]||''}).join('')
+}
 function loyaltySectionHtml(){
   var L=state.loyalty
   if(!L||!L.enabled)return ''
@@ -1343,6 +1368,7 @@ async function loadHomepage(){
     state.homepageData=d
   }
   state.loyalty=await loadLoyalty(null)
+  state.homeConfig=await loadHomeConfig(null)
   renderHomepageContent(d)
   // Load ads + ticker after homepage renders
   var firstCity=d.cities&&d.cities.length?d.cities[0]:null;
@@ -1362,6 +1388,17 @@ function renderHomepageContent(d){
   var activity=d.recent_activity||[]
   var stats=d.stats||{total_businesses:0,total_cities:0,total_reviews:0}
   var cats=d.category_pills||[]
+  // Card B86: highlighted cities lead the grid, in the admin's chosen order; the rest follow
+  // alphabetically. The list is resolved by the back end (homepage/config), never hardcoded.
+  var hpc=hpCfg()
+  if(hpc.cities&&hpc.cities.length){
+    var _list=hpc.cities.map(function(c){return c.slug})
+    if(hpc.home_surface==='city'&&hpc.home_city_slug){
+      _list=[hpc.home_city_slug].concat(_list.filter(function(s){return s!==hpc.home_city_slug}))
+    }
+    var _ord={};_list.forEach(function(s,i){_ord[s]=i})
+    cities=cities.slice().sort(function(a,b){var ai=_ord[a.slug],bi=_ord[b.slug];if(ai==null)ai=9999;if(bi==null)bi=9999;return ai-bi||String(a.name||'').localeCompare(String(b.name||''))})
+  }
   var totalBiz=stats.total_businesses||cities.reduce((s,c)=>s+(c.business_count||0),0)
   var totalCities=stats.total_cities||cities.length
   var totalReviews=stats.total_reviews||0
@@ -1375,11 +1412,19 @@ function renderHomepageContent(d){
     catPills+=esc(ct.name)+'</a>'
   }
 
+  var hc=(hpCfg().hero||{})
+  var heroH1=hc.headline?('<h1>'+esc(hc.headline)+'</h1>'):'<h1>Discover & Support <span>Your Local Community</span></h1>'
+  var heroSub=hc.subheadline?('<p>'+esc(hc.subheadline)+'</p>'):'<p>Find the best local businesses, deals, and events in your neighborhood. ZaarHub connects you with the spots that make your community thrive.</p>'
+  var heroCta=hc.cta_text?('<div style="margin-top:14px"><a href="'+esc(hc.cta_url||'#')+'" style="display:inline-block;padding:11px 26px;background:var(--secondary);color:#fff;border-radius:100px;font-weight:700;text-decoration:none">'+esc(hc.cta_text)+'</a></div>'):''
+  var heroBg=hc.image_url?(' style="background-image:linear-gradient(rgba(15,23,42,.55),rgba(15,23,42,.65)),url(\''+esc(hc.image_url)+'\');background-size:cover;background-position:center"'):''
+  var heroBadge=(hpc.home_surface==='city'&&hpc.home_city_slug)?('<a href="/'+esc(hpc.home_city_slug)+'" style="display:inline-block;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:100px;padding:3px 12px;font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px;color:#fff;text-decoration:none">★ Featured community</a>'):''
   var heroHtml=`
-<div class="zh-hero">
+<div class="zh-hero"${heroBg}>
   <div class="zh-hero-inner">
-    <h1>Discover & Support <span>Your Local Community</span></h1>
-    <p>Find the best local businesses, deals, and events in your neighborhood. ZaarHub connects you with the spots that make your community thrive.</p>
+    ${heroBadge}
+    ${heroH1}
+    ${heroSub}
+    ${heroCta}
     <div class="zh-hero-categories">${catPills||'<a class="zh-hero-cat" href="#/search">🔍 Browse All</a>'}</div>
     <div class="zh-hero-stats">
       <div class="zh-hero-stat"><span class="num">${totalBiz.toLocaleString()}+</span><span class="label">Local Businesses</span></div>
@@ -1510,7 +1555,12 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
   }
 
   var content=document.getElementById('zh-content')
-  content.innerHTML=heroHtml+loyaltySectionHtml()+sectionsHtml+`
+  // Card B86: the section order and visibility are admin-configured; each block below is the
+  // homepage's own component, keyed so the resolved config can hide or reorder it. Falls back to
+  // the built-in order when no config is present.
+  var secSpotlights=sectionsHtml
+  var secLoyalty=loyaltySectionHtml()
+  var secCities=`
 <div class="zh-section">
   <div class="zh-section-inner">
     <div class="zh-section-header">
@@ -1518,8 +1568,8 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
     </div>
     <div class="zh-city-grid">${cityCards||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No communities available yet</div>'}</div>
   </div>
-</div>`+
-(deals.length?`
+</div>`
+  var secDeals=(deals.length?`
 <div class="zh-section" style="background:var(--primary-light)">
   <div class="zh-section-inner">
     <div class="zh-section-header">
@@ -1528,8 +1578,8 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
     </div>
     <div class="zh-deals-scroll">${dealsHtml||'<div style="flex:1;text-align:center;padding:40px;color:var(--text-light)">No deals available</div>'}</div>
   </div>
-</div>`:'')+
-(activity.length?`
+</div>`:'')
+  var secBuzz=(activity.length?`
 <div class="zh-section">
   <div class="zh-section-inner">
     <div class="zh-section-header">
@@ -1537,8 +1587,8 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
     </div>
     <div class="zh-activity-list">${activityHtml}</div>
   </div>
-</div>`:'')+
-(events.length?`
+</div>`:'')
+  var secEvents=(events.length?`
 <div class="zh-section" style="background:var(--primary-light)">
   <div class="zh-section-inner">
     <div class="zh-section-header">
@@ -1547,15 +1597,15 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
     </div>
     <div class="zh-event-grid">${eventsHtml}</div>
   </div>
-</div>`:'')+
-`
+</div>`:'')
+  var secCtaJoin=`
 <div class="zh-owner-cta" style="margin-bottom:16px">
   <h2>🙋 Join Your Local Community</h2>
   <p style="color:#94a3b8;font-size:.95rem;max-width:500px;margin:8px auto 20px">Save your favorite spots, write reviews, get deals, and stay connected to what's happening in your neighborhood.</p>
   <a href="/visitor" class="zh-btn-primary" style="display:inline-block;padding:12px 28px;background:var(--secondary);color:#fff;border-radius:100px;font-weight:700">📝 Create Your Free Account →</a>
   <p style="margin-top:12px"><a href="/visitor" style="color:rgba(255,255,255,.7);font-size:.85rem">Already have an account? Sign In</a></p>
-</div>
-
+</div>`
+  var secCtaOwner=`
 <div class="zh-owner-cta">
   <h2>📈 Grow Your Local Presence with ZaarHub</h2>
   <div class="zh-owner-cta-features">
@@ -1566,6 +1616,8 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
   <p class="count">Join <strong>${totalBiz.toLocaleString()}</strong> businesses already on the network</p>
   <a href="/portal" class="zh-btn-primary">🚀 Claim Your Free Listing →</a>
 </div>`
+  var hpMap={spotlights:secSpotlights,loyalty:secLoyalty,cities:secCities,deals:secDeals,buzz:secBuzz,events:secEvents,cta_join:secCtaJoin,cta_owner:secCtaOwner}
+  content.innerHTML=hpAnnounceHtml()+heroHtml+hpOrderSections(hpMap,['spotlights','loyalty','cities','deals','buzz','events','cta_join','cta_owner'])
 }
 
 // ── City View (List/Map/Split) ──
