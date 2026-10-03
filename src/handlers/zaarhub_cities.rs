@@ -172,17 +172,21 @@ pub async fn list_city_listings(
             .bind(city_page_id)
             .fetch_one(&state.db)
             .await?;
-            let order = match params.sort.as_deref() {
-                Some("rating") => "bl.rating DESC NULLS LAST, bl.review_count DESC",
-                Some("name") => "bl.business_name ASC",
-                Some("featured") => "bl.is_featured DESC, bl.rating DESC NULLS LAST",
-                _ => "bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC",
+            // Complete compile-time statements: `sort` is a closed whitelist (the match arms below
+            // are the only sources of the ORDER BY text), so nothing is built at run time
+            // (class-14 paydown, kanban t_3d273da1).
+            let sql: &str = match params.sort.as_deref() {
+                Some("rating") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 ORDER BY bl.rating DESC NULLS LAST, bl.review_count DESC LIMIT $2 OFFSET $3",
+                Some("name") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 ORDER BY bl.business_name ASC LIMIT $2 OFFSET $3",
+                Some("featured") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST LIMIT $2 OFFSET $3",
+                _ => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC LIMIT $2 OFFSET $3",
             };
-            let rows = sqlx::query(&format!(
-                "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 ORDER BY {} LIMIT $2 OFFSET $3", order
-            ))
-            .bind(city_page_id).bind(per_page as i64).bind(offset(page, per_page) as i64)
-            .fetch_all(&state.db).await?;
+            let rows = sqlx::query(sql)
+                .bind(city_page_id)
+                .bind(per_page as i64)
+                .bind(offset(page, per_page) as i64)
+                .fetch_all(&state.db)
+                .await?;
             let total: i64 = count.get("cnt");
             (rows, total)
         }
@@ -191,17 +195,22 @@ pub async fn list_city_listings(
             let count = sqlx::query("SELECT COUNT(*) AS cnt FROM business_listings WHERE city_page_id = $1 AND category = $2")
                 .bind(city_page_id).bind(cat)
                 .fetch_one(&state.db).await?;
-            let order = match params.sort.as_deref() {
-                Some("rating") => "bl.rating DESC NULLS LAST, bl.review_count DESC",
-                Some("name") => "bl.business_name ASC",
-                Some("featured") => "bl.is_featured DESC, bl.rating DESC NULLS LAST",
-                _ => "bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC",
+            // Complete compile-time statements: `sort` is a closed whitelist (the match arms below
+            // are the only sources of the ORDER BY text), so nothing is built at run time
+            // (class-14 paydown, kanban t_3d273da1).
+            let sql: &str = match params.sort.as_deref() {
+                Some("rating") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 ORDER BY bl.rating DESC NULLS LAST, bl.review_count DESC LIMIT $3 OFFSET $4",
+                Some("name") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 ORDER BY bl.business_name ASC LIMIT $3 OFFSET $4",
+                Some("featured") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST LIMIT $3 OFFSET $4",
+                _ => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC LIMIT $3 OFFSET $4",
             };
-            let rows = sqlx::query(&format!(
-                "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 ORDER BY {} LIMIT $3 OFFSET $4", order
-            ))
-            .bind(city_page_id).bind(cat).bind(per_page as i64).bind(offset(page, per_page) as i64)
-            .fetch_all(&state.db).await?;
+            let rows = sqlx::query(sql)
+                .bind(city_page_id)
+                .bind(cat)
+                .bind(per_page as i64)
+                .bind(offset(page, per_page) as i64)
+                .fetch_all(&state.db)
+                .await?;
             let total: i64 = count.get("cnt");
             (rows, total)
         }
@@ -210,17 +219,22 @@ pub async fn list_city_listings(
             let count = sqlx::query("SELECT COUNT(*) AS cnt FROM business_listings WHERE city_page_id = $1 AND (business_name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')")
                 .bind(city_page_id).bind(search)
                 .fetch_one(&state.db).await?;
-            let order = match params.sort.as_deref() {
-                Some("rating") => "bl.rating DESC NULLS LAST, bl.review_count DESC",
-                Some("name") => "bl.business_name ASC",
-                Some("featured") => "bl.is_featured DESC, bl.rating DESC NULLS LAST",
-                _ => "bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC",
+            // Complete compile-time statements: `sort` is a closed whitelist (the match arms below
+            // are the only sources of the ORDER BY text), so nothing is built at run time
+            // (class-14 paydown, kanban t_3d273da1).
+            let sql: &str = match params.sort.as_deref() {
+                Some("rating") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND (bl.business_name ILIKE '%' || $2 || '%' OR bl.description ILIKE '%' || $2 || '%') ORDER BY bl.rating DESC NULLS LAST, bl.review_count DESC LIMIT $3 OFFSET $4",
+                Some("name") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND (bl.business_name ILIKE '%' || $2 || '%' OR bl.description ILIKE '%' || $2 || '%') ORDER BY bl.business_name ASC LIMIT $3 OFFSET $4",
+                Some("featured") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND (bl.business_name ILIKE '%' || $2 || '%' OR bl.description ILIKE '%' || $2 || '%') ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST LIMIT $3 OFFSET $4",
+                _ => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND (bl.business_name ILIKE '%' || $2 || '%' OR bl.description ILIKE '%' || $2 || '%') ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC LIMIT $3 OFFSET $4",
             };
-            let rows = sqlx::query(&format!(
-                "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND (bl.business_name ILIKE '%' || $2 || '%' OR bl.description ILIKE '%' || $2 || '%') ORDER BY {} LIMIT $3 OFFSET $4", order
-            ))
-            .bind(city_page_id).bind(search).bind(per_page as i64).bind(offset(page, per_page) as i64)
-            .fetch_all(&state.db).await?;
+            let rows = sqlx::query(sql)
+                .bind(city_page_id)
+                .bind(search)
+                .bind(per_page as i64)
+                .bind(offset(page, per_page) as i64)
+                .fetch_all(&state.db)
+                .await?;
             let total: i64 = count.get("cnt");
             (rows, total)
         }
@@ -230,17 +244,23 @@ pub async fn list_city_listings(
             let count = sqlx::query("SELECT COUNT(*) AS cnt FROM business_listings WHERE city_page_id = $1 AND category = $2 AND (business_name ILIKE '%' || $3 || '%' OR description ILIKE '%' || $3 || '%')")
                 .bind(city_page_id).bind(cat).bind(search)
                 .fetch_one(&state.db).await?;
-            let order = match params.sort.as_deref() {
-                Some("rating") => "bl.rating DESC NULLS LAST, bl.review_count DESC",
-                Some("name") => "bl.business_name ASC",
-                Some("featured") => "bl.is_featured DESC, bl.rating DESC NULLS LAST",
-                _ => "bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC",
+            // Complete compile-time statements: `sort` is a closed whitelist (the match arms below
+            // are the only sources of the ORDER BY text), so nothing is built at run time
+            // (class-14 paydown, kanban t_3d273da1).
+            let sql: &str = match params.sort.as_deref() {
+                Some("rating") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 AND (bl.business_name ILIKE '%' || $3 || '%' OR bl.description ILIKE '%' || $3 || '%') ORDER BY bl.rating DESC NULLS LAST, bl.review_count DESC LIMIT $4 OFFSET $5",
+                Some("name") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 AND (bl.business_name ILIKE '%' || $3 || '%' OR bl.description ILIKE '%' || $3 || '%') ORDER BY bl.business_name ASC LIMIT $4 OFFSET $5",
+                Some("featured") => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 AND (bl.business_name ILIKE '%' || $3 || '%' OR bl.description ILIKE '%' || $3 || '%') ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST LIMIT $4 OFFSET $5",
+                _ => "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 AND (bl.business_name ILIKE '%' || $3 || '%' OR bl.description ILIKE '%' || $3 || '%') ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.business_name ASC LIMIT $4 OFFSET $5",
             };
-            let rows = sqlx::query(&format!(
-                "SELECT bl.* FROM business_listings bl WHERE bl.city_page_id = $1 AND bl.category = $2 AND (bl.business_name ILIKE '%' || $3 || '%' OR bl.description ILIKE '%' || $3 || '%') ORDER BY {} LIMIT $4 OFFSET $5", order
-            ))
-            .bind(city_page_id).bind(cat).bind(search).bind(per_page as i64).bind(offset(page, per_page) as i64)
-            .fetch_all(&state.db).await?;
+            let rows = sqlx::query(sql)
+                .bind(city_page_id)
+                .bind(cat)
+                .bind(search)
+                .bind(per_page as i64)
+                .bind(offset(page, per_page) as i64)
+                .fetch_all(&state.db)
+                .await?;
             let total: i64 = count.get("cnt");
             (rows, total)
         }

@@ -1107,9 +1107,10 @@ pub async fn search_businesses(
     )> = {
         let (city_param, category_param) = (query.city.clone(), query.category.clone());
 
-        // Build base query
-        let mut sql = String::from(
-            r#"SELECT b.id, b.name, b.slug, b.description, b.rating, b.review_count, 
+        // Statement text is a compile-time literal; every optional filter is appended as a bind
+        // via QueryBuilder, so no SQL is assembled at run time (class-14 paydown, kanban t_3d273da1).
+        let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+            r#"SELECT b.id, b.name, b.slug, b.description, b.rating, b.review_count,
                       b.phone, b.website, b.address, b.city, b.latitude, b.longitude,
                       d.name as dir_name, d.slug as dir_slug
                FROM businesses b
@@ -1117,87 +1118,78 @@ pub async fn search_businesses(
                WHERE b.is_active = true"#,
         );
 
-        let mut param_count: i32 = 0;
-
         if !search_term.is_empty() && !search_pattern.is_empty() {
-            param_count += 1;
-            sql.push_str(&format!(
-                " AND (b.name ILIKE ${0} OR b.description ILIKE ${0} OR b.city ILIKE ${0} OR b.category_id IN (
-                    SELECT id FROM directory_categories WHERE name ILIKE ${0}
-                ))",
-                param_count
-            ));
+            qb.push(" AND (b.name ILIKE ")
+                .push_bind(search_pattern.clone())
+                .push(" OR b.description ILIKE ")
+                .push_bind(search_pattern.clone())
+                .push(" OR b.city ILIKE ")
+                .push_bind(search_pattern.clone())
+                .push(" OR b.category_id IN (SELECT id FROM directory_categories WHERE name ILIKE ")
+                .push_bind(search_pattern.clone())
+                .push("))");
         }
 
-        if let Some(ref _city) = city_param {
-            param_count += 1;
-            sql.push_str(&format!(" AND d.slug = ${}", param_count));
+        if let Some(ref city) = city_param {
+            qb.push(" AND d.slug = ").push_bind(city.clone());
         }
 
-        if let Some(ref _category) = category_param {
-            param_count += 1;
-            sql.push_str(&format!(
-                " AND b.category_id IN (SELECT id FROM directory_categories WHERE slug = ${})",
-                param_count
-            ));
+        if let Some(ref category) = category_param {
+            qb.push(" AND b.category_id IN (SELECT id FROM directory_categories WHERE slug = ")
+                .push_bind(category.clone())
+                .push(")");
         }
 
-        // Add proximity clause if lat/lng provided — inlined as numeric literals (safe for f64)
+        // Proximity filter: lat/lng/radius are bound, never interpolated into the statement.
         if let Some((lat, lng, radius)) = proximity {
-            sql.push_str(&format!(
-                " AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL
-                  AND (6371000 * acos(cos(radians({lat})) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians({lng})) + sin(radians({lat})) * sin(radians(b.latitude)))) < {radius}",
-                lat = lat, lng = lng, radius = radius
-            ));
+            qb.push(
+                " AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL \
+                 AND (6371000 * acos(cos(radians(",
+            )
+            .push_bind(lat)
+            .push(")) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians(")
+            .push_bind(lng)
+            .push(")) + sin(radians(")
+            .push_bind(lat)
+            .push(")) * sin(radians(b.latitude)))) < ")
+            .push_bind(radius);
         }
 
-        sql.push_str(" ORDER BY ");
+        qb.push(" ORDER BY ");
         if let Some((lat, lng, _radius)) = proximity {
             // Sort by distance ascending when proximity is active
-            sql.push_str(&format!(
-                "(6371000 * acos(cos(radians({lat})) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians({lng})) + sin(radians({lat})) * sin(radians(b.latitude)))) ASC,",
-                lat = lat, lng = lng
-            ));
+            qb.push("(6371000 * acos(cos(radians(")
+                .push_bind(lat)
+                .push(")) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians(")
+                .push_bind(lng)
+                .push(")) + sin(radians(")
+                .push_bind(lat)
+                .push(")) * sin(radians(b.latitude)))) ASC,");
         }
-        sql.push_str(" b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST");
-        sql.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+        qb.push(" b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST");
+        qb.push(" LIMIT ")
+            .push_bind(limit as i64)
+            .push(" OFFSET ")
+            .push_bind(offset as i64);
 
-        // Build query with proper binds (only string params use binds — lat/lng inlined as numeric literals)
-        let mut q = sqlx::query_as::<
-            _,
-            (
-                Uuid,
-                String,
-                String,
-                Option<String>,
-                Option<f64>,
-                Option<i32>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-                Option<f64>,
-                Option<f64>,
-                String,
-                String,
-            ),
-        >(&sql);
-
-        param_count = 0;
-        if !search_term.is_empty() && !search_pattern.is_empty() {
-            param_count += 1;
-            q = q.bind(&search_pattern);
-        }
-        if let Some(ref city) = city_param {
-            param_count += 1;
-            q = q.bind(city);
-        }
-        if let Some(ref category) = category_param {
-            param_count += 1;
-            q = q.bind(category);
-        }
-
-        q.fetch_all(&s.db).await?
+        qb.build_query_as::<(
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<f64>,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<f64>,
+            Option<f64>,
+            String,
+            String,
+        )>()
+        .fetch_all(&s.db)
+        .await?
     };
 
     let results: Vec<Value> = rows
@@ -1717,7 +1709,9 @@ pub async fn list_categories(
     State(s): State<AppState>,
     Query(query): Query<CityFilterQuery>,
 ) -> ApiResult<Json<Vec<ZaarhubCategory>>> {
-    let mut sql = String::from(
+    // Statement text is a compile-time literal; the optional city filter is appended as a bind
+    // via QueryBuilder, so no SQL is assembled at run time (class-14 paydown, kanban t_3d273da1).
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"WITH dir_categories AS (
             SELECT DISTINCT c.name AS category_name, c.icon, d.id AS dir_id
             FROM directory_categories c
@@ -1727,11 +1721,11 @@ pub async fn list_categories(
               AND (d.zaarhub_config->>'network_visible')::boolean = true"#,
     );
 
-    if query.city.is_some() {
-        sql.push_str(" AND d.slug = $1");
+    if let Some(ref city) = query.city {
+        qb.push(" AND d.slug = ").push_bind(city.clone());
     }
 
-    sql.push_str(
+    qb.push(
         r#"
         )
         SELECT category_name, MAX(icon) as icon, COUNT(DISTINCT dir_id) as directory_count
@@ -1747,11 +1741,10 @@ pub async fn list_categories(
           directory_count DESC, category_name ASC"#,
     );
 
-    let rows: Vec<(String, Option<String>, i64)> = if let Some(ref city) = query.city {
-        sqlx::query_as(&sql).bind(city).fetch_all(&s.db).await?
-    } else {
-        sqlx::query_as(&sql).fetch_all(&s.db).await?
-    };
+    let rows: Vec<(String, Option<String>, i64)> = qb
+        .build_query_as::<(String, Option<String>, i64)>()
+        .fetch_all(&s.db)
+        .await?;
 
     let categories: Vec<ZaarhubCategory> = rows
         .into_iter()
@@ -1781,49 +1774,44 @@ pub async fn list_featured_deals(
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = (page - 1) * limit;
 
-    let mut base_sql = String::from(
-        r#"FROM deals de
+    // Statement text is a compile-time literal; the optional city filter is appended as a bind,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_3d273da1).
+    const DEALS_PREDICATE: &str = r#"FROM deals de
            JOIN businesses b ON b.id = de.business_id
            JOIN directories d ON d.id = de.directory_id
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
              AND (d.zaarhub_config->>'show_deals')::boolean = true
-             AND (d.zaarhub_config->>'network_visible')::boolean = true"#,
-    );
-
-    let mut param_idx = 0;
-    if query.city.is_some() {
-        param_idx += 1;
-        base_sql.push_str(&format!(" AND d.slug = ${}", param_idx));
-    }
-
-    // Count total
-    let count_sql = format!("SELECT COUNT(*) {}", base_sql);
-    let total: i64 = if let Some(ref city) = query.city {
-        sqlx::query_scalar(&count_sql)
-            .bind(city)
-            .fetch_one(&s.db)
-            .await
-            .unwrap_or(0)
-    } else {
-        sqlx::query_scalar(&count_sql)
-            .fetch_one(&s.db)
-            .await
-            .unwrap_or(0)
-    };
-
-    // Fetch page
-    let data_sql = format!(
-        r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price,
+             AND (d.zaarhub_config->>'network_visible')::boolean = true"#;
+    const DEALS_COLUMNS: &str = r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price,
                   de.discount_percent, de.image_url, b.name as biz_name, b.slug as biz_slug,
                   d.slug as dir_slug, d.city as dir_city, de.end_date, de.zaarhub_featured,
                   dc.name as business_category, dc.slug as business_category_slug
-           {}
-           ORDER BY de.created_at DESC
-           LIMIT {} OFFSET {}"#,
-        base_sql, limit, offset
-    );
+           "#;
+
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(*) ");
+    count_qb.push(DEALS_PREDICATE);
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(DEALS_COLUMNS);
+    data_qb.push(DEALS_PREDICATE);
+    if let Some(ref city) = query.city {
+        count_qb.push(" AND d.slug = ").push_bind(city.clone());
+        data_qb.push(" AND d.slug = ").push_bind(city.clone());
+    }
+
+    // Count total
+    let total: i64 = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+
+    // Fetch page
+    data_qb
+        .push("\n           ORDER BY de.created_at DESC\n           LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
     let deals: Vec<(
         Uuid,
@@ -1841,14 +1829,7 @@ pub async fn list_featured_deals(
         Option<bool>,
         Option<String>,
         Option<String>,
-    )> = if let Some(ref city) = query.city {
-        sqlx::query_as(&data_sql)
-            .bind(city)
-            .fetch_all(&s.db)
-            .await?
-    } else {
-        sqlx::query_as(&data_sql).fetch_all(&s.db).await?
-    };
+    )> = data_qb.build_query_as().fetch_all(&s.db).await?;
 
     let deal_list: Vec<Value> = deals
         .into_iter()
@@ -1908,48 +1889,43 @@ pub async fn list_featured_events(
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = (page - 1) * limit;
 
-    let mut base_sql = String::from(
-        r#"FROM community_events e
+    // Statement text is a compile-time literal; the optional city filter is appended as a bind,
+    // so nothing is assembled at run time (class-14 paydown, kanban t_3d273da1).
+    const EVENTS_PREDICATE: &str = r#"FROM community_events e
            LEFT JOIN businesses b ON b.id = e.business_id
            JOIN directories d ON d.id = e.directory_id
            WHERE e.status = 'active'
              AND e.zaarhub_featured = true
              AND (d.zaarhub_config->>'show_events')::boolean = true
-             AND (d.zaarhub_config->>'network_visible')::boolean = true"#,
-    );
-
-    let mut param_idx = 0;
-    if query.city.is_some() {
-        param_idx += 1;
-        base_sql.push_str(&format!(" AND d.slug = ${}", param_idx));
-    }
-
-    // Count total
-    let count_sql = format!("SELECT COUNT(*) {}", base_sql);
-    let total: i64 = if let Some(ref city) = query.city {
-        sqlx::query_scalar(&count_sql)
-            .bind(city)
-            .fetch_one(&s.db)
-            .await
-            .unwrap_or(0)
-    } else {
-        sqlx::query_scalar(&count_sql)
-            .fetch_one(&s.db)
-            .await
-            .unwrap_or(0)
-    };
-
-    // Fetch page
-    let data_sql = format!(
-        r#"SELECT e.id, e.title, e.description, e.event_date, e.location,
+             AND (d.zaarhub_config->>'network_visible')::boolean = true"#;
+    const EVENTS_COLUMNS: &str = r#"SELECT e.id, e.title, e.description, e.event_date, e.location,
                   e.image_url, b.name as biz_name, b.slug as biz_slug,
                   d.slug as dir_slug, d.city as dir_city,
                   (SELECT COUNT(*) FROM event_rsvps r WHERE r.event_id = e.id) as rsvp_count
-           {}
-           ORDER BY e.event_date ASC
-           LIMIT {} OFFSET {}"#,
-        base_sql, limit, offset
-    );
+           "#;
+
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(*) ");
+    count_qb.push(EVENTS_PREDICATE);
+    let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(EVENTS_COLUMNS);
+    data_qb.push(EVENTS_PREDICATE);
+    if let Some(ref city) = query.city {
+        count_qb.push(" AND d.slug = ").push_bind(city.clone());
+        data_qb.push(" AND d.slug = ").push_bind(city.clone());
+    }
+
+    // Count total
+    let total: i64 = count_qb
+        .build_query_scalar::<i64>()
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+
+    // Fetch page
+    data_qb
+        .push("\n           ORDER BY e.event_date ASC\n           LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
     let events: Vec<(
         Uuid,
@@ -1963,14 +1939,7 @@ pub async fn list_featured_events(
         String,
         Option<String>,
         Option<i64>,
-    )> = if let Some(ref city) = query.city {
-        sqlx::query_as(&data_sql)
-            .bind(city)
-            .fetch_all(&s.db)
-            .await?
-    } else {
-        sqlx::query_as(&data_sql).fetch_all(&s.db).await?
-    };
+    )> = data_qb.build_query_as().fetch_all(&s.db).await?;
 
     let event_list: Vec<Value> = events
         .into_iter()
