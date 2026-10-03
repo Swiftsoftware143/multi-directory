@@ -20,9 +20,12 @@ use crate::AppState;
 pub struct SearchQuery {
     pub q: Option<String>,
     pub directory: Option<Uuid>,
-    /// Legacy: matches category name directly (old join on b.category_id)
+    /// Category filter. Matches, case-insensitively, the primary category of a business
+    /// (`businesses.category_id` -> `directory_categories`) by category GROUP name, category
+    /// name, or slug, plus any multi-category assignment in `business_categories`.
     pub category: Option<String>,
-    /// Phase 2: filter by subcategory name through business_categories join
+    /// Subcategory filter. Same shape, narrowed to the category itself (name or slug) rather
+    /// than its group, plus any multi-category assignment in `business_categories`.
     pub subcategory: Option<String>,
     pub city: Option<String>,
     pub state: Option<String>,
@@ -131,8 +134,10 @@ pub struct SearchResponse<T: Serialize> {
 // --- GET /api/v1/search ---
 
 /// Searches businesses with optional subcategory/category filtering.
-/// Phase 2: supports `?subcategory=` (filters by name via business_categories)
-/// and `?category=` (filters by group_name via business_categories).
+/// `businesses.category_id` (the populated source of truth) is what the filters match against;
+/// the `business_categories` join table is an ADDITIONAL multi-category match for both
+/// `?category=` and `?subcategory=` (t_e3686bda: the populate path is the admin multi-category
+/// editor, it holds 1 row in production, and it must never be the only way to match).
 /// Results include multi-category assignments in the `categories` field.
 pub async fn search_businesses(
     State(s): State<AppState>,
@@ -151,7 +156,7 @@ pub async fn search_businesses(
     // --- Count query ---
     let mut count_qb =
         sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT COUNT(DISTINCT b.id) FROM businesses b");
-    push_search_joins(&mut count_qb, has_subcat_filter, has_cat_filter);
+    push_search_joins(&mut count_qb);
     push_search_where(&mut count_qb, &qs, has_subcat_filter, has_cat_filter, has_q);
 
     let total: i64 = count_qb
@@ -186,7 +191,7 @@ pub async fn search_businesses(
     );
     data_qb.push(categories_subquery);
     data_qb.push(" AS categories FROM businesses b");
-    push_search_joins(&mut data_qb, has_subcat_filter, has_cat_filter);
+    push_search_joins(&mut data_qb);
     data_qb.push(" LEFT JOIN directories d ON b.directory_id = d.id");
     push_search_where(&mut data_qb, &qs, has_subcat_filter, has_cat_filter, has_q);
     // The full-text ORDER BY needs one more bind of the same query text than the WHERE uses.
@@ -224,27 +229,27 @@ pub async fn search_businesses(
     })))
 }
 
-/// The JOIN set shared by the count and data statements of `search_businesses`: the category
-/// join, plus — when a subcategory/category filter is active — the `business_categories` filter
-/// join. Every fragment is a compile-time literal; nothing here is built at run time.
-fn push_search_joins(
-    qb: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>,
-    has_subcat_filter: bool,
-    has_cat_filter: bool,
-) {
+/// The JOIN set shared by the count and data statements of `search_businesses`: the primary
+/// category of the business, used both for the result's `category` column and by the category
+/// filters. The filters themselves are self-contained predicates in `push_search_where` (a
+/// JOIN-based filter multiplied/dropped rows against a join table that holds 1 row in
+/// production — t_e3686bda), so this function is unconditional. Every fragment is a
+/// compile-time literal; nothing here is built at run time.
+fn push_search_joins(qb: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>) {
     qb.push(" LEFT JOIN directory_categories cat ON b.category_id = cat.id");
-    if has_subcat_filter || has_cat_filter {
-        qb.push(
-            " JOIN business_categories bc_filter ON bc_filter.business_id = b.id \
-             JOIN directory_categories dc_filter ON dc_filter.id = bc_filter.category_id",
-        );
-    }
 }
 
-/// Push ` WHERE …` for `search_businesses`, keeping the predicate order (and therefore the bind
-/// order) the hand-built version used. Every fragment is a compile-time literal; only the filter
-/// VALUES are bound. `qs.directory`/`qs.subcategory`/`qs.category`/`qs.business_type` are read
-/// only in the branches that already established they are present and non-empty.
+/// Push ` WHERE …` for `search_businesses`. Every fragment is a compile-time literal; only the
+/// filter VALUES are bound. `qs.directory`/`qs.subcategory`/`qs.category`/`qs.business_type`
+/// are read only in the branches that already established they are present and non-empty.
+///
+/// The two category predicates match against `businesses.category_id` (the populated source of
+/// truth: 3 738 of 4 004 businesses live) and additionally against the `business_categories`
+/// multi-category table via `EXISTS`, so a business with only a primary category and one with
+/// extra assignments both match. `?subcategory=` is the category itself (name or slug);
+/// `?category=` is the category GROUP (name or slug), which is what the public city pills and
+/// the grouped category dropdown carry. An unknown value matches nothing — there is no
+/// unfiltered fallback.
 fn push_search_where<'a>(
     qb: &mut sqlx::QueryBuilder<'a, sqlx::Postgres>,
     qs: &'a SearchQuery,
@@ -260,17 +265,45 @@ fn push_search_where<'a>(
             qb.push(" AND ");
         }
         first = false;
-        qb.push("LOWER(dc_filter.name) = LOWER(")
-            .push_bind(qs.subcategory.as_deref())
-            .push(")");
-    } else if has_cat_filter {
+        let sub = qs.subcategory.as_deref();
+        qb.push("(LOWER(COALESCE(cat.name, '')) = LOWER(")
+            .push_bind(sub)
+            .push(") OR LOWER(COALESCE(cat.slug, '')) = LOWER(")
+            .push_bind(sub)
+            .push(
+                ") OR EXISTS (SELECT 1 FROM business_categories bc_f \
+                 JOIN directory_categories dc_f ON dc_f.id = bc_f.category_id \
+                 WHERE bc_f.business_id = b.id AND (LOWER(dc_f.name) = LOWER(",
+            )
+            .push_bind(sub)
+            .push(") OR LOWER(dc_f.slug) = LOWER(")
+            .push_bind(sub)
+            .push("))))");
+    }
+
+    if has_cat_filter {
         if !first {
             qb.push(" AND ");
         }
         first = false;
-        qb.push("LOWER(COALESCE(dc_filter.group_name, '')) = LOWER(")
-            .push_bind(qs.category.as_deref())
-            .push(")");
+        let grp = qs.category.as_deref();
+        qb.push("(LOWER(COALESCE(cat.group_name, '')) = LOWER(")
+            .push_bind(grp)
+            .push(") OR LOWER(COALESCE(cat.name, '')) = LOWER(")
+            .push_bind(grp)
+            .push(") OR LOWER(COALESCE(cat.slug, '')) = LOWER(")
+            .push_bind(grp)
+            .push(
+                ") OR EXISTS (SELECT 1 FROM business_categories bc_f \
+                 JOIN directory_categories dc_f ON dc_f.id = bc_f.category_id \
+                 WHERE bc_f.business_id = b.id AND (LOWER(COALESCE(dc_f.group_name, '')) = LOWER(",
+            )
+            .push_bind(grp)
+            .push(") OR LOWER(COALESCE(dc_f.name, '')) = LOWER(")
+            .push_bind(grp)
+            .push(") OR LOWER(COALESCE(dc_f.slug, '')) = LOWER(")
+            .push_bind(grp)
+            .push("))))");
     }
 
     if qs.directory.is_some() {
