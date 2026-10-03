@@ -679,30 +679,53 @@ pub async fn execute_settlement(
         });
     }
 
-    // Claim the period. DO NOTHING on conflict => re-runs cannot double-bill.
-    let inserted: Option<Uuid> = sqlx::query_scalar(
-        "INSERT INTO settlement_runs \
-            (network_id, period_start, period_end, period_key, status, currency, \
-             rate_issue_per_point, rate_redeem_per_point, min_payout_cents, cycle_day, \
-             created_by, notes, triggered_by) \
-         VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11, $12) \
-         ON CONFLICT (network_id, period_start, period_end) DO NOTHING \
+    // Recover a run that crashed mid-flight. A row left in 'processing' with no
+    // completed_at would otherwise lock the period FOREVER: the unique key makes the
+    // INSERT below a no-op, so every retry returns the dead run and that month can
+    // never be billed. Reclaiming is safe — the invoice and payout inserts are all
+    // ON CONFLICT DO NOTHING, so re-processing a period cannot double-bill. The age
+    // guard (30 min) protects a genuinely in-flight run by another worker.
+    let reclaimed: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE settlement_runs SET status = 'processing', completed_at = NULL \
+         WHERE network_id = $1 AND period_start = $2 AND period_end = $3 \
+           AND status = 'processing' AND completed_at IS NULL \
+           AND created_at < NOW() - INTERVAL '30 minutes' \
          RETURNING id",
     )
     .bind(network_id)
     .bind(start)
     .bind(end)
-    .bind(period_key(start))
-    .bind(&settings.currency)
-    .bind(settings.issuance_rate)
-    .bind(settings.redemption_rate)
-    .bind(settings.minimum_payout_cents)
-    .bind(settings.cycle_day)
-    .bind(created_by)
-    .bind(&notes)
-    .bind(triggered_by)
     .fetch_optional(db)
     .await?;
+
+    // Claim the period. DO NOTHING on conflict => re-runs cannot double-bill.
+    let inserted: Option<Uuid> = if reclaimed.is_some() {
+        reclaimed
+    } else {
+        sqlx::query_scalar(
+            "INSERT INTO settlement_runs \
+                (network_id, period_start, period_end, period_key, status, currency, \
+                 rate_issue_per_point, rate_redeem_per_point, min_payout_cents, cycle_day, \
+                 created_by, notes, triggered_by) \
+             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11, $12) \
+             ON CONFLICT (network_id, period_start, period_end) DO NOTHING \
+             RETURNING id",
+        )
+        .bind(network_id)
+        .bind(start)
+        .bind(end)
+        .bind(period_key(start))
+        .bind(&settings.currency)
+        .bind(settings.issuance_rate)
+        .bind(settings.redemption_rate)
+        .bind(settings.minimum_payout_cents)
+        .bind(settings.cycle_day)
+        .bind(created_by)
+        .bind(&notes)
+        .bind(triggered_by)
+        .fetch_optional(db)
+        .await?
+    };
 
     let Some(run_id) = inserted else {
         // Period already settled — return the existing run, do not touch the ledger.
@@ -738,6 +761,18 @@ pub async fn execute_settlement(
         });
     };
 
+    // A reclaimed run may carry partial rows from the crash that stranded it; clear
+    // them so regenerating cannot double-bill. Safe because we hold the claim, and a
+    // freshly inserted run has none.
+    sqlx::query("DELETE FROM settlement_invoices WHERE run_id = $1")
+        .bind(run_id)
+        .execute(db)
+        .await?;
+    sqlx::query("DELETE FROM settlement_payouts WHERE run_id = $1")
+        .bind(run_id)
+        .execute(db)
+        .await?;
+
     let (invoices, payouts, pts_issued, pts_redeemed, invoiced, payout_total) =
         build_preview(db, network_id, &settings, start, end).await?;
 
@@ -747,7 +782,7 @@ pub async fn execute_settlement(
         sqlx::query(
             "INSERT INTO settlement_invoices \
                 (run_id, business_id, business_name, points_issued, rate_per_point, amount_cents, currency, status, due_date) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', ($8::date + INTERVAL '30 days')::date) \
+             VALUES ($1, (SELECT id FROM businesses WHERE id = $2), $3, $4, $5, $6, $7, 'pending', ($8::date + INTERVAL '30 days')::date) \
              ON CONFLICT (run_id, business_id) DO NOTHING",
         )
         .bind(run_id)
@@ -829,7 +864,7 @@ pub async fn execute_settlement(
             "INSERT INTO settlement_payouts \
                 (run_id, business_id, business_name, points_redeemed, rate_per_point, amount_cents, \
                  currency, status, provider, provider_ref, provider_message, paid_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, \
+             VALUES ($1, (SELECT id FROM businesses WHERE id = $2), $3, $4, $5, $6, $7, $8, $9, $10, $11, \
                      CASE WHEN $8 = 'paid' THEN NOW() ELSE NULL END) \
              ON CONFLICT (run_id, business_id) DO NOTHING",
         )
