@@ -1133,6 +1133,35 @@ pub async fn upgrade_subscription(
         plan.1.try_into().unwrap_or(0.0)
     };
 
+    // SERVER-SIDE GATE (B113). A paid plan may only be activated by a completed checkout —
+    // calling this endpoint directly used to flip any business onto any paid tier for free,
+    // i.e. a fake purchase (the business portal did exactly that). A platform operator is
+    // still allowed to assign or comp a plan by hand; a business owner/claimant is not, and
+    // is told HONESTLY what is missing instead of the plan silently coming on.
+    if price > 0.0 && !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        let configured: Option<(String,)> = sqlx::query_as(
+            "SELECT provider_type FROM payment_providers \
+             WHERE is_active = true AND api_key_encrypted IS NOT NULL AND api_key_encrypted <> '' \
+             ORDER BY provider_type LIMIT 1",
+        )
+        .fetch_optional(&s.db)
+        .await?;
+
+        return Err(match configured {
+            None => AppError::BadRequest(
+                "Payments are not configured for this directory yet, so a paid plan cannot be \
+                 purchased. Ask the directory operator to connect a payment provider in the \
+                 admin panel first."
+                    .into(),
+            ),
+            Some(_) => AppError::BadRequest(
+                "Paid plans must be purchased through checkout. Choose the plan in Plan & Billing \
+                 and complete the payment — the plan activates once payment is confirmed."
+                    .into(),
+            ),
+        });
+    }
+
     // business_subscriptions carries tier_id (FK -> plan_tiers.id), price_paid and
     // billing_cycle — there is no plan_name / price / updated_at column, and no unique index
     // on business_id, so the previous INSERT ... ON CONFLICT (business_id) could never work:

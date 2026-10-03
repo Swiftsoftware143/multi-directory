@@ -1294,6 +1294,80 @@ async fn handle_checkout_completed(
         .execute(db)
         .await?;
 
+    // B113: a PAID plan is activated ONLY here, from a completed, provider-verified checkout.
+    // The upgrade endpoint refuses direct paid activation for a business, so this is the single
+    // path that turns money into a plan (and it records the provider session as the payment ref).
+    let sub_session = sqlx::query_as::<_, (String, Option<Uuid>, serde_json::Value)>(
+        "SELECT purchasable_type, business_id, metadata FROM checkout_sessions \
+         WHERE provider_session_id = $1 AND provider_type = $2",
+    )
+    .bind(&provider_session_id)
+    .bind(provider_type)
+    .fetch_optional(db)
+    .await?;
+
+    if let Some((purchasable_type, Some(business_id), meta)) = sub_session {
+        if purchasable_type == "plan_subscription" {
+            if let Some(plan_id) = meta
+                .get("plan_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())
+            {
+                let cycle = meta
+                    .get("billing_cycle")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("monthly");
+                let price: Option<f64> = sqlx::query_as::<_, (f64,)>(
+                    "SELECT (CASE WHEN $2 = 'yearly' THEN price_yearly ELSE price_monthly END)::float8 \
+                     FROM plan_tiers WHERE id = $1",
+                )
+                .bind(plan_id)
+                .bind(cycle)
+                .fetch_optional(db)
+                .await?
+                .map(|r| r.0);
+
+                let updated = sqlx::query(
+                    "UPDATE business_subscriptions SET tier_id = $1, price_paid = $2, \
+                     billing_cycle = $3, status = 'active', \
+                     start_date = COALESCE(start_date, CURRENT_DATE), auto_renew = true, \
+                     external_payment_ref = $4 WHERE business_id = $5",
+                )
+                .bind(plan_id)
+                .bind(price)
+                .bind(cycle)
+                .bind(&provider_session_id)
+                .bind(business_id)
+                .execute(db)
+                .await?;
+
+                if updated.rows_affected() == 0 {
+                    sqlx::query(
+                        "INSERT INTO business_subscriptions \
+                         (id, business_id, tier_id, price_paid, currency, billing_cycle, status, \
+                          start_date, auto_renew, external_payment_ref) \
+                         VALUES ($1, $2, $3, $4, 'USD', $5, 'active', CURRENT_DATE, true, $6)",
+                    )
+                    .bind(Uuid::new_v4())
+                    .bind(business_id)
+                    .bind(plan_id)
+                    .bind(price)
+                    .bind(cycle)
+                    .bind(&provider_session_id)
+                    .execute(db)
+                    .await?;
+                }
+
+                tracing::info!(
+                    business_id = %business_id,
+                    plan_id = %plan_id,
+                    cycle = %cycle,
+                    "subscription activated from completed checkout"
+                );
+            }
+        }
+    }
+
     tracing::info!(
         "Checkout completed: provider_session={}",
         provider_session_id

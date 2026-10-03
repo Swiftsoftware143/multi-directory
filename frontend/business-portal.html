@@ -1081,6 +1081,57 @@ function renderPlans(plans) {
   show('upgradePlans');
 }
 
+// Buy (or switch to) a plan honestly (B113): a PAID plan goes through the directory's configured
+// payment provider's hosted checkout and activates only once the gateway webhook confirms payment;
+// a FREE plan activates directly; and if the directory has no payment provider configured the
+// business is told plainly — never a silent, free upgrade.
+async function buyPlan(plan, bid, cycle) {
+  var price = parseFloat((cycle === 'yearly' ? plan.price_yearly : plan.price_monthly) || 0);
+  var name = plan.name || 'this plan';
+  if (price <= 0) {
+    var r = await po('/subscriptions/upgrade', { business_id: bid, plan_id: plan.id, billing_cycle: cycle });
+    return { ok: true, message: 'Plan changed to ' + (r.plan || name) + '.' };
+  }
+  var d = await g('/payment-providers');
+  var list = (d && (d.providers || d)) || [];
+  var active = list.filter(function (p) { return p.is_active && p.key_status !== 'not_configured'; });
+  if (!active.length) {
+    return { ok: false, message: 'Payments are not set up for this directory yet, so ' + name +
+      ' cannot be purchased. Ask the directory admin to connect a payment provider in the admin panel.' };
+  }
+  var r2 = await po('/checkout/create', {
+    provider_type: active[0].provider_type,
+    purchasable_type: 'plan_subscription',
+    amount: price,
+    currency: 'USD',
+    success_url: window.location.origin + '/thank-you.html',
+    cancel_url: window.location.origin + '/business-portal.html',
+    metadata: { business_id: bid, plan_id: plan.id, plan_name: name, billing_cycle: cycle }
+  });
+  return {
+    ok: true,
+    checkout_url: r2.checkout_url || '',
+    message: 'Checkout created for ' + name + ' ($' + money(price) + (cycle === 'yearly' ? '/yr' : '/mo') +
+      '). Open the payment page and pay — the plan activates once the payment is confirmed.'
+  };
+}
+
+// Render a buyPlan result: into a note element when given, else as an alert.
+function renderPlanResult(noteId, res) {
+  var el = noteId ? document.getElementById(noteId) : null;
+  if (el) {
+    el.style.color = res.ok ? '#16a34a' : '#dc2626';
+    el.textContent = res.message;
+    if (res.checkout_url) {
+      el.insertAdjacentHTML('beforeend',
+        ' <a href="' + esc(res.checkout_url) + '" target="_blank" rel="noopener"><b>Open the payment page →</b></a>');
+    }
+  } else {
+    alert(res.message);
+    if (res.checkout_url) window.open(res.checkout_url, '_blank', 'noopener');
+  }
+}
+
 async function showSubscribe(planIdx) {
   var plans = window._cachedPlans || [];
   var p = plans[planIdx];
@@ -1088,11 +1139,13 @@ async function showSubscribe(planIdx) {
   var sel = document.getElementById('plBiz');
   var bid = (sel && sel.value) || _selectedBizId;
   if (!bid) { alert('No claimed business to change — claim your listing first.'); return; }
-  if (!confirm('Move ' + ((myBiz(bid) || {}).name || 'your business') + ' to the ' + p.name + ' plan ($' + money(p.price_monthly) + '/mo)?')) return;
+  if (parseFloat(p.price_monthly || 0) > 0 &&
+      !confirm('Move ' + ((myBiz(bid) || {}).name || 'your business') + ' to the ' + p.name +
+               ' plan ($' + money(p.price_monthly) + '/mo)? You will be sent to checkout to pay.')) return;
   try {
-    var r = await po('/subscriptions/upgrade', { business_id: bid, plan_id: p.id, billing_cycle: 'monthly' });
-    alert('Plan changed to ' + (r.plan || p.name) + '.');
-    loadDashboard();
+    var res = await buyPlan(p, bid, 'monthly');
+    if (res.ok && !res.checkout_url) { alert(res.message); loadDashboard(); }
+    else { alert(res.message); if (res.checkout_url) window.open(res.checkout_url, '_blank', 'noopener'); }
   } catch (e) { alert('Could not change plan: ' + e.message); }
 }
 
@@ -2068,11 +2121,17 @@ async function changePlan() {
     var mine = myBiz(bid) || {};
     var current = plans.filter(function (p) { return p.name === mine.plan; })[0];
     var goingUp = !current || parseFloat(target.price_monthly || 0) >= parseFloat(current.price_monthly || 0);
+    var cycle = document.getElementById('pl2Cycle').value;
+    // Upgrading to a PAID plan is a purchase: go through the provider's checkout, never a
+    // free activation (B113). Free plans / downgrades stay direct.
+    if (goingUp && parseFloat(target.price_monthly || 0) > 0) {
+      renderPlanResult('pl2Result', await buyPlan(target, bid, cycle));
+      return;
+    }
     var r;
     if (goingUp) {
       r = await po('/subscriptions/upgrade', {
-        business_id: bid, plan_id: targetId,
-        billing_cycle: document.getElementById('pl2Cycle').value
+        business_id: bid, plan_id: targetId, billing_cycle: cycle
       });
     } else {
       r = await po('/subscriptions/downgrade', { business_id: bid, plan_id: targetId });
