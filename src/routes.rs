@@ -2103,6 +2103,17 @@ pub fn create_router(s: AppState) -> Router {
             get(messaging::unread_count),
         )
         .route("/messages/:id/read", patch(messaging::mark_read))
+        // ── ZaarCash loyalty messaging (card B92) ──────────────────────────────────────────
+        // Public read: the homepage and every city page fetch their resolved, honest section
+        // state from here. Admin read/write: operator-guarded (on/off + copy + CTA per network
+        // or per standalone directory — a buyer edits their own programme from the panel).
+        .route("/loyalty/messaging", get(loyalty_messaging::get_messaging))
+        .route(
+            "/loyalty-messaging/settings",
+            get(loyalty_messaging::get_settings)
+                .put(loyalty_messaging::put_settings)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ── Request-body read deadline (kanban t_52b9f3c7) ──────────────────────────────────
         // Mounted INNERMOST: the FIRST layer added to a router is the one closest to the
         // handler, so `auth_guard` (added on the next line, after this one) stays OUTSIDE it.
@@ -3085,6 +3096,9 @@ async fn auth_guard(
             && path.ends_with("/track"))
         // Public review reading — GET only (write/approve/reject stay authenticated)
         || (path == "/reviews" && req.method() == "GET")
+        // ZaarCash loyalty messaging (card B92) — GET only: the homepage and every city page read
+        // their resolved section here. The admin settings surface stays operator-guarded.
+        || (path == "/loyalty/messaging" && req.method() == "GET")
         // Public submit-a-business form — POST only, rate-limited inside the handler
         || (path == "/submissions" && req.method() == "POST")
         // Public payment-confirmation lookup by checkout session id (unguessable id)

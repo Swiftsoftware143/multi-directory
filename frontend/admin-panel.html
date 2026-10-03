@@ -542,6 +542,7 @@
         <a href="#data-enrichment-section">🧭 Data Enrichment</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
         <a href="#plan-tiers-section">💠 Plan Tiers</a>
+        <a href="#loyalty-messaging-section">⭐ ZaarCash Messaging</a>
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
@@ -986,7 +987,44 @@
         <div class="feature-status" id="pt-status"></div>
       </div>
 
-      <!-- 💰 Ad Revenue & Sponsor Creatives (kanban t_14927725) — these two capabilities
+      <!-- ⭐ ZaarCash Loyalty Messaging (card B92) — the loyalty programme is the differentiator
+           the big three don't have, so the section must appear on the homepage AND every city
+           page. This is the control: on/off + copy + CTA, per network or per standalone
+           directory (a buyer edits their own programme from the panel, no SQL). The served
+           "honest state" is decided by the back end from the live programme rates, so the page
+           can never promise earnings that cannot happen, and never says "points". -->
+      <div class="feature-card" id="loyalty-messaging-section">
+        <h3>⭐ ZaarCash Loyalty Messaging</h3>
+        <p class="feature-subtitle">The ZaarCash section shown on the homepage and on every city page. Switch it on or off, edit the copy and the call-to-action. The wording stays honest automatically: while no earning rate is set the section says "how it works", and switches to the earn wording once a rate is set. The currency is never shown as "points".</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Scope
+            <select class="pk-input" id="lm-scope" onchange="window.__lmScopeChange()">
+              <option value="network">Network (all cities)</option>
+              <option value="directory">One directory</option>
+            </select></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Applies to
+            <select class="pk-input" id="lm-target" onchange="window.__lmLoad()"></select></label>
+          <button class="btn btn-ghost btn-sm" onclick="window.__lmLoad()">↻ Reload</button>
+        </div>
+        <label style="font-size:.8rem;display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <input type="checkbox" id="lm-enabled"> Show this section on the homepage and city pages</label>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <label style="font-size:.75rem;flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px">Headline
+            <input class="pk-input" id="lm-headline" placeholder="Earn ZaarCash when you shop local"></label>
+          <label style="font-size:.75rem;flex:1;min-width:200px;display:flex;flex-direction:column;gap:3px">CTA label
+            <input class="pk-input" id="lm-cta-label" placeholder="See how it works"></label>
+          <label style="font-size:.75rem;flex:1;min-width:200px;display:flex;flex-direction:column;gap:3px">CTA link
+            <input class="pk-input" id="lm-cta-url" placeholder="/visitor"></label>
+        </div>
+        <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-top:8px">Subheadline
+          <textarea class="pk-input" id="lm-subheadline" rows="2" placeholder="One balance the whole network accepts — support participating local businesses, then spend your ZaarCash in any city."></textarea></label>
+        <label style="font-size:.8rem;display:flex;align-items:center;gap:6px;margin-top:8px">
+          <input type="checkbox" id="lm-show-earn"> Use the earn wording when a rate is set (untick to always show the "how it works" wording)</label>
+        <div style="margin-top:10px"><button class="btn btn-accent btn-sm" onclick="window.__lmSave()">Save</button></div>
+        <div class="feature-status" id="lm-status"></div>
+      </div>
+
+      <!-- 💰 Ad Revenue &amp; Sponsor Creatives (kanban t_14927725) — these two capabilities
            (GET /earnings/:directory_id, GET|POST /sponsors/:id/creatives) were reachable only
            by curl, then only from the operator console. They are the directory owner's own
            numbers and banners, so the owner gets the controls here. -->
@@ -2820,6 +2858,97 @@
     window.__ptLoad = loadPlanTiers;
     window.__ptSave = ptSave;
     loadPlanTiers();
+
+    // ===== ZaarCash loyalty messaging (card B92) =====
+    // The section copy/CTA/on-off are admin-editable per network or per directory; whether the
+    // served wording promises earnings is decided by the BACK END from the live programme rates,
+    // so the panel only stores intent and never hardcodes a claim.
+    var lmNetworks = [];
+
+    function lmStatus(msg, ok) {
+      var el = document.getElementById('lm-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function lmFillTargets() {
+      var scopeEl = document.getElementById('lm-scope');
+      var sel = document.getElementById('lm-target');
+      if (!scopeEl || !sel) return;
+      var scope = scopeEl.value;
+      var keep = sel.value;
+      sel.innerHTML = '';
+      var rows = scope === 'network' ? lmNetworks : directories;
+      (rows || []).forEach(function (r) {
+        var o = document.createElement('option');
+        o.value = r.id;
+        o.textContent = (r.name || r.slug || r.id) + (scope === 'network' ? '' : ' (' + (r.slug || '') + ')');
+        sel.appendChild(o);
+      });
+      if (keep) sel.value = keep;
+    }
+
+    function lmScopeChange() { lmFillTargets(); lmLoad(); }
+
+    function lmLoad() {
+      var scopeEl = document.getElementById('lm-scope');
+      var sel = document.getElementById('lm-target');
+      if (!scopeEl || !sel || !sel.value) return;
+      var scope = scopeEl.value, id = sel.value;
+      lmStatus('Loading…', true);
+      apiGet('/loyalty-messaging/settings?scope=' + encodeURIComponent(scope) + '&id=' + encodeURIComponent(id))
+        .then(function (d) {
+          var row = d.row || {};
+          document.getElementById('lm-enabled').checked = d.exists ? !!row.enabled : true;
+          document.getElementById('lm-headline').value = row.headline || '';
+          document.getElementById('lm-subheadline').value = row.subheadline || '';
+          document.getElementById('lm-cta-label').value = row.cta_label || '';
+          document.getElementById('lm-cta-url').value = row.cta_url || '';
+          document.getElementById('lm-show-earn').checked = d.exists ? !!row.show_earn_claims : true;
+          lmStatus((d.exists ? 'Saved settings for ' : 'No settings yet — defaults shown for ') + scope +
+                   (d.currency_name ? ' · currency ' + d.currency_name : ''), true);
+        })
+        .catch(function (e) { lmStatus('Load failed: ' + e.message, false); });
+    }
+
+    function lmSave() {
+      var scopeEl = document.getElementById('lm-scope');
+      var sel = document.getElementById('lm-target');
+      if (!scopeEl || !sel || !sel.value) { lmStatus('Pick a scope and a target first', false); return; }
+      var body = {
+        scope: scopeEl.value,
+        id: sel.value,
+        enabled: document.getElementById('lm-enabled').checked,
+        headline: document.getElementById('lm-headline').value,
+        subheadline: document.getElementById('lm-subheadline').value,
+        cta_label: document.getElementById('lm-cta-label').value,
+        cta_url: document.getElementById('lm-cta-url').value,
+        show_earn_claims: document.getElementById('lm-show-earn').checked
+      };
+      lmStatus('Saving…', true);
+      apiPut('/loyalty-messaging/settings', body)
+        .then(function () {
+          lmStatus('Saved — the homepage and every city page now show this.', true);
+          showToast('Loyalty messaging saved');
+        })
+        .catch(function (e) { lmStatus('Save failed: ' + e.message, false); });
+    }
+
+    window.__lmScopeChange = lmScopeChange;
+    window.__lmLoad = lmLoad;
+    window.__lmSave = lmSave;
+
+    Promise.all([
+      apiGet('/networks').catch(function () { return []; }),
+      apiGet('/directories').catch(function () { return []; })
+    ]).then(function (res) {
+      lmNetworks = Array.isArray(res[0]) ? res[0] : ((res[0] && res[0].data) || []);
+      var list = Array.isArray(res[1]) ? res[1] : ((res[1] && res[1].data) || []);
+      if (list.length) directories = list;
+      lmFillTargets();
+      lmLoad();
+    });
 
     window.__emLoad = loadEmailSettings;
     window.__emLoadService = loadEmailServiceStatus;

@@ -658,6 +658,31 @@ a.zh-city-card{display:block;text-decoration:none;color:inherit}
 // ── Helpers ──
 async function g(url){var ctrl=new AbortController();var timer=setTimeout(function(){ctrl.abort()},15000);try{var r=await fetch('/api/v1'+url,{signal:ctrl.signal});if(!r.ok){let e=await r.json().catch(()=>({}));throw new Error(e.message||e.error||'Request failed')}clearTimeout(timer);return r.json()}catch(e){clearTimeout(timer);throw e}}
 function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+// ── ZaarCash loyalty messaging (card B92) ────────────────────────────────────────────────
+// The on/off, the copy, the CTA target AND the honest earn state are all resolved by the back
+// end (GET /loyalty/messaging). The page renders exactly what it is handed, so the homepage and
+// every city page cannot drift and the page can never promise earnings that cannot happen.
+// Fails silent: a missing or broken section never breaks the page.
+async function loadLoyalty(dirId){
+  try{
+    var q=dirId?('?directory_id='+encodeURIComponent(dirId)):''
+    var d=await g('/loyalty/messaging'+q)
+    return (d&&d.enabled)?d:null
+  }catch(e){ return null }
+}
+function loyaltySectionHtml(){
+  var L=state.loyalty
+  if(!L||!L.enabled)return ''
+  return '<div class="zh-section" style="padding-top:24px;padding-bottom:24px">'
+    +'<div class="zh-section-inner">'
+    +'<div class="zh-loyalty-band" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:linear-gradient(135deg,#0d9488 0%,#134e4a 100%);color:#fff;border-radius:16px;padding:22px 26px">'
+    +'<div style="font-size:2.4rem;line-height:1">'+esc(L.currency_icon||'⭐')+'</div>'
+    +'<div style="flex:1;min-width:240px">'
+    +'<h2 class="zh-section-title" style="color:#fff;margin:0 0 6px">'+esc(L.headline)+'</h2>'
+    +'<p style="color:#d1fae5;margin:0 0 14px;font-size:.95rem;max-width:640px">'+esc(L.subheadline)+'</p>'
+    +'<a class="zh-btn-primary" href="'+esc(L.cta_url||'/visitor')+'" style="display:inline-block;padding:10px 22px;background:#fff;color:#0f766e;border-radius:100px;font-weight:700">'+esc(L.cta_label||'See how it works')+' →</a>'
+    +'</div></div></div></div>'
+}
 function $$(s){return document.querySelector(s)}
 function qa(s){return document.querySelectorAll(s)}
 function ac(el,ev,fn){el.addEventListener(ev,fn)}
@@ -1272,6 +1297,7 @@ async function loadHomepage(){
     d={cities:state.cities,featured_deals:[],upcoming_events:[],recent_activity:[],stats:{total_businesses:0,total_cities:0,total_reviews:0},category_pills:[]}
     state.homepageData=d
   }
+  state.loyalty=await loadLoyalty(null)
   renderHomepageContent(d)
   // Load ads + ticker after homepage renders
   var firstCity=d.cities&&d.cities.length?d.cities[0]:null;
@@ -1439,7 +1465,7 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
   }
 
   var content=document.getElementById('zh-content')
-  content.innerHTML=heroHtml+sectionsHtml+`
+  content.innerHTML=heroHtml+loyaltySectionHtml()+sectionsHtml+`
 <div class="zh-section">
   <div class="zh-section-inner">
     <div class="zh-section-header">
@@ -1703,9 +1729,10 @@ async function loadCityPage(){
   if(!slug){renderError('No city selected');return}
   try{
     var d=await g('/zaarhub/cities/'+slug)
+    var dirId=d.directory&&d.directory.id
+    state.loyalty=await loadLoyalty(dirId)
     renderCityPage(d)
     // Load ads for this city
-    var dirId=d.directory&&d.directory.id;
     if(dirId){
       setTimeout(function(){loadAdsForDirectory(dirId, [
         {zoneKey:'sidebar',containerId:'ad-sidebar'},
@@ -1892,6 +1919,7 @@ function renderCityPage(d){
     </div>
   </div>
 </div>
+${loyaltySectionHtml()}
 <div class="zh-city-content" id="zh-city-content">
   <div class="zh-view-toggle">
     <button class="active" data-view="list" onclick="setCityView('list')">📋 List</button>
