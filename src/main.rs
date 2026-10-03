@@ -9,6 +9,7 @@ mod reminders;
 mod auth;
 mod beacon_middleware;
 mod body_deadline;
+mod bootstrap;
 mod brand_theme;
 mod branding_injector;
 mod business_types;
@@ -45,6 +46,21 @@ async fn main() {
         .with_target(true)
         .with_thread_ids(true)
         .init();
+
+    // ── Bootstrap CLI (card B85, handover readiness) ────────────────────────────────────────
+    // Handled BEFORE AppConfig::from_env(), which panics without JWT_SECRET. A buyer who has
+    // just restored the code onto their own server needs exactly these two commands before
+    // there is any app config at all.
+    let cli: Vec<String> = std::env::args().collect();
+    match cli.get(1).map(String::as_str) {
+        Some("migrate") => std::process::exit(bootstrap::run_migrate(&cli[2..]).await),
+        Some("create-admin") => std::process::exit(bootstrap::run_create_admin(&cli[2..]).await),
+        Some("help") | Some("--help") | Some("-h") => {
+            bootstrap::usage();
+            std::process::exit(0);
+        }
+        _ => {}
+    }
 
     let config = config::AppConfig::from_env();
     let pool = db::connect(
