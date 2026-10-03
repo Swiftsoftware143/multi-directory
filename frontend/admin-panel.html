@@ -2079,6 +2079,15 @@
             <option value="unclaimed">Unclaimed — directory listing</option>
           </select>
         </div>
+        <div class="em-field"><label>Lifecycle</label>
+          <select id="bz-lifecycle">
+            <option value="all">All (published + hidden)</option>
+            <option value="active">Published only</option>
+            <option value="hidden">Hidden — drafts + prospects</option>
+            <option value="draft">Drafts</option>
+            <option value="prospect">Prospects</option>
+          </select>
+        </div>
         <div class="em-field"><label>Search</label>
           <input id="bz-q" placeholder="business or owner name, owner email…">
         </div>
@@ -8873,6 +8882,7 @@
       if (!el) return;
       var p = scopeParams();
       p.claim = document.getElementById('bz-claim').value;
+      p.status = document.getElementById('bz-lifecycle').value;
       var q = document.getElementById('bz-q').value.trim(); if (q) p.q = q;
       p.per_page = 100;
       document.getElementById('bz-status').textContent = 'Loading…';
@@ -8883,7 +8893,8 @@
           : 'CoreSwift: <b>not connected</b> — records stay "not synced" until a connection is set up.';
         document.getElementById('bz-summary').innerHTML =
           (c.all || 0) + ' businesses — ' + (c.claimed || 0) + ' claimed, ' +
-          (c.unclaimed || 0) + ' unclaimed across the scope. ' + conn;
+          (c.unclaimed || 0) + ' unclaimed; ' + (c.published || 0) + ' published, ' +
+          (c.drafts || 0) + ' draft, ' + (c.prospects || 0) + ' prospect across the scope. ' + conn;
         var rows = d.rows || [];
         var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
           '<thead><tr><th>Business</th><th>City</th><th>Directory</th><th>Status</th>' +
@@ -8892,24 +8903,36 @@
         rows.forEach(function (r) {
           var badge = r.claimed ? '<span class="badge">claimed</span>'
                     : (r.verified ? '<span class="badge">verified</span>' : 'listed');
+          var lifecycle = String(r.lifecycle || 'active').toLowerCase();
+          var isHidden = lifecycle === 'draft' || lifecycle === 'prospect' || r.is_active === false;
+          var lcBadge = lifecycle === 'draft'
+            ? '<span class="badge" style="background:#7a5c00">draft — hidden</span>'
+            : (lifecycle === 'prospect'
+              ? '<span class="badge" style="background:#0b5c6b">prospect — hidden</span>'
+              : '<span class="badge" style="background:#1b5e20">published</span>');
           var owner = r.owner_name || r.owner_email || '';
           if (r.has_account && !owner) owner = 'linked account';
           if (!r.has_account) owner = '—';
           var sync = '<span class="badge">' + esc(SYNC_LABEL[r.sync_status] || r.sync_status) + '</span>' +
             (r.sync_last_pushed_at ? ' <span style="opacity:.6">' + esc(String(r.sync_last_pushed_at).slice(0, 10)) + '</span>' : '');
-          var view = r.directory_slug
+          var view = (!isHidden && r.directory_slug)
             ? '<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="/' +
               esc(r.directory_slug) + '/businesses/' + esc(r.slug) + '">View</a>'
             : '';
+          var toggle = isHidden
+            ? '<button class="btn btn-accent btn-sm" type="button" data-lc-publish="' + esc(r.id) +
+              '" data-lc-dir="' + esc(r.directory_slug || '') + '">Publish</button>'
+            : '<button class="btn btn-ghost btn-sm" type="button" data-lc-hide="' + esc(r.id) +
+              '" data-lc-dir="' + esc(r.directory_slug || '') + '">Hide as draft</button>';
           var rating = (r.review_count ? (Number(r.rating).toFixed(1) + ' (' + r.review_count + ')') : '—');
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
             '<td>' + esc(r.directory_name || '') + '</td>' +
-            '<td>' + badge + '</td>' +
+            '<td>' + badge + ' ' + lcBadge + '</td>' +
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + view + '</td></tr>';
+            '<td>' + view + ' ' + toggle + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -8919,6 +8942,30 @@
       });
     }
 
+    function setLifecycle(id, dir, status) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      document.getElementById('bz-status').textContent = 'Saving…';
+      fetch(API + '/directories/' + encodeURIComponent(dir) + '/businesses/' + encodeURIComponent(id), {
+        method: 'PUT', headers: h, body: JSON.stringify({ status: status })
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      }).then(function () { load(); })
+        .catch(function (e) { document.getElementById('bz-status').textContent = 'Failed: ' + e.message; });
+    }
+
+    // Publish (promote a hidden record) / Hide (demote a published one) — one field, card B81.
+    document.addEventListener('click', function (ev) {
+      if (!ev.target || !ev.target.closest) return;
+      var pub = ev.target.closest('[data-lc-publish]');
+      if (pub) { setLifecycle(pub.getAttribute('data-lc-publish'), pub.getAttribute('data-lc-dir'), 'active'); return; }
+      var hide = ev.target.closest('[data-lc-hide]');
+      if (hide) { setLifecycle(hide.getAttribute('data-lc-hide'), hide.getAttribute('data-lc-dir'), 'draft'); return; }
+    });
+
     function bzReload() { if (!document.getElementById('bz-rows')) return; load(); }
 
     document.addEventListener('md-context-change', bzReload);
@@ -8927,6 +8974,7 @@
       if (!b) return;
       b.addEventListener('click', load);
       document.getElementById('bz-claim').addEventListener('change', load);
+      document.getElementById('bz-lifecycle').addEventListener('change', load);
       document.getElementById('bz-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') load(); });
       setTimeout(bzReload, 600);
     });

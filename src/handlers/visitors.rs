@@ -1363,6 +1363,16 @@ pub async fn claim_business(
             .execute(&s.db)
             .await;
 
+            // Card B81: an approved claim adopts and PUBLISHES a pre-populated draft/prospect —
+            // the owner is now in control, so the lifecycle flips to 'active'.
+            let _ = sqlx::query(
+                "UPDATE businesses SET status = 'active', is_active = true, updated_at = NOW() \
+                 WHERE id = $1 AND COALESCE(status, 'active') <> 'active'",
+            )
+            .bind(business_id)
+            .execute(&s.db)
+            .await;
+
             // Create visitor account with temp password
             use argon2::password_hash::SaltString;
             use argon2::{Argon2, PasswordHasher};
@@ -1549,6 +1559,15 @@ pub async fn verify_claim_email(
             .execute(&s.db)
             .await;
         }
+
+        // Card B81: a confirmed claim adopts and PUBLISHES a pre-populated draft/prospect.
+        let _ = sqlx::query(
+            "UPDATE businesses SET status = 'active', is_active = true, updated_at = NOW() \
+             WHERE id = $1 AND COALESCE(status, 'active') <> 'active'",
+        )
+        .bind(business_id)
+        .execute(&s.db)
+        .await;
 
         tracing::info!(
             "[claim] {owner_email} confirmed ownership by email link (business {business_id})"

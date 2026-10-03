@@ -202,6 +202,9 @@ pub struct Business {
     pub business_type: Option<String>,
     pub supplier_fields: Option<serde_json::Value>,
     pub is_franchise: Option<bool>,
+    /// Lifecycle (card B81): 'active' (published), 'draft' or 'prospect' (pre-populated but
+    /// hidden from every public surface until promoted).
+    pub status: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub enriched_at: Option<DateTime<Utc>>,
@@ -228,6 +231,9 @@ pub struct CreateBusinessRequest {
     /// Franchise / big-chain flag: excludes the business from the public community
     /// when true. Auto-suggested on publish, manual override supported.
     pub is_franchise: Option<bool>,
+    /// Lifecycle (card B81): 'active' (default, published), 'draft' or 'prospect'
+    /// (pre-populated but hidden from every public surface until promoted).
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -251,6 +257,10 @@ pub struct UpdateBusinessRequest {
     /// Standardized CTA type — one of the 13 predefined values, or None.
     /// Stored in business_meta.meta_data->'cta_type'.
     pub cta_type: Option<String>,
+    /// Lifecycle (card B81): 'active' (published), 'draft' / 'prospect' (hidden).
+    /// Setting a hidden status forces is_active = false; promoting to 'active'
+    /// forces is_active = true, so publication is one field.
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

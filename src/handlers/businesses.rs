@@ -43,7 +43,9 @@ pub async fn list_businesses(
     // community directory.
     const COUNT_HEAD: &str = "SELECT COUNT(*) FROM businesses b WHERE b.directory_id = ";
     const PUBLIC_FILTERS: &str = " AND COALESCE(b.business_type, 'local') = 'local' \
-                                   AND COALESCE(b.is_franchise, false) = false";
+                                   AND COALESCE(b.is_franchise, false) = false \
+                                   AND COALESCE(b.is_active, true) = true \
+                                   AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')";
 
     let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(COUNT_HEAD);
     count_qb.push_bind(dir_id).push(PUBLIC_FILTERS);
@@ -181,7 +183,7 @@ pub async fn get_business(
     // Try by UUID first, then by slug
     let business = if let Ok(bid) = Uuid::parse_str(&business_id) {
         sqlx::query_as::<_, Business>(
-            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 ",
+            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 AND COALESCE(is_active, true) = true AND COALESCE(status, 'active') NOT IN ('draft', 'prospect') ",
         )
         .bind(bid)
         .bind(dir.id)
@@ -189,7 +191,7 @@ pub async fn get_business(
         .await?
     } else {
         sqlx::query_as::<_, Business>(
-            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 ",
+            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 AND COALESCE(is_active, true) = true AND COALESCE(status, 'active') NOT IN ('draft', 'prospect') ",
         )
         .bind(&business_id)
         .bind(dir.id)
@@ -267,12 +269,26 @@ pub async fn create_business(
         )));
     }
 
+    // Lifecycle (card B81): a record created as a draft/prospect is pre-populated but stays
+    // hidden from every public surface until it is promoted to 'active'.
+    let status = req
+        .status
+        .as_deref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "active".to_string());
+    if !matches!(status.as_str(), "active" | "draft" | "prospect") {
+        return Err(AppError::Validation(format!(
+            "status must be 'active', 'draft' or 'prospect' (got '{status}')"
+        )));
+    }
+
     let business = sqlx::query_as::<_, Business>(
         r#"INSERT INTO businesses (directory_id, name, slug, description, category_id,
            address, city, state, zip, phone, email, website, latitude, longitude,
-           business_type, is_franchise)
+           business_type, is_franchise, status, is_active)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-           COALESCE($15, 'local'), COALESCE($16, false))
+           COALESCE($15, 'local'), COALESCE($16, false), $17, ($17 = 'active'))
            RETURNING *"#,
     )
     .bind(dir.id)
@@ -290,7 +306,8 @@ pub async fn create_business(
     .bind(req.latitude)
     .bind(req.longitude)
     .bind(&req.business_type)
-    .bind(&req.is_franchise)
+    .bind(req.is_franchise)
+    .bind(&status)
     .fetch_one(&s.db)
     .await?;
 
@@ -333,6 +350,21 @@ pub async fn update_business(
         }
     }
 
+    // Lifecycle (card B81): promoting to 'active' publishes; 'draft'/'prospect' hides the
+    // record from every public surface. One field drives both status and is_active.
+    let status = req
+        .status
+        .as_deref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty());
+    if let Some(ref st) = status {
+        if !matches!(st.as_str(), "active" | "draft" | "prospect") {
+            return Err(AppError::Validation(format!(
+                "status must be 'active', 'draft' or 'prospect' (got '{st}')"
+            )));
+        }
+    }
+
     let business = sqlx::query_as::<_, Business>(
         r#"UPDATE businesses SET
            name = COALESCE($1, name),
@@ -348,11 +380,12 @@ pub async fn update_business(
            website = COALESCE($11, website),
            latitude = COALESCE($12, latitude),
            longitude = COALESCE($13, longitude),
-           is_active = COALESCE($14, is_active),
+           is_active = CASE WHEN $17 IS NOT NULL THEN ($17 = 'active') ELSE COALESCE($14, is_active) END,
+           status = COALESCE($17, status),
            business_type = COALESCE($15, business_type),
            supplier_fields = COALESCE($16, supplier_fields),
            updated_at = NOW()
-           WHERE id = $17 RETURNING *"#,
+           WHERE id = $18 RETURNING *"#,
     )
     .bind(&req.name)
     .bind(&req.slug)
@@ -370,6 +403,7 @@ pub async fn update_business(
     .bind(req.is_active)
     .bind(&req.business_type)
     .bind(&req.supplier_fields)
+    .bind(status.as_deref())
     .bind(business_id)
     .fetch_one(&s.db)
     .await?;

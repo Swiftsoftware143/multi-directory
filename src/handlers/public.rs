@@ -347,7 +347,7 @@ pub async fn business_data(
     // 2. Look up business by ID (try UUID first, then slug)
     let business = if let Ok(bid) = Uuid::parse_str(&business_id) {
         sqlx::query_as::<_, crate::models::Business>(
-            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 ",
+            "SELECT * FROM businesses WHERE id = \x241 AND directory_id = \x242 AND COALESCE(is_active, true) = true AND COALESCE(status, 'active') NOT IN ('draft', 'prospect') ",
         )
         .bind(bid)
         .bind(directory.id)
@@ -355,7 +355,7 @@ pub async fn business_data(
         .await?
     } else {
         sqlx::query_as::<_, crate::models::Business>(
-            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 ",
+            "SELECT * FROM businesses WHERE slug = \x241 AND directory_id = \x242 AND COALESCE(is_active, true) = true AND COALESCE(status, 'active') NOT IN ('draft', 'prospect') ",
         )
         .bind(&business_id)
         .bind(directory.id)
