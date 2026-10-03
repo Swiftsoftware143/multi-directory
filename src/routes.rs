@@ -260,6 +260,41 @@ pub fn create_router(s: AppState) -> Router {
             "/directories/newsletter",
             post(newsletter::add_global_subscriber),
         )
+        // ── Audience lists, campaign sequences and media (kanban t_63ffc2de) ──
+        // The three built-in lists per city + the explicit "move to Sponsors" transition, the
+        // MD-side DEFINITION of a nurture sequence (CoreSwift owns the send), and the image
+        // endpoint behind a stable /uploads url. Every handler verifies the bearer token itself.
+        .route("/admin/audience/overview", get(audience::list_overview))
+        .route("/admin/audience/:slug/:list", get(audience::list_members))
+        .route(
+            "/admin/audience/:slug/sponsors",
+            get(audience::list_sponsor_members).post(audience::move_to_sponsors),
+        )
+        .route(
+            "/admin/audience/:slug/sponsors/:listing_id",
+            delete(audience::remove_sponsor),
+        )
+        .route(
+            "/admin/campaign-sequences",
+            get(audience::list_sequences).post(audience::create_sequence),
+        )
+        .route(
+            "/admin/campaign-sequences/:id",
+            get(audience::get_sequence)
+                .put(audience::update_sequence)
+                .delete(audience::delete_sequence),
+        )
+        .route(
+            "/admin/campaign-sequences/:id/steps",
+            post(audience::create_step),
+        )
+        .route(
+            "/admin/campaign-sequences/:id/steps/:step_id",
+            put(audience::update_step).delete(audience::delete_step),
+        )
+        .route("/admin/media", get(audience::list_media))
+        .route("/admin/media/upload", post(audience::upload_media))
+        .route("/admin/media/:id", delete(audience::delete_media))
         .route("/templates", get(directories::list_templates))
         // ??? Blog routes (Phase 3)
         .route(
@@ -2091,6 +2126,10 @@ pub fn create_router(s: AppState) -> Router {
         // name on purpose — the static copies are single-URL placeholders.
         .route("/sitemap.xml", get(subfolder::sitemap_handler))
         .route("/robots.txt", get(subfolder::robots_handler))
+        // Uploaded media (kanban t_63ffc2de): a stable, publicly fetchable url for an image
+        // uploaded through POST /api/v1/admin/media/upload. MUST be a real route (the SPA
+        // fallback used to swallow /uploads/* and every stored asset url was dead).
+        .route("/uploads/*path", get(audience::serve_media))
         .nest("/api/v1", all_routes)
         .fallback_service(tower::service_fn(
             move |req: axum::http::Request<axum::body::Body>| {

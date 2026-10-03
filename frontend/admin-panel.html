@@ -527,6 +527,7 @@
         <a href="#payment-gateways-section">💳 Payment Gateways</a>
         <a href="#email-settings-section">✉️ Email / SMTP</a>
         <a href="#subscribers-section">📧 Subscribers</a>
+        <a href="#audience-section">👥 Audience Lists</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
         <a href="#loyalty-programme-section">⭐ Loyalty Programmes</a>
@@ -1170,6 +1171,87 @@
             <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subImport()">Import pasted CSV</button>
           </div>
         </div>
+      </div>
+
+      <!-- kanban t_63ffc2de — per-city audience lists, campaign sequences, media.
+           Subscribers / Business Listings / Sponsors are the city's THREE built-in CoreSwift lists.
+           Before this card existed: the Sponsors list was never given a member (nothing pushed), the
+           three lists had no per-city view at all, campaign sequences did not exist, and there was no
+           generic image endpoint. One surface, city shown per row (NETWORK ADMIN = ONE SURFACE). -->
+      <div class="feature-card" id="audience-section">
+        <h3>👥 Audience Lists, Sequences &amp; Media</h3>
+        <p class="feature-subtitle">
+          <b>The city's three built-in lists in one place</b> — <b>Subscribers</b> (free signups),
+          <b>Business Listings</b> (claimed businesses) and <b>Sponsors</b> (paid placements).
+          Pick a city to see its counts and its members, and move a business up to <b>Sponsors</b>
+          with one click: that also adds it to the city's Sponsors list in <b>CoreSwift</b>, which is
+          what starts the sponsor nurture.<br>
+          A <b>sequence</b> is the content and timing of that nurture (steps with a delay, subject,
+          body and image). Multi-Directory defines it and decides the audience;
+          <b>CoreSwift performs the send</b> — this panel never sends campaign mail itself.
+        </p>
+        <div class="em-grid">
+          <div class="em-field"><label>City</label><select id="aud-city" onchange="window.__audCityChanged()"></select></div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__audLoad()">↻ Reload</button>
+          <span class="feature-status" id="aud-msg"></span>
+        </div>
+        <div id="aud-summary"></div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__audMembers('subscribers')">📧 Subscribers</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__audMembers('businesses')">🏢 Business Listings</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__audMembers('sponsors')">⭐ Sponsors</button>
+        </div>
+        <div id="aud-members"></div>
+
+        <h4 style="margin:18px 0 6px;font-size:.9rem">⭐ Move a business to Sponsors</h4>
+        <p class="feature-subtitle">Creates (or re-activates) the paid placement for the selected city and pushes the business into that city's <b>Sponsors</b> list in CoreSwift, tagged for the city.</p>
+        <div class="em-grid">
+          <div class="em-field"><label>Business in this city</label><select id="aud-biz"></select></div>
+          <div class="em-field"><label>Slot</label><input id="aud-slot" type="number" min="1" value="1"></div>
+          <div class="em-field"><label>Ends (YYYY-MM-DD, optional)</label><input id="aud-end" placeholder="default: +30 days"></div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__audSponsor()">⭐ Move to Sponsors</button>
+          <span class="feature-status" id="aud-sponsor-msg"></span>
+        </div>
+
+        <h4 style="margin:18px 0 6px;font-size:.9rem">✉️ Campaign sequences (CoreSwift sends)</h4>
+        <div class="em-grid">
+          <div class="em-field"><label>Sequence name</label><input id="seq-name" placeholder="e.g. Sponsor welcome"></div>
+          <div class="em-field"><label>Audience (list)</label>
+            <select id="seq-list">
+              <option value="subscribers">Subscribers</option>
+              <option value="claimed">Business Listings (claimed)</option>
+              <option value="sponsors">Sponsors</option>
+            </select>
+          </div>
+          <div class="em-field"><label>Belongs to</label>
+            <select id="seq-scope">
+              <option value="directory">This city</option>
+              <option value="network">The whole network</option>
+            </select>
+          </div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__seqCreate()">＋ Create sequence</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__seqLoad()">↻ Reload</button>
+          <span class="feature-status" id="seq-msg"></span>
+        </div>
+        <div id="seq-box"></div>
+
+        <h4 style="margin:18px 0 6px;font-size:.9rem">🖼 Image library</h4>
+        <p class="feature-subtitle">Upload an image once and paste the returned url into a sequence step, a template or a blog post. The url is stable and publicly fetchable.</p>
+        <div class="em-grid">
+          <div class="em-field"><label>Image file (png / jpg / webp / gif / svg / ico, max 8 MB)</label><input id="med-file" type="file" accept="image/*"></div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__medUpload()">⬆ Upload image</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__medLoad()">↻ Reload</button>
+          <span class="feature-status" id="med-msg"></span>
+        </div>
+        <div id="med-list"></div>
       </div>
 
       <!-- Round 8: Scrape sources — GET /scraper/providers reported status with no UI -->
@@ -5525,6 +5607,434 @@
     }
     window.__obLoadResponses = obLoadResponses;
     window.__obShowTab = obShowTab;
+
+    // ---- Audience lists / sequences / media (kanban t_63ffc2de) ----
+    var audSummaryRows = [];
+    var audMedia = [];
+    function audEsc(x) { return pkEsc(x); }
+    function audMsg(id, m, ok) { r8Status(id, m, ok); }
+
+    window.__audDirSelect = function () {
+      var sel = document.getElementById('aud-city');
+      if (!sel) return;
+      var cur = sel.value;
+      sel.innerHTML = (directories || []).map(function (d) {
+        return '<option value="' + audEsc(d.slug) + '">' + audEsc(d.name || d.slug) + '</option>';
+      }).join('');
+      if (cur) sel.value = cur;
+    };
+    function audSlug() {
+      var sel = document.getElementById('aud-city');
+      if (sel && !sel.options.length) window.__audDirSelect();
+      return (sel && sel.value) || '';
+    }
+    function audRow() {
+      var slug = audSlug();
+      for (var i = 0; i < audSummaryRows.length; i++) {
+        if (audSummaryRows[i].slug === slug) return audSummaryRows[i];
+      }
+      return null;
+    }
+    function audNetworkId() {
+      var r = audRow();
+      if (r && r.network_id) return r.network_id;
+      var d = (directories || []).filter(function (x) { return x.slug === audSlug(); })[0];
+      return (d && d.network_id) || null;
+    }
+
+    window.__audLoad = function () {
+      var summary = document.getElementById('aud-summary');
+      if (!summary) return;
+      window.__audDirSelect();
+      var slug = audSlug();
+      audMsg('aud-msg', 'loading…', true);
+      // One surface: ask for the whole network so every city of it comes back on one screen.
+      var q = audNetworkId() ? ('?network_id=' + encodeURIComponent(audNetworkId())) : '';
+      return apiGet('/admin/audience/overview' + q).then(function (r) {
+        audSummaryRows = (r && r.cities) || [];
+        if (!audSummaryRows.length) {
+          summary.innerHTML = '<p class="feature-subtitle">No cities visible to this account.</p>';
+          audMsg('aud-msg', '0 cities', false);
+          return;
+        }
+        var html = '<div class="pk-row"><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+          '<thead><tr style="text-align:left;color:var(--text-muted,#8aa0b8)">' +
+          '<th style="padding:4px 8px">City</th><th style="padding:4px 8px">Subscribers</th>' +
+          '<th style="padding:4px 8px">Business Listings</th><th style="padding:4px 8px">Sponsors</th>' +
+          '<th style="padding:4px 8px">CoreSwift lists</th></tr></thead><tbody>';
+        audSummaryRows.forEach(function (c) {
+          var ids = c.coreswift_lists || {};
+          var linked = ['claimed', 'newsletter', 'sponsors'].filter(function (k) { return !!ids[k]; }).length;
+          var mine = c.slug === slug;
+          html += '<tr style="' + (mine ? 'background:rgba(96,165,250,.10)' : '') + '">' +
+            '<td style="padding:4px 8px"><b>' + audEsc(c.name || c.slug) + '</b>' +
+              (c.network_name ? ' <span style="color:var(--text-muted,#8aa0b8)">· ' + audEsc(c.network_name) + '</span>' : '') + '</td>' +
+            '<td style="padding:4px 8px">' + (c.counts.subscribers || 0) + '</td>' +
+            '<td style="padding:4px 8px">' + (c.counts.claimed_businesses || 0) + ' / ' + (c.counts.businesses_total || 0) + '</td>' +
+            '<td style="padding:4px 8px">' + (c.counts.sponsors || 0) + '</td>' +
+            '<td style="padding:4px 8px">' + linked + '/3 linked</td></tr>';
+        });
+        var t = (r && r.totals) || {};
+        html += '</tbody></table></div><div style="font-size:.75rem;color:var(--text-muted,#8aa0b8);margin-top:6px">' +
+          'Network total: ' + (t.cities || 0) + ' cities · ' + (t.subscribers || 0) + ' subscribers · ' +
+          (t.claimed_businesses || 0) + ' claimed · ' + (t.sponsors || 0) + ' sponsors</div></div>';
+        summary.innerHTML = html;
+        audMsg('aud-msg', (t.cities || 0) + ' cities', true);
+        window.__audBizSelect();
+      }).catch(function (e) {
+        summary.innerHTML = '<p class="feature-subtitle" style="color:#f87171">Could not load the list overview: ' + audEsc(e.message) + '</p>';
+        audMsg('aud-msg', 'failed', false);
+      });
+    };
+
+    window.__audCityChanged = function () {
+      window.__audLoad();
+      window.__medLoad();
+      window.__seqLoad();
+    };
+
+    window.__audBizSelect = function () {
+      var sel = document.getElementById('aud-biz');
+      if (!sel) return;
+      var slug = audSlug();
+      if (!slug) { sel.innerHTML = ''; return; }
+      sel.innerHTML = '<option value="">loading…</option>';
+      apiGet('/directories/' + encodeURIComponent(slug) + '/businesses?per_page=200').then(function (r) {
+        var list = (r && (r.businesses || r.data || r)) || [];
+        if (!list.length) { sel.innerHTML = '<option value="">no businesses in this city</option>'; return; }
+        sel.innerHTML = '<option value="">— pick a business —</option>' + list.map(function (b) {
+          return '<option value="' + audEsc(b.id) + '">' + audEsc(b.name || b.id) + '</option>';
+        }).join('');
+      }).catch(function (e) {
+        sel.innerHTML = '<option value="">could not load businesses</option>';
+        audMsg('aud-sponsor-msg', e.message, false);
+      });
+    };
+
+    window.__audMembers = function (list) {
+      var box = document.getElementById('aud-members');
+      if (!box) return;
+      var slug = audSlug();
+      if (!slug) { box.innerHTML = '<p class="feature-subtitle">Pick a city first.</p>'; return; }
+      box.innerHTML = '<p class="feature-subtitle">loading ' + audEsc(list) + '…</p>';
+      return apiGet('/admin/audience/' + encodeURIComponent(slug) + '/' + encodeURIComponent(list) + '?per_page=100')
+        .then(function (r) {
+          var rows = (r && r.members) || [];
+          if (!rows.length) {
+            box.innerHTML = '<p class="feature-subtitle">No members on this list for ' + audEsc(slug) + ' yet.</p>';
+            return;
+          }
+          var head, body;
+          if (list === 'subscribers') {
+            head = ['Email', 'Name', 'Status', 'Signed up'];
+            body = rows.map(function (m) {
+              return [m.email, m.name || '', m.status || '', (m.subscribed_at || '').toString().slice(0, 10)];
+            });
+          } else if (list === 'businesses') {
+            head = ['Business', 'Owner email', 'Verified', 'Active'];
+            body = rows.map(function (m) {
+              return [m.name, m.owner_email || m.email || '', (m.verified_at || '').toString().slice(0, 10), m.is_active ? 'yes' : 'no'];
+            });
+          } else {
+            head = ['Business', 'Slot', 'Active', 'Ends', 'Pushed to CoreSwift', ''];
+            body = rows.map(function (m) {
+              return [m.name, m.slot_position || 1, m.is_active ? 'yes' : 'no', (m.end_date || ''),
+                m.crm_pushed_at ? 'yes' : 'queued/never',
+                '<button class="btn btn-ghost btn-sm" data-aud-rm="' + audEsc(m.listing_id) + '">Remove</button>'];
+            });
+          }
+          var html = '<div class="pk-row"><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+            '<thead><tr style="text-align:left;color:var(--text-muted,#8aa0b8)">' +
+            head.map(function (h) { return '<th style="padding:4px 8px">' + audEsc(h) + '</th>'; }).join('') +
+            '</tr></thead><tbody>';
+          body.forEach(function (cells) {
+            html += '<tr>' + cells.map(function (c) {
+              return '<td style="padding:4px 8px">' + (list === 'sponsors' ? String(c) : audEsc(c)) + '</td>';
+            }).join('') + '</tr>';
+          });
+          html += '</tbody></table></div><div style="font-size:.75rem;color:var(--text-muted,#8aa0b8);margin-top:6px">' +
+            rows.length + ' of ' + ((r && r.total) || rows.length) + ' members</div></div>';
+          box.innerHTML = html;
+          box.querySelectorAll('[data-aud-rm]').forEach(function (b) {
+            b.addEventListener('click', function () { window.__audUnsponsor(b.getAttribute('data-aud-rm')); });
+          });
+        })
+        .catch(function (e) {
+          box.innerHTML = '<p class="feature-subtitle" style="color:#f87171">Could not load ' + audEsc(list) + ': ' + audEsc(e.message) + '</p>';
+        });
+    };
+
+    window.__audSponsor = function () {
+      var slug = audSlug();
+      var biz = (document.getElementById('aud-biz') || {}).value;
+      if (!slug || !biz) { audMsg('aud-sponsor-msg', 'pick a city and a business first', false); return; }
+      var slot = parseInt((document.getElementById('aud-slot') || {}).value || '1', 10);
+      var end = (document.getElementById('aud-end') || {}).value || '';
+      var payload = { business_id: biz, slot_position: isNaN(slot) ? 1 : slot };
+      if (end) payload.end_date = end;
+      audMsg('aud-sponsor-msg', 'moving…', true);
+      apiPost('/admin/audience/' + encodeURIComponent(slug) + '/sponsors', payload).then(function (r) {
+        audMsg('aud-sponsor-msg',
+          (r && r.reactivated ? 'Re-activated on Sponsors — ' : 'Moved to Sponsors — ') +
+          'CoreSwift push queued', true);
+        showToast('Sponsor added');
+        window.__audLoad();
+        window.__audMembers('sponsors');
+      }).catch(function (e) { audMsg('aud-sponsor-msg', 'Failed: ' + e.message, false); });
+    };
+
+    window.__audUnsponsor = function (listingId) {
+      var slug = audSlug();
+      if (!slug || !listingId) return;
+      if (!confirm('Remove this business from Sponsors for ' + slug + '?')) return;
+      apiFetch('DELETE', '/admin/audience/' + encodeURIComponent(slug) + '/sponsors/' + encodeURIComponent(listingId))
+        .then(function () {
+          showToast('Removed from Sponsors');
+          window.__audMembers('sponsors');
+          window.__audLoad();
+        })
+        .catch(function (e) { audMsg('aud-msg', 'Remove failed: ' + e.message, false); });
+    };
+
+    // ---- Sequences ----
+    window.__seqLoad = function () {
+      var box = document.getElementById('seq-box');
+      if (!box) return;
+      var slug = audSlug();
+      if (!slug) { box.innerHTML = '<p class="feature-subtitle">Pick a city first.</p>'; return; }
+      window.__medLoadSilent();
+      // The API takes ids, not slugs — the same reason the create path below resolves dId. Passing
+      // the slug made `?directory_id=palm-bay` fail to parse: a city admin got a 403 ("pass
+      // directory_id or network_id") so the sequence list never loaded, and an operator fell through
+      // to the EVERY-city query. Resolve the city id from the overview row, then the directory list.
+      var seqRow = audRow();
+      var seqDir = (directories || []).filter(function (x) { return x.slug === slug; })[0];
+      var seqCityId = (seqRow && seqRow.directory_id) || (seqDir && (seqDir.directory_id || seqDir.id)) || null;
+      if (!seqCityId) { box.innerHTML = '<p class="feature-subtitle">Could not resolve this city\u2019s id.</p>'; return; }
+      apiGet('/admin/campaign-sequences?directory_id=' + encodeURIComponent(seqCityId)).then(function (r) {
+        var seqs = (r && r.sequences) || [];
+        if (!seqs.length) {
+          box.innerHTML = '<p class="feature-subtitle">No sequences yet for this city or its network. Create one above.</p>';
+          audMsg('seq-msg', '0 sequences', false);
+          return;
+        }
+        box.innerHTML = seqs.map(function (sq) {
+          var steps = (sq.steps || []).map(function (st) {
+            return '<div style="border-left:2px solid var(--border);padding:6px 10px;margin:6px 0">' +
+              '<b>Step ' + (st.step_order || 1) + '</b> · after ' + (st.delay_days || 0) + ' day(s)' +
+              '<div style="font-size:.8rem;color:var(--text-muted,#8aa0b8)">' + audEsc(st.subject || '(no subject)') +
+              (st.image_url ? ' · 🖼 ' + audEsc(st.image_url) : '') + '</div>' +
+              '<div class="pk-controls" style="margin-top:4px">' +
+              '<button class="btn btn-ghost btn-sm" data-seqdelstep="' + audEsc(sq.id) + '|' + audEsc(st.id) + '">Delete step</button>' +
+              '</div></div>';
+          }).join('');
+          var imgOpts = audMedia.map(function (m) {
+            return '<option value="' + audEsc(m.url) + '">' + audEsc(m.filename) + '</option>';
+          }).join('');
+          return '<div class="pk-row" style="margin:8px 0">' +
+            '<div class="pk-keyline"><b>' + audEsc(sq.name) + '</b>' +
+              '<span style="margin-left:8px;font-size:.72rem;padding:2px 8px;border-radius:100px;background:rgba(96,165,250,.15);color:#60a5fa">' +
+              audEsc(sq.target_list) + '</span>' +
+              '<span style="margin-left:6px;font-size:.72rem;color:var(--text-muted,#8aa0b8)">' +
+              (sq.network_id ? 'network-wide' : 'this city') + (sq.is_active ? '' : ' · paused') + '</span></div>' +
+            '<div style="font-size:.8rem;color:var(--text-muted,#8aa0b8);margin:2px 0 6px">' +
+              ((sq.steps || []).length) + ' step(s) · edited ' + ((sq.updated_at || '').toString().slice(0, 16)) + '</div>' +
+            steps +
+            '<div class="em-grid" style="margin-top:8px">' +
+              '<div class="em-field"><label>Delay (days)</label><input id="ssd-' + audEsc(sq.id) + '" type="number" min="0" value="0"></div>' +
+              '<div class="em-field"><label>Subject</label><input id="sss-' + audEsc(sq.id) + '" placeholder="Step subject"></div>' +
+              '<div class="em-field"><label>Image (optional)</label><select id="ssi-' + audEsc(sq.id) + '"><option value="">— none —</option>' + imgOpts + '</select></div>' +
+            '</div>' +
+            '<div class="em-field"><label>Body (HTML allowed)</label><textarea id="ssb-' + audEsc(sq.id) + '" rows="2" placeholder="Hi {{first_name}}, …"></textarea></div>' +
+            '<div class="pk-controls" style="margin-top:6px">' +
+              '<button class="btn btn-accent btn-sm" data-seqaddstep="' + audEsc(sq.id) + '">＋ Add step</button>' +
+              '<button class="btn btn-ghost btn-sm" data-seqtoggle="' + audEsc(sq.id) + '|' + (sq.is_active ? '0' : '1') + '">' + (sq.is_active ? 'Pause' : 'Resume') + '</button>' +
+              '<button class="btn btn-ghost btn-sm" data-seqdel="' + audEsc(sq.id) + '">Delete sequence</button>' +
+            '</div></div>';
+        }).join('');
+        audMsg('seq-msg', seqs.length + ' sequence(s)', true);
+        box.querySelectorAll('[data-seqaddstep]').forEach(function (b) {
+          b.addEventListener('click', function () { window.__seqAddStep(b.getAttribute('data-seqaddstep')); });
+        });
+        box.querySelectorAll('[data-seqdelstep]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var parts = b.getAttribute('data-seqdelstep').split('|');
+            window.__seqDelStep(parts[0], parts[1]);
+          });
+        });
+        box.querySelectorAll('[data-seqdel]').forEach(function (b) {
+          b.addEventListener('click', function () { window.__seqDel(b.getAttribute('data-seqdel')); });
+        });
+        box.querySelectorAll('[data-seqtoggle]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var parts = b.getAttribute('data-seqtoggle').split('|');
+            window.__seqToggle(parts[0], parts[1] === '1');
+          });
+        });
+      }).catch(function (e) {
+        box.innerHTML = '<p class="feature-subtitle" style="color:#f87171">Could not load sequences: ' + audEsc(e.message) + '</p>';
+      });
+    };
+
+    window.__seqCreate = function () {
+      var slug = audSlug();
+      var name = ((document.getElementById('seq-name') || {}).value || '').trim();
+      if (!slug || !name) { audMsg('seq-msg', 'pick a city and give the sequence a name', false); return; }
+      var payload = {
+        name: name,
+        target_list: (document.getElementById('seq-list') || {}).value || 'subscribers'
+      };
+      var scope = (document.getElementById('seq-scope') || {}).value || 'directory';
+      var d = (directories || []).filter(function (x) { return x.slug === slug; })[0];
+      var dId = (d && d.id) || null;
+      // The API takes ids, not slugs: resolve the city id from the shared directory list.
+      var row = audRow();
+      dId = dId || (row && row.directory_id) || null;
+      if (scope === 'network') {
+        payload.network_id = audNetworkId();
+        if (!payload.network_id) { audMsg('seq-msg', 'this city has no network', false); return; }
+      } else {
+        payload.directory_id = dId;
+        if (!payload.directory_id) { audMsg('seq-msg', 'could not resolve the city id', false); return; }
+      }
+      audMsg('seq-msg', 'creating…', true);
+      apiPost('/admin/campaign-sequences', payload).then(function () {
+        audMsg('seq-msg', 'created \u201c' + name + '\u201d', true);
+        showToast('Sequence created');
+        document.getElementById('seq-name').value = '';
+        window.__seqLoad();
+      }).catch(function (e) { audMsg('seq-msg', 'Failed: ' + e.message, false); });
+    };
+
+    window.__seqAddStep = function (seqId) {
+      var payload = {
+        delay_days: parseInt((document.getElementById('ssd-' + seqId) || {}).value || '0', 10) || 0,
+        subject: ((document.getElementById('sss-' + seqId) || {}).value || '').trim(),
+        body_html: ((document.getElementById('ssb-' + seqId) || {}).value || ''),
+        image_url: ((document.getElementById('ssi-' + seqId) || {}).value || null)
+      };
+      if (!payload.subject) { audMsg('seq-msg', 'give the step a subject', false); return; }
+      apiPost('/admin/campaign-sequences/' + encodeURIComponent(seqId) + '/steps', payload)
+        .then(function () { showToast('Step added'); window.__seqLoad(); })
+        .catch(function (e) { audMsg('seq-msg', 'Step failed: ' + e.message, false); });
+    };
+
+    window.__seqDelStep = function (seqId, stepId) {
+      if (!confirm('Delete this step?')) return;
+      apiFetch('DELETE', '/admin/campaign-sequences/' + encodeURIComponent(seqId) + '/steps/' + encodeURIComponent(stepId))
+        .then(function () { window.__seqLoad(); })
+        .catch(function (e) { audMsg('seq-msg', 'Delete failed: ' + e.message, false); });
+    };
+
+    window.__seqDel = function (seqId) {
+      if (!confirm('Delete this sequence and all its steps?')) return;
+      apiFetch('DELETE', '/admin/campaign-sequences/' + encodeURIComponent(seqId))
+        .then(function () { showToast('Sequence deleted'); window.__seqLoad(); })
+        .catch(function (e) { audMsg('seq-msg', 'Delete failed: ' + e.message, false); });
+    };
+
+    window.__seqToggle = function (seqId, active) {
+      apiPut('/admin/campaign-sequences/' + encodeURIComponent(seqId), { is_active: active })
+        .then(function () { window.__seqLoad(); })
+        .catch(function (e) { audMsg('seq-msg', 'Update failed: ' + e.message, false); });
+    };
+
+    // ---- Media ----
+    window.__medLoadSilent = function () {
+      var slug = audSlug();
+      if (!slug) return Promise.resolve();
+      return apiGet('/admin/media?directory_id=' + encodeURIComponent((audRow() || {}).directory_id || ''))
+        .catch(function () { return null; });
+    };
+    window.__medLoad = function () {
+      var box = document.getElementById('med-list');
+      if (!box) return;
+      var slug = audSlug();
+      var dId = (audRow() || {}).directory_id;
+      if (!slug || !dId) { box.innerHTML = '<p class="feature-subtitle">Pick a city first.</p>'; return; }
+      apiGet('/admin/media?directory_id=' + encodeURIComponent(dId)).then(function (r) {
+        audMedia = (r && r.assets) || [];
+        if (!audMedia.length) {
+          box.innerHTML = '<p class="feature-subtitle">No images uploaded for this city yet.</p>';
+          audMsg('med-msg', '0 images', false);
+          return;
+        }
+        box.innerHTML = audMedia.map(function (m) {
+          return '<div class="pk-row"><div class="pk-keyline"><b>' + audEsc(m.filename) + '</b>' +
+            '<span style="margin-left:8px;font-size:.72rem;color:var(--text-muted,#8aa0b8)">' +
+            Math.round((m.byte_size || 0) / 1024) + ' KB</span></div>' +
+            '<div style="font-size:.8rem;margin:2px 0 6px"><code>' + audEsc(m.url) + '</code></div>' +
+            '<div class="pk-controls">' +
+            '<button class="btn btn-ghost btn-sm" data-medcopy="' + audEsc(m.url) + '">Copy url</button>' +
+            '<button class="btn btn-ghost btn-sm" data-meddel="' + audEsc(m.id) + '">Delete</button>' +
+            '</div></div>';
+        }).join('');
+        audMsg('med-msg', audMedia.length + ' image(s)', true);
+        box.querySelectorAll('[data-medcopy]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var url = b.getAttribute('data-medcopy');
+            if (navigator.clipboard) { navigator.clipboard.writeText(url); }
+            audMsg('med-msg', 'copied ' + url, true);
+          });
+        });
+        box.querySelectorAll('[data-meddel]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            if (!confirm('Delete this image?')) return;
+            apiFetch('DELETE', '/admin/media/' + encodeURIComponent(b.getAttribute('data-meddel')))
+              .then(function () { window.__medLoad(); })
+              .catch(function (e) { audMsg('med-msg', 'Delete failed: ' + e.message, false); });
+          });
+        });
+      }).catch(function (e) {
+        box.innerHTML = '<p class="feature-subtitle" style="color:#f87171">Could not load images: ' + audEsc(e.message) + '</p>';
+      });
+    };
+
+    window.__medUpload = function () {
+      var input = document.getElementById('med-file');
+      var dId = (audRow() || {}).directory_id;
+      if (!input || !input.files || !input.files.length) { audMsg('med-msg', 'choose a file first', false); return; }
+      if (!dId) { audMsg('med-msg', 'pick a city first', false); return; }
+      var file = input.files[0];
+      if (file.size > 8 * 1024 * 1024) { audMsg('med-msg', 'file is larger than 8 MB', false); return; }
+      audMsg('med-msg', 'uploading ' + file.name + '…', true);
+      var reader = new FileReader();
+      reader.onload = function () {
+        var dataUrl = String(reader.result || '');
+        apiPost('/admin/media/upload', {
+          directory_id: dId,
+          filename: file.name,
+          content_base64: dataUrl
+        }).then(function (r) {
+          audMsg('med-msg', 'uploaded → ' + ((r && r.url) || ''), true);
+          showToast('Image uploaded');
+          input.value = '';
+          window.__medLoad();
+        }).catch(function (e) { audMsg('med-msg', 'Upload failed: ' + e.message, false); });
+      };
+      reader.onerror = function () { audMsg('med-msg', 'could not read the file', false); };
+      reader.readAsDataURL(file);
+    };
+
+    (function wireAudience() {
+      var card = document.getElementById('audience-section');
+      if (!card) return;
+      // The panel's shared directory list may not have arrived yet (same race the loyalty card
+      // handles): fetch it before the first render.
+      var ready = (directories && directories.length)
+        ? Promise.resolve()
+        : apiGet('/directories').then(function (res) {
+            var list = (res && (res.directories || res)) || [];
+            if (list.length) directories = list;
+          }).catch(function () {});
+      ready.then(function () {
+        window.__audDirSelect();
+        return window.__audLoad();
+      }).then(function () {
+        window.__medLoad();
+        window.__seqLoad();
+      });
+    })();
 
     // ===== Init =====
     if (token && user) {
