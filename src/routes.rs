@@ -928,6 +928,16 @@ pub fn create_router(s: AppState) -> Router {
             "/export/contacts/:directory_id",
             get(import_export::export_contacts),
         )
+        // Complete per-entity export (B112): one entity, or a whole directory in bulk.
+        .route(
+            "/export/entity/kinds",
+            get(entity_export::export_entity_kinds),
+        )
+        .route(
+            "/export/entity/:kind/:id",
+            get(entity_export::export_entity),
+        )
+        .route("/export/bulk/:kind", get(entity_export::export_bulk))
         .route(
             "/export/templates",
             get(import_export::list_export_templates).post(import_export::create_export_template),

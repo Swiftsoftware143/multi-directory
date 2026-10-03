@@ -530,6 +530,7 @@
         <a href="#subscribers-section">📧 Subscribers</a>
         <a href="#audience-section">👥 Audience Lists</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
+        <a href="#entity-export-section">📦 Complete Export</a>
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
         <a href="#loyalty-programme-section">⭐ Loyalty Programmes</a>
         <a href="#transfers-section">🔄 Transfers</a>
@@ -1180,6 +1181,45 @@
             <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subImport()">Import pasted CSV</button>
           </div>
         </div>
+      </div>
+
+      <!-- B112 — complete per-entity export: one record (business / supplier / customer) with
+           every linked row, or the whole directory in bulk, JSON + CSV, from the panel. -->
+      <div class="feature-card" id="entity-export-section">
+        <h3>📦 Complete Export — one record or the whole directory</h3>
+        <p class="feature-subtitle">
+          <b>Download a COMPLETE record for one entity</b> — a <b>business</b>, a <b>supplier</b> or a
+          <b>customer/user</b> — as its own row plus every record that hangs off it (reviews, claims,
+          loyalty, submissions, surveys, activity, deals …), gathered together rather than scattered.
+          <b>JSON</b> for a machine, <b>CSV</b> (one section per related table) for a spreadsheet.
+          <b>Bulk</b> downloads every business, supplier or customer in a chosen directory. No SQL, no script.
+        </p>
+        <div class="em-grid">
+          <div class="em-field"><label>Entity type</label>
+            <select id="ex-kind" onchange="window.__exInit()">
+              <option value="business">Business</option>
+              <option value="supplier">Supplier</option>
+              <option value="customer">Customer / user</option>
+            </select>
+          </div>
+          <div class="em-field"><label>Entity id (single record)</label>
+            <input id="ex-id" class="pk-input" placeholder="paste a business / supplier / customer id">
+          </div>
+          <div class="em-field"><label>Directory (for bulk)</label>
+            <select id="ex-dir" onchange="window.__exInit()"></select>
+          </div>
+        </div>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__exEntity('json')">⬇ This record — JSON</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__exEntity('csv')">⬇ This record — CSV</button>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__exBulk('csv')">⬇ Bulk — CSV</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__exBulk('json')">⬇ Bulk — JSON</button>
+          <span class="feature-status" id="ex-msg"></span>
+        </div>
+        <p class="pk-desc" style="font-size:.78rem;color:var(--text-muted,#8aa0b8)">
+          “Complete” is the whole live catalog: every table whose foreign key points at the record.
+          Scoped to what you administer — an id you may not read returns a plain “not found”.
+        </p>
       </div>
 
       <!-- kanban t_63ffc2de — per-city audience lists, campaign sequences, media.
@@ -3574,6 +3614,65 @@
         status.textContent = 'save error: ' + e.message;
       });
     }
+
+    // ===== 📦 Complete per-entity export (B112) =====
+    // One entity (business / supplier / customer) with every linked row, or a whole directory
+    // in bulk. Downloads carry the auth header (the export routes are admin-scoped) and save
+    // straight from the browser.
+    window.__exInit = function () {
+      var sel = document.getElementById('ex-dir');
+      if (!sel) return;
+      var cur = sel.value;
+      sel.innerHTML = (directories || []).map(function (d) {
+        return '<option value="' + d.id + '">' + pkEsc((d.name || d.slug) + ' (' + (d.slug || '') + ')') + '</option>';
+      }).join('');
+      if (cur) sel.value = cur;
+    };
+    function exStatus(msg, ok) {
+      var el = document.getElementById('ex-msg');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok === false ? '#f87171' : '#22c55e';
+    }
+    function exDownload(path, filename, format) {
+      var authToken = token || localStorage.getItem('md_admin_token');
+      var headers = {};
+      if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+      exStatus('exporting…');
+      return fetch(API_BASE + path, { headers: headers }).then(function (res) {
+        if (!res.ok) {
+          return res.text().then(function (t) {
+            var m; try { m = JSON.parse(t).message; } catch (e) { /* not JSON */ }
+            throw new Error(m || ('Export failed (' + res.status + ')'));
+          });
+        }
+        return res.text();
+      }).then(function (txt) {
+        var blob = new Blob([txt], { type: format === 'json' ? 'application/json' : 'text/csv' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+        exStatus('exported ' + filename);
+      }).catch(function (e) { exStatus('export error: ' + e.message, false); });
+    }
+    window.__exEntity = function (format) {
+      var kind = document.getElementById('ex-kind').value;
+      var id = (document.getElementById('ex-id').value || '').trim();
+      if (!id) { exStatus('Enter an entity id (or use Bulk for the whole directory).', false); return; }
+      exDownload('/export/entity/' + encodeURIComponent(kind) + '/' + encodeURIComponent(id) + '?format=' + format,
+        kind + '_entity_' + id + '.' + format, format);
+    };
+    window.__exBulk = function (format) {
+      var kind = document.getElementById('ex-kind').value;
+      var did = (document.getElementById('ex-dir') || {}).value;
+      if (!did) { exStatus('Pick a directory for the bulk export.', false); return; }
+      exDownload('/export/bulk/' + encodeURIComponent(kind) + '?directory_id=' + encodeURIComponent(did) + '&format=' + format,
+        'bulk_' + kind + '_' + did + '.' + format, format);
+    };
 
     window.__daLoad = daLoad;
     window.__daReload = loadDemandAnalytics;
