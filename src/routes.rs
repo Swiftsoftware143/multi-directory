@@ -38,6 +38,12 @@ pub fn create_router(s: AppState) -> Router {
             "/directories/:id/primary",
             post(directories::set_primary_directory),
         )
+        // B118 — back-fill the per-directory defaults (standard ad zones / standalone email
+        // templates) on an existing directory. Idempotent; the same routine create runs.
+        .route(
+            "/directories/:slug/provision-defaults",
+            post(directories::provision_defaults),
+        )
         // Legacy /directory/:slug alias (used by older frontend code)
         .route("/directory/:slug", get(directories::get_directory))
         .route(

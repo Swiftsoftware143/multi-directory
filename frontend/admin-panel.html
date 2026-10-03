@@ -964,6 +964,7 @@
         <div class="pk-controls" style="margin-bottom:10px">
           <select class="pk-input" id="az-directory" onchange="window.__azLoad()"></select>
           <button class="btn btn-accent btn-sm" onclick="window.__azCreate()">+ Add Zone</button>
+          <button class="btn btn-ghost btn-sm" onclick="window.__azProvision()" title="Fill every per-directory default this directory needs (standard ad zones, and email templates for a standalone directory) in one press">⚡ Provision standard defaults</button>
         </div>
         <div id="az-list"></div>
         <div class="feature-status" id="az-status"></div>
@@ -5216,6 +5217,28 @@
       })
         .then(function () { showToast('Added ' + s.name); loadAdZones(); })
         .catch(function (e) { azStatus('Create failed: ' + e.message, false); });
+    };
+
+    // B118 — one-press "make this directory complete": the same idempotent routine
+    // create_directory runs, so an existing city can be brought up to the standard
+    // without SQL. Safe to press twice — it only fills what is missing.
+    window.__azProvision = function () {
+      var sel = document.getElementById('az-directory');
+      var did = sel ? sel.value : null;
+      if (!did) { azStatus('No directory selected', false); return; }
+      var d = (directories || []).filter(function (x) { return x.id === did; })[0];
+      var slug = d ? d.slug : null;
+      if (!slug) { azStatus('Could not resolve this directory — reload the page.', false); return; }
+      azStatus('Provisioning standard defaults…', true);
+      apiFetch('POST', '/directories/' + encodeURIComponent(slug) + '/provision-defaults')
+        .then(function (r) {
+          var az = (r && r.ad_zones_created) || 0;
+          var et = (r && r.email_templates_created) || 0;
+          azStatus('Done — ' + az + ' ad zone(s) created, ' + et + ' email template(s) created.', true);
+          showToast('Provisioned ' + az + ' ad zone(s)' + (et ? ', ' + et + ' email template(s)' : ''));
+          loadAdZones();
+        })
+        .catch(function (e) { azStatus('Provision failed: ' + e.message, false); });
     };
 
     window.__azSave = function (id) {

@@ -372,6 +372,18 @@ pub async fn create_directory(
         });
     }
 
+    // B118 — DEFAULTS OVER BLANKS: a directory is complete the moment it exists. Fill the
+    // per-directory defaults (standard ad zones, and system email templates for a standalone
+    // directory) so the operator never has to seed them by hand. Non-fatal: a seeding failure
+    // is logged and the directory is still created.
+    let report = provision_directory_defaults(&s.db, directory.id).await;
+    tracing::info!(
+        "[directory] provisioned defaults for {}: {} ad zone(s), {} email template(s)",
+        slug,
+        report.ad_zones_created,
+        report.email_templates_created
+    );
+
     Ok((StatusCode::CREATED, Json(json!(directory))))
 }
 
@@ -1062,5 +1074,249 @@ pub async fn categories_bulk_delete(
         success: true,
         message: "Bulk delete completed".to_string(),
         affected_categories: req.category_ids.len(),
+    })))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B118 — NEW-DIRECTORY PROVISIONING: DEFAULTS OVER BLANKS
+//
+// David (2026-10-02): "To be as little to do manually as I grow." A directory must
+// render as a complete, presentable site the moment it exists — nothing a directory
+// needs may be blank on creation. Most of that is already inherited for a city in a
+// network (branding, categories, plans, legal pages, nav and sitemap are platform /
+// network-wide and shared). The pieces that are genuinely PER-DIRECTORY and were
+// previously left empty on create are:
+//   * the standard ad zones  (every directory is sold with the same six slots)
+//   * the system email templates (only a STANDALONE directory needs its own copies —
+//     a city inherits its network's by design, so seeding it would break inheritance)
+// This routine is idempotent: it only fills what is missing and never overwrites an
+// admin's edit, so it is safe to re-run on an existing directory (back-fill).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The six standard ad-zone slots, byte-identical to the admin Ad Zones panel
+/// (frontend/admin-panel.html `AZ_SLOTS`) so the panel and a freshly provisioned
+/// directory can never disagree. (key, label, width, height, price_monthly)
+pub const STANDARD_AD_ZONES: &[(&str, &str, i32, i32, f64)] = &[
+    ("sidebar_top", "Sidebar Top (300x250)", 300, 250, 75.0),
+    ("sidebar_bottom", "Sidebar Bottom (300x600)", 300, 600, 50.0),
+    ("header_banner", "Header Banner (728x90)", 728, 90, 150.0),
+    (
+        "between_listings",
+        "Between Listings (468x60)",
+        468,
+        60,
+        40.0,
+    ),
+    ("footer_banner", "Footer Banner (728x90)", 728, 90, 60.0),
+    (
+        "mobile_interstitial",
+        "Mobile Interstitial (320x100)",
+        320,
+        100,
+        100.0,
+    ),
+];
+
+/// System email events every standalone directory gets a starter template for.
+/// (event_key, display name, subject, body_html, body_text)
+const SYSTEM_EMAIL_TEMPLATES: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "password_reset",
+        "Password reset",
+        "Reset your {{site_name}} password",
+        "<p>Hi {{name}},</p><p>We received a request to reset your {{site_name}} password. Use the link below to choose a new one:</p><p><a href=\"{{reset_url}}\">Reset my password</a></p><p>If you did not ask for this, you can ignore this email — your password stays unchanged.</p><p>— {{site_name}}</p>",
+        "Hi {{name}},\n\nWe received a request to reset your {{site_name}} password.\nChoose a new one here: {{reset_url}}\n\nIf you did not ask for this, ignore this email — your password stays unchanged.\n\n— {{site_name}}",
+    ),
+    (
+        "signup_confirmation",
+        "Signup confirmation",
+        "Welcome to {{site_name}}",
+        "<p>Hi {{name}},</p><p>Thanks for joining {{site_name}}. Your account is ready.</p><p><a href=\"{{login_url}}\">Sign in</a> to start exploring local businesses.</p><p>— {{site_name}}</p>",
+        "Hi {{name}},\n\nThanks for joining {{site_name}}. Your account is ready.\nSign in here: {{login_url}}\n\n— {{site_name}}",
+    ),
+    (
+        "claim_verification",
+        "Business claim verification",
+        "Your {{site_name}} verification code",
+        "<p>Hi {{name}},</p><p>Your verification code to claim <strong>{{business_name}}</strong> is:</p><p style=\"font-size:22px;font-weight:700;letter-spacing:2px\">{{code}}</p><p>If you did not request this, ignore this email.</p><p>— {{site_name}}</p>",
+        "Hi {{name}},\n\nYour verification code to claim {{business_name}} is: {{code}}\n\nIf you did not request this, ignore this email.\n\n— {{site_name}}",
+    ),
+    (
+        "statement",
+        "Monthly statement",
+        "Your {{site_name}} statement is ready",
+        "<p>Hi {{name}},</p><p>Your {{period}} statement is ready. Summary:</p><ul><li>Points issued: {{points_issued}}</li><li>Amount due: {{amount_due}}</li></ul><p><a href=\"{{statement_url}}\">View your full statement</a></p><p>— {{site_name}}</p>",
+        "Hi {{name}},\n\nYour {{period}} statement is ready.\nPoints issued: {{points_issued}}\nAmount due: {{amount_due}}\n\nView it here: {{statement_url}}\n\n— {{site_name}}",
+    ),
+    (
+        "notification",
+        "General notification",
+        "{{title}}",
+        "<p>Hi {{name}},</p><p>{{message}}</p><p>— {{site_name}}</p>",
+        "Hi {{name}},\n\n{{message}}\n\n— {{site_name}}",
+    ),
+];
+
+/// Seed the six standard ad zones for a directory. Idempotent per (directory, zone_key):
+/// an existing zone — including one an admin has repriced or sold — is never touched.
+pub async fn seed_standard_ad_zones(
+    db: &sqlx::PgPool,
+    directory_id: Uuid,
+) -> Result<u64, sqlx::Error> {
+    let mut created = 0u64;
+    for (key, label, width, height, price) in STANDARD_AD_ZONES {
+        let exists = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM ad_zones WHERE directory_id = $1 AND zone_key = $2",
+        )
+        .bind(directory_id)
+        .bind(key)
+        .fetch_one(db)
+        .await?;
+        if exists > 0 {
+            continue;
+        }
+        sqlx::query(
+            "INSERT INTO ad_zones (name, zone_key, width, height, price_monthly, directory_id, status) \
+             VALUES ($1, $2, $3, $4, $5::numeric, $6, 'available')",
+        )
+        .bind(label)
+        .bind(key)
+        .bind(width)
+        .bind(height)
+        .bind(price)
+        .bind(directory_id)
+        .execute(db)
+        .await?;
+        created += 1;
+    }
+    Ok(created)
+}
+
+/// Seed the starter system email templates for a STANDALONE directory (network_id NULL).
+/// A city inside a network deliberately inherits its network's templates, so it is skipped
+/// here. Idempotent per (directory_id, event_key): an edited template is never overwritten.
+pub async fn seed_system_email_templates(
+    db: &sqlx::PgPool,
+    directory_id: Uuid,
+    directory_name: &str,
+) -> Result<u64, sqlx::Error> {
+    let mut created = 0u64;
+    for (event_key, name, subject, body_html, body_text) in SYSTEM_EMAIL_TEMPLATES {
+        let exists = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM email_templates WHERE directory_id = $1 AND event_key = $2",
+        )
+        .bind(directory_id)
+        .bind(event_key)
+        .fetch_one(db)
+        .await?;
+        if exists > 0 {
+            continue;
+        }
+        sqlx::query(
+            "INSERT INTO email_templates \
+             (name, subject, body, body_text, variables, category, directory_id, event_key, is_active) \
+             VALUES ($1, $2, $3, $4, $5, 'system', $6, $7, true)",
+        )
+        .bind(name)
+        .bind(subject)
+        .bind(body_html)
+        .bind(body_text)
+        .bind(vec!["site_name", "name"])
+        .bind(directory_id)
+        .bind(event_key)
+        .execute(db)
+        .await?;
+        created += 1;
+    }
+    // The directory's display name is the mail "site_name" fallback; keep it discoverable
+    // without inventing a second source of truth.
+    let _ = directory_name;
+    Ok(created)
+}
+
+/// Outcome of a provisioning pass, so a caller (create or the back-fill endpoint) can
+/// report exactly what was created.
+#[derive(Debug, serde::Serialize)]
+pub struct ProvisionReport {
+    pub ad_zones_created: u64,
+    pub email_templates_created: u64,
+}
+
+/// Idempotently fill every PER-DIRECTORY default a new directory needs. Never fails the
+/// caller on a seeding error — a directory that exists but is missing a default is still
+/// usable, and the failure is logged (fail gracefully, never panic and never 500 a create).
+pub async fn provision_directory_defaults(
+    db: &sqlx::PgPool,
+    directory_id: Uuid,
+) -> ProvisionReport {
+    let ad_zones_created = match seed_standard_ad_zones(db, directory_id).await {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("[directory] ad-zone provisioning failed for {directory_id}: {e}");
+            0
+        }
+    };
+
+    // A standalone directory (not attached to a network) owns its own mail templates;
+    // a network city inherits its network's.
+    let network_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT network_id FROM directories WHERE id = $1")
+            .bind(directory_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+
+    let email_templates_created = if network_id.is_none() {
+        let name: String = sqlx::query_scalar("SELECT name FROM directories WHERE id = $1")
+            .bind(directory_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        match seed_system_email_templates(db, directory_id, &name).await {
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("[directory] email-template provisioning failed for {directory_id}: {e}");
+                0
+            }
+        }
+    } else {
+        0
+    };
+
+    ProvisionReport {
+        ad_zones_created,
+        email_templates_created,
+    }
+}
+
+/// POST /api/v1/directories/:slug/provision-defaults — back-fill the per-directory
+/// defaults on an EXISTING directory (the same routine create_directory runs), so an
+/// existing city can be brought up to the standard without SQL. Idempotent and safe to
+/// press twice. Platform operator or the directory's own tenant only.
+pub async fn provision_defaults(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let claims = tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    tenant_scope::assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
+
+    let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Directory '{}' not found", slug)))?;
+
+    let report = provision_directory_defaults(&s.db, directory.id).await;
+
+    Ok(Json(json!({
+        "status": "ok",
+        "directory": directory.slug,
+        "ad_zones_created": report.ad_zones_created,
+        "email_templates_created": report.email_templates_created,
     })))
 }
