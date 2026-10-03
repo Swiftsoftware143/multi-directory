@@ -123,12 +123,12 @@
 
 <div class="header">
   <div class="header-inner">
-    <a class="header-brand" href="/admin-panel.html"><span class="dot">&#9679;</span> ZaarHub Pricing Admin</a>
+    <a class="header-brand" href="/admin-panel"><span class="dot">&#9679;</span> ZaarHub Pricing Admin</a>
     <div class="header-actions">
       <span class="muted" id="auth-state">checking auth&hellip;</span>
       <button class="btn btn-ghost btn-sm" id="btn-refresh">Refresh all</button>
-      <a class="btn btn-ghost btn-sm" href="/admin-panel.html">Admin Panel</a>
-      <a class="btn btn-ghost btn-sm" href="/admin-login.html">Sign in</a>
+      <a class="btn btn-ghost btn-sm" href="/admin-panel">Admin Panel</a>
+      <a class="btn btn-ghost btn-sm" href="/admin-panel">Sign in</a>
       <button class="btn btn-ghost btn-sm" id="btn-signout" style="display:none">Sign out</button>
     </div>
   </div>
@@ -144,7 +144,7 @@
       <span class="mono">401 Authentication required</span>. Sign in, then reload this page.
     </p>
     <div class="toolbar">
-      <a class="btn btn-accent" href="/admin-login.html">Go to /admin-login.html</a>
+      <a class="btn btn-accent" href="/admin-panel">Go to the Admin Panel</a>
       <button class="btn btn-ghost" id="btn-retry-auth">Retry with current token</button>
     </div>
     <div class="grid grid-2">
@@ -378,7 +378,7 @@
       ? 'token: <span class="mono">' + esc(src) + '</span>'
       : 'no admin token';
     el('btn-signout').style.display = src ? 'inline-flex' : 'none';
-    if (!src) showAuthBanner('No admin token found in localStorage (looked for <span class="mono">md_admin_token</span>, <span class="mono">token</span>, <span class="mono">ws_dir_token</span>). Sign in at <a href="/admin-login.html">/admin-login.html</a>, or paste a token below.');
+    if (!src) showAuthBanner('No admin token found in localStorage (looked for <span class="mono">md_admin_token</span>, <span class="mono">token</span>, <span class="mono">ws_dir_token</span>). <a href="/admin-panel">Sign in at the Admin Panel</a>, or paste a token below.');
     else hideAuthBanner();
   }
   function showAuthBanner(text) {
@@ -399,7 +399,7 @@
         var data = null;
         try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
         if (res.status === 401) {
-          showAuthBanner('The API rejected the request with <b>401 Authentication required</b> &mdash; the stored token is missing, expired or invalid. Sign in at <a href="/admin-login.html">/admin-login.html</a>, then use &ldquo;Retry with current token&rdquo;.');
+          showAuthBanner('The API rejected the request with <b>401 Authentication required</b> &mdash; the stored token is missing, expired or invalid. <a href="/admin-panel">Sign in at the Admin Panel</a>, then use &ldquo;Retry with current token&rdquo;.');
         } else if (res.status === 403) {
           showAuthBanner('The API rejected the request with <b>403</b> &mdash; this admin token does not have the admin role required by the pricing routes.');
         }
@@ -796,7 +796,7 @@
   function refreshAll() {
     if (!getToken()) {
       renderAuthState();
-      setMsg('services-msg', 'warn', 'Admin sign-in required: no token in localStorage, so GET /pricing/services would return 401. Sign in at /admin-login.html or paste a token in the banner above.');
+      setMsg('services-msg', 'warn', 'Admin sign-in required: no token in localStorage, so GET /pricing/services would return 401. Sign in at /admin-panel or paste a token in the banner above.');
       setMsg('bundles-msg', 'warn', 'Admin sign-in required (see the banner at the top of this page).');
       setMsg('gf-msg', 'warn', 'Admin sign-in required (see the banner at the top of this page).');
       services = []; bundles = []; renderServices(); renderBundles();

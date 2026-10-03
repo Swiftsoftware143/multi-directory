@@ -195,7 +195,7 @@
 const API = '/api/v1';
 let token = '';
 
-// Try to get token from localStorage (set by admin-login.html)
+// Try to get token from localStorage (set by the admin panel at /admin-panel)
 try { token = localStorage.getItem('md_admin_token') || ''; } catch(e) {}
 
 document.getElementById('user-info').textContent = token ? '🔑 Authenticated' : '⚠️ Not logged in';

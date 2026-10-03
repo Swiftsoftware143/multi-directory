@@ -1,5 +1,28 @@
 # Admin Guide — ZaarHub Multi-Directory Platform
 
+## Canonical admin surface — there is exactly ONE admin shell
+
+Recorded 2026-10-03 under kanban **t_75eafc33**. Next reader of `frontend/`: do not re-measure this.
+
+| URL | File | Status |
+|---|---|---|
+| `/admin-panel`, `/admin-panel.html` | `frontend/admin-panel.html` | **THE admin shell.** Carries its own sign-in form and stores the JWT under `md_admin_token`. Every fleet guide points here. |
+| `/admin-ops.html` | `frontend/admin-ops.html` | Operator console, reads `md_admin_token`. Same canonical family. |
+| `/zaarhub-admin.html` | `frontend/zaarhub-admin.html` | Branding / legal / editor's picks, reads `md_admin_token`. Same canonical family. |
+| `/pricing-admin.html` | `frontend/pricing-admin.html` | Pricing console; reads `md_admin_token` first. Same canonical family. |
+| `/admin-dashboard.html` | `frontend/admin-dashboard.html` | **RETIRED 2026-10-03.** Was a *second* console (own sidebar: dashboard/directories/listings/users/settings/sponsored/notifications) reached only from `/admin-login.html`. Now a redirect stub to `/admin-panel`. |
+| `/admin-login.html` | `frontend/admin-login.html` | **RETIRED 2026-10-03.** Was a *second* sign-in form that stored the JWT under `ws_dir_token` and then sent the user to `/admin-dashboard.html`. Now a redirect stub to `/admin-panel`. |
+
+**Why the two files are redirect stubs and not deleted:** an unknown top-level path in this app is answered
+with the SPA (HTTP **200**, ~190 KB of `text/html`) — a soft-404. Deleting the files would make an old
+bookmark silently serve the directory homepage instead of reaching a login form. The stub keeps the URL
+landing on the real panel. Both names stay in `src/handlers/subfolder.rs` `RESERVED_TOP_LEVEL` because the
+URLs are still served (`is-sweep.sh` precedent for the sibling app was delete + a 301 at the edge; here the
+app itself serves the path, so the redirect lives in the file).
+
+**`ws_dir_token` is NOT legacy-only.** `frontend/login.html` (the general user login) and
+`frontend/zaarhub-offer.html` use it. Do not remove it from any page. The admin JWT is `md_admin_token`.
+
 ## Quick Reference
 
 | Page | Path | What it does |
