@@ -1123,6 +1123,12 @@ pub async fn business_detail(
         .try_get::<Option<String>, _>("description")
         .unwrap_or(None)
         .unwrap_or_default();
+    // B119: the business's own description is authored copy — resolve the shared
+    // merge vocabulary (per directory, plus this business) before it is displayed
+    // or used as the meta description.
+    let mut mctx = crate::merge_fields::MergeContext::for_directory(pool, dir.id).await;
+    mctx.set("business_name", &name);
+    let description = crate::merge_fields::render(&description, &mctx).text;
     let address: Option<String> = row.try_get("address").unwrap_or(None);
     let rec_city: Option<String> = row
         .try_get::<Option<String>, _>("city")
@@ -1410,6 +1416,13 @@ pub async fn article_page(
     let created: Option<chrono::DateTime<chrono::Utc>> = row.try_get("created_at").unwrap_or(None);
     let updated: Option<chrono::DateTime<chrono::Utc>> = row.try_get("updated_at").unwrap_or(None);
 
+    // B119: authored article copy resolves the shared merge vocabulary at render
+    // time, per directory/city, so ONE network template serves every city.
+    let mctx = crate::merge_fields::MergeContext::for_directory(pool, dir.id).await;
+    let title_raw = crate::merge_fields::render(&title_raw, &mctx).text;
+    let content = crate::merge_fields::render(&content, &mctx).text;
+    let meta_description = meta_description.map(|d| crate::merge_fields::render(&d, &mctx).text);
+
     let canonical = format!("{}/{}/articles/{}", base, dir.slug, a_slug);
     let ov = seo_override(pool, "article", art_id).await;
 
@@ -1576,6 +1589,14 @@ pub async fn blog_post_page(
     let category: Option<String> = row.try_get("blog_category").unwrap_or(None);
     let created: Option<chrono::DateTime<chrono::Utc>> = row.try_get("created_at").unwrap_or(None);
     let updated: Option<chrono::DateTime<chrono::Utc>> = row.try_get("updated_at").unwrap_or(None);
+
+    // B119: authored blog copy resolves the shared merge vocabulary at render time.
+    let mctx = crate::merge_fields::MergeContext::for_directory(pool, dir.id).await;
+    let title_raw = crate::merge_fields::render(&title_raw, &mctx).text;
+    let content = crate::merge_fields::render(&content, &mctx).text;
+    let excerpt = excerpt.map(|e| crate::merge_fields::render(&e, &mctx).text);
+    let meta_title = meta_title.map(|t| crate::merge_fields::render(&t, &mctx).text);
+    let meta_description = meta_description.map(|d| crate::merge_fields::render(&d, &mctx).text);
 
     // The post's own canonical_url wins if set (admin-editable per post);
     // otherwise the subfolder form.
@@ -1997,6 +2018,10 @@ pub async fn deals_page(
         .or(fb_title)
         .unwrap_or_else(|| format!("Deals & Coupons in {}, {} | {}", dir.city, dir.state, site));
 
+    // B119: deal copy is authored per business — resolve the shared vocabulary per
+    // directory so a shared template renders each city's own values.
+    let mctx = crate::merge_fields::MergeContext::for_directory(pool, dir.id).await;
+
     let rows = sqlx::query(
         "SELECT de.title, de.description, de.deal_price, de.original_price, \
                 de.discount_percent, de.image_url, de.end_date, de.featured, \
@@ -2025,7 +2050,11 @@ pub async fn deals_page(
     let items: Vec<DealItem> = rows
         .iter()
         .filter_map(|r| {
-            let title_raw: String = r.try_get("title").unwrap_or_default();
+            let title_raw: String = crate::merge_fields::render(
+                &r.try_get::<String, _>("title").unwrap_or_default(),
+                &mctx,
+            )
+            .text;
             if title_raw.trim().is_empty() {
                 return None;
             }
@@ -2045,7 +2074,10 @@ pub async fn deals_page(
                 price: r.try_get("deal_price").unwrap_or(None),
                 was: r.try_get("original_price").unwrap_or(None),
                 discount: r.try_get("discount_percent").unwrap_or(None),
-                description: r.try_get("description").unwrap_or(None),
+                description: r
+                    .try_get::<Option<String>, _>("description")
+                    .unwrap_or(None)
+                    .map(|d| crate::merge_fields::render(&d, &mctx).text),
                 image: r.try_get("image_url").unwrap_or(None),
                 until: end_date.map(|d| format!("Until {}", d.format("%B %-d, %Y"))),
             })

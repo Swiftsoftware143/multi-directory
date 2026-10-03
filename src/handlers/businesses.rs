@@ -214,6 +214,18 @@ pub async fn create_business(
         ));
     }
 
+    // B119: refuse an unknown merge field in an authored description at save time.
+    if let Some(ref desc) = req.description {
+        let unknown = crate::merge_fields::unknown_fields(&[desc.as_str()]);
+        if !unknown.is_empty() {
+            return Err(AppError::BadRequest(format!(
+                "Unknown merge field(s) in description: {}. Available fields: {}",
+                unknown.join(", "),
+                crate::merge_fields::names().join(", ")
+            )));
+        }
+    }
+
     let dir = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
         .bind(&slug)
         .fetch_optional(&s.db)
@@ -304,6 +316,19 @@ pub async fn update_business(
                 "Invalid CTA type '{}'. Must be one of: {}",
                 cta,
                 utils::VALID_CTA_TYPES.join(", ")
+            )));
+        }
+    }
+
+    // B119: a business description may use merge fields; refuse an unknown one with a
+    // plain-English message rather than shipping raw braces to the listing page.
+    if let Some(ref desc) = req.description {
+        let unknown = crate::merge_fields::unknown_fields(&[desc.as_str()]);
+        if !unknown.is_empty() {
+            return Err(AppError::BadRequest(format!(
+                "Unknown merge field(s) in description: {}. Available fields: {}",
+                unknown.join(", "),
+                crate::merge_fields::names().join(", ")
             )));
         }
     }
