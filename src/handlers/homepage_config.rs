@@ -94,9 +94,16 @@ pub struct SaveSettings {
     pub sections: Option<Value>,
 }
 
-const CONFIG_COLS: &str = "id, network_id, directory_id, enabled, home_surface, home_city_slug, \
-     announcement_text, announcement_cta_text, announcement_cta_url, hero_headline, \
-     hero_subheadline, hero_image_url, hero_cta_text, hero_cta_url, featured_city_slugs, sections";
+/// The column list every `HomepageConfigRow` select returns, kept in one place. A macro (not a
+/// `const`) so the query text below is assembled by `concat!` at compile time: the SQL stays a
+/// compile-time constant with no runtime string building (pre-build gate rule 5b).
+macro_rules! config_cols {
+    () => {
+        "id, network_id, directory_id, enabled, home_surface, home_city_slug, \
+         announcement_text, announcement_cta_text, announcement_cta_url, hero_headline, \
+         hero_subheadline, hero_image_url, hero_cta_text, hero_cta_url, featured_city_slugs, sections"
+    };
+}
 
 /// Default section list: every standard block, enabled, in the canonical order.
 fn default_sections() -> Value {
@@ -166,12 +173,14 @@ async fn resolve_exact(
     directory_id: Option<Uuid>,
     network_id: Option<Uuid>,
 ) -> Result<Option<HomepageConfigRow>, sqlx::Error> {
-    let sql = format!(
-        "SELECT {CONFIG_COLS} FROM homepage_config \
+    const SQL: &str = concat!(
+        "SELECT ",
+        config_cols!(),
+        " FROM homepage_config \
           WHERE ($1::uuid IS NOT NULL AND directory_id = $1) \
              OR ($1::uuid IS NULL AND $2::uuid IS NOT NULL AND network_id = $2) LIMIT 1"
     );
-    sqlx::query_as::<_, HomepageConfigRow>(&sql)
+    sqlx::query_as::<_, HomepageConfigRow>(SQL)
         .bind(directory_id)
         .bind(network_id)
         .fetch_optional(db)
@@ -184,13 +193,15 @@ async fn resolve_effective(
     directory_id: Option<Uuid>,
     network_id: Option<Uuid>,
 ) -> Result<Option<HomepageConfigRow>, sqlx::Error> {
-    let sql = format!(
-        "SELECT {CONFIG_COLS} FROM homepage_config \
+    const SQL: &str = concat!(
+        "SELECT ",
+        config_cols!(),
+        " FROM homepage_config \
           WHERE ($1::uuid IS NOT NULL AND directory_id = $1) \
              OR ($2::uuid IS NOT NULL AND network_id = $2) \
           ORDER BY (directory_id IS NOT NULL) DESC LIMIT 1"
     );
-    sqlx::query_as::<_, HomepageConfigRow>(&sql)
+    sqlx::query_as::<_, HomepageConfigRow>(SQL)
         .bind(directory_id)
         .bind(network_id)
         .fetch_optional(db)
@@ -411,16 +422,17 @@ pub async fn put_settings(
 
     let row = match existing {
         Some(cur) => {
-            let sql = format!(
+            const SQL: &str = concat!(
                 "UPDATE homepage_config SET \
                    enabled = $2, home_surface = $3, home_city_slug = $4, \
                    announcement_text = $5, announcement_cta_text = $6, announcement_cta_url = $7, \
                    hero_headline = $8, hero_subheadline = $9, hero_image_url = $10, \
                    hero_cta_text = $11, hero_cta_url = $12, featured_city_slugs = $13, \
                    sections = $14, updated_at = now() \
-                 WHERE id = $1 RETURNING {CONFIG_COLS}"
+                 WHERE id = $1 RETURNING ",
+                config_cols!()
             );
-            sqlx::query_as::<_, HomepageConfigRow>(&sql)
+            sqlx::query_as::<_, HomepageConfigRow>(SQL)
                 .bind(cur.id)
                 .bind(body.enabled.unwrap_or(cur.enabled))
                 .bind(&surface)
@@ -451,16 +463,17 @@ pub async fn put_settings(
                 .await?
         }
         None => {
-            let sql = format!(
+            const SQL: &str = concat!(
                 "INSERT INTO homepage_config \
                    (network_id, directory_id, enabled, home_surface, home_city_slug, \
                     announcement_text, announcement_cta_text, announcement_cta_url, \
                     hero_headline, hero_subheadline, hero_image_url, hero_cta_text, hero_cta_url, \
                     featured_city_slugs, sections) \
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
-                 RETURNING {CONFIG_COLS}"
+                 RETURNING ",
+                config_cols!()
             );
-            sqlx::query_as::<_, HomepageConfigRow>(&sql)
+            sqlx::query_as::<_, HomepageConfigRow>(SQL)
                 .bind(owner_network)
                 .bind(directory_id)
                 .bind(body.enabled.unwrap_or(true))
