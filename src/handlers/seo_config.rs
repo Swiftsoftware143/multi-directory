@@ -171,18 +171,36 @@ pub async fn update_dir_seo_settings(
 
 // ── Generate Sitemap Index ──
 
+/// True when `host` is a per-directory subdomain of `base_domain`
+/// (`<slug>.<base_domain>`). Those hosts have no DNS record, so they must never
+/// be named as the platform origin in a sitemap (kanban t_543d51d8).
+fn is_directory_subdomain(host: &str, base_domain: &str) -> bool {
+    let base = base_domain.trim().trim_matches('.');
+    if base.is_empty() {
+        return false;
+    }
+    let h = host.trim().split(':').next().unwrap_or(host);
+    let h = h.trim_start_matches("www.");
+    match h.strip_suffix(&format!(".{}", base)) {
+        Some(label) => !label.is_empty() && !label.contains('.'),
+        None => false,
+    }
+}
+
 pub async fn generate_sitemap(
     State(s): State<AppState>,
     Path(dir_id): Path<Uuid>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT name, page_slug_pattern FROM directories WHERE id=$1",
+    let dir = sqlx::query_as::<_, (String, Option<String>, String)>(
+        "SELECT name, page_slug_pattern, slug FROM directories WHERE id=$1",
     )
     .bind(dir_id)
     .fetch_optional(&s.db)
     .await?
     .ok_or(AppError::NotFound("Directory".into()))?;
     let site_name = dir.0;
+    let dir_slug = dir.2;
 
     // Get the directory domain
     let domains: Vec<String> = sqlx::query_scalar(
@@ -191,16 +209,32 @@ pub async fn generate_sitemap(
     .bind(dir_id)
     .fetch_all(&s.db)
     .await?;
-    let base_url = domains
-        .first()
-        .map(|d| format!("https://{}", d))
-        .unwrap_or_else(|| {
+    // t_543d51d8: the no-mapped-domain fallback used to be `<name>.<base_domain>`,
+    // a host with no DNS record — every URL in this sitemap was unreachable and the
+    // programmatic pages it advertises had no route. Directories are served as
+    // subfolders on the platform host (`<origin>/<dir-slug>/...`), the same scheme
+    // the public /sitemap.xml uses, so name that. A directory that owns a mapped
+    // domain still owns that domain's root.
+    let base_url = match domains.first() {
+        Some(d) => format!("https://{}", d),
+        None => {
+            let (host, proto) = crate::handlers::subfolder::host_proto(&headers);
+            let host = host.filter(|h| !is_directory_subdomain(h, &s.config.base_domain));
+            let host = host.or_else(|| {
+                let b = s.config.base_domain.trim().to_string();
+                if b.is_empty() {
+                    None
+                } else {
+                    Some(b)
+                }
+            });
             format!(
-                "https://{}.{}",
-                site_name.to_lowercase().replace(' ', "-"),
-                s.config.base_domain
+                "{}/{}",
+                crate::handlers::subfolder::origin(host.as_deref(), &proto, &s.config.base_domain),
+                dir_slug
             )
-        });
+        }
+    };
 
     let mut urls = Vec::new();
     urls.push(format!("{}", base_url));

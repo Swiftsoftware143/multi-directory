@@ -83,7 +83,10 @@ fn strip_tags(s: &str) -> String {
 
 /// Build the site origin (`https://host`) from the request host + forwarded proto.
 /// A private/loopback host keeps its port (test/dev); public hosts drop it.
-fn origin(host: Option<&str>, proto: &str, fallback: &str) -> String {
+/// Public origin (scheme://host) for absolute URLs. `fallback` is used when the
+/// request carries no host. Shared with the SEO sitemap builder so both always
+/// name the same, reachable host.
+pub fn origin(host: Option<&str>, proto: &str, fallback: &str) -> String {
     let scheme = if proto.eq_ignore_ascii_case("http") {
         "http"
     } else {
@@ -346,6 +349,9 @@ fn head_html(seo: &Seo, site_name: &str) -> String {
         h(&seo.canonical)
     ));
     s.push_str("<meta name=\"robots\" content=\"index,follow,max-image-preview:large\">\n");
+    // Every server-rendered page names the site icon explicitly; without it a
+    // browser falls back to /favicon.ico (404) and logs a console error.
+    s.push_str("<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\n");
     s.push_str(&format!(
         "<meta property=\"og:site_name\" content=\"{}\">\n",
         h(site_name)
@@ -2273,6 +2279,243 @@ pub fn robots(host: Option<&str>, proto: &str, fallback_domain: &str) -> Respons
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Programmatic pages — GET /<dir>/<page-slug>   (kanban t_543d51d8)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The generators (trap doors / content queue / programmatic generator) publish
+// thousands of rows into `programmatic_pages` and the SEO sitemap advertised
+// every one of them, but nothing rendered them: `/<dir>/<slug>` was 301'd to a
+// non-existent business and the directory-host form fell through to the SPA
+// shell — a soft-404 for every advertised URL. `POST /programmatic-pages/:id/track`
+// had no caller for the same reason. Both are fixed here.
+
+/// Result of resolving a public path against `programmatic_pages`.
+enum PageRender {
+    /// A published row exists and was rendered.
+    Rendered(Response<Body>),
+    /// A row exists for this slug but is not published — answer a real 404,
+    /// never the SPA shell.
+    Unpublished,
+    /// No row with this slug in this directory.
+    Absent,
+}
+
+/// Resolve the directory a request's own host names, when the host is a
+/// directory subdomain (`<dir-slug>.<base_domain>`). Directories are normally
+/// addressed as subfolders (`/<dir-slug>/...`), so this returns `None` for the
+/// platform host and costs no query there.
+async fn directory_from_host(
+    pool: &PgPool,
+    host: Option<&str>,
+    base_domain: &str,
+) -> Option<DirectoryRec> {
+    let base = base_domain.trim().trim_matches('.');
+    if base.is_empty() {
+        return None;
+    }
+    let raw = host?.trim();
+    let label = raw
+        .split(':')
+        .next()
+        .unwrap_or(raw)
+        .trim_start_matches("www.");
+    let label = label.strip_suffix(&format!(".{}", base))?;
+    if label.is_empty() || label.contains('.') {
+        return None;
+    }
+    load_directory(pool, label).await
+}
+
+/// Server-render a stored programmatic page. The row's own `h1` / `meta_title` /
+/// `meta_description` / `content` are the page — nothing is invented here — and
+/// the rendered document carries the impression beacon the `/track` endpoint was
+/// written for.
+async fn render_programmatic_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    dir: &DirectoryRec,
+    page_slug: &str,
+) -> PageRender {
+    // One bounded, indexed lookup: `programmatic_pages_directory_id_slug_key`.
+    let row = sqlx::query(
+        "SELECT pp.id, pp.slug, pp.title, pp.meta_title, pp.meta_description, pp.h1, \
+                pp.content, pp.status, pp.updated_at, \
+                ds.name AS service_name, dl.name AS location_name \
+         FROM programmatic_pages pp \
+         LEFT JOIN directory_services ds ON ds.id = pp.service_id \
+         LEFT JOIN directory_locations dl ON dl.id = pp.location_id \
+         WHERE pp.directory_id = $1 AND pp.slug = $2 LIMIT 1",
+    )
+    .bind(dir.id)
+    .bind(page_slug)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let row = match row {
+        Some(r) => r,
+        None => return PageRender::Absent,
+    };
+
+    let status: String = row.try_get("status").unwrap_or_default();
+    if !status.eq_ignore_ascii_case("published") {
+        return PageRender::Unpublished;
+    }
+    let page_id: Uuid = row.try_get("id").unwrap_or_default();
+
+    let p_slug: String = row.try_get("slug").unwrap_or_default();
+    let meta_title: Option<String> = row.try_get("meta_title").unwrap_or(None);
+    let meta_description: Option<String> = row.try_get("meta_description").unwrap_or(None);
+    let h1_raw: Option<String> = row.try_get("h1").unwrap_or(None);
+    let title_raw: Option<String> = row.try_get("title").unwrap_or(None);
+    let content: String = row.try_get("content").unwrap_or(None).unwrap_or_default();
+    let service_name: Option<String> = row.try_get("service_name").unwrap_or(None);
+    let location_name: Option<String> = row.try_get("location_name").unwrap_or(None);
+    let updated: Option<chrono::DateTime<chrono::Utc>> = row.try_get("updated_at").unwrap_or(None);
+
+    let base = origin(host, proto, fallback_domain);
+    let site = brand_name_for(pool, dir).await;
+    let theme = theme_for(pool, dir).await;
+    let canonical = format!("{}/{}/{}", base, dir.slug, p_slug);
+
+    let h1 = h1_raw
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| title_raw.clone().filter(|s| !s.trim().is_empty()))
+        .unwrap_or_else(|| format!("{} in {}, {}", dir.name, dir.city, dir.state));
+
+    let title = meta_title
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| title_raw.clone().filter(|s| !s.trim().is_empty()))
+        .map(|t| {
+            if t.contains(&site) {
+                t
+            } else {
+                format!("{} | {}", t, site)
+            }
+        })
+        .unwrap_or_else(|| format!("{} | {}", h1, site));
+
+    let description = meta_description
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| strip_tags(&content));
+    let description = clip(&description, 158);
+
+    let mut jsonld = Vec::new();
+    jsonld.push(serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": h1,
+        "description": description,
+        "url": canonical,
+        "dateModified": updated
+            .map(|d| d.to_rfc3339())
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+        "isPartOf": {"@type": "WebSite", "name": site, "url": format!("{}/", base)},
+        "about": {
+            "@type": "City",
+            "name": dir.city,
+            "containedInPlace": {"@type": "AdministrativeArea", "name": dir.state},
+        },
+        "publisher": {"@type": "Organization", "name": site},
+    }));
+    jsonld.push(breadcrumb_ld(&[
+        (&site, &format!("{}/", base)),
+        (&dir.name, &format!("{}/{}/", base, dir.slug)),
+        (&h1, &canonical),
+    ]));
+
+    let seo = Seo {
+        title,
+        description: description.clone(),
+        canonical: canonical.clone(),
+        og_type: "article".into(),
+        og_image: None,
+        jsonld,
+    };
+
+    let lede = match (&service_name, &location_name) {
+        (Some(s), Some(l)) => format!(
+            "<p class=\"lede\">{} in {}, {} — serving {}.</p>",
+            h(s),
+            h(l),
+            h(&dir.state),
+            h(&dir.city)
+        ),
+        _ => format!("<p class=\"lede\">{}</p>", h(&description)),
+    };
+
+    // The beacon `POST /programmatic-pages/:page_id/track` was written for.
+    // The endpoint is auth-exempt for POST only (see `auth_guard`).
+    let beacon = format!(
+        "<script>(function(){{try{{fetch(\"/api/v1/programmatic-pages/{}/track\",\
+{{method:\"POST\",headers:{{\"Content-Type\":\"application/json\"}},\
+body:JSON.stringify({{event:\"impression\"}}),keepalive:true}}).catch(function(){{}});}}\
+catch(e){{}}}})();</script>",
+        page_id
+    );
+
+    let crumbs_owned = [
+        (site.as_str(), format!("{}/", base)),
+        (dir.name.as_str(), format!("{}/{}/", base, dir.slug)),
+        (h1.as_str(), canonical.clone()),
+    ];
+    let crumbs_refs: Vec<(&str, &str)> =
+        crumbs_owned.iter().map(|(a, b)| (*a, b.as_str())).collect();
+
+    let body = format!(
+        r#"{start}{crumbs}
+<article class="detail article-body">
+<h1>{h1}</h1>
+{lede}
+{content}
+<p class="row" style="margin-top:24px"><a href="{base}/{dslug}/businesses">Browse {city} businesses</a> &middot; <a href="{base}/{dslug}">More about {city}</a></p>
+</article>
+{beacon}
+{end}"#,
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
+        crumbs = breadcrumbs(&crumbs_refs),
+        h1 = h(&h1),
+        lede = lede,
+        content = crate::template_engine::sanitize_html(&content),
+        base = h(&base),
+        dslug = h(&dir.slug),
+        city = h(&dir.city),
+        beacon = beacon,
+        end = shell_end(&site),
+    );
+
+    PageRender::Rendered(html_response(StatusCode::OK, body))
+}
+
+/// A readable 404 — never the SPA shell, so Google is not handed a 200 for a
+/// URL that does not exist. `no-store` so an edge cache cannot pin a 404 for a
+/// slug that is published a moment later.
+fn not_found_page(msg: &str) -> Response<Body> {
+    let body = format!(
+        "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">\
+<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+<meta name=\"robots\" content=\"noindex,follow\"><title>Page not found</title>\
+<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"></head>\
+<body style=\"font-family:system-ui,-apple-system,sans-serif;max-width:640px;margin:80px auto;padding:0 24px;line-height:1.6\">\
+<h1 style=\"font-size:1.6rem\">Page not found</h1><p>{}</p>\
+<p><a href=\"/\">Go to the homepage</a></p></body></html>",
+        h(msg)
+    );
+    let mut r = html_response(StatusCode::NOT_FOUND, body);
+    r.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    r
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Dispatcher — called from the SPA fallback for unmatched GET paths.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2328,25 +2571,79 @@ pub async fn try_render(
             }
             [_, "articles", a] => article_page(pool, host, proto, fallback_domain, slug, a).await,
             [_, "blog", b] => blog_post_page(pool, host, proto, fallback_domain, slug, b).await,
-            [_] => directory_home(pool, host, proto, fallback_domain, slug, spa_html).await,
+            // A single segment is normally a directory home. When no such
+            // directory exists and the request host IS a directory
+            // (`<dir>.<base_domain>`), the segment addresses a programmatic
+            // page — render it, or answer a real 404. Never the SPA shell: that
+            // shell is what made thousands of advertised URLs soft-404s.
+            [_] => {
+                if let Some(resp) =
+                    directory_home(pool, host, proto, fallback_domain, slug, spa_html).await
+                {
+                    Some(resp)
+                } else if let Some(dir) = directory_from_host(pool, host, fallback_domain).await {
+                    match render_programmatic_page(pool, host, proto, fallback_domain, &dir, slug)
+                        .await
+                    {
+                        PageRender::Rendered(r) => Some(r),
+                        PageRender::Unpublished => {
+                            Some(not_found_page("That page is not published yet."))
+                        }
+                        PageRender::Absent => {
+                            Some(not_found_page(&format!("There is no page at /{}.", slug)))
+                        }
+                    }
+                } else {
+                    None
+                }
+            }
             // `/dir/blog` and `/dir/deals` are server-rendered indexes (no JS
             // required) so a crawler and a script-free visitor get the city's
             // real posts and deals. `/dir/articles` has no index page yet.
             [_, "blog"] => blog_list_page(pool, host, proto, fallback_domain, slug).await,
             [_, "deals"] => deals_page(pool, host, proto, fallback_domain, slug).await,
             [_, "articles"] => None,
-            // `/dir/<business-slug>` (the short form) — 301 to the canonical
-            // `/dir/businesses/<slug>` so a legacy/inferred URL is not a soft-404.
-            // Guarded on a real directory: a path like `/city/palm-bay` must fall
-            // through to the SPA untouched, not be redirected to a bogus URL.
+            // `/dir/<page-or-business-slug>`. A published programmatic page
+            // (the form the SEO sitemap publishes) renders here; otherwise the
+            // legacy business short form still 301s to `/dir/businesses/<slug>`,
+            // and an unpublished page is a real 404 rather than a soft one.
             [_, short] => {
-                if load_directory(pool, slug).await.is_some() {
-                    Some(redirect_301(&format!(
-                        "{}/{}/businesses/{}",
-                        origin(host, proto, fallback_domain),
-                        slug,
-                        short
-                    )))
+                if let Some(dir) = load_directory(pool, slug).await {
+                    // A published programmatic page (the form the sitemap
+                    // publishes) renders. Otherwise: a URL that names a real
+                    // business keeps the legacy 301 to its canonical form, and
+                    // anything else is a genuine 404 — never the SPA shell,
+                    // which is the soft-404 Google was being handed.
+                    let outcome =
+                        render_programmatic_page(pool, host, proto, fallback_domain, &dir, short)
+                            .await;
+                    match outcome {
+                        PageRender::Rendered(r) => Some(r),
+                        PageRender::Absent | PageRender::Unpublished => {
+                            let is_business: i64 = sqlx::query_scalar(
+                                "SELECT COUNT(*) FROM businesses \
+                                 WHERE directory_id = $1 AND slug = $2",
+                            )
+                            .bind(dir.id)
+                            .bind(short)
+                            .fetch_one(pool)
+                            .await
+                            .unwrap_or(0);
+                            if is_business > 0 {
+                                Some(redirect_301(&format!(
+                                    "{}/{}/businesses/{}",
+                                    origin(host, proto, fallback_domain),
+                                    slug,
+                                    short
+                                )))
+                            } else {
+                                Some(not_found_page(&format!(
+                                    "There is no page at /{}/{}.",
+                                    slug, short
+                                )))
+                            }
+                        }
+                    }
                 } else {
                     None
                 }

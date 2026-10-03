@@ -3011,6 +3011,12 @@ async fn auth_guard(
         || path == "/visitors/page-view"
         || path == "/visitors/event"
         || (path.starts_with("/visitors/session/") && path.ends_with("/end"))
+        // Anonymous programmatic-page beacon (kanban t_543d51d8) — write-only
+        // telemetry for programmatic_pages, fired by the rendered public page.
+        // POST only: the admin GET/PUT surface for these pages stays gated.
+        || (req.method() == "POST"
+            && path.starts_with("/programmatic-pages/")
+            && path.ends_with("/track"))
         // Public review reading — GET only (write/approve/reject stay authenticated)
         || (path == "/reviews" && req.method() == "GET")
         // Public submit-a-business form — POST only, rate-limited inside the handler
