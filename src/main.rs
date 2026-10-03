@@ -3,6 +3,7 @@
 #![recursion_limit = "256"]
 mod coreswift;
 mod email;
+mod entitlements;
 mod reminders;
 
 mod auth;

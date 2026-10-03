@@ -176,6 +176,21 @@ pub async fn create_deal(
     State(s): State<AppState>,
     Json(req): Json<CreateDealRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // B113: server-side plan entitlement gate. A business with no active subscription is not
+    // gated (behaviour unchanged); a subscriber is held to its tier's deal/feature limits.
+    let status = req.status.as_deref().unwrap_or("active");
+    crate::entitlements::require_deal_slot(
+        &s.db,
+        req.business_id,
+        status,
+        req.featured.unwrap_or(false),
+        req.rotation_schedule
+            .as_deref()
+            .map(|r| r != "none")
+            .unwrap_or(false),
+    )
+    .await?;
+
     let deal = sqlx::query_as::<_, Deal>(
         "INSERT INTO deals (title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, gallery_images, rotation_schedule) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417, \x2418, \x2419, \x2420, \x2421, \x2422, \x2423, \x2424, \x2425, \x2426, \x2427, \x2428, \x2429, \x2430, \x2431) RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )

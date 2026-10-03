@@ -151,6 +151,17 @@ pub async fn set_business_categories(
     // Determine max categories allowed
     let max_cats = get_max_categories(&s.db, id).await?;
 
+    // B113: the active plan's max_categories is a hard ceiling — it can lower a per-business
+    // admin override but never raise it. No-op for businesses without an active subscription.
+    let max_cats = match crate::entitlements::limits_for(&s.db, id)
+        .await?
+        .and_then(|l| l.max_categories)
+        .filter(|n| *n >= 0)
+    {
+        Some(cap) => max_cats.min(cap as usize),
+        None => max_cats,
+    };
+
     if req.category_ids.len() > max_cats {
         return Err(AppError::BadRequest(format!(
             "Maximum {} categories allowed. Upgrade to add more.",

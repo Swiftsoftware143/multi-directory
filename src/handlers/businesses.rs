@@ -534,6 +534,10 @@ pub async fn upload_business_images(
         return Err(AppError::NotFound("Business not found".to_string()));
     }
 
+    // B113: server-side plan photo-slot gate. No-op unless the business holds an active
+    // subscription, so unsubscribed listings are unaffected.
+    crate::entitlements::require_photo_slot(&s.db, business_id, req.images.len() as i64).await?;
+
     // Build URLs for uploaded images — for now store references to /uploads/
     // In future, upload to CDN. For MVP, we save base64 data to local files.
     let upload_dir = format!(
