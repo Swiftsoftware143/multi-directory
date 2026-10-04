@@ -644,6 +644,13 @@ a.zh-city-card{display:block;text-decoration:none;color:inherit}
 </head>
 <body>
 
+<a href="#zh-content" class="zh-skip-link">Skip to main content</a>
+<style>
+.zh-skip-link{position:absolute;left:-9999px;top:0;z-index:10000;background:#0f172a;color:#fff;padding:10px 16px;border-radius:0 0 8px 0;font-weight:600;text-decoration:none}
+.zh-skip-link:focus{left:0;outline:3px solid #fbbf24}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+</style>
+
 <div class="zh-loading-full" id="splash-load">
   <div class="zh-logo-load" style="margin-bottom:4px"><span class="logo-emoji-splash">🌐</span> Zaar<span>Hub</span> <span style="font-weight:400;font-size:.9rem;color:#94a3b8">Community</span></div>
   <div class="zh-tagline">Discover your local community</div>
@@ -1188,9 +1195,9 @@ function renderShell(){
 <div id="zh-spot-week" class="zh-spot-week" style="display:none"></div>
 <div id="zh-ticker" class="zh-ticker" style="display:none">
   <div class="zh-ticker-inner" id="zh-ticker-inner"></div>
-  <button class="zh-ticker-close" onclick="dismissTicker()">✕</button>
+  <button class="zh-ticker-close" onclick="dismissTicker()" aria-label="Dismiss notification">✕</button>
 </div>
-<div id="zh-content" class="zh-loading"><div class="zh-spinner"></div><p style="margin-top:12px">Loading...</p></div>
+<div id="zh-content" role="main" tabindex="-1" class="zh-loading"><div class="zh-spinner"></div><p style="margin-top:12px">Loading...</p></div>
 <div class="zh-bottom-nav">
   <div class="zh-bottom-nav-inner">
     <a href="#/" onclick="return navTo(event,'#')" class="active"><span class="nav-icon">🏠</span>Home</a>
@@ -1475,7 +1482,7 @@ function renderHomepageContent(d){
     var priceHtml=dl.deal_price?'<div class="price">$'+esc(dl.deal_price)+(dl.original_price?' <s>$'+esc(dl.original_price)+'</s>':'')+'</div>':''
     var endHtml=dl.end_date?'<span style="font-size:.75rem;color:var(--text-muted)">Valid until '+new Date(dl.end_date).toLocaleDateString()+'</span>':''
     dealsHtml+='<div class="zh-deal-card" onclick="location.hash=\'#/deal/'+esc(dl&&dl.id||'')+'\'">'+
-      '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" style="width:100%;height:100%;object-fit:cover">':'🎉')+'</div>'+
+      '<div class="zh-deal-img">'+(dl.image_url?'<img src="'+esc(dl.image_url)+'" alt="" style="width:100%;height:100%;object-fit:cover">':'🎉')+'</div>'+
       '<div class="zh-deal-body">'+
       '<h4>'+esc(dl.title)+'</h4>'+
       priceHtml+
@@ -2444,8 +2451,8 @@ function renderSearchResults(r){
         if(b.distance_km<1){distBadge='<span class="zh-dist-badge">📍 '+(b.distance_km*1000).toFixed(0)+' m away</span>'}
         else{distBadge='<span class="zh-dist-badge">📍 '+b.distance_km.toFixed(1)+' km away</span>'}
       }
-      h+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\">'+
-        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'">':esc((b.name||'?')[0]))+'</div>'+
+      h+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'">'+
+        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="">':esc((b.name||'?')[0]))+'</div>'+
         '<div class="zh-biz-body"><h4>'+esc(b.name)+distBadge+'</h4>'+
         '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div>'+
         (b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':'')+
@@ -3526,7 +3533,7 @@ function renderSavedPlaces(items){
   for(var i=0;i<items.length;i++){
     var b=items[i]
     var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
-    html+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'"><div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'">':b.name[0])+'</div><div class="zh-biz-body"><h4>'+esc(b.name)+'</h4><div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div><div style="font-size:.78rem;color:var(--text-light)">'+esc(b.address||'')+'</div></div></div>'
+    html+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'"><div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="">':b.name[0])+'</div><div class="zh-biz-body"><h4>'+esc(b.name)+'</h4><div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div><div style="font-size:.78rem;color:var(--text-light)">'+esc(b.address||'')+'</div></div></div>'
   }
   html+='</div>'
   el.innerHTML=html
