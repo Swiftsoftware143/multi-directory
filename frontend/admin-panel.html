@@ -666,6 +666,42 @@
         </div>
       </div>
 
+      <!-- Trust & Guarantee (card B90) -->
+      <div class="feature-card" id="guarantee-section">
+        <h3>🛡️ Hiring / Quality Guarantee</h3>
+        <p class="feature-subtitle">An Angie's-List-style trust statement shown to visitors on this directory's city page. Turn it on and write the promise in plain words; it appears as a 🛡️ banner above the listings.</p>
+        <div class="feature-grid">
+          <div class="feature-item">
+            <div class="feature-label">
+              Show the guarantee
+              <small>Renders the banner on the city page</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="guarantee-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <label class="feature-label" style="display:block;margin-bottom:6px">Headline
+            <small>e.g. Our Hiring Guarantee</small>
+          </label>
+          <input type="text" id="guarantee-title" maxlength="80" placeholder="Our Guarantee"
+                 style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border,#1e3a5f);border-radius:8px;background:rgba(255,255,255,.03);color:var(--text,#e8eef5);font-size:.9rem">
+          <label class="feature-label" style="display:block;margin:12px 0 6px">The promise
+            <small>What you guarantee to people who hire through this directory</small>
+          </label>
+          <textarea id="guarantee-text" rows="3" maxlength="600" placeholder="Every pro listed here is verified licensed &amp; insured. If a job goes wrong, we'll help make it right."
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border,#1e3a5f);border-radius:8px;background:rgba(255,255,255,.03);color:var(--text,#e8eef5);font-size:.9rem;resize:vertical"></textarea>
+        </div>
+        <div class="feature-save-row">
+          <button class="btn btn-accent btn-save" id="save-guarantee">
+            <span id="save-guarantee-text">Save Guarantee</span>
+          </button>
+          <span class="feature-status" id="guarantee-save-status">✓ Saved</span>
+        </div>
+      </div>
+
       <!-- Provider API Keys -->
       <style>
         .pk-row{border:1px solid var(--border,#1e3a5f);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:rgba(255,255,255,.02)}
@@ -4863,6 +4899,7 @@
           if (window.MDContextBar) window.MDContextBar.setDirectories(directories);
           ctxRenderGrid();
           loadB2bFeatures();
+          loadGuarantee();
           loadAdZones();
           // kanban t_14927725: ad revenue + sponsor creatives are directory-scoped too.
           loadAdRevenue();
@@ -5168,6 +5205,54 @@
           btn.disabled = false;
           text.textContent = 'Save B2B Toggles';
         });
+    });
+
+    // ===== Trust & Guarantee (card B90) =====
+    function guaranteeDir() {
+      if (Array.isArray(directories)) {
+        for (var i = 0; i < directories.length; i++) {
+          if (directories[i].is_active !== false) return directories[i];
+        }
+      }
+      return null;
+    }
+
+    function loadGuarantee() {
+      var d = guaranteeDir();
+      if (!d || !d.id) return;
+      apiGet('/directories/' + d.id + '/features')
+        .then(function (data) {
+          var g = (data.zaarhub_config && data.zaarhub_config.guarantee) ? data.zaarhub_config.guarantee : {};
+          document.getElementById('guarantee-enabled').checked = !!g.enabled;
+          document.getElementById('guarantee-title').value = g.title || '';
+          document.getElementById('guarantee-text').value = g.text || '';
+        })
+        .catch(function () {});
+    }
+
+    document.getElementById('save-guarantee').addEventListener('click', function () {
+      var d = guaranteeDir();
+      var status = document.getElementById('guarantee-save-status');
+      if (!d || !d.id) {
+        showToast('No active directory found. Create a directory first.', 'error');
+        return;
+      }
+      var btn = document.getElementById('save-guarantee');
+      var text = document.getElementById('save-guarantee-text');
+      btn.disabled = true;
+      text.textContent = 'Saving...';
+      if (status) status.classList.remove('show');
+      apiFetch('PUT', '/directories/' + d.id + '/features', {
+        guarantee_enabled: document.getElementById('guarantee-enabled').checked,
+        guarantee_title: document.getElementById('guarantee-title').value,
+        guarantee_text: document.getElementById('guarantee-text').value
+      })
+        .then(function () {
+          showToast('Guarantee saved', 'success');
+          if (status) { status.classList.add('show'); setTimeout(function () { status.classList.remove('show'); }, 3000); }
+        })
+        .catch(function (err) { showToast('Failed to save: ' + (err.message || 'Unknown error'), 'error'); })
+        .finally(function () { btn.disabled = false; text.textContent = 'Save Guarantee'; });
     });
 
     // ===== Ad Zones (6 standard slots per directory) =====

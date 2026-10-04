@@ -1961,6 +1961,18 @@ function renderCityPage(d){
     </div>
     <div class="zh-activity-list">${buzzHtml}</div>
   </div>
+</div>`:'' 
+
+  // B90: hiring / quality guarantee — the directory owner's public trust statement
+  // (set in the admin panel; exposed as d.directory.guarantee by GET /zaarhub/cities/<slug>).
+  var gtee=(d.directory&&d.directory.guarantee)?d.directory.guarantee:null
+  var guaranteeHtml=(gtee&&gtee.enabled&&(gtee.text||gtee.title))?`
+<div style="display:flex;gap:12px;align-items:flex-start;background:linear-gradient(135deg,rgba(13,148,136,.12),rgba(20,184,166,.06));border:1px solid rgba(13,148,136,.4);border-radius:14px;padding:14px 18px;margin:0 0 20px">
+  <span style="font-size:1.6rem;line-height:1.1">🛡️</span>
+  <div>
+    <div style="font-weight:800;color:var(--text);margin-bottom:2px">${esc(gtee.title||'Our Guarantee')}</div>
+    <div style="font-size:.86rem;color:var(--text-light);line-height:1.45">${esc(gtee.text||'')}</div>
+  </div>
 </div>`:''
 
   // ── Always-on CTAs — byte-identical components to the homepage (B87). No data gate. ──
@@ -2116,6 +2128,7 @@ function renderCityPage(d){
 </div>
 ${loyaltySectionHtml()}
 <div class="zh-city-content" id="zh-city-content">
+  ${guaranteeHtml}
   <div class="zh-view-toggle">
     <button class="active" data-view="list" onclick="setCityView('list')">📋 List</button>
     <button data-view="split" onclick="setCityView('split')">🗺️ Map</button>

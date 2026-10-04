@@ -67,6 +67,11 @@ pub struct DirectorySummary {
     pub city: Option<String>,
     pub business_count: i64,
     pub image_url: Option<String>,
+    /// B90: the directory's hiring/quality guarantee (Angie's-List style public trust
+    /// statement), as configured in `directories.zaarhub_config.guarantee`. Present only
+    /// when it is enabled AND carries text, so the front end never renders an empty badge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guarantee: Option<Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -649,16 +654,27 @@ pub async fn get_city_page(
     State(s): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<DirectoryHomepageData>> {
-    // Look up directory
-    let dir = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>)>(
-        "SELECT id, name, slug, description, city FROM directories WHERE slug = $1",
+    // Look up directory (plus its ZaarHub config for the public guarantee, card B90)
+    let dir = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Value)>(
+        "SELECT id, name, slug, description, city, COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE slug = $1",
     )
     .bind(&slug)
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound(format!("City '{}' not found", slug)))?;
 
-    let (dir_id, dir_name, dir_slug, dir_desc, dir_city) = dir;
+    let (dir_id, dir_name, dir_slug, dir_desc, dir_city, dir_zh) = dir;
+
+    // B90: expose the directory's guarantee only when enabled and non-empty.
+    let guarantee: Option<Value> = dir_zh.get("guarantee").cloned().filter(|g| {
+        g.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false)
+            && !g
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .is_empty()
+    });
 
     // Business count
     let biz_count: i64 = sqlx::query_scalar(
@@ -1128,6 +1144,7 @@ pub async fn get_city_page(
             city: dir_city,
             business_count: biz_count,
             image_url: None,
+            guarantee,
         },
         stats: DirectoryStats {
             total_businesses: biz_count,

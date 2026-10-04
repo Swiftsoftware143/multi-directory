@@ -155,6 +155,18 @@ pub struct FeatureConfigUpdate {
     pub show_reviews: Option<bool>,
     #[serde(default)]
     pub show_activity: Option<bool>,
+    // B90: per-directory hiring / quality guarantee (Angie's-List style public trust statement).
+    #[serde(default)]
+    pub guarantee_enabled: Option<bool>,
+    #[serde(default)]
+    pub guarantee_title: Option<String>,
+    #[serde(default)]
+    pub guarantee_text: Option<String>,
+    // Generic feature_config passthrough. The admin B2B-toggles card PUTs the whole
+    // `{feature_config:{...}}` object; without this field serde dropped it and the save was a
+    // silent no-op, so b2b_marketplace etc. were never persisted.
+    #[serde(default)]
+    pub feature_config: Option<serde_json::Map<String, Value>>,
 }
 
 // ── Portal: Business Profile ──
@@ -882,6 +894,12 @@ pub async fn update_directory_features(
     if let Some(v) = req.gamification {
         config.insert("gamification".to_string(), json!(v));
     }
+    // Generic passthrough: the admin card sends the whole feature_config object.
+    if let Some(fc) = &req.feature_config {
+        for (k, v) in fc.iter() {
+            config.insert(k.clone(), v.clone());
+        }
+    }
 
     let new_config = Value::Object(config);
 
@@ -899,11 +917,23 @@ pub async fn update_directory_features(
         req.show_events.is_some(),
         req.show_reviews.is_some(),
         req.show_activity.is_some(),
+        req.guarantee_enabled.is_some(),
+        req.guarantee_title.is_some(),
+        req.guarantee_text.is_some(),
     ]
     .iter()
     .any(|&x| x);
 
     if any_zh {
+        // Current ZaarHub config, so a partial guarantee update preserves the other keys.
+        let current_zh: Value = sqlx::query_scalar(
+            r#"SELECT COALESCE(zaarhub_config, '{}'::jsonb) FROM directories WHERE id = $1"#,
+        )
+        .bind(id)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(json!({}));
+
         // The patch set is a JSON OBJECT bound as a parameter, so the statement itself is one
         // compile-time literal and nothing is built as text at run time (gate rule 5d). Semantics
         // are unchanged: `jsonb || jsonb` merges the same keys (jsonb is order-insensitive), and
@@ -926,6 +956,31 @@ pub async fn update_directory_features(
         }
         if let Some(v) = req.show_activity {
             zh_patch.insert("show_activity".to_string(), json!(v));
+        }
+
+        // B90: hiring / quality guarantee. Merge into the existing {enabled,title,text}
+        // object so a partial update (e.g. only the toggle) keeps title/text intact.
+        if req.guarantee_enabled.is_some()
+            || req.guarantee_title.is_some()
+            || req.guarantee_text.is_some()
+        {
+            let mut g = current_zh
+                .get("guarantee")
+                .cloned()
+                .filter(|v| v.is_object())
+                .unwrap_or_else(|| json!({}));
+            if let Some(obj) = g.as_object_mut() {
+                if let Some(v) = req.guarantee_enabled {
+                    obj.insert("enabled".to_string(), json!(v));
+                }
+                if let Some(v) = &req.guarantee_title {
+                    obj.insert("title".to_string(), json!(v));
+                }
+                if let Some(v) = &req.guarantee_text {
+                    obj.insert("text".to_string(), json!(v));
+                }
+            }
+            zh_patch.insert("guarantee".to_string(), g);
         }
 
         if !zh_patch.is_empty() {
