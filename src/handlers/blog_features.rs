@@ -263,25 +263,45 @@ pub async fn add_internal_link(
     State(s): State<AppState>,
     Json(req): Json<AddInternalLinkRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get target post title + slug for constructing the href
+    // Get target post title + slug + owning directory for constructing the href
     #[derive(sqlx::FromRow)]
     struct TargetInfo {
         title: String,
         slug: Option<String>,
+        directory_slug: Option<String>,
     }
-    let target =
-        sqlx::query_as::<_, TargetInfo>("SELECT title, slug FROM blog_posts WHERE id = $1")
-            .bind(req.target_post_id)
-            .fetch_optional(&s.db)
-            .await?
-            .unwrap_or(TargetInfo {
-                title: String::new(),
-                slug: None,
-            });
+    let target = sqlx::query_as::<_, TargetInfo>(
+        "SELECT bp.title, bp.slug, d.slug AS directory_slug \
+         FROM blog_posts bp LEFT JOIN directories d ON d.id = bp.directory_id \
+         WHERE bp.id = $1",
+    )
+    .bind(req.target_post_id)
+    .fetch_optional(&s.db)
+    .await?
+    .unwrap_or(TargetInfo {
+        title: String::new(),
+        slug: None,
+        directory_slug: None,
+    });
 
     let target_title = target.title;
     let target_slug = target.slug.unwrap_or_default();
-    let href = format!("/blog/{}", target_slug);
+    let directory_slug = target.directory_slug.unwrap_or_default();
+
+    // Public blog posts are served at /api/v1/d/<directory>/blog/<post-slug> — the exact URL
+    // the app's own public feed emits (zaarhub cities/:slug/blog-posts -> post.url) and that
+    // routes.rs render_blog_post answers. A bare /blog/<slug> is NOT a route: it falls through
+    // to the SPA catch-all and renders the homepage (a soft-404), so every injected "internal
+    // link" was a dead link. (B91 completeness — internal-linking body mutation.) Refuse to
+    // write a link we cannot resolve rather than inject a dead href.
+    if target_slug.is_empty() || directory_slug.is_empty() {
+        return Err(AppError::Validation(
+            "Target post has no public URL (missing slug or directory slug); refusing to \
+             inject a dead internal link."
+                .into(),
+        ));
+    }
+    let href = format!("/api/v1/d/{}/blog/{}", directory_slug, target_slug);
 
     let link_obj = json!({
         "target_id": req.target_post_id,
