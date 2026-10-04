@@ -1835,6 +1835,30 @@
         <div id="sm-list"></div>
       </div>
 
+      <!-- 🔎 Search-engine submission — kanban B91/B117 gap #10. The sitemaps were served
+           but never advertised: no ping, no scheduled regeneration. This card is the panel
+           control for GET/PUT /seo/submission-settings and POST /seo/run-submission; the
+           scheduler in main.rs drives the same pass on its own cadence. -->
+      <div class="feature-card" id="seo-submit-section">
+        <h3>🔎 Search-engine submission</h3>
+        <p class="feature-subtitle">Tell search engines the sitemap changed — on a schedule or on demand. <code>{sitemap}</code> in a target URL is replaced with the sitemap address (URL-encoded); <code>{sitemap_raw}</code> inserts it unencoded. Nothing is sent until you tick <b>Enabled</b> and Save. Add any endpoint — Google, Bing, or an IndexNow consumer.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="sub-enabled"> Enabled</label>
+          <label style="display:inline-flex;align-items:center;gap:6px">Every <input class="input" id="sub-cadence" type="number" min="1" value="24" style="width:80px"> hours</label>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__subSave()">💾 Save</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subRun()">▶ Run now</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sub-status"></span>
+        </div>
+        <label class="feature-subtitle">Sitemap URL (blank = <code>https://&lt;base-domain&gt;/sitemap.xml</code>)</label>
+        <input class="input" id="sub-sitemap" style="width:100%;margin:6px 0 12px" placeholder="(default)">
+        <div class="feature-subtitle" style="margin-bottom:4px">Targets</div>
+        <div id="sub-targets"></div>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subAddTarget()">+ Add target</button>
+        <div class="feature-subtitle" style="margin:12px 0 4px">Last run / recent submissions</div>
+        <div id="sub-recent"></div>
+      </div>
+
       <!-- ─────────────────────────────────────────────────────────────────────────────
            🧩 SEO & Content families — kanban t_f3d857e1.
            Ten per-directory SEO/content endpoint families were LIVE in src/routes.rs but
@@ -4325,6 +4349,8 @@
       window.__artLoad();
       // 🗺 Sitemap config (priority / change frequency / auto-generate + regenerate).
       loadSitemapConfigs();
+      // 🔎 Search-engine submission (B91/B117 gap #10) — ping/schedule the sitemap.
+      loadSubmission();
       // Round 11 / T1: demand analytics card (filters, matrix, chart, exports).
       loadDemandAnalytics();
       // Round 11 / T3: clearinghouse settlement card (settings, preview, run, statements).
@@ -7416,6 +7442,118 @@
     window.__smLoad = loadSitemapConfigs;
     window.__smSave = saveSitemapConfig;
     window.__smRegenerate = regenerateSitemap;
+
+    // ===== 🔎 Search-engine submission (kanban B91/B117 gap #10) =====
+    // The sitemaps were served but never advertised. This is the panel control for
+    // GET/PUT /seo/submission-settings + POST /seo/run-submission; the scheduler in
+    // main.rs runs the same pass on the configured cadence. Targets live in a small
+    // editable table (name / url / on) so a buyer can point it at any endpoint.
+    var subTargets = [];
+
+    function subRenderTargets() {
+      var box = document.getElementById('sub-targets');
+      if (!box) return;
+      if (!subTargets.length) {
+        box.innerHTML = '<p class="feature-subtitle">No targets — add one below.</p>';
+        return;
+      }
+      var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><tbody>';
+      for (var i = 0; i < subTargets.length; i++) {
+        var t = subTargets[i];
+        h += '<tr>' +
+          '<td style="padding:6px 6px 6px 0"><input class="input sub-name" value="' + pkEsc(t.name || '') + '" placeholder="name" style="width:120px"></td>' +
+          '<td style="padding:6px 6px;width:100%"><input class="input sub-url" value="' + pkEsc(t.url || '') + '" placeholder="https://…?sitemap={sitemap}" style="width:100%"></td>' +
+          '<td style="padding:6px 6px;white-space:nowrap"><label><input type="checkbox" class="sub-on"' + (t.enabled ? ' checked' : '') + '> on</label></td>' +
+          '<td style="padding:6px 0;text-align:right"><button class="btn btn-ghost btn-sm" type="button" onclick="window.__subDel(' + i + ')">✕</button></td>' +
+          '</tr>';
+      }
+      box.innerHTML = h + '</tbody></table>';
+    }
+
+    function subReadTargets() {
+      var rows = document.querySelectorAll('#sub-targets tbody tr');
+      var out = [];
+      for (var i = 0; i < rows.length; i++) {
+        var url = (rows[i].querySelector('.sub-url').value || '').trim();
+        if (!url) continue;
+        var name = (rows[i].querySelector('.sub-name').value || '').trim();
+        out.push({ name: name || url, url: url, enabled: !!rows[i].querySelector('.sub-on').checked });
+      }
+      return out;
+    }
+
+    function subRenderRecent(recent, sitemapUrl) {
+      var box = document.getElementById('sub-recent');
+      if (!box) return;
+      var head = sitemapUrl
+        ? '<p class="feature-subtitle">Submitting <code>' + pkEsc(sitemapUrl) + '</code></p>' : '';
+      if (!recent || !recent.length) {
+        box.innerHTML = head + '<p class="feature-subtitle">No submissions logged yet.</p>';
+        return;
+      }
+      var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr>' +
+        '<th style="text-align:left;padding:6px">When</th><th style="text-align:left;padding:6px">Target</th>' +
+        '<th style="text-align:left;padding:6px">Status</th></tr></thead><tbody>';
+      for (var i = 0; i < recent.length; i++) {
+        var r = recent[i];
+        var when = r.at ? String(r.at).replace('T', ' ').slice(0, 19) : '';
+        h += '<tr><td style="padding:6px">' + pkEsc(when) + '</td>' +
+          '<td style="padding:6px">' + pkEsc(r.target || '') + '</td>' +
+          '<td style="padding:6px">' + (r.ok ? '✅' : '❌') + ' ' +
+          (r.status_code == null ? 'no response' : pkEsc(String(r.status_code))) + '</td></tr>';
+      }
+      box.innerHTML = head + h + '</tbody></table>';
+    }
+
+    function loadSubmission() {
+      if (!document.getElementById('sub-targets')) return;
+      return apiGet('/seo/submission-settings')
+        .then(function (res) {
+          var st = (res && res.settings) || {};
+          subTargets = Array.isArray(st.ping_targets) ? st.ping_targets : [];
+          document.getElementById('sub-enabled').checked = !!st.is_enabled;
+          document.getElementById('sub-cadence').value = st.cadence_hours || 24;
+          document.getElementById('sub-sitemap').value = st.sitemap_url || '';
+          subRenderTargets();
+          subRenderRecent((res && res.recent) || [], (res && res.resolved_sitemap_url) || '');
+          var last = st.last_run_at ? String(st.last_run_at).replace('T', ' ').slice(0, 19) : 'never';
+          r8Status('sub-status', (st.is_enabled ? 'On' : 'Off') + ' — last run ' + last, true);
+        })
+        .catch(function (e) { r8Status('sub-status', 'Could not load submission settings: ' + e.message, false); });
+    }
+
+    function subSave() {
+      var cadence = parseInt(document.getElementById('sub-cadence').value, 10);
+      if (isNaN(cadence) || cadence < 1) cadence = 24;
+      var body = {
+        is_enabled: !!document.getElementById('sub-enabled').checked,
+        cadence_hours: cadence,
+        sitemap_url: (document.getElementById('sub-sitemap').value || '').trim() || null,
+        ping_targets: subReadTargets()
+      };
+      r8Status('sub-status', 'Saving…', false);
+      return apiPut('/seo/submission-settings', body)
+        .then(function () { showToast('Submission settings saved'); return loadSubmission(); })
+        .catch(function (e) { r8Status('sub-status', 'Save failed: ' + e.message, false); });
+    }
+
+    function subRun() {
+      r8Status('sub-status', 'Running…', false);
+      return apiPost('/seo/run-submission', {})
+        .then(function (r) {
+          var n = (r && r.targets_submitted) || 0;
+          r8Status('sub-status', 'Run ' + ((r && r.status) || 'done') + ' — ' + n + ' target(s)', true);
+          showToast('Sitemap submission: ' + ((r && r.status) || 'done'));
+          return loadSubmission();
+        })
+        .catch(function (e) { r8Status('sub-status', 'Run failed: ' + e.message, false); });
+    }
+
+    window.__subLoad = loadSubmission;
+    window.__subSave = subSave;
+    window.__subRun = subRun;
+    window.__subAddTarget = function () { subTargets = subReadTargets(); subTargets.push({ name: '', url: '', enabled: true }); subRenderTargets(); };
+    window.__subDel = function (i) { subTargets = subReadTargets(); subTargets.splice(i, 1); subRenderTargets(); };
 
     // ===== 🧩 SEO & Content families (kanban t_f3d857e1) =====
     // Ten per-directory SEO/content endpoint families were live in src/routes.rs with no control

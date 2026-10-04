@@ -25,6 +25,7 @@ pub mod public_pages;
 pub mod reviews;
 pub mod search;
 pub mod seo;
+pub mod seo_submission;
 pub mod submissions;
 pub use host_resolver::*;
 

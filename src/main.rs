@@ -139,6 +139,14 @@ async fn main() {
     // enforced by the database, so a scheduled run and a manual run cannot double-bill.
     handlers::settlement::start_settlement_scheduler(state.db.clone());
 
+    // Start the sitemap-submission scheduler (B91/B117 gap #10) — daily (cadence
+    // is admin-editable) regeneration + search-engine submission of the sitemap.
+    // Disabled settings are never touched; nothing is hardwired.
+    handlers::seo_submission::start_submission_scheduler(
+        state.db.clone(),
+        state.config.base_domain.clone(),
+    );
+
     let app = routes::create_router(state.clone())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());

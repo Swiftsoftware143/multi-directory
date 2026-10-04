@@ -615,6 +615,14 @@ pub fn create_router(s: AppState) -> Router {
             get(seo::get_sitemap_config).put(seo::update_sitemap_config),
         )
         .route("/seo/regenerate-sitemap", post(seo::regenerate_sitemap))
+        // B91/B117 gap #10 — nightly sitemap submission: admin-editable settings
+        // (targets, cadence, enable) + a run-now endpoint; the scheduler in main
+        // drives the configured passes.
+        .route(
+            "/seo/submission-settings",
+            get(seo_submission::get_settings).put(seo_submission::update_settings),
+        )
+        .route("/seo/run-submission", post(seo_submission::run_now))
         .route("/sitemap.xml", get(seo::generate_sitemap))
         .route("/robots.txt", get(seo::get_robots_txt))
         // Subfolder routing clash report — directories whose slug shadows a
