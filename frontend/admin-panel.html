@@ -1452,6 +1452,7 @@
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__deRun()">▶ Run now</button>
           <span class="feature-status" id="de-status"></span>
         </div>
+        <div id="de-sources" style="margin-top:10px"></div>
         <div class="feature-status" id="de-summary" style="margin-top:8px">no run recorded yet</div>
         <div id="de-logs" style="margin-top:10px"></div>
       </div>
@@ -6699,6 +6700,26 @@
           });
           prov.value = s.provider || '';
 
+          // B83 part 1 — the Sources panel: a checkbox per source with plain-English help.
+          var cat = deCfg.source_catalog || [];
+          var sbox = document.getElementById('de-sources');
+          if (!cat.length) {
+            sbox.innerHTML = '';
+          } else {
+            var sh = '<div style="font-weight:600;font-size:.82rem;margin:0 0 4px">Sources <span style="font-weight:400;color:var(--text-secondary)">— tick the ones to use. A keyless source is on by default; a keyed source switches itself on once its key is saved.</span></div>';
+            cat.forEach(function (src) {
+              var state = src.enabled ? 'on' : 'off';
+              if (src.enabled && src.needs_key && src.key_configured) state = 'on — key configured';
+              else if (!src.enabled && src.needs_key && !src.key_configured) state = 'off — no key';
+              sh += '<label style="display:flex;gap:8px;align-items:flex-start;margin:5px 0;font-size:.8rem;cursor:pointer">'
+                + '<input type="checkbox" class="de-src" value="' + trEsc(src.provider) + '"' + (src.enabled ? ' checked' : '') + '>'
+                + '<span><b>' + trEsc(src.label) + '</b> <span style="color:var(--text-secondary)">(' + trEsc(state) + ')</span><br>'
+                + '<span style="color:var(--text-secondary)">' + trEsc(src.description) + '</span></span></label>';
+            });
+            sh += '<div style="margin-top:6px"><button class="btn btn-accent btn-sm" type="button" onclick="window.__deSaveSources()">Save sources</button> <span class="feature-status" id="de-src-status"></span></div>';
+            sbox.innerHTML = sh;
+          }
+
           var badge = document.getElementById('de-badge');
           if (deCfg.active_provider) {
             badge.textContent = 'provider: ' + deCfg.active_provider + (deCfg.active_provider_label ? ' (' + deCfg.active_provider_label + ')' : '');
@@ -6772,6 +6793,24 @@
     };
 
     window.__deLoad = loadDataEnrichment;
+
+    // B83 part 1 — save just the Sources checkbox set for the selected scope. Sending only
+    // `sources` leaves every other setting untouched (omitted fields are kept server-side).
+    window.__deSaveSources = function () {
+      var st = document.getElementById('de-src-status');
+      var dir = document.getElementById('de-dir').value || null;
+      var picked = [];
+      document.querySelectorAll('#de-sources input.de-src').forEach(function (c) {
+        if (c.checked) picked.push(c.value);
+      });
+      if (st) st.textContent = 'saving sources…';
+      apiPut('/enrich/settings', { directory_id: dir, sources: picked })
+        .then(function () {
+          if (st) st.textContent = 'sources saved';
+          return loadDataEnrichment();
+        })
+        .catch(function (e) { if (st) st.textContent = 'error: ' + e.message; });
+    };
 
     // ===== 🧪 Data Company (B91/B117 gap #9) =====
     // Surfaces the data_company.rs endpoints that had an operator UI nowhere: Google Places

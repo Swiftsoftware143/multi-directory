@@ -55,6 +55,49 @@ const ALL_ADAPTERS: [&str; 6] = [
     "openstreetmap",
 ];
 
+/// B83 part 1 — the catalogue the **Sources** panel renders: one row per adapter with a
+/// plain-English description and whether it needs a key. `enabled` is computed per scope at
+/// read time (see `source_enabled`), so a keyless source is on out of the box and a keyed
+/// source switches itself on once its key is saved.
+const SOURCE_CATALOG: [(&str, &str, &str, bool); 6] = [
+    (
+        "google_places",
+        "Google Places",
+        "The most complete business data — address, phone, hours, rating. Needs a Google Places API key.",
+        true,
+    ),
+    (
+        "openstreetmap",
+        "OpenStreetMap (free)",
+        "A free, open map of businesses that needs no key. The built-in zero-config fallback and good for filling gaps.",
+        false,
+    ),
+    (
+        "serpapi",
+        "SerpAPI",
+        "Google Maps search results through SerpAPI. Needs a SerpAPI key.",
+        true,
+    ),
+    (
+        "bing",
+        "Bing Places",
+        "Business listings from Bing. Needs a Bing Maps key.",
+        true,
+    ),
+    (
+        "google_cse",
+        "Google Custom Search",
+        "Finds a business's website and phone from web results. Needs a Google CSE key and engine id.",
+        true,
+    ),
+    (
+        "apify",
+        "Apify (metered, pay-per-use)",
+        "A pay-per-use scraper that can return rich Google Maps records. Add its token, then switch it on here.",
+        true,
+    ),
+];
+
 const DEFAULT_GOOGLE_PLACES_BASE: &str = "https://maps.googleapis.com/maps/api/place";
 const SERPAPI_BASE: &str = "https://serpapi.com";
 const BING_BASE: &str = "https://api.bing.microsoft.com";
@@ -87,6 +130,9 @@ pub struct EnrichmentSettings {
     /// B83: when true (the default) the rotating cycle only touches UNCLAIMED listings, so an
     /// owner's own data is never overwritten by automation.
     pub unclaimed_only: bool,
+    /// B83 part 1: the admin's explicit per-source on/off set (the Sources panel checkboxes).
+    /// NULL = use the defaults (keyless sources on; a keyed source on once its key is saved).
+    pub enabled_sources: Option<Vec<String>>,
     pub last_run_at: Option<DateTime<Utc>>,
     pub last_status: Option<String>,
     pub next_run_at: Option<DateTime<Utc>>,
@@ -103,6 +149,7 @@ impl EnrichmentSettings {
             batch_size: 25,
             provider: None,
             unclaimed_only: true,
+            enabled_sources: None,
             last_run_at: None,
             last_status: None,
             next_run_at: None,
@@ -214,21 +261,63 @@ fn free_provider_cfg(provider: &str) -> ProviderCfg {
     }
 }
 
-/// Which adapter runs: the pinned provider when it is configured (or free), else the first
-/// configured one (preferring the marked default), else the free/open fallback (card B79) so
-/// enrichment still runs with no paid key. None only when there is nothing at all to run.
+/// Is a source switched on for this scope (B83 part 1)?
+///
+/// An explicit `enabled_sources` list from the Sources panel is authoritative. With no explicit
+/// choice (NULL) the defaults apply: a keyless/free source is on, and a keyed source switches
+/// itself on automatically once its key is saved — so a directory works out of the box.
+fn source_enabled(
+    settings: &EnrichmentSettings,
+    provider: &str,
+    available: &[ProviderCfg],
+) -> bool {
+    if let Some(list) = settings.enabled_sources.as_ref() {
+        return list.iter().any(|s| s == provider);
+    }
+    if FREE_ADAPTERS.contains(&provider) {
+        return true;
+    }
+    available.iter().any(|c| c.provider == provider)
+}
+
+/// The Sources panel catalogue for one scope: every adapter with its plain description, whether
+/// it needs a key, whether a key is configured right now, and whether it is switched on.
+fn source_catalog_json(settings: &EnrichmentSettings, available: &[ProviderCfg]) -> Vec<Value> {
+    SOURCE_CATALOG
+        .iter()
+        .map(|(provider, label, description, needs_key)| {
+            let key_configured = available.iter().any(|c| c.provider == *provider);
+            json!({
+                "provider": provider,
+                "label": label,
+                "description": description,
+                "needs_key": needs_key,
+                "key_configured": key_configured,
+                "opt_in": OPT_IN_ADAPTERS.contains(provider),
+                "enabled": source_enabled(settings, provider, available),
+            })
+        })
+        .collect()
+}
+
+/// Which adapter runs: the pinned provider when it is configured (or free) AND switched on,
+/// else the first enabled configured one (preferring the marked default), else the enabled
+/// free/open fallback (card B79) so enrichment still runs with no paid key. None only when
+/// there is nothing at all to run — including when the admin has switched every source off.
 async fn resolve_provider(
     db: &sqlx::PgPool,
-    pinned: Option<&str>,
+    settings: &EnrichmentSettings,
 ) -> Result<Option<ProviderCfg>, sqlx::Error> {
     let available = configured_search_providers(db).await?;
-    if let Some(pin) = pinned {
-        if let Some(cfg) = available.iter().find(|c| c.provider == pin) {
-            return Ok(Some(cfg.clone()));
-        }
-        // A free adapter has no key row; a pin on it resolves straight from code.
-        if FREE_ADAPTERS.contains(&pin) {
-            return Ok(Some(free_provider_cfg(pin)));
+    if let Some(pin) = settings.provider.as_deref() {
+        if source_enabled(settings, pin, &available) {
+            if let Some(cfg) = available.iter().find(|c| c.provider == pin) {
+                return Ok(Some(cfg.clone()));
+            }
+            // A free adapter has no key row; a pin on it resolves straight from code.
+            if FREE_ADAPTERS.contains(&pin) {
+                return Ok(Some(free_provider_cfg(pin)));
+            }
         }
         if !ALL_ADAPTERS.contains(&pin) {
             tracing::warn!(
@@ -239,14 +328,18 @@ async fn resolve_provider(
     }
     // Auto-selection NEVER picks an opt-in, metered adapter (card B98): a configured Apify
     // key stays dormant until the admin pins it explicitly.
-    if let Some(cfg) = available
-        .into_iter()
-        .find(|c| !OPT_IN_ADAPTERS.contains(&c.provider.as_str()))
-    {
-        return Ok(Some(cfg));
+    if let Some(cfg) = available.iter().find(|c| {
+        source_enabled(settings, &c.provider, &available)
+            && !OPT_IN_ADAPTERS.contains(&c.provider.as_str())
+    }) {
+        return Ok(Some(cfg.clone()));
     }
-    // Nothing paid configured → the free/open fallback (card B79): enrichment without paid APIs.
-    Ok(FREE_ADAPTERS.first().map(|p| free_provider_cfg(p)))
+    // Nothing paid configured (or every paid source switched off) → the free/open fallback
+    // (card B79): enrichment without paid APIs, when that source is still switched on.
+    Ok(FREE_ADAPTERS
+        .iter()
+        .find(|p| source_enabled(settings, p, &available))
+        .map(|p| free_provider_cfg(p)))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -994,7 +1087,7 @@ pub async fn run_cycle(
     let settings_id = id_override.or(settings.id);
     let batch = batch_override.unwrap_or(settings.batch_size).clamp(1, 500);
 
-    let provider = resolve_provider(db, settings.provider.as_deref()).await?;
+    let provider = resolve_provider(db, &settings).await?;
 
     let Some(cfg) = provider else {
         let msg = "No search provider configured — add a Google Places / SerpAPI / Bing / Google CSE key in the admin Provider API Keys card. Nothing was enriched.";
@@ -1308,7 +1401,7 @@ pub async fn get_enrichment_settings(
     }
     let settings = effective_settings(&s.db, q.directory_id).await?;
     let configured = configured_search_providers(&s.db).await?;
-    let resolved = resolve_provider(&s.db, settings.provider.as_deref()).await?;
+    let resolved = resolve_provider(&s.db, &settings).await?;
 
     let directories = sqlx::query_as::<_, (Uuid, String, String)>(
         "SELECT id, name, slug FROM directories ORDER BY name ASC LIMIT 500",
@@ -1322,13 +1415,14 @@ pub async fn get_enrichment_settings(
         .collect();
 
     Ok(Json(json!({
-        "settings": settings,
+        "settings": &settings,
         "directories": directories
             .into_iter()
             .map(|(id, name, slug)| json!({ "id": id, "name": name, "slug": slug }))
             .collect::<Vec<_>>(),
         "supported_adapters": ALL_ADAPTERS,
         "configured_providers": providers,
+        "source_catalog": source_catalog_json(&settings, &configured),
         "active_provider": resolved.as_ref().map(|c| c.provider.clone()),
         "active_provider_label": resolved.as_ref().map(|c| c.label.clone()),
         "due": settings.is_enabled
@@ -1350,6 +1444,9 @@ pub struct UpdateSettingsRequest {
     /// B83: when true the cycle only touches UNCLAIMED listings (claimed = owner-managed, never
     /// overwritten by automation). Omitted = keep the current value.
     pub unclaimed_only: Option<bool>,
+    /// B83 part 1: the Sources panel checkbox set — the enabled source list for this scope.
+    /// Omitted = keep the current value; an explicit list (including an empty one) replaces it.
+    pub sources: Option<Vec<String>>,
 }
 
 pub async fn update_enrichment_settings(
@@ -1382,6 +1479,17 @@ pub async fn update_enrichment_settings(
             );
         }
     }
+    // B83 part 1: the Sources panel checkbox set. Omitted = keep; an explicit list (even an
+    // empty one) replaces it, filtered to adapters this build actually speaks so a stale value
+    // cannot silently persist.
+    let enabled_sources: Option<Vec<String>> = match req.sources.clone() {
+        Some(list) => Some(
+            list.into_iter()
+                .filter(|p| ALL_ADAPTERS.contains(&p.as_str()))
+                .collect(),
+        ),
+        None => current.enabled_sources.clone(),
+    };
 
     let next_run = if is_enabled {
         Some(Utc::now() + Duration::hours(cadence as i64))
@@ -1408,20 +1516,22 @@ pub async fn update_enrichment_settings(
     let row = match existing_id {
         Some(id) => sqlx::query_as::<_, EnrichmentSettings>(
             "UPDATE enrichment_settings SET is_enabled = $1, cadence_hours = $2, batch_size = $3, \
-             provider = $4, unclaimed_only = $5, next_run_at = $6, updated_at = now() WHERE id = $7 RETURNING *",
+             provider = $4, unclaimed_only = $5, enabled_sources = $6, next_run_at = $7, \
+             updated_at = now() WHERE id = $8 RETURNING *",
         )
         .bind(is_enabled)
         .bind(cadence)
         .bind(batch)
         .bind(provider.clone())
         .bind(unclaimed_only)
+        .bind(enabled_sources.clone())
         .bind(next_run)
         .bind(id)
         .fetch_one(&s.db)
         .await?,
         None => sqlx::query_as::<_, EnrichmentSettings>(
-            "INSERT INTO enrichment_settings (directory_id, is_enabled, cadence_hours, batch_size, provider, unclaimed_only, next_run_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+            "INSERT INTO enrichment_settings (directory_id, is_enabled, cadence_hours, batch_size, provider, unclaimed_only, enabled_sources, next_run_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
         )
         .bind(req.directory_id)
         .bind(is_enabled)
@@ -1429,6 +1539,7 @@ pub async fn update_enrichment_settings(
         .bind(batch)
         .bind(provider)
         .bind(unclaimed_only)
+        .bind(enabled_sources)
         .bind(next_run)
         .fetch_one(&s.db)
         .await?,
@@ -1448,7 +1559,7 @@ pub async fn enrichment_status(
         ));
     }
     let settings = effective_settings(&s.db, q.directory_id).await?;
-    let resolved = resolve_provider(&s.db, settings.provider.as_deref()).await?;
+    let resolved = resolve_provider(&s.db, &settings).await?;
     let configured = configured_search_providers(&s.db).await?;
 
     // The card's pickers: every directory (scope selector) and every provider that
@@ -1488,7 +1599,7 @@ pub async fn enrichment_status(
     .await?;
 
     Ok(Json(json!({
-        "settings": settings,
+        "settings": &settings,
         "directories": directories
             .into_iter()
             .map(|(id, name, slug)| json!({ "id": id, "name": name, "slug": slug }))
@@ -1497,6 +1608,7 @@ pub async fn enrichment_status(
             .iter()
             .map(|c| json!({ "provider": c.provider, "label": c.label }))
             .collect::<Vec<_>>(),
+        "source_catalog": source_catalog_json(&settings, &configured),
         "active_provider": resolved.as_ref().map(|c| c.provider.clone()),
         "active_provider_label": resolved.as_ref().map(|c| c.label.clone()),
         "supported_adapters": ALL_ADAPTERS,
