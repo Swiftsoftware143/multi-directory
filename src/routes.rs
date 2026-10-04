@@ -241,6 +241,17 @@ pub fn create_router(s: AppState) -> Router {
         .route("/admin/reports", get(reports::list_reports))
         .route("/admin/reports/stats", get(reports::report_stats))
         .route("/admin/reports/:id", patch(reports::update_report))
+        // Local Q&A on a listing (card B90, Nextdoor-style). The public GET/POST are anonymous
+        // (see the is_public allowlist); the answer/moderation queue is directory-scoped.
+        .route(
+            "/businesses/:id/questions",
+            get(qa::list_questions).post(qa::create_question),
+        )
+        .route("/admin/questions", get(qa::list_admin_questions))
+        .route(
+            "/admin/questions/:id",
+            patch(qa::answer_question).delete(qa::delete_question),
+        )
         .route("/directories/:slug/branding", get(branding::get_branding))
         .route(
             "/directories/:slug/email-settings",
@@ -3450,6 +3461,11 @@ async fn auth_guard(
         // Public report-a-listing write (card B90 cross-cutting) — POST-only, rate-limited inside
         // the handler; unknown business ids 404 so a probe learns nothing.
         || (path.starts_with("/businesses/") && path.ends_with("/report") && req.method() == "POST")
+        // Public local Q&A on a listing (card B90) — reading the threads and asking a question
+        // are both anonymous; the ask write is rate-limited inside the handler.
+        || (path.starts_with("/businesses/")
+            && path.ends_with("/questions")
+            && (req.method() == "GET" || req.method() == "POST"))
         // Two-step claim email confirmation (card B76) — GET only; the token from the email is the
         // credential, so the link works from a mail client with no session.
         || (path.starts_with("/claims/verify/") && req.method() == "GET")

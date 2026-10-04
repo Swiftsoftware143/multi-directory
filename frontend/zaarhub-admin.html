@@ -71,6 +71,7 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
     <button class="tab" onclick="switchTab(this,'populate')">Populate Businesses</button>
     <button class="tab" onclick="switchTab(this,'queue')">Content Schedule</button>
     <button class="tab" onclick="switchTab(this,'reports')">⚑ Reported Listings</button>
+    <button class="tab" onclick="switchTab(this,'questions')">❓ Questions</button>
   </div>
 
   <div id="tab-legal">
@@ -270,6 +271,20 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
       </div>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Customers flag a listing as closed, wrong or abusive from the business page. Review each report here — no account, SQL or shell needed.</p>
       <div id="reports-list"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+  <div id="tab-questions" style="display:none">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin-bottom:0">❓ Questions &amp; Answers</h2>
+        <select id="questions-status-filter" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px" onchange="loadQuestionsAdmin()">
+          <option value="">All</option>
+          <option value="published">Published</option>
+          <option value="hidden">Hidden</option>
+        </select>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Customers ask a business a question from its listing. Answer it here (the answer appears publicly) or hide/delete a bad question — no account, SQL or shell needed.</p>
+      <div id="questions-list"><div class="loading">Loading...</div></div>
     </div>
   </div>
 </div>
@@ -514,12 +529,14 @@ function switchTab(btn,tab){
   document.getElementById('tab-populate').style.display=tab==='populate'?'block':'none';
   document.getElementById('tab-queue').style.display=tab==='queue'?'block':'none';
   document.getElementById('tab-reports').style.display=tab==='reports'?'block':'none';
+  document.getElementById('tab-questions').style.display=tab==='questions'?'block':'none';
   if(tab==='legal')loadLegalPages();
   else if(tab==='picks'){loadCitiesDropdown();loadEditorsPicks();}
   else if(tab==='branding')loadSiteConfig();
   else if(tab==='populate'){loadPopCities();loadPopCategories();loadPopDirectories();reloadQueue();}
   else if(tab==='queue')openContentQueue();
   else if(tab==='reports')loadReports();
+  else if(tab==='questions')loadQuestionsAdmin();
 }
 
 async function loadCitiesDropdown(){
@@ -984,6 +1001,64 @@ async function resolveReport(id,status){
     showToast('Report marked '+status);
     loadReports();
   }catch(e){showToast('Could not update the report',true);console.error(e);}
+}
+
+// ❓ Questions & Answers (card B90) — /api/v1/admin/questions answer/moderation queue.
+async function loadQuestionsAdmin(){
+  const el=document.getElementById('questions-list');
+  const status=document.getElementById('questions-status-filter').value;
+  const url='/api/v1/admin/questions?per_page=100'+(status?('&status='+encodeURIComponent(status)):'');
+  try{
+    const r=await fetch(url);const d=await r.json();
+    if(!r.ok){el.innerHTML='<div class="error">Could not load questions. '+esc((d&&d.error)||'Check the connection.')+'</div>';return;}
+    const rows=d.data||[];
+    if(!rows.length){el.innerHTML='<div style="text-align:center;padding:32px;color:var(--text-muted)">Nothing here. Questions asked on a listing appear in this queue.</div>';return;}
+    el.innerHTML=rows.map(x=>{
+      const when=x.created_at?new Date(x.created_at).toLocaleString():'';
+      const who=[x.asker_name,x.asker_email].filter(Boolean).join(' · ')||'Anonymous';
+      const biz=x.business_name||('Listing '+String(x.business_id).slice(0,8));
+      return `<div class="page-list-item" style="align-items:flex-start;flex-direction:column;gap:8px">
+        <div class="info" style="width:100%">
+          <strong>${esc(x.question)}</strong>
+          <span class="badge ${x.status==='published'?'published':'draft'}" style="margin-left:8px">${esc(x.status)}</span>
+          <small>${esc(biz)} · asked ${esc(when)} · ${esc(who)}</small>
+          ${x.answer?`<div style="font-size:13px;margin-top:6px"><b>Answer:</b> ${esc(x.answer)}</div>`:''}
+        </div>
+        <div class="status" style="width:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="q-ans-${esc(x.id)}" type="text" placeholder="Type an answer..." value="${esc(x.answer||'')}" style="flex:1;min-width:200px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <a class="btn secondary small" href="/biz/${esc(x.business_id)}" target="_blank" rel="noopener">View listing</a>
+          <button class="btn primary small" onclick="answerQuestionAdmin('${esc(x.id)}','answer')">Save answer</button>
+          ${x.status==='published'
+            ? `<button class="btn secondary small" onclick="answerQuestionAdmin('${esc(x.id)}','hidden')">Hide</button>`
+            : `<button class="btn secondary small" onclick="answerQuestionAdmin('${esc(x.id)}','published')">Publish</button>`}
+          <button class="btn danger small" onclick="deleteQuestionAdmin('${esc(x.id)}')">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){el.innerHTML='<div class="error">Could not load questions.</div>';console.error(e);}
+}
+async function answerQuestionAdmin(id,action){
+  const ansEl=document.getElementById('q-ans-'+id);
+  const body={};
+  if(action==='answer'){body.answer=ansEl?ansEl.value:'';}
+  else{body.status=action;}
+  try{
+    const r=await fetch('/api/v1/admin/questions/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json().catch(function(){return{};});
+    if(!r.ok){showToast((d&&(d.error||d.message))||'Could not update the question',true);return;}
+    showToast(action==='answer'?'Answer saved':('Question '+action));
+    loadQuestionsAdmin();
+  }catch(e){showToast('Could not update the question',true);console.error(e);}
+}
+async function deleteQuestionAdmin(id){
+  if(!confirm('Delete this question permanently?'))return;
+  try{
+    const r=await fetch('/api/v1/admin/questions/'+encodeURIComponent(id),{method:'DELETE'});
+    const d=await r.json().catch(function(){return{};});
+    if(!r.ok){showToast((d&&(d.error||d.message))||'Could not delete the question',true);return;}
+    showToast('Question deleted');
+    loadQuestionsAdmin();
+  }catch(e){showToast('Could not delete the question',true);console.error(e);}
 }
 
 function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),2500)}

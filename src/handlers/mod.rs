@@ -22,6 +22,7 @@ pub mod loyalty_messaging;
 pub mod monetization;
 pub mod public;
 pub mod public_pages;
+pub mod qa;
 pub mod reports;
 pub mod reviews;
 pub mod search;

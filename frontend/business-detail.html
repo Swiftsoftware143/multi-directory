@@ -63,6 +63,13 @@ a:hover{text-decoration:underline}
 .name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .name-row h2{margin-bottom:0}
 .verified-badge{display:inline-flex;align-items:center;gap:4px;background:var(--green-light);color:var(--green);font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:100px;white-space:nowrap}
+.qa-item{border-top:1px solid var(--border);padding:12px 0}
+.qa-item:first-child{border-top:none;padding-top:0}
+.qa-q{font-size:.9rem;font-weight:600;color:var(--text)}
+.qa-who{display:inline-block;font-size:.7rem;font-weight:700;color:var(--teal);background:var(--green-light);border-radius:100px;padding:2px 8px;margin-right:6px;vertical-align:middle}
+.qa-a{font-size:.88rem;color:var(--text-muted);margin-top:6px;padding-left:12px;border-left:2px solid var(--teal)}
+.qa-a-tag{display:inline-block;font-size:.65rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:var(--teal);border-radius:4px;padding:1px 6px;margin-right:6px}
+.qa-open{font-style:italic;border-left-color:var(--border)}
 .info-details{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
 @media(max-width:480px){.info-details{grid-template-columns:1fr}}
 .info-item{display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--text);padding:8px 12px;background:var(--bg);border-radius:8px}
@@ -311,6 +318,20 @@ a:hover{text-decoration:underline}
             <div id="msgFeedback"></div>
           </form>
         </div>
+
+        <!-- Local Q&A (card B90, Nextdoor-style) -->
+        <div class="card" id="qaCard">
+          <div class="card-title">❓ Questions &amp; Answers</div>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Ask this business a question — answers are public, so the next customer finds them too.</p>
+          <div id="qaList"><p style="color:var(--text-muted);font-size:.85rem">Loading questions…</p></div>
+          <form class="msg-form" id="qaForm" onsubmit="submitQuestion(event)" style="margin-top:14px">
+            <textarea id="qaQuestion" placeholder="Your question for this business…" required maxlength="1500"></textarea>
+            <input type="text" id="qaName" placeholder="Your name (optional)">
+            <input type="email" id="qaEmail" placeholder="Your email (optional — not shown publicly)">
+            <button type="submit" id="qaSubmit">Ask a Question</button>
+            <div id="qaFeedback"></div>
+          </form>
+        </div>
       </div>
 
       <!-- Report a Problem -->
@@ -436,6 +457,71 @@ async function submitReport(e) {
   }
 }
 
+// ❓ Local Q&A (card B90) — public read + anonymous ask on /api/v1/businesses/:id/questions.
+function renderQuestions(list) {
+  const el = document.getElementById('qaList');
+  if (!list || !list.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem">No questions yet — be the first to ask about this business.</p>';
+    return;
+  }
+  el.innerHTML = list.map(function(q) {
+    const who = q.asker_name ? esc(q.asker_name) : 'A neighbour';
+    return '<div class="qa-item">' +
+      '<div class="qa-q"><span class="qa-who">' + who + '</span> ' + esc(q.question) + '</div>' +
+      (q.answer
+        ? '<div class="qa-a"><span class="qa-a-tag">Answer</span> ' + esc(q.answer) + '</div>'
+        : '<div class="qa-a qa-open">Awaiting an answer…</div>') +
+      '</div>';
+  }).join('');
+}
+
+async function loadQuestions(id) {
+  const el = document.getElementById('qaList');
+  if (!el || !id) return;
+  try {
+    const r = await fetch('/api/v1/businesses/' + encodeURIComponent(id) + '/questions');
+    const d = await r.json().catch(function(){ return {}; });
+    if (!r.ok) { el.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem">Could not load questions.</p>'; return; }
+    renderQuestions(d && d.data ? d.data : []);
+  } catch (e) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem">Could not load questions.</p>';
+  }
+}
+
+async function submitQuestion(e) {
+  e.preventDefault();
+  const id = (bizData && bizData.id) || getBusinessIdFromPath() || getUrlParam('id');
+  const btn = document.getElementById('qaSubmit');
+  const fb = document.getElementById('qaFeedback');
+  if (!id) { fb.innerHTML = '<div class="msg-error">❌ Listing not loaded yet.</div>'; return; }
+  const question = document.getElementById('qaQuestion').value.trim();
+  if (question.length < 5) { fb.innerHTML = '<div class="msg-error">❌ Please write a question of at least 5 characters.</div>'; return; }
+  btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Posting…'; fb.innerHTML = '';
+  try {
+    const resp = await fetch('/api/v1/businesses/' + encodeURIComponent(id) + '/questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question: question,
+        asker_name: document.getElementById('qaName').value,
+        asker_email: document.getElementById('qaEmail').value
+      })
+    });
+    const data = await resp.json().catch(function(){ return {}; });
+    if (resp.ok) {
+      fb.innerHTML = '<div class="msg-success">✅ ' + esc(data.message || 'Your question is posted.') + '</div>';
+      document.getElementById('qaForm').reset();
+      loadQuestions(id);
+    } else {
+      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.error || data.message || 'Could not post the question — please try again.') + '</div>';
+    }
+  } catch (err) {
+    fb.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
 // ── State ──
 let bizData = null;
 let reviews = [];
@@ -478,6 +564,9 @@ async function loadBusiness() {
     
     // Check save status
     checkSaveStatus();
+
+    // Local Q&A (card B90)
+    loadQuestions(bizData.id || id);
 
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('contentArea').style.display = 'block';
