@@ -1266,6 +1266,13 @@ pub fn create_router(s: AppState) -> Router {
             "/directories/:slug/phone-numbers",
             get(call_tracking::directory_phone_numbers),
         )
+        // Per-directory category tree + visitor stats. The old `category_visitor_summary`
+        // handler had zero routes (unmounted); the owner portal's Categories page needs the
+        // parent/child tree and per-category analytics it computes. Handler guards the dir admin.
+        .route(
+            "/directories/:slug/category-stats",
+            get(visitors::directory_category_stats),
+        )
         .route(
             "/businesses/:id/call-logs",
             get(call_tracking::business_call_logs),

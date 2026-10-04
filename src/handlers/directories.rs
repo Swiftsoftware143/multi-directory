@@ -765,7 +765,7 @@ pub async fn list_categories(
         )))?;
 
     let categories = sqlx::query_as::<_, DirectoryCategoryWithParent>(
-        "SELECT dc.id, dc.directory_id, dc.name, dc.slug, dc.sort_order, dc.parent_id, p.name as parent_name FROM directory_categories dc LEFT JOIN directory_categories p ON p.id = dc.parent_id WHERE dc.directory_id = \x241 ORDER BY dc.sort_order ASC, dc.name ASC"
+        "SELECT dc.id, dc.directory_id, dc.name, dc.slug, dc.sort_order, dc.parent_id, p.name as parent_name, dc.icon, dc.group_name FROM directory_categories dc LEFT JOIN directory_categories p ON p.id = dc.parent_id WHERE dc.directory_id = $1 ORDER BY dc.sort_order ASC, dc.name ASC"
     )
     .bind(dir.id)
     .fetch_all(&s.db)
@@ -780,9 +780,19 @@ pub async fn create_category(
     Path(slug): Path<String>,
     Json(req): Json<CreateCategoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if req.name.is_empty() || req.slug.is_empty() {
+    if req.name.trim().is_empty() {
+        return Err(AppError::Validation("Name is required".to_string()));
+    }
+    // A caller may omit the slug (the owner portal derives it from the name); an explicit
+    // slug is still honoured. NOTE: `directory_categories.slug` is globally UNIQUE.
+    let new_slug = if req.slug.trim().is_empty() {
+        slugify(&req.name)
+    } else {
+        req.slug.clone()
+    };
+    if new_slug.is_empty() {
         return Err(AppError::Validation(
-            "Name and slug are required".to_string(),
+            "Could not derive a slug from the name".to_string(),
         ));
     }
 
@@ -796,13 +806,15 @@ pub async fn create_category(
         )))?;
 
     let category = sqlx::query_as::<_, DirectoryCategory>(
-        "INSERT INTO directory_categories (directory_id, name, slug, sort_order, parent_id) VALUES (\x241, \x242, \x243, \x244, \x245) RETURNING *"
+        "INSERT INTO directory_categories (directory_id, name, slug, sort_order, parent_id, icon, group_name) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *"
     )
     .bind(dir.id)
     .bind(&req.name)
-    .bind(&req.slug)
+    .bind(&new_slug)
     .bind(req.sort_order.unwrap_or(0))
     .bind(req.parent_id)
+    .bind(req.icon.clone().unwrap_or_default())
+    .bind(req.group_name.clone().unwrap_or_default())
     .fetch_one(&s.db)
     .await?;
 
@@ -847,13 +859,16 @@ pub async fn update_category(
     let new_parent_id = req.parent_id.or(existing.parent_id);
 
     let category = sqlx::query_as::<_, DirectoryCategory>(
-        "UPDATE directory_categories SET name = \x241, slug = \x242, sort_order = \x243, parent_id = \x244
-           WHERE id = \x245 RETURNING *"
+        "UPDATE directory_categories SET name = $1, slug = $2, sort_order = $3, parent_id = $4,
+                icon = COALESCE($5, icon), group_name = COALESCE($6, group_name)
+           WHERE id = $7 RETURNING *",
     )
     .bind(&new_name)
     .bind(&new_slug)
     .bind(new_sort_order)
     .bind(new_parent_id)
+    .bind(req.icon.clone())
+    .bind(req.group_name.clone())
     .bind(category_id)
     .fetch_one(&s.db)
     .await?;
@@ -1309,4 +1324,25 @@ pub async fn provision_defaults(
         "ad_zones_created": report.ad_zones_created,
         "email_templates_created": report.email_templates_created,
     })))
+}
+
+/// Lowercase, hyphenated slug used when a caller omits one on category create.
+fn slugify(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_dash = false;
+    for c in s.chars() {
+        if c.is_alphanumeric() {
+            for lc in c.to_lowercase() {
+                out.push(lc);
+            }
+            prev_dash = false;
+        } else if !prev_dash && !out.is_empty() {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
 }

@@ -119,14 +119,19 @@ pub struct DirectoryCategoryWithParent {
     pub sort_order: Option<i32>,
     pub parent_id: Option<Uuid>,
     pub parent_name: Option<String>,
+    pub icon: Option<String>,
+    pub group_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateCategoryRequest {
     pub name: String,
+    #[serde(default)]
     pub slug: String,
     pub sort_order: Option<i32>,
     pub parent_id: Option<Uuid>,
+    pub icon: Option<String>,
+    pub group_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,6 +140,8 @@ pub struct UpdateCategoryRequest {
     pub slug: Option<String>,
     pub sort_order: Option<i32>,
     pub parent_id: Option<Uuid>,
+    pub icon: Option<String>,
+    pub group_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

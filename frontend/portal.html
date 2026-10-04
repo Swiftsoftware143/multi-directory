@@ -374,55 +374,130 @@ function deleteListing(id){
 }
 
 // ── Categories ─────────────────────────────────────────
+// Two data sets back this page:
+//   CAT_TREE = the directory's EFFECTIVE taxonomy (categories its listings actually point
+//              to + the ancestor chain) with per-category visitor stats, from
+//              GET /directories/:slug/category-stats.
+//   CAT_OWN  = categories this directory created itself (CRUD-able), from
+//              GET /directories/:slug/categories.
+var CAT_TREE=[], CAT_OWN=[];
+function catRow(c,ownIds){
+  return {
+    id:c.id,name:c.name,slug:c.slug,parent_id:c.parent_id||null,
+    icon:c.icon||'',group_name:c.group_name||'',
+    listings:c.listings||0,
+    unique_visitors:c.unique_visitors||0, total_events:c.total_events||0,
+    listing_views:c.listing_views||0, phone_clicks:c.phone_clicks||0, website_clicks:c.website_clicks||0,
+    own:!!(c.directory_id && ownIds[String(c.directory_id)]===true) || c._own===true
+  };
+}
 function renderCategories(){
   var el=document.getElementById('pageContent');
   if(!CUR_DIR){el.innerHTML='<div class="empty-state"><p>No directory selected.</p></div>';return;}
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
-  g('/directories/'+CUR_DIR.slug+'/categories',function(r){
-    var data=r.data||r||[];
-    el.innerHTML=
-    '<div class="card-header"><h3>Categories</h3><button class="btn btn-primary btn-sm" onclick="showAddCategory()">+ Add Category</button></div>'+
-    '<div class="table-wrap"><table>'+
-      '<tr><th>Name</th><th>Slug</th><th>Description</th><th>Actions</th></tr>'+
-      (data.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">No categories yet</td></tr>':
-      data.map(function(c,i){
-        return '<tr><td>'+esc(c.name)+'</td><td>'+esc(c.slug||'')+'</td><td>'+esc((c.description||'').substring(0,60))+'</td>'+
-        '<td><button class="btn btn-secondary btn-sm" onclick="showEditCategory('+i+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteCategory('+(c.id||i)+')">🗑️</button></td></tr>';
-      }).join(''))+
-    '</table></div>';
-  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load categories.</p></div>';});
+  g('/directories/'+CUR_DIR.slug+'/categories',function(r){CAT_OWN=r.data||r||[];paintCategories(el);},function(){});
+  g('/directories/'+CUR_DIR.slug+'/category-stats',function(r){CAT_TREE=Array.isArray(r)?r:(r.data||[]);paintCategories(el);},function(){CAT_TREE=[];paintCategories(el);});
 }
-var CAT_DATA=null;
+function orderCatTree(rows){
+  var map={};rows.forEach(function(c){map[c.id]=c;});
+  var children={},roots=[];
+  rows.forEach(function(c){
+    var pid=(c.parent_id&&map[c.parent_id])?c.parent_id:null;
+    if(pid){(children[pid]=children[pid]||[]).push(c);}else{roots.push(c);}
+  });
+  function byName(a,b){return String(a.name||'').localeCompare(String(b.name||''));}
+  var out=[];
+  function walk(c,d){c._depth=d;out.push(c);(children[c.id]||[]).sort(byName).forEach(function(k){walk(k,d+1);});}
+  roots.sort(byName).forEach(function(r){walk(r,0);});
+  return out;
+}
+function paintCategories(el){
+  if(!el){return;}
+  var ownIds={};CAT_OWN.forEach(function(c){if(c.directory_id)ownIds[String(c.directory_id)]=true;});
+  var seen={},rows=[];
+  CAT_TREE.forEach(function(c){if(!seen[c.id]){seen[c.id]=1;rows.push(catRow(c,ownIds));}});
+  CAT_OWN.forEach(function(c){if(!seen[c.id]){seen[c.id]=1;var r=catRow(c,ownIds);r._own=true;rows.push(r);}});
+  var ordered=orderCatTree(rows);
+  var treeHtml=ordered.length===0
+    ? '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary)">No categories yet — add one below, or import listings that carry categories.</td></tr>'
+    : ordered.map(function(c){
+        var indent='';for(var i=0;i<c._depth;i++){indent+='&nbsp;&nbsp;&nbsp;&nbsp;';}
+        return '<tr>'+
+          '<td>'+indent+(c._depth>0?'└ ':'')+(c.icon?esc(c.icon)+' ':'')+'<strong>'+esc(c.name)+'</strong>'+
+            (c.own?' <span class="badge" style="background:#eef2ff;color:#3730a3">custom</span>':'')+'</td>'+
+          '<td>'+esc(c.slug||'')+'</td>'+
+          '<td>'+esc(c.group_name||'')+'</td>'+
+          '<td style="text-align:right">'+c.listings+'</td>'+
+          '<td style="text-align:right"><strong>'+c.unique_visitors+'</strong></td>'+
+          '<td style="text-align:right">'+c.listing_views+'</td>'+
+          '<td style="text-align:right">'+c.phone_clicks+'</td>'+
+          '<td style="text-align:right">'+c.website_clicks+'</td>'+
+          '<td>'+(c.own?'<button class="btn btn-secondary btn-sm" onclick="showEditCategory(\''+c.id+'\')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteCategory(\''+c.id+'\')">🗑️</button>':'<span style="color:var(--text-secondary)">platform</span>')+'</td>'+
+        '</tr>';
+      }).join('');
+  var ownHtml=CAT_OWN.length===0?'<p style="color:var(--text-secondary);padding:8px 0">No custom categories for this directory.</p>':'';
+  el.innerHTML=
+    '<div class="card-header"><h3>Category tree &amp; visitor stats</h3><button class="btn btn-primary btn-sm" onclick="showAddCategory()">+ Add Category</button></div>'+
+    '<p style="color:var(--text-secondary);margin:4px 0 10px">Every category this directory\'s listings use, with its ancestors, plus the visits/clicks it drove. “Platform” rows are shared taxonomy; “custom” rows belong to this directory and can be edited here.</p>'+
+    '<div class="table-wrap"><table>'+
+      '<tr><th>Category</th><th>Slug</th><th>Group</th><th style="text-align:right">Listings</th><th style="text-align:right">Visitors</th><th style="text-align:right">Views</th><th style="text-align:right">Phone</th><th style="text-align:right">Website</th><th>Actions</th></tr>'+
+      treeHtml+
+    '</table></div>'+
+    (CAT_OWN.length===0?ownHtml:'');
+}
+function catParentOptions(current){
+  var map={},rows=[];
+  CAT_TREE.forEach(function(c){if(!map[c.id]){map[c.id]=1;rows.push(c);}});
+  CAT_OWN.forEach(function(c){if(!map[c.id]){map[c.id]=1;rows.push(c);}});
+  var ordered=orderCatTree(rows.map(function(c){return {id:c.id,name:c.name,parent_id:c.parent_id};}));
+  var opts='<option value="">— none (top level) —</option>';
+  ordered.forEach(function(c){
+    var indent='';for(var i=0;i<c._depth;i++){indent+='&nbsp;&nbsp;';}
+    var sel=(current&&String(current)===String(c.id))?' selected':'';
+    opts+='<option value="'+esc(c.id)+'"'+sel+'>'+indent+esc(c.name)+'</option>';
+  });
+  return opts;
+}
 function showAddCategory(){
   showModal(
     '<h2>Add Category</h2>'+
-    '<div class="form-group"><label>Name</label><input id="f_cname" placeholder="Category name"></div>'+
-    '<div class="form-group"><label>Description</label><textarea id="f_cdesc" rows="3" placeholder="Description"></textarea></div>'+
+    '<div class="form-group"><label>Name</label><input id="f_cname" placeholder="Category name" oninput="var s=document.getElementById(\'f_cslug\');if(s&&!s.dataset.touched)s.value=slugify(this.value)"></div>'+
+    '<div class="form-group"><label>Slug</label><input id="f_cslug" placeholder="auto from name" oninput="this.dataset.touched=1"></div>'+
+    '<div class="form-group"><label>Parent</label><select id="f_cparent">'+catParentOptions(null)+'</select></div>'+
+    '<div class="form-group"><label>Icon (emoji)</label><input id="f_cicon" placeholder="e.g. 🔧" style="width:80px"></div>'+
+    '<div class="form-group"><label>Group</label><input id="f_cgroup" placeholder="e.g. Home Services"></div>'+
     '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveCategory()">Save</button></div>'
   );
 }
 function saveCategory(){
-  var name=document.getElementById('f_cname').value;
+  var name=document.getElementById('f_cname').value.trim();
   if(!name){toast('Category name is required','error');return;}
+  var slug=(document.getElementById('f_cslug').value||'').trim()||slugify(name);
+  var parent=document.getElementById('f_cparent').value||null;
+  var body={name:name,slug:slug,parent_id:parent,icon:document.getElementById('f_cicon').value.trim(),group_name:document.getElementById('f_cgroup').value.trim()};
   closeModal();
-  po('/directories/'+CUR_DIR.slug+'/categories',{name:name,description:document.getElementById('f_cdesc').value},function(){toast('Category added','success');renderCategories();},function(){toast('Failed to add category','error');renderCategories();});
+  po('/directories/'+CUR_DIR.slug+'/categories',body,function(){toast('Category added','success');renderCategories();},function(){toast('Failed to add category (slug may already exist)','error');renderCategories();});
 }
-function showEditCategory(i){
-  if(window.catDataCache)CAT_DATA=window.catDataCache;
-  var data=null;
-  if(CAT_DATA&&CAT_DATA.data)data=CAT_DATA.data[i];
-  else if(window.catDataCache&&window.catDataCache.data)data=window.catDataCache.data[i];
-  if(!data)return toast('No data','error');
+function showEditCategory(id){
+  var rows=CAT_OWN.filter(function(c){return String(c.id)===String(id);});
+  var data=rows[0];
+  if(!data){toast('No data','error');return;}
   showModal(
     '<h2>Edit Category</h2>'+
     '<div class="form-group"><label>Name</label><input id="f_cname" value="'+esc(data.name)+'"></div>'+
-    '<div class="form-group"><label>Description</label><textarea id="f_cdesc" rows="3">'+esc(data.description||'')+'</textarea></div>'+
-    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateCategory('+(data.id||i)+')">Update</button></div>'
+    '<div class="form-group"><label>Slug</label><input id="f_cslug" value="'+esc(data.slug||'')+'"></div>'+
+    '<div class="form-group"><label>Parent</label><select id="f_cparent">'+catParentOptions(data.parent_id)+'</select></div>'+
+    '<div class="form-group"><label>Icon (emoji)</label><input id="f_cicon" value="'+esc(data.icon||'')+'" style="width:80px"></div>'+
+    '<div class="form-group"><label>Group</label><input id="f_cgroup" value="'+esc(data.group_name||'')+'"></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateCategory(\''+esc(data.id)+'\')">Update</button></div>'
   );
 }
 function updateCategory(id){
+  var body={name:document.getElementById('f_cname').value,slug:document.getElementById('f_cslug').value,icon:document.getElementById('f_cicon').value.trim(),group_name:document.getElementById('f_cgroup').value.trim()};
+  var parent=document.getElementById('f_cparent').value;
+  if(parent){body.parent_id=parent;}
   closeModal();
-  pu('/directories/'+CUR_DIR.slug+'/categories/'+id,{name:document.getElementById('f_cname').value,description:document.getElementById('f_cdesc').value},function(){toast('Category updated','success');renderCategories();},function(){toast('Failed to update category','error');renderCategories();});
+  pu('/directories/'+CUR_DIR.slug+'/categories/'+id,body,function(){toast('Category updated','success');renderCategories();},function(){toast('Failed to update category','error');renderCategories();});
 }
 function deleteCategory(id){
   if(!confirm('Delete this category?'))return;

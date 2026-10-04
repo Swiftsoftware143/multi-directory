@@ -10,6 +10,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::PgPool;
 use std::net::SocketAddr;
 use uuid::Uuid;
 
@@ -745,44 +746,93 @@ pub async fn business_visitor_summary(
     })))
 }
 
-/// GET /api/v1/visitors/category-summary/:directory_id — per-category visitor stats for admin
-pub async fn category_visitor_summary(
+/// GET /api/v1/directories/:slug/category-stats — the directory's category tree with
+/// per-category visitor stats.
+///
+/// Categories are the platform taxonomy *referenced by this directory's own businesses*
+/// (plus the ancestor chain that builds the tree), not just rows whose `directory_id`
+/// equals this directory — the global taxonomy is where listings actually point.
+/// Visitor analytics are a directory's private dashboard data: platform operator or that
+/// directory's own admin only.
+pub async fn directory_category_stats(
     State(s): State<AppState>,
-    Path(directory_id): Path<Uuid>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let rows = sqlx::query_as::<_, CategoryVisitorSummaryRow>(
-        r#"SELECT dc.id, dc.name, dc.parent_id,
-                  COALESCE(COUNT(DISTINCT ve.visitor_id), 0) as unique_visitors,
-                  COALESCE(COUNT(*), 0) as total_events,
-                  COALESCE(COUNT(DISTINCT ve.business_id), 0) as businesses_clicked,
-                  COALESCE(COUNT(*) FILTER (WHERE ve.event_type = 'listing_view'), 0) as listing_views,
-                  COALESCE(COUNT(*) FILTER (WHERE ve.event_type = 'phone_click'), 0) as phone_clicks,
-                  COALESCE(COUNT(*) FILTER (WHERE ve.event_type = 'website_click'), 0) as website_clicks
-           FROM directory_categories dc
-           LEFT JOIN businesses b ON b.category_id = dc.id
-           LEFT JOIN visitor_events ve ON ve.business_id = b.id
-           WHERE dc.directory_id = $1
-           GROUP BY dc.id, dc.name, dc.parent_id
-           ORDER BY unique_visitors DESC"#
-    )
-    .bind(directory_id)
-    .fetch_all(&s.db)
-    .await?;
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let directory_id =
+        crate::handlers::tenant_scope::assert_directory_admin_by_slug(&s.db, &claims, &slug)
+            .await?;
+
+    let rows = category_stats_for_directory(&s.db, directory_id).await?;
 
     Ok(Json(json!(rows)))
+}
+
+/// Shared query: category tree + visitor stats for one directory.
+async fn category_stats_for_directory(
+    db: &PgPool,
+    directory_id: Uuid,
+) -> Result<Vec<CategoryVisitorSummaryRow>, sqlx::Error> {
+    sqlx::query_as::<_, CategoryVisitorSummaryRow>(
+        r#"WITH RECURSIVE used AS (
+               SELECT DISTINCT b.category_id AS id
+               FROM businesses b
+               WHERE b.directory_id = $1 AND b.category_id IS NOT NULL
+           ),
+           tree AS (
+               SELECT dc.id, dc.name, dc.slug, dc.parent_id, dc.icon, dc.group_name
+               FROM directory_categories dc JOIN used u ON u.id = dc.id
+               UNION
+               SELECT p.id, p.name, p.slug, p.parent_id, p.icon, p.group_name
+               FROM directory_categories p JOIN tree t ON t.parent_id = p.id
+           ),
+           stats AS (
+               SELECT b.category_id AS id,
+                      COUNT(DISTINCT b.id) AS listings,
+                      COUNT(DISTINCT ve.visitor_id) AS unique_visitors,
+                      COUNT(ve.id) AS total_events,
+                      COUNT(DISTINCT ve.business_id) AS businesses_clicked,
+                      COUNT(*) FILTER (WHERE ve.event_type = 'listing_view') AS listing_views,
+                      COUNT(*) FILTER (WHERE ve.event_type = 'phone_click') AS phone_clicks,
+                      COUNT(*) FILTER (WHERE ve.event_type = 'website_click') AS website_clicks
+               FROM businesses b
+               LEFT JOIN visitor_events ve ON ve.business_id = b.id
+               WHERE b.directory_id = $1
+               GROUP BY b.category_id
+           )
+           SELECT t.id, t.name, t.slug, t.parent_id, t.icon, t.group_name,
+                  COALESCE(s.listings, 0) AS listings,
+                  COALESCE(s.unique_visitors, 0) AS unique_visitors,
+                  COALESCE(s.total_events, 0) AS total_events,
+                  COALESCE(s.businesses_clicked, 0) AS businesses_clicked,
+                  COALESCE(s.listing_views, 0) AS listing_views,
+                  COALESCE(s.phone_clicks, 0) AS phone_clicks,
+                  COALESCE(s.website_clicks, 0) AS website_clicks
+           FROM tree t LEFT JOIN stats s ON s.id = t.id
+           ORDER BY t.name"#,
+    )
+    .bind(directory_id)
+    .fetch_all(db)
+    .await
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct CategoryVisitorSummaryRow {
     pub id: Uuid,
     pub name: String,
+    pub slug: String,
     pub parent_id: Option<Uuid>,
+    pub listings: i64,
     pub unique_visitors: i64,
     pub total_events: i64,
     pub businesses_clicked: i64,
     pub listing_views: i64,
     pub phone_clicks: i64,
     pub website_clicks: i64,
+    pub icon: Option<String>,
+    pub group_name: Option<String>,
 }
 
 // ── Claimed Business Handlers ──
