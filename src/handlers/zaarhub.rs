@@ -72,6 +72,10 @@ pub struct DirectorySummary {
     /// when it is enabled AND carries text, so the front end never renders an empty badge.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guarantee: Option<Value>,
+    /// B90: Angie's-List-style "typical cost" rows for this city
+    /// (`directories.zaarhub_config.cost_guides`). Present only when the list is non-empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_guides: Option<Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -633,6 +637,39 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
         )
         .collect();
 
+    // B90: network-wide "typical costs" strip — merge each visible city's cost guides by
+    // category (first city wins), capped at 8, so the homepage can show Angie's-List-style ranges.
+    let cg_rows = sqlx::query_scalar::<_, Option<Value>>(
+        r#"SELECT zaarhub_config->'cost_guides' FROM directories
+           WHERE (status = 'active' OR status IS NULL)
+             AND (zaarhub_config->>'network_visible')::boolean = true
+             AND jsonb_typeof(zaarhub_config->'cost_guides') = 'array'"#,
+    )
+    .fetch_all(&s.db)
+    .await
+    .unwrap_or_default();
+    let mut cg_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut cost_guide_list: Vec<Value> = Vec::new();
+    'outer: for row in cg_rows.into_iter().flatten() {
+        if let Some(arr) = row.as_array() {
+            for item in arr {
+                let cat = item
+                    .get("category")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_lowercase();
+                if cat.is_empty() || !cg_seen.insert(cat) {
+                    continue;
+                }
+                cost_guide_list.push(item.clone());
+                if cost_guide_list.len() >= 8 {
+                    break 'outer;
+                }
+            }
+        }
+    }
+
     Ok(Json(json!({
         "cities": city_list,
         "featured_deals": deal_list,
@@ -640,6 +677,7 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
         "recent_activity": activity_feed,
         "category_pills": category_pills,
         "spotlights": spotlight_list,
+        "cost_guides": cost_guide_list,
         "top_rated": top_rated_list,
         "stats": {
             "total_businesses": total_businesses,
@@ -675,6 +713,12 @@ pub async fn get_city_page(
                 .trim()
                 .is_empty()
     });
+
+    // B90: expose cost guides only when there is at least one row.
+    let cost_guides: Option<Value> = dir_zh
+        .get("cost_guides")
+        .cloned()
+        .filter(|c| c.as_array().map(|a| !a.is_empty()).unwrap_or(false));
 
     // Business count
     let biz_count: i64 = sqlx::query_scalar(
@@ -1145,6 +1189,7 @@ pub async fn get_city_page(
             business_count: biz_count,
             image_url: None,
             guarantee,
+            cost_guides,
         },
         stats: DirectoryStats {
             total_businesses: biz_count,

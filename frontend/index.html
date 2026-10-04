@@ -1539,6 +1539,32 @@ function renderHomepageContent(d){
   </div>
 </div>`:'')
 
+  // B90: Angie's-List-style cost guides — a network-wide "typical costs" band built from the
+  // admin-set per-directory cost_guides (exposed as d.cost_guides by GET /zaarhub/homepage).
+  var hcg=Array.isArray(d.cost_guides)?d.cost_guides:[]
+  var hcgCards=''
+  for(var hci=0;hci<hcg.length;hci++){
+    var hcgI=hcg[hci]
+    var hlo=(hcgI.low!==null&&hcgI.low!==undefined&&hcgI.low!=='')?('$'+esc(String(hcgI.low))):''
+    var hhi=(hcgI.high!==null&&hcgI.high!==undefined&&hcgI.high!=='')?('$'+esc(String(hcgI.high))):''
+    var hrng=(hlo&&hhi)?(hlo+' – '+hhi):(hlo||hhi)
+    var hunit=hcgI.unit?(' <span style="font-size:.72rem;font-weight:500;color:var(--text-light)">'+esc(hcgI.unit)+'</span>'):''
+    hcgCards+='<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px">'
+      +'<div style="font-weight:700;font-size:.9rem;margin-bottom:4px">'+esc(hcgI.category||'')+'</div>'
+      +(hrng?('<div style="font-size:1.15rem;font-weight:800;color:var(--primary)">'+hrng+hunit+'</div>'):'')
+      +(hcgI.note?('<div style="font-size:.78rem;color:var(--text-light);margin-top:6px;line-height:1.4">'+esc(hcgI.note)+'</div>'):'')
+      +'</div>'
+  }
+  var secCostGuides=hcgCards?`
+<div class="zh-section" style="padding-top:24px;padding-bottom:24px">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">💰 Typical Local Costs</h2><p class="zh-section-sub">What people typically pay, by service — set by each community</p></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">${hcgCards}</div>
+  </div>
+</div>`:''
+
   // Start today ticker and spot of week
   var todayMsgs=buildTodayMessages(d,deals,events,spotlights)
   setTimeout(function(){startTodayTicker(todayMsgs)},400)
@@ -1645,7 +1671,7 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
   <a href="/portal" class="zh-btn-primary">🚀 Claim Your Free Listing →</a>
 </div>`
   var hpMap={spotlights:secSpotlights,loyalty:secLoyalty,cities:secCities,top_rated:secTopRated,deals:secDeals,buzz:secBuzz,events:secEvents,cta_join:secCtaJoin,cta_owner:secCtaOwner}
-  content.innerHTML=hpAnnounceHtml()+heroHtml+hpOrderSections(hpMap,['spotlights','loyalty','cities','top_rated','deals','buzz','events','cta_join','cta_owner'])
+  content.innerHTML=hpAnnounceHtml()+heroHtml+secCostGuides+hpOrderSections(hpMap,['spotlights','loyalty','cities','top_rated','deals','buzz','events','cta_join','cta_owner'])
 }
 
 // ── City View (List/Map/Split) ──
@@ -1975,6 +2001,24 @@ function renderCityPage(d){
   </div>
 </div>`:''
 
+  // B90: Angie's-List-style cost guides — "typical cost" rows per category, admin-set
+  // (exposed as d.directory.cost_guides by GET /zaarhub/cities/<slug>).
+  var cgs=(d.directory&&Array.isArray(d.directory.cost_guides))?d.directory.cost_guides:[]
+  var costGuideCards=''
+  for(var ci=0;ci<cgs.length;ci++){
+    var cg=cgs[ci]
+    var lo=(cg.low!==null&&cg.low!==undefined&&cg.low!=='')?('$'+esc(String(cg.low))):''
+    var hi=(cg.high!==null&&cg.high!==undefined&&cg.high!=='')?('$'+esc(String(cg.high))):''
+    var rng=(lo&&hi)?(lo+' – '+hi):(lo||hi)
+    var unitSpan=cg.unit?(' <span style="font-size:.72rem;font-weight:500;color:var(--text-light)">'+esc(cg.unit)+'</span>'):''
+    costGuideCards+='<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px">'
+      +'<div style="font-weight:700;font-size:.9rem;margin-bottom:4px">'+esc(cg.category||'')+'</div>'
+      +(rng?('<div style="font-size:1.15rem;font-weight:800;color:var(--primary)">'+rng+unitSpan+'</div>'):'')
+      +(cg.note?('<div style="font-size:.78rem;color:var(--text-light);margin-top:6px;line-height:1.4">'+esc(cg.note)+'</div>'):'')
+      +'</div>'
+  }
+  var costGuidesHtml=costGuideCards?('<div style="margin:0 0 20px"><h2 class="zh-section-title" style="margin-bottom:12px">💰 Typical Local Costs</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">'+costGuideCards+'</div></div>'):''
+
   // ── Always-on CTAs — byte-identical components to the homepage (B87). No data gate. ──
   var ctaHtml=`
 <div class="zh-owner-cta" style="margin-bottom:16px">
@@ -2129,6 +2173,7 @@ function renderCityPage(d){
 ${loyaltySectionHtml()}
 <div class="zh-city-content" id="zh-city-content">
   ${guaranteeHtml}
+  ${costGuidesHtml}
   <div class="zh-view-toggle">
     <button class="active" data-view="list" onclick="setCityView('list')">📋 List</button>
     <button data-view="split" onclick="setCityView('split')">🗺️ Map</button>

@@ -162,6 +162,10 @@ pub struct FeatureConfigUpdate {
     pub guarantee_title: Option<String>,
     #[serde(default)]
     pub guarantee_text: Option<String>,
+    // B90: Angie's-List-style cost guides — per-directory "typical cost" rows, admin-set.
+    // Replaced wholesale (the admin panel owns the full list); read back by the city page.
+    #[serde(default)]
+    pub cost_guides: Option<Value>,
     // Generic feature_config passthrough. The admin B2B-toggles card PUTs the whole
     // `{feature_config:{...}}` object; without this field serde dropped it and the save was a
     // silent no-op, so b2b_marketplace etc. were never persisted.
@@ -920,6 +924,7 @@ pub async fn update_directory_features(
         req.guarantee_enabled.is_some(),
         req.guarantee_title.is_some(),
         req.guarantee_text.is_some(),
+        req.cost_guides.is_some(),
     ]
     .iter()
     .any(|&x| x);
@@ -981,6 +986,11 @@ pub async fn update_directory_features(
                 }
             }
             zh_patch.insert("guarantee".to_string(), g);
+        }
+
+        // B90: cost guides. The admin panel sends the full ordered list, so replace it.
+        if let Some(v) = &req.cost_guides {
+            zh_patch.insert("cost_guides".to_string(), v.clone());
         }
 
         if !zh_patch.is_empty() {
