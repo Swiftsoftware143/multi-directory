@@ -1309,6 +1309,9 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route("/enrich/status", get(enrichment::enrichment_status))
         .route("/enrich/run", post(enrichment::run_enrichment_now))
+        // B83 item 2 — ONE search: query every ENABLED enrichment source CONCURRENTLY and
+        // return one merged record with per-field provenance (card B83).
+        .route("/enrich/search", post(enrichment::search_all_sources))
         .route("/export/bulk", get(data_company::bulk_export))
         // ??? Phase 4: Automation — directory events, n8n bridge
         .route(

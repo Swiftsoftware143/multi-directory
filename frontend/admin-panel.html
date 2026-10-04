@@ -1453,6 +1453,18 @@
           <span class="feature-status" id="de-status"></span>
         </div>
         <div id="de-sources" style="margin-top:10px"></div>
+        <!-- B83 item 2 — ONE SEARCH: every enabled source queried at once, one merged result. -->
+        <div id="de-onesearch" style="margin-top:12px;border-top:1px solid var(--border,#1e2a3a);padding-top:10px">
+          <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">🔎 One search — look it up in every enabled source at once
+            <span style="font-weight:400;color:var(--text-secondary)">— the sources you ticked above are queried in parallel and merged into one record; each field shows where it came from. Nothing is written until you press Add.</span>
+          </div>
+          <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+            <input class="pk-input" id="de-one-q" placeholder="e.g. Sunrise Organic Farm Orlando FL" style="flex:1 1 340px">
+            <button class="btn btn-accent btn-sm" type="button" onclick="window.__deOneSearch()">🔎 Search all sources</button>
+            <span class="feature-status" id="de-one-status"></span>
+          </div>
+          <div id="de-one-results" style="margin-top:10px"></div>
+        </div>
         <div class="feature-status" id="de-summary" style="margin-top:8px">no run recorded yet</div>
         <div id="de-logs" style="margin-top:10px"></div>
       </div>
@@ -6810,6 +6822,95 @@
           return loadDataEnrichment();
         })
         .catch(function (e) { if (st) st.textContent = 'error: ' + e.message; });
+    };
+
+    // B83 item 2 — ONE SEARCH. Every ENABLED source is queried CONCURRENTLY by the server
+    // (POST /enrich/search) and merged into one record with per-field provenance. This is the
+    // read-only half; adding the record is the explicit action below.
+    var deOneLast = null;
+
+    function deSlug(s) {
+      return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+    }
+
+    window.__deOneSearch = function () {
+      var st = document.getElementById('de-one-status');
+      var res = document.getElementById('de-one-results');
+      var q = (document.getElementById('de-one-q').value || '').trim();
+      if (q.length < 2) { st.textContent = 'Type at least two characters.'; return; }
+      var dir = document.getElementById('de-dir').value || null;
+      st.textContent = 'searching every enabled source at once…';
+      res.innerHTML = '';
+      apiPost('/enrich/search', { query: q, directory_id: dir })
+        .then(function (r) {
+          deOneLast = r;
+          st.textContent = (r.matched_count || 0) + ' of ' + (r.enabled_count || 0) + ' enabled source(s) matched';
+          var h = '<table style="width:100%;font-size:.78rem;border-collapse:collapse;margin-bottom:8px">'
+            + '<tr style="text-align:left;color:var(--text-secondary)"><th>Source</th><th>Result</th><th>Note</th></tr>';
+          (r.sources || []).forEach(function (s) {
+            h += '<tr style="border-top:1px solid var(--border,#1e2a3a)"><td style="padding:5px 4px">' + trEsc(s.label) + '</td>'
+              + '<td>' + trEsc(s.status) + '</td><td style="color:var(--text-secondary)">' + trEsc(s.message || '') + '</td></tr>';
+          });
+          h += '</table>';
+          var fields = r.fields || {};
+          var keys = Object.keys(fields);
+          if (!keys.length) {
+            h += '<div class="empty-state">No source returned a match for “' + trEsc(q) + '”. Try a more specific name and city, or tick more sources above.</div>';
+          } else {
+            var order = ['name', 'address', 'phone', 'website', 'latitude', 'longitude', 'rating'];
+            keys.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+            h += '<div style="font-weight:600;font-size:.82rem;margin:4px 0">Merged record <span style="font-weight:400;color:var(--text-secondary)">— the source that supplied each field is shown on the right.</span></div>';
+            h += '<table style="width:100%;font-size:.8rem;border-collapse:collapse">';
+            keys.forEach(function (k) {
+              var f = fields[k] || {};
+              var val = (f.value === null || f.value === undefined) ? '' : String(f.value);
+              h += '<tr style="border-top:1px solid var(--border,#1e2a3a)"><td style="padding:5px 4px;color:var(--text-secondary);text-transform:capitalize">' + trEsc(k) + '</td>'
+                + '<td>' + trEsc(val) + '</td>'
+                + '<td style="color:var(--text-secondary)">' + trEsc(f.source || '') + '</td></tr>';
+            });
+            h += '</table>';
+            var cf = r.conflicts || {};
+            var ck = Object.keys(cf);
+            if (ck.length) {
+              var parts = [];
+              ck.forEach(function (k) {
+                (cf[k] || []).forEach(function (c) { parts.push(k + ' = "' + c.value + '" (' + c.source + ')'); });
+              });
+              h += '<div style="font-size:.75rem;color:var(--text-secondary);margin-top:6px">Other values found (kept for review, not discarded): ' + trEsc(parts.join(' · ')) + '</div>';
+            }
+            h += '<div style="margin-top:8px"><button class="btn btn-accent btn-sm" type="button" onclick="window.__deOneAdd()">➕ Add to directory</button> <span class="feature-status" id="de-one-add-status"></span></div>';
+          }
+          res.innerHTML = h;
+        })
+        .catch(function (e) { st.textContent = 'search failed: ' + (e.message || e); });
+    };
+
+    window.__deOneAdd = function () {
+      var st = document.getElementById('de-one-add-status');
+      if (!deOneLast || !deOneLast.result) { if (st) st.textContent = 'nothing to add'; return; }
+      var dirId = document.getElementById('de-dir').value || '';
+      var dir = null;
+      ((deCfg && deCfg.directories) || []).forEach(function (d) { if (String(d.id) === String(dirId)) dir = d; });
+      if (!dir || !dir.slug) { if (st) st.textContent = 'Pick a specific directory above (not “Global default”) first.'; return; }
+      var r = deOneLast.result;
+      var name = r.name || '';
+      if (!name) { if (st) st.textContent = 'no name was found — cannot add.'; return; }
+      var body = {
+        name: name,
+        slug: deSlug(name),
+        address: r.address || null,
+        phone: r.phone || null,
+        website: r.website || null,
+        latitude: (typeof r.latitude === 'number') ? r.latitude : null,
+        longitude: (typeof r.longitude === 'number') ? r.longitude : null,
+        status: 'draft'
+      };
+      if (st) st.textContent = 'adding…';
+      apiPost('/directories/' + encodeURIComponent(dir.slug) + '/businesses', body)
+        .then(function () {
+          if (st) st.textContent = 'added to ' + (dir.name || dir.slug) + ' as a DRAFT (hidden until you publish it).';
+        })
+        .catch(function (e) { if (st) st.textContent = 'could not add: ' + (e.message || e); });
     };
 
     // ===== 🧪 Data Company (B91/B117 gap #9) =====

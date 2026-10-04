@@ -1658,3 +1658,239 @@ pub async fn run_enrichment_now(
     let outcome = run_cycle(&s.db, req.directory_id, req.batch_size, None).await?;
     Ok(Json(json!(outcome)))
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B83 item 2 — ONE SEARCH: query every ENABLED source at once, in parallel
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One source's participation in a one-search run, in plain words for the panel.
+#[derive(Debug, Serialize, Clone)]
+pub struct SourceProbe {
+    pub provider: String,
+    pub label: String,
+    /// matched | no_match | error | off | not_configured
+    pub status: String,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchAllRequest {
+    pub query: String,
+    pub directory_id: Option<Uuid>,
+}
+
+/// Add a field to the merged record, remembering where it came from. The first (highest
+/// confidence) source wins a field; a later source may only FILL one that is still empty, and a
+/// different non-empty value is recorded as a conflict so the losing value is never silently
+/// discarded (card B83 item 2 / the B79 merge contract).
+fn merge_field(
+    fields: &mut serde_json::Map<String, Value>,
+    conflicts: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: Value,
+    source: &str,
+) {
+    if value.is_null() {
+        return;
+    }
+    if let Some(s) = value.as_str() {
+        if s.trim().is_empty() {
+            return;
+        }
+    }
+    match fields.get(key) {
+        None => {
+            fields.insert(key.to_string(), json!({ "value": value, "source": source }));
+        }
+        Some(existing) => {
+            let same = existing.get("value").map(|v| v == &value).unwrap_or(false);
+            if !same {
+                let entry = conflicts
+                    .entry(key.to_string())
+                    .or_insert_with(|| Value::Array(Vec::new()));
+                if let Some(arr) = entry.as_array_mut() {
+                    arr.push(json!({ "value": value, "source": source }));
+                }
+            }
+        }
+    }
+}
+
+/// POST /enrich/search — ONE search box, every ENABLED source queried CONCURRENTLY, one merged
+/// result set with per-field provenance. Read-only: it never writes to a business. Adding the
+/// record to the directory is a separate, explicit action in the panel.
+pub async fn search_all_sources(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<SearchAllRequest>,
+) -> ApiResult<impl IntoResponse> {
+    if !is_admin(&claims) {
+        return Err(AppError::Forbidden(
+            "Admin role required to search enrichment sources".to_string(),
+        ));
+    }
+    let query = req.query.trim().to_string();
+    if query.chars().count() < 2 {
+        return Err(AppError::Validation(
+            "Type at least two characters to search.".to_string(),
+        ));
+    }
+
+    let settings = effective_settings(&s.db, req.directory_id).await?;
+    let available = configured_search_providers(&s.db).await?;
+
+    // Decide, per catalog source, whether it runs; a source that cannot run is reported with
+    // its plain-English reason instead of being silently dropped.
+    let mut runnable: Vec<ProviderCfg> = Vec::new();
+    let mut static_probes: std::collections::HashMap<String, SourceProbe> =
+        std::collections::HashMap::new();
+    for (provider, label, _desc, _needs_key) in SOURCE_CATALOG.iter() {
+        if !source_enabled(&settings, provider, &available) {
+            static_probes.insert(
+                provider.to_string(),
+                SourceProbe {
+                    provider: provider.to_string(),
+                    label: label.to_string(),
+                    status: "off".to_string(),
+                    message: Some("Switched off in the Sources panel above.".to_string()),
+                },
+            );
+            continue;
+        }
+        if FREE_ADAPTERS.contains(provider) {
+            runnable.push(free_provider_cfg(provider));
+        } else if let Some(c) = available.iter().find(|c| c.provider == *provider) {
+            runnable.push(c.clone());
+        } else {
+            static_probes.insert(
+                provider.to_string(),
+                SourceProbe {
+                    provider: provider.to_string(),
+                    label: label.to_string(),
+                    status: "not_configured".to_string(),
+                    message: Some(
+                        "Switched on, but no key is saved yet — add one in Provider API Keys."
+                            .to_string(),
+                    ),
+                },
+            );
+        }
+    }
+    let enabled_count = runnable.len();
+
+    // Fire every enabled source at the SAME time — not one after another (card B83 item 2).
+    let mut set = tokio::task::JoinSet::new();
+    for cfg in runnable {
+        let q = query.clone();
+        set.spawn(async move {
+            let provider = cfg.provider.clone();
+            let label = cfg.label.clone();
+            let outcome = provider_search(&cfg, &q).await;
+            (provider, label, outcome)
+        });
+    }
+
+    let mut hits: Vec<(String, Enriched)> = Vec::new();
+    let mut dynamic_probes: Vec<SourceProbe> = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        match joined {
+            Ok((provider, label, Ok(Some(found)))) => {
+                dynamic_probes.push(SourceProbe {
+                    provider: provider.clone(),
+                    label,
+                    status: "matched".to_string(),
+                    message: None,
+                });
+                hits.push((provider, found));
+            }
+            Ok((provider, label, Ok(None))) => dynamic_probes.push(SourceProbe {
+                provider,
+                label,
+                status: "no_match".to_string(),
+                message: Some("Answered, but no matching listing.".to_string()),
+            }),
+            Ok((provider, label, Err(e))) => dynamic_probes.push(SourceProbe {
+                provider,
+                label,
+                status: "error".to_string(),
+                message: Some(e),
+            }),
+            Err(join_err) => dynamic_probes.push(SourceProbe {
+                provider: "unknown".to_string(),
+                label: "A source task".to_string(),
+                status: "error".to_string(),
+                message: Some(join_err.to_string()),
+            }),
+        }
+    }
+
+    // Highest-confidence source wins each field; lower ones only fill what is still missing.
+    hits.sort_by(|a, b| {
+        b.1.confidence
+            .partial_cmp(&a.1.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut fields = serde_json::Map::new();
+    let mut conflicts = serde_json::Map::new();
+    for (provider, e) in &hits {
+        if let Some(v) = &e.name {
+            merge_field(&mut fields, &mut conflicts, "name", json!(v), provider);
+        }
+        if let Some(v) = &e.address {
+            merge_field(&mut fields, &mut conflicts, "address", json!(v), provider);
+        }
+        if let Some(v) = &e.phone {
+            merge_field(&mut fields, &mut conflicts, "phone", json!(v), provider);
+        }
+        if let Some(v) = &e.website {
+            merge_field(&mut fields, &mut conflicts, "website", json!(v), provider);
+        }
+        if let Some(v) = e.lat {
+            merge_field(&mut fields, &mut conflicts, "latitude", json!(v), provider);
+        }
+        if let Some(v) = e.lng {
+            merge_field(&mut fields, &mut conflicts, "longitude", json!(v), provider);
+        }
+        if let Some(v) = e.rating {
+            merge_field(&mut fields, &mut conflicts, "rating", json!(v), provider);
+        }
+    }
+
+    let mut result = serde_json::Map::new();
+    for (k, v) in &fields {
+        result.insert(k.clone(), v.get("value").cloned().unwrap_or(Value::Null));
+    }
+
+    // Emit the source list in the same order the Sources panel shows it, so the report reads
+    // top-to-bottom matching the checkboxes.
+    let dynamic: std::collections::HashMap<String, SourceProbe> = dynamic_probes
+        .into_iter()
+        .map(|p| (p.provider.clone(), p))
+        .collect();
+    let mut sources: Vec<SourceProbe> = Vec::new();
+    for (provider, label, _d, _k) in SOURCE_CATALOG.iter() {
+        if let Some(p) = dynamic.get(*provider) {
+            sources.push(p.clone());
+        } else if let Some(p) = static_probes.get(*provider) {
+            sources.push(p.clone());
+        } else {
+            sources.push(SourceProbe {
+                provider: provider.to_string(),
+                label: label.to_string(),
+                status: "error".to_string(),
+                message: Some("A source did not report a result.".to_string()),
+            });
+        }
+    }
+
+    Ok(Json(json!({
+        "query": query,
+        "enabled_count": enabled_count,
+        "matched_count": hits.len(),
+        "sources": sources,
+        "result": Value::Object(result),
+        "fields": Value::Object(fields),
+        "conflicts": Value::Object(conflicts),
+    })))
+}
