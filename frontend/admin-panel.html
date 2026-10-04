@@ -10834,15 +10834,24 @@
           // Card B82: hand this record to its supplier — mint a one-time completion link.
           var invite = '<button class="btn btn-ghost btn-sm" type="button" data-invite="' +
             esc(r.id) + '" data-invite-name="' + esc(r.name || '') + '">Invite</button>';
+          // Card B90: Angie's List-style trust badges (licensed / insured), operator-set.
+          var trustBadges = (r.licensed ? '<span class="badge" title="Trade licence verified">🛡 Licensed</span> ' : '') +
+                            (r.insured ? '<span class="badge" title="Insurance verified">🛡 Insured</span>' : '');
+          var trustBtns = '<button class="btn btn-ghost btn-sm" type="button" data-trust="licensed" data-trust-val="' +
+              (r.licensed ? 'false' : 'true') + '" data-trust-id="' + esc(r.id) + '" data-trust-dir="' +
+              esc(r.directory_slug || '') + '">' + (r.licensed ? '− Licensed' : '+ Licensed') + '</button> ' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-trust="insured" data-trust-val="' +
+              (r.insured ? 'false' : 'true') + '" data-trust-id="' + esc(r.id) + '" data-trust-dir="' +
+              esc(r.directory_slug || '') + '">' + (r.insured ? '− Insured' : '+ Insured') + '</button>';
           var rating = (r.review_count ? (Number(r.rating).toFixed(1) + ' (' + r.review_count + ')') : '—');
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
             '<td>' + esc(r.directory_name || '') + '</td>' +
-            '<td>' + badge + ' ' + lcBadge + '</td>' +
+            '<td>' + badge + ' ' + lcBadge + ' ' + trustBadges + '</td>' +
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + view + ' ' + toggle + ' ' + invite + '</td></tr>';
+            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -10890,6 +10899,23 @@
       }).catch(function (e) { st.textContent = 'Invite failed: ' + e.message; });
     }
 
+    // Card B90: flip an operator-set trust badge (licensed / insured) on a listing.
+    function setTrust(id, dir, field, val) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      var body = {}; body[field] = (val === 'true' || val === true);
+      document.getElementById('bz-status').textContent = 'Saving trust badge…';
+      fetch(API + '/directories/' + encodeURIComponent(dir) + '/businesses/' + encodeURIComponent(id), {
+        method: 'PUT', headers: h, body: JSON.stringify(body)
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      }).then(function () { load(); })
+        .catch(function (e) { document.getElementById('bz-status').textContent = 'Failed: ' + e.message; });
+    }
+
     // Publish (promote a hidden record) / Hide (demote a published one) — one field, card B81.
     document.addEventListener('click', function (ev) {
       if (!ev.target || !ev.target.closest) return;
@@ -10899,6 +10925,8 @@
       if (hide) { setLifecycle(hide.getAttribute('data-lc-hide'), hide.getAttribute('data-lc-dir'), 'draft'); return; }
       var inv = ev.target.closest('[data-invite]');
       if (inv) { mintInvite(inv.getAttribute('data-invite'), inv.getAttribute('data-invite-name')); return; }
+      var tr = ev.target.closest('[data-trust]');
+      if (tr) { setTrust(tr.getAttribute('data-trust-id'), tr.getAttribute('data-trust-dir'), tr.getAttribute('data-trust'), tr.getAttribute('data-trust-val')); return; }
     });
 
     function bzReload() { if (!document.getElementById('bz-rows')) return; load(); }

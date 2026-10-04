@@ -68,6 +68,8 @@ FROM (
            COALESCE(b.is_active, true) AS is_active,
            b.claimed,
            b.verified,
+           b.licensed,
+           b.insured,
            (c.id IS NOT NULL) AS has_account,
            c.owner_email AS owner_email,
            c.owner_name AS owner_name,

@@ -384,8 +384,11 @@ pub async fn update_business(
            status = COALESCE($17, status),
            business_type = COALESCE($15, business_type),
            supplier_fields = COALESCE($16, supplier_fields),
+           licensed = COALESCE($18, licensed),
+           insured = COALESCE($19, insured),
+           license_number = COALESCE($20, license_number),
            updated_at = NOW()
-           WHERE id = $18 RETURNING *"#,
+           WHERE id = $21 RETURNING *"#,
     )
     .bind(&req.name)
     .bind(&req.slug)
@@ -404,6 +407,9 @@ pub async fn update_business(
     .bind(&req.business_type)
     .bind(&req.supplier_fields)
     .bind(status.as_deref())
+    .bind(req.licensed)
+    .bind(req.insured)
+    .bind(&req.license_number)
     .bind(business_id)
     .fetch_one(&s.db)
     .await?;

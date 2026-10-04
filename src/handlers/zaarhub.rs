@@ -1287,6 +1287,11 @@ struct BizDetail {
     cover_url: Option<String>,
     claimed: bool,
     verified: bool,
+    /// Angie's List-style trust badges (card B90): operator-verified trade licence / insurance.
+    /// Both are public; license_number is operator-only and never rendered.
+    licensed: bool,
+    insured: bool,
+    license_number: Option<String>,
     /// TRUE when the row came from `business_listings` (a different UUID space).
     is_listing: bool,
 }
@@ -1380,7 +1385,8 @@ pub async fn get_business_detail(
                       COALESCE(b.latitude, b.lat)  AS latitude,
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
-                      b.images, b.logo_url, b.cover_url, b.claimed, b.verified
+                      b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
+                      b.licensed, b.insured, b.license_number
                FROM businesses b
                WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1395,7 +1401,8 @@ pub async fn get_business_detail(
                       COALESCE(b.latitude, b.lat)  AS latitude,
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
-                      b.images, b.logo_url, b.cover_url, b.claimed, b.verified
+                      b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
+                      b.licensed, b.insured, b.license_number
                FROM businesses b
                WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1434,6 +1441,9 @@ pub async fn get_business_detail(
             cover_url: r.try_get("cover_url")?,
             claimed: r.try_get::<Option<bool>, _>("claimed")?.unwrap_or(false),
             verified: r.try_get::<Option<bool>, _>("verified")?.unwrap_or(false),
+            licensed: r.try_get::<Option<bool>, _>("licensed")?.unwrap_or(false),
+            insured: r.try_get::<Option<bool>, _>("insured")?.unwrap_or(false),
+            license_number: r.try_get("license_number")?,
             is_listing: false,
         }
     } else if let Ok(bid) = Uuid::parse_str(&id) {
@@ -1486,6 +1496,9 @@ pub async fn get_business_detail(
             cover_url: listing_cover,
             claimed: r.try_get::<Option<bool>, _>("is_claimed")?.unwrap_or(false),
             verified: false,
+            licensed: false,
+            insured: false,
+            license_number: None,
             is_listing: true,
         }
     } else {
@@ -1682,6 +1695,8 @@ pub async fn get_business_detail(
         "category": category_name,
         "is_claimed": is_claimed,
         "is_verified": biz.verified,
+        "licensed": biz.licensed,
+        "insured": biz.insured,
         "source": if biz.is_listing { "listing" } else { "business" },
         "images": photos.clone(),
         "photos": photos,

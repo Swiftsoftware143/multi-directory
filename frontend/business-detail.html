@@ -63,6 +63,7 @@ a:hover{text-decoration:underline}
 .name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .name-row h2{margin-bottom:0}
 .verified-badge{display:inline-flex;align-items:center;gap:4px;background:var(--green-light);color:var(--green);font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:100px;white-space:nowrap}
+.trust-badge{display:inline-flex;align-items:center;gap:4px;background:#e0f2fe;color:#0369a1;font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:100px;white-space:nowrap}
 .qa-item{border-top:1px solid var(--border);padding:12px 0}
 .qa-item:first-child{border-top:none;padding-top:0}
 .qa-q{font-size:.9rem;font-weight:600;color:var(--text)}
@@ -257,6 +258,8 @@ a:hover{text-decoration:underline}
               <div class="name-row">
                 <h2 id="bizName"></h2>
                 <span class="verified-badge" id="bizBadge" style="display:none"></span>
+                <span class="trust-badge" id="licensedBadge" style="display:none"></span>
+                <span class="trust-badge" id="insuredBadge" style="display:none"></span>
               </div>
               <span class="category-tag" id="bizCategory"></span>
               <div class="stars-row">
@@ -678,6 +681,14 @@ function renderBusiness() {
   } else {
     badgeEl.style.display = 'none';
   }
+  // Angie's List-style trust badges (card B90): an operator-verified trade licence and/or
+  // proof of insurance are the primary trust signals on a listing. Public — no licence number.
+  const licEl = document.getElementById('licensedBadge');
+  if (b.licensed) { licEl.textContent = '🛡 Licensed'; licEl.style.display = ''; }
+  else { licEl.style.display = 'none'; }
+  const insEl = document.getElementById('insuredBadge');
+  if (b.insured) { insEl.textContent = '🛡 Insured'; insEl.style.display = ''; }
+  else { insEl.style.display = 'none'; }
   document.getElementById('bizCategory').textContent = b.category_name || 'Local Business';
 
   const rating = b.rating || 0;

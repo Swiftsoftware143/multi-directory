@@ -220,6 +220,11 @@ pub struct Business {
     /// Lifecycle (card B81): 'active' (published), 'draft' or 'prospect' (pre-populated but
     /// hidden from every public surface until promoted).
     pub status: Option<String>,
+    /// Angie's List-style trust badges (card B90): the operator has verified a trade licence /
+    /// proof of insurance for this business. Both are public; license_number is operator-only.
+    pub licensed: Option<bool>,
+    pub insured: Option<bool>,
+    pub license_number: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub enriched_at: Option<DateTime<Utc>>,
@@ -276,6 +281,10 @@ pub struct UpdateBusinessRequest {
     /// Setting a hidden status forces is_active = false; promoting to 'active'
     /// forces is_active = true, so publication is one field.
     pub status: Option<String>,
+    /// Angie's List-style trust badges (card B90), operator-settable from the admin panel.
+    pub licensed: Option<bool>,
+    pub insured: Option<bool>,
+    pub license_number: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
