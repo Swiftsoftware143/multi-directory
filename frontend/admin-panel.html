@@ -1621,17 +1621,19 @@
         <!-- Verification queue -->
         <h4 style="margin-top:18px">Business verifications</h4>
         <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
-          <input class="pk-input" id="dc-v-biz" placeholder="business id (uuid) to request a verification" style="flex:1 1 340px">
+          <input class="pk-input" id="dc-v-biz" autocomplete="off" placeholder="Search a business by name…" oninput="window.__dcVerifSearchBiz()" style="flex:1 1 340px">
+          <input type="hidden" id="dc-v-biz-id">
           <select class="pk-input" id="dc-v-method">
-            <option value="manual">manual</option>
-            <option value="auto_domain">auto_domain</option>
-            <option value="document">document</option>
-            <option value="phone">phone</option>
+            <option value="manual">Manual review</option>
+            <option value="auto_domain">Automatic (website domain)</option>
+            <option value="document">Document upload</option>
+            <option value="phone">Phone call</option>
           </select>
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__dcVerifCreate()">＋ Request verification</button>
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__dcVerifLoad()">↻ Refresh</button>
           <span class="feature-status" id="dc-v-status"></span>
         </div>
+        <div id="dc-v-biz-results" style="font-size:.8rem;margin:2px 0 6px"></div>
         <div id="dc-v-list" style="margin-top:10px"></div>
 
         <!-- Bulk export -->
@@ -7149,6 +7151,18 @@
     // ===== Data Enrichment cycle (Round 11 / T4) =====
     var deCfg = null;
 
+    // B84 (no technical exposure): a buyer must never see a raw UUID or a provider's raw JSON/HTTP
+    // error. The enrichment log note is a plain-English instruction instead.
+    function deFriendlyNote(l) {
+      if (!l || l.status !== 'error') return '';
+      var m = String(l.error_message || '');
+      if (/page-not-found|no API endpoint|no endpoint|404/i.test(m)) return 'The data provider has no endpoint for that record — check the provider API and the key.';
+      if (/401|403|unauthor|forbidden|invalid.{0,12}key|api ?key/i.test(m)) return 'The provider rejected the key — check it is valid and not restricted to another server.';
+      if (/429|rate ?limit|quota|too many/i.test(m)) return 'The provider rate-limited the request — the cycle will retry it later.';
+      if (/timeout|timed out|unreachable|connect|dns|network/i.test(m)) return 'The provider could not be reached — the cycle will retry it later.';
+      return 'The provider returned an error — open the provider dashboard for details.';
+    }
+
     function loadDataEnrichment() {
       var dir = document.getElementById('de-dir');
       var qs = dir.value ? '?directory_id=' + encodeURIComponent(dir.value) : '';
@@ -7225,9 +7239,9 @@
             h += '<td style="padding:6px 4px">' + trEsc(String(l.created_at || '').slice(0, 19)) + '</td>';
             h += '<td>' + trEsc(l.source) + '</td>';
             h += '<td>' + trEsc(l.enrichment_type) + '</td>';
-            h += '<td>' + trEsc(l.business_id || '—') + '</td>';
+            h += '<td>' + trEsc(l.business_name || '—') + '</td>';
             h += '<td>' + trEsc(l.status) + '</td>';
-            h += '<td>' + trEsc(l.error_message || '') + '</td>';
+            h += '<td>' + trEsc(deFriendlyNote(l)) + '</td>';
             h += '</tr>';
           });
           h += '</table>';
@@ -7510,6 +7524,29 @@
         .catch(function (e) { st.textContent = e.message; });
     };
 
+    // B84 (no technical exposure): pick a business by name, never by pasting a UUID.
+    window.__dcVerifSearchBiz = function () {
+      var box = document.getElementById('dc-v-biz-results');
+      if (!box) return;
+      var bid = document.getElementById('dc-v-biz-id'); if (bid) bid.value = '';
+      var q = (document.getElementById('dc-v-biz').value || '').trim();
+      if (q.length < 2) { box.innerHTML = ''; return; }
+      apiGet('/admin/businesses?q=' + encodeURIComponent(q) + '&per_page=8').then(function (d) {
+        var rows = (d && d.rows) || [];
+        if (!rows.length) { box.innerHTML = '<span style="color:var(--text-secondary)">No matching businesses.</span>'; return; }
+        box.innerHTML = rows.map(function (b) {
+          return '<button class="btn btn-ghost btn-sm" type="button" data-bid="' + trEsc(b.id) + '" data-bname="' + trEsc(b.name) + '" onclick="window.__dcVerifPickBiz(this)" style="margin:2px 4px 2px 0">' + trEsc(b.name) + (b.city ? ' · ' + trEsc(b.city) : '') + '</button>';
+        }).join('');
+      }).catch(function (e) { box.innerHTML = '<span style="color:#ef4444">Search failed: ' + trEsc(e.message) + '</span>'; });
+    };
+
+    window.__dcVerifPickBiz = function (el) {
+      var id = el.getAttribute('data-bid');
+      var hid = document.getElementById('dc-v-biz-id'); if (hid) hid.value = id;
+      document.getElementById('dc-v-biz').value = el.getAttribute('data-bname');
+      document.getElementById('dc-v-biz-results').innerHTML = '<span style="color:#22c55e">Selected ' + trEsc(el.getAttribute('data-bname')) + '.</span>';
+    };
+
     window.__dcVerifLoad = function () {
       var box = document.getElementById('dc-v-list');
       if (!box) return;
@@ -7521,8 +7558,8 @@
           h += '<tr style="text-align:left;color:var(--text-secondary)"><th>Business</th><th>Method</th><th>Status</th><th>Created</th><th>Actions</th></tr>';
           rows.forEach(function (v) {
             h += '<tr style="border-top:1px solid var(--border,#1e2a3a)">';
-            h += '<td style="padding:6px 4px">' + trEsc(v.business_id) + '</td>';
-            h += '<td>' + trEsc(v.method) + '</td>';
+            h += '<td style="padding:6px 4px">' + trEsc(v.business_name || '—') + '</td>';
+            h += '<td>' + trEsc({ manual: 'Manual review', auto_domain: 'Automatic (website domain)', document: 'Document upload', phone: 'Phone call' }[v.method] || v.method) + '</td>';
             h += '<td>' + trEsc(v.status) + '</td>';
             h += '<td>' + trEsc(String(v.created_at || '').slice(0, 19)) + '</td>';
             h += '<td><button class="btn btn-ghost btn-sm" type="button" onclick="window.__dcVerifUpdate(\'' + trEsc(v.id) + '\',\'approved\')">✓ Approve</button> ';
@@ -7537,12 +7574,19 @@
 
     window.__dcVerifCreate = function () {
       var st = document.getElementById('dc-v-status');
-      var biz = (document.getElementById('dc-v-biz').value || '').trim();
+      var hid = document.getElementById('dc-v-biz-id');
+      var biz = ((hid && hid.value) || '').trim();
       var method = document.getElementById('dc-v-method').value || 'manual';
-      if (!biz) { st.textContent = 'paste a business id'; return; }
+      if (!biz) { st.textContent = 'Pick a business first — type its name and choose it from the list.'; return; }
       st.textContent = 'requesting…';
       apiPost('/verifications', { business_id: biz, method: method })
-        .then(function () { st.textContent = 'requested'; window.__dcVerifLoad(); })
+        .then(function () {
+          st.textContent = 'requested';
+          var bi = document.getElementById('dc-v-biz'); if (bi) bi.value = '';
+          if (hid) hid.value = '';
+          var rb = document.getElementById('dc-v-biz-results'); if (rb) rb.innerHTML = '';
+          window.__dcVerifLoad();
+        })
         .catch(function (e) { st.textContent = 'failed: ' + e.message; });
     };
 

@@ -378,6 +378,10 @@ pub struct BusinessVerification {
     pub verified_data: Option<serde_json::Value>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    /// B84: the owning business's display name (LEFT JOIN businesses) so the operator panel never
+    /// has to show a raw UUID. Not part of the table; defaults to None on inserts/other queries.
+    #[sqlx(default)]
+    pub business_name: Option<String>,
 }
 
 // ── Yelp Fusion API ──
@@ -713,7 +717,11 @@ pub async fn business_verifications(
 /// GET /api/v1/verifications — list all verifications (with optional status filter)
 pub async fn list_verifications(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let verifications = sqlx::query_as::<_, BusinessVerification>(
-        "SELECT * FROM business_verifications ORDER BY created_at DESC LIMIT 100",
+        "SELECT v.id, v.business_id, v.directory_id, v.method, v.status, v.verified_by, \
+                v.verified_at, v.verification_doc_url, v.notes, v.expires_at, v.verified_data, \
+                v.created_at, v.updated_at, b.name AS business_name \
+         FROM business_verifications v LEFT JOIN businesses b ON b.id = v.business_id \
+         ORDER BY v.created_at DESC LIMIT 100",
     )
     .fetch_all(&state.db)
     .await?;

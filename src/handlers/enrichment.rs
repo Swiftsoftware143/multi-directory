@@ -1649,10 +1649,13 @@ pub async fn enrichment_status(
             String,
             Option<String>,
             Option<DateTime<Utc>>,
+            Option<String>,
         ),
     >(
-        "SELECT id, business_id, source, enrichment_type, status, error_message, created_at \
-         FROM data_enrichment_logs ORDER BY created_at DESC LIMIT 25",
+        "SELECT l.id, l.business_id, l.source, l.enrichment_type, l.status, l.error_message, \
+                l.created_at, b.name \
+         FROM data_enrichment_logs l LEFT JOIN businesses b ON b.id = l.business_id \
+         ORDER BY l.created_at DESC LIMIT 25",
     )
     .fetch_all(&s.db)
     .await?;
@@ -1683,10 +1686,11 @@ pub async fn enrichment_status(
         "supported_adapters": ALL_ADAPTERS,
         "recent_logs": logs
             .into_iter()
-            .map(|(id, business_id, source, enrichment_type, status, error_message, created_at)| json!({
+            .map(|(id, business_id, source, enrichment_type, status, error_message, created_at, business_name)| json!({
                 "id": id, "business_id": business_id, "source": source,
                 "enrichment_type": enrichment_type, "status": status,
                 "error_message": error_message, "created_at": created_at,
+                "business_name": business_name,
             }))
             .collect::<Vec<_>>(),
         "totals": {
