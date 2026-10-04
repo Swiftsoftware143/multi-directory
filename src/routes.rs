@@ -1530,6 +1530,36 @@ pub fn create_router(s: AppState) -> Router {
             get(api_complete::list_webhook_deliveries)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Business SEO Articles (card B91 / B117 gap #2) — src/handlers/business_articles.rs
+        // had SEVEN handlers and ZERO routes; business_articles held 0 rows and the engine was
+        // curl-only. Operator-guarded generate/list/update/delete/weekly are wired here; the public
+        // impression/click beacon is an anonymous POST (see `is_public`).
+        .route(
+            "/directories/:id/business-articles",
+            get(business_articles::list_articles)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/directories/:id/business-articles/generate",
+            post(business_articles::generate_article)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/business-articles/:id",
+            put(business_articles::update_article)
+                .delete(business_articles::delete_article)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/business-articles/:id/generate-weekly",
+            post(business_articles::generate_weekly)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        // Public impression/click beacon fired by the rendered article page (no session).
+        .route(
+            "/business-articles/:id/track",
+            post(business_articles::track_article_event),
+        )
         // ??? Provider keys management
         .route(
             "/provider-keys",
@@ -3226,6 +3256,11 @@ async fn auth_guard(
         // POST only: the admin GET/PUT surface for these pages stays gated.
         || (req.method() == "POST"
             && path.starts_with("/programmatic-pages/")
+            && path.ends_with("/track"))
+        // Business-article impression/click beacon (card B91/B117 gap #2) — the public article
+        // page at /<dir>/articles/<slug> fires this anonymously; POST-only write telemetry.
+        || (req.method() == "POST"
+            && path.starts_with("/business-articles/")
             && path.ends_with("/track"))
         // Public review reading — GET only (write/approve/reject stay authenticated)
         || (path == "/reviews" && req.method() == "GET")

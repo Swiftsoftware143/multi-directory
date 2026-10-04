@@ -559,6 +559,7 @@
         <a href="#sc-news-section">✉️ Newsletters</a>
         <a href="#sc-land-section">🚀 Landing Pages</a>
         <a href="#developer-api-section">🧩 API Access &amp; Webhooks</a>
+        <a href="#articles-section">📰 Sponsored Articles</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty</a>
         <a class="nav-out" href="/guides/admin-guide.html#david-setup-checklist">✅ Setup Checklist</a>
@@ -1036,6 +1037,40 @@
         <div id="wh-list"></div>
         <div id="wh-deliveries" style="margin-top:10px"></div>
         <div class="feature-status" id="wh-status"></div>
+      </div>
+
+      <!-- 📰 Sponsored & SEO Articles (card B91 / B117 gap #2) — src/handlers/business_articles.rs
+           carried SEVEN handlers and ZERO routes (business_articles held 0 rows, curl-only). This is
+           the operator surface: pick a city, generate keyword articles that link back to a business
+           (a paid "sponsored" article) or stand alone as free directory-owner SEO, then publish,
+           regenerate the weekly paid article, or delete. -->
+      <div class="feature-card" id="articles-section">
+        <h3>📰 Sponsored &amp; SEO Articles</h3>
+        <p class="feature-subtitle">Generate keyword-targeted articles that link back to a chosen business (sponsored) or to the directory itself (free owner SEO). Operator-only.</p>
+
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;min-width:220px">City / directory
+            <select class="pk-input" id="art-dir" onchange="window.__artLoad()"></select></label>
+          <span style="display:flex;align-items:flex-end"><button class="btn btn-ghost btn-sm" onclick="window.__artLoad()">↻ Refresh</button></span>
+        </div>
+
+        <div style="font-weight:600;font-size:.9rem;margin:4px 0 8px">Generate a new article</div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Keyword
+            <input class="pk-input" id="art-keyword" placeholder="e.g. water heater repair"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">City
+            <input class="pk-input" id="art-city" placeholder="e.g. Palm Bay"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Service
+            <input class="pk-input" id="art-service" placeholder="e.g. plumbing"></label>
+          <button class="btn btn-accent btn-sm" onclick="window.__artGenerate()">+ Generate</button>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="font-size:.75rem;flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px">Business (optional — type 2+ letters to link the article to a listing → sponsored)
+            <input class="pk-input" id="art-biz" autocomplete="off" placeholder="Search this city's businesses…" oninput="window.__artSearchBiz()"></label>
+        </div>
+        <div id="art-biz-results" style="font-size:.8rem;margin-bottom:8px"></div>
+        <div id="art-list"></div>
+        <div class="feature-status" id="art-status"></div>
       </div>
 
       <!-- ⭐ ZaarCash Loyalty Messaging (card B92) — the loyalty programme is the differentiator
@@ -4071,6 +4106,8 @@
       loadScraperProviders();
       // 🧩 API Access & Webhooks (B91/B117 gap #4) — operator-only api_keys + webhooks UI.
       loadApiAccess();
+      // 📰 Sponsored & SEO Articles (B91/B117 gap #2) — the article engine's operator surface.
+      window.__artLoad();
       // 🗺 Sitemap config (priority / change frequency / auto-generate + regenerate).
       loadSitemapConfigs();
       // Round 11 / T1: demand analytics card (filters, matrix, chart, exports).
@@ -8946,6 +8983,129 @@
         });
         box.innerHTML = h + '</tbody></table>';
       }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load deliveries: ' + akEsc(e.message) + '</p>'; });
+    };
+
+    // ===== 📰 Sponsored & SEO Articles (card B91 / B117 gap #2) =====
+    // src/handlers/business_articles.rs carried SEVEN handlers and ZERO routes — business_articles
+    // held 0 rows and the article engine was reachable only by curl. This surfaces the operator CRUD:
+    // generate / list / publish / weekly-regenerate / archive, per city, optionally linked to a
+    // business (which makes it a sponsored article and turns on the weekly subscription flag).
+    var artState = { dirs: null, bizId: null, bizName: '' };
+    function artStatus(msg, ok) { var el = document.getElementById('art-status'); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
+    function artEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function artDirSel() { return document.getElementById('art-dir'); }
+    function artSlug() { var sel = artDirSel(); if (!sel || !sel.value || !artState.dirs) return ''; for (var i = 0; i < artState.dirs.length; i++) { if (artState.dirs[i].id === sel.value) return artState.dirs[i].slug; } return ''; }
+
+    function artFillDirs() {
+      var sel = artDirSel(); if (!sel) return Promise.resolve();
+      if (artState.dirs) return Promise.resolve();
+      return apiGet('/directories?per_page=100').then(function (r) {
+        artState.dirs = Array.isArray(r) ? r : ((r && r.data) || []);
+        sel.innerHTML = artState.dirs.map(function (d) {
+          return '<option value="' + artEsc(d.id) + '">' + artEsc(d.name || d.slug) + ' (' + artEsc(d.slug) + ')</option>';
+        }).join('') || '<option value="">No directories</option>';
+      }).catch(function (e) {
+        sel.innerHTML = '<option value="">Could not load directories</option>';
+        artStatus('Could not load directories: ' + e.message, false);
+      });
+    }
+
+    function loadArticles() {
+      var box = document.getElementById('art-list'); if (!box) return;
+      var sel = artDirSel(); var dirId = sel && sel.value;
+      if (!dirId) { box.innerHTML = '<p class="feature-subtitle">Pick a city first.</p>'; return; }
+      box.innerHTML = '<p class="feature-subtitle">Loading articles…</p>';
+      apiGet('/directories/' + encodeURIComponent(dirId) + '/business-articles?limit=100').then(function (r) {
+        var rows = (r && r.data) || [];
+        var total = (r && r.total) || rows.length;
+        if (!rows.length) { box.innerHTML = '<p class="feature-subtitle">No articles for this city yet. Generate one above.</p>'; return; }
+        var h = '<div style="font-weight:600;font-size:.9rem;margin:6px 0">' + total + ' article(s)</div>'
+          + '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)">'
+          + '<th style="padding:6px 4px">Title</th><th>Business</th><th>Status</th><th>Views</th><th>Clicks</th><th>Sub</th><th></th></tr></thead><tbody>';
+        rows.forEach(function (a) {
+          var st = a.status || 'draft';
+          var stColor = st === 'published' ? '#22c55e' : (st === 'archived' ? '#94a3b8' : '#eab308');
+          h += '<tr style="border-top:1px solid var(--border)">'
+            + '<td style="padding:6px 4px;max-width:300px"><a href="/' + artEsc(artSlug()) + '/articles/' + artEsc(a.slug) + '" target="_blank" style="color:#0d9488">' + artEsc(a.title) + '</a><div style="font-size:.72rem;color:var(--text-secondary)">' + artEsc(a.keyword) + '</div></td>'
+            + '<td>' + (a.business_name ? artEsc(a.business_name) : (a.is_owner_article ? '<span style="color:var(--text-secondary)">owner SEO</span>' : '—')) + '</td>'
+            + '<td><span style="color:' + stColor + '">' + artEsc(st) + '</span></td>'
+            + '<td>' + (a.impressions || 0) + '</td>'
+            + '<td>' + (a.clicks || 0) + '</td>'
+            + '<td>' + (a.subscription_active ? '<span style="color:#22c55e">active</span>' : '—') + '</td>'
+            + '<td style="text-align:right;white-space:nowrap">'
+              + (st !== 'published' ? '<button class="btn btn-ghost btn-sm" data-aid="' + artEsc(a.id) + '" onclick="window.__artPublish(this)">Publish</button> ' : '')
+              + (a.business_id ? '<button class="btn btn-ghost btn-sm" data-aid="' + artEsc(a.id) + '" onclick="window.__artWeekly(this)">↻ Weekly</button> ' : '')
+              + '<button class="btn btn-ghost btn-sm" data-aid="' + artEsc(a.id) + '" onclick="window.__artDelete(this)">Archive</button>'
+            + '</td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table>';
+      }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load articles: ' + artEsc(e.message) + '</p>'; });
+    }
+
+    window.__artLoad = function () {
+      artState.bizId = null; artState.bizName = '';
+      var b = document.getElementById('art-biz'); if (b) b.value = '';
+      var br = document.getElementById('art-biz-results'); if (br) br.innerHTML = '';
+      artFillDirs().then(loadArticles);
+    };
+
+    window.__artSearchBiz = function () {
+      var box = document.getElementById('art-biz-results');
+      if (!box) return;
+      var q = (document.getElementById('art-biz').value || '').trim();
+      var slug = artSlug();
+      if (q.length < 2 || !slug) { box.innerHTML = ''; return; }
+      apiGet('/directories/' + encodeURIComponent(slug) + '/businesses/suggestions?q=' + encodeURIComponent(q) + '&limit=8').then(function (rows) {
+        rows = Array.isArray(rows) ? rows : ((rows && rows.data) || []);
+        if (!rows.length) { box.innerHTML = '<span style="color:var(--text-secondary)">No matching businesses.</span>'; return; }
+        box.innerHTML = rows.map(function (b) {
+          return '<button class="btn btn-ghost btn-sm" data-bid="' + artEsc(b.id) + '" data-bname="' + artEsc(b.name) + '" onclick="window.__artPickBiz(this)" style="margin:2px 4px 2px 0">' + artEsc(b.name) + (b.city ? ' · ' + artEsc(b.city) : '') + '</button>';
+        }).join('');
+      }).catch(function (e) { box.innerHTML = '<span style="color:#ef4444">Search failed: ' + artEsc(e.message) + '</span>'; });
+    };
+
+    window.__artPickBiz = function (el) {
+      artState.bizId = el.getAttribute('data-bid');
+      artState.bizName = el.getAttribute('data-bname');
+      document.getElementById('art-biz').value = artState.bizName;
+      document.getElementById('art-biz-results').innerHTML = '<span style="color:#22c55e">Linked to ' + artEsc(artState.bizName) + ' (this becomes a sponsored article).</span>';
+    };
+
+    window.__artGenerate = function () {
+      var sel = artDirSel(); var dirId = sel && sel.value;
+      if (!dirId) { artStatus('Pick a city first.', false); return; }
+      var keyword = (document.getElementById('art-keyword').value || '').trim();
+      var city = (document.getElementById('art-city').value || '').trim();
+      var service = (document.getElementById('art-service').value || '').trim();
+      if (!keyword || !city || !service) { artStatus('Keyword, city and service are all required.', false); return; }
+      var body = { keyword: keyword, city: city, service: service };
+      if (artState.bizId) body.business_id = artState.bizId;
+      artStatus('Generating…', true);
+      apiPost('/directories/' + encodeURIComponent(dirId) + '/business-articles/generate', body).then(function () {
+        document.getElementById('art-keyword').value = '';
+        artState.bizId = null; artState.bizName = '';
+        document.getElementById('art-biz').value = '';
+        document.getElementById('art-biz-results').innerHTML = '';
+        artStatus('Article generated as a draft. Publish it when ready.', true);
+        loadArticles();
+      }).catch(function (e) { artStatus('Generate failed: ' + e.message, false); });
+    };
+
+    window.__artPublish = function (el) {
+      var id = el.getAttribute('data-aid');
+      apiPut('/business-articles/' + id, { status: 'published' }).then(function () { artStatus('Article published.', true); loadArticles(); })
+        .catch(function (e) { artStatus('Publish failed: ' + e.message, false); });
+    };
+    window.__artWeekly = function (el) {
+      var id = el.getAttribute('data-aid');
+      apiPost('/business-articles/' + id + '/generate-weekly', {}).then(function () { artStatus('Weekly article regenerated.', true); loadArticles(); })
+        .catch(function (e) { artStatus('Regenerate failed: ' + e.message, false); });
+    };
+    window.__artDelete = function (el) {
+      var id = el.getAttribute('data-aid');
+      if (!window.confirm('Archive this article? It disappears from the public site immediately.')) return;
+      apiFetch('DELETE', '/business-articles/' + id).then(function () { artStatus('Article archived.', true); loadArticles(); })
+        .catch(function (e) { artStatus('Archive failed: ' + e.message, false); });
     };
 
     // ===== Init =====

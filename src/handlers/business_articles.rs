@@ -72,7 +72,11 @@ pub struct ListArticlesParams {
 
 fn slugify(s: &str) -> String {
     s.to_lowercase()
-        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")
+        // Every non-alphanumeric char (SPACES INCLUDED) becomes a separator. The old version kept
+        // ' ' (`&& c != ' '`), so "plumbing-in-Palm Bay" produced the slug "plumbing-in-palm bay-guide"
+        // — a URL with a literal space, which the /<dir>/articles/<slug> reader never matched and the
+        // SPA fallback swallowed as a 200 soft-404. Verified 2026-10-04 (card B91/B117 gap #2).
+        .replace(|c: char| !c.is_alphanumeric(), "-")
         .split('-')
         .filter(|p| !p.is_empty())
         .collect::<Vec<&str>>()
