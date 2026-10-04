@@ -735,6 +735,22 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         <div class="section-title" style="font-size:1rem">📋 Recent Claims</div>
         <div id="dealsClaimsList"></div>
       </div>
+
+      <!-- B47 — verify a customer's voucher code (the in-store verify step).
+           POST /deals/redemptions/:id/use existed with no UI control: a business could only
+           complete the flow by hand. Enter the code, confirm the deal, then mark it used. -->
+      <div id="voucherVerifyCard" style="margin-top:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div class="section-title" style="font-size:1rem">🎟️ Verify a customer voucher</div>
+        <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">
+          A customer shows you their redemption code. Enter it to confirm the deal, then mark it used.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="voucherCode" placeholder="e.g. JD6YOSPE" maxlength="24"
+                 style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;font-family:monospace;text-transform:uppercase">
+          <button class="btn btn-primary btn-sm" onclick="findVoucher()">Find voucher</button>
+        </div>
+        <div id="voucherResult" style="margin-top:12px;font-size:.88rem"></div>
+      </div>
     </div>
       <!-- Connected Services -->
       <div id="connectedServicesSection" style="margin-top:24px">
@@ -838,6 +854,42 @@ async function pu(path, body) {
   var r = await fetch(API + path, { method: 'PUT', headers: h, body: JSON.stringify(body) });
   if (!r.ok) { var e = await r.json().catch(()=>({})); throw new Error(e.message || 'Request failed'); }
   return r.json();
+}
+
+// ── B47: in-store voucher verification ──
+// A customer presents a redemption code; the business confirms the deal and marks it used.
+// Uses GET /deals/redemptions/code/:code (lookup) then POST /deals/redemptions/:id/use.
+async function findVoucher() {
+  var code = ($('voucherCode').value || '').trim().toUpperCase();
+  var out = $('voucherResult');
+  if (!code) { out.innerHTML = '<span style="color:var(--danger)">Enter the redemption code first.</span>'; return; }
+  out.textContent = 'Looking up…';
+  try {
+    var v = await g('/deals/redemptions/code/' + encodeURIComponent(code));
+    var used = (v.status !== 'active');
+    out.innerHTML =
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:12px">' +
+      '<div style="font-weight:600">' + esc(v.deal_title || 'Deal') + '</div>' +
+      '<div style="font-size:.8rem;color:var(--text-secondary)">Code ' + esc(v.code) + ' · status ' + esc(v.status) + '</div>' +
+      (used
+        ? '<div style="margin-top:8px;color:var(--text-secondary)">This voucher has already been used or expired.</div>'
+        : '<button class="btn btn-primary btn-sm" style="margin-top:8px" data-verify-id="' + esc(v.id) + '" onclick="useVoucher(this.getAttribute(\'data-verify-id\'))">Mark as used</button>') +
+      '</div>';
+  } catch (e) {
+    out.innerHTML = '<span style="color:var(--danger)">' + esc(e.message) + '</span>';
+  }
+}
+
+async function useVoucher(redemptionId) {
+  var out = $('voucherResult');
+  out.textContent = 'Verifying…';
+  try {
+    await po('/deals/redemptions/' + redemptionId + '/use', {});
+    toast('Voucher verified', 'success');
+    out.innerHTML = '<span style="color:var(--success)">✅ Voucher verified and marked used.</span>';
+  } catch (e) {
+    out.innerHTML = '<span style="color:var(--danger)">' + esc(e.message) + '</span>';
+  }
 }
 
 // ── Auth ──
