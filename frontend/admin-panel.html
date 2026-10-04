@@ -9182,7 +9182,12 @@
     function obLoadCsLists() {
       var sel = document.getElementById('ob-cs-list');
       if (!sel) return Promise.resolve();
-      return apiGet('/integrations/coreswift/connection/lists').then(function (r) {
+      // The picker lists the CoreSwift lists for ONE directory's effective connection, so the
+      // endpoint needs ?scope=directory&id=<dir>. Calling it with no scope 400s (B91, 2026-10-04);
+      // and with no directory selected there is nothing to list yet — skip the request entirely.
+      var dirId = obSelectedDirectoryId();
+      if (!dirId) return Promise.resolve();
+      return apiGet('/integrations/coreswift/connection/lists?scope=directory&id=' + encodeURIComponent(dirId)).then(function (r) {
         var lists = (r && r.data && r.data.lists) || (r && r.lists) || (r && r.data) || [];
         if (!Array.isArray(lists)) lists = [];
         obCsLists = lists;
@@ -9597,15 +9602,16 @@
             var list = (res && (res.directories || res)) || [];
             if (list.length) directories = list;
           }).catch(function () {});
-      ready.then(obLoadTypes).then(obLoadCsFields).then(obLoadCsLists).then(function () {
+      ready.then(obLoadTypes).then(obLoadCsFields).then(function () {
         obLoadDirectoriesInto();
         obSetDirSlugAttr();
         obLoadQuestionnaire();
+        return obLoadCsLists();
       });
       ['ob-directory', 'ob-audience'].forEach(function (id) {
         var el2 = document.getElementById(id);
         if (el2) el2.addEventListener('change', function () {
-          if (id === 'ob-directory') obSetDirSlugAttr();
+          if (id === 'ob-directory') { obSetDirSlugAttr(); obLoadCsLists(); }
           obLoadQuestionnaire();
         });
       });
