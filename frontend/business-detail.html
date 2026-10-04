@@ -186,6 +186,15 @@ a:hover{text-decoration:underline}
 /* Footer */
 .detail-footer{text-align:center;padding:24px;font-size:.8rem;color:var(--text-muted);border-top:1px solid var(--border-light);margin-top:40px}
 .detail-footer a{color:var(--teal)}
+
+/* Always-at-hand action rail (card B90) — Call / Directions / Save / Share stay reachable while
+   scrolling a long listing. Hidden until the listing loads, then pinned to the viewport bottom. */
+.action-rail{position:fixed;left:0;right:0;bottom:0;z-index:200;display:none;gap:8px;justify-content:center;padding:8px 12px;background:rgba(255,255,255,.97);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-top:1px solid var(--border)}
+.action-rail.show{display:flex}
+.rail-btn{flex:1 1 0;max-width:200px;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border-radius:100px;border:1px solid var(--border);background:var(--card);font-size:.8rem;font-weight:600;color:var(--text);cursor:pointer;text-decoration:none;white-space:nowrap;font-family:inherit}
+.rail-btn:hover{background:var(--bg-teal);border-color:var(--teal-light);color:var(--teal)}
+.rail-btn.saved{background:var(--bg-teal);border-color:var(--teal);color:var(--teal-dark)}
+.detail-footer{padding-bottom:88px}
 </style>
 </head>
 <body>
@@ -391,6 +400,14 @@ a:hover{text-decoration:underline}
 
 <div class="detail-footer">
   Powered by <a href="/zaarhub">ZaarHub</a> — Discover Your Local Community
+</div>
+
+<!-- Always-at-hand action rail (card B90) — revealed once the listing loads. -->
+<div class="action-rail" id="actionRail">
+  <a class="rail-btn" id="railCall" href="#">📞 Call</a>
+  <button class="rail-btn" type="button" onclick="openDirections()">🗺️ Directions</button>
+  <button class="rail-btn" type="button" id="railSave" onclick="toggleSave()">❤️ Save</button>
+  <button class="rail-btn" type="button" onclick="shareListing()">🔗 Share</button>
 </div>
 
 <script>
@@ -679,6 +696,19 @@ function renderBusiness() {
     webEl.style.display = 'none';
   }
 
+  // Always-at-hand rail (card B90): reveal it and wire Call to the listing's phone.
+  const railCall = document.getElementById('railCall');
+  if (railCall) {
+    if (phone) {
+      railCall.href = `tel:${b.phone.replace(/\D/g,'')}`;
+      railCall.style.display = '';
+    } else {
+      railCall.style.display = 'none';
+    }
+  }
+  const rail = document.getElementById('actionRail');
+  if (rail) rail.classList.add('show');
+
   // Description
   document.getElementById('bizDescription').textContent = b.description || 'No description available.';
 
@@ -895,12 +925,15 @@ async function toggleSave() {
 
 function updateSaveButton() {
   const btn = document.getElementById('saveBtn');
+  const railBtn = document.getElementById('railSave');
   if (isSaved) {
     btn.textContent = '❤️ Saved';
     btn.classList.add('saved');
+    if (railBtn) { railBtn.textContent = '❤️ Saved'; railBtn.classList.add('saved'); }
   } else {
     btn.textContent = '🤍 Save';
     btn.classList.remove('saved');
+    if (railBtn) { railBtn.textContent = '🤍 Save'; railBtn.classList.remove('saved'); }
   }
 }
 
