@@ -70,6 +70,8 @@ FROM (
            b.verified,
            b.licensed,
            b.insured,
+           (SELECT bm.meta_data->'hours' FROM business_meta bm
+             WHERE bm.business_id = b.id AND bm.meta_data ? 'hours' LIMIT 1) AS hours,
            (c.id IS NOT NULL) AS has_account,
            c.owner_email AS owner_email,
            c.owner_name AS owner_name,

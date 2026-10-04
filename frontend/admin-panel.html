@@ -2590,6 +2590,25 @@
       </div>
       <p class="feature-subtitle" id="bz-summary">—</p>
       <div id="bz-rows" style="overflow:auto"></div>
+      <!-- Card B90 availability indicator: weekly-hours editor (operator, no SQL). "Open now"
+           on the public listing is computed in this timezone. -->
+      <div id="bz-hours-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+        <div class="feature-card" style="background:#fff;max-width:560px;width:100%;max-height:90vh;overflow:auto;margin:24px">
+          <h3>🕐 Opening hours <span id="bz-hours-who" style="font-weight:400;opacity:.7"></span></h3>
+          <p class="feature-subtitle">Set the days this business is open. The listing shows a live <b>Open now / Closed</b> badge to visitors, and the weekly schedule below it. Leave a day unchecked to mark it closed.</p>
+          <div class="em-field"><label>Time zone</label>
+            <input id="bz-hours-tz" value="America/New_York" placeholder="America/New_York">
+            <small style="opacity:.7">Used only to work out “Open now”. Keep <b>America/New_York</b> unless the business is in another time zone.</small>
+          </div>
+          <table style="width:100%;border-collapse:collapse;margin-top:12px" id="bz-hours-table"></table>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" type="button" data-hours-cancel>Cancel</button>
+            <button class="btn btn-ghost btn-sm" type="button" data-hours-clear>Clear hours</button>
+            <button class="btn btn-accent btn-sm" type="button" data-hours-save>Save hours</button>
+          </div>
+          <span class="feature-status" id="bz-hours-status"></span>
+        </div>
+      </div>
     </div>
 
     <!-- 🏬 Suppliers / B2B (kanban B51) — the second front, visible and moderatable.
@@ -10784,6 +10803,11 @@
     var SYNC_LABEL = { synced: 'synced', pending: 'pending', error: 'error',
                        not_configured: 'not connected', not_synced: 'not synced' };
 
+    // Card B90 availability indicator: per-row hours cache + the row currently open in the editor.
+    var bizHoursCache = {};
+    var hoursEditing = null;
+    var HOURS_DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
+
     function load() {
       var el = document.getElementById('bz-rows');
       if (!el) return;
@@ -10844,6 +10868,11 @@
               (r.insured ? 'false' : 'true') + '" data-trust-id="' + esc(r.id) + '" data-trust-dir="' +
               esc(r.directory_slug || '') + '">' + (r.insured ? '− Insured' : '+ Insured') + '</button>';
           var rating = (r.review_count ? (Number(r.rating).toFixed(1) + ' (' + r.review_count + ')') : '—');
+          // Card B90 availability indicator: operator-set weekly opening hours ("Open now").
+          bizHoursCache[r.id] = (r.hours && typeof r.hours === 'object') ? r.hours : null;
+          var hoursBtn = '<button class="btn btn-ghost btn-sm" type="button" data-hours-open="' + esc(r.id) +
+            '" data-hours-dir="' + esc(r.directory_slug || '') + '" data-hours-name="' + esc(r.name || '') +
+            '">🕐 Hours</button>';
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
             '<td>' + esc(r.directory_name || '') + '</td>' +
@@ -10851,7 +10880,7 @@
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + '</td></tr>';
+            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -10916,9 +10945,68 @@
         .catch(function (e) { document.getElementById('bz-status').textContent = 'Failed: ' + e.message; });
     }
 
+    // Card B90 availability indicator: open/close the weekly-hours editor for one business.
+    function openHoursEditor(id, dir, name) {
+      hoursEditing = { id: id, dir: dir };
+      var cur = bizHoursCache[id] || null;
+      document.getElementById('bz-hours-who').textContent = name ? ('“' + name + '”') : '';
+      document.getElementById('bz-hours-tz').value = (cur && cur.tz) ? cur.tz : 'America/New_York';
+      document.getElementById('bz-hours-table').innerHTML = HOURS_DAYS.map(function (d) {
+        var v = cur ? cur[d[0]] : null;
+        var has = !!(v && v.open && v.close);
+        var open = has ? v.open : '09:00';
+        var close = has ? v.close : '17:00';
+        return '<tr data-day="' + d[0] + '">' +
+          '<td style="padding:6px 8px 6px 0;white-space:nowrap">' + d[1] + '</td>' +
+          '<td style="padding:4px 4px"><input type="time" class="bz-h-open" value="' + open + '"' + (has ? '' : ' disabled') + '></td>' +
+          '<td style="padding:4px 4px"><input type="time" class="bz-h-close" value="' + close + '"' + (has ? '' : ' disabled') + '></td>' +
+          '<td style="padding:4px 0;text-align:right;white-space:nowrap"><label style="font-size:.8rem"><input type="checkbox" class="bz-h-closed"' + (has ? '' : ' checked') + '> Closed</label></td>' +
+          '</tr>';
+      }).join('');
+      Array.prototype.forEach.call(document.querySelectorAll('#bz-hours-table .bz-h-closed'), function (cb) {
+        cb.onchange = function () {
+          var tr = cb.closest('tr');
+          tr.querySelector('.bz-h-open').disabled = cb.checked;
+          tr.querySelector('.bz-h-close').disabled = cb.checked;
+        };
+      });
+      document.getElementById('bz-hours-status').textContent = '';
+      document.getElementById('bz-hours-modal').style.display = 'flex';
+    }
+    function closeHoursEditor() { document.getElementById('bz-hours-modal').style.display = 'none'; hoursEditing = null; }
+    // A closed day is stored as JSON null; an open day as {open,close}.
+    function collectHours() {
+      var out = { tz: (document.getElementById('bz-hours-tz').value || '').trim() || 'America/New_York' };
+      Array.prototype.forEach.call(document.querySelectorAll('#bz-hours-table tr[data-day]'), function (tr) {
+        var day = tr.getAttribute('data-day');
+        if (tr.querySelector('.bz-h-closed').checked) { out[day] = null; }
+        else { out[day] = { open: tr.querySelector('.bz-h-open').value, close: tr.querySelector('.bz-h-close').value }; }
+      });
+      return out;
+    }
+    function saveHours(clear) {
+      if (!hoursEditing) return;
+      var st = document.getElementById('bz-hours-status');
+      st.textContent = clear ? 'Clearing…' : 'Saving…';
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      var body = { hours: clear ? null : collectHours() };
+      fetch(API + '/directories/' + encodeURIComponent(hoursEditing.dir) + '/businesses/' + encodeURIComponent(hoursEditing.id), {
+        method: 'PUT', headers: h, body: JSON.stringify(body)
+      }).then(function (r) {
+        return r.json().then(function (d) { if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status)); return d; });
+      }).then(function () { closeHoursEditor(); load(); })
+        .catch(function (e) { st.textContent = 'Failed: ' + e.message; });
+    }
+
     // Publish (promote a hidden record) / Hide (demote a published one) — one field, card B81.
     document.addEventListener('click', function (ev) {
       if (!ev.target || !ev.target.closest) return;
+      var ho = ev.target.closest('[data-hours-open]');
+      if (ho) { openHoursEditor(ho.getAttribute('data-hours-open'), ho.getAttribute('data-hours-dir'), ho.getAttribute('data-hours-name')); return; }
+      if (ev.target.closest('[data-hours-cancel]')) { closeHoursEditor(); return; }
+      if (ev.target.closest('[data-hours-clear]')) { saveHours(true); return; }
+      if (ev.target.closest('[data-hours-save]')) { saveHours(false); return; }
       var pub = ev.target.closest('[data-lc-publish]');
       if (pub) { setLifecycle(pub.getAttribute('data-lc-publish'), pub.getAttribute('data-lc-dir'), 'active'); return; }
       var hide = ev.target.closest('[data-lc-hide]');

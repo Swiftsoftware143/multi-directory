@@ -365,6 +365,15 @@ pub async fn update_business(
         }
     }
 
+    // Availability indicator (card B90): validate the weekly hours payload up-front so a
+    // non-technical operator gets a plain-English 400 rather than a raw SQL/JSON error.
+    // An explicit JSON null is the "Clear hours" action, NOT a payload to validate — skip it.
+    if let Some(ref hours) = req.hours {
+        if !hours.is_null() {
+            validate_hours(hours).map_err(AppError::BadRequest)?;
+        }
+    }
+
     let business = sqlx::query_as::<_, Business>(
         r#"UPDATE businesses SET
            name = COALESCE($1, name),
@@ -432,7 +441,102 @@ pub async fn update_business(
         .await?;
     }
 
+    // Availability indicator (card B90): persist the weekly opening hours into
+    // `business_meta.meta_data->'hours'` — the exact place `get_business_detail` already reads
+    // from. A JSON `null` clears them (the key is removed so the listing hides the block).
+    if let Some(ref hours) = req.hours {
+        if hours.is_null() {
+            sqlx::query(
+                r#"UPDATE business_meta
+                   SET meta_data = meta_data - 'hours', updated_at = NOW()
+                   WHERE business_id = $1"#,
+            )
+            .bind(business_id)
+            .execute(&s.db)
+            .await?;
+            // Do not leave an empty shell behind: if the business-detail metadata row exists only
+            // to carry hours and is now empty, remove it so "Clear hours" is a true no-op.
+            sqlx::query(
+                r#"DELETE FROM business_meta
+                   WHERE business_id = $1 AND template = $2 AND meta_data = '{}'::jsonb"#,
+            )
+            .bind(business_id)
+            .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
+            .execute(&s.db)
+            .await?;
+        } else {
+            sqlx::query(
+                r#"INSERT INTO business_meta (business_id, template, meta_data)
+                   VALUES ($1, $2, jsonb_build_object('hours', $3::jsonb))
+                   ON CONFLICT (business_id, template)
+                   DO UPDATE SET meta_data = business_meta.meta_data || jsonb_build_object('hours', $3::jsonb),
+                                 updated_at = NOW()"#,
+            )
+            .bind(business_id)
+            .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
+            .bind(hours)
+            .execute(&s.db)
+            .await?;
+        }
+    }
+
     Ok(Json(json!(business)))
+}
+
+/// Validate the weekly-hours payload for the availability indicator (card B90). Accepts an
+/// object whose optional `tz` is a non-empty string and whose `mon`..`sun` keys are either
+/// `null` (closed) or `{"open":"HH:MM","close":"HH:MM"}`. Returns a plain-English message.
+fn validate_hours(v: &serde_json::Value) -> Result<(), String> {
+    let obj = v
+        .as_object()
+        .ok_or_else(|| "Hours must be an object of days (mon..sun).".to_string())?;
+    const DAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    let hhmm = |s: &str| {
+        let b = s.as_bytes();
+        b.len() == 5
+            && b[2] == b':'
+            && b[..2].iter().all(|c| c.is_ascii_digit())
+            && b[3..].iter().all(|c| c.is_ascii_digit())
+    };
+    for (k, day) in obj.iter() {
+        if k == "tz" {
+            match day.as_str() {
+                Some(s) if !s.trim().is_empty() => {}
+                _ => return Err("Hours timezone (tz) must be a non-empty string.".to_string()),
+            }
+            continue;
+        }
+        if !DAYS.contains(&k.as_str()) {
+            return Err(format!(
+                "Unknown day '{k}' in hours. Use mon, tue, wed, thu, fri, sat, sun (and optional tz)."
+            ));
+        }
+        if day.is_null() {
+            continue; // closed that day
+        }
+        let d = day.as_object().ok_or_else(|| {
+            format!("Hours for '{k}' must be null (closed) or an open/close object.")
+        })?;
+        let open = d
+            .get("open")
+            .and_then(|x| x.as_str())
+            .ok_or_else(|| format!("Hours for '{k}' need an 'open' time (HH:MM)."))?;
+        let close = d
+            .get("close")
+            .and_then(|x| x.as_str())
+            .ok_or_else(|| format!("Hours for '{k}' need a 'close' time (HH:MM)."))?;
+        if !hhmm(open) || !hhmm(close) {
+            return Err(format!(
+                "Hours for '{k}' must use 24-hour HH:MM (e.g. 09:00)."
+            ));
+        }
+        if close.as_bytes() <= open.as_bytes() {
+            return Err(format!(
+                "Hours for '{k}': close time must be after open time (overnight hours are not supported)."
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// GET /api/v1/listings

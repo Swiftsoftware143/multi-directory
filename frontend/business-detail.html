@@ -64,6 +64,14 @@ a:hover{text-decoration:underline}
 .name-row h2{margin-bottom:0}
 .verified-badge{display:inline-flex;align-items:center;gap:4px;background:var(--green-light);color:var(--green);font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:100px;white-space:nowrap}
 .trust-badge{display:inline-flex;align-items:center;gap:4px;background:#e0f2fe;color:#0369a1;font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:100px;white-space:nowrap}
+/* B90 availability indicator: weekly hours + live Open now / Closed pill */
+.hours-pill{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;padding:4px 12px;border-radius:100px;margin-bottom:12px}
+.hours-pill.open{background:#dcfce7;color:#166534}
+.hours-pill.closed{background:#fee2e2;color:#991b1b}
+.hours-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.hours-table td{padding:6px 4px;border-bottom:1px solid var(--border,#e5e7eb);color:var(--text-muted)}
+.hours-table td:last-child{text-align:right;color:var(--text);font-weight:600}
+.hours-table tr.today td{color:var(--text);font-weight:700;background:rgba(14,165,233,.06)}
 .qa-item{border-top:1px solid var(--border);padding:12px 0}
 .qa-item:first-child{border-top:none;padding-top:0}
 .qa-q{font-size:.9rem;font-weight:600;color:var(--text)}
@@ -760,6 +768,63 @@ function renderBusiness() {
 
   // Recommended nearby (card B90, "recommend a business") — bizData.nearby.
   renderNearby();
+
+  // Availability indicator (card B90, Thumbtack-style): weekly hours + live Open/Closed pill.
+  renderHours();
+}
+
+// ── Business hours / availability (card B90) ──
+// Reads bizData.hours — an operator-set weekly schedule stored in business_meta.meta_data.hours:
+//   {"tz":"America/New_York","mon":{"open":"09:00","close":"17:00"},"sun":null}
+// A null day (or a missing one) = closed. "Open now" is computed in the schedule's own timezone,
+// so a visitor in another timezone still sees the correct status.
+const HOURS_DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
+
+function fmt12(t) {
+  const p = String(t).split(':');
+  let h = parseInt(p[0], 10), m = p[1] || '00';
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return h + ':' + m + ' ' + ap;
+}
+
+function nowInTz(tz) {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  } catch (e) {
+    parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  }
+  const get = (t) => { const p = parts.find((x) => x.type === t); return p ? p.value : ''; };
+  let hh = parseInt(get('hour'), 10); if (isNaN(hh) || hh === 24) hh = 0;
+  const mm = parseInt(get('minute'), 10) || 0;
+  return { day: get('weekday').slice(0, 3).toLowerCase(), mins: hh * 60 + mm };
+}
+
+function renderHours() {
+  const el = document.getElementById('hoursContent');
+  if (!el) return;
+  const h = bizData && bizData.hours;
+  if (!h || typeof h !== 'object' || Array.isArray(h)) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem">Hours information not yet available.</p>';
+    return;
+  }
+  const tz = (typeof h.tz === 'string' && h.tz) ? h.tz : 'America/New_York';
+  const now = nowInTz(tz);
+  const toMin = (t) => { const [a, b] = String(t).split(':'); return parseInt(a, 10) * 60 + (parseInt(b, 10) || 0); };
+  const today = h[now.day];
+  let openNow = false;
+  if (today && today.open && today.close) {
+    openNow = now.mins >= toMin(today.open) && now.mins < toMin(today.close);
+  }
+  const pill = '<span class="hours-pill ' + (openNow ? 'open' : 'closed') + '">' + (openNow ? '● Open now' : '● Closed') + '</span>';
+  const rows = HOURS_DAYS.map(function (d) {
+    const v = h[d[0]];
+    const s = (v && v.open && v.close) ? fmt12(v.open) + ' – ' + fmt12(v.close) : 'Closed';
+    const cls = (d[0] === now.day) ? ' class="today"' : '';
+    return '<tr' + cls + '><td>' + d[1] + '</td><td>' + s + '</td></tr>';
+  }).join('');
+  el.innerHTML = pill + '<table class="hours-table">' + rows + '</table>';
 }
 
 // ── Map ──

@@ -285,6 +285,25 @@ pub struct UpdateBusinessRequest {
     pub licensed: Option<bool>,
     pub insured: Option<bool>,
     pub license_number: Option<String>,
+    /// Availability indicator (card B90, Thumbtack-style): weekly opening hours stored in
+    /// `business_meta.meta_data->'hours'`. An explicit JSON `null` clears them (see
+    /// `deserialize_some` — plain `Option<Value>` would collapse `null` into "absent" and
+    /// silently ignore a clear), while omitting the field leaves the hours untouched. Shape:
+    /// `{"tz":"America/New_York","mon":{"open":"09:00","close":"17:00"},"sun":null}` —
+    /// a day maps to `null` when closed, and a missing day is treated as unknown/closed.
+    #[serde(default, deserialize_with = "deserialize_some")]
+    pub hours: Option<serde_json::Value>,
+}
+
+/// Distinguish a field that is ABSENT from one explicitly set to JSON `null`. Plain
+/// `Option<T>` deserializes both to `None`; wrapping the present value in `Some` keeps the
+/// `null` so the handler can act on it (the "Clear hours" action sends `{"hours": null}`).
+fn deserialize_some<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Deserialize)]
