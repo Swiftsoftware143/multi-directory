@@ -24,6 +24,12 @@ pub enum AppError {
     #[error("Resource already exists: {0}")]
     Duplicate(String),
 
+    /// The request is well-formed but the current state refuses it (e.g. the loyalty float rule
+    /// is holding redemptions until the network tops up). Not a validation error — nothing about
+    /// the request is wrong, and retrying after the state changes will succeed.
+    #[error("{0}")]
+    Conflict(String),
+
     #[error("Validation error: {0}")]
     Validation(String),
 
@@ -59,6 +65,7 @@ impl IntoResponse for AppError {
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Duplicate(msg) => (StatusCode::CONFLICT, msg.clone()),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, msg.clone()),

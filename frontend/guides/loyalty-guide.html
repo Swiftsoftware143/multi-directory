@@ -182,10 +182,6 @@
 </div>
 <!-- GUIDES-AUGMENTATION:END -->
 
-
-
-
-
 <div class="toc">
   <a href="#for-customers">
     <span class="toc-icon">👤</span>
@@ -342,6 +338,28 @@
   <li><strong>Auditable by default.</strong> Every transaction is identified, so you can check exactly what was earned and redeemed when you reconcile your month.</li>
 </ul>
 
+<h3 id="float">💰 What has to sit behind the ZaarCash you hand out — the float</h3>
+<p>ZaarCash is a promise: when a customer spends the ZaarCash you awarded, the network pays you back in cash. For that promise to stay real, the network has to be holding enough cash to cover the ZaarCash still sitting in your customers' wallets. That reserve is called the <strong>float</strong>, and it is checked three separate ways. Keep all three healthy and nothing changes for you — scanning, earning and redeeming work exactly as they do today.</p>
+
+<div class="step-item">
+  <div class="step-num">1</div>
+  <div class="step-text"><p><strong>Coverage — the cash behind what your customers are holding.</strong> The float has to cover the ZaarCash members are still holding, by default <strong>100%</strong>: every dollar of ZaarCash out there is backed by a dollar on hand. This is the accounting check — the network never pays out ZaarCash that was never funded.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">2</div>
+  <div class="step-text"><p><strong>Burn — the cash for a normal month of redemptions.</strong> The float must also cover about one month of the redemptions actually being made across the network over the last 30 days (a seasonal programme may hold two or three months). A programme can look fully covered on paper and still run short the week everybody redeems at once — this is the check that stops that.</p></div>
+</div>
+<div class="step-item">
+  <div class="step-num">3</div>
+  <div class="step-text"><p><strong>Floor — the smallest reserve the programme will run on.</strong> A brand-new programme has almost nothing outstanding and almost no redemptions yet, so it would pass the first two checks while holding nothing at all. The floor is the hard minimum — a real number, enough to cover the smallest business on the network.</p></div>
+</div>
+
+<div class="tip-box"><p><strong>What is expected of you:</strong> fund before you launch, and top up before you grow. If you raise your earn rate or your redemption cap, or you run a promotion that hands out a lot of ZaarCash, the reserve has to keep pace. Your Business Portal and the network's monthly statement show what you have issued and what it costs, so the numbers are never a surprise.</p></div>
+
+<div class="warn-box"><p><strong>If a condition is short, redemptions pause — they do not vanish.</strong> Your customers' ZaarCash is untouched and stays valid, nothing is confiscated and no balance is lost. Redeeming resumes on its own as soon as the reserve is topped up, and you will always be told <em>which</em> of the three conditions is short and <em>by exactly how much</em> — so topping up is a one-step fix, not a guess.</p></div>
+
+<p>Earning is never affected: awarding ZaarCash to a customer does not depend on the reserves. These checks only ever gate the moment cash is paid back out.</p>
+
 <div class="disclaimer">
   <span class="disc-label">⚠️ Disclaimer — for businesses</span>
   <p>Participation is optional and you control the numbers — earn rate, redemption cap, minimum balance and whether free items earn. ZaarCash you issue is funded by you: ZaarHub does not reimburse redeemed value, and the discount comes out of your margin, so treat it as a marketing cost and account for it as such.</p>
@@ -355,6 +373,7 @@
 
 <!-- SUPPLIERS -->
 <span class="audience-tag tag-supplier">For Suppliers</span>
+
 <h2 id="for-suppliers">📦 For Suppliers — reaching the businesses that already buy</h2>
 
 <h3>What it is</h3>
@@ -442,6 +461,16 @@
   <li><strong>Disputes you can settle with evidence.</strong> Transaction IDs, audit logs and manual-adjustment records give you a defensible paper trail.</li>
   <li><strong>Clear division of responsibility.</strong> The platform stores and applies your settings; the commercial judgement — the numbers, the terms, the launch — stays yours.</li>
 </ul>
+
+<h3 id="float-settings">💰 The float rule — three conditions, and every one is yours to set</h3>
+<p>Redemptions are held when the network's reserve (the <strong>float</strong>) cannot cover them. Three independent conditions; the hold lifts by itself the moment all three pass. Nothing is confiscated and no balance is lost — <strong>redemptions pause, they do not vanish</strong>, and issuing ZaarCash is never blocked.</p>
+<ul>
+  <li><strong>Coverage — <code>float_coverage_pct</code>, default <code>100</code></strong>: the float must be at least this percentage of the ZaarCash members still hold. The accounting view — never redeem points nobody funded. Lower it only when you are deliberately extending credit, and write down why.</li>
+  <li><strong>Burn — <code>float_burn_months</code>, default <code>1</code></strong>: the float must also cover this many months of the redemptions actually made in the last 30 days. The operational view — a programme can be fully covered on paper and still fail when several members redeem at once. Raise it toward <strong>2–3</strong> for a seasonal programme (holiday/event-driven redemption).</li>
+  <li><strong>Floor — <code>minimum_float</code>, default <code>$100</code></strong>: the smallest reserve the programme will run on. The risk view — a new programme has almost no liability and almost no burn, so it would pass the other two holding nothing. Set it to a real number: enough for the smallest business onboarded.</li>
+</ul>
+<p>All three live in the admin panel: <strong>Clearinghouse → Settlement settings</strong>, in the same card as the issue/redeem rates. <code>0</code> in any of them turns that condition off. The panel's <strong>Treasury</strong> card shows the live verdict condition by condition, with the actual numbers — read it before and after every change.</p>
+<p>Review them after every large campaign: a campaign raises redemptions immediately, so <strong>burn</strong> is the condition that moves first; coverage re-settles itself as points are redeemed and liability falls.</p>
 
 <div class="disclaimer">
   <span class="disc-label">⚠️ Disclaimer — for administrators</span>

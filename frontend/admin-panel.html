@@ -951,6 +951,9 @@
           <div class="em-field"><label>Currency</label><input id="ch-currency" placeholder="USD"></div>
           <div class="em-field"><label>Minimum payout (cents)</label><input id="ch-min-payout" type="number" min="0" placeholder="0"></div>
           <div class="em-field"><label>Points expiry (days)</label><input id="ch-expiry-days" type="number" min="1" placeholder="365"></div>
+          <div class="em-field"><label>Float floor — smallest reserve the programme will run on ($)</label><input id="ch-min-float" type="number" min="0" step="0.01" placeholder="100"></div>
+          <div class="em-field"><label>Float coverage — % of the ZaarCash members hold (0 = off)</label><input id="ch-float-coverage" type="number" min="0" max="100" step="1" placeholder="100"></div>
+          <div class="em-field"><label>Float burn — months of redemptions to hold (0 = off)</label><input id="ch-float-burn" type="number" min="0" max="12" step="0.5" placeholder="1"></div>
           <div class="em-field"><label>Overage rate — $/point beyond a plan's allowance</label><input id="ch-overage-rate" placeholder="0.01"></div>
           <div class="em-field"><label>Overage policy — beyond the allowance</label><select id="ch-overage-mode">
             <option value="bill">Bill the overage (consented, capped)</option>
@@ -966,6 +969,7 @@
           </select></div>
           <div class="em-field"><label>Settlement enabled</label><select id="ch-enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
         </div>
+        <div class="feature-status" style="margin-top:6px">Float rule — three conditions, redemptions hold if any fails: <b>coverage</b> (% of the ZaarCash members still hold), <b>burn</b> (months of last-30-day redemptions) and the dollar <b>floor</b>. 0 turns a condition off. The Treasury card below shows the live verdict. A business is never charged for this — only redemptions pause, and points stay valid.</div>
         <div class="pk-controls" style="margin-top:8px">
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__chSaveSettings()">Save settlement settings</button>
           <span class="feature-status" id="ch-settings-status"></span>
@@ -6199,6 +6203,11 @@
       if (current) sel.value = current;
     }
 
+    function chOrUndef(id) {
+      var v = document.getElementById(id);
+      return (v && v.value !== '') ? v.value : undefined;
+    }
+
     function chQs() {
       var start = document.getElementById('ch-period-start').value;
       var end = document.getElementById('ch-period-end').value;
@@ -6223,6 +6232,9 @@
           document.getElementById('ch-currency').value = s.currency;
           document.getElementById('ch-min-payout').value = s.minimum_payout_cents;
           document.getElementById('ch-expiry-days').value = s.default_expiry_days;
+          document.getElementById('ch-min-float').value = s.minimum_float;
+          document.getElementById('ch-float-coverage').value = s.float_coverage_pct;
+          document.getElementById('ch-float-burn').value = s.float_burn_months;
           document.getElementById('ch-overage-rate').value = s.overage_rate_per_point;
           document.getElementById('ch-overage-mode').value = s.overage_mode || 'bill';
           document.getElementById('ch-overage-cap').value = (s.overage_cap_points == null ? '' : s.overage_cap_points);
@@ -6267,6 +6279,11 @@
         overage_rate_per_point: document.getElementById('ch-overage-rate').value,
         overage_mode: document.getElementById('ch-overage-mode').value,
         overage_cap_points: parseInt(document.getElementById('ch-overage-cap').value, 10) || 0,
+        // Float rule. A blank field is left out of the body so it keeps its current value — an
+        // empty box must never be read as "no floor".
+        minimum_float: chOrUndef('ch-min-float'),
+        float_coverage_pct: chOrUndef('ch-float-coverage'),
+        float_burn_months: chOrUndef('ch-float-burn'),
         payment_provider: document.getElementById('ch-provider').value,
         settlement_enabled: document.getElementById('ch-enabled').value === 'true'
       };
@@ -6350,7 +6367,8 @@
             ['Reimbursements paid', t.reimbursements_paid],
             ['Position (collected − paid)', t.position],
             ['Outstanding liability', t.outstanding_liability],
-            ['Minimum float', t.minimum_float],
+            ['Float floor (minimum)', t.minimum_float],
+            ['Float rule', (t.float ? (t.float.coverage_pct + '% · ' + t.float.burn_months + ' month(s) · $' + t.float.minimum_float) : '—')],
             ['Issue / redeem rate', t.issuance_rate + ' / ' + t.redemption_rate],
             ['Spread per point', t.spread_per_point]
           ];
@@ -6359,9 +6377,24 @@
               return '<div style="border:1px solid var(--border,#1e2a3a);border-radius:6px;padding:6px 8px">' +
                 '<div style="opacity:.65">' + c[0] + '</div><div style="font-weight:600">' + daEsc(String(c[1])) + '</div></div>';
             }).join('') + '</div>';
-          var floatOk = parseFloat(t.position) >= parseFloat(t.minimum_float);
-          status.textContent = floatOk ? 'float OK (position ≥ minimum float)' : 'BELOW minimum float';
-          status.style.color = floatOk ? '' : '#e5484d';
+          // The float verdict is computed by the engine (coverage, burn, floor) and rendered as
+          // given: the console must never re-do the arithmetic, or it could claim a behaviour the
+          // code does not perform.
+          var f = t.float;
+          if (!f) {
+            status.textContent = 'float rule: no treasury row for this network yet';
+            status.style.color = '';
+            return;
+          }
+          var rows = (f.conditions || []).map(function (c) {
+            return '<div style="border:1px solid ' + (c.passed ? 'var(--border,#1e2a3a)' : '#e5484d') +
+              ';border-radius:6px;padding:6px 8px;margin-top:6px">' +
+              '<div style="font-weight:600">' + (c.passed ? '✅ ' : '⛔ ') + daEsc(c.label) + '</div>' +
+              '<div style="opacity:.75">' + daEsc(c.sentence) + '</div></div>';
+          }).join('');
+          status.innerHTML = '<div style="font-weight:600;color:' + (f.safe ? '' : '#e5484d') + '">' +
+            daEsc(f.sentence) + '</div>' + rows;
+          status.style.color = '';
         })
         .catch(function (e) {
           host.innerHTML = '<div class="feature-status">could not load treasury: ' + daEsc(e.message) + '</div>';

@@ -22,6 +22,7 @@
 
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::float_rule;
 use crate::handlers::provider_keys_handler;
 use crate::handlers::tenant_scope::assert_directory_admin_by_slug;
 use crate::AppState;
@@ -78,6 +79,12 @@ pub struct SettlementSettings {
     pub redemption_rate: Decimal,
     pub platform_spread_percent: Decimal,
     pub minimum_float: Decimal,
+    /// Float rule (155): how much of the outstanding liability must be on hand, as a percentage.
+    /// 100 = every ZaarCash a member holds is backed by cash; 0 turns the coverage rule off.
+    pub float_coverage_pct: Decimal,
+    /// Float rule (155): months of trailing-30-day redemption volume that must be on hand.
+    /// 1 = one month of cover; 0 turns the burn rule off.
+    pub float_burn_months: Decimal,
     pub default_expiry_days: i32,
     pub cycle_day: i32,
     pub currency: String,
@@ -96,7 +103,8 @@ pub struct SettlementSettings {
 /// has none yet. A missing row must not 500 the endpoint.
 async fn get_settings(db: &PgPool, network_id: Uuid) -> Result<SettlementSettings, AppError> {
     let sql = "SELECT network_id, issuance_rate, redemption_rate, platform_spread_percent, \
-                      minimum_float, default_expiry_days, cycle_day, currency, minimum_payout_cents, \
+                      minimum_float, float_coverage_pct, float_burn_months, \
+                      default_expiry_days, cycle_day, currency, minimum_payout_cents, \
                       settlement_enabled, payment_provider, overage_rate_per_point, overage_mode, \
                       overage_cap_points \
                FROM point_treasury WHERE network_id = $1";
@@ -178,6 +186,14 @@ pub struct SettlementSettingsUpdate {
     pub overage_mode: Option<String>,
     /// Overage cap in points; send 0 to clear the cap (uncapped).
     pub overage_cap_points: Option<i32>,
+    /// Float rule (155): % of outstanding liability that must be on hand (0 = rule off, 100 = fully
+    /// covered). Omit to keep the current value.
+    pub float_coverage_pct: Option<Decimal>,
+    /// Float rule (155): months of trailing-30-day redemption volume that must be on hand
+    /// (0 = rule off). Omit to keep the current value.
+    pub float_burn_months: Option<Decimal>,
+    /// Float rule (155): the floor, in dollars. Omit to keep the current value.
+    pub minimum_float: Option<Decimal>,
 }
 
 /// PUT /api/v1/networks/:slug/settlement/settings
@@ -263,11 +279,38 @@ pub async fn update_settlement_settings(
         None => current.overage_cap_points,
     };
 
+    // Float rule (155) — the three conditions the float is judged on. Checked here rather than
+    // silently clamped: a percentage above 100 or more than a year of burn is a typo, and the read
+    // side falls back to the conservative default anyway, so the admin may as well be told which
+    // knob is wrong. 0 is legal for all three — it turns that condition off.
+    let coverage = req.float_coverage_pct.unwrap_or(current.float_coverage_pct);
+    if coverage < Decimal::ZERO || coverage > Decimal::from(float_rule::MAX_COVERAGE_PCT) {
+        return Err(AppError::Validation(format!(
+            "float_coverage_pct must be between 0 and {} (100 = fully covered; 0 turns the coverage rule off)",
+            float_rule::MAX_COVERAGE_PCT
+        )));
+    }
+    let burn_months = req.float_burn_months.unwrap_or(current.float_burn_months);
+    if burn_months < Decimal::ZERO || burn_months > Decimal::from(float_rule::MAX_BURN_MONTHS) {
+        return Err(AppError::Validation(format!(
+            "float_burn_months must be between 0 and {} (0 turns the burn rule off)",
+            float_rule::MAX_BURN_MONTHS
+        )));
+    }
+    let minimum_float = req.minimum_float.unwrap_or(current.minimum_float);
+    if minimum_float < Decimal::ZERO || minimum_float > Decimal::from(float_rule::MAX_FLOAT_FLOOR) {
+        return Err(AppError::Validation(format!(
+            "minimum_float must be between 0 and {} dollars (the float floor)",
+            float_rule::MAX_FLOAT_FLOOR
+        )));
+    }
+
     sqlx::query(
         "UPDATE point_treasury SET issuance_rate = $2, redemption_rate = $3, cycle_day = $4, \
             currency = $5, minimum_payout_cents = $6, settlement_enabled = $7, \
             payment_provider = $8, default_expiry_days = $9, overage_rate_per_point = $10, \
-            overage_mode = $11, overage_cap_points = $12, updated_at = NOW() \
+            overage_mode = $11, overage_cap_points = $12, float_coverage_pct = $13, \
+            float_burn_months = $14, minimum_float = $15, updated_at = NOW() \
          WHERE network_id = $1",
     )
     .bind(network_id)
@@ -282,6 +325,9 @@ pub async fn update_settlement_settings(
     .bind(overage_rate)
     .bind(&overage_mode)
     .bind(overage_cap)
+    .bind(coverage)
+    .bind(burn_months)
+    .bind(minimum_float)
     .execute(&s.db)
     .await?;
 

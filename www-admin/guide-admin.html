@@ -216,6 +216,22 @@
       </ul>
       <p>The <strong>Program Economics</strong> card below the stats restates the exact rates so you always see the live configuration.</p>
 
+      <h2 id="float">⚖️ The float rule — when redemptions hold</h2>
+      <p>A redemption is the moment the platform pays money out, so redemptions stop when the network cannot cover them. Three independent conditions are checked live; the hold lifts on its own as soon as all three pass. Nothing is confiscated and no balance is lost — <strong>points pause, they do not vanish</strong> — and issuing points is never affected.</p>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-value">100%</div><div class="stat-label">Coverage default</div></div>
+        <div class="stat-card"><div class="stat-value">1 mo</div><div class="stat-label">Burn default</div></div>
+        <div class="stat-card"><div class="stat-value">$100</div><div class="stat-label">Floor default</div></div>
+      </div>
+      <ul>
+        <li><strong>Coverage — <code>float_coverage_pct</code> (default 100)</strong>: the float must be at least this percentage of the points members are still holding. <em>The accounting view</em> — never redeem points nobody funded. Lower it only when you are deliberately extending credit, and record the decision.</li>
+        <li><strong>Burn — <code>float_burn_months</code> (default 1)</strong>: the float must also cover this many months of the redemptions actually made in the last 30 days. <em>The operational view</em> — a programme can be fully covered on paper and still fail when several members redeem at once. Raise toward 2–3 for seasonal programmes (holiday/event-driven redemption).</li>
+        <li><strong>Floor — <code>minimum_float</code> (default $100)</strong>: the smallest reserve the programme will run on. <em>The risk view</em> — a new programme has almost no liability and almost no burn, so it would pass the other two while holding nothing. Give it a real number: enough for the smallest business onboarded.</li>
+      </ul>
+      <div class="alert alert-info"><strong>Where the knobs live:</strong> the admin panel's <strong>Clearinghouse</strong> card → <strong>Settlement settings</strong>, in the same card as the issue/redeem rates — fields <em>Float floor</em>, <em>Float coverage</em> and <em>Float burn</em>. <code>0</code> in any of the three turns that condition off (0% + 0 months + $0 floor = no hold at all). Save, then read the <strong>Treasury</strong> card above it: it prints the live verdict condition by condition, with the actual numbers.</div>
+      <div class="alert alert-warning"><strong>What to tell a business (plain words):</strong> "Your customers' points are a promise we back with cash. Keep the reserve funded — before you launch, and again before you grow or run a big promotion. If the reserve runs short, redeeming pauses for everyone on the network until it is topped up: nobody loses their balance, and you will be told exactly which number is short and by how much. Earning is never affected."</div>
+      <p><strong>Review after every large campaign.</strong> A campaign raises redemptions immediately, so <em>burn</em> is the condition that moves first; coverage re-settles itself as points are redeemed and the outstanding liability falls. The same three conditions, in the businesses' own words, are in the ZaarCash loyalty guide's "For Businesses" section — the two must always read the same.</p>
+
       <h2 id="caps">🎯 Category Caps</h2>
       <p>Controls the maximum percentage of an invoice that can be settled with ZaarCash, per business category. This is the lever that limits how much a single redemption can "discount" a sale.</p>
       <ul>

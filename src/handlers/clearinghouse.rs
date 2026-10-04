@@ -13,6 +13,7 @@
 
 use crate::auth::models::Claims;
 use crate::error::AppError;
+use crate::handlers::float_rule;
 use crate::handlers::tenant_scope::assert_directory_admin_by_slug;
 use crate::AppState;
 use axum::{
@@ -462,6 +463,20 @@ async fn redeem(
 ) -> Result<Json<Value>, AppError> {
     let sqlx = &state.db;
 
+    // Float rule (155): a redemption is the moment the platform pays money out, so redemptions stop
+    // when the network's float cannot cover them — coverage, burn or floor (see float_rule.rs).
+    // Deliberately branches on the COMPUTED verdict, never on a stored flag, so the console and the
+    // engine cannot disagree. Earning ZaarCash is free and is never blocked by this; points stay
+    // valid and nothing is confiscated — the network tops up and redemptions resume.
+    if let Some(verdict) = float_verdict(sqlx, network_id).await? {
+        if !verdict.safe {
+            return Err(AppError::Conflict(format!(
+                "{} Points are untouched — this business can redeem again as soon as the network float is topped up.",
+                verdict.sentence()
+            )));
+        }
+    }
+
     // Check balance
     let balance: i32 =
         // t_959ee844: points_balance is NULLABLE and T was i32 -> a NULL balance 500d the redeem.
@@ -598,6 +613,55 @@ async fn redeem(
     })))
 }
 
+/// The float rule (155) evaluated for one network: cash on hand, the trailing-30-day redemption
+/// volume, and the three admin-set conditions (coverage %, burn months, floor).
+///
+/// `None` when the network has no treasury row at all — there is nothing to judge, and every
+/// caller on the scan path has already run `ensure_treasury`, so the rule is never skipped there.
+///
+/// There is no "pending holds" queue in this app: the hold is a live verdict, not a stored state,
+/// so the console always shows the CURRENT position rather than a stale flag.
+pub async fn float_verdict(
+    db: &PgPool,
+    network_id: Uuid,
+) -> Result<Option<float_rule::FloatVerdict>, AppError> {
+    let row: Option<(Decimal, Decimal, Decimal, Decimal, Decimal, Option<Decimal>)> = sqlx::query_as(
+        "SELECT COALESCE(t.total_revenue_collected,0) - COALESCE(t.total_reimbursements_paid,0),
+                COALESCE(t.outstanding_liability,0),
+                COALESCE(t.minimum_float,0),
+                t.float_coverage_pct,
+                t.float_burn_months,
+                (SELECT SUM(r.total_reimbursement_cents)::numeric / 100
+                   FROM point_redemption_log r
+                  WHERE r.network_id = t.network_id
+                    AND r.created_at >= NOW() - INTERVAL '30 days')
+           FROM point_treasury t WHERE t.network_id = $1",
+    )
+    .bind(network_id)
+    .fetch_optional(db)
+    .await?;
+
+    let Some((available, liability, floor, coverage, burn_months, burn)) = row else {
+        return Ok(None);
+    };
+
+    // The two new knobs are read through their text form so a value written by hand in SQL still
+    // fails safe rather than becoming money (see float_rule::rule_from_settings).
+    let rule = float_rule::rule_from_settings(
+        Some(&coverage.to_string()),
+        Some(&burn_months.to_string()),
+        floor,
+    );
+    // NULL = no redemptions in the window, so there is no burn to size a month against.
+    let monthly_burn = burn.filter(|b| *b >= Decimal::ZERO);
+    Ok(Some(float_rule::evaluate(
+        available,
+        liability,
+        monthly_burn,
+        &rule,
+    )))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Treasury + config endpoints
 // ─────────────────────────────────────────────────────────────────────────────
@@ -649,6 +713,9 @@ pub async fn treasury_summary(
     // Every rate is read from the treasury row — nothing is baked into this handler, so an
     // admin who changes a rate sees the change here without a deploy.
     let spread_per_point = row.6 - row.7;
+    // The float rule (155). The console renders THIS verdict — it must never do its own
+    // arithmetic, or it can claim a behaviour the engine does not perform.
+    let float = float_verdict(&state.db, network_id).await?;
     Ok(Json(json!({
         "network_id": network_id,
         "total_points_issued": row.0,
@@ -661,7 +728,8 @@ pub async fn treasury_summary(
         "issuance_rate": format!("{:.4}", row.6),
         "redemption_rate": format!("{:.4}", row.7),
         "spread_per_point": format!("{:.4}", spread_per_point),
-        "platform_spread_percent": format!("{:.2}", row.8)
+        "platform_spread_percent": format!("{:.2}", row.8),
+        "float": float.as_ref().map(|v| v.to_json())
     })))
 }
 

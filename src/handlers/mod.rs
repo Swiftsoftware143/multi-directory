@@ -149,6 +149,7 @@ pub use onboarding_survey::*;
 pub mod dynamic_og;
 pub use dynamic_og::*;
 pub mod clearinghouse;
+pub mod float_rule;
 pub mod loyalty_native;
 pub mod tag_sync;
 pub use tag_sync::*;
