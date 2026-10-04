@@ -369,6 +369,10 @@ pub struct Review {
     pub is_verified: Option<bool>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    // B90: the business owner's PUBLIC reply to this review (Thumbtack / Angie's-List parity).
+    pub owner_response: Option<String>,
+    pub owner_responded_at: Option<DateTime<Utc>>,
+    pub owner_response_by: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -394,6 +398,13 @@ pub struct UpdateReviewRequest {
     pub featured: Option<bool>,
     pub source: Option<String>,
     pub source_url: Option<String>,
+}
+
+/// B90: body for POST /reviews/:id/respond — the owner's public reply. Empty clears it.
+#[derive(Debug, Deserialize)]
+pub struct RespondToReviewRequest {
+    #[serde(default)]
+    pub response: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

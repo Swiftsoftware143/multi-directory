@@ -125,6 +125,9 @@ a:hover{text-decoration:underline}
 .review-date{font-size:.78rem;color:var(--text-muted)}
 .review-stars{color:var(--warm);font-size:.85rem}
 .review-content{font-size:.88rem;color:var(--text-light);line-height:1.6}
+.owner-reply{margin-top:10px;padding:10px 12px;background:rgba(0,0,0,.03);border-left:3px solid var(--primary);border-radius:0 8px 8px 0}
+.owner-reply-label{font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+.owner-reply-text{font-size:.85rem;color:var(--text-light);line-height:1.55;white-space:pre-wrap}
 .no-reviews{padding:32px 0;text-align:center;color:var(--text-muted);font-size:.9rem}
 
 /* Message form */
@@ -968,6 +971,7 @@ function renderReviews() {
         </div>
         <div class="review-stars">${renderStars(r.rating || 5)}</div>
         <div class="review-content">${r.content || ''}</div>
+        ${r.owner_response ? `<div class="owner-reply"><div class="owner-reply-label">↳ Response from the business${r.owner_responded_at ? ' · ' + formatDate(r.owner_responded_at) : ''}</div><div class="owner-reply-text">${esc(r.owner_response)}</div></div>` : ''}
       </div>
     `;
   });

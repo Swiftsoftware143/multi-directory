@@ -6,6 +6,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -459,4 +460,82 @@ pub async fn my_reviews(
     .await?;
 
     Ok(Json(json!(rows)))
+}
+
+/// POST /api/v1/reviews/:id/respond — the business owner's PUBLIC reply to a review (card B90).
+///
+/// Thumbtack / Angie's-List parity: owners answer reviews publicly, which is the trust signal
+/// those directories monetise. Owner-scoped — the caller must own the review's business (via
+/// `businesses.owner_id` or an active claim), the same ownership test `create_review` uses.
+/// Admins may reply on a business's behalf for moderation. An empty reply clears it.
+pub async fn respond_to_review(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<RespondToReviewRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let review = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = \x241 ")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound("Review not found".to_string()))?;
+
+    let business_id = review
+        .business_id
+        .ok_or(AppError::Validation("Review has no business".to_string()))?;
+
+    let uid = Uuid::parse_str(&claims.sub)
+        .map_err(|_| AppError::Forbidden("Sign in to reply to a review".to_string()))?;
+
+    // Ownership: the caller owns the business outright, or holds an active claim on it.
+    let owns: i64 = sqlx::query_scalar(
+        r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
+                + (SELECT COUNT(*) FROM claimed_businesses
+                    WHERE business_id = $1 AND is_active
+                      AND (visitor_account_id = $2 OR user_id = $2))"#,
+    )
+    .bind(business_id)
+    .bind(uid)
+    .fetch_one(&s.db)
+    .await?;
+
+    let is_admin = claims.role == "admin" || claims.role == "super_admin";
+    if owns == 0 && !is_admin {
+        return Err(AppError::Forbidden(
+            "You can only reply to reviews of a business you own.".to_string(),
+        ));
+    }
+
+    let text = req.response.trim();
+    if text.chars().count() > 4000 {
+        return Err(AppError::Validation(
+            "Reply is too long (max 4000 characters)".to_string(),
+        ));
+    }
+    let (response, responded_at, responded_by): (
+        Option<String>,
+        Option<DateTime<Utc>>,
+        Option<Uuid>,
+    ) = if text.is_empty() {
+        (None, None, None)
+    } else {
+        (Some(text.to_string()), Some(Utc::now()), Some(uid))
+    };
+
+    let updated = sqlx::query_as::<_, Review>(
+        r#"UPDATE reviews SET
+             owner_response = $1,
+             owner_responded_at = $2,
+             owner_response_by = $3,
+             updated_at = NOW()
+           WHERE id = $4 RETURNING *"#,
+    )
+    .bind(&response)
+    .bind(responded_at)
+    .bind(responded_by)
+    .bind(id)
+    .fetch_one(&s.db)
+    .await?;
+
+    Ok(Json(json!(updated)))
 }

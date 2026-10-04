@@ -226,6 +226,9 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route("/reviews/:id/approve", post(reviews::approve_review))
         .route("/reviews/:id/reject", post(reviews::reject_review))
+        // B90: the business owner's public reply to a review (Thumbtack/Angie's-List parity).
+        // Authenticated + owner-scoped inside the handler; deliberately NOT in the public allowlist.
+        .route("/reviews/:id/respond", post(reviews::respond_to_review))
         .route(
             "/reviews/stats/:business_id",
             get(reviews::get_review_stats),
