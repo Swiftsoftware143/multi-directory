@@ -538,6 +538,7 @@
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
         <a href="#entity-export-section">📦 Complete Export</a>
         <a href="#entity-sync-section">🔗 CoreSwift Sync</a>
+        <a href="#coreswift-connection-section">🔌 CoreSwift Connection</a>
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
         <a href="#loyalty-programme-section">⭐ Loyalty Programmes</a>
         <a href="#transfers-section">🔄 Transfers</a>
@@ -1568,6 +1569,61 @@
         </div>
       </div>
 
+      <!-- 🔌 B67 — CoreSwift connection screen (B91 / B117 gap #5). src/handlers/
+           coreswift_integration_handler.rs shipped a full operator-guarded targets/get/save/test/
+           delete surface, but the panel had NO control for it — its own Integrations card admitted
+           "there is no connection screen in this panel yet". This is that screen: link ONE CoreSwift
+           account per NETWORK or per DIRECTORY, probe it BEFORE saving (never a fake "connected"),
+           test the stored link, or disconnect. Credentials live encrypted on the scope row in the
+           DB — nothing server-wide, nothing hardcoded. A directory inherits its network unless
+           linked itself. -->
+      <div class="feature-card" id="coreswift-connection-section">
+        <h3>🔌 CoreSwift Connection</h3>
+        <p class="feature-subtitle">
+          Link the CoreSwift account that receives this directory's data. <b>Every network and every
+          directory links its own</b> — a city inherits its network's connection unless it is linked
+          here itself. The link is <b>probed before it is saved</b>, so the panel can never report
+          “connected” for a tenant CoreSwift will reject. Credentials are stored encrypted against
+          the scope row: nothing is server-wide and nothing is hardcoded.
+        </p>
+        <div class="em-grid">
+          <div class="em-field"><label>Scope</label>
+            <select id="cs-conn-scope" onchange="window.__csConnScopeChanged()">
+              <option value="network">Network</option>
+              <option value="directory">Directory</option>
+            </select>
+          </div>
+          <div class="em-field"><label>Which one</label>
+            <select id="cs-conn-target" onchange="window.__csConnLoad()"></select>
+          </div>
+        </div>
+        <div id="cs-conn-status" style="font-size:.85rem;margin:10px 0"></div>
+        <div class="em-grid">
+          <div class="em-field"><label>CoreSwift tenant id</label>
+            <input class="pk-input" id="cs-conn-tenant" placeholder="uuid of the target tenant"></div>
+          <div class="em-field"><label>Base URL (blank = platform default)</label>
+            <input class="pk-input" id="cs-conn-base" placeholder="https://…"></div>
+          <div class="em-field"><label>Personal key (csk_…, optional — enables the list picker)</label>
+            <input class="pk-input" id="cs-conn-key" type="password" placeholder="stored encrypted; leave blank to keep"></div>
+        </div>
+        <div style="font-weight:600;font-size:.85rem;margin:10px 0 6px">List ids (optional — the hub picker fills these when a personal key is set)</div>
+        <div class="em-grid">
+          <div class="em-field"><label>Users</label><input class="pk-input" id="cs-conn-l-users"></div>
+          <div class="em-field"><label>Businesses</label><input class="pk-input" id="cs-conn-l-businesses"></div>
+          <div class="em-field"><label>Suppliers</label><input class="pk-input" id="cs-conn-l-suppliers"></div>
+          <div class="em-field"><label>Sponsors</label><input class="pk-input" id="cs-conn-l-sponsors"></div>
+          <div class="em-field"><label>Claimed</label><input class="pk-input" id="cs-conn-l-claimed"></div>
+          <div class="em-field"><label>Newsletter</label><input class="pk-input" id="cs-conn-l-newsletter"></div>
+        </div>
+        <div class="pk-controls" style="margin-top:12px">
+          <button class="btn btn-ghost btn-sm" onclick="window.__csConnLoad()">🔄 Reload</button>
+          <button class="btn btn-accent btn-sm" onclick="window.__csConnSave()">🔗 Connect &amp; probe</button>
+          <button class="btn btn-ghost btn-sm" onclick="window.__csConnTest()">🧪 Test stored link</button>
+          <button class="btn btn-ghost btn-sm" onclick="window.__csConnDisconnect()">🗑 Disconnect</button>
+          <span class="feature-status" id="cs-conn-msg"></span>
+        </div>
+      </div>
+
       <!-- kanban t_63ffc2de — per-city audience lists, campaign sequences, media.
            Subscribers / Business Listings / Sponsors are the city's THREE built-in CoreSwift lists.
            Before this card existed: the Sponsors list was never given a member (nothing pushed), the
@@ -2262,15 +2318,13 @@
         <a href="#loyalty-programme-section" class="btn btn-accent" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem">Set earning rates →</a>
         <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">Points per redemption / check-in / visit are configured above and stored in Multi-Directory.</p>
       </div>
-      <!-- The CoreSwift connection is server-side only so far: the API exists
-           (/integrations/coreswift/connection[/targets|/test]) but there is NO screen for it yet.
-           This link used to point at "#integrations-section", which does not exist on this page —
-           a link to nowhere. Point it at the guide's setup checklist, where the gap is written
-           down as PENDING, and say so plainly here. -->
+      <!-- CoreSwift connection screen shipped (card B67 / B91/B117 gap #5). The link below now
+           points at the real #coreswift-connection-section, which drives
+           /integrations/coreswift/connection[/targets|/test|…] — no more "link to nowhere". -->
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
         <h3 style="font-size:1rem;margin-bottom:8px">🔌 Integrations &amp; CRM (CoreSwift)</h3>
-        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Leads, onboarding answers and qualifying surveys are pushed to <b>CoreSwift</b> — the only external integration this app connects to — over a server-side connection. The IncentiveSwift connection flow was retired (loyalty is native Multi-Directory). <b>There is no connection screen in this panel yet</b> — the endpoints exist but no UI control does, so it cannot be wired from here today.</p>
-        <a href="/guides/admin-guide.html#david-setup-checklist" target="_blank" rel="noopener" class="btn btn-ghost" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem;border-color:var(--border);color:var(--text-secondary)">Setup checklist — item 7 (pending) ↗</a>
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Leads, onboarding answers and qualifying surveys are pushed to <b>CoreSwift</b> — the only external integration this app connects to — over a server-side connection. The IncentiveSwift connection flow was retired (loyalty is native Multi-Directory). <b>Link a CoreSwift account per network or directory</b> from the Connection screen: the link is probed before it is saved, so “connected” is never faked, and an unconfigured scope says so.</p>
+        <a href="#coreswift-connection-section" class="btn btn-accent" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem">Manage CoreSwift connection →</a>
       </div>
     </div>
   </div>
@@ -4106,6 +4160,9 @@
       loadScraperProviders();
       // 🧩 API Access & Webhooks (B91/B117 gap #4) — operator-only api_keys + webhooks UI.
       loadApiAccess();
+      // 🔌 CoreSwift Connection (B67 / B91/B117 gap #5) — link ONE CoreSwift account per
+      // network or directory. The handlers/routes existed with no panel control until now.
+      loadCoreSwiftConnection();
       // 📰 Sponsored & SEO Articles (B91/B117 gap #2) — the article engine's operator surface.
       window.__artLoad();
       // 🗺 Sitemap config (priority / change frequency / auto-generate + regenerate).
@@ -8983,6 +9040,96 @@
         });
         box.innerHTML = h + '</tbody></table>';
       }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load deliveries: ' + akEsc(e.message) + '</p>'; });
+    };
+
+    // ===== 🔌 CoreSwift Connection (card B67 / B91/B117 gap #5) =====
+    // coreswift_integration_handler.rs exposes operator-guarded targets GET / connection GET-save-
+    // delete / test; the panel had no control for any of it. This screen links ONE CoreSwift account
+    // per network or directory. Save is a PROBE (the server refuses a tenant CoreSwift rejects), so
+    // "connected" is never faked; an unconfigured scope says so plainly.
+    var csConnTargets = null;
+    function csConnMsg(msg, ok) { var el = document.getElementById('cs-conn-msg'); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
+    var CS_CONN_LISTS = ['users', 'businesses', 'suppliers', 'sponsors', 'claimed', 'newsletter'];
+
+    function loadCoreSwiftConnection() {
+      var tgt = document.getElementById('cs-conn-target'); if (!tgt) return;
+      apiGet('/integrations/coreswift/connection/targets').then(function (r) {
+        csConnTargets = r || {};
+        window.__csConnScopeChanged();
+      }).catch(function (e) { tgt.innerHTML = '<option value="">Could not load</option>'; csConnMsg('Could not load targets: ' + e.message, false); });
+    }
+
+    window.__csConnScopeChanged = function () {
+      var scope = (document.getElementById('cs-conn-scope') || {}).value || 'network';
+      var tgt = document.getElementById('cs-conn-target'); if (!tgt || !csConnTargets) return;
+      var rows = scope === 'network' ? (csConnTargets.networks || []) : (csConnTargets.directories || []);
+      tgt.innerHTML = rows.map(function (o) {
+        var badge = o.key_configured ? ' ✓ key' : (o.tenant_id ? ' ✓ tenant' : '');
+        return '<option value="' + akEsc(o.id) + '">' + akEsc(o.name || o.slug) + badge + '</option>';
+      }).join('') || '<option value="">None</option>';
+      window.__csConnLoad();
+    };
+
+    window.__csConnLoad = function () {
+      var scope = (document.getElementById('cs-conn-scope') || {}).value || 'network';
+      var id = (document.getElementById('cs-conn-target') || {}).value;
+      var box = document.getElementById('cs-conn-status'); if (!box) return;
+      if (!id) { box.innerHTML = '<span style="color:var(--text-secondary)">Nothing to show.</span>'; return; }
+      box.innerHTML = '<span style="color:var(--text-secondary)">Loading…</span>';
+      apiGet('/integrations/coreswift/connection?scope=' + encodeURIComponent(scope) + '&id=' + encodeURIComponent(id)).then(function (r) {
+        var c = (r && r.connection) || {};
+        var lists = c.lists || {};
+        CS_CONN_LISTS.forEach(function (k) { var el = document.getElementById('cs-conn-l-' + k); if (el) el.value = lists[k] || ''; });
+        var tEl = document.getElementById('cs-conn-tenant'); if (tEl) tEl.value = (c.effective_tenant_id || c.tenant_id || '');
+        var bEl = document.getElementById('cs-conn-base'); if (bEl) bEl.value = c.base_url || '';
+        var kEl = document.getElementById('cs-conn-key'); if (kEl) kEl.value = '';
+        var inherit = c.inherits_from ? '<div style="font-size:.78rem;color:var(--text-secondary);margin-top:4px">This directory inherits its network\'s connection unless linked here itself.</div>' : '';
+        var line = c.linked_here
+          ? '<span style="color:#22c55e">● Linked here</span> — tenant <code>' + akEsc(c.tenant_id || '—') + '</code>, key ' + (c.key_configured ? '<b>configured</b> (' + akEsc(c.key_prefix || '') + '…) ' : '<span style="color:#ef4444">not set</span> ')
+          : '<span style="color:#f59e0b">● Not linked here</span>' + (c.effective_tenant_id ? ' — effective tenant <code>' + akEsc(c.effective_tenant_id) + '</code>' : ' — no connection; captures stay local');
+        box.innerHTML = line + inherit;
+      }).catch(function (e) { box.innerHTML = '<span style="color:#ef4444">Could not load: ' + akEsc(e.message) + '</span>'; });
+    };
+
+    window.__csConnSave = function () {
+      var scope = (document.getElementById('cs-conn-scope') || {}).value || 'network';
+      var id = (document.getElementById('cs-conn-target') || {}).value;
+      var tenant = (document.getElementById('cs-conn-tenant').value || '').trim();
+      if (!id) { csConnMsg('Pick a network or directory first.', false); return; }
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenant)) { csConnMsg('Enter the CoreSwift tenant id (a uuid).', false); return; }
+      var lists = {};
+      CS_CONN_LISTS.forEach(function (k) { var el = document.getElementById('cs-conn-l-' + k); var v = el ? (el.value || '').trim() : ''; if (v) lists[k] = v; });
+      var body = {
+        scope: scope, id: id, tenant_id: tenant,
+        base_url: (document.getElementById('cs-conn-base').value || '').trim(),
+        personal_key: (document.getElementById('cs-conn-key').value || '').trim(),
+        lists: lists
+      };
+      csConnMsg('Probing CoreSwift before saving…', true);
+      apiPost('/integrations/coreswift/connection', body).then(function () {
+        csConnMsg('Connected — CoreSwift accepted the link.', true); window.__csConnLoad();
+      }).catch(function (e) { csConnMsg('Refused: ' + e.message, false); });
+    };
+
+    window.__csConnTest = function () {
+      var scope = (document.getElementById('cs-conn-scope') || {}).value || 'network';
+      var id = (document.getElementById('cs-conn-target') || {}).value;
+      if (!id) { csConnMsg('Pick a network or directory first.', false); return; }
+      csConnMsg('Testing the stored link…', true);
+      apiPost('/integrations/coreswift/connection/test?scope=' + encodeURIComponent(scope) + '&id=' + encodeURIComponent(id), {}).then(function (r) {
+        var ok = !!(r && r.probe && r.probe.ok);
+        csConnMsg(ok ? 'Test OK — CoreSwift accepted the stored link.' : 'Test FAILED: ' + ((r && r.probe && r.probe.detail) || 'no detail returned'), ok);
+      }).catch(function (e) { csConnMsg('Test failed: ' + e.message, false); });
+    };
+
+    window.__csConnDisconnect = function () {
+      var scope = (document.getElementById('cs-conn-scope') || {}).value || 'network';
+      var id = (document.getElementById('cs-conn-target') || {}).value;
+      if (!id) { csConnMsg('Pick a network or directory first.', false); return; }
+      if (!window.confirm('Disconnect CoreSwift from this ' + scope + '? Captures continue locally; nothing is deleted.')) return;
+      apiFetch('DELETE', '/integrations/coreswift/connection?scope=' + encodeURIComponent(scope) + '&id=' + encodeURIComponent(id)).then(function () {
+        csConnMsg('Disconnected. Captures continue locally.', true); window.__csConnLoad();
+      }).catch(function (e) { csConnMsg('Disconnect failed: ' + e.message, false); });
     };
 
     // ===== 📰 Sponsored & SEO Articles (card B91 / B117 gap #2) =====
