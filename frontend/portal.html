@@ -598,7 +598,9 @@ function uploadBrandingAsset(kind){
   if(!file){toast('Select a file to upload','warning');return;}
   var fd=new FormData();
   fd.append(kind,file);
-  fetch('/branding/'+CUR_DIR.id+'/upload',{method:'POST',body:fd})
+  // Must hit the API router (/api/v1) AND carry the session bearer: the raw path was swallowed
+  // by the SPA fallback and the route itself is auth-guarded (no header -> 401). Fixed B91 gap#1.
+  fetch('/api/v1/branding/'+CUR_DIR.id+'/upload',{method:'POST',headers:{'Authorization':'Bearer '+localStorage.token},body:fd})
     .then(function(r){return r.json();})
     .then(function(d){
       if(d&&d.saved){
