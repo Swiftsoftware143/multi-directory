@@ -1712,6 +1712,46 @@ fn lead_body(conn: &CoreSwiftConn, lead: &LeadPayload) -> Value {
     put("address_line1", &lead.address_line1);
     put("notes", &lead.notes);
 
+    // Card B68: a mapped answer whose field name is one of the hub's BUILT-IN contact columns
+    // is hoisted to the top level so it lands in the real column (not a look-alike custom
+    // field). Anything else inside `fields` stays a per-tenant custom data point.
+    const BUILTIN_CONTACT_KEYS: [&str; 16] = [
+        "email",
+        "phone",
+        "first_name",
+        "last_name",
+        "company",
+        "title",
+        "job_title",
+        "gender",
+        "city",
+        "state",
+        "country",
+        "postal_code",
+        "address_line1",
+        "address_line2",
+        "notes",
+        "source",
+    ];
+    let mut extra_fields = serde_json::Map::new();
+    for (k, v) in &lead.fields {
+        let key = k.to_ascii_lowercase();
+        let sval = match v {
+            Value::Null => None,
+            Value::String(s) if s.trim().is_empty() => None,
+            Value::String(s) => Some(s.clone()),
+            other => Some(other.to_string()),
+        };
+        let Some(sval) = sval else { continue };
+        if BUILTIN_CONTACT_KEYS.contains(&key.as_str()) {
+            if !body.contains_key(&key) {
+                body.insert(key, json!(sval));
+            }
+        } else {
+            extra_fields.insert(k.clone(), json!(sval));
+        }
+    }
+
     if let Some(lid) = lead.list_id.or(conn.users_list_id) {
         body.insert("list_id".into(), json!(lid.to_string()));
     }
@@ -1724,8 +1764,8 @@ fn lead_body(conn: &CoreSwiftConn, lead: &LeadPayload) -> Value {
     }
     body.insert("tags".into(), json!(tags));
     body.insert("source_app".into(), json!("multidirectory"));
-    if !lead.fields.is_empty() {
-        body.insert("fields".into(), Value::Object(lead.fields.clone()));
+    if !extra_fields.is_empty() {
+        body.insert("fields".into(), Value::Object(extra_fields));
     }
 
     Value::Object(body)

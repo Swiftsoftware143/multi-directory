@@ -216,6 +216,23 @@ pub fn normalize_questions(raw: &Value) -> Result<Value, String> {
             _ => return Err(format!("question {} is not an object or a string", i + 1)),
         };
 
+        // Card B68: an optional per-question mapping onto a CoreSwift contact data point.
+        // Stored on the question itself; answers stay in survey_responses, so re-mapping a
+        // question never loses an answer already collected.
+        let coreswift_field: Option<String> = q
+            .get("coreswift_field")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        if let Some(f) = &coreswift_field {
+            if f.chars().count() > 64 || !f.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return Err(format!(
+                    "question {} CoreSwift field '{f}' may only use letters, digits and underscores (max 64)",
+                    i + 1
+                ));
+            }
+        }
+
         if label.is_empty() {
             return Err(format!("question {} has no label", i + 1));
         }
@@ -301,6 +318,7 @@ pub fn normalize_questions(raw: &Value) -> Result<Value, String> {
             "scale_min": scale_min,
             "scale_max": scale_max,
             "tags": tags,
+            "coreswift_field": coreswift_field,
             "order": i,
         }));
     }
@@ -339,6 +357,8 @@ pub struct QuestionnaireRow {
     pub trigger_event: String,
     pub required: bool,
     pub reward_units: i32,
+    /// Card B68: CoreSwift list every response of this questionnaire is added to (hub id, no FK).
+    pub coreswift_list_id: Option<Uuid>,
     pub network_id: Option<Uuid>,
     pub published_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -358,6 +378,8 @@ pub struct QuestionnaireUpsert {
     pub status: Option<String>,
     pub reward_units: Option<i32>,
     pub enabled: Option<bool>,
+    /// Card B68: target CoreSwift list. Absent = keep; `""`/`"none"` = clear; a uuid = set.
+    pub coreswift_list_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -459,6 +481,7 @@ pub async fn list_questionnaires(
             "question_count": question_count,
             "responses": responses,
             "reward_units": row.reward_units,
+            "coreswift_list_id": row.coreswift_list_id,
             "network_id": row.network_id,
             "updated_at": row.updated_at,
             "published_at": row.published_at,
@@ -522,6 +545,7 @@ pub async fn get_questionnaire(
                 "trigger_event": row.trigger_event,
                 "required": row.required,
                 "reward_units": row.reward_units,
+                "coreswift_list_id": row.coreswift_list_id,
                 "published_at": row.published_at,
                 "updated_at": row.updated_at,
             })))
@@ -605,6 +629,17 @@ pub async fn upsert_questionnaire(
         .unwrap_or(0)
         .max(0);
 
+    // Card B68: target CoreSwift list — absent keeps, ""/"none" clears, otherwise a uuid.
+    let coreswift_list_id: Option<Uuid> = match req.coreswift_list_id.as_deref().map(str::trim) {
+        Some("") | Some("none") | Some("null") => None,
+        Some(s) => Some(Uuid::parse_str(s).map_err(|_| {
+            AppError::Validation(format!(
+                "coreswift_list_id must be a CoreSwift list id (or 'none' to clear) — got '{s}'"
+            ))
+        })?),
+        None => existing.as_ref().and_then(|e| e.coreswift_list_id),
+    };
+
     // status: an explicit draft/published wins; `enabled` alone maps onto the lifecycle so
     // the legacy toggle and the builder can never disagree.
     let prev_status = existing
@@ -647,8 +682,9 @@ pub async fn upsert_questionnaire(
     sqlx::query(
         r#"INSERT INTO directory_surveys
               (directory_id, audience, status, enabled, title, description, questions,
-               completion_tags, trigger_event, required, reward_units, network_id, published_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+               completion_tags, trigger_event, required, reward_units, network_id,
+               coreswift_list_id, published_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                    CASE WHEN $3 = 'published' THEN NOW() ELSE NULL END)
            ON CONFLICT (directory_id, audience) DO UPDATE SET
               status = EXCLUDED.status,
@@ -661,6 +697,7 @@ pub async fn upsert_questionnaire(
               required = EXCLUDED.required,
               reward_units = EXCLUDED.reward_units,
               network_id = EXCLUDED.network_id,
+              coreswift_list_id = EXCLUDED.coreswift_list_id,
               published_at = CASE WHEN EXCLUDED.status = 'published'
                                   THEN COALESCE(directory_surveys.published_at, NOW())
                                   ELSE NULL END,
@@ -678,6 +715,7 @@ pub async fn upsert_questionnaire(
     .bind(required)
     .bind(reward_units)
     .bind(network_id)
+    .bind(coreswift_list_id)
     .execute(&s.db)
     .await
     .map_err(|e| AppError::Internal(format!("Could not save the questionnaire: {e}")))?;
@@ -955,5 +993,247 @@ pub async fn list_responses(
         "limit": limit,
         "offset": offset,
         "responses": items,
+    })))
+}
+
+// ── GET /api/v1/admin/onboarding/coreswift-fields ───────────────────────────
+
+/// The CoreSwift contact data points a question can be mapped onto — the hub's own public
+/// contract (`POST /api/external/contacts`) exposed as a pick-list so the admin never has to
+/// remember a field name. A NAME typed that is not in this list is auto-provisioned on the
+/// hub as a per-tenant custom data point, so free text is allowed too.
+pub fn coreswift_field_catalogue() -> Value {
+    json!([
+        { "key": "email", "label": "Email" },
+        { "key": "phone", "label": "Phone" },
+        { "key": "first_name", "label": "First name" },
+        { "key": "last_name", "label": "Last name" },
+        { "key": "company", "label": "Company" },
+        { "key": "title", "label": "Job title" },
+        { "key": "gender", "label": "Gender" },
+        { "key": "city", "label": "City" },
+        { "key": "state", "label": "State / region" },
+        { "key": "country", "label": "Country" },
+        { "key": "postal_code", "label": "Postal code" },
+        { "key": "address_line1", "label": "Address line 1" },
+        { "key": "address_line2", "label": "Address line 2" },
+        { "key": "notes", "label": "Notes" }
+    ])
+}
+
+pub async fn coreswift_fields(
+    State(_s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    if !is_super_admin(&claims) {
+        return Err(AppError::Forbidden("Admin access required".to_string()));
+    }
+    Ok(Json(json!({
+        "contact_fields": coreswift_field_catalogue(),
+        "note": "Map each question to a contact field; any other name is auto-created on CoreSwift as a custom data point.",
+    })))
+}
+
+// ── GET .../questionnaires/:audience/responses/:response_id ─────────────────
+
+/// Card B68 drill-down: from ONE response, the PERSON (linked account + CoreSwift contact),
+/// every answer with the data point it fills, the reward and the CRM result — plus every
+/// OTHER questionnaire that same person has answered (the reverse view).
+pub async fn get_response_detail(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path((directory_id, _audience, response_id)): Path<(Uuid, String, Uuid)>,
+) -> ApiResult<impl IntoResponse> {
+    if !is_super_admin(&claims) {
+        return Err(AppError::Forbidden("Admin access required".to_string()));
+    }
+    assert_directory(&s.db, &directory_id).await?;
+
+    type DetailRow = (
+        Uuid,
+        Uuid,
+        String,
+        Value,
+        Vec<String>,
+        DateTime<Utc>,
+        i32,
+        Option<String>,
+        bool,
+        Option<String>,
+        Option<Uuid>,
+        Option<Uuid>,
+    );
+    let row = sqlx::query_as::<_, DetailRow>(
+        r#"SELECT r.id, r.survey_id, r.audience, r.answers, r.applied_tags, r.completed_at,
+                  r.reward_units_awarded, r.currency_name, r.coreswift_pushed,
+                  r.coreswift_push_error, r.coreswift_contact_id, r.visitor_account_id
+             FROM survey_responses r
+            WHERE r.id = $1 AND r.directory_id = $2"#,
+    )
+    .bind(response_id)
+    .bind(directory_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Response not found in this directory".to_string()))?;
+
+    let (
+        id,
+        survey_id,
+        resp_audience,
+        answers,
+        applied_tags,
+        completed_at,
+        reward_units_awarded,
+        currency_name,
+        coreswift_pushed,
+        coreswift_push_error,
+        coreswift_contact_id,
+        visitor_account_id,
+    ) = row;
+
+    // The questionnaire's per-question mapping is what turns a raw answer into
+    // "this is the CoreSwift <field>".
+    let questionnaire = load_questionnaire(&s.db, &directory_id, &resp_audience).await?;
+    let mapping: Vec<(String, String, String, Option<String>)> = questionnaire
+        .as_ref()
+        .and_then(|q| normalize_questions(&q.questions).ok())
+        .and_then(|v| v.as_array().cloned())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|q| {
+                    Some((
+                        q.get("id")?.as_str()?.to_string(),
+                        q.get("label")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        q.get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("short_text")
+                            .to_string(),
+                        q.get("coreswift_field")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut readable: Vec<Value> = Vec::new();
+    if let Some(arr) = answers.as_array() {
+        for a in arr {
+            let qid = a.get("question_id").and_then(|v| v.as_str()).unwrap_or("");
+            let meta = mapping.iter().find(|(id2, _, _, _)| id2 == qid);
+            let label = a
+                .get("question_label")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| meta.map(|(_, l, _, _)| l.clone()))
+                .unwrap_or_else(|| qid.to_string());
+            let qtype = meta
+                .map(|(_, _, t, _)| t.clone())
+                .unwrap_or_else(|| "short_text".to_string());
+            readable.push(json!({
+                "question_id": qid,
+                "question": label,
+                "type": qtype,
+                "value": a.get("value").cloned().unwrap_or(Value::Null),
+                "coreswift_field": meta.and_then(|(_, _, _, f)| f.clone()),
+            }));
+        }
+    }
+
+    let respondent = match visitor_account_id {
+        Some(vid) => sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<Uuid>,
+            ),
+        >(
+            r#"SELECT id, email, name, business_type, coreswift_contact_id
+                     FROM visitor_accounts WHERE id = $1"#,
+        )
+        .bind(vid)
+        .fetch_optional(&s.db)
+        .await?
+        .map(|(vid2, email, name, business_type, cs)| {
+            json!({
+                "visitor_account_id": vid2,
+                "email": email,
+                "name": name,
+                "business_type": business_type,
+                "coreswift_contact_id": cs,
+            })
+        }),
+        None => None,
+    };
+
+    // Reverse view — everything this same person has answered, across every questionnaire.
+    let history: Vec<Value> = match visitor_account_id {
+        Some(vid) => {
+            let rows = sqlx::query_as::<
+                _,
+                (
+                    Uuid,
+                    Option<String>,
+                    String,
+                    Option<Uuid>,
+                    DateTime<Utc>,
+                    i32,
+                    Option<String>,
+                    bool,
+                ),
+            >(
+                r#"SELECT r.id, d.name, r.audience, r.directory_id, r.completed_at,
+                          r.reward_units_awarded, r.currency_name, r.coreswift_pushed
+                     FROM survey_responses r
+                     LEFT JOIN directories d ON d.id = r.directory_id
+                    WHERE r.visitor_account_id = $1
+                    ORDER BY r.completed_at DESC
+                    LIMIT 100"#,
+            )
+            .bind(vid)
+            .fetch_all(&s.db)
+            .await?;
+            rows.into_iter()
+                .map(|(rid, dname, aud, dir_id, at, units, cur, pushed)| {
+                    json!({
+                        "response_id": rid,
+                        "directory_id": dir_id,
+                        "directory_name": dname,
+                        "audience": aud,
+                        "completed_at": at,
+                        "reward_units_awarded": units,
+                        "currency_name": cur,
+                        "coreswift_pushed": pushed,
+                    })
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    };
+
+    Ok(Json(json!({
+        "id": id,
+        "survey_id": survey_id,
+        "audience": resp_audience,
+        "directory_id": directory_id,
+        "completed_at": completed_at,
+        "applied_tags": applied_tags,
+        "reward_units_awarded": reward_units_awarded,
+        "currency_name": currency_name,
+        "coreswift_pushed": coreswift_pushed,
+        "coreswift_push_error": coreswift_push_error,
+        "coreswift_contact_id": coreswift_contact_id,
+        "visitor_account_id": visitor_account_id,
+        "respondent": respondent,
+        "answers": readable,
+        "person_history": history,
     })))
 }

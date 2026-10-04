@@ -57,6 +57,8 @@ pub struct SurveyConfig {
     pub required: bool,
     /// Native currency units credited on completion (100 units = US$1). 0 = nothing to earn.
     pub reward_units: i32,
+    /// Card B68: CoreSwift list every response of this questionnaire is added to (hub id, no FK).
+    pub coreswift_list_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -675,25 +677,47 @@ fn field_value_string(v: &Value) -> String {
     }
 }
 
-/// The CoreSwift contact body for an onboarding response: identity where we have it, and one
-/// custom field per answered question (the hub auto-provisions the fields per tenant).
+/// The CoreSwift contact body for an onboarding response: identity where we have it, and for
+/// every answer either the admin's mapped CoreSwift data point (card B68) or — when a question
+/// is not mapped — a custom field named after the question.
 fn lead_from_answers(
     audience: &str,
     title: &str,
     respondent: Option<&Respondent>,
+    questions: &Value,
     answers: &[Value],
     tags: &[String],
+    list_id: Option<Uuid>,
 ) -> LeadPayload {
     let mut lead = LeadPayload {
         email: respondent.and_then(|r| r.email.clone()),
         phone: respondent.and_then(|r| r.phone.clone()),
         name: respondent.and_then(|r| r.name.clone()),
         tags: tags.to_vec(),
+        list_id,
         notes: Some(format!(
             "Onboarding questionnaire '{title}' completed ({audience}) via Multi-Directory"
         )),
         ..Default::default()
     };
+
+    // Card B68: the admin's per-question mapping (question id -> CoreSwift data point).
+    let mapping: Vec<(String, String)> = questions
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|q| {
+                    let id = q.get("id").and_then(|v| v.as_str())?;
+                    let field = q
+                        .get("coreswift_field")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())?;
+                    Some((id.to_string(), field.to_ascii_lowercase()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     let mut used_keys: Vec<String> = Vec::new();
     for a in answers {
@@ -708,6 +732,72 @@ fn lead_from_answers(
             .filter(|s| !s.is_empty())
             .unwrap_or(qid);
         let flat = field_value_string(&value);
+
+        let mapped = mapping
+            .iter()
+            .find(|(id, _)| id == qid)
+            .map(|(_, f)| f.clone());
+
+        // A mapped answer lands exactly where the admin pointed it.
+        if let Some(field) = &mapped {
+            match field.as_str() {
+                "email" => {
+                    lead.email = Some(flat.clone());
+                    continue;
+                }
+                "phone" => {
+                    lead.phone = Some(flat.clone());
+                    continue;
+                }
+                "name" | "full_name" => {
+                    lead.name = Some(flat.clone());
+                    continue;
+                }
+                "first_name" => {
+                    lead.first_name = Some(flat.clone());
+                    continue;
+                }
+                "last_name" => {
+                    lead.last_name = Some(flat.clone());
+                    continue;
+                }
+                "company" | "company_name" => {
+                    lead.company = Some(flat.clone());
+                    continue;
+                }
+                "title" | "job_title" => {
+                    lead.title = Some(flat.clone());
+                    continue;
+                }
+                "city" => {
+                    lead.city = Some(flat.clone());
+                    continue;
+                }
+                "state" => {
+                    lead.state = Some(flat.clone());
+                    continue;
+                }
+                "postal_code" | "zip" => {
+                    lead.postal_code = Some(flat.clone());
+                    continue;
+                }
+                "address_line1" | "address" => {
+                    lead.address_line1 = Some(flat.clone());
+                    continue;
+                }
+                "notes" => {
+                    let n = lead.notes.get_or_insert_with(String::new);
+                    if !n.is_empty() {
+                        n.push_str(" | ");
+                    }
+                    n.push_str(&format!("{label}: {flat}"));
+                    continue;
+                }
+                // gender / country / address_line2 / a custom data point — travels in `fields`;
+                // the hub hoists its own built-in column names and provisions the rest.
+                _ => {}
+            }
+        }
 
         // Identity callouts: a question that plainly asks for an email/phone/name fills the
         // hub contact's real fields as well as the custom field.
@@ -733,7 +823,11 @@ fn lead_from_answers(
             lead.company = Some(flat.clone());
         }
 
-        let mut key = slug_key(label);
+        // The field key: the admin's mapped data point when set, else the question label slug.
+        let mut key = match &mapped {
+            Some(f) => f.clone(),
+            None => slug_key(label),
+        };
         if key == "field" {
             key = slug_key(qid);
         }
@@ -974,8 +1068,10 @@ pub async fn public_submit_survey(
         &audience,
         &config.title,
         respondent.as_ref(),
+        &config.questions,
         &answers,
         &all_tags,
+        config.coreswift_list_id,
     );
     let has_identity = lead
         .email

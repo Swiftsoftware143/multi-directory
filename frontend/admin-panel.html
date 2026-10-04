@@ -2324,6 +2324,20 @@
           <input id="ob-description" placeholder="One line shown under the title">
         </div>
       </div>
+      <div class="em-grid" style="margin-top:10px">
+        <div class="em-field"><label>Push contacts to a CoreSwift list (segment)</label>
+          <select id="ob-cs-list"><option value="none">— use CoreSwift's default audience list —</option></select>
+        </div>
+        <div class="em-field"><label>CoreSwift contact data points</label>
+          <span class="feature-subtitle" style="font-size:.75rem">
+            On each question below, pick the CoreSwift field the answer fills (email, company, city …).
+            Any other name you type is auto-created on CoreSwift as a custom data point.
+            Lists come from the CoreSwift connection in <b>Provider API Keys</b>; if CoreSwift is not
+            connected the answers are still stored and the push is skipped and recorded.
+          </span>
+        </div>
+      </div>
+      <datalist id="ob-cs-field-list"></datalist>
 
       <div class="pk-controls" style="margin:12px 0">
         <button class="btn btn-accent btn-sm" type="button" id="ob-add-q">＋ Add question</button>
@@ -2354,6 +2368,7 @@
         <span class="feature-status" id="obr-status"></span>
       </div>
       <div id="obr-list"></div>
+      <div id="obr-detail" class="hidden" style="margin-top:12px"></div>
     </div>
 
     <!-- ===== Networks: create, configure and brand a network (kanban B91/B117 gap #3) =====
@@ -9035,6 +9050,9 @@
     var obAudiences = ['customer', 'supplier', 'business'];
     var obQuestions = [];
     var obLoaded = false;
+    // Card B68: the CoreSwift data points a question can be mapped onto, and the tenant's lists.
+    var obCsFields = [];
+    var obCsLists = [];
 
     function obEsc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -9098,6 +9116,91 @@
         });
     }
 
+    // Card B68: the CoreSwift contact data points (pick-list) and the tenant's lists.
+    function obEnsureCsFieldList() {
+      var dl = document.getElementById('ob-cs-field-list');
+      if (!dl) return;
+      dl.innerHTML = obCsFields.map(function (f) {
+        var k = (typeof f === 'string') ? f : (f.key || '');
+        var l = (typeof f === 'string') ? f : (f.label || f.key || '');
+        return '<option value="' + obEsc(k) + '">' + obEsc(l) + '</option>';
+      }).join('');
+    }
+    function obLoadCsFields() {
+      if (obCsFields.length) { obEnsureCsFieldList(); return Promise.resolve(); }
+      return apiGet('/admin/onboarding/coreswift-fields').then(function (r) {
+        obCsFields = (r && r.contact_fields) || [];
+        obEnsureCsFieldList();
+      }).catch(function () {});
+    }
+    function obLoadCsLists() {
+      var sel = document.getElementById('ob-cs-list');
+      if (!sel) return Promise.resolve();
+      return apiGet('/integrations/coreswift/connection/lists').then(function (r) {
+        var lists = (r && r.data && r.data.lists) || (r && r.lists) || (r && r.data) || [];
+        if (!Array.isArray(lists)) lists = [];
+        obCsLists = lists;
+        var cur = sel.value;
+        var html = '<option value="none">— use CoreSwift\'s default audience list —</option>';
+        lists.forEach(function (l) {
+          var id = l.id || l.list_id || '';
+          var name = l.name || l.list_name || id;
+          if (id) html += '<option value="' + obEsc(id) + '">' + obEsc(name) + '</option>';
+        });
+        sel.innerHTML = html;
+        if (cur) sel.value = cur;
+      }).catch(function () {
+        // Not connected / hub unreachable: keep the honest default (no list chosen).
+      });
+    }
+    // Card B68 drill-down: one response -> the person, every answer + its data point, and
+    // everything that same person has answered across questionnaires.
+    function obLoadResponseDetail(responseId) {
+      var dirId = document.getElementById('obr-directory').value;
+      var audience = document.getElementById('obr-audience').value;
+      var box = document.getElementById('obr-detail');
+      if (!box || !dirId) return;
+      box.classList.remove('hidden');
+      box.innerHTML = '<p class="feature-subtitle">loading…</p>';
+      return apiGet('/admin/directories/' + dirId + '/questionnaires/' + audience +
+        '/responses/' + encodeURIComponent(responseId)).then(function (r) {
+          var who = r.respondent || {};
+          var rows = (r.answers || []).map(function (a) {
+            var v = a.value;
+            if (v == null || v === '') v = '—';
+            else if (Array.isArray(v)) v = v.join(', ');
+            else if (typeof v === 'object') v = JSON.stringify(v);
+            var cs = a.coreswift_field
+              ? ' <span class="ob-tag">→ ' + obEsc(a.coreswift_field) + '</span>'
+              : ' <span style="color:var(--text-tertiary)">custom field</span>';
+            return '<tr><td>' + obEsc(a.question) + cs + '</td><td>' + obEsc(v) + '</td></tr>';
+          }).join('');
+          var hist = (r.person_history || []).map(function (h) {
+            return '<li>' + obEsc(new Date(h.completed_at).toLocaleString()) + ' — ' +
+              obEsc(h.directory_name || '') + ' · ' + obEsc(h.audience) +
+              (h.reward_units_awarded > 0 ? (' · +' + h.reward_units_awarded + ' ' + obEsc(h.currency_name || 'units')) : '') +
+              '</li>';
+          }).join('');
+          box.innerHTML = '<div class="feature-card">' +
+            '<div class="pk-head"><div class="pk-title">👤 ' + obEsc(who.name || who.email || 'anonymous respondent') + '</div>' +
+            '<div class="pk-desc">' +
+              (who.email ? ('email ' + obEsc(who.email) + ' · ') : '') +
+              (who.business_type ? ('business type ' + obEsc(who.business_type) + ' · ') : '') +
+              'CoreSwift contact ' + obEsc(r.coreswift_contact_id || '—') +
+              ' · ' + (r.coreswift_pushed ? '✓ pushed' : 'not pushed') +
+            '</div></div>' +
+            '<table>' + rows + '</table>' +
+            (r.coreswift_push_error ? '<p style="font-size:.75rem;color:#f59e0b">CRM: ' + obEsc(r.coreswift_push_error) + '</p>' : '') +
+            (hist ? '<h4 style="margin-top:12px">Everything this person has answered</h4><ul style="font-size:.82rem">' + hist + '</ul>' : '') +
+            '<div class="pk-controls" style="margin-top:8px"><button class="btn btn-ghost btn-sm" type="button" id="obr-detail-close">Close</button></div>' +
+            '</div>';
+          var c = document.getElementById('obr-detail-close');
+          if (c) c.addEventListener('click', function () { box.classList.add('hidden'); box.innerHTML = ''; });
+        }).catch(function (e) {
+          box.innerHTML = '<p class="feature-subtitle" style="color:#f87171">Could not load the response: ' + obEsc(e.message) + '</p>';
+        });
+    }
+
     function obTypeHasOptions(type) {
       return type === 'single_choice' || type === 'multiple_choice' || type === 'dropdown';
     }
@@ -9114,6 +9217,7 @@
         q.type = get('type') || q.type;
         q.label = get('label');
         q.help_text = get('help_text');
+        q.coreswift_field = get('coreswift_field');
         q.required = chk ? !!chk.checked : !!q.required;
         q.scale_min = parseInt(get('scale_min') || '1', 10) || 1;
         q.scale_max = parseInt(get('scale_max') || '5', 10) || 5;
@@ -9184,6 +9288,10 @@
               '<div><span class="ob-lbl">Help text (optional)</span><input type="text" data-f="help_text" value="' + obEsc(q.help_text || '') + '"></div>' +
               scale +
             '</div>' +
+            '<div class="ob-row" style="margin-top:8px">' +
+              '<div><span class="ob-lbl">CoreSwift field this answer fills (card B68)</span>' +
+                '<input type="text" list="ob-cs-field-list" data-f="coreswift_field" placeholder="e.g. email, company, city — blank stores it as a custom data point" value="' + obEsc(q.coreswift_field || '') + '"></div>' +
+            '</div>' +
             options +
           '</div>';
       }).join('');
@@ -9201,7 +9309,8 @@
         required: false,
         options: [],
         scale_min: 1,
-        scale_max: 5
+        scale_max: 5,
+        coreswift_field: ''
       });
       obRenderQuestions();
       var wrap = document.getElementById('ob-questions');
@@ -9269,6 +9378,8 @@
         document.getElementById('ob-description').value = q.description || '';
         document.getElementById('ob-status').value = (q.status === 'published') ? 'published' : 'draft';
         document.getElementById('ob-reward').value = (q.reward_units != null) ? q.reward_units : 0;
+        var csListSel = document.getElementById('ob-cs-list');
+        if (csListSel) csListSel.value = q.coreswift_list_id || 'none';
         // The public endpoint the form actually lives on (by directory slug + audience).
         var dirSel = document.getElementById('ob-directory');
         var slug = dirSel && dirSel.selectedOptions[0] ? dirSel.getAttribute('data-slug') : null;
@@ -9299,14 +9410,17 @@
           options: q.options || [],
           scale_min: q.scale_min || 1,
           scale_max: q.scale_max || 5,
+          coreswift_field: (q.coreswift_field || '').trim() || null,
           order: i
         };
       });
+      var csListEl = document.getElementById('ob-cs-list');
       var body = {
         title: document.getElementById('ob-title').value,
         description: document.getElementById('ob-description').value || null,
         questions: questions,
         reward_units: parseInt(document.getElementById('ob-reward').value || '0', 10) || 0,
+        coreswift_list_id: csListEl ? (csListEl.value || 'none') : 'none',
         status: status || document.getElementById('ob-status').value
       };
       obSetMsg('saving…');
@@ -9393,8 +9507,14 @@
               (resp.coreswift_push_error
                 ? '<p style="font-size:.75rem;color:#f59e0b;margin-top:6px">CRM: ' + obEsc(resp.coreswift_push_error) + '</p>'
                 : '') +
+              '<div class="pk-controls" style="margin-top:6px">' +
+                '<button class="btn btn-ghost btn-sm" type="button" data-obr-view="' + obEsc(resp.id) + '">👤 View person &amp; all answers</button>' +
+              '</div>' +
             '</div>';
         }).join('');
+        Array.prototype.forEach.call(box.querySelectorAll('[data-obr-view]'), function (b) {
+          b.addEventListener('click', function () { obLoadResponseDetail(b.getAttribute('data-obr-view')); });
+        });
       }).catch(function (e) {
         obrSetMsg('Could not load responses: ' + e.message, false);
       });
@@ -9431,7 +9551,7 @@
             var list = (res && (res.directories || res)) || [];
             if (list.length) directories = list;
           }).catch(function () {});
-      ready.then(obLoadTypes).then(function () {
+      ready.then(obLoadTypes).then(obLoadCsFields).then(obLoadCsLists).then(function () {
         obLoadDirectoriesInto();
         obSetDirSlugAttr();
         obLoadQuestionnaire();

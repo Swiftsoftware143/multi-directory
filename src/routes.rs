@@ -2263,6 +2263,12 @@ pub fn create_router(s: AppState) -> Router {
             "/admin/onboarding/question-types",
             get(onboarding_questionnaire::question_types),
         )
+        // Card B68: the CoreSwift contact data points a question can be mapped onto, as a
+        // pick-list for the builder (the hub's own contract — never hardcoded per directory).
+        .route(
+            "/admin/onboarding/coreswift-fields",
+            get(onboarding_questionnaire::coreswift_fields),
+        )
         .route(
             "/admin/directories/:id/questionnaires",
             get(onboarding_questionnaire::list_questionnaires),
@@ -2276,6 +2282,12 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/admin/directories/:id/questionnaires/:audience/responses",
             get(onboarding_questionnaire::list_responses),
+        )
+        // Card B68 drill-down: one response -> the person, every answer + its data point, and
+        // everything that same person has answered elsewhere.
+        .route(
+            "/admin/directories/:id/questionnaires/:audience/responses/:response_id",
+            get(onboarding_questionnaire::get_response_detail),
         )
         // ??? Cross-platform tag sync
         .route("/admin/tag-sync", post(tag_sync::sync_tag_across_platforms))
