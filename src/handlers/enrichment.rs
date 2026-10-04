@@ -747,6 +747,118 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Candidate search (card B80 prospecting) — free-text, N results
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One external candidate returned by the free/open prospecting search.
+#[derive(Debug, Serialize)]
+pub struct ExternalCandidate {
+    pub name: String,
+    pub address: Option<String>,
+    pub phone: Option<String>,
+    pub website: Option<String>,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+}
+
+/// Free-text candidate search across the free/open enrichment source (card B80). Uses the SAME
+/// source as the listing pipeline's zero-cost fallback — OpenStreetMap/Nominatim (card B79) — which
+/// needs no key, so supplier prospecting always works with nothing configured. Returns up to
+/// `limit` candidates (clamped 1..50). A network failure is a plain Err the caller reports honestly.
+pub async fn search_external_candidates(
+    query: &str,
+    limit: i64,
+) -> Result<Vec<ExternalCandidate>, String> {
+    let q = urlencoding(query.trim());
+    if q.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit = limit.clamp(1, 50);
+    let url = format!(
+        "{}/search?q={}&format=jsonv2&addressdetails=1&extratags=1&limit={}",
+        OSM_NOMINATIM_BASE, q, limit
+    );
+    let (_http_status, v) = http_json(
+        &url,
+        &[
+            ("User-Agent", OSM_USER_AGENT),
+            ("Accept-Language", "en-US,en"),
+        ],
+    )
+    .await?;
+    let mut out = Vec::new();
+    for p in v.as_array().cloned().unwrap_or_default() {
+        let addr = p.get("address");
+        let pick_addr = |k: &str| -> Option<String> {
+            addr.and_then(|a| a.get(k))
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())
+        };
+        let street = [pick_addr("house_number"), pick_addr("road")]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut parts: Vec<String> = Vec::new();
+        if !street.trim().is_empty() {
+            parts.push(street);
+        }
+        for k in ["city", "town", "village", "hamlet", "state", "postcode"] {
+            if let Some(s) = pick_addr(k) {
+                if !s.trim().is_empty() {
+                    parts.push(s);
+                }
+            }
+        }
+        let address = if parts.is_empty() {
+            p.get("display_name")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())
+        } else {
+            Some(parts.join(", "))
+        };
+        let et = p.get("extratags");
+        let pick_et = |keys: &[&str]| -> Option<String> {
+            keys.iter().find_map(|k| {
+                et.and_then(|e| e.get(*k))
+                    .and_then(|x| x.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+            })
+        };
+        let name = p
+            .get("name")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                p.get("display_name")
+                    .and_then(|x| x.as_str())
+                    .and_then(|d| d.split(',').next())
+                    .map(|s| s.trim().to_string())
+            });
+        let Some(name) = name.filter(|n| !n.is_empty()) else {
+            continue;
+        };
+        out.push(ExternalCandidate {
+            name,
+            address,
+            phone: pick_et(&["phone", "contact:phone"]),
+            website: pick_et(&["website", "contact:website", "url"]),
+            lat: p
+                .get("lat")
+                .and_then(|x| x.as_str())
+                .and_then(|s| s.parse().ok()),
+            lng: p
+                .get("lon")
+                .and_then(|x| x.as_str())
+                .and_then(|s| s.parse().ok()),
+        });
+    }
+    Ok(out)
+}
+
 fn urlencoding(s: &str) -> String {
     s.replace('%', "%25")
         .replace(' ', "+")

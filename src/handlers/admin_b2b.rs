@@ -103,6 +103,7 @@ FROM (
       AND ($2::uuid IS NULL OR d.id = $2)
       AND ($3::text IS NULL OR b.name ILIKE '%' || $3 || '%')
       AND ($4::text IS NULL OR COALESCE(b.business_type, 'local') = $4)
+      AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')
       AND ($5::text IS NULL
            OR ($5 = 'active' AND COALESCE(b.is_active, true))
            OR ($5 = 'suspended' AND NOT COALESCE(b.is_active, true)))
@@ -125,6 +126,7 @@ WHERE COALESCE(b.business_type, 'local') <> 'local'
   AND ($2::uuid IS NULL OR d.id = $2)
   AND ($3::text IS NULL OR b.name ILIKE '%' || $3 || '%')
   AND ($4::text IS NULL OR COALESCE(b.business_type, 'local') = $4)
+  AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')
 "#;
 
 /// One supplier row, scoped so a stray id from another tenant cannot be read.

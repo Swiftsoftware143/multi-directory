@@ -526,6 +526,7 @@
         <a href="#sec-directories">📁 Directories</a>
         <a href="#businesses-section">🏢 Businesses</a>
         <a href="#b2b-admin-section">🏬 Suppliers / B2B</a>
+        <a href="#prospecting-section">🧭 Supplier Prospecting</a>
         <a href="#network-management-section">🗂 Network Management</a>
         <a href="#networks-section">🌐 Networks (create &amp; brand)</a>
         <a href="#directory-details-section">🧾 Directory Details</a>
@@ -2395,6 +2396,57 @@
           <span class="feature-status" id="nwb-status"></span>
         </div>
         <p class="pg-field-help" style="margin-top:6px">Only filled fields are sent — a blank field leaves the stored value unchanged.</p>
+      </div>
+    </div>
+
+    <!-- ===== Supplier Prospecting (card B80): internal-only sourcing surface =====
+         David (2026-09-30): find candidate suppliers and reach out to them. A prospect is an
+         INTERNAL record (a businesses row with status='prospect') — it never appears in the
+         public directory, B2B marketplace, sitemaps or SEO output. Converting a prospect to a
+         live supplier publishes the SAME record; it never creates a second one. -->
+    <div class="feature-card" id="prospecting-section">
+      <h3>🧭 Supplier Prospecting</h3>
+      <p class="feature-subtitle">Find candidate suppliers and keep them as <b>internal prospects</b> until you choose to publish them. Prospects are hidden from the public directory, marketplace, sitemaps and SEO output. Search below, save a candidate in one click, track your outreach, then convert it to a live supplier — the same record is published, never duplicated.</p>
+
+      <div class="pk-controls" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div class="em-field"><label>What to look for</label><input id="px-q" placeholder="organic farm, wholesaler, co-op …"></div>
+        <div class="em-field"><label>Type</label>
+          <select id="px-type">
+            <option value="">any supplier type</option>
+            <option value="farm">farm</option>
+            <option value="distributor">distributor</option>
+            <option value="wholesaler">wholesaler</option>
+            <option value="manufacturer">manufacturer</option>
+            <option value="association">association</option>
+            <option value="supplier">supplier</option>
+          </select>
+        </div>
+        <div class="em-field"><label>City</label><input id="px-city" placeholder="e.g. Lakeland"></div>
+        <div class="em-field"><label>State</label><input id="px-state" placeholder="FL"></div>
+        <div class="em-field"><label>Save into directory</label><select id="px-dir"><option value="">— pick a directory —</option></select></div>
+        <button class="btn btn-accent btn-sm" type="button" id="px-search">Search candidates</button>
+        <span class="feature-status" id="px-search-status"></span>
+      </div>
+      <div id="px-results" style="overflow:auto"></div>
+
+      <div style="margin-top:16px;border-top:1px dashed var(--border,#1e3a5f);padding-top:12px">
+        <h4 style="margin:0 0 8px">Saved prospects</h4>
+        <div class="pk-controls" style="margin:0 0 8px;display:flex;gap:10px;align-items:flex-end">
+          <div class="em-field"><label>Pipeline stage</label>
+            <select id="px-filter">
+              <option value="all">all</option>
+              <option value="new">new</option>
+              <option value="contacted">contacted</option>
+              <option value="replied">replied</option>
+              <option value="interested">interested</option>
+              <option value="onboarded">onboarded</option>
+              <option value="declined">declined</option>
+            </select>
+          </div>
+          <button class="btn btn-sm" type="button" id="px-refresh">Refresh list</button>
+          <span class="feature-status" id="px-status"></span>
+        </div>
+        <div id="px-rows" style="overflow:auto"></div>
       </div>
     </div>
 
@@ -10818,6 +10870,220 @@
       document.addEventListener('md-context-change', load);
       setTimeout(load, 800);
     });
+  })();
+  </script>
+  <script>
+  /* ============================================================
+     Supplier Prospecting (card B80) — internal-only sourcing.
+     Search the free/open enrichment source, save candidates as
+     internal prospects (hidden from every public surface), track
+     outreach, and convert a prospect to a live supplier (the SAME
+     record, never a duplicate). Operator-guarded backend.
+     ============================================================ */
+  (function () {
+    var API = '/api/v1';
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function api(method, path, body) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      var opt = { method: method, headers: h };
+      if (body != null) opt.body = JSON.stringify(body);
+      return fetch(API + path, opt).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || (d && d.error) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function qs(o) {
+      var parts = [];
+      Object.keys(o).forEach(function (k) {
+        if (o[k] != null && o[k] !== '') parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(o[k]));
+      });
+      return parts.length ? '?' + parts.join('&') : '';
+    }
+    function scopeParams() {
+      var p = {};
+      var sc = (window.MDContextBar && window.MDContextBar.scope()) || 'all:';
+      if (sc.indexOf('net:') === 0) p.network_id = sc.slice(4);
+      else if (sc.indexOf('dir:') === 0) p.directory_id = sc.slice(4);
+      return p;
+    }
+    function status(msg, ok) {
+      var el = document.getElementById('px-status'); if (!el) return;
+      el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444';
+    }
+    var STATUSES = ['new', 'contacted', 'replied', 'interested', 'onboarded', 'declined'];
+    var cands = [];
+    var prospects = [];
+
+    function loadDirs() {
+      var sel = document.getElementById('px-dir'); if (!sel) return;
+      api('GET', '/directories?per_page=100').then(function (d) {
+        var arr = Array.isArray(d) ? d : (d.data || d.directories || []);
+        arr.forEach(function (x) {
+          var o = document.createElement('option');
+          o.value = x.id; o.textContent = (x.name || x.slug || x.id);
+          sel.appendChild(o);
+        });
+        var sc = (window.MDContextBar && window.MDContextBar.scope()) || '';
+        if (sc.indexOf('dir:') === 0) sel.value = sc.slice(4);
+      }).catch(function () { /* leave the placeholder */ });
+    }
+
+    function renderCandidates() {
+      var el = document.getElementById('px-results'); if (!el) return;
+      if (!cands.length) { el.innerHTML = '<p class="pg-field-help">No candidates returned. Try a broader search or a different city.</p>'; return; }
+      var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr>' +
+        '<th style="text-align:left;padding:6px">Name</th><th style="text-align:left;padding:6px">Address</th>' +
+        '<th style="text-align:left;padding:6px">Phone</th><th style="text-align:left;padding:6px">Website</th>' +
+        '<th style="text-align:left;padding:6px"></th></tr></thead><tbody>';
+      cands.forEach(function (c, i) {
+        h += '<tr style="border-top:1px solid rgba(255,255,255,.06)">' +
+          '<td style="padding:6px"><b>' + esc(c.name) + '</b></td>' +
+          '<td style="padding:6px">' + esc(c.address || '—') + '</td>' +
+          '<td style="padding:6px">' + esc(c.phone || '—') + '</td>' +
+          '<td style="padding:6px">' + (c.website ? '<a href="' + esc(c.website) + '" target="_blank" rel="noopener">link ↗</a>' : '—') + '</td>' +
+          '<td style="padding:6px"><button class="btn btn-accent btn-sm" type="button" onclick="window.__pxSave(' + i + ')">Save as prospect</button></td>' +
+          '</tr>';
+      });
+      el.innerHTML = h + '</tbody></table>';
+    }
+
+    function renderProspects() {
+      var el = document.getElementById('px-rows'); if (!el) return;
+      if (!prospects.length) { el.innerHTML = '<p class="pg-field-help">No saved prospects yet. Search above and save a candidate.</p>'; return; }
+      var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr>' +
+        '<th style="text-align:left;padding:6px">Prospect</th><th style="text-align:left;padding:6px">City</th>' +
+        '<th style="text-align:left;padding:6px">Stage</th><th style="text-align:left;padding:6px">Notes</th>' +
+        '<th style="text-align:left;padding:6px">Outreach</th><th style="text-align:left;padding:6px">Actions</th>' +
+        '</tr></thead><tbody>';
+      prospects.forEach(function (p) {
+        var id = p.business_id;
+        var opts = STATUSES.map(function (s) {
+          return '<option value="' + s + '"' + (s === p.prospect_status ? ' selected' : '') + '>' + s + '</option>';
+        }).join('');
+        h += '<tr style="border-top:1px solid rgba(255,255,255,.06)">' +
+          '<td style="padding:6px"><b>' + esc(p.name) + '</b><br><span class="pg-field-help">' + esc(p.business_type) + '</span></td>' +
+          '<td style="padding:6px">' + esc([p.city, p.state].filter(Boolean).join(', ') || '—') + '</td>' +
+          '<td style="padding:6px"><select data-px-status="' + id + '" onchange="window.__pxStatus(\'' + id + '\')">' + opts + '</select></td>' +
+          '<td style="padding:6px"><input data-px-notes="' + id + '" value="' + esc(p.notes || '') + '" style="width:150px"> <button class="btn btn-sm" type="button" onclick="window.__pxNotes(\'' + id + '\')">Save</button></td>' +
+          '<td style="padding:6px">' + (p.outreach_count || 0) + (p.last_outreach ? '<br><span class="pg-field-help">' + esc(p.last_outreach) + '</span>' : '') + '</td>' +
+          '<td style="padding:6px;white-space:nowrap">' +
+            '<select data-px-ch="' + id + '"><option value="note">note</option><option value="email">email</option><option value="phone">phone</option><option value="other">other</option></select> ' +
+            '<input data-px-outn="' + id + '" placeholder="outreach note" style="width:140px"> ' +
+            '<button class="btn btn-sm" type="button" onclick="window.__pxLog(\'' + id + '\')">Log</button> ' +
+            '<button class="btn btn-accent btn-sm" type="button" onclick="window.__pxConvert(\'' + id + '\')">Convert to supplier</button>' +
+          '</td></tr>';
+      });
+      el.innerHTML = h + '</tbody></table>';
+    }
+
+    function loadProspects() {
+      var p = scopeParams();
+      var f = document.getElementById('px-filter');
+      if (f && f.value && f.value !== 'all') p.status = f.value;
+      status('Loading…', true);
+      api('GET', '/admin/prospecting/prospects' + qs(p)).then(function (d) {
+        prospects = d.prospects || [];
+        renderProspects();
+        status(prospects.length + ' prospect' + (prospects.length === 1 ? '' : 's'), true);
+      }).catch(function (e) { status('Could not load prospects: ' + e.message, false); });
+    }
+
+    window.__pxSearch = function () {
+      var s = document.getElementById('px-search-status');
+      var p = {
+        q: document.getElementById('px-q').value.trim(),
+        type: document.getElementById('px-type').value,
+        city: document.getElementById('px-city').value.trim(),
+        state: document.getElementById('px-state').value.trim(),
+        limit: 20
+      };
+      if (!p.q && !p.type) { s.textContent = 'Enter what to look for.'; s.style.color = '#ef4444'; return; }
+      s.textContent = 'Searching…'; s.style.color = '';
+      api('GET', '/admin/prospecting/search' + qs(p)).then(function (d) {
+        cands = d.candidates || [];
+        renderCandidates();
+        s.textContent = cands.length + ' candidate' + (cands.length === 1 ? '' : 's') + ' from ' + (d.source || 'the free source');
+        s.style.color = '#22c55e';
+      }).catch(function (e) { s.textContent = e.message; s.style.color = '#ef4444'; });
+    };
+
+    window.__pxSave = function (i) {
+      var c = cands[i]; if (!c) return;
+      var dir = document.getElementById('px-dir').value;
+      if (!dir) { status('Pick a directory to save the prospect into.', false); return; }
+      status('Saving…', true);
+      api('POST', '/admin/prospecting/prospects', {
+        directory_id: dir,
+        name: c.name,
+        type: document.getElementById('px-type').value || 'supplier',
+        address: c.address || null,
+        city: document.getElementById('px-city').value.trim() || null,
+        state: document.getElementById('px-state').value.trim() || null,
+        phone: c.phone || null,
+        website: c.website || null,
+        latitude: c.lat != null ? c.lat : null,
+        longitude: c.lng != null ? c.lng : null,
+        source: 'openstreetmap'
+      }).then(function () {
+        status('Saved — hidden from the public directory.', true);
+        loadProspects();
+      }).catch(function (e) { status('Could not save: ' + e.message, false); });
+    };
+
+    window.__pxStatus = function (id) {
+      var sel = document.querySelector('[data-px-status="' + id + '"]'); if (!sel) return;
+      api('PUT', '/admin/prospecting/prospects/' + id, { status: sel.value })
+        .then(function () { status('Stage updated.', true); loadProspects(); })
+        .catch(function (e) { status('Could not update: ' + e.message, false); });
+    };
+
+    window.__pxNotes = function (id) {
+      var inp = document.querySelector('[data-px-notes="' + id + '"]'); if (!inp) return;
+      api('PUT', '/admin/prospecting/prospects/' + id, { notes: inp.value })
+        .then(function () { status('Notes saved.', true); loadProspects(); })
+        .catch(function (e) { status('Could not save notes: ' + e.message, false); });
+    };
+
+    window.__pxLog = function (id) {
+      var ch = document.querySelector('[data-px-ch="' + id + '"]');
+      var nt = document.querySelector('[data-px-outn="' + id + '"]');
+      api('POST', '/admin/prospecting/prospects/' + id + '/outreach', {
+        channel: ch ? ch.value : 'note',
+        note: nt ? nt.value : ''
+      }).then(function () { status('Outreach logged.', true); loadProspects(); })
+        .catch(function (e) { status('Could not log outreach: ' + e.message, false); });
+    };
+
+    window.__pxConvert = function (id) {
+      if (!window.confirm('Publish this prospect as a live supplier? The same record becomes visible in the public directory.')) return;
+      status('Converting…', true);
+      api('POST', '/admin/prospecting/prospects/' + id + '/convert', {})
+        .then(function () { status('Converted — now a live supplier.', true); loadProspects(); })
+        .catch(function (e) { status('Could not convert: ' + e.message, false); });
+    };
+    window.__pxLoad = loadProspects;
+
+    var inited = false;
+    function init() {
+      if (inited || !document.getElementById('prospecting-section')) return;
+      inited = true;
+      document.getElementById('px-search').addEventListener('click', window.__pxSearch);
+      document.getElementById('px-refresh').addEventListener('click', loadProspects);
+      document.getElementById('px-filter').addEventListener('change', loadProspects);
+      document.addEventListener('md-context-change', loadProspects);
+      loadDirs();
+      setTimeout(loadProspects, 700);
+    }
+    document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 700);
   })();
   </script>
 </body>

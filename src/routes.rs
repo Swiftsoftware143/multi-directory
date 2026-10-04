@@ -337,6 +337,37 @@ pub fn create_router(s: AppState) -> Router {
             post(listing_invite::create_listing_invite)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Supplier PROSPECTING (card B80): internal-only sourcing surface ─────────────
+        // Search the free/open enrichment source for candidate suppliers, save a candidate as
+        // an internal prospect (a `businesses` row with status='prospect' — hidden from public),
+        // track outreach, and explicitly convert a prospect to a live supplier. Never public.
+        // Operator-guarded; scope is the context bar's network/directory.
+        .route(
+            "/admin/prospecting/search",
+            get(prospecting::search_candidates)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/prospecting/prospects",
+            get(prospecting::list_prospects)
+                .post(prospecting::save_prospect)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/prospecting/prospects/:business_id",
+            put(prospecting::update_prospect)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/prospecting/prospects/:business_id/outreach",
+            post(prospecting::add_outreach)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/prospecting/prospects/:business_id/convert",
+            post(prospecting::convert_prospect)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ── B2B / suppliers: the second front made visible + moderatable (kanban B51) ──
         // Suppliers are businesses tagged with a supplier business_type (they arrive by
         // self-registration; this is NOT a sourcing engine). The operator can see the
