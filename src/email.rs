@@ -11,6 +11,7 @@
 
 use serde_json::json;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 /// Base URL of the in-house email service (loopback only).
 fn service_url() -> String {
@@ -105,6 +106,7 @@ pub async fn send_reset_email(db: &PgPool, to: &str, token: &str) -> Result<(), 
 /// claim row is already saved and the token stays valid).
 pub async fn send_claim_verification_email(
     db: &PgPool,
+    directory_id: Option<Uuid>,
     to: &str,
     business_name: &str,
     link: &str,
@@ -163,7 +165,7 @@ pub async fn send_claim_verification_email(
         }
     };
 
-    send_rendered_email(to, &subject, &html, text.as_deref()).await
+    send_rendered_email_for_directory(db, directory_id, to, &subject, &html, text.as_deref()).await
 }
 
 /// Card B76 — tell the platform admin a claim is waiting for MANUAL review (the domain did not
@@ -231,4 +233,28 @@ pub async fn send_rendered_email(
         tracing::warn!("[email] system mail not delivered: {}", body);
         Err(format!("Email service did not deliver: {}", body))
     }
+}
+
+/// Directory-scoped system send (B91). Appends the directory's configured email signature (when
+/// one is set) to the rendered message, then delivers it through the in-house service.
+///
+/// Every system mail that knows its directory goes through here so the admin's signature is
+/// applied automatically — the behaviour this module documents — instead of only the reminder
+/// path. A `None` directory (e.g. a platform login mail) is delivered unchanged.
+pub async fn send_rendered_email_for_directory(
+    db: &PgPool,
+    directory_id: Option<Uuid>,
+    to: &str,
+    subject: &str,
+    html: &str,
+    text: Option<&str>,
+) -> Result<(), String> {
+    let (html, text) = match directory_id {
+        Some(dir_id) => {
+            let sig = crate::handlers::email::get_directory_signature(db, dir_id).await;
+            crate::handlers::email::append_signature(html, text, &sig)
+        }
+        None => (html.to_string(), text.map(str::to_string)),
+    };
+    send_rendered_email(to, subject, &html, text.as_deref()).await
 }

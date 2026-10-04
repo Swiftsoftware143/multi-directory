@@ -506,8 +506,8 @@ pub async fn test_send_template(
             "A valid 'to' address is required to send a test".into(),
         ));
     }
-    let tpl = sqlx::query_as::<_, (String, String, String, Option<String>)>(
-        "SELECT name, subject, body, body_text FROM email_templates WHERE id = $1",
+    let tpl = sqlx::query_as::<_, (String, String, String, Option<String>, Option<Uuid>)>(
+        "SELECT name, subject, body, body_text, directory_id FROM email_templates WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -519,12 +519,37 @@ pub async fn test_send_template(
     let html = render_text(&tpl.2, &values);
     let text = tpl.3.as_deref().map(|t| render_text(t, &values));
 
-    match crate::email::send_rendered_email(&to, &subject, &html, text.as_deref()).await {
+    // B91: a system-email preview/test must show exactly what the recipient gets — including the
+    // directory's configured signature. Resolve it from the template's own directory scope.
+    let sig = match tpl.4 {
+        Some(dir_id) => get_directory_signature(&state.db, dir_id).await,
+        None => EmailSignature {
+            email_signature_html: None,
+            email_signature_text: None,
+        },
+    };
+    let signature_applied = sig
+        .email_signature_html
+        .as_deref()
+        .map_or(false, |s| !s.is_empty())
+        || sig
+            .email_signature_text
+            .as_deref()
+            .map_or(false, |s| !s.is_empty());
+    let (preview_html, preview_text) = append_signature(&html, text.as_deref(), &sig);
+
+    match crate::email::send_rendered_email(&to, &subject, &preview_html, preview_text.as_deref())
+        .await
+    {
         Ok(()) => Ok(Json(serde_json::json!({
-            "sent": true, "to": to, "template": tpl.0, "subject": subject
+            "sent": true, "to": to, "template": tpl.0, "subject": subject,
+            "signature_applied": signature_applied,
+            "preview_html": preview_html, "preview_text": preview_text
         }))),
         Err(e) => Ok(Json(serde_json::json!({
-            "sent": false, "to": to, "template": tpl.0, "error": e
+            "sent": false, "to": to, "template": tpl.0, "subject": subject,
+            "signature_applied": signature_applied,
+            "error": e, "preview_html": preview_html, "preview_text": preview_text
         }))),
     }
 }
@@ -725,13 +750,13 @@ pub async fn send_campaign(
 
 // ==================== Signature Helper ====================
 
-/// Fetch the email signature for a directory
-pub async fn get_directory_signature(state: &AppState, dir_id: Uuid) -> EmailSignature {
+/// Fetch the email signature for a directory.
+pub async fn get_directory_signature(db: &sqlx::PgPool, dir_id: Uuid) -> EmailSignature {
     let row = sqlx::query_as::<_, (Option<String>, Option<String>)>(
         "SELECT email_signature_html, email_signature_text FROM directories WHERE id = $1",
     )
     .bind(dir_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(db)
     .await;
 
     match row {

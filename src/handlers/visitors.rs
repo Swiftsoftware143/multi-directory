@@ -1478,6 +1478,15 @@ pub async fn claim_business(
         .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| "your listing".to_string());
 
+    // B91: resolve the claiming business's directory so the confirmation mail carries the
+    // signature configured for that directory (the same one the admin set in the panel).
+    let claim_directory_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(&s.db)
+            .await?
+            .flatten();
+
     {
         let email_db = s.db.clone();
         let to = owner_email.clone();
@@ -1491,6 +1500,7 @@ pub async fn claim_business(
         tokio::spawn(async move {
             match crate::email::send_claim_verification_email(
                 &email_db,
+                claim_directory_id,
                 &to,
                 &bn,
                 &link,
