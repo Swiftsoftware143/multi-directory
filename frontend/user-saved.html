@@ -403,7 +403,10 @@ async function loadProfile() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (resp.ok) {
-      userData = await resp.json();
+      const raw = await resp.json();
+      // GET /api/v1/visitor/profile returns { visitor: {...}, saved_deals, favorites, badges }.
+      // Read the nested object (tolerate a flat body too) so the name/email actually populate.
+      userData = raw.visitor || raw;
       document.getElementById('profileName').textContent = userData.name || 'User';
       document.getElementById('profileEmail').textContent = userData.email || 'user@example.com';
       document.getElementById('profileAvatar').textContent = (userData.name || 'U').charAt(0).toUpperCase();

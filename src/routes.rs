@@ -1780,7 +1780,10 @@ pub fn create_router(s: AppState) -> Router {
         // ? Visitor account routes (no auth — self-contained)
         .route("/visitor/register", post(portal::visitor_register))
         .route("/visitor/login", post(portal::visitor_login))
-        .route("/visitor/profile", get(portal::visitor_profile))
+        .route(
+            "/visitor/profile",
+            get(portal::visitor_profile).put(portal::update_visitor_profile),
+        )
         // ? Visitor wallet — the signed-in visitor's own loyalty wallet
         .route("/visitor/wallet", get(visitors::get_my_wallet))
         .route("/visitor/referrals", get(feed::my_referral))

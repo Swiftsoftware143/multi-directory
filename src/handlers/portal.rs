@@ -94,6 +94,15 @@ pub struct VisitorLoginRequest {
     pub password: String,
 }
 
+/// PUT /api/v1/visitor/profile body. Every field is optional; a missing or blank field is
+/// left unchanged, so the Save Profile button can send just what it edits. (t_4fd9fd2a.)
+#[derive(Debug, Deserialize)]
+pub struct UpdateVisitorProfileRequest {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct VisitorAccount {
     pub id: Uuid,
@@ -680,6 +689,112 @@ pub async fn visitor_profile(
         }).collect::<Vec<_>>(),
         "favorites": [],
         "badges": [],
+    })))
+}
+
+/// PUT /api/v1/visitor/profile — the signed-in visitor edits their own name / email / phone.
+///
+/// t_4fd9fd2a: the Save Profile button in frontend/user-saved.html PUTs this path, but the route
+/// was registered GET-only, so every save returned 405 and the page showed "Failed to update".
+/// The visitor routes sit BEFORE the auth guard (see create_router), so this repeats the same
+/// manual JWT check `visitor_profile` uses instead of leaning on an auth layer that is not there.
+pub async fn update_visitor_profile(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateVisitorProfileRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(AppError::Unauthorized)?;
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or(AppError::Unauthorized)?;
+    let claims = verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
+    let visitor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    // Blank / absent fields mean "leave unchanged" (COALESCE below) — the Save button sends only
+    // name + email. An email that IS supplied must be a real address (same normaliser as register,
+    // so a saved address still matches the lower(email) lookup used at login).
+    let name = req
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+    let phone = req
+        .phone
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+    let email = match req
+        .email
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        Some(raw) => {
+            Some(crate::security::email_addr::normalize(raw).map_err(AppError::Validation)?)
+        }
+        None => None,
+    };
+
+    // Friendly conflict before the UPDATE; the unique index remains the hard backstop underneath.
+    if let Some(ref new_email) = email {
+        let taken = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM visitor_accounts WHERE lower(email) = $1 AND id <> $2",
+        )
+        .bind(new_email)
+        .bind(visitor_id)
+        .fetch_one(&s.db)
+        .await
+        .unwrap_or(0);
+        if taken > 0 {
+            return Err(AppError::Duplicate(
+                "A visitor account with this email already exists".to_string(),
+            ));
+        }
+    }
+
+    let affected = sqlx::query(
+        "UPDATE visitor_accounts SET name = COALESCE($1, name), email = COALESCE($2, email), \
+         phone = COALESCE($3, phone), updated_at = NOW() WHERE id = $4",
+    )
+    .bind(&name)
+    .bind(&email)
+    .bind(&phone)
+    .bind(visitor_id)
+    .execute(&s.db)
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            AppError::Duplicate("A visitor account with this email already exists".to_string())
+        }
+        _ => AppError::Database(e),
+    })?;
+
+    if affected.rows_affected() == 0 {
+        return Err(AppError::NotFound("Visitor not found".to_string()));
+    }
+
+    let visitor =
+        sqlx::query_as::<_, VisitorAccount>("SELECT * FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_one(&s.db)
+            .await?;
+
+    Ok(Json(json!({
+        "status": "updated",
+        "visitor": {
+            "id": visitor.id,
+            "email": visitor.email,
+            "name": visitor.name,
+            "phone": visitor.phone,
+            "directory_id": visitor.directory_id,
+            "is_active": visitor.is_active,
+            "created_at": visitor.created_at,
+        }
     })))
 }
 
