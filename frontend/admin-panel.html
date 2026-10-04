@@ -544,6 +544,7 @@
         <a href="#loyalty-programme-section">⭐ Loyalty Programmes</a>
         <a href="#transfers-section">🔄 Transfers</a>
         <a href="#data-enrichment-section">🧭 Data Enrichment</a>
+        <a href="#data-company-section">🧪 Data Company</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
         <a href="#plan-tiers-section">💠 Plan Tiers</a>
         <a href="#loyalty-messaging-section">⭐ ZaarCash Messaging</a>
@@ -1403,6 +1404,70 @@
         </div>
         <div class="feature-status" id="de-summary" style="margin-top:8px">no run recorded yet</div>
         <div id="de-logs" style="margin-top:10px"></div>
+      </div>
+
+      <!-- 🧪 Data Company (B91/B117 gap #9) — the data-source toolbelt: Google Places lookup +
+           details, Yelp lookup, the business-verification queue, and bulk export. Every back end
+           below existed with NO operator surface until now (routes in data_company.rs). Keys are
+           read from Provider API Keys at call time; a provider with no key says so plainly. -->
+      <div class="feature-card" id="data-company-section">
+        <h3>🧪 Data Company
+          <span class="pk-badge" id="dc-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">The data toolbelt for this directory: look a business up in <b>Google Places</b> (autocomplete → details), search <b>Yelp</b>, work the <b>business verification</b> queue, and <b>bulk-export</b> the directory's records as JSON or CSV. Google/Yelp keys come from <b>Provider API Keys</b>; a provider that is not configured tells you instead of failing silently.</p>
+
+        <!-- Google Places lookup -->
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="dc-psearch-dir"><option value="">All / default</option></select>
+          <input class="pk-input" id="dc-psearch-q" placeholder="Search Google Places… e.g. coffee Orlando" style="flex:1 1 320px">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__dcPlacesSearch()">🔍 Search Places</button>
+          <span class="feature-status" id="dc-psearch-status"></span>
+        </div>
+        <div id="dc-psearch-results" style="margin-top:10px"></div>
+
+        <!-- Yelp lookup -->
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-top:14px">
+          <select class="pk-input" id="dc-yelp-dir"><option value="">All / default</option></select>
+          <input class="pk-input" id="dc-yelp-term" placeholder="term (e.g. coffee)" style="flex:0 1 180px">
+          <input class="pk-input" id="dc-yelp-loc" placeholder="location (e.g. Orlando, FL)" style="flex:0 1 220px">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__dcYelpSearch()">🔍 Search Yelp</button>
+          <span class="feature-status" id="dc-yelp-status"></span>
+        </div>
+        <div id="dc-yelp-results" style="margin-top:10px"></div>
+
+        <!-- Verification queue -->
+        <h4 style="margin-top:18px">Business verifications</h4>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <input class="pk-input" id="dc-v-biz" placeholder="business id (uuid) to request a verification" style="flex:1 1 340px">
+          <select class="pk-input" id="dc-v-method">
+            <option value="manual">manual</option>
+            <option value="auto_domain">auto_domain</option>
+            <option value="document">document</option>
+            <option value="phone">phone</option>
+          </select>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__dcVerifCreate()">＋ Request verification</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__dcVerifLoad()">↻ Refresh</button>
+          <span class="feature-status" id="dc-v-status"></span>
+        </div>
+        <div id="dc-v-list" style="margin-top:10px"></div>
+
+        <!-- Bulk export -->
+        <h4 style="margin-top:18px">Bulk export</h4>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="dc-x-entity">
+            <option value="businesses">businesses</option>
+            <option value="reviews">reviews</option>
+            <option value="contacts">contacts (CRM)</option>
+            <option value="deals">deals</option>
+          </select>
+          <select class="pk-input" id="dc-x-dir"><option value="">All directories</option></select>
+          <select class="pk-input" id="dc-x-format">
+            <option value="json">JSON</option>
+            <option value="csv">CSV</option>
+          </select>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__dcExport()">⬇ Download</button>
+          <span class="feature-status" id="dc-x-status"></span>
+        </div>
       </div>
 
       <!-- Submission Queue -->
@@ -4268,6 +4333,8 @@
       loadTransfers();
       // Round 11 / T4: enrichment cycle card (cadence, provider, run now, logs).
       loadDataEnrichment();
+      // 🧪 Data Company (B91/B117 gap #9): Places/Yelp lookup, verification queue, bulk export.
+      loadDataCompany();
       // Loyalty programme rates (points per redemption / check-in / visit) — native earning.
       loadLoyaltyPrograms();
       // 🏭 Industry taxonomy — the template_categories list, editable with no SQL.
@@ -4349,6 +4416,8 @@
           // Round 11 / T2 + T4: transfers + enrichment are directory-scoped the same way.
           loadTransfers();
           loadDataEnrichment();
+          // 🧪 Data Company directory pickers need the directory list, so refill once it is here.
+          loadDataCompany();
         })
         .catch(function (err) {
           dirLoading.classList.add('hidden');
@@ -6350,6 +6419,204 @@
     };
 
     window.__deLoad = loadDataEnrichment;
+
+    // ===== 🧪 Data Company (B91/B117 gap #9) =====
+    // Surfaces the data_company.rs endpoints that had an operator UI nowhere: Google Places
+    // autocomplete + details, Yelp Fusion search, the business-verification queue, and bulk
+    // export. Provider keys are read server-side from Provider API Keys at call time — a
+    // provider with no key answers with its own message (e.g. "Yelp is not configured yet"),
+    // which is shown verbatim instead of faking success.
+    var dcPlaces = [];
+
+    function dcFillDirs() {
+      ['dc-psearch-dir', 'dc-yelp-dir', 'dc-x-dir'].forEach(function (id) {
+        var sel = document.getElementById(id);
+        if (!sel) return;
+        var keep = sel.value;
+        var blank = (id === 'dc-x-dir') ? 'All directories' : 'All / default';
+        sel.innerHTML = '<option value="">' + blank + '</option>';
+        (directories || []).forEach(function (d) {
+          var o = document.createElement('option');
+          o.value = d.id; o.textContent = d.name;
+          sel.appendChild(o);
+        });
+        sel.value = keep || '';
+      });
+    }
+
+    function loadDataCompany() {
+      var b = document.getElementById('dc-badge');
+      if (b) {
+        b.textContent = 'Places · Yelp · verifications · export';
+        b.className = 'pk-badge';
+      }
+      dcFillDirs();
+      window.__dcVerifLoad();
+    }
+
+    window.__dcPlacesSearch = function () {
+      var st = document.getElementById('dc-psearch-status');
+      var box = document.getElementById('dc-psearch-results');
+      var q = (document.getElementById('dc-psearch-q').value || '').trim();
+      if (!q) { st.textContent = 'type something to search'; return; }
+      var dir = document.getElementById('dc-psearch-dir').value;
+      st.textContent = 'searching…';
+      box.innerHTML = '';
+      apiGet('/places/autocomplete?input=' + encodeURIComponent(q) + (dir ? '&directory_id=' + encodeURIComponent(dir) : ''))
+        .then(function (r) {
+          dcPlaces = (r && r.results) || [];
+          st.textContent = dcPlaces.length + ' result(s)' + (r && r.cached ? ' (cached)' : '');
+          if (!dcPlaces.length) { box.innerHTML = '<div class="empty-state">No Google Places matches.</div>'; return; }
+          var h = '<table style="width:100%;font-size:.8rem;border-collapse:collapse">';
+          h += '<tr style="text-align:left;color:var(--text-secondary)"><th>Name</th><th>Address</th><th></th></tr>';
+          dcPlaces.forEach(function (p, i) {
+            h += '<tr style="border-top:1px solid var(--border,#1e2a3a)">';
+            h += '<td style="padding:6px 4px">' + trEsc(p.name) + '</td>';
+            h += '<td>' + trEsc(p.formatted_address) + '</td>';
+            h += '<td><button class="btn btn-ghost btn-sm" type="button" onclick="window.__dcPlaceDetails(' + i + ')">Details</button></td>';
+            h += '</tr>';
+          });
+          h += '</table><div id="dc-place-detail" style="margin-top:10px"></div>';
+          box.innerHTML = h;
+        })
+        .catch(function (e) { st.textContent = 'error: ' + e.message; });
+    };
+
+    window.__dcPlaceDetails = function (i) {
+      var p = dcPlaces[i];
+      var out = document.getElementById('dc-place-detail');
+      if (!p || !out) return;
+      var dir = document.getElementById('dc-psearch-dir').value;
+      out.innerHTML = 'loading details…';
+      apiGet('/places/details?place_id=' + encodeURIComponent(p.place_id) + (dir ? '&directory_id=' + encodeURIComponent(dir) : ''))
+        .then(function (r) {
+          var d = (r && r.place) || {};
+          if (Array.isArray(d)) d = d[0] || {}; // defensive: a cached array must never render as one place
+          var rows = [
+            ['Name', d.name || p.name],
+            ['Address', d.formatted_address || p.formatted_address],
+            ['Phone', d.formatted_phone_number || '—'],
+            ['Website', d.website || '—'],
+            ['Rating', (d.rating != null ? d.rating + ' ★' : '—') + (d.user_ratings_total != null ? ' (' + d.user_ratings_total + ')' : '')],
+            ['Types', (d.types || p.types || []).join(', ')],
+            ['Place id', p.place_id]
+          ];
+          var h = '<div class="feature-card" style="padding:10px">';
+          if (r && r.is_franchise) h += '<div style="margin-bottom:6px">🏷 likely franchise / chain</div>';
+          rows.forEach(function (kv) {
+            h += '<div style="font-size:.82rem"><b>' + kv[0] + ':</b> ' + trEsc(String(kv[1] == null ? '' : kv[1])) + '</div>';
+          });
+          if (d.website) h += '<div style="margin-top:6px"><a href="' + trEsc(d.website) + '" target="_blank" rel="noopener">open website ↗</a></div>';
+          h += '</div>';
+          out.innerHTML = h;
+        })
+        .catch(function (e) { out.innerHTML = '<span style="color:#dc2626">Details failed: ' + trEsc(e.message) + '</span>'; });
+    };
+
+    window.__dcYelpSearch = function () {
+      var st = document.getElementById('dc-yelp-status');
+      var box = document.getElementById('dc-yelp-results');
+      var term = (document.getElementById('dc-yelp-term').value || '').trim();
+      var loc = (document.getElementById('dc-yelp-loc').value || '').trim();
+      var dir = document.getElementById('dc-yelp-dir').value;
+      if (!term && !loc) { st.textContent = 'enter a term and/or location'; return; }
+      st.textContent = 'searching…';
+      box.innerHTML = '';
+      var qs = '/yelp/search?' + (term ? 'term=' + encodeURIComponent(term) : '') +
+        (loc ? '&location=' + encodeURIComponent(loc) : '') +
+        (dir ? '&directory_id=' + encodeURIComponent(dir) : '');
+      apiGet(qs)
+        .then(function (r) {
+          var rows = (r && (r.businesses || r.results)) || [];
+          st.textContent = rows.length + ' result(s)';
+          if (!rows.length) { box.innerHTML = '<div class="empty-state">No Yelp matches.</div>'; return; }
+          var h = '<table style="width:100%;font-size:.8rem;border-collapse:collapse">';
+          h += '<tr style="text-align:left;color:var(--text-secondary)"><th>Name</th><th>Rating</th><th>Address</th></tr>';
+          rows.forEach(function (b) {
+            var addr = (b.location && (b.location.display_address || b.location.address1)) || '';
+            if (Array.isArray(addr)) addr = addr.join(', ');
+            h += '<tr style="border-top:1px solid var(--border,#1e2a3a)">';
+            h += '<td style="padding:6px 4px">' + trEsc(b.name) + '</td>';
+            h += '<td>' + trEsc(b.rating != null ? b.rating : '') + '</td>';
+            h += '<td>' + trEsc(addr) + '</td></tr>';
+          });
+          h += '</table>';
+          box.innerHTML = h;
+        })
+        .catch(function (e) { st.textContent = e.message; });
+    };
+
+    window.__dcVerifLoad = function () {
+      var box = document.getElementById('dc-v-list');
+      if (!box) return;
+      return apiGet('/verifications')
+        .then(function (rows) {
+          rows = Array.isArray(rows) ? rows : ((rows && rows.data) || []);
+          if (!rows.length) { box.innerHTML = '<div class="empty-state">No verification requests yet.</div>'; return; }
+          var h = '<table style="width:100%;font-size:.78rem;border-collapse:collapse">';
+          h += '<tr style="text-align:left;color:var(--text-secondary)"><th>Business</th><th>Method</th><th>Status</th><th>Created</th><th>Actions</th></tr>';
+          rows.forEach(function (v) {
+            h += '<tr style="border-top:1px solid var(--border,#1e2a3a)">';
+            h += '<td style="padding:6px 4px">' + trEsc(v.business_id) + '</td>';
+            h += '<td>' + trEsc(v.method) + '</td>';
+            h += '<td>' + trEsc(v.status) + '</td>';
+            h += '<td>' + trEsc(String(v.created_at || '').slice(0, 19)) + '</td>';
+            h += '<td><button class="btn btn-ghost btn-sm" type="button" onclick="window.__dcVerifUpdate(\'' + trEsc(v.id) + '\',\'approved\')">✓ Approve</button> ';
+            h += '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__dcVerifUpdate(\'' + trEsc(v.id) + '\',\'rejected\')">✕ Reject</button></td>';
+            h += '</tr>';
+          });
+          h += '</table>';
+          box.innerHTML = h;
+        })
+        .catch(function (e) { box.innerHTML = '<span style="color:#dc2626">' + trEsc(e.message) + '</span>'; });
+    };
+
+    window.__dcVerifCreate = function () {
+      var st = document.getElementById('dc-v-status');
+      var biz = (document.getElementById('dc-v-biz').value || '').trim();
+      var method = document.getElementById('dc-v-method').value || 'manual';
+      if (!biz) { st.textContent = 'paste a business id'; return; }
+      st.textContent = 'requesting…';
+      apiPost('/verifications', { business_id: biz, method: method })
+        .then(function () { st.textContent = 'requested'; window.__dcVerifLoad(); })
+        .catch(function (e) { st.textContent = 'failed: ' + e.message; });
+    };
+
+    window.__dcVerifUpdate = function (id, status) {
+      var st = document.getElementById('dc-v-status');
+      st.textContent = status + '…';
+      apiPut('/verifications/' + id, { status: status })
+        .then(function () { st.textContent = status; window.__dcVerifLoad(); })
+        .catch(function (e) { st.textContent = 'failed: ' + e.message; });
+    };
+
+    window.__dcExport = function () {
+      var st = document.getElementById('dc-x-status');
+      var ent = document.getElementById('dc-x-entity').value;
+      var dir = document.getElementById('dc-x-dir').value;
+      var fmt = document.getElementById('dc-x-format').value;
+      st.textContent = 'exporting…';
+      var qs = '/export/bulk?entity_type=' + encodeURIComponent(ent) + '&format=' + encodeURIComponent(fmt) +
+        (dir ? '&directory_id=' + encodeURIComponent(dir) : '');
+      apiGet(qs)
+        .then(function (r) {
+          var text, name, mime;
+          if (fmt === 'csv' && Array.isArray(r.data) && typeof r.data[0] === 'string') {
+            text = r.data.join('\n'); name = ent + '-export.csv'; mime = 'text/csv';
+          } else {
+            text = JSON.stringify(r.data == null ? r : r.data, null, 2);
+            name = ent + '-export.json'; mime = 'application/json';
+          }
+          var blob = new Blob([text], { type: mime });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = name;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+          st.textContent = 'downloaded ' + name + ' (' + (r.count != null ? r.count : '?') + ' rows)';
+        })
+        .catch(function (e) { st.textContent = 'export failed: ' + e.message; });
+    };
 
     window.__azCreate = function () {
       var sel = document.getElementById('az-directory');

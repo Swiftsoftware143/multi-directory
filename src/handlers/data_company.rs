@@ -184,15 +184,17 @@ pub async fn places_autocomplete(
         })
         .collect();
 
-    // Cache the results
+    // Cache the autocomplete RESULTS keyed by the query text only. It must NOT claim the first
+    // result's place_id: `place_id` is UNIQUE here and belongs to a real DETAILS row (written by
+    // place_details below / contact_intelligence). Claiming it poisoned `place_details` for that
+    // place AND blocked the real details row from ever caching (plain ON CONFLICT DO NOTHING).
     if let Some(first) = results.first() {
         let details = serde_json::to_value(&results).unwrap_or_default();
         sqlx::query(
-            "INSERT INTO google_places_cache (query, place_id, name, formatted_address, types, place_details) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            "INSERT INTO google_places_cache (query, name, formatted_address, types, place_details) VALUES ($1, $2, $3, $4, $5::jsonb)
              ON CONFLICT DO NOTHING"
         )
         .bind(&q.input)
-        .bind(&first.place_id)
         .bind(&first.name)
         .bind(&first.formatted_address)
         .bind(&first.types)
@@ -213,9 +215,13 @@ pub async fn place_details(
 ) -> ApiResult<impl IntoResponse> {
     let api_key = get_google_api_key(&state, q.directory_id.as_deref()).await?;
 
-    // Check cache
+    // Only a real DETAILS row (place_details is an OBJECT) may answer this lookup. The
+    // autocomplete path historically cached its whole RESULTS ARRAY under the first result's
+    // place_id, so a cached array was replayed as if it were one place — the UI rendered a list
+    // where it expected a single business. Array-shaped rows are now ignored and the live
+    // Details call below caches the correct object.
     let cached = sqlx::query_as::<_, GooglePlacesCache>(
-        "SELECT * FROM google_places_cache WHERE place_id = $1 AND expires_at > NOW() ORDER BY cached_at DESC LIMIT 1"
+        "SELECT * FROM google_places_cache WHERE place_id = $1 AND jsonb_typeof(place_details) = 'object' AND expires_at > NOW() ORDER BY cached_at DESC LIMIT 1"
     )
     .bind(&q.place_id)
     .fetch_optional(&state.db)
@@ -315,11 +321,25 @@ pub async fn place_details(
     // Franchise / big-chain hint (auto-flag suggestion — admin can override).
     let is_franchise = crate::utils::franchise::is_likely_franchise(&name, &types);
 
-    // Deduplicate/update in cache
+    // Upsert by place_id: a poisoned autocomplete-era row (array-shaped `place_details` under
+    // this place_id) is healed in place, and a fresh details row refreshes a stale one instead of
+    // silently no-op'ing on the UNIQUE(place_id) constraint.
     sqlx::query(
         "INSERT INTO google_places_cache (query, place_id, name, formatted_address, phone, website, latitude, longitude, rating, user_ratings_total, types, place_details)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
-         ON CONFLICT DO NOTHING"
+         ON CONFLICT (place_id) DO UPDATE SET
+           place_details = EXCLUDED.place_details,
+           name = EXCLUDED.name,
+           formatted_address = EXCLUDED.formatted_address,
+           phone = EXCLUDED.phone,
+           website = EXCLUDED.website,
+           latitude = EXCLUDED.latitude,
+           longitude = EXCLUDED.longitude,
+           rating = EXCLUDED.rating,
+           user_ratings_total = EXCLUDED.user_ratings_total,
+           types = EXCLUDED.types,
+           cached_at = now(),
+           expires_at = now() + interval '7 days'"
     )
     .bind(&q.place_id)
     .bind(&q.place_id)
