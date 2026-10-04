@@ -259,6 +259,7 @@ a:hover{text-decoration:underline}
           <div class="actions-row">
             <a class="action-btn" id="websiteLink" href="#" target="_blank" rel="noopener">🌐 Website</a>
             <button class="action-btn" onclick="openDirections()">🗺️ Directions</button>
+            <button class="action-btn" data-action="share" onclick="shareListing()">🔗 Share</button>
             <a class="action-btn" href="#reportCard">⚑ Report an issue</a>
           </div>
         </div>
@@ -519,6 +520,36 @@ async function submitQuestion(e) {
     fb.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
   } finally {
     btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+// 🔗 Share a listing (card B90 cross-cutting) — native share sheet when the device has
+// one, otherwise copy the canonical listing link to the clipboard with visible feedback.
+async function shareListing() {
+  const id = (bizData && bizData.id) || getBusinessIdFromPath() || getUrlParam('id');
+  const url = window.location.href.split('#')[0];
+  const btn = document.querySelector('[data-action="share"]');
+  const name = (bizData && bizData.name) || document.title || 'This business';
+  function flash(msg) {
+    if (!btn) return;
+    const prev = btn.textContent;
+    btn.textContent = msg;
+    setTimeout(function () { btn.textContent = prev; }, 1800);
+  }
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: name, text: 'Check out ' + name + ' on ZaarHub', url: url });
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      flash('✅ Link copied');
+    } else {
+      flash('⚠️ Copy unavailable');
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // the visitor dismissed the share sheet
+    flash('⚠️ Could not share');
   }
 }
 
