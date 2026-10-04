@@ -286,7 +286,58 @@ pub async fn list_subscriptions(State(s): State<AppState>) -> ApiResult<impl Int
     .fetch_all(&s.db)
     .await?;
 
-    Ok(Json(json!(subs)))
+    // Resolve the linked business + plan names in one round trip each, so the admin panel shows
+    // human names instead of raw UUIDs (David's rule: no raw ids / table names to the operator).
+    // Additive only — the subscription fields are unchanged; two read-only display fields are added.
+    let biz_ids: Vec<Uuid> = subs
+        .iter()
+        .map(|x| x.business_id)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    let biz_names: HashMap<Uuid, String> = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM businesses WHERE id = ANY($1::uuid[])",
+    )
+    .bind(&biz_ids)
+    .fetch_all(&s.db)
+    .await?
+    .into_iter()
+    .collect();
+
+    let tier_ids: Vec<Uuid> = subs
+        .iter()
+        .filter_map(|x| x.tier_id)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    let tier_names: HashMap<Uuid, String> = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM plan_tiers WHERE id = ANY($1::uuid[])",
+    )
+    .bind(&tier_ids)
+    .fetch_all(&s.db)
+    .await?
+    .into_iter()
+    .collect();
+
+    let out: Vec<serde_json::Value> = subs
+        .iter()
+        .map(|sub| {
+            let mut v = serde_json::to_value(sub).unwrap_or_else(|_| json!({}));
+            if let serde_json::Value::Object(ref mut m) = v {
+                m.insert(
+                    "business_name".to_string(),
+                    json!(biz_names.get(&sub.business_id)),
+                );
+                m.insert(
+                    "plan_name".to_string(),
+                    json!(sub.tier_id.and_then(|t| tier_names.get(&t))),
+                );
+            }
+            v
+        })
+        .collect();
+
+    Ok(Json(json!(out)))
 }
 
 /// POST /api/v1/subscriptions

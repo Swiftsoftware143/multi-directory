@@ -547,6 +547,7 @@
         <a href="#data-company-section">🧪 Data Company</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
         <a href="#plan-tiers-section">💠 Plan Tiers</a>
+        <a href="#subscriptions-section">🧾 Plan Subscriptions</a>
         <a href="#loyalty-messaging-section">⭐ ZaarCash Messaging</a>
         <a href="#referral-section">🎁 Referrals</a>
         <a href="#signup-reward-section">🪙 Signup Rewards</a>
@@ -1018,6 +1019,53 @@
         <p class="feature-subtitle">The plans a business can choose from, and what each one unlocks. Edit a tier's price, its limits and its feature gates here — then Save. Changes take effect immediately for every directory using the tier.</p>
         <div id="pt-list"></div>
         <div class="feature-status" id="pt-status"></div>
+      </div>
+
+      <!-- 🧾 Plan Subscriptions (card B91 / B117 #100) — business_subscriptions carried a full
+           /monetization/subscriptions CRUD API and ZERO admin control, so linking a business to a
+           plan tier (and recording what it paid, its cycle, and its Stripe or external-checkout
+           reference) could only be done by curl. That is a defect by David's own rule ("everything
+           configurable in the admin panel, no SQL, no script"). This card is the control: it lists
+           every subscription, lets the operator link a business to a plan tier, set the dates, the
+           amount and the payment references, and edit or remove one. -->
+      <div class="feature-card" id="subscriptions-section">
+        <h3>🧾 Plan Subscriptions
+          <span class="pk-badge pk-missing" id="psub-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">Who is on a paid plan, and what they are being charged. Link a business to one of your plan tiers, record the amount, the billing cycle and the dates, and paste in the Stripe subscription or external-checkout reference if the customer pays somewhere else. Operator-only; changes take effect immediately.</p>
+
+        <div style="font-weight:600;font-size:.9rem;margin:4px 0 8px">Add a subscription</div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+          <label style="font-size:.75rem;flex:1;min-width:260px;display:flex;flex-direction:column;gap:3px">Business (type 2+ letters to search)
+            <input class="pk-input" id="psub-biz" autocomplete="off" placeholder="Search businesses by name…" oninput="window.__planSubSearchBiz()"></label>
+          <label style="font-size:.75rem;min-width:220px;display:flex;flex-direction:column;gap:3px">Plan
+            <select class="pk-input" id="psub-tier"></select></label>
+        </div>
+        <div id="psub-biz-results" style="font-size:.8rem;margin-bottom:8px"></div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Status
+            <select class="pk-input" id="psub-status-sel"></select></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Billing cycle
+            <select class="pk-input" id="psub-cycle"></select></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Amount paid
+            <input class="pk-input" id="psub-price" type="number" step="0.01" min="0" placeholder="0.00"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Currency
+            <input class="pk-input" id="psub-currency" placeholder="USD" value="USD" style="width:90px"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Start date
+            <input class="pk-input" id="psub-start" type="date"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">End date (optional)
+            <input class="pk-input" id="psub-end" type="date"></label>
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:6px;margin-top:14px"><input type="checkbox" id="psub-auto-renew" checked> renews automatically</label>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;flex:1;min-width:240px;display:flex;flex-direction:column;gap:3px">Stripe subscription reference (optional)
+            <input class="pk-input" id="psub-stripe" placeholder="e.g. sub_1Abc… — leave blank if payment is handled elsewhere"></label>
+          <label style="font-size:.75rem;flex:1;min-width:240px;display:flex;flex-direction:column;gap:3px">External checkout reference (optional)
+            <input class="pk-input" id="psub-external" placeholder="e.g. invoice or order number from another checkout"></label>
+          <button class="btn btn-accent btn-sm" style="align-self:flex-end" onclick="window.__planSubCreate()">+ Add subscription</button>
+        </div>
+        <div id="psub-list"></div>
+        <div class="feature-status" id="psub-status"></div>
       </div>
 
       <!-- 🎁 Deals (card B91 / B117 gap #7) — src/handlers/deals.rs carries a full CRUD API
@@ -3424,6 +3472,230 @@
     window.__ptLoad = loadPlanTiers;
     window.__ptSave = ptSave;
     loadPlanTiers();
+
+    // ===== Plan Subscriptions (card B91 / B117 #100) =====
+    // business_subscriptions had a complete /monetization/subscriptions CRUD API and NO admin
+    // control, so linking a business to a plan tier (with its amount, cycle, dates and payment
+    // references) was curl-only. This is that control: GET /subscriptions lists them (the handler
+    // also returns the business + plan names so no UUID is ever shown), POST /subscriptions
+    // creates, PUT and DELETE edit and remove. The business lookup reuses the operator-guarded
+    // /admin/businesses search.
+    var PSUB_STATUSES = [
+      ['active', 'Active'],
+      ['trialing', 'Trialing'],
+      ['past_due', 'Past due'],
+      ['cancelled', 'Cancelled'],
+      ['expired', 'Expired']
+    ];
+    var PSUB_CYCLES = [
+      ['monthly', 'Monthly'],
+      ['yearly', 'Yearly'],
+      ['one_time', 'One-time']
+    ];
+    var psubState = { bizId: null, bizName: '', tiers: [] };
+
+    function psubEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function psubStatus(msg, ok) {
+      var el = document.getElementById('psub-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : '#f87171';
+    }
+
+    function psubOptions(pairs) {
+      return pairs.map(function (p) {
+        return '<option value="' + psubEsc(p[0]) + '">' + psubEsc(p[1]) + '</option>';
+      }).join('');
+    }
+
+    function psubFillSelects() {
+      var st = document.getElementById('psub-status-sel');
+      if (st && !st.options.length) st.innerHTML = psubOptions(PSUB_STATUSES);
+      var cy = document.getElementById('psub-cycle');
+      if (cy && !cy.options.length) cy.innerHTML = psubOptions(PSUB_CYCLES);
+      if (st) st.value = 'active';
+      if (cy) cy.value = 'monthly';
+      var sd = document.getElementById('psub-start');
+      if (sd && !sd.value) sd.value = new Date().toISOString().slice(0, 10);
+    }
+
+    function psubTierOptions(selected) {
+      var html = '<option value="">— no plan —</option>';
+      psubState.tiers.forEach(function (t) {
+        html += '<option value="' + psubEsc(t.id) + '"' + (t.id === selected ? ' selected' : '') + '>'
+              + psubEsc(t.name) + (t.slug ? ' (' + psubEsc(t.slug) + ')' : '') + '</option>';
+      });
+      return html;
+    }
+
+    function psubLoadTiers() {
+      return apiGet('/tiers').then(function (t) {
+        psubState.tiers = Array.isArray(t) ? t : ((t && t.data) || []);
+        var sel = document.getElementById('psub-tier');
+        if (sel) sel.innerHTML = psubTierOptions(sel.value);
+      }).catch(function () { /* the list still loads without the plan picker */ });
+    }
+
+    function psubLoad() {
+      var host = document.getElementById('psub-list');
+      if (!host) return;
+      host.innerHTML = '<div class="loading-state"><span class="spinner"></span> Loading subscriptions…</div>';
+      apiGet('/subscriptions').then(function (subs) {
+        var list = Array.isArray(subs) ? subs : ((subs && subs.data) || []);
+        var badge = document.getElementById('psub-badge');
+        if (badge) {
+          badge.textContent = list.length + ' subscription' + (list.length === 1 ? '' : 's');
+          badge.className = 'pk-badge pk-ok';
+        }
+        psubRender(list);
+      }).catch(function (e) {
+        host.innerHTML = '<p style="color:var(--text-secondary)">Could not load subscriptions: ' + psubEsc(e.message) + '</p>';
+        var badge = document.getElementById('psub-badge');
+        if (badge) { badge.textContent = 'error'; badge.className = 'pk-badge pk-missing'; }
+      });
+    }
+
+    function psubRender(subs) {
+      var host = document.getElementById('psub-list');
+      if (!subs.length) {
+        host.innerHTML = '<p style="color:var(--text-secondary)">No subscriptions yet. Use the form above to put a business on a plan.</p>';
+        return;
+      }
+      var html = '';
+      subs.forEach(function (s) {
+        var biz = s.business_name || s.business_id;
+        html += '<div class="subscription-row" data-id="' + psubEsc(s.id) + '" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
+              + '<strong>' + psubEsc(biz) + '</strong>'
+              + '<span style="font-size:.75rem;color:var(--text-secondary)">Plan: ' + psubEsc(s.plan_name || 'none') + '</span></div>';
+        html += '<div class="pk-controls" style="flex-wrap:wrap;gap:8px">';
+        html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Plan<select class="pk-input psub-field" data-field="tier_id">' + psubTierOptions(s.tier_id || '') + '</select></label>';
+        html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Status<select class="pk-input psub-field" data-field="status">' + psubOptions(PSUB_STATUSES) + '</select></label>';
+        html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Billing cycle<select class="pk-input psub-field" data-field="billing_cycle">' + psubOptions(PSUB_CYCLES) + '</select></label>';
+        html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Amount paid<input class="pk-input psub-field" data-field="price_paid" type="number" step="0.01" min="0" value="' + psubEsc(s.price_paid == null ? '' : s.price_paid) + '"></label>';
+        html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Currency<input class="pk-input psub-field" data-field="currency" value="' + psubEsc(s.currency || 'USD') + '" style="width:90px"></label>';
+        html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Start date<input class="pk-input psub-field" data-field="start_date" type="date" value="' + psubEsc(s.start_date || '') + '"></label>';
+        html += '<label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">End date<input class="pk-input psub-field" data-field="end_date" type="date" value="' + psubEsc(s.end_date || '') + '"></label>';
+        html += '<label style="font-size:.78rem;display:flex;align-items:center;gap:6px;margin-top:14px"><input type="checkbox" class="psub-field" data-field="auto_renew"' + (s.auto_renew === false ? '' : ' checked') + '> renews automatically</label>';
+        html += '</div>';
+        html += '<div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-top:10px">';
+        html += '<label style="font-size:.75rem;flex:1;min-width:220px;display:flex;flex-direction:column;gap:3px">Stripe subscription reference<input class="pk-input psub-field" data-field="stripe_subscription_id" value="' + psubEsc(s.stripe_subscription_id || '') + '"></label>';
+        html += '<label style="font-size:.75rem;flex:1;min-width:220px;display:flex;flex-direction:column;gap:3px">External checkout reference<input class="pk-input psub-field" data-field="external_payment_ref" value="' + psubEsc(s.external_payment_ref || '') + '"></label>';
+        html += '</div>';
+        html += '<div style="margin-top:10px;display:flex;gap:8px">'
+              + '<button class="btn btn-accent btn-sm" onclick="window.__planSubSave(\'' + psubEsc(s.id) + '\')">Save</button>'
+              + '<button class="btn btn-ghost btn-sm" onclick="window.__planSubDelete(\'' + psubEsc(s.id) + '\')">Remove</button>'
+              + '</div></div>';
+      });
+      host.innerHTML = html;
+      // A <select> only shows its intended value once the matching <option> exists; set it here.
+      subs.forEach(function (s) {
+        var row = host.querySelector('.subscription-row[data-id="' + s.id + '"]');
+        if (!row) return;
+        var st = row.querySelector('.psub-field[data-field="status"]'); if (st && s.status) st.value = s.status;
+        var cy = row.querySelector('.psub-field[data-field="billing_cycle"]'); if (cy && s.billing_cycle) cy.value = s.billing_cycle;
+      });
+    }
+
+    function psubSearchBiz() {
+      var box = document.getElementById('psub-biz-results');
+      if (!box) return;
+      var q = (document.getElementById('psub-biz').value || '').trim();
+      if (q.length < 2) { box.innerHTML = ''; return; }
+      apiGet('/admin/businesses?q=' + encodeURIComponent(q) + '&per_page=8').then(function (d) {
+        var rows = (d && d.rows) || [];
+        if (!rows.length) { box.innerHTML = '<span style="color:var(--text-secondary)">No matching businesses.</span>'; return; }
+        box.innerHTML = rows.map(function (b) {
+          return '<button class="btn btn-ghost btn-sm" data-bid="' + psubEsc(b.id) + '" data-bname="' + psubEsc(b.name) + '" onclick="window.__planSubPickBiz(this)" style="margin:2px 4px 2px 0">' + psubEsc(b.name) + (b.city ? ' · ' + psubEsc(b.city) : '') + '</button>';
+        }).join('');
+      }).catch(function (e) { box.innerHTML = '<span style="color:#ef4444">Search failed: ' + psubEsc(e.message) + '</span>'; });
+    }
+
+    function psubPickBiz(el) {
+      psubState.bizId = el.getAttribute('data-bid');
+      psubState.bizName = el.getAttribute('data-bname');
+      document.getElementById('psub-biz').value = psubState.bizName;
+      document.getElementById('psub-biz-results').innerHTML = '<span style="color:#22c55e">Selected ' + psubEsc(psubState.bizName) + '.</span>';
+    }
+
+    function psubCreate() {
+      if (!psubState.bizId) { psubStatus('Pick a business first (type its name and choose it from the list).', false); return; }
+      var start = document.getElementById('psub-start').value;
+      if (!start) { psubStatus('A start date is required.', false); return; }
+      var priceEl = document.getElementById('psub-price');
+      var price = priceEl && priceEl.value !== '' ? Number(priceEl.value) : null;
+      var body = {
+        business_id: psubState.bizId,
+        tier_id: (document.getElementById('psub-tier').value || null),
+        status: document.getElementById('psub-status-sel').value,
+        billing_cycle: document.getElementById('psub-cycle').value,
+        price_paid: price,
+        currency: (document.getElementById('psub-currency').value || 'USD'),
+        start_date: start,
+        end_date: (document.getElementById('psub-end').value || null),
+        auto_renew: document.getElementById('psub-auto-renew').checked,
+        stripe_subscription_id: (document.getElementById('psub-stripe').value || null),
+        external_payment_ref: (document.getElementById('psub-external').value || null)
+      };
+      psubStatus('Adding…', true);
+      apiPost('/subscriptions', body).then(function () {
+        psubStatus('Subscription added for ' + psubState.bizName + '.', true);
+        showToast('Subscription added');
+        document.getElementById('psub-biz').value = '';
+        document.getElementById('psub-biz-results').innerHTML = '';
+        document.getElementById('psub-price').value = '';
+        document.getElementById('psub-stripe').value = '';
+        document.getElementById('psub-external').value = '';
+        psubState.bizId = null; psubState.bizName = '';
+        psubLoad();
+      }).catch(function (e) { psubStatus('Could not add subscription: ' + e.message, false); });
+    }
+
+    function psubSave(id) {
+      var row = document.querySelector('.subscription-row[data-id="' + id + '"]');
+      if (!row) return;
+      var priceVal = row.querySelector('.psub-field[data-field="price_paid"]').value;
+      var body = {
+        tier_id: (row.querySelector('.psub-field[data-field="tier_id"]').value || null),
+        status: row.querySelector('.psub-field[data-field="status"]').value,
+        billing_cycle: row.querySelector('.psub-field[data-field="billing_cycle"]').value,
+        price_paid: priceVal === '' ? null : Number(priceVal),
+        currency: row.querySelector('.psub-field[data-field="currency"]').value || 'USD',
+        start_date: row.querySelector('.psub-field[data-field="start_date"]').value || null,
+        end_date: row.querySelector('.psub-field[data-field="end_date"]').value || null,
+        auto_renew: row.querySelector('.psub-field[data-field="auto_renew"]').checked,
+        stripe_subscription_id: row.querySelector('.psub-field[data-field="stripe_subscription_id"]').value || null,
+        external_payment_ref: row.querySelector('.psub-field[data-field="external_payment_ref"]').value || null
+      };
+      psubStatus('Saving…', true);
+      apiPut('/subscriptions/' + id, body).then(function () {
+        psubStatus('Saved at ' + new Date().toLocaleTimeString(), true);
+        showToast('Subscription saved');
+        psubLoad();
+      }).catch(function (e) { psubStatus('Save failed: ' + e.message, false); });
+    }
+
+    function psubDelete(id) {
+      if (!confirm('Remove this subscription? The business stays; only the plan record is deleted.')) return;
+      apiFetch('DELETE', '/subscriptions/' + id).then(function () {
+        psubStatus('Subscription removed.', true);
+        psubLoad();
+      }).catch(function (e) { psubStatus('Could not remove subscription: ' + e.message, false); });
+    }
+
+    window.__planSubSearchBiz = psubSearchBiz;
+    window.__planSubPickBiz = psubPickBiz;
+    window.__planSubCreate = psubCreate;
+    window.__planSubSave = psubSave;
+    window.__planSubDelete = psubDelete;
+    window.__planSubLoad = psubLoad;
+    psubFillSelects();
+    psubLoadTiers().then(psubLoad);
 
     // ===== ZaarCash loyalty messaging (card B92) =====
     // The section copy/CTA/on-off are admin-editable per network or per directory; whether the
