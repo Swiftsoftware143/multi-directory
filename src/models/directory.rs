@@ -16,6 +16,9 @@ pub struct Directory {
     pub status: Option<String>,
     pub owner_id: Option<Uuid>,
     pub template: Option<String>,
+    /// B115 — the industry (niche) this directory is built on: a `template_categories.slug`
+    /// chosen by the buyer from the admin panel. `template` is the LAYOUT; this is the VERTICAL.
+    pub industry_slug: Option<String>,
     pub color_scheme: Option<serde_json::Value>,
     pub network_id: Option<Uuid>,
     /// B97 — the network's designated "primary"/main directory (exactly one holder per network,
@@ -49,6 +52,8 @@ pub struct CreateDirectoryRequest {
     pub description: Option<String>,
     pub status: Option<String>,
     pub template: Option<String>,
+    /// B115 — the industry (niche) slug this directory is built on, from `template_categories`.
+    pub industry_slug: Option<String>,
     pub color_scheme: Option<serde_json::Value>,
     pub city: Option<String>,
     pub state: Option<String>,
@@ -79,6 +84,9 @@ pub struct UpdateDirectoryRequest {
     pub description: Option<String>,
     pub status: Option<String>,
     pub template: Option<String>,
+    /// B115 — the industry (niche) slug this directory is built on, from `template_categories`.
+    /// Blank / "none" / "null" clears it; any other value must name a real catalogue row.
+    pub industry_slug: Option<String>,
     pub color_scheme: Option<serde_json::Value>,
     pub city: Option<String>,
     pub state: Option<String>,

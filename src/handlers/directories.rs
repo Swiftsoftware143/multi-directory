@@ -206,6 +206,9 @@ pub async fn create_directory(
 
     let template_config = req.template_config.clone().unwrap_or_default();
 
+    // B115 — the industry (niche) this directory is built on, validated against the catalogue.
+    let industry_slug = resolve_industry_slug(&s, req.industry_slug.as_deref()).await?;
+
     // Color scheme: use provided, inherit from network, or default
     let color_scheme = if let Some(cs) = req.color_scheme.clone() {
         cs
@@ -237,8 +240,8 @@ pub async fn create_directory(
     };
 
     let mut directory = sqlx::query_as::<_, Directory>(
-        r#"INSERT INTO directories (name, slug, description, status, template, color_scheme, network_id, url_type, url_value, custom_domain, city, template_config, head_injection, body_injection, footer_injection, email_signature_html, email_signature_text, state, support_email, contact_email, contact_phone, legal_name)
-           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        r#"INSERT INTO directories (name, slug, description, status, template, color_scheme, network_id, url_type, url_value, custom_domain, city, template_config, head_injection, body_injection, footer_injection, email_signature_html, email_signature_text, state, support_email, contact_email, contact_phone, legal_name, industry_slug)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
            RETURNING *"#
     )
     .bind(&req.name)
@@ -263,6 +266,7 @@ pub async fn create_directory(
     .bind(&req.contact_email)
     .bind(&req.contact_phone)
     .bind(&req.legal_name)
+    .bind(&industry_slug)
     .fetch_one(&s.db)
     .await?;
 
@@ -375,6 +379,35 @@ pub async fn create_directory(
     );
 
     Ok((StatusCode::CREATED, Json(json!(directory))))
+}
+
+/// B115 — resolve a caller-supplied industry slug against the admin-editable catalogue
+/// (`template_categories`). Blank, `"none"` and `"null"` clear the niche; anything else must
+/// name a real catalogue row, so a directory can never carry a dangling industry (the FK backs
+/// this up at the storage layer).
+async fn resolve_industry_slug(s: &AppState, raw: Option<&str>) -> ApiResult<Option<String>> {
+    let value = match raw.map(str::trim) {
+        None | Some("") => return Ok(None),
+        Some(v) if v.eq_ignore_ascii_case("none") || v.eq_ignore_ascii_case("null") => {
+            return Ok(None)
+        }
+        Some(v) => v.to_string(),
+    };
+
+    let exists =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM template_categories WHERE slug = $1")
+            .bind(&value)
+            .fetch_one(&s.db)
+            .await?;
+
+    if exists == 0 {
+        return Err(AppError::Validation(format!(
+            "Unknown industry '{}' — choose one from the Industries catalogue",
+            value
+        )));
+    }
+
+    Ok(Some(value))
 }
 
 /// Resolve network config for a directory being created.
@@ -499,6 +532,12 @@ pub async fn update_directory(
         .email_signature_text
         .clone()
         .or(existing.email_signature_text);
+    // B115 — the industry (niche). Absent from the request = leave as-is; a blank/"none" value
+    // clears it; anything else must name a real catalogue row.
+    let new_industry_slug = match req.industry_slug.as_deref() {
+        Some(raw) => resolve_industry_slug(&s, Some(raw)).await?,
+        None => existing.industry_slug,
+    };
 
     if new_slug != slug {
         let slug_exists = sqlx::query_scalar::<_, i64>(
@@ -518,7 +557,7 @@ pub async fn update_directory(
     }
 
     let directory = sqlx::query_as::<_, Directory>(
-        "UPDATE directories SET name = $1, slug = $2, description = $3, status = $4, template = $5, color_scheme = $6::jsonb, network_id = $7, url_type = $8, url_value = $9, custom_domain = $10, city = $11, template_config = $12::jsonb, head_injection = $14, body_injection = $15, footer_injection = $16, email_signature_html = $17, email_signature_text = $18, state = $19, support_email = $20, contact_email = $21, contact_phone = $22, legal_name = $23, updated_at = NOW() WHERE id = $13 RETURNING *"
+        "UPDATE directories SET name = $1, slug = $2, description = $3, status = $4, template = $5, color_scheme = $6::jsonb, network_id = $7, url_type = $8, url_value = $9, custom_domain = $10, city = $11, template_config = $12::jsonb, head_injection = $14, body_injection = $15, footer_injection = $16, email_signature_html = $17, email_signature_text = $18, state = $19, support_email = $20, contact_email = $21, contact_phone = $22, legal_name = $23, industry_slug = $24, updated_at = NOW() WHERE id = $13 RETURNING *"
     )
     .bind(&new_name)
     .bind(&new_slug)
@@ -546,6 +585,7 @@ pub async fn update_directory(
     .bind(&new_contact_email)
     .bind(&new_contact_phone)
     .bind(&new_legal_name)
+    .bind(&new_industry_slug)
     .fetch_one(&s.db)
     .await?;
 

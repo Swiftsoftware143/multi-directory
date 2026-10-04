@@ -2217,6 +2217,11 @@
           <input id="dd-phone" class="dd-mf-target" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
         <div><label style="font-size:.8rem;color:var(--text-secondary)">Legal / entity name</label>
           <input id="dd-legal-name" class="dd-mf-target" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary)">Niche / industry <span style="color:var(--text-secondary)">(the vertical this directory is about)</span></label>
+          <select id="dd-industry" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,#0f172a);color:var(--text)">
+            <option value="">— none —</option>
+          </select>
+          <div style="font-size:.72rem;color:var(--text-secondary);margin-top:4px">Managed in the 🏭 Industries section above.</div></div>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-top:14px">
@@ -4600,6 +4605,7 @@
         ddEl('dd-contact-email').value = (d && d.contact_email) || '';
         ddEl('dd-phone').value = (d && d.contact_phone) || '';
         ddEl('dd-legal-name').value = (d && d.legal_name) || '';
+        var ddInd = ddEl('dd-industry'); if (ddInd) ddInd.value = (d && d.industry_slug) || '';
         ddEl('dd-primary').value = ddColor(cs.primary, '#2563eb');
         ddEl('dd-accent').value = ddColor(cs.accent, '#f59e0b');
         ddEl('dd-background').value = ddColor(cs.background, '#ffffff');
@@ -4635,6 +4641,17 @@
         sel.innerHTML = '<option value="">Could not load directories</option>';
         ddStatus('Could not load directories: ' + e.message, false);
       });
+      // B115 — the niche / industry this directory is built on (the admin-editable catalogue).
+      apiGet('/industries/available').then(function (rows) {
+        var ind = ddEl('dd-industry');
+        if (!ind) return;
+        rows = rows || [];
+        ind.innerHTML = '<option value="">— none —</option>' + rows.map(function (r) {
+          return '<option value="' + pkEsc(r.slug) + '">' + pkEsc((r.icon ? r.icon + ' ' : '') + (r.name || r.slug)) + '</option>';
+        }).join('');
+        var cur = ddFind(sel ? sel.value : '');
+        ind.value = (cur && cur.industry_slug) || '';
+      }).catch(function () { /* keep the "none" option if the catalogue is unreachable */ });
     }
     function ddSave() {
       var sel = ddEl('dd-directory');
@@ -4652,6 +4669,7 @@
         contact_email: ddEl('dd-contact-email').value.trim(),
         contact_phone: ddEl('dd-phone').value.trim(),
         legal_name: ddEl('dd-legal-name').value.trim(),
+        industry_slug: ddEl('dd-industry') ? ddEl('dd-industry').value : '',
         color_scheme: Object.assign({}, cs, {
           primary: ddEl('dd-primary').value,
           accent: ddEl('dd-accent').value,
