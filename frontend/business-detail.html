@@ -252,6 +252,7 @@ a:hover{text-decoration:underline}
           <div class="actions-row">
             <a class="action-btn" id="websiteLink" href="#" target="_blank" rel="noopener">🌐 Website</a>
             <button class="action-btn" onclick="openDirections()">🗺️ Directions</button>
+            <a class="action-btn" href="#reportCard">⚑ Report an issue</a>
           </div>
         </div>
 
@@ -310,6 +311,27 @@ a:hover{text-decoration:underline}
             <div id="msgFeedback"></div>
           </form>
         </div>
+      </div>
+
+      <!-- Report a Problem -->
+      <div class="card" id="reportCard">
+        <div class="card-title">⚑ Report a Problem</div>
+        <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Something wrong with this listing? Tell us and a moderator will review it. No account needed.</p>
+        <form class="msg-form" id="reportForm" onsubmit="submitReport(event)">
+          <select id="reportReason" required style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:.9rem;font-family:inherit;background:#fff;outline:none">
+            <option value="">What is wrong with this listing?</option>
+            <option value="closed">This business is closed</option>
+            <option value="wrong_info">Incorrect or outdated information</option>
+            <option value="spam">Spam or fake listing</option>
+            <option value="offensive">Offensive content</option>
+            <option value="duplicate">Duplicate listing</option>
+            <option value="other">Something else</option>
+          </select>
+          <textarea id="reportDetails" placeholder="Add any details that would help (optional)"></textarea>
+          <input type="email" id="reportEmail" placeholder="Your email (optional)">
+          <button type="submit" id="reportSubmit">Submit Report</button>
+          <div id="reportFeedback"></div>
+        </form>
       </div>
 
       <!-- Sidebar -->
@@ -378,6 +400,40 @@ function goBack() {
 
 function goToClaim() {
   window.location.href = '/claim';
+}
+
+// ⚑ Report a problem — anonymous POST to /api/v1/businesses/:id/report (card B90).
+async function submitReport(e) {
+  e.preventDefault();
+  const id = (bizData && bizData.id) || getBusinessIdFromPath() || getUrlParam('id');
+  const btn = document.getElementById('reportSubmit');
+  const fb = document.getElementById('reportFeedback');
+  if (!id) { fb.innerHTML = '<div class="msg-error">❌ Listing not loaded yet.</div>'; return; }
+  const reason = document.getElementById('reportReason').value;
+  if (!reason) { fb.innerHTML = '<div class="msg-error">❌ Please choose a reason.</div>'; return; }
+  btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Sending…'; fb.innerHTML = '';
+  try {
+    const resp = await fetch('/api/v1/businesses/' + encodeURIComponent(id) + '/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: reason,
+        details: document.getElementById('reportDetails').value,
+        reporter_email: document.getElementById('reportEmail').value
+      })
+    });
+    const data = await resp.json().catch(function(){ return {}; });
+    if (resp.ok) {
+      fb.innerHTML = '<div class="msg-success">✅ ' + esc(data.message || 'Thanks — a moderator will review this listing.') + '</div>';
+      document.getElementById('reportForm').reset();
+    } else {
+      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.error || data.message || 'Could not send the report — please try again.') + '</div>';
+    }
+  } catch (err) {
+    fb.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
 }
 
 // ── State ──

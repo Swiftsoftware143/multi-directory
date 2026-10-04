@@ -235,6 +235,12 @@ pub fn create_router(s: AppState) -> Router {
             "/directories/:slug/businesses/:business_id/reviews",
             get(reviews::list_business_reviews).post(reviews::create_review),
         )
+        // "Report a problem" on a listing (card B90 cross-cutting). The public POST is anonymous
+        // (see the is_public allowlist); the moderation queue is directory-scoped + tenant-guarded.
+        .route("/businesses/:id/report", post(reports::create_report))
+        .route("/admin/reports", get(reports::list_reports))
+        .route("/admin/reports/stats", get(reports::report_stats))
+        .route("/admin/reports/:id", patch(reports::update_report))
         .route("/directories/:slug/branding", get(branding::get_branding))
         .route(
             "/directories/:slug/email-settings",
@@ -3441,6 +3447,9 @@ async fn auth_guard(
         || (path.ends_with("/features") && req.method() == "GET")
         // Public business claim form
         || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
+        // Public report-a-listing write (card B90 cross-cutting) — POST-only, rate-limited inside
+        // the handler; unknown business ids 404 so a probe learns nothing.
+        || (path.starts_with("/businesses/") && path.ends_with("/report") && req.method() == "POST")
         // Two-step claim email confirmation (card B76) — GET only; the token from the email is the
         // credential, so the link works from a mail client with no session.
         || (path.starts_with("/claims/verify/") && req.method() == "GET")

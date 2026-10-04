@@ -70,6 +70,7 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
     <button class="tab" onclick="switchTab(this,'branding')">Branding</button>
     <button class="tab" onclick="switchTab(this,'populate')">Populate Businesses</button>
     <button class="tab" onclick="switchTab(this,'queue')">Content Schedule</button>
+    <button class="tab" onclick="switchTab(this,'reports')">⚑ Reported Listings</button>
   </div>
 
   <div id="tab-legal">
@@ -253,6 +254,22 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
         <div class="form-group"><label>Twitter Handle</label><input name="twitter_handle" id="cfg-twitter_handle" placeholder="@zaarhub"></div>
         <div class="actions"><button type="submit" class="btn primary">Save Branding</button></div>
       </form>
+    </div>
+  </div>
+  <div id="tab-reports" style="display:none">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin-bottom:0">⚑ Reported Listings</h2>
+        <select id="reports-status-filter" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px" onchange="loadReports()">
+          <option value="pending">Pending</option>
+          <option value="">All</option>
+          <option value="reviewed">Reviewed</option>
+          <option value="resolved">Resolved</option>
+          <option value="dismissed">Dismissed</option>
+        </select>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Customers flag a listing as closed, wrong or abusive from the business page. Review each report here — no account, SQL or shell needed.</p>
+      <div id="reports-list"><div class="loading">Loading...</div></div>
     </div>
   </div>
 </div>
@@ -496,11 +513,13 @@ function switchTab(btn,tab){
   document.getElementById('tab-branding').style.display=tab==='branding'?'block':'none';
   document.getElementById('tab-populate').style.display=tab==='populate'?'block':'none';
   document.getElementById('tab-queue').style.display=tab==='queue'?'block':'none';
+  document.getElementById('tab-reports').style.display=tab==='reports'?'block':'none';
   if(tab==='legal')loadLegalPages();
   else if(tab==='picks'){loadCitiesDropdown();loadEditorsPicks();}
   else if(tab==='branding')loadSiteConfig();
   else if(tab==='populate'){loadPopCities();loadPopCategories();loadPopDirectories();reloadQueue();}
   else if(tab==='queue')openContentQueue();
+  else if(tab==='reports')loadReports();
 }
 
 async function loadCitiesDropdown(){
@@ -917,6 +936,54 @@ async function cancelQueueItem(id){
     document.getElementById('cq-status').innerHTML='<span style="color:var(--text-muted)">Cancelled “'+esc(d.keyword)+'”.</span>';
     await loadContentQueue();
   }catch(e){showToast('Could not cancel it',true);console.error(e);}
+}
+
+// ⚑ Reported Listings (card B90 cross-cutting) — /api/v1/admin/reports moderation queue.
+function reportReasonLabel(r){
+  return {closed:'Closed business',wrong_info:'Incorrect information',spam:'Spam or fake listing',offensive:'Offensive content',duplicate:'Duplicate listing',other:'Other'}[r]||r;
+}
+const REPORT_STATUS_BADGE={pending:'draft',reviewed:'footer',resolved:'published',dismissed:'draft'};
+async function loadReports(){
+  const el=document.getElementById('reports-list');
+  const status=document.getElementById('reports-status-filter').value;
+  const url='/api/v1/admin/reports?per_page=100'+(status?('&status='+encodeURIComponent(status)):'');
+  try{
+    const r=await fetch(url);const d=await r.json();
+    if(!r.ok){el.innerHTML='<div class="error">Could not load reports. '+esc((d&&d.error)||'Check the connection.')+'</div>';return;}
+    const rows=d.data||[];
+    if(!rows.length){el.innerHTML='<div style="text-align:center;padding:32px;color:var(--text-muted)">Nothing here. Reported listings will appear in this queue.</div>';return;}
+    el.innerHTML=rows.map(x=>{
+      const when=x.created_at?new Date(x.created_at).toLocaleString():'';
+      const who=[x.reporter_name,x.reporter_email].filter(Boolean).join(' \u00b7 ')||'Anonymous';
+      return `<div class="page-list-item" style="align-items:flex-start;flex-direction:column;gap:8px">
+        <div class="info" style="width:100%">
+          <strong>${esc(reportReasonLabel(x.reason))}</strong>
+          <span class="badge ${REPORT_STATUS_BADGE[x.status]||'draft'}" style="margin-left:8px">${esc(x.status)}</span>
+          <small>Listing ${esc(String(x.business_id).slice(0,8))} \u00b7 reported ${esc(when)} \u00b7 ${esc(who)}</small>
+          ${x.details?`<div style="font-size:13px;margin-top:6px">${esc(x.details)}</div>`:''}
+          ${x.resolution_note?`<div style="font-size:12px;margin-top:6px;color:var(--text-muted)">Note: ${esc(x.resolution_note)}</div>`:''}
+        </div>
+        <div class="status" style="width:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="rep-note-${esc(x.id)}" type="text" placeholder="Resolution note (optional)" value="${esc(x.resolution_note||'')}" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <a class="btn secondary small" href="/biz/${esc(x.business_id)}" target="_blank" rel="noopener">View listing</a>
+          <button class="btn primary small" onclick="resolveReport('${esc(x.id)}','resolved')">Resolve</button>
+          <button class="btn secondary small" onclick="resolveReport('${esc(x.id)}','reviewed')">Mark reviewed</button>
+          <button class="btn danger small" onclick="resolveReport('${esc(x.id)}','dismissed')">Dismiss</button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){el.innerHTML='<div class="error">Could not load reports.</div>';console.error(e);}
+}
+async function resolveReport(id,status){
+  const noteEl=document.getElementById('rep-note-'+id);
+  const note=noteEl?noteEl.value:null;
+  try{
+    const r=await fetch('/api/v1/admin/reports/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:status,resolution_note:note})});
+    const d=await r.json().catch(function(){return{};});
+    if(!r.ok){showToast((d&&(d.error||d.message))||'Could not update the report',true);return;}
+    showToast('Report marked '+status);
+    loadReports();
+  }catch(e){showToast('Could not update the report',true);console.error(e);}
 }
 
 function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),2500)}
