@@ -288,12 +288,12 @@ pub async fn add_internal_link(
     let target_slug = target.slug.unwrap_or_default();
     let directory_slug = target.directory_slug.unwrap_or_default();
 
-    // Public blog posts are served at /api/v1/d/<directory>/blog/<post-slug> — the exact URL
-    // the app's own public feed emits (zaarhub cities/:slug/blog-posts -> post.url) and that
-    // routes.rs render_blog_post answers. A bare /blog/<slug> is NOT a route: it falls through
-    // to the SPA catch-all and renders the homepage (a soft-404), so every injected "internal
-    // link" was a dead link. (B91 completeness — internal-linking body mutation.) Refuse to
-    // write a link we cannot resolve rather than inject a dead href.
+    // Public blog posts are served server-side (for SEO) at /<directory>/blog/<post-slug> —
+    // the URL the app's own subfolder sitemap emits and the page's <link rel=canonical>
+    // declares (subfolder::blog_post_page). A bare /blog/<slug> is NOT a route: it falls
+    // through to the SPA catch-all and renders the homepage (a soft-404), so every injected
+    // "internal link" was a dead link. (B91 completeness — internal-linking body mutation.)
+    // Refuse to write a link we cannot resolve rather than inject a dead href.
     if target_slug.is_empty() || directory_slug.is_empty() {
         return Err(AppError::Validation(
             "Target post has no public URL (missing slug or directory slug); refusing to \
@@ -301,7 +301,7 @@ pub async fn add_internal_link(
                 .into(),
         ));
     }
-    let href = format!("/api/v1/d/{}/blog/{}", directory_slug, target_slug);
+    let href = format!("/{}/blog/{}", directory_slug, target_slug);
 
     let link_obj = json!({
         "target_id": req.target_post_id,
