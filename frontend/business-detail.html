@@ -293,6 +293,7 @@ a:hover{text-decoration:underline}
             <button class="action-btn" onclick="openDirections()">🗺️ Directions</button>
             <button class="action-btn" data-action="share" onclick="shareListing()">🔗 Share</button>
             <a class="action-btn" href="#quoteCard">📋 Request a quote</a>
+            <a class="action-btn" href="#bookCard">📅 Request an appointment</a>
             <a class="action-btn" href="#reportCard">⚑ Report an issue</a>
           </div>
         </div>
@@ -391,6 +392,24 @@ a:hover{text-decoration:underline}
           </form>
         </div>
 
+        <!-- 📅 Request an Appointment (card B90, Thumbtack-style). Built on the Stage-5
+             service booking engine (POST /bookings -> service_bookings); the owner sees and
+             answers it in their portal's Booking Requests. Requires a visitor account (same
+             as Save / Follow / Recommend). -->
+        <div class="card" id="bookCard">
+          <div class="card-title">📅 Request an Appointment</div>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Pick a day and tell this business what you need. Your request lands in their portal, where they confirm it.</p>
+          <form class="msg-form" id="bookForm" onsubmit="submitAppointment(event)">
+            <input type="text" id="bookService" placeholder="What do you need? (e.g. oil change)" required maxlength="120">
+            <input type="date" id="bookDate" required>
+            <input type="time" id="bookTime">
+            <input type="tel" id="bookPhone" placeholder="Your phone (optional)">
+            <textarea id="bookNotes" placeholder="Anything else they should know? (optional)"></textarea>
+            <button type="submit" id="bookSubmit">Request Appointment</button>
+            <div id="bookFeedback"></div>
+          </form>
+        </div>
+
         <!-- Local Q&A (card B90, Nextdoor-style) -->
         <div class="card" id="qaCard">
           <div class="card-title">❓ Questions &amp; Answers</div>
@@ -451,6 +470,7 @@ a:hover{text-decoration:underline}
 <!-- Always-at-hand action rail (card B90) — revealed once the listing loads. -->
 <div class="action-rail" id="actionRail">
   <a class="rail-btn" id="railCall" href="#">📞 Call</a>
+  <button class="rail-btn" type="button" onclick="var c=document.getElementById('bookCard');if(c)c.scrollIntoView({behavior:'smooth'})">📅 Book</button>
   <button class="rail-btn" type="button" onclick="openDirections()">🗺️ Directions</button>
   <button class="rail-btn" type="button" id="railSave" onclick="toggleSave()">❤️ Save</button>
   <button class="rail-btn" type="button" onclick="shareListing()">🔗 Share</button>
@@ -1276,6 +1296,55 @@ async function submitQuote(e) {
   }
   btn.disabled = false;
   btn.textContent = 'Send Quote Request';
+}
+
+// 📅 Request an Appointment (card B90, Thumbtack-style) — creates a Stage-5 service booking
+// (POST /api/v1/bookings -> service_bookings) that the business answers in their portal's
+// Booking Requests section. Needs a signed-in visitor, same as Save / Follow / Recommend.
+async function submitAppointment(e) {
+  e.preventDefault();
+  const fb = document.getElementById('bookFeedback');
+  const btn = document.getElementById('bookSubmit');
+  fb.innerHTML = '';
+  const bizId = bizData ? bizData.id : null;
+  const dirId = bizData ? (bizData.directory_id || null) : null;
+  if (!bizId || !dirId) { fb.innerHTML = '<div class="msg-error">❌ Listing not loaded yet.</div>'; return; }
+  const token = localStorage.getItem('zh_token');
+  if (!token) {
+    window.location.href = '/visitor?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+    return;
+  }
+  const service = (document.getElementById('bookService').value || '').trim();
+  const date = document.getElementById('bookDate').value;
+  const time = (document.getElementById('bookTime').value || '').trim();
+  const phone = (document.getElementById('bookPhone').value || '').trim();
+  const notes = (document.getElementById('bookNotes').value || '').trim();
+  if (!service || !date) { fb.innerHTML = '<div class="msg-error">❌ Please add what you need and pick a date.</div>'; return; }
+  const preferred_date = new Date(date + 'T' + (time || '09:00') + ':00').toISOString();
+  btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Sending…';
+  try {
+    const resp = await fetch('/api/v1/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        directory_id: dirId, business_id: bizId,
+        service_name: service, description: notes || null,
+        preferred_date: preferred_date, preferred_time: time || null,
+        contact_phone: phone || null
+      })
+    });
+    const data = await resp.json().catch(function(){ return {}; });
+    if (resp.ok) {
+      fb.innerHTML = '<div class="msg-success">✅ Appointment requested! The business will confirm it.</div>';
+      document.getElementById('bookForm').reset();
+    } else {
+      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.error || data.message || 'Could not send the request — please try again.') + '</div>';
+    }
+  } catch (err) {
+    fb.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
 }
 
 // ── Gallery & Lightbox ──

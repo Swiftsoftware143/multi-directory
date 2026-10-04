@@ -227,6 +227,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
            so it gets a real control here. -->
       <a href="#callsSection" id="navCalls" onclick="showPortalView('calls');return false;">📞 Calls &amp; Leads</a>
       <a href="#messagesSection" id="navMessages" onclick="showPortalView('messages');return false;">✉️ Customer Messages</a>
+       <a href="#bookingsSection" id="navBookings" onclick="showPortalView('bookings');return false;">📅 Booking Requests</a>
       <a href="#listingToolsSection" id="navListing" onclick="showPortalView('listing');return false;">✅ Verify &amp; Categories</a>
       <a href="#billingSection" id="navBilling" onclick="showPortalView('billing');return false;">💎 Plan &amp; Purchases</a>
       <a href="#b2bSection" id="navB2B" onclick="showPortalView('b2b');return false;">🤝 B2B &amp; Co-op</a>
@@ -311,6 +312,23 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
       <div id="msgUnread" style="margin:12px 0"></div>
       <div id="msgList" style="margin-top:12px"></div>
+    </div>
+
+    <!-- 📅 Booking Requests (card B90) — GET /business/:id/bookings +
+         POST /bookings/:id/status. A visitor's appointment request (from a listing page) lands
+         here so the owner can confirm, decline or complete it: before this section the booking
+         APIs had no owner-facing UI, so a request was write-only. -->
+    <div id="bookingsSection" style="margin-top:32px">
+      <div class="section-title">📅 Booking Requests</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        Appointment requests customers sent from your public listing — confirm, decline or mark them
+        completed so the customer knows where they stand.
+      </div>
+      <div class="form-group" style="max-width:420px">
+        <label>Business</label>
+        <select id="bkBiz" onchange="loadBookings()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+      </div>
+      <div id="bkList" style="margin-top:12px"></div>
     </div>
 
     <!-- ✅ Verification & Categories (view id: listing) — GET /businesses/:id/verifications,
@@ -1334,13 +1352,13 @@ var _icCoreStatus = { connected: false };
 
 function showPortalView(view) {
   var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations',
-              calls: 'callsSection', messages: 'messagesSection', listing: 'listingToolsSection',
+              calls: 'callsSection', messages: 'messagesSection', bookings: 'bookingsSection', listing: 'listingToolsSection',
               billing: 'billingSection', b2b: 'b2bSection' };
   var id = map[view] || 'businessList';
   var el = document.getElementById(id);
   if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations',
-                calls: 'navCalls', messages: 'navMessages', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B' };
+                calls: 'navCalls', messages: 'navMessages', bookings: 'navBookings', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B' };
   Object.keys(links).forEach(function(k) {
     var a = document.getElementById(links[k]);
     if (a) a.className = (k === view) ? 'active' : '';
@@ -1348,6 +1366,7 @@ function showPortalView(view) {
   if (view === 'integrations') loadIntegrationCenter();
   if (view === 'calls') loadCallLogs();
   if (view === 'messages') loadMessages();
+  if (view === 'bookings') loadBookings();
   if (view === 'listing') { loadVerifications(); loadCategoryChoices(); }
   if (view === 'billing') { loadPurchases(); getPlans().then(fillPlanTargets); }
   if (view === 'b2b') loadCoopGroups();
@@ -2008,7 +2027,7 @@ function setMyBiz(list) {
       plan: sub.tier_name || null
     };
   }).filter(function (b) { return !!b.id; });
-  ['clBiz', 'msgBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
+  ['clBiz', 'msgBiz', 'bkBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
   // renderBusinesses used biz[0].id, which is undefined for /portal/business/profile rows —
   // that silently disabled the ads/earnings block below. Point it at the real id.
   if (_myBiz.length && !_selectedBizId) _selectedBizId = _myBiz[0].id;
@@ -2067,6 +2086,61 @@ async function loadMessages() {
   } catch (e) {
     box.innerHTML = '<div class="card"><p style="color:var(--danger)">Could not load messages: ' + esc(e.message) + '</p>' +
       '<button class="btn btn-sm" onclick="loadMessages()">Retry</button></div>';
+  }
+}
+
+// ── Booking Requests (card B90) ──────────────────────────────────────────────────
+// Appointment requests from the public listing (POST /bookings). Owner-scoped read
+// (GET /business/:id/bookings) with confirm/decline/complete (POST /bookings/:id/status).
+async function loadBookings() {
+  var bid = bizOf('bkBiz');
+  var box = document.getElementById('bkList');
+  if (!bid) { box.innerHTML = '<div class="card"><p>No claimed business on this account.</p></div>'; return; }
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading requests…</p>';
+  try {
+    var resp = await g('/business/' + bid + '/bookings');
+    var list = (resp && resp.bookings) || [];
+    if (!list.length) {
+      box.innerHTML = '<div class="card"><p>No appointment requests yet. Requests sent from your public listing appear here.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (b) {
+      var badge = b.status === 'confirmed' ? 'active' : b.status === 'pending' ? 'warning' : '';
+      var actions = '';
+      if (b.status === 'pending') {
+        actions = '<button class="btn btn-primary btn-sm" onclick="setBookingStatus(\'' + b.id + '\',\'confirmed\')">Confirm</button> ' +
+                  '<button class="btn btn-secondary btn-sm" onclick="setBookingStatus(\'' + b.id + '\',\'declined\')">Decline</button>';
+      } else if (b.status === 'confirmed') {
+        actions = '<button class="btn btn-primary btn-sm" onclick="setBookingStatus(\'' + b.id + '\',\'completed\')">Mark completed</button> ' +
+                  '<button class="btn btn-secondary btn-sm" onclick="setBookingStatus(\'' + b.id + '\',\'cancelled\')">Cancel</button>';
+      }
+      return '<div class="card" style="margin-bottom:10px">' +
+        '<h3>' + esc(b.service_name || 'Appointment request') + ' <span class="badge ' + badge + '">' + esc(b.status) + '</span></h3>' +
+        '<div style="font-size:.82rem;color:var(--text-secondary);margin:4px 0">From <b>' + esc(b.visitor_name || 'Customer') + '</b>' +
+          (b.contact_email ? ' &lt;' + esc(b.contact_email) + '&gt;' : '') +
+          (b.contact_phone ? ' · ' + esc(b.contact_phone) : '') + '</div>' +
+        (b.preferred_date ? '<div style="font-size:.82rem;margin:4px 0">Preferred: <b>' + esc(new Date(b.preferred_date).toLocaleString()) + '</b>' + (b.preferred_time ? ' at ' + esc(b.preferred_time) : '') + '</div>' : '') +
+        (b.description ? '<p style="white-space:pre-wrap;margin:8px 0">' + esc(b.description) + '</p>' : '') +
+        '<div class="meta">' + (b.created_at ? new Date(b.created_at).toLocaleString() : '') + '</div>' +
+        (actions ? '<div style="margin-top:8px">' + actions + '</div>' : '') +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p style="color:var(--danger)">Could not load booking requests: ' + esc(e.message) + '</p>' +
+      '<button class="btn btn-sm" onclick="loadBookings()">Retry</button></div>';
+  }
+}
+
+async function setBookingStatus(id, status) {
+  try {
+    var token = localStorage.getItem('bizToken');
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    var r = await fetch(API + '/bookings/' + encodeURIComponent(id) + '/status', { method: 'POST', headers: h, body: JSON.stringify({ status: status }) });
+    if (!r.ok) { var e = await r.json().catch(function () { return {}; }); throw new Error(e.message || 'Request failed'); }
+    loadBookings();
+  } catch (e) {
+    alert('Could not update the request: ' + e.message);
   }
 }
 

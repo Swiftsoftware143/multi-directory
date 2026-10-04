@@ -1732,12 +1732,16 @@ pub async fn get_business_detail(
         None => biz.category_name.clone(),
     };
 
-    // Get directory name
-    let dir_name: String = sqlx::query_scalar("SELECT name FROM directories WHERE id = $1")
-        .bind(dir_id)
-        .fetch_one(&s.db)
-        .await
-        .unwrap_or_default();
+    // Get directory name + REAL slug. The public listing page requests the placeholder
+    // slug "z" (the directory is resolved from the business id above), so echoing the
+    // request path segment back as directory_slug leaked "z" to the client and produced
+    // dead absolute links (e.g. /book/z/<id>). Return the directory's own slug instead.
+    let (dir_name, dir_slug): (String, String) =
+        sqlx::query_as("SELECT name, slug FROM directories WHERE id = $1")
+            .bind(dir_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or_else(|_| (String::new(), String::new()));
 
     // Get recent reviews for this business
     let reviews = sqlx::query_as::<
@@ -1935,7 +1939,8 @@ pub async fn get_business_detail(
         "logo_url": biz.logo_url,
         "cover_url": biz.cover_url,
         "directory_name": dir_name,
-        "directory_slug": slug,
+        "directory_id": dir_id,
+        "directory_slug": if dir_slug.is_empty() { slug.clone() } else { dir_slug },
         "reviews": review_list,
         "deals": deal_list,
         "hours": hours,
