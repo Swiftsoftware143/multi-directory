@@ -9,6 +9,9 @@
 //!     configured key decides which adapter runs (google_places / serpapi / bing /
 //!     google_cse); `enrichment_settings.provider` may pin one, NULL means "use
 //!     whatever is configured, preferring the default key";
+//!   * with NO paid key configured the cycle still runs on the free/open fallback
+//!     (OpenStreetMap Nominatim, card B79) instead of skipping — enrichment without
+//!     paid APIs, and an admin may pin that adapter explicitly;
 //!   * with no provider configured (or a key the provider rejects) the run records
 //!     a SKIP/ERROR and writes no enrichment — it never fakes success and never
 //!     panics;
@@ -31,16 +34,26 @@ use crate::error::{ApiResult, AppError};
 use crate::security::provider_key_crypto as keycrypto;
 use crate::AppState;
 
-/// The search adapters this app can actually speak. Which one RUNS is decided by
-/// `provider_keys` (+ the optional pin in `enrichment_settings.provider`).
-const SEARCH_ADAPTERS: [&str; 4] = ["google_places", "serpapi", "bing", "google_cse"];
 /// Adapters that must be EXPLICITLY pinned before they run (card B98). Apify scrapes on a
 /// metered, pay-per-use platform, so a live key must never be auto-selected as the rotating
 /// enrichment provider — the admin switches it on by pinning it in the Data Enrichment card.
 const OPT_IN_ADAPTERS: [&str; 1] = ["apify"];
-/// Every adapter this build speaks: the auto-eligible set plus the opt-in set. Kept as an
-/// explicit list (not a concat) so the two halves stay visible and independent.
-const ALL_ADAPTERS: [&str; 5] = ["google_places", "serpapi", "bing", "google_cse", "apify"];
+/// Free / open-data adapters (card B79). They need NO API key, so they never appear in
+/// `provider_keys`; they are the zero-cost fallback. An admin may PIN one, and when no paid
+/// provider is configured the cycle falls back to the first of these, so enrichment still
+/// runs (and fills the gaps a paid listing misses) without a paid key.
+const FREE_ADAPTERS: [&str; 1] = ["openstreetmap"];
+/// Every adapter this build speaks: the auto-eligible set plus the opt-in set plus the free
+/// set. Kept as an explicit list (not a concat) so the three halves stay visible and
+/// independent.
+const ALL_ADAPTERS: [&str; 6] = [
+    "google_places",
+    "serpapi",
+    "bing",
+    "google_cse",
+    "apify",
+    "openstreetmap",
+];
 
 const DEFAULT_GOOGLE_PLACES_BASE: &str = "https://maps.googleapis.com/maps/api/place";
 const SERPAPI_BASE: &str = "https://serpapi.com";
@@ -50,6 +63,10 @@ const APIFY_BASE: &str = "https://api.apify.com";
 /// The public Apify actor used when the key's metadata names no `actor_id`. It returns Google
 /// Maps place records, which is exactly the shape the merge contract expects.
 const DEFAULT_APIFY_ACTOR: &str = "compass/crawler-google-places";
+/// OpenStreetMap's Nominatim geocoder — free, no key, no metering (card B79). Its usage policy
+/// requires an identifying User-Agent; the rotating cycle is low-volume and honours that.
+const OSM_NOMINATIM_BASE: &str = "https://nominatim.openstreetmap.org";
+const OSM_USER_AGENT: &str = "ZaarHub-MultiDirectory/1.0 (+https://zaarhub.com)";
 
 fn is_admin(claims: &Claims) -> bool {
     claims.role == "admin" || claims.role == "super_admin"
@@ -177,8 +194,25 @@ pub async fn configured_search_providers(
     Ok(out)
 }
 
-/// Which adapter runs: the pinned provider when it is configured, else the first
-/// configured one (preferring the marked default). None = nothing configured.
+/// A synthetic config for a free / open-data adapter (card B79). No `provider_keys` row is
+/// needed or expected: the adapter is keyless, so the base URL is the only configuration.
+fn free_provider_cfg(provider: &str) -> ProviderCfg {
+    let (label, base) = match provider {
+        "openstreetmap" => ("OpenStreetMap (free)", OSM_NOMINATIM_BASE),
+        other => (other, ""),
+    };
+    ProviderCfg {
+        provider: provider.to_string(),
+        label: label.to_string(),
+        api_key: String::new(),
+        base_url: Some(base.to_string()),
+        metadata: json!({}),
+    }
+}
+
+/// Which adapter runs: the pinned provider when it is configured (or free), else the first
+/// configured one (preferring the marked default), else the free/open fallback (card B79) so
+/// enrichment still runs with no paid key. None only when there is nothing at all to run.
 async fn resolve_provider(
     db: &sqlx::PgPool,
     pinned: Option<&str>,
@@ -188,8 +222,10 @@ async fn resolve_provider(
         if let Some(cfg) = available.iter().find(|c| c.provider == pin) {
             return Ok(Some(cfg.clone()));
         }
-    }
-    if let Some(pin) = pinned {
+        // A free adapter has no key row; a pin on it resolves straight from code.
+        if FREE_ADAPTERS.contains(&pin) {
+            return Ok(Some(free_provider_cfg(pin)));
+        }
         if !ALL_ADAPTERS.contains(&pin) {
             tracing::warn!(
                 "[enrich] configured provider '{}' is not a search adapter this build speaks; falling back to a configured one",
@@ -199,9 +235,14 @@ async fn resolve_provider(
     }
     // Auto-selection NEVER picks an opt-in, metered adapter (card B98): a configured Apify
     // key stays dormant until the admin pins it explicitly.
-    Ok(available
+    if let Some(cfg) = available
         .into_iter()
-        .find(|c| !OPT_IN_ADAPTERS.contains(&c.provider.as_str())))
+        .find(|c| !OPT_IN_ADAPTERS.contains(&c.provider.as_str()))
+    {
+        return Ok(Some(cfg));
+    }
+    // Nothing paid configured → the free/open fallback (card B79): enrichment without paid APIs.
+    Ok(FREE_ADAPTERS.first().map(|p| free_provider_cfg(p)))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -606,6 +647,97 @@ async fn provider_search(cfg: &ProviderCfg, query: &str) -> Result<Option<Enrich
                         .and_then(|l| l.get("lng"))
                         .and_then(|x| x.as_f64()),
                     rating: item.get("totalScore").and_then(|x| x.as_f64()),
+                    confidence: 0.0,
+                }
+                .score(),
+            ))
+        }
+        "openstreetmap" => {
+            // Free / open data (card B79): OpenStreetMap's Nominatim geocoder. No key, no
+            // metering, so it is the zero-cost fallback. `extratags=1` surfaces phone/website
+            // OSM tags the way the paid adapters' responses do, and the merge contract still
+            // only ever fills EMPTY fields — OSM never overwrites what a human typed.
+            let base = cfg
+                .base_url
+                .clone()
+                .unwrap_or_else(|| OSM_NOMINATIM_BASE.to_string());
+            let url = format!(
+                "{}/search?q={}&format=jsonv2&addressdetails=1&extratags=1&limit=1",
+                base.trim_end_matches('/'),
+                q
+            );
+            let (_http_status, v) = http_json(
+                &url,
+                &[
+                    ("User-Agent", OSM_USER_AGENT),
+                    ("Accept-Language", "en-US,en"),
+                ],
+            )
+            .await?;
+            let p = match v.as_array().and_then(|a| a.first()) {
+                Some(p) => p,
+                None => return Ok(None),
+            };
+            let addr = p.get("address");
+            let pick_addr =
+                |k: &str| -> Option<&str> { addr.and_then(|a| a.get(k)).and_then(|x| x.as_str()) };
+            let street = [pick_addr("house_number"), pick_addr("road")]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut parts: Vec<&str> = Vec::new();
+            if !street.is_empty() {
+                parts.push(street.as_str());
+            }
+            for k in ["city", "town", "village", "hamlet", "state", "postcode"] {
+                if let Some(s) = pick_addr(k) {
+                    if !s.trim().is_empty() {
+                        parts.push(s);
+                    }
+                }
+            }
+            let address = if parts.is_empty() {
+                p.get("display_name")
+                    .and_then(|x| x.as_str())
+                    .map(String::from)
+            } else {
+                Some(parts.join(", "))
+            };
+            let et = p.get("extratags");
+            let pick_et = |keys: &[&str]| -> Option<String> {
+                keys.iter().find_map(|k| {
+                    et.and_then(|e| e.get(*k))
+                        .and_then(|x| x.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                })
+            };
+            Ok(Some(
+                Enriched {
+                    name: p
+                        .get("name")
+                        .and_then(|x| x.as_str())
+                        .map(String::from)
+                        .or_else(|| {
+                            p.get("display_name")
+                                .and_then(|x| x.as_str())
+                                .and_then(|d| d.split(',').next())
+                                .map(|s| s.trim().to_string())
+                        }),
+                    address,
+                    phone: pick_et(&["phone", "contact:phone"]),
+                    website: pick_et(&["website", "contact:website", "url"]),
+                    lat: p
+                        .get("lat")
+                        .and_then(|x| x.as_str())
+                        .and_then(|s| s.parse().ok()),
+                    lng: p
+                        .get("lon")
+                        .and_then(|x| x.as_str())
+                        .and_then(|s| s.parse().ok()),
+                    rating: None,
                     confidence: 0.0,
                 }
                 .score(),
@@ -1116,7 +1248,7 @@ pub async fn update_enrichment_settings(
         None => current.provider.clone(),
     };
     if let Some(ref p) = provider {
-        if !SEARCH_ADAPTERS.contains(&p.as_str()) {
+        if !ALL_ADAPTERS.contains(&p.as_str()) {
             // Allow it (a future adapter), but make the mismatch explicit.
             tracing::warn!(
                 "[enrich] provider '{}' pinned but not a known search adapter",
