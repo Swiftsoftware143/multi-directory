@@ -106,7 +106,7 @@ pub struct RsvpRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct EventListQuery {
-    pub directory_id: Uuid,
+    pub directory_id: Option<Uuid>,
     pub status: Option<String>,
     pub upcoming: Option<bool>,
     pub category: Option<String>,
@@ -721,7 +721,32 @@ pub async fn events_page(
     use crate::template_engine;
 
     let visitor_id = extract_visitor_id_optional(&headers, &s.config.jwt_secret);
-    let dir_id = q.directory_id;
+    // `/events` is linked with no directory context (feed.hbs, my-bookings.hbs).
+    // While `directory_id` was a required field the Query extractor rejected those
+    // requests with 400, so the events calendar never rendered for anyone (B91).
+    // Resolve, in order: the signed-in visitor's own directory, then the platform
+    // default (the same helper the supplier surface uses), else ask them to sign in.
+    let dir_id = match q.directory_id {
+        Some(id) => id,
+        None => {
+            let mut resolved = None;
+            if let Some(vid) = visitor_id {
+                if let Ok(Some(Some(id))) = sqlx::query_scalar::<_, Option<Uuid>>(
+                    "SELECT directory_id FROM visitor_accounts WHERE id = $1",
+                )
+                .bind(vid)
+                .fetch_optional(&s.db)
+                .await
+                {
+                    resolved = Some(id);
+                }
+            }
+            match resolved.or(crate::handlers::b2b::get_first_directory_id(&s.db).await) {
+                Some(id) => id,
+                None => return Ok(axum::response::Redirect::to("/visitor").into_response()),
+            }
+        }
+    };
 
     // Fetch directory info
     // NOTE: `directories` has no `region` column (verified against the live schema);
