@@ -978,6 +978,10 @@ pub struct CycleOutcome {
     pub scanned: usize,
     pub matched: usize,
     pub updated: usize,
+    /// B83 part 3: matched but nothing was written because every field was already filled — a
+    /// clean "checked, nothing to change" count so a bulk refresh reports honestly and is
+    /// idempotent (re-running changes nothing and says so).
+    pub unchanged: usize,
     pub errors: usize,
     pub message: String,
     pub started_at: DateTime<Utc>,
@@ -1120,6 +1124,7 @@ pub async fn run_cycle(
             scanned: 0,
             matched: 0,
             updated: 0,
+            unchanged: 0,
             errors: 0,
             message: msg.to_string(),
             started_at: started,
@@ -1300,22 +1305,25 @@ pub async fn run_cycle(
     } else {
         "ok"
     };
+    let unchanged = matched.saturating_sub(updated);
     let message = if errors > 0 {
         format!(
-            "{} scanned, {} matched, {} updated, {} provider error(s) — see the log entries",
+            "{} scanned, {} matched, {} updated, {} unchanged, {} provider error(s) — see the log entries",
             candidates.len(),
             matched,
             updated,
+            unchanged,
             errors
         )
     } else if candidates.is_empty() {
         "No businesses needed enrichment for this scope.".to_string()
     } else {
         format!(
-            "{} scanned, {} matched, {} updated via {}",
+            "{} scanned, {} matched, {} updated, {} unchanged (already complete) via {}",
             candidates.len(),
             matched,
             updated,
+            unchanged,
             cfg.provider
         )
     };
@@ -1331,6 +1339,7 @@ pub async fn run_cycle(
         scanned: candidates.len(),
         matched,
         updated,
+        unchanged,
         errors,
         message,
         started_at: started,
