@@ -978,6 +978,11 @@ pub struct CycleOutcome {
     pub scanned: usize,
     pub matched: usize,
     pub updated: usize,
+    /// B83 item 3: how many individual FIELDS were filled on this run.
+    pub fields_filled: usize,
+    /// B83 item 3: how many times a provider's value disagreed with data already present
+    /// (existing data wins; the disagreement is reported, never applied).
+    pub conflicts: usize,
     /// B83 part 3: matched but nothing was written because every field was already filled — a
     /// clean "checked, nothing to change" count so a bulk refresh reports honestly and is
     /// idempotent (re-running changes nothing and says so).
@@ -1124,6 +1129,8 @@ pub async fn run_cycle(
             scanned: 0,
             matched: 0,
             updated: 0,
+            fields_filled: 0,
+            conflicts: 0,
             unchanged: 0,
             errors: 0,
             message: msg.to_string(),
@@ -1155,6 +1162,11 @@ pub async fn run_cycle(
     let mut matched = 0usize;
     let mut updated = 0usize;
     let mut errors = 0usize;
+    // B83 item 3: report PER RUN how many fields were actually filled and how many times a
+    // provider DISAGREED with data that is already present (a conflict — existing data wins and
+    // the disagreement is counted, never applied).
+    let mut fields_filled = 0usize;
+    let mut conflicts = 0usize;
 
     for b in &candidates {
         let query = build_query(b);
@@ -1226,42 +1238,75 @@ pub async fn run_cycle(
                     "rating": found.rating,
                 });
 
-                // Fill blanks only — never overwrite what the owner or an admin typed.
+                // Fill blanks only — never overwrite what the owner or an admin typed. Every
+                // field actually written is counted; a provider value that DIFFERS from a value
+                // already present is a conflict: existing data wins and the disagreement is
+                // counted (B83 item 3), never applied.
                 let mut did_update = false;
-                if b.address.is_none() || b.address.as_deref() == Some("") {
-                    if let Some(v) = found.address.as_ref() {
-                        let _ = sqlx::query("UPDATE businesses SET address = $1 WHERE id = $2")
-                            .bind(v)
-                            .bind(b.id)
-                            .execute(db)
-                            .await;
-                        did_update = true;
+                if let Some(v) = found.address.as_ref().filter(|s| !s.trim().is_empty()) {
+                    match b.address.as_deref().filter(|s| !s.trim().is_empty()) {
+                        None => {
+                            let _ = sqlx::query("UPDATE businesses SET address = $1 WHERE id = $2")
+                                .bind(v)
+                                .bind(b.id)
+                                .execute(db)
+                                .await;
+                            did_update = true;
+                            fields_filled += 1;
+                        }
+                        Some(cur) => {
+                            if cur != v.as_str() {
+                                conflicts += 1;
+                            }
+                        }
                     }
                 }
-                if b.phone.is_none() || b.phone.as_deref() == Some("") {
-                    if let Some(v) = found.phone.as_ref() {
-                        let _ = sqlx::query("UPDATE businesses SET phone = $1 WHERE id = $2")
-                            .bind(v)
-                            .bind(b.id)
-                            .execute(db)
-                            .await;
-                        did_update = true;
+                if let Some(v) = found.phone.as_ref().filter(|s| !s.trim().is_empty()) {
+                    match b.phone.as_deref().filter(|s| !s.trim().is_empty()) {
+                        None => {
+                            let _ = sqlx::query("UPDATE businesses SET phone = $1 WHERE id = $2")
+                                .bind(v)
+                                .bind(b.id)
+                                .execute(db)
+                                .await;
+                            did_update = true;
+                            fields_filled += 1;
+                        }
+                        Some(cur) => {
+                            if cur != v.as_str() {
+                                conflicts += 1;
+                            }
+                        }
                     }
                 }
-                if b.website.is_none() || b.website.as_deref() == Some("") {
-                    if let Some(v) = found.website.as_ref() {
-                        let _ = sqlx::query("UPDATE businesses SET website = $1 WHERE id = $2")
-                            .bind(v)
-                            .bind(b.id)
-                            .execute(db)
-                            .await;
-                        did_update = true;
+                if let Some(v) = found.website.as_ref().filter(|s| !s.trim().is_empty()) {
+                    match b.website.as_deref().filter(|s| !s.trim().is_empty()) {
+                        None => {
+                            let _ = sqlx::query("UPDATE businesses SET website = $1 WHERE id = $2")
+                                .bind(v)
+                                .bind(b.id)
+                                .execute(db)
+                                .await;
+                            did_update = true;
+                            fields_filled += 1;
+                        }
+                        Some(cur) => {
+                            if cur != v.as_str() {
+                                conflicts += 1;
+                            }
+                        }
                     }
                 }
                 if (b.latitude.is_none() || b.longitude.is_none())
                     && found.lat.is_some()
                     && found.lng.is_some()
                 {
+                    if b.latitude.is_none() {
+                        fields_filled += 1;
+                    }
+                    if b.longitude.is_none() {
+                        fields_filled += 1;
+                    }
                     let _ = sqlx::query(
                         "UPDATE businesses SET latitude = $1, longitude = $2 WHERE id = $3",
                     )
@@ -1271,6 +1316,15 @@ pub async fn run_cycle(
                     .execute(db)
                     .await;
                     did_update = true;
+                } else if let (Some(clat), Some(clng), Some(flat), Some(flng)) =
+                    (b.latitude, b.longitude, found.lat, found.lng)
+                {
+                    if clat != flat {
+                        conflicts += 1;
+                    }
+                    if clng != flng {
+                        conflicts += 1;
+                    }
                 }
                 if did_update {
                     updated += 1;
@@ -1308,10 +1362,12 @@ pub async fn run_cycle(
     let unchanged = matched.saturating_sub(updated);
     let message = if errors > 0 {
         format!(
-            "{} scanned, {} matched, {} updated, {} unchanged, {} provider error(s) — see the log entries",
+            "{} scanned, {} matched, {} updated, {} field(s) filled, {} conflict(s), {} unchanged, {} provider error(s) — see the log entries",
             candidates.len(),
             matched,
             updated,
+            fields_filled,
+            conflicts,
             unchanged,
             errors
         )
@@ -1319,10 +1375,12 @@ pub async fn run_cycle(
         "No businesses needed enrichment for this scope.".to_string()
     } else {
         format!(
-            "{} scanned, {} matched, {} updated, {} unchanged (already complete) via {}",
+            "{} scanned, {} matched, {} updated, {} field(s) filled, {} conflict(s), {} unchanged (already complete) via {}",
             candidates.len(),
             matched,
             updated,
+            fields_filled,
+            conflicts,
             unchanged,
             cfg.provider
         )
@@ -1339,6 +1397,8 @@ pub async fn run_cycle(
         scanned: candidates.len(),
         matched,
         updated,
+        fields_filled,
+        conflicts,
         unchanged,
         errors,
         message,
