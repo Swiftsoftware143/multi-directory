@@ -833,7 +833,7 @@ function showNearToast(msg,duration){
 (function(){var s=document.createElement('style');s.textContent='@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}.zh-near-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--primary);color:#fff;border-radius:100px;font-size:.78rem;font-weight:600;white-space:nowrap}.zh-near-badge .close{cursor:pointer;opacity:.7;margin-left:4px}.zh-near-badge .close:hover{opacity:1}.zh-dist-badge{font-size:.72rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px;margin-left:6px}';document.head.appendChild(s)})()
 
 // ── State ──
-let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',diningSlugs:[],loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
+let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',filterNeighbourhood:'',diningSlugs:[],loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
 
 // ── Collections (localStorage) ──
 function loadCollections(){try{var r=localStorage.getItem('zh_collections');return r?JSON.parse(r):[]}catch(e){return[]}}
@@ -881,13 +881,13 @@ function route(){
     if(MD_ENTRY_SUB==='deals'){state.page='deals';state.dealsCityFilter=MD_ENTRY_SLUG}
     else if(MD_ENTRY_SUB==='events'){state.page='events';state.eventsCityFilter=MD_ENTRY_SLUG}
     else if(MD_ENTRY_SUB==='blog'){state.page='blog';state.slug=MD_ENTRY_SLUG}
-    else{state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory=''}
+    else{state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory='';state.filterNeighbourhood=''}
   }else if(hash.startsWith('/city/')){
     var parts=hash.split('/')
     if(parts.length>=5&&parts[3]==='biz'){
       state.page='biz';state.slug=parts[2];state.bizId=parts[4]
     }else{
-      state.page='city';state.slug=parts[2];state.filterCategory=''
+      state.page='city';state.slug=parts[2];state.filterCategory='';state.filterNeighbourhood=''
     }
   }else if(hash.startsWith('/blog/')){
     var parts=hash.split('/')
@@ -1108,7 +1108,7 @@ async function load(){
           state.page='blog';state.slug=entrySlug
           entryHash='#/blog/'+entrySlug
         }else{
-          state.page='city';state.slug=entrySlug;state.filterCategory=''
+          state.page='city';state.slug=entrySlug;state.filterCategory='';state.filterNeighbourhood=''
           if(entrySub)entryHash='#/city/'+entrySlug+'/'+entrySub
         }
         try{history.replaceState(null,'',entryHash)}catch(e2){}
@@ -2086,6 +2086,32 @@ function renderCityPage(d){
     }
   }
   var bizHtml=''
+  // Neighbourhood granularity (card B90, Nextdoor-style): a chip row scoping the city to one
+  // suburb/community, built from the operator-set labels present in this city's businesses.
+  // Combines with the category filter above (AND), and is ANDed into `biz` before rendering.
+  if(state.filterNeighbourhood){
+    biz=biz.filter(function(b){return (b.neighbourhood||'')===state.filterNeighbourhood})
+  }
+  var nbNames=[]
+  var nbSrc=d.featured_businesses||[]
+  for(var ni=0;ni<nbSrc.length;ni++){
+    var nbv=(nbSrc[ni].neighbourhood||'').trim()
+    if(nbv&&nbNames.indexOf(nbv)<0)nbNames.push(nbv)
+  }
+  nbNames.sort()
+  var nbRowHtml=''
+  if(nbNames.length){
+    var nbChip=function(label,val,active){
+      return '<a href="javascript:void(0)" onclick="filterNeighbourhood(\''+esc(val).replace(/'/g,"\\'")+'\',this)" style="padding:6px 14px;border-radius:100px;font-size:.8rem;font-weight:600;border:1px solid var(--border);background:var(--card);color:var(--text);text-decoration:none;cursor:pointer'+(active?';background:var(--primary);color:#fff;border-color:var(--primary)':'')+'">'+esc(label)+'</a>'
+    }
+    nbRowHtml='<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 14px">'+
+      '<span style="font-size:.8rem;font-weight:700;color:var(--text-light)">🏘 Neighbourhood:</span>'+
+      nbChip('All','',!state.filterNeighbourhood)
+    for(var nj=0;nj<nbNames.length;nj++){
+      nbRowHtml+=nbChip(nbNames[nj],nbNames[nj],state.filterNeighbourhood===nbNames[nj])
+    }
+    nbRowHtml+='</div>'
+  }
   for(var i=0;i<biz.length;i++){
     var b=biz[i]
     var coverBg=i%2===0?'#f27f2f':'#7c3aed';var coverGrad=i%3===0?'135deg,#f27f2f,#f97316':i%3===1?'135deg,#7c3aed,#a78bfa':'135deg,#d97706,#f59e0b'
@@ -2220,6 +2246,7 @@ ${loyaltySectionHtml()}
   <div id="zh-city-map"></div>
   ${nearBadgeHtml}
   ${cityTopRatedBlock}
+  ${nbRowHtml}
   <div class="zh-section-header"><div><h2 class="zh-section-title">📍 Local Businesses</h2><p class="zh-section-sub">${bizCount||0} curated listings in ${cityName}</p></div></div>
   <div class="zh-biz-grid" id="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
   ${deals.length?`
@@ -2266,6 +2293,14 @@ function saveBusinessFromCard(btn,name,slug,id){
 function filterCity(slug,el){
   state.filterCategory=slug
   // Reload with filter — active pill state rendered in renderCityPage
+  loadCityPage()
+}
+
+// Card B90 neighbourhood granularity (Nextdoor-style): scope the city page to one
+// suburb/community. Clears any category filter so the two never compound confusingly.
+function filterNeighbourhood(nb,el){
+  state.filterNeighbourhood=nb||''
+  state.filterCategory=''
   loadCityPage()
 }
 

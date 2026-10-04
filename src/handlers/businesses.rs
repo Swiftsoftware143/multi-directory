@@ -386,6 +386,18 @@ pub async fn update_business(
         }
     }
 
+    // Neighbourhood granularity (card B90, Nextdoor-style): a free-text suburb/community label,
+    // operator-set. Validate length up-front so an over-long value is a plain-English 400. An
+    // empty/whitespace value is the "Clear" action (stored as NULL), not a payload to validate.
+    if let Some(ref nb) = req.neighbourhood {
+        if nb.trim().chars().count() > 80 {
+            return Err(AppError::BadRequest(
+                "Neighbourhood must be 80 characters or fewer (e.g. \"Palm Bay West\")."
+                    .to_string(),
+            ));
+        }
+    }
+
     let business = sqlx::query_as::<_, Business>(
         r#"UPDATE businesses SET
            name = COALESCE($1, name),
@@ -408,8 +420,11 @@ pub async fn update_business(
            licensed = COALESCE($18, licensed),
            insured = COALESCE($19, insured),
            license_number = COALESCE($20, license_number),
+           neighbourhood = CASE WHEN $21 IS NULL THEN neighbourhood
+                                WHEN btrim($21) = '' THEN NULL
+                                ELSE btrim($21) END,
            updated_at = NOW()
-           WHERE id = $21 RETURNING *"#,
+           WHERE id = $22 RETURNING *"#,
     )
     .bind(&req.name)
     .bind(&req.slug)
@@ -431,6 +446,7 @@ pub async fn update_business(
     .bind(req.licensed)
     .bind(req.insured)
     .bind(&req.license_number)
+    .bind(&req.neighbourhood)
     .bind(business_id)
     .fetch_one(&s.db)
     .await?;

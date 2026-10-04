@@ -280,6 +280,7 @@ a:hover{text-decoration:underline}
                 <span class="rating-badge" id="ratingBadge"></span>
               </div>
               <span class="response-pill" id="responsePill" style="display:none"></span>
+              <span class="response-pill" id="neighbourhoodPill" style="display:none"></span>
             </div>
             <div id="saveButtonContainer">
               <button class="action-btn" onclick="toggleSave()" id="saveBtn">❤️ Save</button>
@@ -758,6 +759,10 @@ function renderBusiness() {
   const insEl = document.getElementById('insuredBadge');
   if (b.insured) { insEl.textContent = '🛡 Insured'; insEl.style.display = ''; }
   else { insEl.style.display = 'none'; }
+  // Neighbourhood granularity (card B90, Nextdoor-style): the suburb/community WITHIN the city.
+  const nbEl = document.getElementById('neighbourhoodPill');
+  if (b.neighbourhood) { nbEl.textContent = '🏘 ' + b.neighbourhood; nbEl.style.display = ''; }
+  else { nbEl.style.display = 'none'; }
   document.getElementById('bizCategory').textContent = b.category_name || 'Local Business';
 
   const rating = b.rating || 0;

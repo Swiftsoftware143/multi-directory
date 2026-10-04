@@ -11267,14 +11267,20 @@
           var responseBtn = '<button class="btn btn-ghost btn-sm" type="button" data-rt-open="' + esc(r.id) +
             '" data-rt-dir="' + esc(r.directory_slug || '') + '" data-rt-name="' + esc(r.name || '') +
             '">⚡ Response</button>';
+          // Card B90 neighbourhood granularity (Nextdoor-style): the suburb/community WITHIN
+          // the city this business sits in, operator-set.
+          var nbBtn = '<button class="btn btn-ghost btn-sm" type="button" data-nb-open="' + esc(r.id) +
+            '" data-nb-dir="' + esc(r.directory_slug || '') + '" data-nb-name="' + esc(r.name || '') +
+            '" data-nb-val="' + esc(r.neighbourhood || '') + '">🏘 Neighbourhood</button>';
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
-            '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
+            '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') +
+              (r.neighbourhood ? ' · 🏘 ' + esc(r.neighbourhood) : '') + '</td>' +
             '<td>' + esc(r.directory_name || '') + '</td>' +
             '<td>' + badge + ' ' + lcBadge + ' ' + trustBadges + '</td>' +
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + '</td></tr>';
+            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + ' ' + nbBtn + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -11320,6 +11326,22 @@
         window.prompt('Invite link for "' + name + '" (valid ' + d.expires_in_days +
           ' days). Copied to clipboard — send it to the supplier:', link);
       }).catch(function (e) { st.textContent = 'Invite failed: ' + e.message; });
+    }
+
+    // Card B90 neighbourhood granularity (Nextdoor-style): operator sets the suburb/community
+    // WITHIN the city. A blank input CLEARS it (the API stores NULL); cancelling does nothing.
+    function setNeighbourhood(id, dir, name, current) {
+      var val = window.prompt('Neighbourhood for "' + name + '" within its city\n(e.g. "Palm Bay West"). Leave blank to clear:', current || '');
+      if (val === null) return; // cancelled — leave untouched
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      document.getElementById('bz-status').textContent = 'Saving neighbourhood…';
+      fetch(API + '/directories/' + encodeURIComponent(dir) + '/businesses/' + encodeURIComponent(id), {
+        method: 'PUT', headers: h, body: JSON.stringify({ neighbourhood: val })
+      }).then(function (r) {
+        return r.json().then(function (d) { if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status)); return d; });
+      }).then(function () { load(); })
+        .catch(function (e) { document.getElementById('bz-status').textContent = 'Failed: ' + e.message; });
     }
 
     // Card B90: flip an operator-set trust badge (licensed / insured) on a listing.
@@ -11439,6 +11461,8 @@
       if (inv) { mintInvite(inv.getAttribute('data-invite'), inv.getAttribute('data-invite-name')); return; }
       var tr = ev.target.closest('[data-trust]');
       if (tr) { setTrust(tr.getAttribute('data-trust-id'), tr.getAttribute('data-trust-dir'), tr.getAttribute('data-trust'), tr.getAttribute('data-trust-val')); return; }
+      var nb = ev.target.closest('[data-nb-open]');
+      if (nb) { setNeighbourhood(nb.getAttribute('data-nb-open'), nb.getAttribute('data-nb-dir'), nb.getAttribute('data-nb-name'), nb.getAttribute('data-nb-val')); return; }
     });
 
     function bzReload() { if (!document.getElementById('bz-rows')) return; load(); }

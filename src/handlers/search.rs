@@ -29,6 +29,10 @@ pub struct SearchQuery {
     pub subcategory: Option<String>,
     pub city: Option<String>,
     pub state: Option<String>,
+    /// Neighbourhood granularity (card B90, Nextdoor-style): filter to businesses whose
+    /// operator-set suburb/community label matches (case-insensitive). Empty = no filter.
+    #[serde(default)]
+    pub neighbourhood: Option<String>,
     pub business_type: Option<String>,
     /// Multi-type filter (e.g. search across supplier/farm/wholesaler at once).
     /// Used by search/suppliers when no single `business_type` is requested.
@@ -352,6 +356,19 @@ fn push_search_where<'a>(
             qb.push("LOWER(COALESCE(b.state, '')) = LOWER(")
                 .push_bind(st.as_str())
                 .push(")");
+        }
+    }
+
+    // Neighbourhood granularity (card B90, Nextdoor-style): case-insensitive match on the
+    // operator-set suburb/community label. Bound, never interpolated; empty means "no filter".
+    if let Some(ref nb) = qs.neighbourhood {
+        let nb = nb.trim();
+        if !nb.is_empty() {
+            if !first {
+                qb.push(" AND ");
+            }
+            first = false;
+            qb.push("b.neighbourhood ILIKE ").push_bind(nb.to_string());
         }
     }
 

@@ -225,6 +225,10 @@ pub struct Business {
     pub licensed: Option<bool>,
     pub insured: Option<bool>,
     pub license_number: Option<String>,
+    /// Neighbourhood granularity (card B90, Nextdoor-style): the suburb/community WITHIN the
+    /// directory's city this business sits in, operator-set. Public; used to group and filter a
+    /// city page. NULL when the operator has not set one.
+    pub neighbourhood: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub enriched_at: Option<DateTime<Utc>>,
@@ -285,6 +289,10 @@ pub struct UpdateBusinessRequest {
     pub licensed: Option<bool>,
     pub insured: Option<bool>,
     pub license_number: Option<String>,
+    /// Neighbourhood granularity (card B90, Nextdoor-style), operator-settable from the admin
+    /// panel. An empty/whitespace string CLEARS it; omitting the field leaves the stored value
+    /// untouched so a partial update never wipes it.
+    pub neighbourhood: Option<String>,
     /// Availability indicator (card B90, Thumbtack-style): weekly opening hours stored in
     /// `business_meta.meta_data->'hours'`. An explicit JSON `null` clears them (see
     /// `deserialize_some` — plain `Option<Value>` would collapse `null` into "absent" and

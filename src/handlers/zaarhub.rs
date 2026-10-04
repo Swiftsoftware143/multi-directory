@@ -109,6 +109,9 @@ pub struct BusinessCard {
     pub longitude: Option<f64>,
     pub is_claimed: bool,
     pub has_deal: bool,
+    /// Neighbourhood granularity (card B90, Nextdoor-style): the suburb/community within the
+    /// city. Public; the city page groups and filters by it when present.
+    pub neighbourhood: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -833,11 +836,12 @@ pub async fn get_city_page(
             Option<Uuid>,
             Option<String>,
             Option<String>,
+            Option<String>,
         ),
     >(
         r#"SELECT b.id, b.name, b.slug, b.description, b.rating, b.review_count,
                   b.phone, b.website, b.address, b.city, b.latitude, b.longitude, b.category_id,
-                  dc.name as category_name, dc.slug as category_slug
+                  dc.name as category_name, dc.slug as category_slug, b.neighbourhood
            FROM businesses b
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND b.is_active = true
@@ -867,6 +871,7 @@ pub async fn get_city_page(
                 cat_id,
                 cat_name,
                 cat_slug,
+                neighbourhood,
             )| {
                 BusinessCard {
                     id,
@@ -886,6 +891,7 @@ pub async fn get_city_page(
                     longitude: lng,
                     is_claimed: false,
                     has_deal: false,
+                    neighbourhood,
                 }
             },
         )
@@ -1267,6 +1273,9 @@ pub struct SearchQuery {
     pub q: Option<String>,
     pub city: Option<String>,
     pub category: Option<String>,
+    /// Neighbourhood granularity (card B90, Nextdoor-style): filter to businesses whose
+    /// operator-set neighbourhood matches (case-insensitive).
+    pub neighbourhood: Option<String>,
     pub page: Option<i32>,
     pub limit: Option<i32>,
     /// Latitude for "near me" proximity search
@@ -1306,6 +1315,14 @@ pub async fn search_businesses(
         None
     };
 
+    // Neighbourhood granularity (card B90, Nextdoor-style): trim; empty means "no filter".
+    // Captured outside the query-builder block because the total count below reads it too.
+    let neighbourhood_param = query
+        .neighbourhood
+        .as_ref()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
     let rows: Vec<(
         Uuid,
         String,
@@ -1321,6 +1338,7 @@ pub async fn search_businesses(
         Option<f64>,
         String,
         String,
+        Option<String>,
     )> = {
         let (city_param, category_param) = (query.city.clone(), query.category.clone());
 
@@ -1329,7 +1347,7 @@ pub async fn search_businesses(
         let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
             r#"SELECT b.id, b.name, b.slug, b.description, b.rating, b.review_count,
                       b.phone, b.website, b.address, b.city, b.latitude, b.longitude,
-                      d.name as dir_name, d.slug as dir_slug
+                      d.name as dir_name, d.slug as dir_slug, b.neighbourhood
                FROM businesses b
                JOIN directories d ON d.id = b.directory_id
                WHERE b.is_active = true"#,
@@ -1355,6 +1373,12 @@ pub async fn search_businesses(
             qb.push(" AND b.category_id IN (SELECT id FROM directory_categories WHERE slug = ")
                 .push_bind(category.clone())
                 .push(")");
+        }
+
+        // Neighbourhood granularity (card B90, Nextdoor-style): case-insensitive match on the
+        // operator-set label. Bound, never interpolated.
+        if let Some(ref nb) = neighbourhood_param {
+            qb.push(" AND b.neighbourhood ILIKE ").push_bind(nb.clone());
         }
 
         // Proximity filter: lat/lng/radius are bound, never interpolated into the statement.
@@ -1404,6 +1428,7 @@ pub async fn search_businesses(
             Option<f64>,
             String,
             String,
+            Option<String>,
         )>()
         .fetch_all(&s.db)
         .await?
@@ -1427,6 +1452,7 @@ pub async fn search_businesses(
                 lng,
                 dir_name,
                 dir_slug,
+                neighbourhood,
             )| {
                 // Calculate distance from search center if proximity is active
                 let distance: Option<f64> = if let Some((slat, slng, _)) = proximity {
@@ -1455,12 +1481,17 @@ pub async fn search_businesses(
                     "city": city, "latitude": lat, "longitude": lng,
                     "directory_name": dir_name, "directory_slug": dir_slug,
                     "distance_km": distance,
+                    "neighbourhood": neighbourhood,
                 })
             },
         )
         .collect();
 
-    let total: i64 = if search_term.is_empty() && query.city.is_none() && query.category.is_none() {
+    let total: i64 = if search_term.is_empty()
+        && query.city.is_none()
+        && query.category.is_none()
+        && neighbourhood_param.is_none()
+    {
         sqlx::query_scalar("SELECT COUNT(*) FROM businesses WHERE is_active = true")
             .fetch_one(&s.db)
             .await
@@ -1509,6 +1540,9 @@ struct BizDetail {
     licensed: bool,
     insured: bool,
     license_number: Option<String>,
+    /// Neighbourhood granularity (card B90, Nextdoor-style): operator-set suburb/community,
+    /// public on the listing. None for `business_listings` rows (a different UUID space).
+    neighbourhood: Option<String>,
     /// TRUE when the row came from `business_listings` (a different UUID space).
     is_listing: bool,
 }
@@ -1603,7 +1637,7 @@ pub async fn get_business_detail(
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
-                      b.licensed, b.insured, b.license_number
+                      b.licensed, b.insured, b.license_number, b.neighbourhood
                FROM businesses b
                WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1619,7 +1653,7 @@ pub async fn get_business_detail(
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
-                      b.licensed, b.insured, b.license_number
+                      b.licensed, b.insured, b.license_number, b.neighbourhood
                FROM businesses b
                WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1661,6 +1695,7 @@ pub async fn get_business_detail(
             licensed: r.try_get::<Option<bool>, _>("licensed")?.unwrap_or(false),
             insured: r.try_get::<Option<bool>, _>("insured")?.unwrap_or(false),
             license_number: r.try_get("license_number")?,
+            neighbourhood: r.try_get("neighbourhood")?,
             is_listing: false,
         }
     } else if let Ok(bid) = Uuid::parse_str(&id) {
@@ -1716,6 +1751,7 @@ pub async fn get_business_detail(
             licensed: false,
             insured: false,
             license_number: None,
+            neighbourhood: None,
             is_listing: true,
         }
     } else {
@@ -1932,6 +1968,7 @@ pub async fn get_business_detail(
         "is_verified": biz.verified,
         "licensed": biz.licensed,
         "insured": biz.insured,
+        "neighbourhood": biz.neighbourhood,
         "source": if biz.is_listing { "listing" } else { "business" },
         "images": photos.clone(),
         "photos": photos,
