@@ -1259,23 +1259,37 @@ pub fn create_router(s: AppState) -> Router {
             "/directories/:slug/call-logs",
             get(call_tracking::directory_call_logs),
         )
+        // Per-directory tracking numbers. `directory_phone_numbers` existed with zero
+        // callers (an unmounted handler); mounted here so the admin console's Calls card
+        // can scope numbers to one directory instead of the fleet-wide list.
+        .route(
+            "/directories/:slug/phone-numbers",
+            get(call_tracking::directory_phone_numbers),
+        )
         .route(
             "/businesses/:id/call-logs",
             get(call_tracking::business_call_logs),
         )
+        // Fleet-wide number management is operator-only: these carry PII (the number,
+        // its forwarding target and owner) and, before this guard, any *authenticated*
+        // tenant token could enumerate every number on the platform.
         .route(
             "/phone-numbers",
-            get(call_tracking::list_phone_numbers).post(call_tracking::create_phone_number),
+            get(call_tracking::list_phone_numbers)
+                .post(call_tracking::create_phone_number)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/phone-numbers/:id",
             get(call_tracking::get_phone_number)
                 .put(call_tracking::update_phone_number)
-                .delete(call_tracking::delete_phone_number),
+                .delete(call_tracking::delete_phone_number)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
             "/phone-numbers/:id/provision",
-            post(call_tracking::provision_phone_number),
+            post(call_tracking::provision_phone_number)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         // ??? Phase 4: Data Company — Google Places, verifications, enrichment, bulk export
         .route(

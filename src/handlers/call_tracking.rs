@@ -567,9 +567,16 @@ pub async fn provision_phone_number(
 /// GET /api/v1/directories/:slug/phone-numbers — per directory
 pub async fn directory_phone_numbers(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
     Query(q): Query<ListQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    // Tracking numbers carry PII (the number, its target and its owner): directory-scoped,
+    // operator-only otherwise — same guard as directory_call_logs.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
+
     let limit = q.limit.unwrap_or(50).min(200);
     let offset = q.offset.unwrap_or(0);
 

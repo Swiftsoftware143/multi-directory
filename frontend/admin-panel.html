@@ -538,6 +538,7 @@
         <a href="#subscribers-section">📧 Subscribers</a>
         <a href="#audience-section">👥 Audience Lists</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
+        <a href="#calls-section">📞 Calls</a>
         <a href="#entity-export-section">📦 Complete Export</a>
         <a href="#entity-sync-section">🔗 CoreSwift Sync</a>
         <a href="#coreswift-connection-section">🔌 CoreSwift Connection</a>
@@ -1088,6 +1089,36 @@
         </div>
         <div id="dl-list"></div>
         <div class="feature-status" id="dl-status"></div>
+      </div>
+
+      <!-- 📞 Calls (card B91) — the call_logs + twilio_numbers back end (call_tracking.rs) had
+           no screen outside the raw /admin-ops API explorer, and /directories/:slug/phone-numbers
+           was an unmounted handler. This is the console control: scope to one city or the whole
+           platform, see the call log and the numbers that feed it (read-only — numbers are
+           provisioned by the telephony provider). -->
+      <div class="feature-card" id="calls-section">
+        <h3>📞 Calls &amp; Tracking Numbers
+          <span class="pk-badge pk-missing" id="cl-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">Call tracking for the platform and per city. Pick a directory to scope the log and its tracking numbers, or stay on <b>All directories</b> for the platform view. Numbers are provisioned by the telephony provider; this screen shows what exists, where it forwards and whether call logging is on.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;min-width:230px">Scope
+            <select class="pk-input" id="cl-directory" onchange="window.__clLoad()"><option value="">Loading…</option></select></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;min-width:150px">Show
+            <select class="pk-input" id="cl-filter" onchange="window.__clRender()">
+              <option value="">All calls</option>
+              <option value="missed">Missed</option>
+              <option value="completed">Completed</option>
+              <option value="voicemail">Voicemail</option>
+            </select></label>
+          <button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="window.__clLoad()">↻ Refresh</button>
+        </div>
+        <div class="stats-row" id="cl-stats"></div>
+        <div style="font-weight:600;font-size:.9rem;margin:12px 0 6px">Call log</div>
+        <div id="cl-list"></div>
+        <div style="font-weight:600;font-size:.9rem;margin:14px 0 6px">Tracking numbers</div>
+        <div id="cl-numbers"></div>
+        <div class="feature-status" id="cl-status"></div>
       </div>
 
       <!-- 🧩 API Access & Webhooks (B91 / B117 gap #4) — /api-keys and /webhooks carry a full
@@ -11362,6 +11393,159 @@
     }
     document.addEventListener('DOMContentLoaded', init);
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 700);
+  })();
+  </script>
+  <script>
+  /* ============================================================
+     📞 Calls (card B91) — per-directory + platform call log and tracking numbers.
+     GET /call-logs                       (operator, platform view)
+     GET /phone-numbers                   (operator, platform view)
+     GET /directories/:slug/call-logs     (directory-scoped)
+     GET /directories/:slug/phone-numbers (directory-scoped; handler was unmounted, now live)
+     Read-only: numbers are provisioned by the telephony provider. All calls ride the
+     panel's token and the /api/v1 base so nothing drifts from the rest of the console.
+     ============================================================ */
+  (function () {
+    var API = '/api/v1';
+    var LOGS = [], NUMS = [];
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function req(path) {
+      var h = {}; var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      return fetch(API + path, { headers: h }).then(function (r) {
+        return r.text().then(function (txt) {
+          var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (e) {}
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function status(msg) { var el = document.getElementById('cl-status'); if (el) el.textContent = msg || ''; }
+    function sel() { var el = document.getElementById('cl-directory'); return el ? el.value : ''; }
+    function dur(sec) {
+      var s = parseInt(sec, 10); if (!s || s < 0) s = 0;
+      var m = Math.floor(s / 60); s = s % 60;
+      return m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+    }
+    function ts(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : ''; }
+
+    function loadDirs() {
+      var el = document.getElementById('cl-directory'); if (!el) return;
+      req('/directories?per_page=100').then(function (r) {
+        var dirs = (r && r.data) || [];
+        var saved = null; try { saved = localStorage.getItem('cl_dir'); } catch (e) {}
+        var h = '<option value="">All directories (platform view)</option>';
+        dirs.forEach(function (d) {
+          h += '<option value="' + esc(d.slug) + '">' + esc(d.name || d.slug) + ' (' + esc(d.slug) + ')</option>';
+        });
+        el.innerHTML = h;
+        if (saved) el.value = saved;
+        load();
+      }).catch(function (e) {
+        el.innerHTML = '<option value="">Could not load directories</option>';
+        status('Could not load directories: ' + e.message);
+      });
+    }
+
+    function load() {
+      if (!document.getElementById('cl-list')) return;
+      var slug = sel();
+      try { localStorage.setItem('cl_dir', slug); } catch (e) {}
+      var logPath = slug ? ('/directories/' + encodeURIComponent(slug) + '/call-logs?limit=200')
+                         : '/call-logs?limit=200';
+      var numPath = slug ? ('/directories/' + encodeURIComponent(slug) + '/phone-numbers?limit=200')
+                         : '/phone-numbers?limit=200';
+      status('Loading…');
+      Promise.all([req(logPath), req(numPath)]).then(function (res) {
+        LOGS = Array.isArray(res[0]) ? res[0] : [];
+        NUMS = Array.isArray(res[1]) ? res[1] : [];
+        renderStats(); render(); renderNumbers();
+        var badge = document.getElementById('cl-badge');
+        if (badge) {
+          badge.textContent = LOGS.length + ' call' + (LOGS.length === 1 ? '' : 's');
+          badge.className = 'pk-badge ' + (LOGS.length ? 'pk-ok' : 'pk-missing');
+        }
+        status('');
+      }).catch(function (e) { status('Failed: ' + e.message); });
+    }
+
+    function renderStats() {
+      var el = document.getElementById('cl-stats'); if (!el) return;
+      var missed = 0, completed = 0, leads = 0, durTotal = 0;
+      LOGS.forEach(function (l) {
+        if (l.call_status === 'missed') missed++;
+        if (l.call_status === 'completed') completed++;
+        if (l.lead_name) leads++;
+        durTotal += parseInt(l.duration_seconds, 10) || 0;
+      });
+      var avg = LOGS.length ? Math.round(durTotal / LOGS.length) : 0;
+      function card(v, label) {
+        return '<div class="stat-card"><div class="stat-value">' + v + '</div><div class="stat-label">' + label + '</div></div>';
+      }
+      el.innerHTML = card(LOGS.length, 'Calls') + card(missed, 'Missed') + card(completed, 'Completed') +
+        card(leads, 'Leads') + card(avg + 's', 'Avg duration');
+    }
+
+    function render() {
+      var el = document.getElementById('cl-list'); if (!el) return;
+      var f = (document.getElementById('cl-filter').value || '');
+      var rows = LOGS.filter(function (l) { return !f || l.call_status === f; });
+      var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.8rem">' +
+        '<thead><tr><th>When</th><th>Caller</th><th>Direction</th><th>Status</th><th>Duration</th><th>Lead</th><th>Business</th></tr></thead><tbody>';
+      if (!rows.length) {
+        html += '<tr><td colspan="7" style="opacity:.6">No calls' + (f ? ' with that status' : ' recorded') + '.</td></tr>';
+      }
+      rows.forEach(function (l) {
+        html += '<tr><td>' + esc(ts(l.created_at)) + '</td><td>' + esc(l.caller_number || '—') + '</td>' +
+          '<td>' + esc(l.direction || '') + '</td><td>' + esc(l.call_status || '') + '</td>' +
+          '<td>' + esc(dur(l.duration_seconds)) + '</td><td>' + esc(l.lead_name || '—') + '</td>' +
+          '<td>' + esc(l.business_id ? String(l.business_id).slice(0, 8) + '…' : '—') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+
+    function renderNumbers() {
+      var el = document.getElementById('cl-numbers'); if (!el) return;
+      var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.8rem">' +
+        '<thead><tr><th>Number</th><th>Name</th><th>Provider</th><th>Forwards to</th><th>Logging</th><th>Status</th></tr></thead><tbody>';
+      if (!NUMS.length) {
+        html += '<tr><td colspan="6" style="opacity:.6">No tracking numbers' + (sel() ? ' in this directory' : '') + '.</td></tr>';
+      }
+      NUMS.forEach(function (n) {
+        html += '<tr><td><b>' + esc(n.phone_number) + '</b></td><td>' + esc(n.friendly_name || '—') + '</td>' +
+          '<td>' + esc(n.provider || '—') + '</td><td>' + esc(n.forwarding_number || '—') + '</td>' +
+          '<td>' + (n.call_logging ? 'on' : 'off') + '</td><td>' + esc(n.status || '') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+
+    window.__clLoad = load;
+    window.__clRender = render;
+    var inited = false;
+    function init() {
+      if (inited || !document.getElementById('calls-section')) return;
+      inited = true;
+      // Carry the console's chosen city into this card's scope, like the other per-directory cards.
+      document.addEventListener('md-context-change', function (e) {
+        try {
+          var sc = (e && e.detail && e.detail.scope) || '';
+          if (sc.indexOf('dir:') === 0 && window.MDContextBar && window.MDContextBar.dirsForScope) {
+            var ds = window.MDContextBar.dirsForScope(sc);
+            var el = document.getElementById('cl-directory');
+            if (ds && ds.length && el && el.value !== ds[0].slug) { el.value = ds[0].slug; load(); }
+          }
+        } catch (err) {}
+      });
+      loadDirs();
+    }
+    document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 400);
   })();
   </script>
 </body>
