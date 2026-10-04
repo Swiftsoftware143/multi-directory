@@ -226,6 +226,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
            curl-only routes (then operator-only in /admin-ops). Each is the business's OWN data,
            so it gets a real control here. -->
       <a href="#callsSection" id="navCalls" onclick="showPortalView('calls');return false;">📞 Calls &amp; Leads</a>
+      <a href="#messagesSection" id="navMessages" onclick="showPortalView('messages');return false;">✉️ Customer Messages</a>
       <a href="#listingToolsSection" id="navListing" onclick="showPortalView('listing');return false;">✅ Verify &amp; Categories</a>
       <a href="#billingSection" id="navBilling" onclick="showPortalView('billing');return false;">💎 Plan &amp; Purchases</a>
       <a href="#b2bSection" id="navB2B" onclick="showPortalView('b2b');return false;">🤝 B2B &amp; Co-op</a>
@@ -292,6 +293,24 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         <select id="clBiz" onchange="loadCallLogs()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
       </div>
       <div id="clList" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ✉️ Customer Messages (card B90 cross-cutting / B84 self-service) — GET /messages/:business_id,
+         PATCH /messages/:id/read. Visitors send enquiries from a listing page; before this section
+         the read API existed with NO UI, so an owner could never read an enquiry. Each row shows the
+         sender and date with an unread marker; opening one marks it read. -->
+    <div id="messagesSection" style="margin-top:32px">
+      <div class="section-title">✉️ Customer Messages</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        Every enquiry a customer sent from your public listing — newest first. Open a message to mark it
+        read, then reply to the customer at the address they left.
+      </div>
+      <div class="form-group" style="max-width:420px">
+        <label>Business</label>
+        <select id="msgBiz" onchange="loadMessages()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+      </div>
+      <div id="msgUnread" style="margin:12px 0"></div>
+      <div id="msgList" style="margin-top:12px"></div>
     </div>
 
     <!-- ✅ Verification & Categories (view id: listing) — GET /businesses/:id/verifications,
@@ -1315,18 +1334,20 @@ var _icCoreStatus = { connected: false };
 
 function showPortalView(view) {
   var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations',
-              calls: 'callsSection', listing: 'listingToolsSection', billing: 'billingSection', b2b: 'b2bSection' };
+              calls: 'callsSection', messages: 'messagesSection', listing: 'listingToolsSection',
+              billing: 'billingSection', b2b: 'b2bSection' };
   var id = map[view] || 'businessList';
   var el = document.getElementById(id);
   if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations',
-                calls: 'navCalls', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B' };
+                calls: 'navCalls', messages: 'navMessages', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B' };
   Object.keys(links).forEach(function(k) {
     var a = document.getElementById(links[k]);
     if (a) a.className = (k === view) ? 'active' : '';
   });
   if (view === 'integrations') loadIntegrationCenter();
   if (view === 'calls') loadCallLogs();
+  if (view === 'messages') loadMessages();
   if (view === 'listing') { loadVerifications(); loadCategoryChoices(); }
   if (view === 'billing') { loadPurchases(); getPlans().then(fillPlanTargets); }
   if (view === 'b2b') loadCoopGroups();
@@ -1987,7 +2008,7 @@ function setMyBiz(list) {
       plan: sub.tier_name || null
     };
   }).filter(function (b) { return !!b.id; });
-  ['clBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
+  ['clBiz', 'msgBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
   // renderBusinesses used biz[0].id, which is undefined for /portal/business/profile rows —
   // that silently disabled the ads/earnings block below. Point it at the real id.
   if (_myBiz.length && !_selectedBizId) _selectedBizId = _myBiz[0].id;
@@ -2010,6 +2031,57 @@ function setNote(id, msg, bad) {
 }
 function money(v) { var n = parseFloat(v || 0); return isNaN(n) ? '0.00' : n.toFixed(2); }
 function myBiz(id) { var f = _myBiz.filter(function (b) { return b.id === id; }); return f.length ? f[0] : null; }
+
+// ── Customer Messages (card B90 cross-cutting / B84 self-service) ─────────
+// Visitors send an enquiry from the public listing page (POST /messages/:business_id). The read
+// side (GET /messages/:business_id) is owner-scoped server-side — this section is its only UI, so
+// without it an owner could never read a customer enquiry. Opening a message marks it read
+// (PATCH /messages/:id/read) so the unread count reflects reality.
+async function loadMessages() {
+  var bid = bizOf('msgBiz');
+  var box = document.getElementById('msgList');
+  var un = document.getElementById('msgUnread');
+  if (!bid) { box.innerHTML = '<div class="card"><p>No claimed business on this account.</p></div>'; if (un) un.innerHTML = ''; return; }
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading messages…</p>';
+  try {
+    var msgs = await g('/messages/' + bid);
+    if (!msgs || !msgs.length) {
+      if (un) un.innerHTML = '';
+      box.innerHTML = '<div class="card"><p>No customer messages yet. Enquiries sent from your public listing appear here.</p></div>';
+      return;
+    }
+    var unread = msgs.filter(function (m) { return !m.is_read; }).length;
+    if (un) un.innerHTML = unread
+      ? '<span class="badge warning">' + unread + ' unread</span>'
+      : '<span class="badge active">All read</span>';
+    box.innerHTML = msgs.map(function (m) {
+      return '<div class="card" style="margin-bottom:10px">' +
+        '<h3>' + esc(m.subject || '(no subject)') + (m.is_read ? '' : ' <span class="badge warning">new</span>') + '</h3>' +
+        '<div style="font-size:.82rem;color:var(--text-secondary);margin:4px 0">From <b>' + esc(m.sender_name || 'Customer') + '</b>' +
+          (m.sender_email ? ' &lt;' + esc(m.sender_email) + '&gt;' : '') + '</div>' +
+        '<p style="white-space:pre-wrap;margin:8px 0">' + esc(m.message) + '</p>' +
+        '<div class="meta">' + (m.created_at ? new Date(m.created_at).toLocaleString() : '') + '</div>' +
+        (m.is_read ? '' : '<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="markMsgRead(\'' + m.id + '\')">Mark as read</button>') +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p style="color:var(--danger)">Could not load messages: ' + esc(e.message) + '</p>' +
+      '<button class="btn btn-sm" onclick="loadMessages()">Retry</button></div>';
+  }
+}
+
+async function markMsgRead(id) {
+  try {
+    var token = localStorage.getItem('bizToken');
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    var r = await fetch(API + '/messages/' + encodeURIComponent(id) + '/read', { method: 'PATCH', headers: h });
+    if (!r.ok) { var e = await r.json().catch(function () { return {}; }); throw new Error(e.message || 'Request failed'); }
+    loadMessages();
+  } catch (e) {
+    alert('Could not mark the message read: ' + e.message);
+  }
+}
 
 // ── Calls & Leads ─────────────────────────────────────────────
 async function loadCallLogs() {
