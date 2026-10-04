@@ -136,6 +136,7 @@ a:hover{text-decoration:underline}
   <div class="tab-bar">
     <div class="tab-item active" onclick="switchTab('saved')">❤️ Saved Spots</div>
     <div class="tab-item" onclick="switchTab('following')">🔔 Following</div>
+    <div class="tab-item" onclick="switchTab('recommended')">🤝 Recommended</div>
     <div class="tab-item" onclick="switchTab('reviews')">⭐ My Reviews</div>
     <div class="tab-item" onclick="switchTab('perks')">🎁 Redeemed Perks</div>
     <div class="tab-item" onclick="switchTab('settings')">⚙️ Settings</div>
@@ -149,6 +150,11 @@ a:hover{text-decoration:underline}
   <!-- Following (card B90, Nextdoor-style) -->
   <div class="tab-content" id="tabFollowing">
     <div id="followingContent"><div class="saved-grid" id="followingGrid"></div></div>
+  </div>
+
+  <!-- Recommended (card B90, Nextdoor-style) -->
+  <div class="tab-content" id="tabRecommended">
+    <div id="recommendedContent"><div class="saved-grid" id="recommendedGrid"></div></div>
   </div>
 
   <!-- My Reviews -->
@@ -188,6 +194,7 @@ a:hover{text-decoration:underline}
 let userData = null;
 let favorites = [];
 let following = [];
+let recommended = [];
 let reviews = [];
 let currentTab = 'saved';
 
@@ -215,7 +222,7 @@ function logout() {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-item').forEach((t, i) => {
-    const tabs = ['saved','following','reviews','perks','settings'];
+    const tabs = ['saved','following','recommended','reviews','perks','settings'];
     t.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -371,6 +378,70 @@ async function unfollowBusiness(businessId) {
       renderFollowing();
     }
   } catch(e) { console.warn('Unfollow fail:', e); }
+}
+
+// ── Load Recommended (card B90, Nextdoor-style) ──
+async function loadRecommended() {
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    const resp = await fetch('/api/v1/visitor/recommendations', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      recommended = Array.isArray(data) ? data : (data.recommendations || []);
+      renderRecommended();
+    }
+  } catch(e) { console.warn('Recommended load fail:', e); }
+}
+
+function renderRecommended() {
+  const grid = document.getElementById('recommendedGrid');
+  if (!grid) return;
+
+  if (!recommended || recommended.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🤝</div><p>You have not recommended any businesses yet. <a href="/zaarhub">Browse the directory</a> and recommend the ones you love — neighbours see your recommendation.</p></div>';
+    return;
+  }
+
+  grid.innerHTML = recommended.map(b => {
+    const id = b.business_id;
+    const name = b.business_name || 'Business';
+    const city = b.city || '';
+    const state = b.state || '';
+    const category = b.category_name || 'Local';
+    const rating = b.rating || 0;
+    const slug = b.directory_slug || '';
+
+    return `
+      <div class="saved-card" onclick="location.href='/biz/${id}${slug ? '?slug='+slug : ''}'">
+        <div class="card-icon">🤝</div>
+        <h4>${name}</h4>
+        <div class="card-sub">${[city, state].filter(Boolean).join(', ') || 'Local'}</div>
+        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${category}</div>
+        <div class="card-stars">${rating > 0 ? renderStars(rating) + ' ' + rating.toFixed(1) : ''}</div>
+        <button class="remove-btn" onclick="event.stopPropagation();unrecommendBusiness('${id}')">Remove</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function unrecommendBusiness(businessId) {
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    const resp = await fetch(`/api/v1/visitor/recommendations/${businessId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      recommended = recommended.filter(r => String(r.business_id) !== String(businessId));
+      renderRecommended();
+    }
+  } catch(e) { console.warn('Unrecommend fail:', e); }
 }
 
 // ── Load Reviews ──
@@ -541,6 +612,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadProfile();
   loadFavorites();
   loadFollowing();
+  loadRecommended();
   loadMyReviews();
   loadPerks();
 });

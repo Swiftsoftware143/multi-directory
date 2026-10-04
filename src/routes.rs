@@ -1909,6 +1909,10 @@ pub fn create_router(s: AppState) -> Router {
             "/visitor/recommendations/:business_id",
             post(visitors::toggle_recommend),
         )
+        .route(
+            "/visitor/recommendations",
+            get(visitors::list_recommendations),
+        )
         // ? Visitor bookmarks / saved places — alternate scoped routes
         .route("/bookmarks", get(visitors::list_favorites))
         .route("/bookmarks/toggle", post(visitors::toggle_bookmark))
@@ -3503,6 +3507,7 @@ async fn auth_guard(
         || (path.starts_with("/visitor/follows/") && req.method() == "POST")
         || (path.starts_with("/visitor/recommendations/check/") && req.method() == "GET")
         || (path.starts_with("/visitor/recommendations/") && req.method() == "POST")
+        || (path == "/visitor/recommendations" && req.method() == "GET")
         // Public bookmark endpoints
         || (path == "/bookmarks" && req.method() == "GET")
         || (path == "/bookmarks/toggle" && req.method() == "POST")

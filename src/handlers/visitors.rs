@@ -1459,6 +1459,57 @@ pub async fn check_recommend(
     })))
 }
 
+/// GET /api/v1/visitor/recommendations — the businesses this visitor has recommended.
+/// Visitor-guarded (the route is before auth_guard, so the JWT is verified here).
+pub async fn list_recommendations(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
+
+    let is_visitor =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_one(&s.db)
+            .await?;
+    if is_visitor == 0 {
+        return Err(AppError::Forbidden(
+            "Recommendations are for shopper accounts — sign in as a visitor.".to_string(),
+        ));
+    }
+
+    let recommendations = sqlx::query_as::<_, FollowedBusinessRow>(
+        r#"SELECT
+            br.id,
+            br.created_at as followed_at,
+            b.id as business_id,
+            b.name as business_name,
+            b.slug as business_slug,
+            b.city,
+            b.state,
+            dc.name as category_name,
+            b.images,
+            b.rating,
+            b.review_count,
+            b.phone,
+            d.slug as directory_slug
+        FROM business_recommendations br
+        JOIN businesses b ON b.id = br.business_id
+        LEFT JOIN directory_categories dc ON dc.id = b.category_id
+        LEFT JOIN directories d ON d.id = br.directory_id
+        WHERE br.visitor_account_id = $1
+        ORDER BY br.created_at DESC"#,
+    )
+    .bind(visitor_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(json!({
+        "recommendations": recommendations,
+        "count": recommendations.len(),
+    })))
+}
+
 // ── Business Claim Handlers ──
 
 /// POST /api/v1/businesses/:id/claim — business owner claims their listing
