@@ -1362,6 +1362,9 @@ function renderError(msg){
 async function loadHomepage(){
   try{
     var d=await g('/zaarhub/homepage');state.homepageData=d
+    // Card B90 local feed: replace the reviews-only activity with the multi-source feed
+    // (reviews + deals + claims + answered Q&A + recommendations). Fail-silent.
+    try{var act=await g('/zaarhub/activity');if(act&&act.length){d.recent_activity=act}}catch(_e){}
   }catch(e){
     // fallback: build empty
     d={cities:state.cities,featured_deals:[],upcoming_events:[],recent_activity:[],stats:{total_businesses:0,total_cities:0,total_reviews:0},category_pills:[]}
@@ -1902,6 +1905,8 @@ async function loadCityPage(){
   if(!slug){renderError('No city selected');return}
   try{
     var d=await g('/zaarhub/cities/'+slug)
+    // Card B90 local feed: city-scoped multi-source activity (fail-silent).
+    try{var act=await g('/zaarhub/activity?directory='+encodeURIComponent(slug));if(act&&act.length){d.activity_feed=act}}catch(_e){}
     var dirId=d.directory&&d.directory.id
     state.loyalty=await loadLoyalty(dirId)
     renderCityPage(d)
@@ -1986,20 +1991,36 @@ function renderCityPage(d){
   // ── Community Buzz (city-scoped recent reviews) — the homepage's OWN component (B87) ──
   // Same markup/classes as the homepage's activity list; only the DATA is city-scoped
   // (d.recent_reviews from GET /zaarhub/cities/<slug>). Hidden when the city has none.
+  // Card B90 local feed: prefer the city-scoped multi-source feed (reviews + deals + claims +
+  // answered Q&A + recommendations); fall back to the reviews-only list when it is unavailable.
+  var actFeed=d.activity_feed||null
   var cityReviews=d.recent_reviews||[]
   var buzzHtml=''
-  for(var ri=0;ri<cityReviews.length;ri++){
-    var rv=cityReviews[ri]
-    var rr=parseInt(rv.rating)||0
-    var rStars=rr>0?'★'.repeat(Math.min(rr,5))+'☆'.repeat(5-Math.min(rr,5)):''
-    var rMsg=rStars?'<span class="stars">'+rStars+'</span> ':'<span class="stars">💬</span> '
-    rMsg+=esc(rv.comment||rv.business_name||'')
-    buzzHtml+='<div class="zh-activity-item" onclick="location.hash=\'#/city/'+esc(state.slug)+'\'">'+
-      '<div class="zh-activity-avatar">'+(rv.reviewer_name?esc(rv.reviewer_name[0]):'👤')+'</div>'+
-      '<div class="zh-activity-body">'+
-      '<div class="msg">'+rMsg+'</div>'+
-      '<div class="time">'+esc(rv.business_name||'')+(rv.created_at?' · '+ago(rv.created_at):'')+'</div>'+
-      '</div></div>'
+  if(actFeed&&actFeed.length){
+    for(var ai=0;ai<actFeed.length;ai++){
+      var av=actFeed[ai]
+      var aIcon=av.activity_type==='review'?'★':av.activity_type==='deal_added'?'🎁':av.activity_type==='question_answered'?'❓':av.activity_type==='recommendation'?'👍':'👤'
+      buzzHtml+='<div class="zh-activity-item" onclick="location.hash=\'#/city/'+esc(av.directory_slug||state.slug)+'\'">'+
+        '<div class="zh-activity-avatar">'+aIcon+'</div>'+
+        '<div class="zh-activity-body">'+
+        '<div class="msg">'+esc(av.message||'')+'</div>'+
+        '<div class="time">'+(av.business_name?esc(av.business_name)+' · ':'')+ago(av.timestamp)+'</div>'+
+        '</div></div>'
+    }
+  }else{
+    for(var ri=0;ri<cityReviews.length;ri++){
+      var rv=cityReviews[ri]
+      var rr=parseInt(rv.rating)||0
+      var rStars=rr>0?'★'.repeat(Math.min(rr,5))+'☆'.repeat(5-Math.min(rr,5)):''
+      var rMsg=rStars?'<span class="stars">'+rStars+'</span> ':'<span class="stars">💬</span> '
+      rMsg+=esc(rv.comment||rv.business_name||'')
+      buzzHtml+='<div class="zh-activity-item" onclick="location.hash=\'#/city/'+esc(state.slug)+'\'">'+
+        '<div class="zh-activity-avatar">'+(rv.reviewer_name?esc(rv.reviewer_name[0]):'👤')+'</div>'+
+        '<div class="zh-activity-body">'+
+        '<div class="msg">'+rMsg+'</div>'+
+        '<div class="time">'+esc(rv.business_name||'')+(rv.created_at?' · '+ago(rv.created_at):'')+'</div>'+
+        '</div></div>'
+    }
   }
   var communityBuzzHtml=buzzHtml?`
 <div class="zh-section">

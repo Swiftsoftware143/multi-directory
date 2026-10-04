@@ -39,6 +39,13 @@ pub struct ActivityItem {
     pub timestamp: DateTime<Utc>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ActivityQuery {
+    /// Optional directory slug. When present the feed is scoped to that city (the card-B90
+    /// city local feed); when absent it is the network-wide feed the homepage renders.
+    pub directory: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DirectoryHomepageData {
     pub directory: DirectorySummary,
@@ -203,8 +210,15 @@ pub async fn list_cities(State(s): State<AppState>) -> ApiResult<Json<Vec<CityHu
     Ok(Json(cities))
 }
 
-/// GET /api/v1/zaarhub/activity — recent platform-wide activity
-pub async fn get_activity(State(s): State<AppState>) -> ApiResult<Json<Vec<ActivityItem>>> {
+/// GET /api/v1/zaarhub/activity — recent platform-wide activity.
+/// `?directory=<slug>` scopes the feed to one city (the city page's local feed, card B90);
+/// unscoped it is the network-wide feed the homepage Community Buzz section renders.
+pub async fn get_activity(
+    State(s): State<AppState>,
+    Query(q): Query<ActivityQuery>,
+) -> ApiResult<Json<Vec<ActivityItem>>> {
+    // Optional city scope: NULL = network-wide (homepage), Some = one city (city page).
+    let scope: Option<String> = q.directory.clone();
     // Recent reviews (only from directories visible on network)
     let recent_reviews: Vec<(
         Uuid,
@@ -223,10 +237,12 @@ pub async fn get_activity(State(s): State<AppState>) -> ApiResult<Json<Vec<Activ
            JOIN directories d ON d.id = b.directory_id
            WHERE r.status = 'approved'
              AND (d.zaarhub_config->>'network_visible')::boolean = true
-             AND (d.zaarhub_config->>'show_reviews')::boolean = true
+             AND COALESCE((d.zaarhub_config->>'show_reviews')::boolean, true) = true
+             AND ($1::text IS NULL OR d.slug = $1)
            ORDER BY r.created_at DESC
            LIMIT 10"#,
     )
+    .bind(scope.clone())
     .fetch_all(&s.db)
     .await?;
 
@@ -253,7 +269,7 @@ pub async fn get_activity(State(s): State<AppState>) -> ApiResult<Json<Vec<Activ
         )
         .collect();
 
-    // Recent deals added (from directories with show_deals enabled)
+    // Recent deals added (show_deals defaults ON when unset — defaults-over-blanks, B118)
     let recent_deals: Vec<(Uuid, String, String, String, DateTime<Utc>)> = sqlx::query_as(
         r#"SELECT de.id, de.title, b.slug, d.slug as dir_slug, de.created_at
            FROM deals de
@@ -261,10 +277,12 @@ pub async fn get_activity(State(s): State<AppState>) -> ApiResult<Json<Vec<Activ
            JOIN directories d ON d.id = de.directory_id
            WHERE de.status = 'active'
              AND (d.zaarhub_config->>'network_visible')::boolean = true
-             AND (d.zaarhub_config->>'show_deals')::boolean = true
+             AND COALESCE((d.zaarhub_config->>'show_deals')::boolean, true) = true
+             AND ($1::text IS NULL OR d.slug = $1)
            ORDER BY de.created_at DESC
            LIMIT 5"#,
     )
+    .bind(scope.clone())
     .fetch_all(&s.db)
     .await?;
 
@@ -288,9 +306,11 @@ pub async fn get_activity(State(s): State<AppState>) -> ApiResult<Json<Vec<Activ
            JOIN businesses b ON b.id = cb.business_id
            JOIN directories d ON d.id = b.directory_id
            WHERE (d.zaarhub_config->>'network_visible')::boolean = true
+             AND ($1::text IS NULL OR d.slug = $1)
            ORDER BY cb.created_at DESC
            LIMIT 5"#,
     )
+    .bind(scope.clone())
     .fetch_all(&s.db)
     .await?;
 
@@ -304,6 +324,68 @@ pub async fn get_activity(State(s): State<AppState>) -> ApiResult<Json<Vec<Activ
             directory_slug: Some(dir_slug),
             directory_name: None,
             timestamp: ts,
+        });
+    }
+
+    // Answered local Q&A (card B90 Nextdoor parity) — an answered question is community content.
+    let recent_answers: Vec<(Uuid, String, String, String, Option<DateTime<Utc>>)> =
+        sqlx::query_as(
+            r#"SELECT q.id, b.name, b.slug, d.slug as dir_slug, q.answered_at
+               FROM business_questions q
+               JOIN businesses b ON b.id = q.business_id
+               JOIN directories d ON d.id = b.directory_id
+               WHERE q.status = 'published' AND q.answer IS NOT NULL AND q.answered_at IS NOT NULL
+                 AND (d.zaarhub_config->>'network_visible')::boolean = true
+                 AND ($1::text IS NULL OR d.slug = $1)
+               ORDER BY q.answered_at DESC
+               LIMIT 5"#,
+        )
+        .bind(scope.clone())
+        .fetch_all(&s.db)
+        .await?;
+    for (id, biz_name, biz_slug, dir_slug, ts) in recent_answers {
+        items.push(ActivityItem {
+            id: format!("question-{}", id),
+            activity_type: "question_answered".to_string(),
+            message: format!("A question about {} was answered", biz_name),
+            business_name: Some(biz_name),
+            business_slug: Some(biz_slug),
+            directory_slug: Some(dir_slug),
+            directory_name: None,
+            timestamp: ts.unwrap_or_else(Utc::now),
+        });
+    }
+
+    // Neighbour recommendations (card B90) — aggregated per business, newest activity first.
+    let recent_recs: Vec<(Uuid, String, String, String, i64, Option<DateTime<Utc>>)> =
+        sqlx::query_as(
+            r#"SELECT b.id, b.name, b.slug, d.slug as dir_slug, COUNT(*) AS n, MAX(br.created_at) AS ts
+               FROM business_recommendations br
+               JOIN businesses b ON b.id = br.business_id
+               JOIN directories d ON d.id = b.directory_id
+               WHERE (d.zaarhub_config->>'network_visible')::boolean = true
+                 AND ($1::text IS NULL OR d.slug = $1)
+               GROUP BY b.id, b.name, b.slug, d.slug
+               ORDER BY MAX(br.created_at) DESC
+               LIMIT 5"#,
+        )
+        .bind(scope.clone())
+        .fetch_all(&s.db)
+        .await?;
+    for (biz_id, biz_name, biz_slug, dir_slug, n, ts) in recent_recs {
+        items.push(ActivityItem {
+            id: format!("rec-{}", biz_id),
+            activity_type: "recommendation".to_string(),
+            message: if n == 1 {
+                format!("1 neighbour recommends {}", biz_name)
+            } else {
+                format!("{} neighbours recommend {}", n, biz_name)
+            },
+            business_name: Some(biz_name),
+            business_slug: Some(biz_slug),
+            directory_slug: Some(dir_slug),
+            directory_name: None,
+            timestamp: ts.unwrap_or_else(Utc::now),
         });
     }
 
