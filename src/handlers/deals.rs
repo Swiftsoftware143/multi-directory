@@ -544,6 +544,12 @@ pub async fn lookup_redemption(
 ///   redemption_cap_pct the most of a bill that may be paid in currency
 ///   min_redeem_balance a member must hold this much before redeeming
 ///   exclude_free_items a free / fully-discounted item earns nothing
+///
+/// Round 13 IDOR audit follow-up (2026-10-04): this endpoint MUTATES the redemption and the
+/// member's wallet, so it carries the same `assert_deal_admin` guard as `update_deal` and
+/// `list_deal_redemptions`. Only the deal's own business/directory tenant (or the platform
+/// operator) may mark a redemption used — a plain authenticated visitor could otherwise burn
+/// another business's voucher and debit the member's balance by guessing the redemption id.
 #[derive(Debug, Deserialize, Default)]
 pub struct UseRedemptionInput {
     /// Bill total in dollars, when the member pays (part of) it with loyalty currency.
@@ -554,6 +560,7 @@ pub struct UseRedemptionInput {
 
 pub async fn use_redemption(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     body: Option<Json<UseRedemptionInput>>,
 ) -> ApiResult<impl IntoResponse> {
@@ -566,7 +573,7 @@ pub async fn use_redemption(
     // city-scoped otherwise) and the member's balance. deal_price is free text in this schema
     // ("$25.50"), so it is digit-stripped in SQL and falls back to 0 rather than failing the scan.
     let ctx = sqlx::query(
-        r#"SELECT dr.status, dr.visitor_id, d.directory_id, dir.network_id,
+        r#"SELECT dr.status, dr.deal_id, dr.visitor_id, d.directory_id, dir.network_id,
                   CASE WHEN regexp_replace(COALESCE(d.deal_price, ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
                        THEN regexp_replace(d.deal_price, '[^0-9.]', '', 'g')::float8
                        ELSE 0 END AS deal_price,
@@ -596,6 +603,14 @@ pub async fn use_redemption(
     let Some(ctx) = ctx else {
         return Err(AppError::NotFound("Redemption not found".into()));
     };
+
+    // Round 13 IDOR audit: this endpoint mutates the redemption and the member's wallet, so it
+    // carries the same guard as update_deal / list_deal_redemptions. Only the deal's own
+    // business/directory tenant (or the platform operator) may verify a redemption; everyone
+    // else gets 404 (never 403) so the endpoint cannot confirm the id exists.
+    let deal_id: Uuid = ctx.get("deal_id");
+    assert_deal_admin(&s.db, &claims, deal_id).await?;
+
     if ctx
         .get::<Option<String>, _>("status")
         .unwrap_or_default()
