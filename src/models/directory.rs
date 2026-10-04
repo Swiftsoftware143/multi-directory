@@ -293,6 +293,12 @@ pub struct UpdateBusinessRequest {
     /// a day maps to `null` when closed, and a missing day is treated as unknown/closed.
     #[serde(default, deserialize_with = "deserialize_some")]
     pub hours: Option<serde_json::Value>,
+    /// "Typical response time" indicator (card B90, Thumbtack-style): a short, operator-set
+    /// plain-English note ("usually responds within 1 hour") stored in
+    /// `business_meta.meta_data->'response_time'`. An empty/whitespace string CLEARS it (the
+    /// admin "Clear" action sends `{"response_time": ""}`); omitting the field entirely leaves
+    /// the stored value untouched, so a partial update never wipes it by accident.
+    pub response_time: Option<String>,
 }
 
 /// Distinguish a field that is ABSENT from one explicitly set to JSON `null`. Plain

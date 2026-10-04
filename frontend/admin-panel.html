@@ -2700,6 +2700,24 @@
       </div>
     </div>
 
+    <!-- Card B90 response-time indicator: operator-set "typically responds" note (no SQL). -->
+    <div id="bz-rt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+      <div class="feature-card" style="background:#fff;max-width:520px;width:100%;margin:24px">
+        <h3>⚡ Typical response time <span id="bz-rt-who" style="font-weight:400;opacity:.7"></span></h3>
+        <p class="feature-subtitle">A short, plain-English note shown to visitors on the listing, for example <b>usually responds within an hour</b>. Press “Clear” to remove the badge.</p>
+        <div class="em-field"><label>Response time</label>
+          <input id="bz-rt-value" maxlength="120" placeholder="usually responds within an hour">
+          <small style="opacity:.7">120 characters or fewer. Shown on the listing as “⚡ Typically responds …”.</small>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" type="button" data-rt-cancel>Cancel</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-rt-clear>Clear</button>
+          <button class="btn btn-accent btn-sm" type="button" data-rt-save>Save</button>
+        </div>
+        <span class="feature-status" id="bz-rt-status"></span>
+      </div>
+    </div>
+
     <!-- 🏬 Suppliers / B2B (kanban B51) — the second front, visible and moderatable.
          Suppliers are businesses tagged with a supplier business_type (farm / distributor /
          wholesaler / manufacturer / association / supplier). This is visibility + moderation
@@ -11175,6 +11193,8 @@
 
     // Card B90 availability indicator: per-row hours cache + the row currently open in the editor.
     var bizHoursCache = {};
+    // Card B90 response-time indicator: per-row note cache + the row open in the editor.
+    var bizRtCache = {};
     var hoursEditing = null;
     var HOURS_DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
 
@@ -11240,9 +11260,13 @@
           var rating = (r.review_count ? (Number(r.rating).toFixed(1) + ' (' + r.review_count + ')') : '—');
           // Card B90 availability indicator: operator-set weekly opening hours ("Open now").
           bizHoursCache[r.id] = (r.hours && typeof r.hours === 'object') ? r.hours : null;
+          bizRtCache[r.id] = r.response_time || '';
           var hoursBtn = '<button class="btn btn-ghost btn-sm" type="button" data-hours-open="' + esc(r.id) +
             '" data-hours-dir="' + esc(r.directory_slug || '') + '" data-hours-name="' + esc(r.name || '') +
             '">🕐 Hours</button>';
+          var responseBtn = '<button class="btn btn-ghost btn-sm" type="button" data-rt-open="' + esc(r.id) +
+            '" data-rt-dir="' + esc(r.directory_slug || '') + '" data-rt-name="' + esc(r.name || '') +
+            '">⚡ Response</button>';
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') + '</td>' +
             '<td>' + esc(r.directory_name || '') + '</td>' +
@@ -11250,7 +11274,7 @@
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + '</td></tr>';
+            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -11344,6 +11368,31 @@
       document.getElementById('bz-hours-modal').style.display = 'flex';
     }
     function closeHoursEditor() { document.getElementById('bz-hours-modal').style.display = 'none'; hoursEditing = null; }
+
+    // Card B90 response-time indicator: open/close the "typically responds" editor for one business.
+    var rtEditing = null;
+    function openResponseEditor(id, dir, name) {
+      rtEditing = { id: id, dir: dir };
+      document.getElementById('bz-rt-who').textContent = name ? ('“' + name + '”') : '';
+      document.getElementById('bz-rt-value').value = bizRtCache[id] || '';
+      document.getElementById('bz-rt-status').textContent = '';
+      document.getElementById('bz-rt-modal').style.display = 'flex';
+    }
+    function closeResponseEditor() { document.getElementById('bz-rt-modal').style.display = 'none'; rtEditing = null; }
+    function saveResponse(clear) {
+      if (!rtEditing) return;
+      var st = document.getElementById('bz-rt-status');
+      st.textContent = clear ? 'Clearing…' : 'Saving…';
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      var val = clear ? '' : (document.getElementById('bz-rt-value').value || '').trim();
+      fetch(API + '/directories/' + encodeURIComponent(rtEditing.dir) + '/businesses/' + encodeURIComponent(rtEditing.id), {
+        method: 'PUT', headers: h, body: JSON.stringify({ response_time: val })
+      }).then(function (r) {
+        return r.json().then(function (d) { if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status)); return d; });
+      }).then(function () { closeResponseEditor(); load(); })
+        .catch(function (e) { st.textContent = 'Failed: ' + e.message; });
+    }
     // A closed day is stored as JSON null; an open day as {open,close}.
     function collectHours() {
       var out = { tz: (document.getElementById('bz-hours-tz').value || '').trim() || 'America/New_York' };
@@ -11377,6 +11426,11 @@
       if (ev.target.closest('[data-hours-cancel]')) { closeHoursEditor(); return; }
       if (ev.target.closest('[data-hours-clear]')) { saveHours(true); return; }
       if (ev.target.closest('[data-hours-save]')) { saveHours(false); return; }
+      var ro = ev.target.closest('[data-rt-open]');
+      if (ro) { openResponseEditor(ro.getAttribute('data-rt-open'), ro.getAttribute('data-rt-dir'), ro.getAttribute('data-rt-name')); return; }
+      if (ev.target.closest('[data-rt-cancel]')) { closeResponseEditor(); return; }
+      if (ev.target.closest('[data-rt-clear]')) { saveResponse(true); return; }
+      if (ev.target.closest('[data-rt-save]')) { saveResponse(false); return; }
       var pub = ev.target.closest('[data-lc-publish]');
       if (pub) { setLifecycle(pub.getAttribute('data-lc-publish'), pub.getAttribute('data-lc-dir'), 'active'); return; }
       var hide = ev.target.closest('[data-lc-hide]');

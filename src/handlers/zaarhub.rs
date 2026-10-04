@@ -1836,6 +1836,18 @@ pub async fn get_business_detail(
     .await?
     .flatten();
 
+    // "Typical response time" indicator (card B90, Thumbtack-style): the operator-set plain-English
+    // note ("usually responds within an hour") stored in business_meta.meta_data->'response_time'.
+    // Absent/null means the listing simply omits the badge — never a placeholder.
+    let response_time: Option<String> = sqlx::query_scalar(
+        r#"SELECT meta_data->>'response_time' FROM business_meta
+           WHERE business_id = $1 AND meta_data ? 'response_time' LIMIT 1"#,
+    )
+    .bind(biz.id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
     // Photos: the stored `images` array, plus a cover image if one is set. Never a placeholder
     // image — an empty list is what tells the page to hide the gallery block entirely.
     let mut photos: Vec<String> = biz.images.clone();
@@ -1927,6 +1939,7 @@ pub async fn get_business_detail(
         "reviews": review_list,
         "deals": deal_list,
         "hours": hours,
+        "response_time": response_time,
         "nearby": nearby,
     })))
 }

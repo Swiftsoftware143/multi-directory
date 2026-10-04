@@ -68,6 +68,7 @@ a:hover{text-decoration:underline}
 .hours-pill{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;padding:4px 12px;border-radius:100px;margin-bottom:12px}
 .hours-pill.open{background:#dcfce7;color:#166534}
 .hours-pill.closed{background:#fee2e2;color:#991b1b}
+.response-pill{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;padding:4px 12px;border-radius:100px;margin-bottom:12px;background:#e0f2fe;color:#075985}
 .hours-table{width:100%;border-collapse:collapse;font-size:.85rem}
 .hours-table td{padding:6px 4px;border-bottom:1px solid var(--border,#e5e7eb);color:var(--text-muted)}
 .hours-table td:last-child{text-align:right;color:var(--text);font-weight:600}
@@ -275,6 +276,7 @@ a:hover{text-decoration:underline}
                 <span class="count" id="reviewCount"></span>
                 <span class="rating-badge" id="ratingBadge"></span>
               </div>
+              <span class="response-pill" id="responsePill" style="display:none"></span>
             </div>
             <div id="saveButtonContainer">
               <button class="action-btn" onclick="toggleSave()" id="saveBtn">❤️ Save</button>
@@ -771,6 +773,9 @@ function renderBusiness() {
 
   // Availability indicator (card B90, Thumbtack-style): weekly hours + live Open/Closed pill.
   renderHours();
+
+  // Typical response time (card B90, Thumbtack-style): an operator-set plain-English note.
+  renderResponseTime();
 }
 
 // ── Business hours / availability (card B90) ──
@@ -825,6 +830,22 @@ function renderHours() {
     return '<tr' + cls + '><td>' + d[1] + '</td><td>' + s + '</td></tr>';
   }).join('');
   el.innerHTML = pill + '<table class="hours-table">' + rows + '</table>';
+}
+
+// ── Typical response time (card B90) ──
+// Reads bizData.response_time — an operator-set note stored in business_meta.meta_data.response_time
+// (e.g. "usually responds within an hour"). Absent means the badge is omitted entirely.
+function renderResponseTime() {
+  const el = document.getElementById('responsePill');
+  if (!el) return;
+  const rt = bizData && bizData.response_time;
+  const note = (rt === null || rt === undefined) ? '' : String(rt).trim();
+  if (note) {
+    el.textContent = '⚡ Typically responds ' + note;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // ── Map ──

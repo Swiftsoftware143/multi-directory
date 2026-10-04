@@ -374,6 +374,18 @@ pub async fn update_business(
         }
     }
 
+    // "Typical response time" indicator (card B90, Thumbtack-style): a short plain-English note.
+    // Validate up-front so an over-long value returns a plain-English 400. An empty/whitespace
+    // value is the "Clear" action, not a payload to validate — skip it.
+    if let Some(ref rt) = req.response_time {
+        let t = rt.trim();
+        if !t.is_empty() && t.chars().count() > 120 {
+            return Err(AppError::BadRequest(
+                "Response time must be 120 characters or fewer (e.g. \"usually responds within an hour\").".to_string(),
+            ));
+        }
+    }
+
     let business = sqlx::query_as::<_, Business>(
         r#"UPDATE businesses SET
            name = COALESCE($1, name),
@@ -475,6 +487,46 @@ pub async fn update_business(
             .bind(business_id)
             .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
             .bind(hours)
+            .execute(&s.db)
+            .await?;
+        }
+    }
+
+    // "Typical response time" indicator (card B90, Thumbtack-style): persist the operator's note
+    // into `business_meta.meta_data->'response_time'` — the place `get_business_detail` reads
+    // from. An empty/whitespace string CLEARS it (key removed; an empty shell row is deleted so a
+    // clear is a true no-op). The hours row and the response-time note share one business_meta row
+    // (same template), so `meta_data || {...}` merges rather than clobbers.
+    if let Some(ref rt) = req.response_time {
+        let note = rt.trim();
+        if note.is_empty() {
+            sqlx::query(
+                r#"UPDATE business_meta
+                   SET meta_data = meta_data - 'response_time', updated_at = NOW()
+                   WHERE business_id = $1"#,
+            )
+            .bind(business_id)
+            .execute(&s.db)
+            .await?;
+            sqlx::query(
+                r#"DELETE FROM business_meta
+                   WHERE business_id = $1 AND template = $2 AND meta_data = '{}'::jsonb"#,
+            )
+            .bind(business_id)
+            .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
+            .execute(&s.db)
+            .await?;
+        } else {
+            sqlx::query(
+                r#"INSERT INTO business_meta (business_id, template, meta_data)
+                   VALUES ($1, $2, jsonb_build_object('response_time', to_jsonb($3::text)))
+                   ON CONFLICT (business_id, template)
+                   DO UPDATE SET meta_data = business_meta.meta_data || jsonb_build_object('response_time', to_jsonb($3::text)),
+                                 updated_at = NOW()"#,
+            )
+            .bind(business_id)
+            .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
+            .bind(note)
             .execute(&s.db)
             .await?;
         }

@@ -72,6 +72,8 @@ FROM (
            b.insured,
            (SELECT bm.meta_data->'hours' FROM business_meta bm
              WHERE bm.business_id = b.id AND bm.meta_data ? 'hours' LIMIT 1) AS hours,
+           (SELECT bm.meta_data->>'response_time' FROM business_meta bm
+             WHERE bm.business_id = b.id AND bm.meta_data ? 'response_time' LIMIT 1) AS response_time,
            (c.id IS NOT NULL) AS has_account,
            c.owner_email AS owner_email,
            c.owner_name AS owner_name,
