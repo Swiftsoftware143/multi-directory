@@ -84,6 +84,9 @@ pub struct EnrichmentSettings {
     pub cadence_hours: i32,
     pub batch_size: i32,
     pub provider: Option<String>,
+    /// B83: when true (the default) the rotating cycle only touches UNCLAIMED listings, so an
+    /// owner's own data is never overwritten by automation.
+    pub unclaimed_only: bool,
     pub last_run_at: Option<DateTime<Utc>>,
     pub last_status: Option<String>,
     pub next_run_at: Option<DateTime<Utc>>,
@@ -99,6 +102,7 @@ impl EnrichmentSettings {
             cadence_hours: 24,
             batch_size: 25,
             provider: None,
+            unclaimed_only: true,
             last_run_at: None,
             last_status: None,
             next_run_at: None,
@@ -1030,17 +1034,23 @@ pub async fn run_cycle(
         });
     };
 
-    // Rotating selection: least recently enriched first.
+    // Rotating selection: least recently enriched first. When `unclaimed_only` is on (the
+    // default), any business that a real owner has claimed is EXCLUDED — automation must never
+    // overwrite an owner's own data.
     let candidates = sqlx::query_as::<_, Candidate>(
-        "SELECT id, directory_id, name, city, state, zip, phone, website, address, latitude, longitude \
-         FROM businesses \
-         WHERE COALESCE(status, 'active') = 'active' AND COALESCE(is_active, true) = true \
-           AND ($1::uuid IS NULL OR directory_id = $1) \
-         ORDER BY enriched_at ASC NULLS FIRST, id ASC \
+        "SELECT b.id, b.directory_id, b.name, b.city, b.state, b.zip, b.phone, b.website, b.address, b.latitude, b.longitude \
+         FROM businesses b \
+         WHERE COALESCE(b.status, 'active') = 'active' AND COALESCE(b.is_active, true) = true \
+           AND ($1::uuid IS NULL OR b.directory_id = $1) \
+           AND (NOT $3::boolean OR NOT EXISTS ( \
+                 SELECT 1 FROM claimed_businesses cb \
+                 WHERE cb.business_id = b.id AND COALESCE(cb.is_active, true) = true)) \
+         ORDER BY b.enriched_at ASC NULLS FIRST, b.id ASC \
          LIMIT $2",
     )
     .bind(directory_id)
     .bind(batch)
+    .bind(settings.unclaimed_only)
     .fetch_all(db)
     .await?;
 
@@ -1337,6 +1347,9 @@ pub struct UpdateSettingsRequest {
     pub batch_size: Option<i32>,
     /// null/omitted = keep; "" = clear the pin (auto-detect)
     pub provider: Option<String>,
+    /// B83: when true the cycle only touches UNCLAIMED listings (claimed = owner-managed, never
+    /// overwritten by automation). Omitted = keep the current value.
+    pub unclaimed_only: Option<bool>,
 }
 
 pub async fn update_enrichment_settings(
@@ -1354,6 +1367,7 @@ pub async fn update_enrichment_settings(
     let is_enabled = req.is_enabled.unwrap_or(current.is_enabled);
     let cadence = req.cadence_hours.unwrap_or(current.cadence_hours).max(1);
     let batch = req.batch_size.unwrap_or(current.batch_size).clamp(1, 500);
+    let unclaimed_only = req.unclaimed_only.unwrap_or(current.unclaimed_only);
     let provider = match req.provider.clone() {
         Some(p) if p.trim().is_empty() => None,
         Some(p) => Some(p),
@@ -1394,25 +1408,27 @@ pub async fn update_enrichment_settings(
     let row = match existing_id {
         Some(id) => sqlx::query_as::<_, EnrichmentSettings>(
             "UPDATE enrichment_settings SET is_enabled = $1, cadence_hours = $2, batch_size = $3, \
-             provider = $4, next_run_at = $5, updated_at = now() WHERE id = $6 RETURNING *",
+             provider = $4, unclaimed_only = $5, next_run_at = $6, updated_at = now() WHERE id = $7 RETURNING *",
         )
         .bind(is_enabled)
         .bind(cadence)
         .bind(batch)
         .bind(provider.clone())
+        .bind(unclaimed_only)
         .bind(next_run)
         .bind(id)
         .fetch_one(&s.db)
         .await?,
         None => sqlx::query_as::<_, EnrichmentSettings>(
-            "INSERT INTO enrichment_settings (directory_id, is_enabled, cadence_hours, batch_size, provider, next_run_at) \
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+            "INSERT INTO enrichment_settings (directory_id, is_enabled, cadence_hours, batch_size, provider, unclaimed_only, next_run_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
         )
         .bind(req.directory_id)
         .bind(is_enabled)
         .bind(cadence)
         .bind(batch)
         .bind(provider)
+        .bind(unclaimed_only)
         .bind(next_run)
         .fetch_one(&s.db)
         .await?,

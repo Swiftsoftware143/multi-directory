@@ -1440,10 +1440,11 @@
         <h3>🧭 Data Enrichment
           <span class="pk-badge pk-missing" id="de-badge" style="float:right">loading…</span>
         </h3>
-        <p class="feature-subtitle">Rotating re-enrichment of phone / website / address / geo across the directory. The <b>provider comes from Provider API Keys</b> (Google Places · SerpAPI · Bing · Google CSE · Apify) — pick one here or leave it on auto. <b>OpenStreetMap (free, no key)</b> is the built-in fallback and can also be pinned here, so enrichment still runs with no paid API at all. <b>Apify is metered and paid per use</b>, so it is never chosen automatically: add its token on the Provider API Keys card and <b>pin it here</b> to switch it on. With nothing configured (or a key the provider rejects) the run records a <b>skip/error</b> and enriches nothing. Every source only <b>fills empty fields</b> — it never overwrites what an owner or admin typed.</p>
+        <p class="feature-subtitle">Rotating re-enrichment of phone / website / address / geo across the directory. The <b>provider comes from Provider API Keys</b> (Google Places · SerpAPI · Bing · Google CSE · Apify) — pick one here or leave it on auto. <b>OpenStreetMap (free, no key)</b> is the built-in fallback and can also be pinned here, so enrichment still runs with no paid API at all. <b>Apify is metered and paid per use</b>, so it is never chosen automatically: add its token on the Provider API Keys card and <b>pin it here</b> to switch it on. With nothing configured (or a key the provider rejects) the run records a <b>skip/error</b> and enriches nothing. Every source only <b>fills empty fields</b> — it never overwrites what an owner or admin typed. By default the auto-refresh touches <b>unclaimed</b> listings only: once a real owner claims a business, their data is authoritative and the cycle leaves it alone.</p>
         <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
           <select class="pk-input" id="de-dir" onchange="window.__deLoad()"><option value="">Global default</option></select>
           <label style="font-size:.8rem;display:flex;gap:6px;align-items:center"><input type="checkbox" id="de-enabled"> Enabled (scheduler runs it)</label>
+          <label style="font-size:.8rem;display:flex;gap:6px;align-items:center;max-width:340px" title="A claimed business is one a real owner manages. Their data is authoritative, so the auto-refresh never overwrites it."><input type="checkbox" id="de-unclaimed"> Only refresh <b>unclaimed</b> businesses — never a listing an owner has claimed</label>
           <input class="pk-input" id="de-cadence" type="number" min="1" placeholder="cadence (hours)" style="flex:0 1 150px">
           <input class="pk-input" id="de-batch" type="number" min="1" max="500" placeholder="batch size" style="flex:0 1 130px">
           <select class="pk-input" id="de-provider"></select>
@@ -6682,6 +6683,7 @@
           dir.value = keep || '';
 
           document.getElementById('de-enabled').checked = !!s.is_enabled;
+          document.getElementById('de-unclaimed').checked = s.unclaimed_only !== false;
           document.getElementById('de-cadence').value = s.cadence_hours || 24;
           document.getElementById('de-batch').value = s.batch_size || 25;
 
@@ -6742,7 +6744,8 @@
         is_enabled: document.getElementById('de-enabled').checked,
         cadence_hours: parseInt(document.getElementById('de-cadence').value || '24', 10) || 24,
         batch_size: parseInt(document.getElementById('de-batch').value || '25', 10) || 25,
-        provider: document.getElementById('de-provider').value || ''
+        provider: document.getElementById('de-provider').value || '',
+        unclaimed_only: document.getElementById('de-unclaimed').checked
       };
       st.textContent = 'saving…';
       apiPut('/enrich/settings', body)
