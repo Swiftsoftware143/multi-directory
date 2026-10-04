@@ -1897,6 +1897,18 @@ pub fn create_router(s: AppState) -> Router {
             "/visitor/follows/:business_id",
             post(visitors::toggle_follow),
         )
+        // "Recommend a business" (card B90, Nextdoor-style) — a public endorsement with a public
+        // count, distinct from Save/Follow. Same shape as follows: the handlers extract the visitor
+        // JWT themselves (routes are before auth_guard); the public GET-check and the visitor POST
+        // are in the allowlist.
+        .route(
+            "/visitor/recommendations/check/:business_id",
+            get(visitors::check_recommend),
+        )
+        .route(
+            "/visitor/recommendations/:business_id",
+            post(visitors::toggle_recommend),
+        )
         // ? Visitor bookmarks / saved places — alternate scoped routes
         .route("/bookmarks", get(visitors::list_favorites))
         .route("/bookmarks/toggle", post(visitors::toggle_bookmark))
@@ -3489,6 +3501,8 @@ async fn auth_guard(
         || (path == "/visitor/follows" && req.method() == "GET")
         || (path.starts_with("/visitor/follows/check/") && req.method() == "GET")
         || (path.starts_with("/visitor/follows/") && req.method() == "POST")
+        || (path.starts_with("/visitor/recommendations/check/") && req.method() == "GET")
+        || (path.starts_with("/visitor/recommendations/") && req.method() == "POST")
         // Public bookmark endpoints
         || (path == "/bookmarks" && req.method() == "GET")
         || (path == "/bookmarks/toggle" && req.method() == "POST")

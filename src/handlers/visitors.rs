@@ -1341,6 +1341,124 @@ pub struct FollowedBusinessRow {
     pub directory_slug: Option<String>,
 }
 
+// ── Visitor Business Recommendations (card B90, Nextdoor-style) ──
+
+/// POST /api/v1/visitor/recommendations/{business_id} — toggle "recommend" (add if not exists,
+/// remove if exists). Public-facing endorsement with a public count, distinct from Save/Follow.
+pub async fn toggle_recommend(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    // Manually verify JWT from Authorization header (route is before auth_guard).
+    let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
+
+    // A valid JWT is not necessarily a VISITOR token: an admin/business user holds one too, and
+    // their id is not a visitor_accounts row — inserting it would violate the FK and 500.
+    let is_visitor =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_one(&s.db)
+            .await?;
+    if is_visitor == 0 {
+        return Err(AppError::Forbidden(
+            "Recommending is for shopper accounts — sign in as a visitor to recommend a business."
+                .to_string(),
+        ));
+    }
+
+    // The business must exist. directory_id is OPTIONAL (business_recommendations.directory_id is
+    // nullable, so a directory-less listing can still be recommended).
+    let directory_id =
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    let existing = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM business_recommendations WHERE visitor_account_id = $1 AND business_id = $2",
+    )
+    .bind(visitor_id)
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    let recommended = if existing > 0 {
+        sqlx::query(
+            "DELETE FROM business_recommendations WHERE visitor_account_id = $1 AND business_id = $2",
+        )
+        .bind(visitor_id)
+        .bind(business_id)
+        .execute(&s.db)
+        .await?;
+        false
+    } else {
+        sqlx::query(
+            "INSERT INTO business_recommendations (visitor_account_id, business_id, directory_id) VALUES ($1, $2, $3)",
+        )
+        .bind(visitor_id)
+        .bind(business_id)
+        .bind(directory_id)
+        .execute(&s.db)
+        .await?;
+        true
+    };
+
+    // Public recommendation count for the listing (social proof), returned by the same call.
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM business_recommendations WHERE business_id = $1",
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(json!({
+        "recommended": recommended,
+        "count": count,
+        "business_id": business_id,
+    })))
+}
+
+/// GET /api/v1/visitor/recommendations/check/{business_id} — has the caller recommended this
+/// business? Public: without a token it answers recommended=false with the public count.
+pub async fn check_recommend(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let recommended = match extract_visitor_id_optional(&headers, &s.config.jwt_secret) {
+        Some(visitor_id) => {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM business_recommendations WHERE visitor_account_id = $1 AND business_id = $2",
+            )
+            .bind(visitor_id)
+            .bind(business_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0)
+                > 0
+        }
+        None => false,
+    };
+
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM business_recommendations WHERE business_id = $1",
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(json!({
+        "recommended": recommended,
+        "count": count,
+        "business_id": business_id,
+    })))
+}
+
 // ── Business Claim Handlers ──
 
 /// POST /api/v1/businesses/:id/claim — business owner claims their listing

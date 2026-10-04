@@ -268,6 +268,7 @@ a:hover{text-decoration:underline}
             <div id="saveButtonContainer">
               <button class="action-btn" onclick="toggleSave()" id="saveBtn">❤️ Save</button>
               <button class="action-btn" onclick="toggleFollow()" id="followBtn">🔔 Follow</button>
+              <button class="action-btn" onclick="toggleRecommend()" id="recommendBtn">🤝 Recommend</button>
             </div>
           </div>
           <div class="info-details">
@@ -632,6 +633,9 @@ async function loadBusiness() {
     // Follow status + public follower count (card B90)
     checkFollowStatus();
 
+    // Recommend status + public recommendation count (card B90)
+    checkRecommendStatus();
+
     // Local Q&A (card B90)
     loadQuestions(bizData.id || id);
 
@@ -987,6 +991,59 @@ function updateFollowButton() {
   const n = followerCount > 0 ? ' · ' + followerCount : '';
   btn.textContent = (isFollowing ? '🔔 Following' : '🔔 Follow') + n;
   btn.classList.toggle('saved', isFollowing);
+}
+
+// ── Recommend a business (card B90, Nextdoor-style) ──
+// A public endorsement with a public count — distinct from Save (private) and Follow (private).
+let isRecommended = false;
+let recommendCount = 0;
+
+async function checkRecommendStatus() {
+  if (!bizData) return;
+  const token = localStorage.getItem('zh_token');
+  try {
+    const resp = await fetch(`/api/v1/visitor/recommendations/check/${bizData.id}`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      isRecommended = data.recommended || false;
+      recommendCount = data.count || 0;
+      updateRecommendButton();
+    }
+  } catch(e) { console.warn('Recommend check fail', e); }
+}
+
+async function toggleRecommend() {
+  const token = localStorage.getItem('zh_token');
+  if (!token) {
+    window.location.href = '/visitor?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+    return;
+  }
+  if (!bizData) return;
+  const btn = document.getElementById('recommendBtn');
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`/api/v1/visitor/recommendations/${bizData.id}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      isRecommended = data.recommended || false;
+      recommendCount = data.count || 0;
+    }
+    updateRecommendButton();
+  } catch(e) { console.warn('Recommend toggle fail', e); }
+  btn.disabled = false;
+}
+
+function updateRecommendButton() {
+  const btn = document.getElementById('recommendBtn');
+  if (!btn) return;
+  const n = recommendCount > 0 ? ' · ' + recommendCount : '';
+  btn.textContent = (isRecommended ? '🤝 Recommended' : '🤝 Recommend') + n;
+  btn.classList.toggle('saved', isRecommended);
 }
 
 // ── Message Form ──
