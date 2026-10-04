@@ -30,14 +30,17 @@ pub async fn dashboard_stats(State(s): State<AppState>) -> ApiResult<impl IntoRe
         .fetch_one(&s.db)
         .await?;
 
-    let active_directories = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM directories WHERE status = 'published' AND status IS NOT NULL ",
-    )
-    .fetch_one(&s.db)
-    .await?;
+    // B91 completeness fix: a directory's lifecycle value for "published/live" is 'active'
+    // ('draft' / 'prospect' are the hidden states — see models/directory.rs). 'published' is
+    // not a directory status, so both counters below read 0 while all 10 live cities were
+    // 'active'. Count the real value.
+    let active_directories =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE status = 'active'")
+            .fetch_one(&s.db)
+            .await?;
 
     let published_directories =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE status = 'published'")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE status = 'active'")
             .fetch_one(&s.db)
             .await?;
 
