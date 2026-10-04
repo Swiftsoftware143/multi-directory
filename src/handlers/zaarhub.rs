@@ -1633,9 +1633,10 @@ pub async fn get_business_detail(
             i32,
             Option<String>,
             Option<DateTime<Utc>>,
+            bool,
         ),
     >(
-        r#"SELECT id, reviewer_name, rating, content, created_at
+        r#"SELECT id, reviewer_name, rating, content, created_at, COALESCE(is_verified, false) AS is_verified
            FROM reviews
            WHERE business_id = $1 AND status = 'approved'
            ORDER BY created_at DESC
@@ -1647,13 +1648,14 @@ pub async fn get_business_detail(
 
     let review_list: Vec<Value> = reviews
         .into_iter()
-        .map(|(id, reviewer, rating, content, ts)| {
+        .map(|(id, reviewer, rating, content, ts, verified)| {
             json!({
                 "id": id,
                 "reviewer_name": reviewer,
                 "rating": rating,
                 "content": content,
                 "created_at": ts,
+                "is_verified": verified,
             })
         })
         .collect();

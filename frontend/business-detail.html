@@ -890,7 +890,7 @@ function renderReviews() {
     html += `
       <div class="review-card">
         <div class="review-header">
-          <span class="reviewer-name">${r.reviewer_name || 'Anonymous'}</span>
+          <span class="reviewer-name">${r.reviewer_name || 'Anonymous'}${r.is_verified ? ' <span style="background:#dcfce7;color:#166534;font-size:.68rem;padding:1px 6px;border-radius:6px;font-weight:600;vertical-align:middle">✅ Verified customer</span>' : ''}</span>
           <span class="review-date">${r.created_at ? formatDate(r.created_at) : ''}</span>
         </div>
         <div class="review-stars">${renderStars(r.rating || 5)}</div>

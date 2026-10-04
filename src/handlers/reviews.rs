@@ -75,9 +75,10 @@ pub async fn list_reviews(
     })))
 }
 
-/// POST /api/v1/reviews — create a new review (public submission, no auth)
+/// POST /api/v1/reviews — create a review (authenticated; integrity-guarded, card B90)
 pub async fn create_review(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<CreateReviewRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.rating < 1 || req.rating > 5 {
@@ -97,20 +98,109 @@ pub async fn create_review(
         return Err(AppError::NotFound("Business not found".to_string()));
     }
 
+    // ── Review integrity (card B90) ───────────────────────────────────────────
+    // Every review write is authenticated (POST /reviews is not in the public allowlist),
+    // so we can attribute the review to the caller and refuse the two classic abuses:
+    // (1) a business owner reviewing their own listing, (2) the same account reviewing one
+    // listing twice. A review is marked "verified customer" ONLY when the caller has a real
+    // transaction at this business (a loyalty scan), which is the Angie's-List-style trust
+    // signal competitors monetise. Anonymous/legacy rows keep is_verified = false.
+    let caller: Option<Uuid> = Uuid::parse_str(&claims.sub).ok();
+
+    if let Some(uid) = caller {
+        let owns: i64 = sqlx::query_scalar(
+            r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
+                    + (SELECT COUNT(*) FROM claimed_businesses
+                        WHERE business_id = $1 AND is_active
+                          AND (visitor_account_id = $2 OR user_id = $2))"#,
+        )
+        .bind(req.business_id)
+        .bind(uid)
+        .fetch_one(&s.db)
+        .await?;
+
+        if owns > 0 {
+            return Err(AppError::Forbidden(
+                "You cannot review a business you own.".to_string(),
+            ));
+        }
+
+        let already: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND user_id = $2",
+        )
+        .bind(req.business_id)
+        .bind(uid)
+        .fetch_one(&s.db)
+        .await?;
+
+        if already > 0 {
+            return Err(AppError::Conflict(
+                "You have already reviewed this business.".to_string(),
+            ));
+        }
+    }
+
+    // Attribute the review to the account when we can, and default the display identity
+    // from it so a review is never anonymous when we know who wrote it.
+    let account: Option<(Option<String>, String)> = match caller {
+        Some(uid) => {
+            sqlx::query_as("SELECT name, email FROM visitor_accounts WHERE id = $1")
+                .bind(uid)
+                .fetch_optional(&s.db)
+                .await?
+        }
+        None => None,
+    };
+
+    // "Verified customer": the caller has an actual loyalty scan at this business.
+    let is_verified: bool = match caller {
+        Some(uid) => {
+            sqlx::query_scalar::<_, i64>(
+                r#"SELECT COUNT(*) FROM loyalty_scans ls
+                   JOIN loyalty_members lm ON lm.id = ls.member_id
+                   WHERE lm.visitor_account_id = $1 AND ls.business_id = $2"#,
+            )
+            .bind(uid)
+            .bind(req.business_id)
+            .fetch_one(&s.db)
+            .await?
+                > 0
+        }
+        None => false,
+    };
+
+    let reviewer_name = req
+        .reviewer_name
+        .clone()
+        .or_else(|| account.as_ref().and_then(|a| a.0.clone()));
+    let reviewer_email = account
+        .as_ref()
+        .map(|a| a.1.clone())
+        .or_else(|| req.reviewer_email.clone());
+    let source = req.source.clone().or_else(|| {
+        if is_verified {
+            Some("verified_customer".to_string())
+        } else {
+            None
+        }
+    });
+
     let review = sqlx::query_as::<_, Review>(
-        r#"INSERT INTO reviews (business_id, rating, title, content, reviewer_name, reviewer_email, source, source_url, directory_id, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+        r#"INSERT INTO reviews (business_id, user_id, rating, title, content, reviewer_name, reviewer_email, source, source_url, directory_id, is_verified, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
            RETURNING *"#
     )
     .bind(req.business_id)
+    .bind(caller)
     .bind(req.rating)
     .bind(&req.title)
     .bind(&req.content)
-    .bind(&req.reviewer_name)
-    .bind(&req.reviewer_email)
-    .bind(&req.source)
+    .bind(&reviewer_name)
+    .bind(&reviewer_email)
+    .bind(&source)
     .bind(&req.source_url)
     .bind(req.directory_id)
+    .bind(Some(is_verified))
     .fetch_one(&s.db)
     .await?;
 
