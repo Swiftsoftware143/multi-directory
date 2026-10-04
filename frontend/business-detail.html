@@ -99,6 +99,14 @@ a:hover{text-decoration:underline}
 .deal-card .deal-meta{font-size:.78rem;color:var(--text-muted);display:flex;gap:12px}
 .deal-card .deal-badge{display:inline-block;background:var(--warm-light);color:var(--warm);font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px}
 
+/* Recommended nearby (card B90, "recommend a business") */
+.nearby-list{display:flex;flex-direction:column;gap:8px}
+.nearby-item{display:block;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);text-decoration:none;transition:box-shadow .15s,border-color .15s}
+.nearby-item:hover{border-color:var(--teal);box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.nearby-name{font-weight:600;color:var(--text);font-size:.92rem}
+.nearby-meta{font-size:.78rem;color:var(--text-muted);margin-top:2px}
+.nearby-rating{font-size:.8rem;color:var(--text-light);margin-top:4px}
+
 /* Reviews */
 .review-card{padding:16px 0;border-bottom:1px solid var(--border-light)}
 .review-card:last-child{border-bottom:none;padding-bottom:0}
@@ -294,6 +302,13 @@ a:hover{text-decoration:underline}
         <div class="card">
           <div class="card-title">⭐ Reviews</div>
           <div id="reviewsContent"></div>
+        </div>
+
+        <!-- Recommended Nearby (card B90, "recommend a business") -->
+        <div class="card" id="nearbyCard" style="display:none">
+          <div class="card-title">🤝 Recommended Nearby</div>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Other businesses in this community you might like.</p>
+          <div id="nearbyList" class="nearby-list"></div>
         </div>
 
         <!-- Owner Bio -->
@@ -693,6 +708,13 @@ function renderBusiness() {
 
   // Render reviews
   renderReviews();
+
+  // Active deals (the API has always returned bizData.deals; the card was a static placeholder
+  // even with live deals — render it, and keep the empty state when there are none).
+  renderDeals();
+
+  // Recommended nearby (card B90, "recommend a business") — bizData.nearby.
+  renderNearby();
 }
 
 // ── Map ──
@@ -767,6 +789,61 @@ function renderReviews() {
     `;
   });
   container.innerHTML = html;
+}
+
+// ── Deals ──
+// Renders the API's `deals` array into the existing "Active Perks & Deals" card. Kept in a
+// function so the empty state is explicit (the card used to be a static placeholder even when
+// the directory had live deals).
+function renderDeals() {
+  const container = document.getElementById('dealsContent');
+  if (!container) return;
+  const deals = (bizData && Array.isArray(bizData.deals)) ? bizData.deals : [];
+  if (deals.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem">No current deals available.</p>';
+    return;
+  }
+  container.innerHTML = deals.map(d => {
+    const hasPrice = (d.deal_price !== null && d.deal_price !== undefined);
+    const hasOrig = (d.original_price !== null && d.original_price !== undefined);
+    const badge = (d.discount_percent !== null && d.discount_percent !== undefined)
+      ? '<span class="deal-badge">-' + Number(d.discount_percent) + '%</span>' : '';
+    const meta = [];
+    if (hasPrice) {
+      meta.push('<span>' + (hasOrig ? '<s>$' + Number(d.original_price).toFixed(2) + '</s> ' : '') +
+        '<strong>$' + Number(d.deal_price).toFixed(2) + '</strong></span>');
+    }
+    if (d.end_date) meta.push('<span>Ends ' + esc(formatDate(d.end_date)) + '</span>');
+    return '<div class="deal-card">' +
+      '<div class="deal-title">' + esc(d.title || 'Deal') + ' ' + badge + '</div>' +
+      (d.description ? '<div class="deal-desc">' + esc(d.description) + '</div>' : '') +
+      (meta.length ? '<div class="deal-meta">' + meta.join('') + '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+// ── Recommended nearby (card B90, "recommend a business") ──
+// Renders the API's `nearby` array (same city + directory, same category first). Empty means
+// hide the block entirely — never an empty shell.
+function renderNearby() {
+  const card = document.getElementById('nearbyCard');
+  const list = document.getElementById('nearbyList');
+  if (!card || !list) return;
+  const items = (bizData && Array.isArray(bizData.nearby)) ? bizData.nearby.filter(n => n && n.id) : [];
+  if (items.length === 0) { card.style.display = 'none'; return; }
+  list.innerHTML = items.map(n => {
+    const count = Number(n.review_count || 0);
+    const rating = (n.rating !== null && n.rating !== undefined)
+      ? renderStars(n.rating) + ' ' + Number(n.rating).toFixed(1) + ' (' + count + ')'
+      : 'No ratings yet';
+    const href = '/biz/' + encodeURIComponent(n.id) + (n.slug ? '?slug=' + encodeURIComponent(n.slug) : '');
+    return '<a class="nearby-item" href="' + href + '">' +
+      '<div class="nearby-name">' + esc(n.name || 'Business') + '</div>' +
+      '<div class="nearby-meta">' + esc(n.category || 'Local Business') + '</div>' +
+      '<div class="nearby-rating">' + rating + '</div>' +
+      '</a>';
+  }).join('');
+  card.style.display = '';
 }
 
 // ── Save / Favorite ──

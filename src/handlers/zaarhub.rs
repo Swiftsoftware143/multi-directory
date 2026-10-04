@@ -1614,8 +1614,11 @@ pub async fn get_business_detail(
     }
     let image_url = photos.first().cloned();
 
-    // Nearby businesses in the SAME city of the SAME directory. Empty means "hide the block" —
-    // the page never shows an empty shell.
+    // "Recommended nearby" (card B90, "recommend a business"): same city + same directory, with
+    // businesses in the SAME category surfaced first (Angie's-List-style relevant pros), then the
+    // best-rated. `$4` is the current business's category_id and may be NULL for a legacy listing;
+    // `(b.category_id = $4)` is then NULL for every row, so `NULLS LAST` neutralises the key and
+    // the rating tiebreak decides. Empty means "hide the block" — the page never shows an empty shell.
     let nearby: Vec<Value> = if let Some(city) = biz.city.as_deref() {
         let rows = sqlx::query(
             r#"SELECT b.id, b.name, b.slug, b.rating, b.review_count, c.name AS category
@@ -1625,12 +1628,16 @@ pub async fn get_business_detail(
                  AND b.is_active = true
                  AND b.id <> $2
                  AND b.city = $3
-               ORDER BY b.rating DESC NULLS LAST, b.review_count DESC, b.name ASC
+               ORDER BY (b.category_id = $4) DESC NULLS LAST,
+                        b.rating DESC NULLS LAST,
+                        b.review_count DESC,
+                        b.name ASC
                LIMIT 6"#,
         )
         .bind(dir_id)
         .bind(biz.id)
         .bind(city)
+        .bind(biz.category_id)
         .fetch_all(&s.db)
         .await?;
 
