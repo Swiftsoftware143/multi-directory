@@ -261,3 +261,136 @@ pub async fn unread_count(
 
     Ok(Json(serde_json::json!({"unread": count})))
 }
+
+#[derive(Debug, Deserialize)]
+pub struct BroadcastQuoteRequest {
+    pub business_id: Uuid,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub subject: Option<String>,
+    pub message: String,
+    #[serde(default)]
+    pub max: Option<i64>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct BroadcastTarget {
+    pub id: Uuid,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BroadcastQuoteResponse {
+    pub sent: usize,
+    pub businesses: Vec<BroadcastTarget>,
+}
+
+/// POST /api/v1/quotes/broadcast — Thumbtack-style "get multiple quotes for one job".
+///
+/// A visitor's single quote request is routed to the OTHER pros **matched by category and area**
+/// for the anchor listing: same directory (market) and same category, preferring the same city,
+/// ranked by rating/review volume. Built ON the existing messaging threads (no parallel inbox, no
+/// new table) — every matched business receives the request as a normal `business_messages` row,
+/// so it lands in that owner's portal Customer Messages inbox exactly like a direct enquiry.
+///
+/// The anchor listing is NOT re-messaged here; the caller sends the direct request first through
+/// `POST /messages/:business_id`, then fans out the same text to the matched peers.
+pub async fn broadcast_quote(
+    State(s): State<AppState>,
+    claims: Option<Extension<Claims>>,
+    Json(body): Json<BroadcastQuoteRequest>,
+) -> Result<Json<BroadcastQuoteResponse>, AppError> {
+    let db = &s.db;
+
+    if body.message.trim().is_empty() {
+        return Err(AppError::BadRequest("message is required".into()));
+    }
+
+    // Anchor listing: which market (directory) and category are we matching on?
+    let anchor: Option<(Uuid, Option<Uuid>, Option<String>)> = sqlx::query_as(
+        "SELECT directory_id, category_id, city FROM businesses WHERE id = $1 AND is_active = true",
+    )
+    .bind(body.business_id)
+    .fetch_optional(db)
+    .await?;
+
+    let (directory_id, category_id, city) = match anchor {
+        Some(a) => a,
+        None => return Err(AppError::NotFound("Business not found".into())),
+    };
+
+    // Bounded fan-out — a lead never floods an entire market.
+    let limit = body.max.unwrap_or(4).clamp(1, 6);
+
+    // No category → no meaningful "matched by category and area" set; honest zero.
+    let category_id = match category_id {
+        Some(c) => c,
+        None => {
+            return Ok(Json(BroadcastQuoteResponse {
+                sent: 0,
+                businesses: vec![],
+            }))
+        }
+    };
+
+    let targets = sqlx::query_as::<_, BroadcastTarget>(
+        r#"SELECT id, name FROM businesses
+           WHERE is_active = true
+             AND id <> $1
+             AND directory_id = $2
+             AND category_id = $3
+           ORDER BY (city IS NOT DISTINCT FROM $4) DESC,
+                    rating DESC NULLS LAST,
+                    review_count DESC NULLS LAST,
+                    name ASC
+           LIMIT $5"#,
+    )
+    .bind(body.business_id)
+    .bind(directory_id)
+    .bind(category_id)
+    .bind(city.clone())
+    .bind(limit)
+    .fetch_all(db)
+    .await?;
+
+    // Sender identity: the visitor token wins; guests may still send using the form fields.
+    let (sender_name, sender_email) = if let Some(Extension(c)) = claims {
+        let user_info = sqlx::query_as::<_, (String, String)>(
+            "SELECT name, email FROM users WHERE id = $1::uuid AND is_active = true",
+        )
+        .bind(&c.sub)
+        .fetch_optional(db)
+        .await?;
+        match user_info {
+            Some((name, email)) => (Some(name), Some(email)),
+            None => (body.name.clone(), body.email.clone()),
+        }
+    } else {
+        (body.name.clone(), body.email.clone())
+    };
+
+    let mut sent = 0usize;
+    for t in &targets {
+        let res = sqlx::query(
+            r#"INSERT INTO business_messages (business_id, sender_name, sender_email, subject, message)
+               VALUES ($1, $2, $3, $4, $5)"#,
+        )
+        .bind(t.id)
+        .bind(&sender_name)
+        .bind(&sender_email)
+        .bind(&body.subject)
+        .bind(&body.message)
+        .execute(db)
+        .await;
+        match res {
+            Ok(_) => sent += 1,
+            // One bad target must not sink the whole fan-out.
+            Err(e) => eprintln!("broadcast_quote: insert for {} failed: {}", t.id, e),
+        }
+    }
+
+    Ok(Json(BroadcastQuoteResponse {
+        sent,
+        businesses: targets,
+    }))
+}

@@ -2013,6 +2013,9 @@ pub fn create_router(s: AppState) -> Router {
         )
         // ? Public endpoints (no auth required)
         .route("/messages/:business_id", post(messaging::send_message))
+        // Card B90 (Thumbtack parity) — "get multiple quotes for one job": fan a quote request out
+        // to the other pros matched by category and area. Public like a direct message.
+        .route("/quotes/broadcast", post(messaging::broadcast_quote))
         .route("/businesses/:id/claim", post(visitors::claim_business))
         // Two-step claim confirmation link (card B76) — the token IS the credential, so no JWT.
         .route("/claims/verify/:token", get(visitors::verify_claim_email))
@@ -3442,6 +3445,8 @@ async fn auth_guard(
         || path == "/pricing/public"
         // Public business message sending (guests can send messages)
         || (path.starts_with("/messages/") && req.method() == "POST")
+        // Card B90 — public multi-pro quote broadcast (guests can request several quotes at once)
+        || (path == "/quotes/broadcast" && req.method() == "POST")
         // Public data pipeline ingest (external sources push here)
         || path == "/pipeline/ingest"
         // Public community posts (GET only, POST/PUT/DELETE need auth)

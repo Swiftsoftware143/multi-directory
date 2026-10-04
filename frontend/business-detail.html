@@ -390,6 +390,10 @@ a:hover{text-decoration:underline}
             </select>
             <input type="text" id="quoteName" placeholder="Your Name" required>
             <input type="email" id="quoteEmail" placeholder="Your Email" required>
+            <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--text);cursor:pointer">
+              <input type="checkbox" id="quoteBroadcast" checked style="width:auto;margin:0">
+              📨 Also send my request to similar pros nearby, so I get more quotes
+            </label>
             <button type="submit" id="quoteSubmit">Send Quote Request</button>
             <div id="quoteFeedback"></div>
           </form>
@@ -1289,7 +1293,26 @@ async function submitQuote(e) {
       body: JSON.stringify({ name: name, email: email, subject: subject, message: body })
     });
     if (resp.ok) {
-      feedback.innerHTML = '<div class="msg-success">✅ Quote request sent! The business will reply to ' + esc(email) + '.</div>';
+      let sentMsg = '<div class="msg-success">✅ Quote request sent! The business will reply to ' + esc(email) + '.</div>';
+      const broadcast = document.getElementById('quoteBroadcast');
+      if (broadcast && broadcast.checked) {
+        // Thumbtack parity (card B90): "get multiple quotes for one job" — fan the SAME request
+        // out to the other pros matched by category and area, so one request yields several
+        // quotes. Built on the same messaging threads; no parallel inbox.
+        try {
+          const bresp = await fetch('/api/v1/quotes/broadcast', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ business_id: bizId, name: name, email: email, subject: subject, message: body, max: 4 })
+          });
+          const bdata = await bresp.json().catch(() => null);
+          const n = bdata && typeof bdata.sent === 'number' ? bdata.sent : 0;
+          if (bresp.ok && n > 0) {
+            sentMsg = '<div class="msg-success">✅ Quote request sent to this business and ' + n + ' more similar pro' + (n === 1 ? '' : 's') + ' nearby — they will reply to ' + esc(email) + '.</div>';
+          }
+        } catch (e) { /* fan-out is best-effort; the direct request already succeeded */ }
+      }
+      feedback.innerHTML = sentMsg;
       document.getElementById('quoteForm').reset();
     } else {
       const errData = await resp.json().catch(() => null);
