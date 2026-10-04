@@ -1019,6 +1019,27 @@
         <div class="feature-status" id="pt-status"></div>
       </div>
 
+      <!-- 🎁 Deals (card B91 / B117 gap #7) — src/handlers/deals.rs carries a full CRUD API
+           (create/update/claim/redeem) and the public featured feed (/deals/featured), yet the
+           admin panel had NO control over a single deal: which are live and which two flags put
+           one in the spotlight (featured = this directory's featured feed; zaarhub_featured = the
+           network-wide spotlight on the homepage). Businesses set these from their own portal; the
+           operator could not. This is that control. -->
+      <div class="feature-card" id="deals-section">
+        <h3>🎁 Deals
+          <span class="pk-badge pk-missing" id="dl-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">Every deal across all directories. Flip the two spotlight flags here — <b>Featured</b> puts a deal in its directory's featured feed (<code>/deals/featured</code>); <b>ZaarHub</b> lifts it into the network-wide spotlight on the homepage. Operator-only; changes take effect immediately.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">Filter
+            <input class="pk-input" id="dl-q" placeholder="Filter by deal title…" oninput="window.__dlRender()"></label>
+          <label style="font-size:.75rem;display:flex;align-items:center;gap:6px"><input type="checkbox" id="dl-only-featured" onchange="window.__dlRender()"> only spotlighted</label>
+          <button class="btn btn-ghost btn-sm" onclick="window.__dlLoad()">↻ Refresh</button>
+        </div>
+        <div id="dl-list"></div>
+        <div class="feature-status" id="dl-status"></div>
+      </div>
+
       <!-- 🧩 API Access & Webhooks (B91 / B117 gap #4) — /api-keys and /webhooks carry a full
            operator-guarded CRUD API (src/handlers/api_complete.rs) but the panel had NO control
            for either (api_keys 0 rows, 750 webhook rows, both curl-only). This is that control. -->
@@ -10021,6 +10042,105 @@
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
+  })();
+
+  /* ============================================================
+     🎁 Deals (card B91 / B117 gap #7) — operator control of the deals subsystem.
+     GET  /deals            list every deal (deals::list_deals)
+     PUT  /deals/:id        partial update (deals::update_deal) — flip featured / zaarhub_featured
+     ============================================================ */
+  (function () {
+    var API = '/api/v1';
+    var DEALS = [];
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function req(method, path, body) {
+      var h = {}; var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      if (body != null) h['Content-Type'] = 'application/json';
+      return fetch(API + path, { method: method, headers: h, body: body != null ? JSON.stringify(body) : undefined })
+        .then(function (r) {
+          return r.text().then(function (txt) {
+            var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (e) {}
+            if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+            return d;
+          });
+        });
+    }
+    function dirName(id) {
+      if (!id) return '';
+      var dirs = (window.MDContextBar && window.MDContextBar.dirsForScope && window.MDContextBar.dirsForScope()) || [];
+      for (var i = 0; i < dirs.length; i++) if (String(dirs[i].id) === String(id)) return dirs[i].name || dirs[i].slug || id;
+      return String(id).slice(0, 8) + '…';
+    }
+    function byId(id) {
+      for (var i = 0; i < DEALS.length; i++) if (String(DEALS[i].id) === String(id)) return DEALS[i];
+      return null;
+    }
+    function render() {
+      var el = document.getElementById('dl-list'); if (!el) return;
+      var q = (document.getElementById('dl-q').value || '').trim().toLowerCase();
+      var onlyF = document.getElementById('dl-only-featured').checked;
+      var rows = DEALS.filter(function (d) {
+        if (onlyF && !d.featured && !d.zaarhub_featured) return false;
+        if (q && String(d.title || '').toLowerCase().indexOf(q) === -1) return false;
+        return true;
+      });
+      var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+        '<thead><tr><th>Deal</th><th>Directory</th><th>Status</th><th>Featured</th><th>ZaarHub</th><th></th></tr></thead><tbody>';
+      if (!rows.length) html += '<tr><td colspan="6" style="opacity:.6">No deals' + (q || onlyF ? ' match this filter' : ' yet') + '.</td></tr>';
+      rows.forEach(function (d) {
+        html += '<tr><td><b>' + esc(d.title) + '</b></td>' +
+          '<td>' + esc(dirName(d.directory_id) || '—') + '</td>' +
+          '<td>' + esc(d.status || '') + '</td>' +
+          '<td>' + (d.featured ? '<span class="badge">featured</span>' : '<span style="opacity:.5">—</span>') + '</td>' +
+          '<td>' + (d.zaarhub_featured ? '<span class="badge">zaarhub</span>' : '<span style="opacity:.5">—</span>') + '</td>' +
+          '<td><button class="btn btn-ghost btn-sm" type="button" data-dl-feat="' + esc(d.id) + '">' +
+            (d.featured ? 'Unfeature' : 'Feature') + '</button> ' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-dl-zh="' + esc(d.id) + '">' +
+            (d.zaarhub_featured ? 'Remove from ZaarHub' : 'ZaarHub') + '</button></td></tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+      var badge = document.getElementById('dl-badge');
+      if (badge) { badge.textContent = DEALS.length + ' deal' + (DEALS.length === 1 ? '' : 's'); badge.className = 'pk-badge ' + (DEALS.length ? 'pk-ok' : 'pk-missing'); }
+    }
+    function load() {
+      if (!document.getElementById('dl-list')) return;
+      document.getElementById('dl-status').textContent = 'Loading…';
+      req('GET', '/deals').then(function (d) {
+        DEALS = Array.isArray(d) ? d : (d && d.deals) || [];
+        render();
+        document.getElementById('dl-status').textContent = '';
+      }).catch(function (e) { document.getElementById('dl-status').textContent = 'Failed: ' + e.message; });
+    }
+    function toggle(id, field, val) {
+      document.getElementById('dl-status').textContent = 'Saving…';
+      var body = {}; body[field] = val;
+      req('PUT', '/deals/' + encodeURIComponent(id), body).then(function (d) {
+        var cur = byId(id);
+        if (cur && d) { cur.featured = d.featured; cur.zaarhub_featured = d.zaarhub_featured; }
+        render();
+        document.getElementById('dl-status').textContent = 'Saved.';
+        setTimeout(function () { var s = document.getElementById('dl-status'); if (s && s.textContent === 'Saved.') s.textContent = ''; }, 2500);
+      }).catch(function (e) { document.getElementById('dl-status').textContent = 'Failed: ' + e.message; });
+    }
+    window.__dlLoad = load;
+    window.__dlRender = render;
+    document.addEventListener('DOMContentLoaded', function () {
+      var list = document.getElementById('dl-list'); if (!list) return;
+      list.addEventListener('click', function (ev) {
+        var f = ev.target.closest('[data-dl-feat]');
+        if (f) { var c1 = byId(f.getAttribute('data-dl-feat')); toggle(f.getAttribute('data-dl-feat'), 'featured', !(c1 && c1.featured)); return; }
+        var z = ev.target.closest('[data-dl-zh]');
+        if (z) { var c2 = byId(z.getAttribute('data-dl-zh')); toggle(z.getAttribute('data-dl-zh'), 'zaarhub_featured', !(c2 && c2.zaarhub_featured)); return; }
+      });
+      document.addEventListener('md-context-change', load);
+      setTimeout(load, 800);
+    });
   })();
   </script>
 </body>
