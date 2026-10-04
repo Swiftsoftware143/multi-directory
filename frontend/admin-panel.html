@@ -558,6 +558,7 @@
         <a href="#sc-blog-section">📰 Blog Templates</a>
         <a href="#sc-news-section">✉️ Newsletters</a>
         <a href="#sc-land-section">🚀 Landing Pages</a>
+        <a href="#developer-api-section">🧩 API Access &amp; Webhooks</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty</a>
         <a class="nav-out" href="/guides/admin-guide.html#david-setup-checklist">✅ Setup Checklist</a>
@@ -1002,6 +1003,39 @@
         <p class="feature-subtitle">The plans a business can choose from, and what each one unlocks. Edit a tier's price, its limits and its feature gates here — then Save. Changes take effect immediately for every directory using the tier.</p>
         <div id="pt-list"></div>
         <div class="feature-status" id="pt-status"></div>
+      </div>
+
+      <!-- 🧩 API Access & Webhooks (B91 / B117 gap #4) — /api-keys and /webhooks carry a full
+           operator-guarded CRUD API (src/handlers/api_complete.rs) but the panel had NO control
+           for either (api_keys 0 rows, 750 webhook rows, both curl-only). This is that control. -->
+      <div class="feature-card" id="developer-api-section">
+        <h3>🧩 API Access &amp; Webhooks</h3>
+        <p class="feature-subtitle">Issue API keys for outside integrations and register webhooks that fire on directory events. Operator-only.</p>
+
+        <div style="font-weight:600;font-size:.9rem;margin:4px 0 8px">API keys</div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Name
+            <input class="pk-input" id="ak-name" placeholder="e.g. Website integration"></label>
+          <label style="font-size:.75rem;flex:1;min-width:220px;display:flex;flex-direction:column;gap:3px">Scopes (optional, comma-separated)
+            <input class="pk-input" id="ak-scopes" placeholder="read, write"></label>
+          <button class="btn btn-accent btn-sm" onclick="window.__akCreate()">+ Create key</button>
+        </div>
+        <div id="ak-new" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px;font-size:.82rem"></div>
+        <div id="ak-list"></div>
+        <div class="feature-status" id="ak-status"></div>
+
+        <div style="font-weight:600;font-size:.9rem;margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">Webhooks</div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="font-size:.75rem;flex:1;min-width:240px;display:flex;flex-direction:column;gap:3px">Endpoint URL
+            <input class="pk-input" id="wh-url" placeholder="https://example.com/hooks/zaarhub"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Signing secret (optional)
+            <input class="pk-input" id="wh-secret" placeholder="shared secret"></label>
+          <button class="btn btn-accent btn-sm" onclick="window.__whCreate()">+ Add webhook</button>
+        </div>
+        <div id="wh-events" style="font-size:.78rem;color:var(--text-secondary);margin-bottom:10px"></div>
+        <div id="wh-list"></div>
+        <div id="wh-deliveries" style="margin-top:10px"></div>
+        <div class="feature-status" id="wh-status"></div>
       </div>
 
       <!-- ⭐ ZaarCash Loyalty Messaging (card B92) — the loyalty programme is the differentiator
@@ -4035,6 +4069,8 @@
       loadEmailTemplates();
       loadEmailCampaigns();
       loadScraperProviders();
+      // 🧩 API Access & Webhooks (B91/B117 gap #4) — operator-only api_keys + webhooks UI.
+      loadApiAccess();
       // 🗺 Sitemap config (priority / change frequency / auto-generate + regenerate).
       loadSitemapConfigs();
       // Round 11 / T1: demand analytics card (filters, matrix, chart, exports).
@@ -8790,6 +8826,127 @@
         window.__seqLoad();
       });
     })();
+
+    // ===== 🧩 API Access & Webhooks (card B91 / B117 gap #4) =====
+    // src/handlers/api_complete.rs exposes a full operator-guarded CRUD surface for api_keys and
+    // webhooks; the panel had NO control for either. This is that control.
+    var AK_EVENTS = ['business.created','business.updated','business.deleted','review.created','review.approved','deal.created','deal.claimed','submission.created','submission.approved','contact.created','directory.created'];
+    function akEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function akFmt(dt) { if (!dt) return '—'; try { return new Date(dt).toLocaleString(); } catch (e) { return '—'; } }
+    function akStatus(id, msg, ok) { var el = document.getElementById(id); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
+
+    function loadApiAccess() { loadApiKeys(); loadWebhooks(); }
+
+    function loadApiKeys() {
+      var box = document.getElementById('ak-list'); if (!box) return;
+      apiGet('/api-keys').then(function (rows) {
+        rows = rows || [];
+        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">No API keys yet. Create one above — the full key is shown once, at creation.</p>'; return; }
+        var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:6px 4px">Name</th><th>Key</th><th>Status</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>';
+        rows.forEach(function (k) {
+          h += '<tr style="border-top:1px solid var(--border)">'
+            + '<td style="padding:6px 4px">' + akEsc(k.name) + '</td>'
+            + '<td><code>' + akEsc(k.key_prefix) + '…</code></td>'
+            + '<td>' + (k.is_active === false ? '<span style="color:#ef4444">revoked</span>' : '<span style="color:#22c55e">active</span>') + '</td>'
+            + '<td>' + akEsc((k.scopes || []).join(', ') || '—') + '</td>'
+            + '<td>' + akFmt(k.last_used_at) + '</td>'
+            + '<td style="text-align:right;white-space:nowrap">'
+              + '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akToggle(this)">' + (k.is_active === false ? 'Enable' : 'Revoke') + '</button> '
+              + '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akDelete(this)">Delete</button>'
+            + '</td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table>';
+      }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load keys: ' + akEsc(e.message) + '</p>'; });
+    }
+
+    window.__akCreate = function () {
+      var name = (document.getElementById('ak-name').value || '').trim();
+      var scopes = (document.getElementById('ak-scopes').value || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!name) { akStatus('ak-status', 'Give the key a name (e.g. "Website integration").', false); return; }
+      var body = { name: name }; if (scopes.length) body.scopes = scopes;
+      apiPost('/api-keys', body).then(function (k) {
+        document.getElementById('ak-name').value = ''; document.getElementById('ak-scopes').value = '';
+        var out = document.getElementById('ak-new'); out.style.display = 'block';
+        out.innerHTML = '<b>Copy this key now — it is shown only once.</b><div style="margin-top:6px"><code style="word-break:break-all">' + akEsc(k.raw_key || '(no key returned)') + '</code></div>';
+        akStatus('ak-status', 'Key created.', true); loadApiKeys();
+      }).catch(function (e) { akStatus('ak-status', 'Create failed: ' + e.message, false); });
+    };
+    window.__akToggle = function (el) {
+      var id = el.getAttribute('data-akid'); var enable = el.textContent === 'Enable';
+      apiPut('/api-keys/' + id, { is_active: enable }).then(function () { akStatus('ak-status', enable ? 'Key enabled.' : 'Key revoked.', true); loadApiKeys(); })
+        .catch(function (e) { akStatus('ak-status', 'Update failed: ' + e.message, false); });
+    };
+    window.__akDelete = function (el) {
+      var id = el.getAttribute('data-akid');
+      if (!window.confirm('Delete this API key permanently? Anything using it stops working.')) return;
+      apiFetch('DELETE', '/api-keys/' + id).then(function () { akStatus('ak-status', 'Key deleted.', true); loadApiKeys(); })
+        .catch(function (e) { akStatus('ak-status', 'Delete failed: ' + e.message, false); });
+    };
+
+    function loadWebhooks() {
+      var box = document.getElementById('wh-list'); if (!box) return;
+      var ev = document.getElementById('wh-events');
+      if (ev && !ev.getAttribute('data-built')) {
+        ev.innerHTML = 'Events: ' + AK_EVENTS.map(function (e) { return '<label style="display:inline-flex;align-items:center;gap:4px;margin:2px 10px 2px 0"><input type="checkbox" class="wh-ev" value="' + e + '"' + (e === 'business.created' ? ' checked' : '') + '> ' + e + '</label>'; }).join('');
+        ev.setAttribute('data-built', '1');
+      }
+      apiGet('/webhooks').then(function (rows) {
+        rows = rows || [];
+        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">No webhooks registered.</p>'; return; }
+        var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:6px 4px">URL</th><th>Events</th><th>Status</th><th>Failures</th><th>Last success</th><th></th></tr></thead><tbody>';
+        rows.forEach(function (w) {
+          h += '<tr style="border-top:1px solid var(--border)">'
+            + '<td style="padding:6px 4px;word-break:break-all">' + akEsc(w.url) + '</td>'
+            + '<td>' + akEsc((w.events || []).length) + ' event(s)</td>'
+            + '<td>' + (w.is_active === false ? '<span style="color:#ef4444">paused</span>' : '<span style="color:#22c55e">active</span>') + '</td>'
+            + '<td>' + (w.failure_count || 0) + '</td>'
+            + '<td>' + akFmt(w.last_success_at) + '</td>'
+            + '<td style="text-align:right;white-space:nowrap">'
+              + '<button class="btn btn-ghost btn-sm" data-whid="' + akEsc(w.id) + '" onclick="window.__whDeliveries(this)">Deliveries</button> '
+              + '<button class="btn btn-ghost btn-sm" data-whid="' + akEsc(w.id) + '" onclick="window.__whToggle(this)">' + (w.is_active === false ? 'Resume' : 'Pause') + '</button> '
+              + '<button class="btn btn-ghost btn-sm" data-whid="' + akEsc(w.id) + '" onclick="window.__whDelete(this)">Delete</button>'
+            + '</td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table>';
+      }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load webhooks: ' + akEsc(e.message) + '</p>'; });
+    }
+    window.__whCreate = function () {
+      var url = (document.getElementById('wh-url').value || '').trim();
+      var events = Array.prototype.slice.call(document.querySelectorAll('.wh-ev:checked')).map(function (c) { return c.value; });
+      var secret = (document.getElementById('wh-secret').value || '').trim();
+      if (!/^https?:\/\//.test(url)) { akStatus('wh-status', 'Enter a full http(s) endpoint URL.', false); return; }
+      if (!events.length) { akStatus('wh-status', 'Pick at least one event.', false); return; }
+      var body = { url: url, events: events }; if (secret) body.secret = secret;
+      apiPost('/webhooks', body).then(function () {
+        document.getElementById('wh-url').value = ''; document.getElementById('wh-secret').value = '';
+        akStatus('wh-status', 'Webhook added.', true); loadWebhooks();
+      }).catch(function (e) { akStatus('wh-status', 'Add failed: ' + e.message, false); });
+    };
+    window.__whToggle = function (el) {
+      var id = el.getAttribute('data-whid'); var resume = el.textContent === 'Resume';
+      apiPut('/webhooks/' + id, { is_active: resume }).then(function () { akStatus('wh-status', resume ? 'Webhook resumed.' : 'Webhook paused.', true); loadWebhooks(); })
+        .catch(function (e) { akStatus('wh-status', 'Update failed: ' + e.message, false); });
+    };
+    window.__whDelete = function (el) {
+      var id = el.getAttribute('data-whid');
+      if (!window.confirm('Delete this webhook permanently?')) return;
+      apiFetch('DELETE', '/webhooks/' + id).then(function () { akStatus('wh-status', 'Webhook deleted.', true); loadWebhooks(); })
+        .catch(function (e) { akStatus('wh-status', 'Delete failed: ' + e.message, false); });
+    };
+    window.__whDeliveries = function (el) {
+      var id = el.getAttribute('data-whid');
+      var box = document.getElementById('wh-deliveries');
+      box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading deliveries…</p>';
+      apiGet('/webhooks/' + id + '/deliveries').then(function (rows) {
+        rows = rows || [];
+        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">No deliveries recorded for this webhook.</p>'; return; }
+        var h = '<div style="font-weight:600;font-size:.85rem;margin-bottom:6px">Last ' + rows.length + ' deliveries</div><table style="width:100%;border-collapse:collapse;font-size:.8rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:4px">Event</th><th>Status</th><th>HTTP</th><th>Attempts</th><th>When</th></tr></thead><tbody>';
+        rows.forEach(function (d) {
+          h += '<tr style="border-top:1px solid var(--border)"><td style="padding:4px">' + akEsc(d.event_type) + '</td><td>' + akEsc(d.status) + '</td><td>' + akEsc(d.response_status_code == null ? '—' : d.response_status_code) + '</td><td>' + akEsc(d.attempt_count == null ? '—' : d.attempt_count) + '</td><td>' + akFmt(d.created_at) + '</td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table>';
+      }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load deliveries: ' + akEsc(e.message) + '</p>'; });
+    };
 
     // ===== Init =====
     if (token && user) {

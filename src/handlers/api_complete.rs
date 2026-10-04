@@ -101,15 +101,24 @@ fn sha256_hash(input: &str) -> String {
 /// POST /api/v1/admin/api-keys — create a new API key
 pub async fn create_api_key(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // The key belongs to the authenticated operator. This used to bind Uuid::nil() "to be set by
+    // auth middleware" — nothing ever set it, and api_keys.user_id is NOT NULL with an FK to
+    // users(id), so EVERY create 500'd (api_keys_user_id_fkey). Found by the new admin API-access
+    // UI (card B91) — the back end had never actually been exercised.
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
     let (raw_key, key_hash, key_prefix) = generate_api_key();
 
     let api_key = sqlx::query_as::<_, ApiKey>(
         "INSERT INTO api_keys (user_id, name, key_hash, key_prefix, scopes, rate_limit_per_minute, rate_limit_per_hour, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *"
     )
-    .bind(Uuid::nil())  // placeholder user_id — will be set by auth middleware
+    .bind(user_id)
     .bind(&req.name)
     .bind(&key_hash)
     .bind(&key_prefix)
