@@ -527,6 +527,7 @@
         <a href="#businesses-section">🏢 Businesses</a>
         <a href="#b2b-admin-section">🏬 Suppliers / B2B</a>
         <a href="#network-management-section">🗂 Network Management</a>
+        <a href="#networks-section">🌐 Networks (create &amp; brand)</a>
         <a href="#directory-details-section">🧾 Directory Details</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
         <a href="#industries-section">🏭 Industries</a>
@@ -2180,6 +2181,63 @@
         <span class="feature-status" id="obr-status"></span>
       </div>
       <div id="obr-list"></div>
+    </div>
+
+    <!-- ===== Networks: create, configure and brand a network (kanban B91/B117 gap #3) =====
+         The network CRUD handlers (get/create/update/delete/directories/branding) existed in
+         handlers/networks.rs but were UNROUTED, so a network could only be created with SQL.
+         This is the control: list every network, create one, edit name/slug/description/root
+         domain/status, edit its brand colours, and see the cities attached. Delete is refused
+         while cities still hang off it (they would be orphaned, not deleted). -->
+    <div class="feature-card" id="networks-section">
+      <h3>🌐 Networks</h3>
+      <p class="feature-subtitle">A network groups the cities that share one brand and root domain. Create one, set its root domain (the namespace its city subdomains live under, e.g. <code>zaarhub.com</code>), and brand it. A network with cities attached cannot be deleted.</p>
+      <div class="pk-controls" style="margin:10px 0">
+        <button class="btn btn-accent btn-sm" type="button" id="nw-new">＋ New network</button>
+        <span class="feature-status" id="nw-status"></span>
+      </div>
+      <div id="nw-rows" style="overflow:auto"></div>
+
+      <div id="nw-editor" style="display:none;margin-top:14px;border-top:1px dashed var(--border,#1e3a5f);padding-top:12px">
+        <h4 id="nw-editor-title" style="margin:0 0 8px">New network</h4>
+        <div class="em-grid">
+          <div class="em-field"><label>Name</label><input id="nw-name" placeholder="ZaarHub"></div>
+          <div class="em-field"><label>Slug</label><input id="nw-slug" placeholder="zaarhub"><span class="pg-field-help">lower-case, unique; used in ids and URLs.</span></div>
+          <div class="em-field"><label>Root domain</label><input id="nw-root" placeholder="zaarhub.com"><span class="pg-field-help">Bare domain — no scheme, no path. City subdomains hang off it.</span></div>
+          <div class="em-field"><label>Status</label>
+            <select id="nw-status-sel"><option value="active">active</option><option value="inactive">inactive</option><option value="suspended">suspended</option></select>
+          </div>
+          <div class="em-field" style="grid-column:1/-1"><label>Description</label><input id="nw-desc" placeholder="What this network is"></div>
+        </div>
+        <div class="pk-controls" style="margin-top:10px">
+          <button class="btn btn-accent btn-sm" type="button" id="nw-save">Save network</button>
+          <button class="btn btn-sm" type="button" id="nw-cancel">Cancel</button>
+          <span class="feature-status" id="nw-editor-status"></span>
+        </div>
+      </div>
+
+      <div id="nw-branding" style="display:none;margin-top:14px;border-top:1px dashed var(--border,#1e3a5f);padding-top:12px">
+        <h4 id="nw-brand-title" style="margin:0 0 8px">Branding</h4>
+        <div class="em-grid">
+          <div class="em-field"><label>Logo URL</label><input id="nwb-logo" placeholder="https://…"></div>
+          <div class="em-field"><label>Footer logo URL</label><input id="nwb-logo-footer" placeholder="https://…"></div>
+          <div class="em-field"><label>Favicon URL</label><input id="nwb-favicon" placeholder="https://…"></div>
+          <div class="em-field"><label>Primary colour</label><input id="nwb-primary" placeholder="#0ea5e9"></div>
+          <div class="em-field"><label>Secondary colour</label><input id="nwb-secondary" placeholder="#0f172a"></div>
+          <div class="em-field"><label>Accent colour</label><input id="nwb-accent" placeholder="#22c55e"></div>
+          <div class="em-field"><label>Background</label><input id="nwb-bg" placeholder="#ffffff"></div>
+          <div class="em-field"><label>Text colour</label><input id="nwb-text" placeholder="#111827"></div>
+          <div class="em-field"><label>Heading colour</label><input id="nwb-heading" placeholder="#111827"></div>
+          <div class="em-field"><label>Heading font</label><input id="nwb-hfont" placeholder="Inter"></div>
+          <div class="em-field"><label>Body font</label><input id="nwb-bfont" placeholder="Inter"></div>
+        </div>
+        <div class="pk-controls" style="margin-top:10px">
+          <button class="btn btn-accent btn-sm" type="button" id="nwb-save">Save branding</button>
+          <button class="btn btn-sm" type="button" id="nwb-close">Close</button>
+          <span class="feature-status" id="nwb-status"></span>
+        </div>
+        <p class="pg-field-help" style="margin-top:6px">Only filled fields are sent — a blank field leaves the stored value unchanged.</p>
+      </div>
     </div>
 
     <!-- ===== Network Management: ONE surface for every per-city dataset (kanban B96) =====
@@ -9424,6 +9482,181 @@
       setTimeout(nmReload, 500); // after MDContextBar has loaded directories
     });
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(nmReload, 500);
+  })();
+  </script>
+  <script>
+  /* ============================================================
+     Networks card (kanban B91/B117 completeness inventory gap #3) —
+     create, configure and brand a network. The CRUD handlers in
+     handlers/networks.rs existed but were UNROUTED (a network could
+     only be created with SQL); this is their control. Every call is
+     operator-guarded server-side; a refused delete reports the
+     server's own message (never a fabricated success).
+     ============================================================ */
+  (function () {
+    var API = '/api/v1';
+    var nets = [];
+    var editingId = null;
+    var brandingId = null;
+
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function api(method, path, body) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      var opts = { method: method, headers: h };
+      if (body) opts.body = JSON.stringify(body);
+      return fetch(API + path, opts).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function setv(el, v) { var e = document.getElementById(el); if (e) e.value = (v == null ? '' : v); }
+    function val(el) { var e = document.getElementById(el); return e ? e.value.trim() : ''; }
+    function txt(el, s) { var e = document.getElementById(el); if (e) e.textContent = s; }
+
+    function load() {
+      txt('nw-status', 'Loading…');
+      api('GET', '/networks').then(function (list) {
+        nets = Array.isArray(list) ? list : [];
+        return Promise.all(nets.map(function (n) {
+          return api('GET', '/networks/' + n.id + '/directories')
+            .then(function (d) { n._dirs = (d || []).length; })
+            .catch(function () { n._dirs = null; });
+        }));
+      }).then(function () {
+        render();
+        txt('nw-status', '');
+      }).catch(function (e) { txt('nw-status', 'Failed: ' + e.message); });
+    }
+
+    function render() {
+      var host = document.getElementById('nw-rows');
+      if (!host) return;
+      if (!nets.length) { host.innerHTML = '<p class="feature-subtitle" style="opacity:.7">No networks yet — create one above.</p>'; return; }
+      var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+        '<thead><tr><th>Name</th><th>Slug</th><th>Root domain</th><th>Status</th>' +
+        '<th style="text-align:right">Cities</th><th>Created</th><th></th></tr></thead><tbody>';
+      nets.forEach(function (n) {
+        html += '<tr>' +
+          '<td><b>' + esc(n.name) + '</b>' + (n.description ? '<div style="opacity:.6;font-size:.75rem">' + esc(n.description) + '</div>' : '') + '</td>' +
+          '<td><code>' + esc(n.slug) + '</code></td>' +
+          '<td>' + (n.root_domain ? esc(n.root_domain) : '<span style="opacity:.5">— not set —</span>') + '</td>' +
+          '<td>' + esc(n.status || 'active') + '</td>' +
+          '<td style="text-align:right">' + (n._dirs == null ? '?' : n._dirs) + '</td>' +
+          '<td>' + esc(String(n.created_at || '').slice(0, 10)) + '</td>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="btn btn-sm" type="button" data-nw-edit="' + esc(n.id) + '">Edit</button> ' +
+            '<button class="btn btn-sm" type="button" data-nw-brand="' + esc(n.id) + '">Branding</button> ' +
+            '<button class="btn btn-sm" type="button" data-nw-del="' + esc(n.id) + '">Delete</button>' +
+          '</td></tr>';
+      });
+      html += '</tbody></table>';
+      host.innerHTML = html;
+      host.querySelectorAll('[data-nw-edit]').forEach(function (b) { b.addEventListener('click', function () { openEditor(b.getAttribute('data-nw-edit')); }); });
+      host.querySelectorAll('[data-nw-brand]').forEach(function (b) { b.addEventListener('click', function () { openBranding(b.getAttribute('data-nw-brand')); }); });
+      host.querySelectorAll('[data-nw-del]').forEach(function (b) { b.addEventListener('click', function () { removeNet(b.getAttribute('data-nw-del')); }); });
+    }
+
+    function showEditor(show) { var e = document.getElementById('nw-editor'); if (e) e.style.display = show ? 'block' : 'none'; }
+    function showBranding(show) { var e = document.getElementById('nw-branding'); if (e) e.style.display = show ? 'block' : 'none'; }
+
+    function openEditor(id) {
+      editingId = id || null;
+      var n = id ? nets.filter(function (x) { return x.id === id; })[0] : null;
+      txt('nw-editor-title', n ? ('Edit — ' + n.name) : 'New network');
+      setv('nw-name', n ? n.name : '');
+      setv('nw-slug', n ? n.slug : '');
+      setv('nw-root', n ? n.root_domain : '');
+      setv('nw-desc', n ? n.description : '');
+      var sel = document.getElementById('nw-status-sel'); if (sel) sel.value = (n && n.status) ? n.status : 'active';
+      txt('nw-editor-status', '');
+      showEditor(true);
+      var focus = document.getElementById('nw-name'); if (focus) focus.focus();
+    }
+
+    function saveEditor() {
+      var body = {
+        name: val('nw-name'),
+        slug: val('nw-slug'),
+        description: val('nw-desc'),
+        root_domain: val('nw-root'),
+        status: document.getElementById('nw-status-sel').value
+      };
+      if (!body.name || !body.slug) { txt('nw-editor-status', 'Name and slug are required.'); return; }
+      txt('nw-editor-status', 'Saving…');
+      var p = editingId ? api('PUT', '/networks/' + editingId, body) : api('POST', '/networks', body);
+      p.then(function () {
+        txt('nw-editor-status', 'Saved.');
+        showEditor(false);
+        load();
+      }).catch(function (e) { txt('nw-editor-status', 'Failed: ' + e.message); });
+    }
+
+    function openBranding(id) {
+      brandingId = id;
+      var n = nets.filter(function (x) { return x.id === id; })[0];
+      txt('nw-brand-title', 'Branding — ' + (n ? n.name : ''));
+      ['nwb-logo', 'nwb-logo-footer', 'nwb-favicon', 'nwb-primary', 'nwb-secondary', 'nwb-accent',
+       'nwb-bg', 'nwb-text', 'nwb-heading', 'nwb-hfont', 'nwb-bfont'].forEach(function (f) { setv(f, ''); });
+      txt('nwb-status', 'Loading…');
+      showBranding(true);
+      api('GET', '/networks/' + id + '/branding').then(function (b) {
+        setv('nwb-logo', b.logo_url); setv('nwb-logo-footer', b.logo_footer_url); setv('nwb-favicon', b.favicon_url);
+        setv('nwb-primary', b.primary_color); setv('nwb-secondary', b.secondary_color); setv('nwb-accent', b.accent_color);
+        setv('nwb-bg', b.background_color); setv('nwb-text', b.text_color); setv('nwb-heading', b.heading_color);
+        setv('nwb-hfont', b.heading_font); setv('nwb-bfont', b.body_font);
+        txt('nwb-status', '');
+      }).catch(function (e) {
+        if (/not found/i.test(e.message)) { txt('nwb-status', 'No branding saved yet — fill a field and Save to create it.'); }
+        else { txt('nwb-status', 'Failed: ' + e.message); }
+      });
+    }
+
+    function saveBranding() {
+      var map = {
+        logo_url: 'nwb-logo', logo_footer_url: 'nwb-logo-footer', favicon_url: 'nwb-favicon',
+        primary_color: 'nwb-primary', secondary_color: 'nwb-secondary', accent_color: 'nwb-accent',
+        background_color: 'nwb-bg', text_color: 'nwb-text', heading_color: 'nwb-heading',
+        heading_font: 'nwb-hfont', body_font: 'nwb-bfont'
+      };
+      var body = {};
+      Object.keys(map).forEach(function (k) { var v = val(map[k]); if (v) body[k] = v; });
+      txt('nwb-status', 'Saving…');
+      api('PUT', '/networks/' + brandingId + '/branding', body).then(function () {
+        txt('nwb-status', 'Saved.');
+      }).catch(function (e) { txt('nwb-status', 'Failed: ' + e.message); });
+    }
+
+    function removeNet(id) {
+      var n = nets.filter(function (x) { return x.id === id; })[0];
+      if (!window.confirm('Delete network "' + (n ? n.name : id) + '"? This cannot be undone.')) return;
+      api('DELETE', '/networks/' + id).then(function () {
+        txt('nw-status', 'Deleted.');
+        load();
+      }).catch(function (e) { txt('nw-status', 'Refused: ' + e.message); });
+    }
+
+    var initialized = false;
+    function init() {
+      if (initialized) return;
+      if (!document.getElementById('networks-section')) return;
+      initialized = true;
+      document.getElementById('nw-new').addEventListener('click', function () { openEditor(null); });
+      document.getElementById('nw-cancel').addEventListener('click', function () { showEditor(false); });
+      document.getElementById('nw-save').addEventListener('click', saveEditor);
+      document.getElementById('nwb-save').addEventListener('click', saveBranding);
+      document.getElementById('nwb-close').addEventListener('click', function () { showBranding(false); });
+      setTimeout(load, 600); // after the panel token + other sections settle
+    }
+    document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 600);
   })();
   </script>
   <script>

@@ -194,10 +194,28 @@ pub async fn update_network(
 }
 
 /// DELETE /api/v1/networks/:id
+///
+/// `directories.network_id` is `ON DELETE SET NULL`, so an unguarded delete would silently
+/// orphan every city in the network (and CASCADE would silently erase its branding, homepage,
+/// ledger and treasury rows). Refuse while any directory still hangs off the network — the
+/// operator re-homes or deletes the cities first, an honest failure instead of quiet data loss.
 pub async fn delete_network(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    let attached =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE network_id = $1")
+            .bind(id)
+            .fetch_one(&s.db)
+            .await?;
+
+    if attached > 0 {
+        return Err(AppError::Validation(format!(
+            "This network still has {attached} director{} attached. Re-home or delete them first — deleting would orphan every city.",
+            if attached == 1 { "y" } else { "ies" }
+        )));
+    }
+
     let result = sqlx::query("DELETE FROM networks WHERE id = $1")
         .bind(id)
         .execute(&s.db)
@@ -245,26 +263,36 @@ pub async fn get_network_branding(
 }
 
 /// PUT /api/v1/networks/:id/branding
+///
+/// UPSERT, not UPDATE: a network created before the branding row existed (ZaarHub) has no
+/// `network_branding` row, so a plain `UPDATE … RETURNING *` matched 0 rows and `fetch_one`
+/// turned the save into an HTTP 500 — the branding editor was unusable for that network.
+/// `network_id` is UNIQUE, so INSERT…ON CONFLICT creates the row on first save and COALESCE
+/// still keeps whatever the caller left blank. (found by B91 gap #3 verification)
 pub async fn update_network_branding(
     State(s): State<AppState>,
     Path(network_id): Path<Uuid>,
     Json(req): Json<UpdateNetworkBrandingRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let branding = sqlx::query_as::<_, NetworkBranding>(
-        r#"UPDATE network_branding
-           SET logo_url = COALESCE($1, logo_url),
-               logo_footer_url = COALESCE($2, logo_footer_url),
-               favicon_url = COALESCE($3, favicon_url),
-               primary_color = COALESCE($4, primary_color),
-               secondary_color = COALESCE($5, secondary_color),
-               accent_color = COALESCE($6, accent_color),
-               background_color = COALESCE($7, background_color),
-               text_color = COALESCE($8, text_color),
-               heading_color = COALESCE($9, heading_color),
-               heading_font = COALESCE($10, heading_font),
-               body_font = COALESCE($11, body_font),
+        r#"INSERT INTO network_branding
+               (network_id, logo_url, logo_footer_url, favicon_url, primary_color,
+                secondary_color, accent_color, background_color, text_color, heading_color,
+                heading_font, body_font)
+           VALUES ($12, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (network_id) DO UPDATE SET
+               logo_url = COALESCE(EXCLUDED.logo_url, network_branding.logo_url),
+               logo_footer_url = COALESCE(EXCLUDED.logo_footer_url, network_branding.logo_footer_url),
+               favicon_url = COALESCE(EXCLUDED.favicon_url, network_branding.favicon_url),
+               primary_color = COALESCE(EXCLUDED.primary_color, network_branding.primary_color),
+               secondary_color = COALESCE(EXCLUDED.secondary_color, network_branding.secondary_color),
+               accent_color = COALESCE(EXCLUDED.accent_color, network_branding.accent_color),
+               background_color = COALESCE(EXCLUDED.background_color, network_branding.background_color),
+               text_color = COALESCE(EXCLUDED.text_color, network_branding.text_color),
+               heading_color = COALESCE(EXCLUDED.heading_color, network_branding.heading_color),
+               heading_font = COALESCE(EXCLUDED.heading_font, network_branding.heading_font),
+               body_font = COALESCE(EXCLUDED.body_font, network_branding.body_font),
                updated_at = NOW()
-           WHERE network_id = $12
            RETURNING *"#,
     )
     .bind(&req.logo_url)

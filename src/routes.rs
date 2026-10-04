@@ -1664,9 +1664,33 @@ pub fn create_router(s: AppState) -> Router {
             post(provider_keys_handler::set_provider_key_active),
         )
         // Feature 2 support — networks list + the root domain a subdomain mapping hangs off.
+        // B91/B117 completeness inventory gap #3 — the network CRUD handlers (get/create/
+        // update/delete/list-directories/branding) existed in handlers/networks.rs but were
+        // UNROUTED, so a network could only be created via SQL. Routed here, operator-guarded
+        // like the list it joins: a platform operator creates, edits and brands a network
+        // from the admin panel. The delete handler refuses while directories still hang off it.
         .route(
             "/networks",
             get(networks::list_networks)
+                .post(networks::create_network)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/networks/:id",
+            get(networks::get_network)
+                .put(networks::update_network)
+                .delete(networks::delete_network)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/networks/:id/directories",
+            get(networks::list_network_directories)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/networks/:id/branding",
+            get(networks::get_network_branding)
+                .put(networks::update_network_branding)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
