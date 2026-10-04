@@ -1565,6 +1565,28 @@ function renderHomepageContent(d){
   </div>
 </div>`:''
 
+  // B90: Nextdoor-style local notices — short community announcements, admin-set per directory
+  // (exposed as d.notices by GET /zaarhub/homepage).
+  var hnt=Array.isArray(d.notices)?d.notices:[]
+  var hntCards=''
+  for(var hni=0;hni<hnt.length;hni++){
+    var hntI=hnt[hni]
+    hntCards+='<div style="background:var(--card);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:10px;padding:12px 14px">'
+      +(hntI.date?('<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-light);margin-bottom:4px">'+esc(hntI.date)+'</div>'):'')
+      +(hntI.title?('<div style="font-weight:700;font-size:.9rem;margin-bottom:2px">'+esc(hntI.title)+'</div>'):'')
+      +(hntI.body?('<div style="font-size:.82rem;color:var(--text-light);line-height:1.45">'+esc(hntI.body)+'</div>'):'')
+      +'</div>'
+  }
+  var secNotices=hntCards?`
+<div class="zh-section" style="padding-top:24px;padding-bottom:24px">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">📌 Local Notices</h2><p class="zh-section-sub">What's happening around the neighbourhood — posted by each community</p></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">${hntCards}</div>
+  </div>
+</div>`:''
+
   // Start today ticker and spot of week
   var todayMsgs=buildTodayMessages(d,deals,events,spotlights)
   setTimeout(function(){startTodayTicker(todayMsgs)},400)
@@ -1671,7 +1693,7 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
   <a href="/portal" class="zh-btn-primary">🚀 Claim Your Free Listing →</a>
 </div>`
   var hpMap={spotlights:secSpotlights,loyalty:secLoyalty,cities:secCities,top_rated:secTopRated,deals:secDeals,buzz:secBuzz,events:secEvents,cta_join:secCtaJoin,cta_owner:secCtaOwner}
-  content.innerHTML=hpAnnounceHtml()+heroHtml+secCostGuides+hpOrderSections(hpMap,['spotlights','loyalty','cities','top_rated','deals','buzz','events','cta_join','cta_owner'])
+  content.innerHTML=hpAnnounceHtml()+heroHtml+secCostGuides+secNotices+hpOrderSections(hpMap,['spotlights','loyalty','cities','top_rated','deals','buzz','events','cta_join','cta_owner'])
 }
 
 // ── City View (List/Map/Split) ──
@@ -2019,6 +2041,20 @@ function renderCityPage(d){
   }
   var costGuidesHtml=costGuideCards?('<div style="margin:0 0 20px"><h2 class="zh-section-title" style="margin-bottom:12px">💰 Typical Local Costs</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">'+costGuideCards+'</div></div>'):''
 
+  // B90: Nextdoor-style local notices — admin-set per directory
+  // (exposed as d.directory.notices by GET /zaarhub/cities/<slug>).
+  var nts=(d.directory&&Array.isArray(d.directory.notices))?d.directory.notices:[]
+  var noticeCards=''
+  for(var ni=0;ni<nts.length;ni++){
+    var nt=nts[ni]
+    noticeCards+='<div style="background:var(--card);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:10px;padding:12px 14px">'
+      +(nt.date?('<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-light);margin-bottom:4px">'+esc(nt.date)+'</div>'):'')
+      +(nt.title?('<div style="font-weight:700;font-size:.9rem;margin-bottom:2px">'+esc(nt.title)+'</div>'):'')
+      +(nt.body?('<div style="font-size:.82rem;color:var(--text-light);line-height:1.45">'+esc(nt.body)+'</div>'):'')
+      +'</div>'
+  }
+  var noticesHtml=noticeCards?('<div style="margin:0 0 20px"><h2 class="zh-section-title" style="margin-bottom:12px">📌 Local Notices</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">'+noticeCards+'</div></div>'):''
+
   // ── Always-on CTAs — byte-identical components to the homepage (B87). No data gate. ──
   var ctaHtml=`
 <div class="zh-owner-cta" style="margin-bottom:16px">
@@ -2174,6 +2210,7 @@ ${loyaltySectionHtml()}
 <div class="zh-city-content" id="zh-city-content">
   ${guaranteeHtml}
   ${costGuidesHtml}
+  ${noticesHtml}
   <div class="zh-view-toggle">
     <button class="active" data-view="list" onclick="setCityView('list')">📋 List</button>
     <button data-view="split" onclick="setCityView('split')">🗺️ Map</button>

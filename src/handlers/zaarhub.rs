@@ -76,6 +76,10 @@ pub struct DirectorySummary {
     /// (`directories.zaarhub_config.cost_guides`). Present only when the list is non-empty.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost_guides: Option<Value>,
+    /// B90: Nextdoor-style local notices (short community announcements) for this city
+    /// (`directories.zaarhub_config.notices`). Present only when the list is non-empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notices: Option<Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -670,6 +674,47 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
         }
     }
 
+    // B90: network-wide "local notices" strip — merge each visible city's notices
+    // (deduped by title+body), capped at 12, so the homepage can show community announcements.
+    let n_rows = sqlx::query_scalar::<_, Option<Value>>(
+        r#"SELECT zaarhub_config->'notices' FROM directories
+           WHERE (status = 'active' OR status IS NULL)
+             AND (zaarhub_config->>'network_visible')::boolean = true
+             AND jsonb_typeof(zaarhub_config->'notices') = 'array'"#,
+    )
+    .fetch_all(&s.db)
+    .await
+    .unwrap_or_default();
+    let mut n_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut notice_list: Vec<Value> = Vec::new();
+    'notices: for row in n_rows.into_iter().flatten() {
+        if let Some(arr) = row.as_array() {
+            for item in arr {
+                let title = item
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                let body = item
+                    .get("body")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if title.is_empty() && body.is_empty() {
+                    continue;
+                }
+                let key = format!("{}|{}", title.to_lowercase(), body.to_lowercase());
+                if !n_seen.insert(key) {
+                    continue;
+                }
+                notice_list.push(item.clone());
+                if notice_list.len() >= 12 {
+                    break 'notices;
+                }
+            }
+        }
+    }
+
     Ok(Json(json!({
         "cities": city_list,
         "featured_deals": deal_list,
@@ -678,6 +723,7 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
         "category_pills": category_pills,
         "spotlights": spotlight_list,
         "cost_guides": cost_guide_list,
+        "notices": notice_list,
         "top_rated": top_rated_list,
         "stats": {
             "total_businesses": total_businesses,
@@ -717,6 +763,12 @@ pub async fn get_city_page(
     // B90: expose cost guides only when there is at least one row.
     let cost_guides: Option<Value> = dir_zh
         .get("cost_guides")
+        .cloned()
+        .filter(|c| c.as_array().map(|a| !a.is_empty()).unwrap_or(false));
+
+    // B90: expose local notices only when there is at least one entry.
+    let notices: Option<Value> = dir_zh
+        .get("notices")
         .cloned()
         .filter(|c| c.as_array().map(|a| !a.is_empty()).unwrap_or(false));
 
@@ -1190,6 +1242,7 @@ pub async fn get_city_page(
             image_url: None,
             guarantee,
             cost_guides,
+            notices,
         },
         stats: DirectoryStats {
             total_businesses: biz_count,

@@ -166,6 +166,10 @@ pub struct FeatureConfigUpdate {
     // Replaced wholesale (the admin panel owns the full list); read back by the city page.
     #[serde(default)]
     pub cost_guides: Option<Value>,
+    // B90: Nextdoor-style local notices — per-directory short announcements, admin-set.
+    // Replaced wholesale (the admin panel owns the full list); read back on city + home.
+    #[serde(default)]
+    pub notices: Option<Value>,
     // Generic feature_config passthrough. The admin B2B-toggles card PUTs the whole
     // `{feature_config:{...}}` object; without this field serde dropped it and the save was a
     // silent no-op, so b2b_marketplace etc. were never persisted.
@@ -925,6 +929,7 @@ pub async fn update_directory_features(
         req.guarantee_title.is_some(),
         req.guarantee_text.is_some(),
         req.cost_guides.is_some(),
+        req.notices.is_some(),
     ]
     .iter()
     .any(|&x| x);
@@ -991,6 +996,11 @@ pub async fn update_directory_features(
         // B90: cost guides. The admin panel sends the full ordered list, so replace it.
         if let Some(v) = &req.cost_guides {
             zh_patch.insert("cost_guides".to_string(), v.clone());
+        }
+
+        // B90: local notices. The admin panel sends the full ordered list, so replace it.
+        if let Some(v) = &req.notices {
+            zh_patch.insert("notices".to_string(), v.clone());
         }
 
         if !zh_patch.is_empty() {

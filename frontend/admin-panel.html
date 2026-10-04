@@ -530,6 +530,7 @@
         <a href="#network-management-section">🗂 Network Management</a>
         <a href="#networks-section">🌐 Networks (create &amp; brand)</a>
         <a href="#directory-details-section">🧾 Directory Details</a>
+        <a href="#local-notices-section">📌 Local Notices</a>
         <a href="#provider-keys-section">🔑 Provider API Keys</a>
         <a href="#industries-section">🏭 Industries</a>
         <a href="#domains-section">🌐 Domains &amp; Subdomains</a>
@@ -723,6 +724,30 @@
             <span id="save-cost-guides-text">Save Cost Guides</span>
           </button>
           <span class="feature-status" id="cost-guides-save-status">✓ Saved</span>
+        </div>
+      </div>
+
+      <!-- Local Notices (card B90) -->
+      <div class="feature-card" id="local-notices-section">
+        <h3>📌 Local Notices</h3>
+        <p class="feature-subtitle">Nextdoor-style short announcements for this city — road closures, seasonal notices, community updates. Each row is one notice shown to visitors on the city page and merged across the network on the homepage. A blank row is ignored; clear every row and Save to remove the section.</p>
+        <div class="feature-grid">
+          <div class="feature-item">
+            <div class="feature-label">City / directory
+              <small>The notice belongs to this city</small>
+            </div>
+            <select id="notice-directory" style="width:100%;padding:8px 12px;border:1px solid var(--border,#1e3a5f);border-radius:8px;background:rgba(255,255,255,.03);color:var(--text,#e8eef5);font-size:.85rem"></select>
+          </div>
+        </div>
+        <div id="notice-rows" style="margin-top:14px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn btn-ghost btn-sm" type="button" id="notice-add">＋ Add a notice</button>
+        </div>
+        <div class="feature-save-row">
+          <button class="btn btn-accent btn-save" id="save-notices">
+            <span id="save-notices-text">Save Notices</span>
+          </button>
+          <span class="feature-status" id="notices-save-status">✓ Saved</span>
         </div>
       </div>
 
@@ -4925,6 +4950,7 @@
           loadB2bFeatures();
           loadGuarantee();
           loadCostGuides();
+          loadNotices();
           loadAdZones();
           // kanban t_14927725: ad revenue + sponsor creatives are directory-scoped too.
           loadAdRevenue();
@@ -5379,6 +5405,98 @@
         })
         .catch(function (err) { showToast('Failed to save: ' + (err.message || 'Unknown error'), 'error'); })
         .finally(function () { btn.disabled = false; text.textContent = 'Save Cost Guides'; });
+    });
+
+    // ===== Local Notices (card B90) =====
+    function ntRows() { return document.getElementById('notice-rows'); }
+    function ntDir() {
+      if (Array.isArray(directories)) {
+        for (var i = 0; i < directories.length; i++) {
+          if (directories[i].is_active !== false) return directories[i];
+        }
+      }
+      return null;
+    }
+    function ntAddRow(nt) {
+      nt = nt || {};
+      var row = document.createElement('div');
+      row.className = 'nt-row';
+      row.style.cssText = 'display:grid;grid-template-columns:.9fr 1.4fr 2.4fr auto;gap:8px;margin-bottom:8px;align-items:center';
+      function inp(ph, val, field) {
+        var i = document.createElement('input');
+        i.className = 'input';
+        i.placeholder = ph;
+        i.value = (val === null || val === undefined) ? '' : val;
+        i.dataset.f = field;
+        i.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border,#1e3a5f);border-radius:8px;background:rgba(255,255,255,.03);color:var(--text,#e8eef5);font-size:.82rem';
+        return i;
+      }
+      row.appendChild(inp('Date (e.g. Oct 12 or 2026-10-12)', nt.date, 'date'));
+      row.appendChild(inp('Title (e.g. Road closure on Main St)', nt.title, 'title'));
+      row.appendChild(inp('Details (optional)', nt.body, 'body'));
+      var rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'btn btn-ghost btn-sm'; rm.textContent = '✕'; rm.title = 'Remove this notice';
+      rm.onclick = function () { row.remove(); };
+      row.appendChild(rm);
+      ntRows().appendChild(row);
+    }
+    function ntCollect() {
+      var out = [];
+      var rows = ntRows().querySelectorAll('.nt-row');
+      for (var i = 0; i < rows.length; i++) {
+        var el = function (f) { var e = rows[i].querySelector('[data-f="' + f + '"]'); return e ? e.value.trim() : ''; };
+        var title = el('title');
+        if (!title) continue;
+        out.push({ date: el('date'), title: title, body: el('body') });
+      }
+      return out;
+    }
+    function ntFillDirs() {
+      var sel = document.getElementById('notice-directory');
+      if (!sel || !Array.isArray(directories) || !directories.length) return;
+      var prev = sel.value;
+      sel.innerHTML = '';
+      directories.forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d.id;
+        o.textContent = d.name || d.slug || d.id;
+        sel.appendChild(o);
+      });
+      var target = prev || (ntDir() ? ntDir().id : null);
+      if (target) sel.value = target;
+      if (!sel.value && directories.length) sel.value = directories[0].id;
+    }
+    function loadNotices() {
+      var sel = document.getElementById('notice-directory');
+      if (!sel || !ntRows()) return;
+      ntFillDirs();
+      var id = sel.value;
+      if (!id) return;
+      apiGet('/directories/' + id + '/features')
+        .then(function (data) {
+          var arr = (data.zaarhub_config && Array.isArray(data.zaarhub_config.notices)) ? data.zaarhub_config.notices : [];
+          ntRows().innerHTML = '';
+          if (!arr.length) { ntAddRow(); } else { arr.forEach(function (nt) { ntAddRow(nt); }); }
+        })
+        .catch(function () { ntRows().innerHTML = ''; ntAddRow(); });
+    }
+    document.getElementById('notice-add').addEventListener('click', function () { ntAddRow(); });
+    document.getElementById('notice-directory').addEventListener('change', loadNotices);
+    document.getElementById('save-notices').addEventListener('click', function () {
+      var sel = document.getElementById('notice-directory');
+      var status = document.getElementById('notices-save-status');
+      if (!sel || !sel.value) { showToast('No directory found. Create a directory first.', 'error'); return; }
+      var btn = document.getElementById('save-notices');
+      var text = document.getElementById('save-notices-text');
+      btn.disabled = true; text.textContent = 'Saving...';
+      if (status) status.classList.remove('show');
+      apiFetch('PUT', '/directories/' + sel.value + '/features', { notices: ntCollect() })
+        .then(function () {
+          showToast('Local notices saved', 'success');
+          if (status) { status.classList.add('show'); setTimeout(function () { status.classList.remove('show'); }, 3000); }
+        })
+        .catch(function (err) { showToast('Failed to save: ' + (err.message || 'Unknown error'), 'error'); })
+        .finally(function () { btn.disabled = false; text.textContent = 'Save Notices'; });
     });
 
     // ===== Ad Zones (6 standard slots per directory) =====
