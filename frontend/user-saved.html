@@ -135,6 +135,7 @@ a:hover{text-decoration:underline}
   <!-- Tabs -->
   <div class="tab-bar">
     <div class="tab-item active" onclick="switchTab('saved')">❤️ Saved Spots</div>
+    <div class="tab-item" onclick="switchTab('following')">🔔 Following</div>
     <div class="tab-item" onclick="switchTab('reviews')">⭐ My Reviews</div>
     <div class="tab-item" onclick="switchTab('perks')">🎁 Redeemed Perks</div>
     <div class="tab-item" onclick="switchTab('settings')">⚙️ Settings</div>
@@ -143,6 +144,11 @@ a:hover{text-decoration:underline}
   <!-- Saved Spots -->
   <div class="tab-content active" id="tabSaved">
     <div id="savedContent"><div class="saved-grid" id="savedGrid"></div></div>
+  </div>
+
+  <!-- Following (card B90, Nextdoor-style) -->
+  <div class="tab-content" id="tabFollowing">
+    <div id="followingContent"><div class="saved-grid" id="followingGrid"></div></div>
   </div>
 
   <!-- My Reviews -->
@@ -181,6 +187,7 @@ a:hover{text-decoration:underline}
 // ── State ──
 let userData = null;
 let favorites = [];
+let following = [];
 let reviews = [];
 let currentTab = 'saved';
 
@@ -208,7 +215,7 @@ function logout() {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-item').forEach((t, i) => {
-    const tabs = ['saved','reviews','perks','settings'];
+    const tabs = ['saved','following','reviews','perks','settings'];
     t.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -239,8 +246,10 @@ async function loadFavorites() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (resp.ok) {
-      favorites = await resp.json();
-      if (Array.isArray(favorites)) renderFavorites();
+      const data = await resp.json();
+      // The API returns { favorites: [...], count }. Tolerate a bare array too.
+      favorites = Array.isArray(data) ? data : (data.favorites || []);
+      renderFavorites();
     }
   } catch(e) { console.warn('Favorites load fail:', e); }
 }
@@ -260,7 +269,7 @@ async function renderFavorites() {
   }
   
   grid.innerHTML = businesses.map(b => {
-    const id = b.id || b.business_id;
+    const id = b.business_id || b.id;
     const name = b.name || b.business_name || 'Business';
     const city = b.city || '';
     const state = b.state || '';
@@ -292,12 +301,76 @@ async function removeFavorite(businessId) {
     });
     if (resp.ok) {
       favorites = favorites.filter(f => {
-        const id = f.id || f.business_id;
+        const id = f.business_id || f.id;
         return String(id) !== String(businessId);
       });
       renderFavorites();
     }
   } catch(e) { console.warn('Remove favorite fail:', e); }
+}
+
+// ── Load Following (card B90, Nextdoor-style) ──
+async function loadFollowing() {
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    const resp = await fetch('/api/v1/visitor/follows', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      following = Array.isArray(data) ? data : (data.following || []);
+      renderFollowing();
+    }
+  } catch(e) { console.warn('Following load fail:', e); }
+}
+
+function renderFollowing() {
+  const grid = document.getElementById('followingGrid');
+  if (!grid) return;
+
+  if (!following || following.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🔔</div><p>You are not following any businesses yet. <a href="/zaarhub">Browse the directory</a> and follow the ones you care about.</p></div>';
+    return;
+  }
+
+  grid.innerHTML = following.map(b => {
+    const id = b.business_id;
+    const name = b.business_name || 'Business';
+    const city = b.city || '';
+    const state = b.state || '';
+    const category = b.category_name || 'Local';
+    const rating = b.rating || 0;
+    const slug = b.directory_slug || '';
+
+    return `
+      <div class="saved-card" onclick="location.href='/biz/${id}${slug ? '?slug='+slug : ''}'">
+        <div class="card-icon">🔔</div>
+        <h4>${name}</h4>
+        <div class="card-sub">${[city, state].filter(Boolean).join(', ') || 'Local'}</div>
+        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${category}</div>
+        <div class="card-stars">${rating > 0 ? renderStars(rating) + ' ' + rating.toFixed(1) : ''}</div>
+        <button class="remove-btn" onclick="event.stopPropagation();unfollowBusiness('${id}')">Unfollow</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function unfollowBusiness(businessId) {
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    const resp = await fetch(`/api/v1/visitor/follows/${businessId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      following = following.filter(f => String(f.business_id) !== String(businessId));
+      renderFollowing();
+    }
+  } catch(e) { console.warn('Unfollow fail:', e); }
 }
 
 // ── Load Reviews ──
@@ -467,6 +540,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   loadProfile();
   loadFavorites();
+  loadFollowing();
   loadMyReviews();
   loadPerks();
 });

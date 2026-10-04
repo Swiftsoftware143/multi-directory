@@ -250,6 +250,7 @@ a:hover{text-decoration:underline}
             </div>
             <div id="saveButtonContainer">
               <button class="action-btn" onclick="toggleSave()" id="saveBtn">❤️ Save</button>
+              <button class="action-btn" onclick="toggleFollow()" id="followBtn">🔔 Follow</button>
             </div>
           </div>
           <div class="info-details">
@@ -596,6 +597,9 @@ async function loadBusiness() {
     // Check save status
     checkSaveStatus();
 
+    // Follow status + public follower count (card B90)
+    checkFollowStatus();
+
     // Local Q&A (card B90)
     loadQuestions(bizData.id || id);
 
@@ -771,7 +775,7 @@ async function checkSaveStatus() {
   if (!token || !bizData) return;
   
   try {
-    const resp = await fetch(`/api/v1/visitor/favorites/${bizData.id}`, {
+    const resp = await fetch(`/api/v1/visitor/favorites/check/${bizData.id}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (resp.ok) {
@@ -821,6 +825,58 @@ function updateSaveButton() {
     btn.textContent = '🤍 Save';
     btn.classList.remove('saved');
   }
+}
+
+// ── Follow a business (card B90, Nextdoor-style) ──
+let isFollowing = false;
+let followerCount = 0;
+
+async function checkFollowStatus() {
+  if (!bizData) return;
+  const token = localStorage.getItem('zh_token');
+  try {
+    const resp = await fetch(`/api/v1/visitor/follows/check/${bizData.id}`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      isFollowing = data.following || false;
+      followerCount = data.count || 0;
+      updateFollowButton();
+    }
+  } catch(e) { console.warn('Follow check fail', e); }
+}
+
+async function toggleFollow() {
+  const token = localStorage.getItem('zh_token');
+  if (!token) {
+    window.location.href = '/visitor?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+    return;
+  }
+  if (!bizData) return;
+  const btn = document.getElementById('followBtn');
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`/api/v1/visitor/follows/${bizData.id}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      isFollowing = data.following || false;
+      followerCount = data.count || 0;
+    }
+    updateFollowButton();
+  } catch(e) { console.warn('Follow toggle fail', e); }
+  btn.disabled = false;
+}
+
+function updateFollowButton() {
+  const btn = document.getElementById('followBtn');
+  if (!btn) return;
+  const n = followerCount > 0 ? ' · ' + followerCount : '';
+  btn.textContent = (isFollowing ? '🔔 Following' : '🔔 Follow') + n;
+  btn.classList.toggle('saved', isFollowing);
 }
 
 // ── Message Form ──

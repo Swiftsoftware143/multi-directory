@@ -1886,6 +1886,17 @@ pub fn create_router(s: AppState) -> Router {
             "/visitor/favorites/:business_id",
             post(visitors::toggle_favorite),
         )
+        // "Follow a business" (card B90, Nextdoor-style). Handlers extract the visitor JWT
+        // themselves (routes are before auth_guard); the public POST/GET are in the allowlist.
+        .route("/visitor/follows", get(visitors::list_follows))
+        .route(
+            "/visitor/follows/check/:business_id",
+            get(visitors::check_follow),
+        )
+        .route(
+            "/visitor/follows/:business_id",
+            post(visitors::toggle_follow),
+        )
         // ? Visitor bookmarks / saved places — alternate scoped routes
         .route("/bookmarks", get(visitors::list_favorites))
         .route("/bookmarks/toggle", post(visitors::toggle_bookmark))
@@ -3473,6 +3484,11 @@ async fn auth_guard(
         || (path == "/visitor/favorites" && req.method() == "GET")
         || (path.starts_with("/visitor/favorites/") && req.method() == "POST")
         || (path.starts_with("/visitor/favorites/check/") && req.method() == "GET")
+        // Visitor follow-a-business (card B90, Nextdoor-style) — handlers extract the visitor JWT
+        // themselves; the check endpoint is public and answers the public follower count.
+        || (path == "/visitor/follows" && req.method() == "GET")
+        || (path.starts_with("/visitor/follows/check/") && req.method() == "GET")
+        || (path.starts_with("/visitor/follows/") && req.method() == "POST")
         // Public bookmark endpoints
         || (path == "/bookmarks" && req.method() == "GET")
         || (path == "/bookmarks/toggle" && req.method() == "POST")

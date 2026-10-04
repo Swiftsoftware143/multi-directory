@@ -1155,6 +1155,192 @@ pub struct FavoriteBusinessRow {
     pub directory_slug: Option<String>,
 }
 
+// ── Visitor Business Follows (card B90, Nextdoor-style) ──
+
+/// POST /api/v1/visitor/follows/{business_id} — toggle follow (add if not exists, remove if exists)
+pub async fn toggle_follow(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    // Manually verify JWT from Authorization header (route is before auth_guard).
+    let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
+
+    // A valid JWT is not necessarily a VISITOR token: an admin/business user holds one too, and
+    // their id is not a visitor_accounts row — inserting it would violate the FK and 500. Refuse
+    // cleanly, exactly like toggle_favorite.
+    let is_visitor =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_one(&s.db)
+            .await?;
+    if is_visitor == 0 {
+        return Err(AppError::Forbidden(
+            "Following is for shopper accounts — sign in as a visitor to follow a business."
+                .to_string(),
+        ));
+    }
+
+    // The business must exist. directory_id is OPTIONAL: business_follows.directory_id is nullable
+    // (unlike visitor_favorites), so a directory-less listing can still be followed.
+    let directory_id =
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(&s.db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Business not found".to_string()))?;
+
+    let existing = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM business_follows WHERE visitor_account_id = $1 AND business_id = $2",
+    )
+    .bind(visitor_id)
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    let following = if existing > 0 {
+        sqlx::query(
+            "DELETE FROM business_follows WHERE visitor_account_id = $1 AND business_id = $2",
+        )
+        .bind(visitor_id)
+        .bind(business_id)
+        .execute(&s.db)
+        .await?;
+        false
+    } else {
+        sqlx::query(
+            "INSERT INTO business_follows (visitor_account_id, business_id, directory_id) VALUES ($1, $2, $3)",
+        )
+        .bind(visitor_id)
+        .bind(business_id)
+        .bind(directory_id)
+        .execute(&s.db)
+        .await?;
+        true
+    };
+
+    // Public follower count for the listing (social proof), returned by the same call.
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM business_follows WHERE business_id = $1",
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(json!({
+        "following": following,
+        "count": count,
+        "business_id": business_id,
+    })))
+}
+
+/// GET /api/v1/visitor/follows — list every business the logged-in visitor follows
+pub async fn list_follows(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    let visitor_id = extract_visitor_id(&headers, &s.config.jwt_secret)?;
+
+    let is_visitor =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM visitor_accounts WHERE id = $1")
+            .bind(visitor_id)
+            .fetch_one(&s.db)
+            .await?;
+    if is_visitor == 0 {
+        return Err(AppError::Forbidden(
+            "Following is for shopper accounts — sign in as a visitor to follow a business."
+                .to_string(),
+        ));
+    }
+
+    let following = sqlx::query_as::<_, FollowedBusinessRow>(
+        r#"SELECT
+            bf.id,
+            bf.created_at as followed_at,
+            b.id as business_id,
+            b.name as business_name,
+            b.slug as business_slug,
+            b.city,
+            b.state,
+            dc.name as category_name,
+            b.images,
+            b.rating,
+            b.review_count,
+            b.phone,
+            d.slug as directory_slug
+        FROM business_follows bf
+        JOIN businesses b ON b.id = bf.business_id
+        LEFT JOIN directory_categories dc ON dc.id = b.category_id
+        LEFT JOIN directories d ON d.id = bf.directory_id
+        WHERE bf.visitor_account_id = $1
+        ORDER BY bf.created_at DESC"#,
+    )
+    .bind(visitor_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(json!({
+        "following": following,
+        "count": following.len(),
+    })))
+}
+
+/// GET /api/v1/visitor/follows/check/{business_id} — is this business followed by the caller?
+/// Public: without a token it answers following=false with the public follower count.
+pub async fn check_follow(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let following = match extract_visitor_id_optional(&headers, &s.config.jwt_secret) {
+        Some(visitor_id) => {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM business_follows WHERE visitor_account_id = $1 AND business_id = $2",
+            )
+            .bind(visitor_id)
+            .bind(business_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0)
+                > 0
+        }
+        None => false,
+    };
+
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM business_follows WHERE business_id = $1",
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(json!({
+        "following": following,
+        "count": count,
+        "business_id": business_id,
+    })))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct FollowedBusinessRow {
+    pub id: Uuid,
+    pub followed_at: chrono::DateTime<Utc>,
+    pub business_id: Uuid,
+    pub business_name: String,
+    pub business_slug: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub category_name: Option<String>,
+    pub images: Option<serde_json::Value>,
+    pub rating: Option<f64>,
+    pub review_count: Option<i32>,
+    pub phone: Option<String>,
+    pub directory_slug: Option<String>,
+}
+
 // ── Business Claim Handlers ──
 
 /// POST /api/v1/businesses/:id/claim — business owner claims their listing
