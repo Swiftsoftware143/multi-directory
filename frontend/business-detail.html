@@ -60,6 +60,9 @@ a:hover{text-decoration:underline}
 .stars-row .star{color:var(--warm);font-size:1rem}
 .stars-row .count{color:var(--text-light);font-size:.82rem}
 .rating-badge{display:inline-flex;align-items:center;gap:4px;background:var(--green-light);color:var(--green);font-size:.8rem;font-weight:700;padding:3px 10px;border-radius:100px}
+.name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.name-row h2{margin-bottom:0}
+.verified-badge{display:inline-flex;align-items:center;gap:4px;background:var(--green-light);color:var(--green);font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:100px;white-space:nowrap}
 .info-details{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
 @media(max-width:480px){.info-details{grid-template-columns:1fr}}
 .info-item{display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--text);padding:8px 12px;background:var(--bg);border-radius:8px}
@@ -227,7 +230,10 @@ a:hover{text-decoration:underline}
         <div class="card">
           <div class="info-header">
             <div class="name-section">
-              <h2 id="bizName"></h2>
+              <div class="name-row">
+                <h2 id="bizName"></h2>
+                <span class="verified-badge" id="bizBadge" style="display:none"></span>
+              </div>
               <span class="category-tag" id="bizCategory"></span>
               <div class="stars-row">
                 <span class="star" id="starsDisplay"></span>
@@ -443,6 +449,19 @@ function renderBusiness() {
 
   // Info
   document.getElementById('bizName').textContent = name;
+  // Verified / Claimed badge — same signal the listing cards show on the home and city
+  // pages (index.html uses is_claimed -> "Verified Owner"); the detail page was the one
+  // surface that dropped it, so a claimed owner's badge vanished once the listing was opened.
+  const badgeEl = document.getElementById('bizBadge');
+  if (b.is_claimed) {
+    badgeEl.textContent = '✅ Verified Owner';
+    badgeEl.style.display = '';
+  } else if (b.is_verified) {
+    badgeEl.textContent = '✅ Verified';
+    badgeEl.style.display = '';
+  } else {
+    badgeEl.style.display = 'none';
+  }
   document.getElementById('bizCategory').textContent = b.category_name || 'Local Business';
 
   const rating = b.rating || 0;
