@@ -7651,6 +7651,21 @@
           } else {
             r8Status('et-status', 'Test NOT sent: ' + ((r && r.error) || 'unknown error'), false);
           }
+          // B91: show exactly what the recipient receives — including the directory signature,
+          // which the server now applies to every directory-scoped system mail.
+          if (r && r.preview_html !== undefined) {
+            var pv = document.getElementById('et-preview');
+            if (pv) {
+              pv.style.display = 'block';
+              var note = r.signature_applied
+                ? '<p style="font-size:.78rem;color:#166534;margin:0 0 8px">✓ Directory signature applied — this is what the recipient sees.</p>'
+                : '<p style="font-size:.78rem;color:#92400e;margin:0 0 8px">No directory signature is set for this template\'s scope.</p>';
+              pv.innerHTML = note +
+                '<div style="font-size:.8rem;color:#334155;margin-bottom:6px"><b>Subject:</b> ' + pkEsc(r.subject || '') + '</div>' +
+                '<div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px">' + (r.preview_html || '') + '</div>' +
+                (r.preview_text ? '<pre style="white-space:pre-wrap;font-size:.76rem;color:#475569;margin:8px 0 0">' + pkEsc(r.preview_text) + '</pre>' : '');
+            }
+          }
         })
         .catch(function (e) { r8Status('et-status', 'Test failed: ' + e.message, false); });
     };
