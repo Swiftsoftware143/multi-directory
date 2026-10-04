@@ -44,6 +44,9 @@ pub struct DirectoryHomepageData {
     pub directory: DirectorySummary,
     pub stats: DirectoryStats,
     pub featured_businesses: Vec<BusinessCard>,
+    /// Ranked, review-backed "top rated" list for this city (card B90 — top-rated lists).
+    /// Ordered by rating then review volume; only listings with at least one review.
+    pub top_rated: Vec<Value>,
     pub recent_reviews: Vec<ReviewCard>,
     pub active_deals: Vec<DealCard>,
     pub upcoming_events: Vec<EventCard>,
@@ -574,6 +577,57 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
         )
         .collect();
 
+    // Top-rated businesses across the network (card B90 — top-rated lists): only listings with
+    // a real review history, ranked by rating then review volume. Same shape as the city-page
+    // block so the homepage section and the city block stay one component.
+    let top_rated = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<f64>,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            String,
+        ),
+    >(
+        r#"SELECT b.id, b.name, b.slug, b.city, b.rating, b.review_count,
+                  dc.name as category, dc.slug as category_slug, d.slug as dir_slug
+           FROM businesses b
+           JOIN directories d ON d.id = b.directory_id
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
+           WHERE b.is_active = true AND b.rating IS NOT NULL AND b.review_count > 0
+             AND (d.status = 'active' OR d.status IS NULL)
+             AND (d.zaarhub_config->>'network_visible')::boolean = true
+           ORDER BY b.rating DESC, b.review_count DESC
+           LIMIT 8"#,
+    )
+    .fetch_all(&s.db)
+    .await
+    .unwrap_or_default();
+
+    let top_rated_list: Vec<Value> = top_rated
+        .into_iter()
+        .map(
+            |(id, name, slug, city, rating, rv, cat, cat_slug, dir_slug)| {
+                json!({
+                    "id": id,
+                    "name": name,
+                    "slug": slug,
+                    "city": city,
+                    "rating": rating,
+                    "review_count": rv,
+                    "category": cat,
+                    "category_slug": cat_slug,
+                    "directory_slug": dir_slug,
+                })
+            },
+        )
+        .collect();
+
     Ok(Json(json!({
         "cities": city_list,
         "featured_deals": deal_list,
@@ -581,6 +635,7 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
         "recent_activity": activity_feed,
         "category_pills": category_pills,
         "spotlights": spotlight_list,
+        "top_rated": top_rated_list,
         "stats": {
             "total_businesses": total_businesses,
             "total_reviews": total_reviews,
@@ -1018,6 +1073,52 @@ pub async fn get_city_page(
         )
         .collect();
 
+    // Top-rated businesses in this city (card B90 — top-rated lists): only listings with a
+    // real review history, ranked by rating then review volume. Reuses the same columns the
+    // city grid already sorts on, so the strip never contradicts the list below it.
+    let top_rated_rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<f64>,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
+        r#"SELECT b.id, b.name, b.slug, b.city, b.rating, b.review_count,
+                  dc.name as category, dc.slug as category_slug
+           FROM businesses b
+           LEFT JOIN directory_categories dc ON dc.id = b.category_id
+           WHERE b.directory_id = $1 AND b.is_active = true
+             AND b.rating IS NOT NULL AND b.review_count > 0
+           ORDER BY b.rating DESC, b.review_count DESC
+           LIMIT 8"#,
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await
+    .unwrap_or_default();
+
+    let top_rated_list: Vec<Value> = top_rated_rows
+        .into_iter()
+        .map(|(id, name, slug, city, rating, rv, cat, cat_slug)| {
+            json!({
+                "id": id,
+                "name": name,
+                "slug": slug,
+                "city": city,
+                "rating": rating,
+                "review_count": rv,
+                "category": cat,
+                "category_slug": cat_slug,
+            })
+        })
+        .collect();
+
     Ok(Json(DirectoryHomepageData {
         directory: DirectorySummary {
             id: dir_id,
@@ -1035,6 +1136,7 @@ pub async fn get_city_page(
             total_events,
         },
         featured_businesses: featured,
+        top_rated: top_rated_list,
         recent_reviews: review_cards,
         active_deals: deal_cards,
         upcoming_events: event_cards,

@@ -4210,7 +4210,8 @@
 
     function hpSectionLabel(k) {
       return ({ spotlights: 'Featured Spotlights', loyalty: 'ZaarCash loyalty section',
-        cities: 'Explore Communities (city grid)', deals: 'Hot Local Deals',
+        cities: 'Explore Communities (city grid)', top_rated: 'Top Rated businesses',
+        deals: 'Hot Local Deals',
         buzz: 'Community Buzz', events: 'Upcoming Events',
         cta_join: 'Join Your Local Community CTA', cta_owner: 'Grow Your Local Presence CTA' })[k] || k;
     }
@@ -4289,6 +4290,13 @@
           hpState.featured = (row.featured_city_slugs || []).slice();
           var secs = (row.sections && row.sections.length ? row.sections : ((d.defaults && d.defaults.sections) || []));
           hpState.sections = secs.map(function (s) { return { key: s.key, enabled: s.enabled !== false }; });
+          // Keep the editor in step with the renderer: a standard block the saved config does not
+          // mention is appended (enabled), mirroring normalise_sections() server-side. Without this
+          // a newly added section was forced-on for an existing directory and the admin could not
+          // toggle or reorder it — a sellable-standard (B84) gap.
+          (d.section_keys || []).forEach(function (k) {
+            if (!hpState.sections.some(function (s) { return s.key === k; })) hpState.sections.push({ key: k, enabled: true });
+          });
           document.getElementById('hp-hero-headline').value = row.hero_headline || '';
           document.getElementById('hp-hero-subheadline').value = row.hero_subheadline || '';
           document.getElementById('hp-hero-image').value = row.hero_image_url || '';

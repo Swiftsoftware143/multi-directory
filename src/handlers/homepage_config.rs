@@ -32,10 +32,11 @@ use uuid::Uuid;
 
 /// The standard homepage blocks, in the default order. The SPA renders exactly the keys that are
 /// enabled, in the configured order, so the admin can both hide and reorder every block.
-pub const SECTION_KEYS: [&str; 8] = [
+pub const SECTION_KEYS: [&str; 9] = [
     "spotlights",
     "loyalty",
     "cities",
+    "top_rated",
     "deals",
     "buzz",
     "events",

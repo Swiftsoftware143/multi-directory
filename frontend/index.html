@@ -1511,6 +1511,34 @@ function renderHomepageContent(d){
       '<a class="rsvp" href="javascript:void(0)" onclick="event.stopPropagation();rsvpToEvent(\''+esc(ev.title.replace(/'/g,"\\'"))+'\',\''+esc(ev.id)+'\')" style="text-decoration:none">RSVP →</a></div></div>'
   }
 
+  // Top Rated (card B90 — top-rated lists): review-backed ranked strip. Reuses the city page's
+  // own zh-biz-card component so both surfaces cannot drift; only DATA differs (network vs city).
+  var topRated=d.top_rated||[]
+  var topRatedHtml=''
+  for(var tri=0;tri<topRated.length;tri++){
+    var tr=topRated[tri]
+    var trR=tr.rating?Math.round(tr.rating):0
+    var trStars=trR>0?'★'.repeat(Math.min(trR,5))+'☆'.repeat(5-Math.min(trR,5)):''
+    var medal=tri===0?'🥇 ':tri===1?'🥈 ':tri===2?'🥉 ':'#'+(tri+1)+' '
+    topRatedHtml+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+esc(tr.directory_slug)+'/biz/'+esc(tr.id)+'\'">'+
+      '<div class="zh-biz-cover" style="background:linear-gradient(135deg,#f27f2f,#f97316)"><span class="letter">'+(tr.name?esc(tr.name[0].toUpperCase()):'🏪')+'</span>'+
+      (tr.category?'<span class="cat-tag">'+esc(tr.category)+'</span>':'')+'</div>'+
+      '<div class="zh-biz-body">'+
+      '<h4>'+medal+esc(tr.name)+'</h4>'+
+      '<div><span class="zh-rating">'+trStars+'</span> <span class="num" style="color:var(--text-light);font-size:.78rem">'+(tr.review_count||0)+' reviews</span></div>'+
+      (tr.city?'<div class="addr">📍 '+esc(tr.city)+'</div>':'')+
+      '</div></div>'
+  }
+  var secTopRated=(topRatedHtml?`
+<div class="zh-section">
+  <div class="zh-section-inner">
+    <div class="zh-section-header">
+      <div><h2 class="zh-section-title">🏆 Top Rated</h2><p class="zh-section-sub">Highest-rated local businesses across the community</p></div>
+    </div>
+    <div class="zh-biz-grid">${topRatedHtml}</div>
+  </div>
+</div>`:'')
+
   // Start today ticker and spot of week
   var todayMsgs=buildTodayMessages(d,deals,events,spotlights)
   setTimeout(function(){startTodayTicker(todayMsgs)},400)
@@ -1616,8 +1644,8 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
   <p class="count">Join <strong>${totalBiz.toLocaleString()}</strong> businesses already on the network</p>
   <a href="/portal" class="zh-btn-primary">🚀 Claim Your Free Listing →</a>
 </div>`
-  var hpMap={spotlights:secSpotlights,loyalty:secLoyalty,cities:secCities,deals:secDeals,buzz:secBuzz,events:secEvents,cta_join:secCtaJoin,cta_owner:secCtaOwner}
-  content.innerHTML=hpAnnounceHtml()+heroHtml+hpOrderSections(hpMap,['spotlights','loyalty','cities','deals','buzz','events','cta_join','cta_owner'])
+  var hpMap={spotlights:secSpotlights,loyalty:secLoyalty,cities:secCities,top_rated:secTopRated,deals:secDeals,buzz:secBuzz,events:secEvents,cta_join:secCtaJoin,cta_owner:secCtaOwner}
+  content.innerHTML=hpAnnounceHtml()+heroHtml+hpOrderSections(hpMap,['spotlights','loyalty','cities','top_rated','deals','buzz','events','cta_join','cta_owner'])
 }
 
 // ── City View (List/Map/Split) ──
@@ -2045,6 +2073,29 @@ function renderCityPage(d){
   // Reset map state for new city
   _cityMapInitialized=false;_cityMap=null
 
+  // Top Rated in this city (card B90 — top-rated lists): ranked, review-backed strip using the
+  // same zh-biz-card component as the grid below; only listings with a real review history.
+  var cityTopRated=d.top_rated||[]
+  var cityTopRatedHtml=''
+  for(var ctr=0;ctr<cityTopRated.length;ctr++){
+    var ctrB=cityTopRated[ctr]
+    var ctrR=ctrB.rating?Math.round(ctrB.rating):0
+    var ctrStars=ctrR>0?'★'.repeat(Math.min(ctrR,5))+'☆'.repeat(5-Math.min(ctrR,5)):''
+    var ctrMedal=ctr===0?'🥇 ':ctr===1?'🥈 ':ctr===2?'🥉 ':'#'+(ctr+1)+' '
+    cityTopRatedHtml+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+encodeURIComponent(state.slug)+'/biz/'+ctrB.id+'\'">'+
+      '<div class="zh-biz-cover" style="background:linear-gradient(135deg,#f27f2f,#f97316)"><span class="letter">'+(ctrB.name?esc(ctrB.name[0].toUpperCase()):'🏪')+'</span>'+
+      (ctrB.category?'<span class="cat-tag">'+esc(ctrB.category)+'</span>':'')+'</div>'+
+      '<div class="zh-biz-body">'+
+      '<h4>'+ctrMedal+esc(ctrB.name)+'</h4>'+
+      '<div><span class="zh-rating">'+ctrStars+'</span> <span class="num" style="color:var(--text-light);font-size:.78rem">'+(ctrB.review_count||0)+' reviews</span></div>'+
+      '</div></div>'
+  }
+  var cityTopRatedBlock=(cityTopRatedHtml?`
+  <div style="margin-bottom:24px">
+    <div class="zh-section-header"><div><h2 class="zh-section-title">🏆 Top Rated in ${cityName}</h2><p class="zh-section-sub">The city's highest-rated businesses, ranked by reviews</p></div></div>
+    <div class="zh-biz-grid">${cityTopRatedHtml}</div>
+  </div>`:'')
+
   el.innerHTML=`
 <div class="zh-hero">
   <div class="zh-hero-inner">
@@ -2073,6 +2124,7 @@ ${loyaltySectionHtml()}
   </div>
   <div id="zh-city-map"></div>
   ${nearBadgeHtml}
+  ${cityTopRatedBlock}
   <div class="zh-section-header"><div><h2 class="zh-section-title">📍 Local Businesses</h2><p class="zh-section-sub">${bizCount||0} curated listings in ${cityName}</p></div></div>
   <div class="zh-biz-grid" id="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
   ${deals.length?`
