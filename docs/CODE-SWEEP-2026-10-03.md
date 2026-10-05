@@ -70,8 +70,13 @@ Full list: `/opt/swift/audits/B101-20261003/unreferenced-after.txt`.
 * `src/migrations-legacy/` (124 superseded files) — retained by design; the install path is
   `000_baseline_live_schema.sql`. Never edit an applied file; a real change is a new file.
 * `tag_automation.rs::execute_voucher_action` (POSTs to `localhost:8083` IncentiveSwift) —
-  **NOT removed**: a live probe showed the IncentiveSwift route still answers `405` on GET
-  (i.e. it exists), so this is a design question (loyalty is native MD), not dead code.
+  **REMOVED 2026-10-04 (t_8684ea3e)**. It was left here because a GET probe showed the route
+  answered `405` (i.e. it existed) and loyalty-is-native-MD was a design question. That question
+  was answered at source: IncentiveSwift retired the route (commit `43d3ce8a`) — it now answers a
+  bare 0-byte `404`. The arm and the function are deleted, and migration
+  `158_tag_rules_drop_issue_voucher_action.sql` drops `'issue_voucher'` from the
+  `tag_rules_action_type_check` constraint, so the value can no longer be stored either. A row
+  carrying it (impossible: `tag_rules` has never held a row) would fall to the `unknown_action` arm.
 * Provider stub `allow(dead_code)` markers in `providers/eventbrite.rs` / `articles_feed.rs` —
   intentional.
 
