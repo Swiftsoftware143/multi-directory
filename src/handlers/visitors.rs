@@ -1515,6 +1515,7 @@ pub async fn list_recommendations(
 /// POST /api/v1/businesses/:id/claim — business owner claims their listing
 pub async fn claim_business(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
     Json(req): Json<ClaimBusinessRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -1535,13 +1536,19 @@ pub async fn claim_business(
         return Err(AppError::Validation("Business already claimed".to_string()));
     }
 
+    // Fleet probe-residue policy convention (c): a harness may mark the claim it mints with the
+    // `X-Swift-Harness` header, so the residue sweeper can tell fleet machinery from a real owner.
+    // Header only; NULL for every real claim (the row is byte-identical to before).
+    let probe = crate::probe_harness::from_headers(&headers);
+
     let cb = sqlx::query_as::<_, ClaimedBusiness>(
-        "INSERT INTO claimed_businesses (business_id, owner_email, owner_name, owner_phone) VALUES ($1, $2, $3, $4) RETURNING *"
+        "INSERT INTO claimed_businesses (business_id, owner_email, owner_name, owner_phone, probe_harness) VALUES ($1, $2, $3, $4, $5) RETURNING *"
     )
     .bind(business_id)
     .bind(&owner_email)
     .bind(&req.owner_name)
     .bind(&req.owner_phone)
+    .bind(&probe)
     .fetch_one(&s.db)
     .await?;
 

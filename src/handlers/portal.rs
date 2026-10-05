@@ -301,6 +301,7 @@ pub async fn business_profile(
 /// POST /api/v1/visitor/register
 pub async fn visitor_register(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<VisitorRegisterRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.email.is_empty() || req.password.is_empty() {
@@ -359,15 +360,21 @@ pub async fn visitor_register(
         }
     }
 
+    // Fleet probe-residue policy convention (c): a harness registration may mark the login row it
+    // mints with the `X-Swift-Harness` header, so the residue sweeper can tell fleet machinery
+    // from a real shopper. Header only, NULL for every real signup (byte-identical to before).
+    let probe = crate::probe_harness::from_headers(&headers);
+
     // Create visitor account
     let visitor = sqlx::query_as::<_, VisitorAccount>(
-        "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id) VALUES ($1, $2, $3, $4, $5) RETURNING *"
+        "INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, probe_harness) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *"
     )
     .bind(&email)
     .bind(&password_hash)
     .bind(&req.name)
     .bind(&req.phone)
     .bind(req.directory_id)
+    .bind(&probe)
     .fetch_one(&s.db)
     .await?;
 
