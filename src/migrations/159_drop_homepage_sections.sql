@@ -1,0 +1,16 @@
+-- B101 follow-up (code sweep 2026-10-03): drop the orphaned homepage_sections table.
+--
+-- homepage_sections became dead when B101 removed its only writers - the write-only
+-- INSERT seeds in networks::create_network and directories::create_directory. No reader
+-- or writer remains in src/ (grep -rn homepage_sections src --include=*.rs = 0 hits),
+-- no view depends on it, and the capability was superseded by homepage_config
+-- (migration 138_homepage_config.sql). See docs/CODE-SWEEP-2026-10-03.md.
+--
+-- Dropped via a new file rather than editing the baseline, per the rule that an applied
+-- migration file is never edited. The baseline still creates the table for a fresh
+-- install; this file then removes it, so a fresh install and an existing database end
+-- in the same catalog. Re-runnable (IF EXISTS).
+--
+-- Pre-drop backup of the 2 orphan rows + DDL:
+--   /opt/swift/audits/B101-drop-homepage-sections/
+DROP TABLE IF EXISTS public.homepage_sections;
