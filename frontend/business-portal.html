@@ -233,6 +233,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <a href="#billingSection" id="navBilling" onclick="showPortalView('billing');return false;">💎 Plan &amp; Purchases</a>
       <a href="#b2bSection" id="navB2B" onclick="showPortalView('b2b');return false;">🤝 B2B &amp; Co-op</a>
       <a href="#mentionsSection" id="navMentions" onclick="showPortalView('mentions');return false;">📰 Mentions &amp; Visibility</a>
+      <a href="#payoutsSection" id="navPayouts" onclick="showPortalView('payouts');return false;">💸 Payouts</a>
     </nav>
 
     <!-- My Businesses -->
@@ -344,6 +345,19 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         articles and city pages — the content that brings search traffic to your listing.
       </div>
       <div id="mentionsList" style="margin-top:12px"></div>
+    </div>
+
+    <!-- 💸 Payouts / Stripe Connect (card B143) — GET/POST /portal/business/payouts*.
+         The clearinghouse reimburses this business for the loyalty points customers redeem at it.
+         Stripe Connect is how the owner receives that money on their own account instead of the
+         operator's single network destination. -->
+    <div id="payoutsSection" style="margin-top:32px">
+      <div class="section-title">💸 Payouts</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        When customers redeem loyalty points at your business, the network reimburses you. Connect a
+        Stripe account so those reimbursements are paid straight to you.
+      </div>
+      <div id="payoutsBox"></div>
     </div>
     <!-- ⭐ Reviews & public replies (card B90) — the owner's PUBLIC reply to a review
          (Thumbtack / Angie's-List parity). GET /reviews?business_id= lists this business's
@@ -1407,12 +1421,12 @@ var _icCoreStatus = { connected: false };
 function showPortalView(view) {
   var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations',
               calls: 'callsSection', messages: 'messagesSection', bookings: 'bookingsSection', reviews: 'reviewsSection', listing: 'listingToolsSection',
-              billing: 'billingSection', b2b: 'b2bSection', mentions: 'mentionsSection' };
+              billing: 'billingSection', b2b: 'b2bSection', mentions: 'mentionsSection', payouts: 'payoutsSection' };
   var id = map[view] || 'businessList';
   var el = document.getElementById(id);
   if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations',
-                calls: 'navCalls', messages: 'navMessages', bookings: 'navBookings', reviews: 'navReviews', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B', mentions: 'navMentions' };
+                calls: 'navCalls', messages: 'navMessages', bookings: 'navBookings', reviews: 'navReviews', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B', mentions: 'navMentions', payouts: 'navPayouts' };
   Object.keys(links).forEach(function(k) {
     var a = document.getElementById(links[k]);
     if (a) a.className = (k === view) ? 'active' : '';
@@ -1423,6 +1437,7 @@ function showPortalView(view) {
   if (view === 'bookings') loadBookings();
   if (view === 'reviews') loadReviews();
   if (view === 'mentions') loadMentions();
+  if (view === 'payouts') loadPayouts();
   if (view === 'listing') { loadVerifications(); loadCategoryChoices(); }
   if (view === 'billing') { loadPurchases(); getPlans().then(fillPlanTargets); }
   if (view === 'b2b') { loadCoopGroups(); loadAvailableLeads(); loadMyLeads(); loadActiveCoopDeals(); }
@@ -2970,13 +2985,114 @@ async function cancelTransfer(id) {
   catch (e) { alert('Cancel failed: ' + e.message); }
 }
 
+// ── Payouts / Stripe Connect (card B143) ─────────────────────────────────────────
+// Owner-scoped: GET /portal/business/payouts reports this business's Connect state, and
+// POST /portal/business/payouts/{connect,refresh,disconnect} drive Stripe's hosted onboarding.
+async function loadPayouts() {
+  var box = document.getElementById('payoutsBox');
+  if (!box) return;
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Checking your payout setup…</p>';
+  try {
+    var d = await g('/portal/business/payouts');
+    box.innerHTML = payoutCard(d);
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p style="color:var(--danger)">Could not load your payout setup: ' + esc(e.message) + '</p>' +
+      '<button class="btn btn-sm" onclick="loadPayouts()">Retry</button></div>';
+  }
+}
+
+function payoutCard(d) {
+  var status = d.status || 'not_connected';
+  var label = {
+    not_connected: 'Not connected',
+    pending: 'Onboarding started — not finished',
+    restricted: 'Connected — more details needed',
+    connected: 'Connected'
+  }[status] || status;
+  var h = '<div class="card">';
+  h += '<h3>Payouts to your business</h3>';
+  h += '<p style="font-size:.85rem">Status: <b>' + esc(label) + '</b></p>';
+  if (d.account_id) h += '<p style="font-size:.78rem;color:var(--text-secondary)">Connected account: ' + esc(d.account_id) + '</p>';
+
+  if (!d.provider_configured) {
+    h += '<p style="color:var(--text-secondary);font-size:.85rem">Stripe is not set up for this network yet. ' +
+      'Ask the directory operator to add the Stripe key, then come back here.</p></div>';
+    return h;
+  }
+  h += '<p style="font-size:.85rem;color:var(--text-secondary)">' +
+    (status === 'connected'
+      ? 'Reimbursements will be paid to your connected Stripe account.'
+      : 'Finish your Stripe details to start receiving reimbursements.') + '</p>';
+  h += '<button class="btn ' + (status === 'connected' ? 'btn-sm' : 'btn-primary btn-sm') + '" onclick="connectPayouts()">' +
+    (status === 'pending' || status === 'restricted' ? 'Continue with Stripe' : 'Connect with Stripe') + '</button> ';
+  if (d.account_id) h += '<button class="btn btn-sm" onclick="refreshPayouts()">Refresh status</button> ';
+  if (status === 'connected') h += '<button class="btn btn-sm" onclick="disconnectPayouts()">Disconnect</button>';
+  h += '<div id="payoutsMsg" style="margin-top:10px;font-size:.82rem"></div>';
+  h += '</div>';
+  return h;
+}
+
+function payoutsMsg(text, ok) {
+  var m = document.getElementById('payoutsMsg');
+  if (m) m.innerHTML = '<span style="color:var(--' + (ok ? 'success' : 'danger') + ')">' + esc(text) + '</span>';
+}
+
+async function connectPayouts() {
+  payoutsMsg('Opening Stripe…', true);
+  try {
+    var d = await po('/portal/business/payouts/connect', {
+      return_url: window.location.origin + '/portal?stripe=return',
+      refresh_url: window.location.origin + '/portal?stripe=refresh'
+    });
+    if (d && d.onboarding_url) { window.location = d.onboarding_url; return; }
+    payoutsMsg('Stripe did not return a sign-up link.', false);
+  } catch (e) {
+    payoutsMsg(e.message, false);
+  }
+}
+
+async function refreshPayouts() {
+  payoutsMsg('Refreshing…', true);
+  try {
+    var d = await po('/portal/business/payouts/refresh', {});
+    payoutsMsg(d.payouts_enabled ? 'Payouts are enabled.' : 'Stripe still needs more information.', true);
+    loadPayouts();
+  } catch (e) {
+    payoutsMsg(e.message, false);
+  }
+}
+
+async function disconnectPayouts() {
+  if (!confirm('Disconnect your Stripe account? Reimbursements will stop until you reconnect.')) return;
+  try {
+    await po('/portal/business/payouts/disconnect', {});
+    loadPayouts();
+  } catch (e) {
+    payoutsMsg(e.message, false);
+  }
+}
+
 // hook: whenever the dashboard renders the owner's businesses, fill the transfer picker and refresh the lists
 var _origRenderBusinessesForTransfers = renderBusinesses;
 renderBusinesses = function (biz) {
   _origRenderBusinessesForTransfers(biz);
   _trFillBusinesses(biz);
   loadTransfers();
+  try { loadPayouts(); } catch (e) {}
+  handleStripeReturn();
 };
+
+// Landing back from Stripe's hosted onboarding (?stripe=return|refresh): show the Payouts view
+// and re-read the account so a just-finished onboarding flips to "Connected" without a reload.
+function handleStripeReturn() {
+  var q = window.location.search || '';
+  if (q.indexOf('stripe=') < 0) return;
+  var isReturn = q.indexOf('stripe=return') >= 0;
+  showPortalView('payouts');
+  if (isReturn) {
+    setTimeout(function () { refreshPayouts(); }, 400);
+  }
+}
 
 (function init() {
   if (localStorage.getItem('bizToken')) {

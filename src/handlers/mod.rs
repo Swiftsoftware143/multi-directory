@@ -5,6 +5,7 @@ pub mod analytics;
 pub mod auth_handler;
 pub mod blog;
 pub mod branding;
+pub mod business_payouts;
 pub mod businesses;
 pub mod call_tracking;
 pub mod categories;

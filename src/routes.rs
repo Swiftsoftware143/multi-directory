@@ -1950,6 +1950,25 @@ pub fn create_router(s: AppState) -> Router {
             "/portal/business/dashboard",
             get(business_dashboard::business_dashboard),
         )
+        // Stripe Connect onboarding for payouts (card B143). The business owner connects a
+        // Stripe account so the clearinghouse can reimburse THIS business, not just the
+        // operator's network-level destination. Private (auth_guard below).
+        .route(
+            "/portal/business/payouts",
+            get(business_payouts::payouts_status),
+        )
+        .route(
+            "/portal/business/payouts/connect",
+            post(business_payouts::payouts_connect),
+        )
+        .route(
+            "/portal/business/payouts/refresh",
+            post(business_payouts::payouts_refresh),
+        )
+        .route(
+            "/portal/business/payouts/disconnect",
+            post(business_payouts::payouts_disconnect),
+        )
         // The IQS funnel proxy and the IS campaigns proxy were RETIRED with the IncentiveSwift
         // database coupling (kanban t_20e0bcd5). Loyalty is native Multi-Directory code and
         // CoreSwift CRM is the only external integration — there is no /iqs/* or /campaigns/list
