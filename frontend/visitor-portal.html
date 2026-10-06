@@ -253,9 +253,29 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
     </div>
 
+    <!-- My Bookings (B144) — GET /api/v1/bookings (visitor-scoped). Appointment requests this
+         visitor sent from a listing page; the JSON route existed with no surface reading it. -->
+    <div class="section" id="bookingsSection">
+      <div class="section-title">📅 My Bookings</div>
+      <div class="section-subtitle">Appointment requests you sent to local businesses and where each one stands.</div>
+      <div id="bookingsList">
+        <div class="empty-state"><div class="icon">📅</div><h3>No bookings yet</h3><p>Request an appointment from a business listing and it will appear here.</p></div>
+      </div>
+    </div>
+
+    <!-- Community feed (B144) — GET /api/v1/community/posts (public). Published community posts,
+         a route with no reader before this. -->
+    <div class="section" id="communitySection">
+      <div class="section-title">🗣️ Community</div>
+      <div class="section-subtitle">Posts published by businesses and neighbours across the network, newest first.</div>
+      <div id="communityList">
+        <div class="empty-state"><div class="icon">🗣️</div><h3>Nothing posted yet</h3><p>Community posts will appear here.</p></div>
+      </div>
+    </div>
+
     <!-- Badges -->
     <div class="section">
-      <div class="section-title">🏆 Badges & Achievements</div>
+      <div class="section-title">🏆 Badges &amp; Achievements</div>
       <div class="section-subtitle">Earn badges by engaging with the community</div>
       <div id="badgesList">
         <div class="empty-state">
@@ -402,6 +422,10 @@ async function loadDashboard() {
     loadMyClaims(v.id);
     loadNetworkActivity();
 
+    // B144: appointment requests + the community feed (both routes had no reader before).
+    loadMyBookings();
+    loadCommunity();
+
     hide('loadingState');
     show('dashboardContent');
   } catch(e) {
@@ -443,6 +467,58 @@ function renderBadges(badges) {
   }
   html += '</div>';
   $('badgesList').innerHTML = html;
+}
+
+// ── My Bookings (B144) — GET /bookings (visitor-scoped) ──
+async function loadMyBookings() {
+  var box = $('bookingsList');
+  if (!box) return;
+  try {
+    var d = await g('/bookings');
+    var rows = (d && d.bookings) || [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="empty-state"><div class="icon">📅</div><h3>No bookings yet</h3><p>Request an appointment from a business listing and it will appear here.</p></div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (b) {
+      var badge = b.status === 'confirmed' ? 'active' : (b.status === 'pending' ? 'warning' : '');
+      return '<div class="deal-card" style="margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">' +
+          '<strong>' + esc(b.service_name || 'Appointment') + '</strong>' +
+          '<span class="badge ' + badge + '">' + esc(b.status || 'pending') + '</span>' +
+        '</div>' +
+        '<div style="font-size:.85rem;color:var(--text-secondary);margin-top:2px">' + esc(b.business_name || '') +
+          (b.preferred_date ? ' · ' + esc(new Date(b.preferred_date).toLocaleDateString()) : '') +
+          (b.preferred_time ? ' at ' + esc(b.preferred_time) : '') + '</div>' +
+        (b.description ? '<div style="font-size:.8rem;margin-top:6px">' + esc(b.description) + '</div>' : '') +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state"><p>Could not load your bookings right now (' + esc(e.message) + ').</p></div>';
+  }
+}
+
+// ── Community feed (B144) — GET /community/posts (public) ──
+async function loadCommunity() {
+  var box = $('communityList');
+  if (!box) return;
+  try {
+    var d = await g('/community/posts');
+    var rows = (d && d.posts) || [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="empty-state"><div class="icon">🗣️</div><h3>Nothing posted yet</h3><p>Community posts will appear here.</p></div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (p) {
+      return '<div class="deal-card" style="margin-bottom:10px">' +
+        '<strong>' + esc(p.title || 'Post') + '</strong>' +
+        (p.excerpt ? '<div style="font-size:.85rem;color:var(--text-secondary);margin-top:2px">' + esc(p.excerpt) + '</div>' : '') +
+        '<div style="font-size:.78rem;color:var(--text-secondary);margin-top:4px">' + (p.created_at ? new Date(p.created_at).toLocaleDateString() : '') + '</div>' +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state"><p>Could not load the community feed (' + esc(e.message) + ').</p></div>';
+  }
 }
 
 /* === Loyalty Wallet === */

@@ -232,6 +232,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <a href="#listingToolsSection" id="navListing" onclick="showPortalView('listing');return false;">✅ Verify &amp; Categories</a>
       <a href="#billingSection" id="navBilling" onclick="showPortalView('billing');return false;">💎 Plan &amp; Purchases</a>
       <a href="#b2bSection" id="navB2B" onclick="showPortalView('b2b');return false;">🤝 B2B &amp; Co-op</a>
+      <a href="#mentionsSection" id="navMentions" onclick="showPortalView('mentions');return false;">📰 Mentions &amp; Visibility</a>
     </nav>
 
     <!-- My Businesses -->
@@ -330,6 +331,19 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         <select id="bkBiz" onchange="loadBookings()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
       </div>
       <div id="bkList" style="margin-top:12px"></div>
+    </div>
+
+    <!-- 📰 Mentions & Visibility (B144) — GET /portal/business/dashboard. This endpoint returns
+         each claimed business with its published-content mention counts (blog posts, sponsored
+         articles, city/trap-door pages), but no shipped surface ever called it, so an owner could
+         not see the SEO coverage that drives traffic to their listing. -->
+    <div id="mentionsSection" style="margin-top:32px">
+      <div class="section-title">📰 Mentions &amp; Visibility</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        How often your business is named across this network's published blog posts, sponsored
+        articles and city pages — the content that brings search traffic to your listing.
+      </div>
+      <div id="mentionsList" style="margin-top:12px"></div>
     </div>
     <!-- ⭐ Reviews & public replies (card B90) — the owner's PUBLIC reply to a review
          (Thumbtack / Angie's-List parity). GET /reviews?business_id= lists this business's
@@ -1393,12 +1407,12 @@ var _icCoreStatus = { connected: false };
 function showPortalView(view) {
   var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations',
               calls: 'callsSection', messages: 'messagesSection', bookings: 'bookingsSection', reviews: 'reviewsSection', listing: 'listingToolsSection',
-              billing: 'billingSection', b2b: 'b2bSection' };
+              billing: 'billingSection', b2b: 'b2bSection', mentions: 'mentionsSection' };
   var id = map[view] || 'businessList';
   var el = document.getElementById(id);
   if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations',
-                calls: 'navCalls', messages: 'navMessages', bookings: 'navBookings', reviews: 'navReviews', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B' };
+                calls: 'navCalls', messages: 'navMessages', bookings: 'navBookings', reviews: 'navReviews', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B', mentions: 'navMentions' };
   Object.keys(links).forEach(function(k) {
     var a = document.getElementById(links[k]);
     if (a) a.className = (k === view) ? 'active' : '';
@@ -1408,6 +1422,7 @@ function showPortalView(view) {
   if (view === 'messages') loadMessages();
   if (view === 'bookings') loadBookings();
   if (view === 'reviews') loadReviews();
+  if (view === 'mentions') loadMentions();
   if (view === 'listing') { loadVerifications(); loadCategoryChoices(); }
   if (view === 'billing') { loadPurchases(); getPlans().then(fillPlanTargets); }
   if (view === 'b2b') { loadCoopGroups(); loadAvailableLeads(); loadMyLeads(); loadActiveCoopDeals(); }
@@ -2171,6 +2186,49 @@ async function loadBookings() {
   } catch (e) {
     box.innerHTML = '<div class="card"><p style="color:var(--danger)">Could not load booking requests: ' + esc(e.message) + '</p>' +
       '<button class="btn btn-sm" onclick="loadBookings()">Retry</button></div>';
+  }
+}
+
+// ── Mentions & Visibility (B144) — GET /portal/business/dashboard ───────────────
+// Owner-scoped: the route returns every business this account has claimed, each with the
+// count of published blog posts / sponsored articles / city pages that name it.
+async function loadMentions() {
+  var box = document.getElementById('mentionsList');
+  if (!box) return;
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading mentions…</p>';
+  try {
+    var data = await g('/portal/business/dashboard');
+    var items = (data && data.claimed_businesses) || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="card"><p>No claimed businesses on this account yet.</p></div>';
+      return;
+    }
+    box.innerHTML = items.map(function (it) {
+      var b = it.business || {};
+      var m = it.metrics || {};
+      function block(title, c) {
+        c = c || {};
+        return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px">' +
+          '<div style="font-size:.75rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em">' + esc(title) + '</div>' +
+          '<div style="font-size:1.4rem;font-weight:700;margin:2px 0">' + (c.all_time || 0) + '</div>' +
+          '<div style="font-size:.72rem;color:var(--text-secondary)">' + (c.this_week || 0) + ' this week · ' + (c.this_month || 0) + ' this month</div>' +
+          '</div>';
+      }
+      return '<div class="card" style="margin-bottom:12px">' +
+        '<h3>' + esc(b.name || 'Business') + '</h3>' +
+        '<div style="font-size:.82rem;color:var(--text-secondary);margin-bottom:10px">' +
+          esc([b.category, b.city, b.state].filter(Boolean).join(' · ') || '') + '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">' +
+          block('Total mentions', m.total_mentions) +
+          block('Blog posts', m.blog_post_mentions) +
+          block('Sponsored articles', m.business_article_mentions) +
+          block('City pages', m.trap_door_mentions) +
+        '</div>' +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p style="color:var(--danger)">Could not load mentions: ' + esc(e.message) + '</p>' +
+      '<button class="btn btn-sm" onclick="loadMentions()">Retry</button></div>';
   }
 }
 

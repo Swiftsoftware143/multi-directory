@@ -125,6 +125,9 @@
       return r.text().then(function (txt) {
         var data;
         try { data = JSON.parse(txt); } catch (e) { data = { _raw: txt.slice(0, 500) }; }
+        /* A JSON body of null / true / false / a bare number is valid but not an object, so
+           `data._status = ...` below would throw a TypeError and the card would hang. Wrap it. */
+        if (data === null || typeof data !== 'object') data = { _value: data };
         data._status = r.status;
         return data;
       });
@@ -168,14 +171,14 @@
         { k: 'trigger_type', l: 'Trigger', ty: 'select', o: ['contact_created', 'event_attended', 'page_view', 'purchase'], d: 'contact_created' },
         { k: 'action_type', l: 'Action', ty: 'select', o: ['apply_tag', 'send_email', 'webhook'], d: 'apply_tag' },
         { k: 'action_config', l: 'Action config (JSON, optional)', ty: 'json' },
-        { k: 'is_active', l: 'Active', ty: 'select', o: ['true', 'false'], d: 'true' } ] },
+        { k: 'is_active', l: 'Active', ty: 'bool', d: 'true' } ] },
       { t: 'Update tag rule', m: 'PUT', p: '/admin/tag-rules/{id}', f: [
         { k: 'id', l: 'Rule id', ty: 'uuid', path: true },
         { k: 'name', l: 'Rule name' },
         { k: 'trigger_type', l: 'Trigger' },
         { k: 'action_type', l: 'Action' },
         { k: 'action_config', l: 'Action config (JSON)', ty: 'json' },
-        { k: 'is_active', l: 'Active (true/false)' } ] },
+        { k: 'is_active', l: 'Active', ty: 'bool', d: 'true' } ] },
       { t: 'Delete tag rule', m: 'DELETE', p: '/admin/tag-rules/{id}', f: [
         { k: 'id', l: 'Rule id', ty: 'uuid', path: true } ] },
       { t: 'Execute rules for a contact', m: 'POST', p: '/admin/tag-rules/execute', f: [
@@ -194,7 +197,7 @@
       { t: 'Update tracked link', m: 'PUT', p: '/admin/tracked-links/{id}', f: [
         { k: 'id', l: 'Link id', ty: 'uuid', path: true },
         { k: 'name', l: 'Link name' }, { k: 'url', l: 'Destination URL' },
-        { k: 'is_active', l: 'Active (true/false)' } ] },
+        { k: 'is_active', l: 'Active', ty: 'bool', d: 'true' } ] },
       { t: 'Delete tracked link', m: 'DELETE', p: '/admin/tracked-links/{id}', f: [
         { k: 'id', l: 'Link id', ty: 'uuid', path: true } ] },
       { t: 'Bulk create links', m: 'POST', p: '/admin/tracked-links/bulk', f: [
@@ -216,7 +219,7 @@
         { k: 'id', l: 'Provider id', ty: 'uuid', path: true },
         { k: 'api_key', l: 'API key' }, { k: 'city', l: 'City' },
         { k: 'radius_miles', l: 'Radius (miles)', ty: 'num' },
-        { k: 'is_active', l: 'Active (true/false)' } ] },
+        { k: 'is_active', l: 'Active', ty: 'bool', d: 'true' } ] },
       { t: 'Delete provider', m: 'DELETE', p: '/admin/directories/{dir}/event-providers/{id}', f: [
         { k: 'dir', l: 'Directory', ty: 'dir', path: true },
         { k: 'id', l: 'Provider id', ty: 'uuid', path: true } ] },
@@ -406,7 +409,7 @@
       { t: 'Save provider config', m: 'POST', p: '/integration-configs', f: [
         { k: 'provider', l: 'Provider' },
         { k: 'config', l: 'Config (JSON)', ty: 'json' },
-        { k: 'is_active', l: 'Active (true/false)' } ] },
+        { k: 'is_active', l: 'Active', ty: 'bool', d: 'true' } ] },
       { t: 'Delete provider config', m: 'DELETE', p: '/integration-configs/{provider}', f: [
         { k: 'provider', l: 'Provider', path: true } ] },
       { t: 'Push lead to CoreSwift', m: 'POST', p: '/integrations/coreswift/push', f: [
@@ -445,6 +448,95 @@
 
     { g: 'Members & Visitors', items: [
       { t: 'List members (visitor accounts)', m: 'GET', p: '/members' }
+    ]},
+
+    { g: 'Reports & Diagnostics', items: [
+      { t: 'Platform report stats', m: 'GET', p: '/admin/reports/stats', f: [
+        { k: 'directory_id', l: 'Directory (blank = all)', ty: 'dir', q: true } ] },
+      { t: 'Call log stats', m: 'GET', p: '/call-logs/stats' },
+      { t: 'Subfolder slug clashes', m: 'GET', p: '/seo/subfolder-clashes' },
+      { t: 'Entity export kinds', m: 'GET', p: '/export/entity/kinds' },
+      { t: 'Feature access for a business', m: 'GET', p: '/subscriptions/features', f: [
+        { k: 'business_id', l: 'Business', ty: 'biz', q: true } ] },
+      { t: 'CoreSwift sync kinds', m: 'GET', p: '/integrations/coreswift/sync/kinds' },
+      { t: 'CoreSwift pick-lists (lists)', m: 'GET', p: '/integrations/coreswift/lists' },
+      { t: 'CoreSwift connection check', m: 'GET', p: '/connected-services/coreswift/check' },
+      { t: 'Verify a service key', m: 'POST', p: '/connected-services/verify', f: [
+        { k: 'service', l: 'Service', ty: 'select', o: ['coreswift'], d: 'coreswift' },
+        { k: 'api_key', l: 'API key (optional)' } ] }
+    ]},
+
+    { g: 'Data Enrichment & Intake', items: [
+      { t: 'Enrichment log', m: 'GET', p: '/enrich/logs' },
+      { t: 'Enrich a business', m: 'POST', p: '/enrich/business', f: [
+        { k: 'business_id', l: 'Business', ty: 'biz' },
+        { k: 'directory_id', l: 'Directory (optional)', ty: 'dir' },
+        { k: 'source', l: 'Source (yelp, google_places…)', d: 'yelp' } ] },
+      { t: 'Yelp business details', m: 'GET', p: '/yelp/details', f: [
+        { k: 'yelp_id', l: 'Yelp business id' },
+        { k: 'directory_id', l: 'Directory (optional)', ty: 'dir', q: true } ] },
+      { t: 'Scrape Google Places', m: 'POST', p: '/scraper/google-places', f: [
+        { k: 'source', l: 'Source', d: 'google_places' },
+        { k: 'directory_id', l: 'Directory (optional)', ty: 'dir' },
+        { k: 'location', l: 'Location (city, ST)' },
+        { k: 'query', l: 'Query / category' },
+        { k: 'max_results', l: 'Max results', ty: 'num', d: '20' } ] },
+      { t: 'Import businesses from a source', m: 'POST', p: '/scraper/import', f: [
+        { k: 'source', l: 'Source', ty: 'select', o: ['google_places', 'brightlocal', 'yext', 'uberall', 'chamber', 'nextdoor', 'yellowpages', 'manta'], d: 'google_places' },
+        { k: 'business_type', l: 'Business type', ty: 'select', o: ['business', 'supplier'], d: 'business' },
+        { k: 'location', l: 'Location' },
+        { k: 'keyword', l: 'Keyword (optional)' },
+        { k: 'directory_id', l: 'Directory (optional)', ty: 'dir' },
+        { k: 'max_results', l: 'Max results', ty: 'num', d: '20' },
+        { k: 'auto_import', l: 'Auto-import', ty: 'bool', d: 'false' } ] },
+      { t: 'Populate a category from Google Places', m: 'POST', p: '/scraper/populate-category', f: [
+        { k: 'directory_id', l: 'Directory (uuid or slug)', ty: 'dir' },
+        { k: 'category_id', l: 'Category (uuid or slug)' },
+        { k: 'location', l: 'Location (city, ST)' },
+        { k: 'query', l: 'Query override (optional)' },
+        { k: 'max_results', l: 'Max results', ty: 'num', d: '20' } ] }
+    ]},
+
+    { g: 'Content Research', items: [
+      { t: 'Preview bulk research', m: 'POST', p: '/research/bulk/preview', f: [
+        { k: 'topics', l: 'Topics (JSON array of {name,keywords})', ty: 'json', d: '[{"name":"Roof repair","keywords":["roof leak"]}]' },
+        { k: 'cities', l: 'Cities (JSON array)', ty: 'json', d: '["Tampa"]' },
+        { k: 'directory_id', l: 'Directory (optional)', ty: 'dir' } ] },
+      { t: 'Run bulk research', m: 'POST', p: '/research/bulk', f: [
+        { k: 'topics', l: 'Topics (JSON array of {name,keywords})', ty: 'json', d: '[{"name":"Roof repair","keywords":["roof leak"]}]' },
+        { k: 'cities', l: 'Cities (JSON array)', ty: 'json', d: '["Tampa"]' },
+        { k: 'directory_id', l: 'Directory (optional)', ty: 'dir' },
+        { k: 'sources', l: 'Sources (JSON array, optional)', ty: 'json' } ] }
+    ]},
+
+    { g: 'Notifications, Tier & Bulk', items: [
+      { t: 'List directory notifications', m: 'GET', p: '/monetization/notifications', f: [
+        { k: 'directory_id', l: 'Directory (optional)', ty: 'dir', q: true } ] },
+      { t: 'Create a notification', m: 'POST', p: '/monetization/notifications', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'message', l: 'Message' },
+        { k: 'link_text', l: 'Link text (optional)' },
+        { k: 'link_url', l: 'Link URL (optional)' },
+        { k: 'notification_type', l: 'Type (info, promo…)', d: 'info' },
+        { k: 'is_active', l: 'Active', ty: 'bool', d: 'true' },
+        { k: 'starts_at', l: 'Starts at (RFC3339, optional)' },
+        { k: 'expires_at', l: 'Expires at (RFC3339, optional)' } ] },
+      { t: 'Update a notification', m: 'PUT', p: '/monetization/notifications/{id}', f: [
+        { k: 'id', l: 'Notification id', ty: 'uuid', path: true },
+        { k: 'message', l: 'Message (optional)' },
+        { k: 'is_active', l: 'Active (optional)', ty: 'bool', d: 'true' } ] },
+      { t: 'Delete a notification', m: 'DELETE', p: '/monetization/notifications/{id}', f: [
+        { k: 'id', l: 'Notification id', ty: 'uuid', path: true } ] },
+      { t: 'Directory tier by slug', m: 'GET', p: '/monetization/directories/{slug}/tier', f: [
+        { k: 'slug', l: 'Directory slug', path: true, d: 'tampa' } ] },
+      { t: 'Sponsored listings for a directory', m: 'GET', p: '/monetization/directories/{slug}/sponsored-listings', f: [
+        { k: 'slug', l: 'Directory slug', path: true, d: 'tampa' } ] },
+      { t: 'Bulk-assign categories', m: 'POST', p: '/businesses/bulk/categories', f: [
+        { k: 'business_ids', l: 'Business ids (JSON array)', ty: 'json', d: '[]' },
+        { k: 'category_ids', l: 'Category ids (JSON array)', ty: 'json', d: '[]' },
+        { k: 'mode', l: 'Mode', ty: 'select', o: ['append', 'replace'], d: 'append' } ] },
+      { t: 'Expire stale redemptions', m: 'POST', p: '/deals/redemptions/expire', f: [
+        { k: 'days', l: 'Older than (days)', ty: 'num', d: '30', q: true } ] }
     ]}
   ];
 
@@ -543,6 +635,13 @@
            ' value="' + esc(sessionTenant()) + '">';
     } else if (f.ty === 'json') {
       h += '<textarea id="' + id + '" data-k="' + esc(f.k) + '" data-ty="json">' + esc(f.d || '') + '</textarea>';
+    } else if (f.ty === 'bool') {
+      /* A real boolean: the backend deserialises Option<bool>/bool and rejects the string "true"
+         with a 422, so send a JSON boolean, never the select's string value. */
+      h += '<select id="' + id + '" data-k="' + esc(f.k) + '" data-ty="bool"' +
+           (f.path ? ' data-path="1"' : '') + (f.q ? ' data-q="1"' : '') + '>' +
+           '<option value="true"' + (f.d === 'false' ? '' : ' selected') + '>true</option>' +
+           '<option value="false"' + (f.d === 'false' ? ' selected' : '') + '>false</option></select>';
     } else {
       h += '<input id="' + id + '" data-k="' + esc(f.k) + '" data-ty="' + esc(f.ty || 'text') + '"' +
            (f.path ? ' data-path="1"' : '') + (f.q ? ' data-q="1"' : '') +
@@ -602,6 +701,8 @@
         try { v = JSON.parse(v); } catch (e) { bad = 'Invalid JSON in ' + k + ': ' + e.message; continue; }
       } else if (ty === 'num') {
         v = Number(v);
+      } else if (ty === 'bool') {
+        v = (v === 'true' || v === '1' || v === true);
       }
       if (el.getAttribute('data-path')) path[k] = v;
       else if (el.getAttribute('data-q')) query[k] = v;
