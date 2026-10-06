@@ -97,6 +97,10 @@ pub struct SettlementSettings {
     pub overage_mode: String,
     /// Maximum overage points billable per month; NULL = uncapped.
     pub overage_cap_points: Option<i32>,
+    /// Where reimbursements are sent for this network (e.g. a Stripe connected account id).
+    /// Stored on the treasury row so it is admin-editable; the active provider key's
+    /// `metadata.payout_destination` remains a fallback. Blank = not set.
+    pub payout_destination: Option<String>,
 }
 
 /// Read the settings, creating the treasury row with sane defaults if the network
@@ -106,7 +110,7 @@ async fn get_settings(db: &PgPool, network_id: Uuid) -> Result<SettlementSetting
                       minimum_float, float_coverage_pct, float_burn_months, \
                       default_expiry_days, cycle_day, currency, minimum_payout_cents, \
                       settlement_enabled, payment_provider, overage_rate_per_point, overage_mode, \
-                      overage_cap_points \
+                      overage_cap_points, payout_destination \
                FROM point_treasury WHERE network_id = $1";
 
     let existing: Option<SettlementSettings> = sqlx::query_as::<_, SettlementSettings>(sql)
@@ -194,6 +198,9 @@ pub struct SettlementSettingsUpdate {
     pub float_burn_months: Option<Decimal>,
     /// Float rule (155): the floor, in dollars. Omit to keep the current value.
     pub minimum_float: Option<Decimal>,
+    /// Where reimbursements are sent (e.g. a Stripe connected account id `acct_…`).
+    /// An empty string clears it; omit to keep the current value.
+    pub payout_destination: Option<String>,
 }
 
 /// PUT /api/v1/networks/:slug/settlement/settings
@@ -246,6 +253,20 @@ pub async fn update_settlement_settings(
         Some(p) if p.trim().is_empty() => None,
         Some(p) => Some(p.trim().to_lowercase()),
         None => current.payment_provider.clone(),
+    };
+
+    // Where reimbursements are sent (e.g. a Stripe connected account id). An empty
+    // string clears it back to "not set"; omitting the field keeps the current value.
+    let payout_destination = match req.payout_destination {
+        Some(v) => {
+            let t = v.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_string())
+            }
+        }
+        None => current.payout_destination.clone(),
     };
 
     // Allowance + metered overage. The overage rate may never exceed the issuance rate
@@ -310,7 +331,8 @@ pub async fn update_settlement_settings(
             currency = $5, minimum_payout_cents = $6, settlement_enabled = $7, \
             payment_provider = $8, default_expiry_days = $9, overage_rate_per_point = $10, \
             overage_mode = $11, overage_cap_points = $12, float_coverage_pct = $13, \
-            float_burn_months = $14, minimum_float = $15, updated_at = NOW() \
+            float_burn_months = $14, minimum_float = $15, payout_destination = $16, \
+            updated_at = NOW() \
          WHERE network_id = $1",
     )
     .bind(network_id)
@@ -328,6 +350,7 @@ pub async fn update_settlement_settings(
     .bind(coverage)
     .bind(burn_months)
     .bind(minimum_float)
+    .bind(&payout_destination)
     .execute(&s.db)
     .await?;
 
@@ -958,7 +981,7 @@ pub async fn execute_settlement(
         (Some(p), true) => provider_keys_handler::resolve_provider_key(db, p).await,
         _ => None,
     };
-    let destination = platform_payout_destination(db, provider.as_deref()).await;
+    let destination = platform_payout_destination(db, network_id, provider.as_deref()).await;
 
     let mut paid = 0usize;
     let mut failed = 0usize;
@@ -1105,10 +1128,29 @@ pub async fn execute_settlement(
     })
 }
 
-/// A platform-level payout destination, if the admin stored one on the provider key
-/// metadata. Absent is fine — the Stripe attempt then reports that honestly instead
-/// of inventing a destination.
-async fn platform_payout_destination(db: &PgPool, provider: Option<&str>) -> Option<String> {
+/// Where a network's reimbursements are sent. Prefers the admin-editable settlement
+/// setting (`point_treasury.payout_destination`), then falls back to
+/// `metadata.payout_destination` on the active provider key. Absent is fine — the
+/// Stripe attempt then reports that honestly instead of inventing a destination.
+async fn platform_payout_destination(
+    db: &PgPool,
+    network_id: Uuid,
+    provider: Option<&str>,
+) -> Option<String> {
+    let from_settings = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT payout_destination FROM point_treasury WHERE network_id = $1",
+    )
+    .bind(network_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .flatten()
+    .filter(|d| !d.trim().is_empty());
+    if from_settings.is_some() {
+        return from_settings;
+    }
+
     let p = provider?;
     sqlx::query_scalar::<_, Option<String>>(
         "SELECT metadata->>'payout_destination' FROM provider_keys \
