@@ -3335,6 +3335,11 @@ pub fn create_router(s: AppState) -> Router {
                 }
             },
         ))
+        // kanban t_8bfbbf7f: the outer router's own routes (SSR pages, sitemap/robots, uploaded
+        // media) answer to the SAME committed allowlist. `route_layer` and not `layer`, so the
+        // SPA fallback below is untouched -- it serves the SPA shell for every unmatched path,
+        // which is this app's deliberate public surface.
+        .route_layer(middleware::from_fn_with_state(s.clone(), auth_guard))
         .with_state(s)
         // Instrument every public HTML page (static pages, SPA fallback, renders) with the
         // visitor-tracking script. Blog and directory pages already do this themselves; this
@@ -3368,218 +3373,11 @@ async fn auth_guard(
     );
 
     // Public paths that don't need authentication
-    let is_public = path == "/health"
-        || path == "/auth/login"
-        || path == "/auth/register"
-        || path == "/auth/forgot-password"
-        || path == "/auth/reset-password"
-        || path.starts_with("/sitemap.xml")
-        || path.starts_with("/robots.txt")
-        || path.starts_with("/public/")
-        || path.starts_with("/api/v1/public/")
-        || path == "/categories"
-        || path == "/search"
-        || path == "/listings"
-        || path.starts_with("/d/")
-        || path.starts_with("/reviews/stats/")
-        // Public newsletter signup — no auth needed. Both the per-directory
-        // subscriber path and the network/global newsletter path accept an
-        // anonymous POST (card B89: signup is offered on every public page).
-        || ((path.contains("/subscribers") || path == "/directories/newsletter")
-            && req.method() == "POST")
-        // Public directory search suggestions
-        || path.ends_with("/suggestions")
-        // Public directory listings — anonymous browsing of a city directory.
-        // GET only; POST/PUT/DELETE on the same paths stay behind auth.
-        || (req.method() == "GET"
-            && path.matches('/').count() == 3
-            && (path.starts_with("/directories/") || path.starts_with("/directory/"))
-            && path.ends_with("/businesses"))
-        // Public visitor account routes
-        || path == "/visitor/register"
-        || path == "/visitor/login"
-        // Anonymous tracking beacon — write-only telemetry for visitor_sessions/visitor_events
-        || path == "/visitors/track"
-        || path == "/visitors/page-view"
-        || path == "/visitors/event"
-        || (path.starts_with("/visitors/session/") && path.ends_with("/end"))
-        // Anonymous programmatic-page beacon (kanban t_543d51d8) — write-only
-        // telemetry for programmatic_pages, fired by the rendered public page.
-        // POST only: the admin GET/PUT surface for these pages stays gated.
-        || (req.method() == "POST"
-            && path.starts_with("/programmatic-pages/")
-            && path.ends_with("/track"))
-        // Business-article impression/click beacon (card B91/B117 gap #2) — the public article
-        // page at /<dir>/articles/<slug> fires this anonymously; POST-only write telemetry.
-        || (req.method() == "POST"
-            && path.starts_with("/business-articles/")
-            && path.ends_with("/track"))
-        // Public review reading — GET only (write/approve/reject stay authenticated)
-        || (path == "/reviews" && req.method() == "GET")
-        // ZaarCash loyalty messaging (card B92) — GET only: the homepage and every city page read
-        // their resolved section here. The admin settings surface stays operator-guarded.
-        || (path == "/loyalty/messaging" && req.method() == "GET")
-        // Homepage configuration (card B86) — GET only: the homepage reads its resolved
-        // surface/hero/sections here. The admin settings surface stays operator-guarded.
-        || (path == "/homepage/config" && req.method() == "GET")
-        // Public submit-a-business form — POST only, rate-limited inside the handler
-        || (path == "/submissions" && req.method() == "POST")
-        // Public payment-confirmation lookup by checkout session id (unguessable id)
-        || (path.starts_with("/checkout/session/") && req.method() == "GET")
-        // Public payment webhook receivers. Stripe/PayPal POST here with no JWT — they
-        // authenticate by SIGNING the request (Stripe-Signature / PayPal transmission headers),
-        // which the handlers verify against the stored webhook secret. Without these entries the
-        // guard answered 401 to the gateway itself, so a completed payment could never be
-        // confirmed by webhook.
-        || (req.method() == "POST"
-            && (path == "/webhooks/stripe" || path == "/webhooks/paypal"))
-        // Public B2B register (distributor/supplier signup)
-        || (path == "/b2b/register" && req.method() == "POST")
-        // Supplier onboarding invite link (card B82) — the token IS the credential: GET the
-        // prefill and POST the completion, both from a mail client with no session. Nothing
-        // under /admin/ matches this prefix, so the mint stays operator-guarded.
-        || (path.starts_with("/listing-invites/")
-            && (req.method() == "GET"
-                || (req.method() == "POST" && path.ends_with("/complete"))))
-        // Public pricing endpoint
-        || path == "/pricing/public"
-        // Public business message sending (guests can send messages)
-        || (path.starts_with("/messages/") && req.method() == "POST")
-        // Card B90 — public multi-pro quote broadcast (guests can request several quotes at once)
-        || (path == "/quotes/broadcast" && req.method() == "POST")
-        // Public data pipeline ingest (external sources push here)
-        || path == "/pipeline/ingest"
-        // Public community posts (GET only, POST/PUT/DELETE need auth)
-        || (path == "/community/posts" && req.method() == "GET")
-        || (path.starts_with("/community/posts/") && req.method() == "GET")
-        // Public B2B marketplace (read-only, POST/PUT/DELETE need auth)
-        || (path == "/b2b/products" && req.method() == "GET")
-        || (path.starts_with("/b2b/products/") && req.method() == "GET")
-        || path == "/b2b/suppliers"
-        // Public B2B marketplace & discovery (read-only)
-        || (path == "/b2b/marketplace" && req.method() == "GET")
-        || (path.starts_with("/b2b/suppliers/") && path.ends_with("/detail") && req.method() == "GET")
-        || (path == "/b2b/discover" && req.method() == "GET")
-        // Public RFQ marketplace (read-only)
-        || (path == "/b2b/rfqs/stats" && req.method() == "GET")
-        || (path == "/b2b/rfqs" && req.method() == "GET")
-        || (path.starts_with("/b2b/rfqs/") && req.method() == "GET")
-        // Public lead sharing (read-only)
-        || (path == "/b2b/leads/available" && req.method() == "GET")
-        // Public co-op groups + deals (read-only)
-        || (path == "/b2b/co-op/groups" && req.method() == "GET")
-        || (path.starts_with("/b2b/co-op/groups/") && req.method() == "GET" && !path.ends_with("/join") && !path.ends_with("/deals"))
-        || (path == "/b2b/co-op/deals/active" && req.method() == "GET")
-        // Public scraper provider list (read-only)
-        || path == "/scraper/providers"
-        // Round 5 T6 — key-metadata read; must not be anonymous.
-        // (was: path.starts_with("/provider-keys/") && path.ends_with("/test"))
-        // Public subscription plans + features
-        || path == "/subscriptions/plans"
-        || path == "/subscriptions/features"
-        // Public scraper provider list (read-only)
-        // Public deal redemption (visitors redeem codes without auth)
-        || (path.starts_with("/deals/") && path.ends_with("/redeem") && req.method() == "POST")
-        || (path.starts_with("/deals/redemptions/code/") && req.method() == "GET")
-        // Public deals browsing (visitors browse and claim deals without auth)
-        || (path == "/deals" && req.method() == "GET")
-        || (path == "/deals/featured" && req.method() == "GET")
-        || (path.starts_with("/deals/") && path.ends_with("/claim") && req.method() == "POST")
-        // Public deal detail pages (GET /deals/:uuid)
-        || (path.starts_with("/deals/") && req.method() == "GET" && path.matches('/').count() == 2)
-        // Public deal detail page data (GET /deals/:uuid/page)
-        || (path.starts_with("/deals/") && path.ends_with("/page") && req.method() == "GET")
-        // Public featured deals
-        || (path.ends_with("/features") && req.method() == "GET")
-        // Public business claim form
-        || (path.starts_with("/businesses/") && path.ends_with("/claim") && req.method() == "POST")
-        // Public report-a-listing write (card B90 cross-cutting) — POST-only, rate-limited inside
-        // the handler; unknown business ids 404 so a probe learns nothing.
-        || (path.starts_with("/businesses/") && path.ends_with("/report") && req.method() == "POST")
-        // Public local Q&A on a listing (card B90) — reading the threads and asking a question
-        // are both anonymous; the ask write is rate-limited inside the handler.
-        || (path.starts_with("/businesses/")
-            && path.ends_with("/questions")
-            && (req.method() == "GET" || req.method() == "POST"))
-        // Two-step claim email confirmation (card B76) — GET only; the token from the email is the
-        // credential, so the link works from a mail client with no session.
-        || (path.starts_with("/claims/verify/") && req.method() == "GET")
-        // Visitor favorites/bookmarks (handlers handle their own auth extraction)
-        || (path == "/visitor/favorites" && req.method() == "GET")
-        || (path.starts_with("/visitor/favorites/") && req.method() == "POST")
-        || (path.starts_with("/visitor/favorites/check/") && req.method() == "GET")
-        // Visitor follow-a-business (card B90, Nextdoor-style) — handlers extract the visitor JWT
-        // themselves; the check endpoint is public and answers the public follower count.
-        || (path == "/visitor/follows" && req.method() == "GET")
-        || (path.starts_with("/visitor/follows/check/") && req.method() == "GET")
-        || (path.starts_with("/visitor/follows/") && req.method() == "POST")
-        || (path.starts_with("/visitor/recommendations/check/") && req.method() == "GET")
-        || (path.starts_with("/visitor/recommendations/") && req.method() == "POST")
-        || (path == "/visitor/recommendations" && req.method() == "GET")
-        // Public bookmark endpoints
-        || (path == "/bookmarks" && req.method() == "GET")
-        || (path == "/bookmarks/toggle" && req.method() == "POST")
-        || (path.starts_with("/bookmarks/count/") && req.method() == "GET")
-        // Server-rendered saved places page (handlers handle auth extraction)
-        || path == "/saved-places"
-        // Card B56 — /cron/* is NOT public. It is reachable only with the internal key
-        // (`x-internal-key`), or with a platform-operator bearer token (handled below by
-        // `cron_guard`, which also re-checks the key). Anonymous callers get 401.
-        || (path.starts_with("/cron/") && cron_internal_key_ok(req.headers()))
-        // Public business image upload
-        || (path.starts_with("/businesses/") && path.ends_with("/images") && req.method() == "POST")
-        // Public city requests
-        || path == "/city-requests"
-        // Public poll endpoints (handlers handle their own auth extraction)
-        || (path == "/polls" && req.method() == "GET")
-        || (path.starts_with("/polls/") && req.method() == "GET")
-        || (path.starts_with("/polls/") && path.ends_with("/vote") && req.method() == "POST")
-        || (path.starts_with("/polls/") && path.ends_with("/close") && req.method() == "POST")
-        // Public community events (list and get are public; RSVP/cancel/edit handle auth internally)
-        || (path == "/events" && req.method() == "GET")
-        || (path.starts_with("/events/") && req.method() == "GET" && !path.contains("/attendees"))
-        || (path.starts_with("/events/") && path.ends_with("/rsvp") && req.method() == "POST")
-        || (path.starts_with("/events/") && path.ends_with("/cancel") && req.method() == "POST")
-        || (path.starts_with("/events/") && path.ends_with("/edit") && req.method() == "POST")
-        // Public events-page (server-rendered, handles auth internally)
-        || (path.starts_with("/events-page") && req.method() == "GET")
-        // Feed routes (handlers handle their own auth extraction)
-        || path == "/feed"
-        || (path.starts_with("/feed-page") && req.method() == "GET")
-        // Public booking endpoints
-        || (path.contains("/available-slots") && req.method() == "GET")
-        || (path.contains("/book") && req.method() == "POST" && !path.contains("blog"))
-        // Public booking page (GET)
-        || (path.starts_with("/book/") && req.method() == "GET")
-        // Public bookmark count (no auth)
-        || (path.starts_with("/bookmarks/count/") && req.method() == "GET")
-        // Public Google Places search (admin populate tool — read-only lookups)
-        || path == "/places/autocomplete"
-        || path == "/places/details"
-        || path == "/api/v1/places/autocomplete"
-        || path == "/api/v1/places/details"
-        // ZaarHub community frontend API (public) — T6: the /admin/ namespace is
-        // NOT public. It used to ride in on this prefix, which left
-        // /zaarhub/admin/places/search and /zaarhub/admin/provider-keys/* reachable
-        // anonymously (quota burn + key-metadata read).
-        || (path.starts_with("/zaarhub/") && !path.contains("/admin/"))
-        || path.starts_with("/zaarhub-sitemap.xml")
-        || (path.starts_with("/api/v1/zaarhub/") && !path.contains("/admin/"))
-        || path.starts_with("/legal/")
-        // Public B2B SSR pages (RFQ marketplace, co-op hub, lead exchange)
-        || path == "/rfq-marketplace" || path == "/rfq-marketplace/"
-        || path == "/coop-hub" || path == "/coop-hub/"
-        || path == "/lead-exchange" || path == "/lead-exchange/"
-        // Public ad rendering (no auth)
-        || path.starts_with("/ads/")
-        // Public spotlight & notifications (Phase 4)
-        || path.starts_with("/spotlight/")
-        || path.starts_with("/notifications/")
-        // Stage 5: Server-rendered my-bookings page (handles auth internally)
-        || path == "/my-bookings"
-        // Stage 5: SSO (handlers authenticate internally)
-        || path == "/auth/switch-role"
-        || path == "/auth/linked-accounts";
+    // The allowlist lives in `security::route_policy` (kanban t_8bfbbf7f): a mounted route is
+    // PRIVATE unless a committed entry says otherwise. Kept as a call so the policy is testable
+    // (`cargo test route_policy`) and a route added later is private without anyone having to
+    // remember this guard exists.
+    let is_public = crate::security::route_policy::is_public(req.method(), &path, req.headers());
 
     if is_public {
         return Ok(next.run(req).await);
