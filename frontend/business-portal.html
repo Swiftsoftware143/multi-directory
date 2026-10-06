@@ -477,6 +477,28 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
         <button class="btn btn-secondary btn-sm" onclick="loadCoopGroups()">Refresh my groups</button>
         <div id="coopList" style="margin-top:12px"></div>
       </div>
+      <!-- Leads available to claim — GET /b2b/leads/available, POST /b2b/leads/:id/claim.
+           The share form above created leads nobody could ever see or take: the whole point
+           of sharing overflow is that another business claims it. -->
+      <div style="margin-top:16px">
+        <h3 style="font-size:1rem;margin-bottom:8px">Leads available to claim</h3>
+        <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:8px">Work someone else's overflow — claim it and the lead becomes yours.</p>
+        <button class="btn btn-secondary btn-sm" onclick="loadAvailableLeads()">Refresh available leads</button>
+        <div id="availLeadsList" style="margin-top:12px"></div>
+      </div>
+      <!-- Leads I shared / claimed — GET /b2b/leads/my -->
+      <div style="margin-top:16px">
+        <h3 style="font-size:1rem;margin-bottom:8px">My leads</h3>
+        <button class="btn btn-secondary btn-sm" onclick="loadMyLeads()">Refresh my leads</button>
+        <div id="myLeadsList" style="margin-top:12px"></div>
+      </div>
+      <!-- Active co-op deals — GET /b2b/co-op/deals/active -->
+      <div style="margin-top:16px">
+        <h3 style="font-size:1rem;margin-bottom:8px">Active co-op deals</h3>
+        <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:8px">Group buys open across the network right now.</p>
+        <button class="btn btn-secondary btn-sm" onclick="loadActiveCoopDeals()">Refresh active deals</button>
+        <div id="activeDealList" style="margin-top:12px"></div>
+      </div>
     </div>
 
     <!-- Upgrade Plans -->
@@ -1388,7 +1410,7 @@ function showPortalView(view) {
   if (view === 'reviews') loadReviews();
   if (view === 'listing') { loadVerifications(); loadCategoryChoices(); }
   if (view === 'billing') { loadPurchases(); getPlans().then(fillPlanTargets); }
-  if (view === 'b2b') loadCoopGroups();
+  if (view === 'b2b') { loadCoopGroups(); loadAvailableLeads(); loadMyLeads(); loadActiveCoopDeals(); }
 }
 
 function icKeyInputId(p) { return 'icKey_' + p; }
@@ -2508,6 +2530,100 @@ async function shareB2bLead() {
     document.getElementById('blTitle').value = '';
     document.getElementById('blDesc').value = '';
   } catch (e) { setNote('blResult', 'Could not share: ' + e.message, true); }
+}
+
+// ── B2B lead sharing: the visible views (BL25) ─────────────────
+// GET /b2b/leads/available -> {leads, total, page, per_page}; POST /b2b/leads/:id/claim
+async function loadAvailableLeads() {
+  var box = document.getElementById('availLeadsList');
+  if (!box) return;
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading available leads…</p>';
+  try {
+    var d = await g('/b2b/leads/available');
+    var rows = (d && d.leads) || [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="card"><p>No leads are available to claim right now.</p></div>';
+      return;
+    }
+    box.innerHTML = '<div class="card-grid">' + rows.map(function (l) {
+      return '<div class="card"><h3>' + esc(l.title) + '</h3>' +
+        '<p style="font-size:.82rem;color:var(--text-secondary)">' + esc(l.description || '') + '</p>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">' +
+          (l.category ? '<span class="badge">' + esc(l.category) + '</span>' : '') +
+          (l.location ? '<span class="badge">' + esc(l.location) + '</span>' : '') +
+          (l.estimated_value != null ? '<span class="badge active">$' + money(l.estimated_value) + '</span>' : '') +
+        '</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="claimLead(\'' + l.id + '\')">Claim this lead</button>' +
+        '<div id="cl_' + l.id + '" style="font-size:.78rem;margin-top:6px"></div></div>';
+    }).join('') + '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p>Could not load available leads: ' + esc(e.message) + '</p></div>';
+  }
+}
+
+async function claimLead(id) {
+  var el = document.getElementById('cl_' + id);
+  if (el) el.textContent = 'Claiming…';
+  try {
+    var r = await po('/b2b/leads/' + id + '/claim', {});
+    if (el) el.innerHTML = '<span style="color:var(--success)">✅ Claimed (' + esc(r.status || 'claimed') + ').</span>';
+    toast('Lead claimed', 'success');
+    loadAvailableLeads();
+    loadMyLeads();
+  } catch (e) {
+    if (el) el.innerHTML = '<span style="color:var(--danger)">' + esc(e.message) + '</span>';
+  }
+}
+
+// GET /b2b/leads/my -> {posted_leads, claimed_leads}
+async function loadMyLeads() {
+  var box = document.getElementById('myLeadsList');
+  if (!box) return;
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading your leads…</p>';
+  try {
+    var d = await g('/b2b/leads/my');
+    var posted = (d && d.posted_leads) || [];
+    var claimed = (d && d.claimed_leads) || [];
+    function block(title, rows) {
+      if (!rows.length) return '<p style="font-size:.82rem;color:var(--text-secondary)">' + esc(title) + ': none yet.</p>';
+      return '<div style="font-weight:600;font-size:.85rem;margin:8px 0 4px">' + esc(title) + '</div><div class="card-grid">' + rows.map(function (l) {
+        return '<div class="card"><h3>' + esc(l.title) + '</h3>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">' +
+            '<span class="badge ' + (l.status === 'claimed' ? 'active' : '') + '">' + esc(l.status) + '</span>' +
+            (l.category ? '<span class="badge">' + esc(l.category) + '</span>' : '') +
+          '</div>' +
+          '<p style="font-size:.8rem;color:var(--text-secondary)">' + esc(l.description || '') + '</p></div>';
+      }).join('') + '</div>';
+    }
+    box.innerHTML = '<div class="card">' + block('Leads I shared', posted) + block('Leads I claimed', claimed) + '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p>Could not load your leads: ' + esc(e.message) + '</p></div>';
+  }
+}
+
+// GET /b2b/co-op/deals/active -> {deals, total, page, per_page}
+async function loadActiveCoopDeals() {
+  var box = document.getElementById('activeDealList');
+  if (!box) return;
+  box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading active deals…</p>';
+  try {
+    var d = await g('/b2b/co-op/deals/active');
+    var rows = (d && d.deals) || [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="card"><p>No active co-op deals right now.</p></div>';
+      return;
+    }
+    box.innerHTML = '<div class="card-grid">' + rows.map(function (dl) {
+      var committed = (dl.committed_quantity != null ? dl.committed_quantity : (dl.current_quantity || 0));
+      return '<div class="card"><h3>' + esc(dl.product_name || dl.title) + '</h3>' +
+        '<p style="font-size:.82rem;color:var(--text-secondary)">' + esc(dl.group_name || '') + '</p>' +
+        '<div style="font-size:.8rem">$' + money(dl.group_price) + ' per ' + esc(dl.unit || 'unit') +
+          ' · min ' + (dl.min_quantity || 0) + ' · committed ' + committed + '</div>' +
+        '<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="openCoopGroup(\'' + (dl.group_id || '') + '\')">Open group</button></div>';
+    }).join('') + '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p>Could not load active deals: ' + esc(e.message) + '</p></div>';
+  }
 }
 
 async function loadCoopGroups() {
