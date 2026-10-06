@@ -174,10 +174,36 @@ async fn forward_to_coreswift(
         Err(_) => return,
     };
 
+    // CoreSwift's /api/messages/webhook writes a cs_messages row and demands the shared
+    // internal key (kanban t_36cf12d0). Fail closed reader-side too: with no key configured
+    // there is nothing to send, so skip rather than post an empty credential. `internal_key_opt`
+    // is used deliberately — this crate aborts on panic and this is only a best-effort push.
+    let Some(key) = crate::coreswift::internal_key_opt() else {
+        eprintln!(
+            "forward_to_coreswift: CORESWIFT_INTERNAL_KEY not configured — message not forwarded"
+        );
+        return;
+    };
+
     let urls = ["http://localhost:8084/api/messages/webhook"];
 
     for url in &urls {
-        let _ = client.post(*url).json(&payload).send().await;
+        match client
+            .post(*url)
+            .header("x-internal-key", &key)
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {}
+            // Never swallow the reason: a 401 here means the key drifted and messages have
+            // stopped landing in the CoreSwift Unified Inbox.
+            Ok(resp) => eprintln!(
+                "forward_to_coreswift: {url} returned HTTP {} — message not forwarded",
+                resp.status()
+            ),
+            Err(e) => eprintln!("forward_to_coreswift: {url} failed: {e}"),
+        }
     }
 }
 

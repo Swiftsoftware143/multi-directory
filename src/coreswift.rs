@@ -18,8 +18,18 @@ pub fn coreswift_url() -> String {
 
 /// Internal key for CoreSwift API — MUST be set via CORESWIFT_INTERNAL_KEY env var
 pub fn internal_key() -> String {
-    std::env::var("CORESWIFT_INTERNAL_KEY")
-        .expect("CORESWIFT_INTERNAL_KEY environment variable must be set")
+    internal_key_opt().expect("CORESWIFT_INTERNAL_KEY environment variable must be set")
+}
+
+/// Non-panicking variant. This crate is built with `panic = "abort"`, so a fire-and-forget
+/// caller must never reach for the panicking accessor: a missing/blank env var would otherwise
+/// take the whole server down over a best-effort push. `None` means "not configured" — callers
+/// must skip the push rather than send an empty credential (CoreSwift fails closed on blank).
+pub fn internal_key_opt() -> Option<String> {
+    match std::env::var("CORESWIFT_INTERNAL_KEY") {
+        Ok(k) if !k.trim().is_empty() => Some(k),
+        _ => None,
+    }
 }
 
 lazy_static::lazy_static! {
