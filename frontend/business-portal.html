@@ -3023,8 +3023,10 @@ function payoutCard(d) {
     (status === 'connected'
       ? 'Reimbursements will be paid to your connected Stripe account.'
       : 'Finish your Stripe details to start receiving reimbursements.') + '</p>';
-  h += '<button class="btn ' + (status === 'connected' ? 'btn-sm' : 'btn-primary btn-sm') + '" onclick="connectPayouts()">' +
-    (status === 'pending' || status === 'restricted' ? 'Continue with Stripe' : 'Connect with Stripe') + '</button> ';
+  var connectLabel = status === 'connected'
+    ? 'Update details on Stripe'
+    : (status === 'pending' || status === 'restricted' ? 'Continue with Stripe' : 'Connect with Stripe');
+  h += '<button class="btn ' + (status === 'connected' ? 'btn-sm' : 'btn-primary btn-sm') + '" onclick="connectPayouts()">' + connectLabel + '</button> ';
   if (d.account_id) h += '<button class="btn btn-sm" onclick="refreshPayouts()">Refresh status</button> ';
   if (status === 'connected') h += '<button class="btn btn-sm" onclick="disconnectPayouts()">Disconnect</button>';
   h += '<div id="payoutsMsg" style="margin-top:10px;font-size:.82rem"></div>';
