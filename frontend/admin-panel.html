@@ -556,6 +556,7 @@
         <a href="#signup-reward-section">🪙 Signup Rewards</a>
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
         <a href="#submissions-section">📥 Submission Queue</a>
+        <a href="#reviews-moderation-section">⭐ Reviews</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
         <a href="#sc-svc-section">🧩 Services &amp; Cities</a>
         <a href="#sc-prog-section">🧱 Programmatic Pages</a>
@@ -1668,6 +1669,34 @@
         <p class="feature-subtitle">Businesses submitted from the public "Add your business" form. Approving a submission creates the business record.</p>
         <div id="sub-list"></div>
         <div class="feature-status" id="sub-status"></div>
+      </div>
+
+      <!-- ⭐ Reviews moderation (card B123). The routes POST /reviews/:id/approve and
+           POST /reviews/:id/reject have existed on the backend and were called by NOBODY —
+           a review could only ever be deleted, never published or hidden. This is that
+           missing surface: see the queue, approve (which recomputes the business's rating
+           from its approved reviews) or reject a review, and filter by status/directory. -->
+      <div class="feature-card" id="reviews-moderation-section">
+        <h3>⭐ Reviews</h3>
+        <p class="feature-subtitle">Customer reviews across your directories. <b>Approve</b> a review to publish it and update the business's star rating; <b>reject</b> it to hide it. Only approved reviews count toward a listing's rating.</p>
+        <div class="pk-controls" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <div class="em-field"><label>Show</label>
+            <select id="rvmod-status-filter" onchange="window.__rvmodLoad()">
+              <option value="">All reviews</option>
+              <option value="pending">Waiting for moderation</option>
+              <option value="approved">Published (approved)</option>
+              <option value="rejected">Hidden (rejected)</option>
+            </select>
+          </div>
+          <div class="em-field"><label>Directory</label>
+            <select id="rvmod-directory" onchange="window.__rvmodLoad()">
+              <option value="">Every directory</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__rvmodLoad()">Reload</button>
+          <span id="rvmod-status" style="font-size:.82rem;color:var(--text-muted,#8aa0b8)"></span>
+        </div>
+        <div id="rvmod-list"></div>
       </div>
 
       <!-- System email templates — B100. The transactional mail this directory SENDS to
@@ -4901,6 +4930,8 @@
       ddInit();
       loadAdZones();
       loadSubmissions();
+      // ⭐ Reviews moderation (card B123) — the approve/reject routes had no caller.
+      loadReviewModeration();
       // Round 8: the three capabilities that had a live backend and no UI.
       // loadEmailTemplates() also populates the campaign template picker, so run it first.
       loadEmailTemplates();
@@ -4995,6 +5026,7 @@
           if (!Array.isArray(directories)) directories = [];
           if (window.MDContextBar) window.MDContextBar.setDirectories(directories);
           ctxRenderGrid();
+          if (window.__rvmodFillDirs) window.__rvmodFillDirs();
           loadB2bFeatures();
           loadGuarantee();
           loadCostGuides();
@@ -7777,6 +7809,104 @@
       apiFetch('DELETE', '/submissions/' + id)
         .then(function () { showToast('Submission deleted'); loadSubmissions(); })
         .catch(function (e) { subStatus('Delete failed: ' + e.message, false); });
+    };
+
+    // ===== Reviews moderation (card B123) =====
+    // GET /reviews (filterable by status + directory) plus POST /reviews/:id/approve and
+    // POST /reviews/:id/reject — the two routes that had no caller anywhere in the panel
+    // (endpoint works, no UI = defect by David's rule). Approving recomputes the business's
+    // rating from its approved reviews server-side.
+    function rvmodStatus(msg, ok) {
+      var el = document.getElementById('rvmod-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+
+    // Populate the directory picker from the shared `directories` array. Called on every load
+    // AND as soon as loadDirectories() resolves (the reviews list can settle before the
+    // directory list does, which would otherwise leave the picker empty until a manual reload).
+    function rvmodFillDirectories() {
+      var sel = document.getElementById('rvmod-directory');
+      if (!sel || !directories || !directories.length) return;
+      var keep = sel.value;
+      sel.innerHTML = '<option value="">Every directory</option>' +
+        directories.map(function (d) {
+          return '<option value="' + pkEsc(d.id) + '">' + pkEsc(d.name || d.slug || d.id) + '</option>';
+        }).join('');
+      if (keep) sel.value = keep;
+    }
+    window.__rvmodFillDirs = rvmodFillDirectories;
+
+    function loadReviewModeration() {
+      var list = document.getElementById('rvmod-list');
+      if (!list) return;
+      rvmodFillDirectories();
+      var status = (document.getElementById('rvmod-status-filter') || {}).value || '';
+      var dirId = (document.getElementById('rvmod-directory') || {}).value || '';
+      var qs = '?per_page=50';
+      if (status) qs += '&status=' + encodeURIComponent(status);
+      if (dirId) qs += '&directory_id=' + encodeURIComponent(dirId);
+      list.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading reviews\u2026</p>';
+      apiGet('/reviews' + qs).then(function (resp) {
+        var rows = (resp && resp.data) || (Array.isArray(resp) ? resp : []);
+        if (!rows.length) {
+          list.innerHTML = '<div class="empty-state"><p>No reviews here yet.</p></div>';
+          rvmodStatus('0 reviews', true);
+          return;
+        }
+        list.innerHTML = rows.map(function (r) {
+          var id = pkEsc(r.id);
+          var st = r.status || 'pending';
+          var cls = st === 'approved' ? 'pk-ok' : 'pk-missing';
+          var stars = '';
+          for (var i = 1; i <= 5; i++) stars += (i <= (r.rating || 0)) ? '\u2605' : '\u2606';
+          var title = r.title ? '<b>' + pkEsc(r.title) + '</b> ' : '';
+          var body = r.content || r.review_text || '';
+          var who = r.reviewer_name || 'Anonymous';
+          var when = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+          var reply = r.owner_response
+            ? '<div style="font-size:.78rem;color:var(--text-secondary);margin-top:4px">Owner reply: ' + pkEsc(String(r.owner_response).substring(0, 160)) + '</div>'
+            : '';
+          return '<div class="pk-row">' +
+              '<div class="pk-head">' +
+                '<div class="pk-title">' + stars + ' ' + title +
+                  '<span class="pk-badge ' + cls + '">' + pkEsc(st) + '</span></div>' +
+                '<div class="pk-desc">' + pkEsc(who) + (when ? ' \u00b7 ' + pkEsc(when) : '') +
+                  (r.business_id ? ' \u00b7 listing ' + pkEsc(String(r.business_id).substring(0, 8)) : '') + '</div>' +
+                (body ? '<div style="font-size:.85rem;margin-top:6px;white-space:pre-wrap">' + pkEsc(String(body).substring(0, 400)) + '</div>' : '') +
+                reply +
+              '</div>' +
+              '<div class="pk-controls">' +
+                (st !== 'approved' ? '<button class="btn btn-accent btn-sm" onclick="window.__rvmodApprove(\'' + id + '\')">Approve &amp; publish</button>' : '') +
+                (st !== 'rejected' ? '<button class="btn btn-ghost btn-sm" onclick="window.__rvmodReject(\'' + id + '\')">Reject &amp; hide</button>' : '') +
+                '<button class="btn btn-ghost btn-sm" onclick="window.__rvmodDelete(\'' + id + '\')">Delete</button>' +
+              '</div>' +
+            '</div>';
+        }).join('');
+        var total = (resp && resp.total !== undefined) ? resp.total : rows.length;
+        rvmodStatus(total + ' review(s)' + (status ? ' \u00b7 ' + status : ''), true);
+      }).catch(function (e) { rvmodStatus('Could not load reviews: ' + e.message, false); });
+    }
+    window.__rvmodLoad = loadReviewModeration;
+
+    window.__rvmodApprove = function (id) {
+      apiPost('/reviews/' + id + '/approve', {})
+        .then(function () { showToast('Review approved'); loadReviewModeration(); })
+        .catch(function (e) { rvmodStatus('Approve failed: ' + e.message, false); });
+    };
+
+    window.__rvmodReject = function (id) {
+      apiPost('/reviews/' + id + '/reject', {})
+        .then(function () { showToast('Review rejected'); loadReviewModeration(); })
+        .catch(function (e) { rvmodStatus('Reject failed: ' + e.message, false); });
+    };
+
+    window.__rvmodDelete = function (id) {
+      if (!confirm('Delete this review permanently?')) return;
+      apiFetch('DELETE', '/reviews/' + id)
+        .then(function () { showToast('Review deleted'); loadReviewModeration(); })
+        .catch(function (e) { rvmodStatus('Delete failed: ' + e.message, false); });
     };
 
     // ===== Round 8: Email templates / Email campaigns / Scrape sources =====

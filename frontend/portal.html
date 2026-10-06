@@ -512,16 +512,26 @@ function renderReviews(){
   g('/reviews?directory_id='+did,function(r){
     var data=r.data||r||[];
     el.innerHTML=
-    '<div class="card-header"><h3>Reviews</h3></div>'+
+    '<div class="card-header"><h3>Reviews</h3><span style="font-size:.8rem;color:var(--text-secondary)">Approve a review to publish it and count it toward the star rating; reject it to hide it.</span></div>'+
     '<div class="table-wrap"><table>'+
-      '<tr><th>ID</th><th>Business</th><th>Rating</th><th>Review</th><th>Actions</th></tr>'+
+      '<tr><th>Business</th><th>Rating</th><th>Status</th><th>Review</th><th>Actions</th></tr>'+
       (data.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">No reviews</td></tr>':
       data.map(function(rv){
-        return '<tr><td>'+esc(rv.id)+'</td><td>'+esc(rv.business_name||'')+'</td><td>'+'★'.repeat(rv.rating||0)+'☆'.repeat(5-(rv.rating||0))+'</td><td>'+esc((rv.review_text||rv.content||'').substring(0,80))+'</td>'+
-        '<td><button class="btn btn-danger btn-sm" onclick="deleteReview('+(rv.id||0)+')">🗑️</button></td></tr>';
+        var id=rv.id||'';
+        var st=rv.status||'pending';
+        return '<tr><td>'+esc(rv.business_name||'—')+'</td><td>'+'★'.repeat(rv.rating||0)+'☆'.repeat(5-(rv.rating||0))+'</td><td>'+esc(st)+'</td><td>'+esc((rv.content||'').substring(0,80))+'</td>'+
+        '<td>'+(st!=='approved'?'<button class="btn btn-primary btn-sm" onclick="approveReview(\''+esc(id)+'\')">Approve</button> ':'')+
+        (st!=='rejected'?'<button class="btn btn-secondary btn-sm" onclick="rejectReview(\''+esc(id)+'\')">Reject</button> ':'')+
+        '<button class="btn btn-danger btn-sm" onclick="deleteReview(\''+esc(id)+'\')">🗑️</button></td></tr>';
       }).join(''))+
     '</table></div>';
   },function(){el.innerHTML='<div class="empty-state"><p>Failed to load reviews.</p></div>';});
+}
+function approveReview(id){
+  po('/reviews/'+id+'/approve',{},function(){toast('Review approved','success');renderReviews();},function(){toast('Failed to approve','error');renderReviews();});
+}
+function rejectReview(id){
+  po('/reviews/'+id+'/reject',{},function(){toast('Review rejected','success');renderReviews();},function(){toast('Failed to reject','error');renderReviews();});
 }
 function deleteReview(id){
   if(!confirm('Delete this review?'))return;
