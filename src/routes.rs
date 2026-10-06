@@ -2100,6 +2100,20 @@ pub fn create_router(s: AppState) -> Router {
             "/zaarhub/analytics/categories",
             get(zaarhub_analytics::category_breakdown),
         )
+        // ── Operator support sessions (kanban t_498836c3) ──────────────────────────────
+        // Leg 3 of David's tenancy rule: the operator switches INTO a tenant instead of being
+        // handed its password. Both routes are operator-only; the minted token carries the target
+        // account's own role, never the operator's. See handlers/impersonate.rs.
+        .route(
+            "/admin/impersonate",
+            post(impersonate::impersonate)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/tenants",
+            get(impersonate::list_tenants)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ??? ZaarHub Admin (legal pages + site config)
         .route(
             "/zaarhub/admin/legal",

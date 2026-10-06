@@ -402,6 +402,7 @@ pub async fn complete_listing_invite(
         iat: now_ts,
         aud: Some("multidirectory-api".to_string()),
         iss: Some("multidirectory".to_string()),
+        impersonating: None,
     };
     let jwt = create_token(&claims, &s.config.jwt_secret)?;
 

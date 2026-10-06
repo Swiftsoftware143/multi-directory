@@ -16,6 +16,7 @@ pub mod domains;
 pub mod email;
 pub mod homepage_config;
 pub mod host_resolver;
+pub mod impersonate;
 pub mod import_export;
 pub mod legal;
 pub mod loyalty_messaging;

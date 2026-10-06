@@ -524,6 +524,7 @@
       </style>
       <nav class="adm-nav" id="admin-nav">
         <a href="#sec-directories">📁 Directories</a>
+        <a href="#support-sessions-section">🔑 Support Sessions</a>
         <a href="#businesses-section">🏢 Businesses</a>
         <a href="#b2b-admin-section">🏬 Suppliers / B2B</a>
         <a href="#prospecting-section">🧭 Supplier Prospecting</a>
@@ -2286,6 +2287,20 @@
           <div><label class="feature-subtitle">SEO title</label><input class="input sc-land-new-seotitle" placeholder="Advertise in Palm Bay | ZaarHub"></div>
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__scLandCreate()">＋ Add landing page</button>
         </div>
+      </div>
+
+      <!-- kanban t_498836c3 — Operator support sessions (leg 3 of the tenancy rule).
+           The platform operator has a sanctioned way to switch INTO a tenant (a directory buyer's
+           own account) instead of being handed that tenant's password. Operator-only: the card is
+           revealed by script for role super_admin and hidden for everyone else. -->
+      <div class="feature-card" id="support-sessions-section" style="display:none">
+        <h3>🔑 Support Sessions</h3>
+        <p class="feature-subtitle">Sign in <b>as</b> a directory owner to see exactly what they see and reproduce a support report — without ever being handed their password. The session is a <b>1-hour</b> token scoped to that one tenant: it carries <b>their</b> role, never yours, and every switch is logged with both identities.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__mdSupportLoad()">↻ Refresh</button>
+          <span class="feature-status" id="ss-status"></span>
+        </div>
+        <div id="ss-list"></div>
       </div>
 
       <!-- Directory Cards -->
@@ -12336,6 +12351,160 @@
     }
     document.addEventListener('DOMContentLoaded', init);
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 400);
+  })();
+  <!-- ===== kanban t_498836c3 — Operator support sessions (sign in as a tenant) =====
+       Self-contained block, like the other panel modules: own token read, own fetch wrapper.
+       Two halves:
+         * the operator (role super_admin) sees the tenant pick-list and a "Sign in as" button;
+         * while a support session is active a fixed banner offers "Return to operator", which
+           restores the operator's own token that was put aside before the switch.
+       The operator's own token is NEVER overwritten without first being saved, and it is saved
+       only after the server has confirmed the mint — a refused switch leaves the session alone. -->
+  <script>
+  (function () {
+    var API = '/api/v1';
+    var OP_TOKEN = 'md_operator_token';
+    var OP_USER = 'md_operator_user';
+    var SUPPORT_KEY = 'md_support_tenant';
+
+    function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+    function tok() { return ls('md_admin_token'); }
+    function meUser() { try { return JSON.parse(ls('md_admin_user') || 'null'); } catch (e) { return null; } }
+    function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+    function status(msg, bad) {
+      var el = document.getElementById('ss-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = bad === false ? 'var(--ok,#3ddc97)' : (bad ? 'var(--warn,#ffb454)' : '');
+    }
+
+    function fetchJson(method, path, body) {
+      var headers = { 'Content-Type': 'application/json' };
+      var t = tok();
+      if (t) headers['Authorization'] = 'Bearer ' + t;
+      var opts = { method: method, headers: headers };
+      if (body) opts.body = JSON.stringify(body);
+      return fetch(API + path, opts).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) {
+            var m = (typeof data.message === 'string' && data.message) ||
+                    (typeof data.error === 'string' && data.error) ||
+                    ('Request failed (' + res.status + ')');
+            throw new Error(m);
+          }
+          return data;
+        });
+      });
+    }
+
+    // ── The banner: shown whenever a support session is active, whoever is signed in. This is
+    //    the only way back to the operator account, so it is rendered before anything else.
+    function renderBanner() {
+      var existing = document.getElementById('md-support-banner');
+      if (existing) existing.parentNode.removeChild(existing);
+      var who = ls(SUPPORT_KEY);
+      if (!who) return;
+      var bar = document.createElement('div');
+      bar.id = 'md-support-banner';
+      bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#7c2d12;color:#fff;' +
+        'font:600 13px/1.4 system-ui,sans-serif;padding:9px 16px;display:flex;gap:12px;align-items:center;' +
+        'justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35)';
+      bar.innerHTML = '<span>🔑 Support session — you are signed in as <b>' + esc(who) + '</b>, not as the operator.</span>';
+      var back = document.createElement('button');
+      back.type = 'button';
+      back.textContent = '← Return to operator';
+      back.style.cssText = 'background:#fff;color:#7c2d12;border:0;border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:700';
+      back.onclick = returnToOperator;
+      bar.appendChild(back);
+      document.body.appendChild(bar);
+      document.body.style.paddingTop = '42px';
+    }
+
+    function returnToOperator() {
+      var t = ls(OP_TOKEN);
+      if (!t) { status('No saved operator session on this device — sign in again.', true); return; }
+      lsSet('md_admin_token', t);
+      lsSet('md_admin_user', ls(OP_USER) || 'null');
+      lsDel(OP_TOKEN); lsDel(OP_USER); lsDel(SUPPORT_KEY);
+      location.reload();
+    }
+
+    function switchTo(tenantId, tenantName, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = 'Switching…'; }
+      status('Minting a support session for ' + tenantName + '…');
+      fetchJson('POST', '/admin/impersonate', { tenant_id: tenantId }).then(function (r) {
+        if (!r || !r.token) throw new Error('The server did not return a session token.');
+        // Save the operator's own session FIRST, then take the tenant's.
+        var prev = tok();
+        if (prev) { lsSet(OP_TOKEN, prev); lsSet(OP_USER, ls('md_admin_user') || 'null'); }
+        lsSet('md_admin_token', r.token);
+        lsSet('md_admin_user', JSON.stringify(r.user || {}));
+        lsSet(SUPPORT_KEY, (r.tenant && r.tenant.name) || tenantName);
+        location.reload();
+      }).catch(function (e) {
+        status(e.message || 'Could not start the support session.', true);
+        if (btn) { btn.disabled = false; btn.textContent = 'Sign in as'; }
+      });
+    }
+
+    function renderTenants(tenants) {
+      var list = document.getElementById('ss-list');
+      if (!list) return;
+      if (!tenants.length) { list.innerHTML = '<p class="feature-subtitle">No tenants yet.</p>'; return; }
+      var h = '<div class="table-wrap"><table><tr><th>Tenant</th><th>Slug</th><th>Accounts</th><th>Directories owned</th><th></th></tr>';
+      tenants.forEach(function (t) {
+        var badge = t.is_platform ? ' <span class="badge">your own tenant</span>' : '';
+        var inactive = t.is_active ? '' : ' <span class="badge" style="background:rgba(239,68,68,.18);color:#f87171">inactive</span>';
+        var action = t.is_platform
+          ? '<span class="feature-subtitle">—</span>'
+          : '<button class="btn btn-sm btn-primary" type="button" data-ss-tenant="' + esc(t.id) + '" data-ss-name="' + esc(t.name) + '">Sign in as</button>';
+        h += '<tr><td>' + esc(t.name) + badge + inactive + '</td><td>' + esc(t.slug) + '</td><td>' +
+             esc(t.users) + '</td><td>' + esc(t.directories) + '</td><td>' + action + '</td></tr>';
+      });
+      h += '</table></div>';
+      list.innerHTML = h;
+      Array.prototype.forEach.call(list.querySelectorAll('button[data-ss-tenant]'), function (b) {
+        b.onclick = function () { switchTo(b.getAttribute('data-ss-tenant'), b.getAttribute('data-ss-name'), b); };
+      });
+    }
+
+    function load() {
+      if (ls(SUPPORT_KEY)) return; // a support session is active: only the banner applies
+      status('Loading tenants…');
+      fetchJson('GET', '/admin/tenants').then(function (d) {
+        var tenants = (d && d.tenants) || [];
+        renderTenants(tenants);
+        status(tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + '.', false);
+      }).catch(function (e) {
+        status(e.message || 'Could not load tenants.', true);
+      });
+    }
+
+    var inited = false;
+    function init() {
+      if (inited) return;
+      var card = document.getElementById('support-sessions-section');
+      var u = meUser();
+      // Nothing to do until the dashboard has rendered and a session exists.
+      if (!card || !u) return;
+      inited = true;
+      renderBanner();
+      // The card is for the platform operator only, and only when not already inside a session.
+      if (u.role === 'super_admin' && !ls(SUPPORT_KEY)) {
+        card.style.display = '';
+        load();
+      }
+    }
+
+    window.__mdSupportLoad = load;
+    window.__mdSupportReturn = returnToOperator;
+    document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState !== 'loading') setTimeout(init, 300);
+    // The panel swaps pages (login -> dashboard) without a reload; re-check when that happens.
+    document.addEventListener('click', function () { setTimeout(init, 150); }, true);
   })();
   </script>
 </body>

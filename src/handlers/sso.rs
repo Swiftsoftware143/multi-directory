@@ -255,6 +255,7 @@ fn create_role_token(
         iat: now,
         aud: Some(email.to_string()),
         iss: Some("multidirectory".to_string()),
+        impersonating: None,
     };
 
     create_token(&claims, jwt_secret)

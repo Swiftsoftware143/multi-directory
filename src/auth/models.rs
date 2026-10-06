@@ -13,6 +13,11 @@ pub struct Claims {
     pub iat: usize,
     pub aud: Option<String>,
     pub iss: Option<String>,
+    /// Set ONLY on an operator-minted impersonation session: the platform operator's own user id.
+    /// Absent on a normal login/refresh token. `#[serde(default)]` keeps every existing token valid
+    /// and lets a handler tell a support session apart from a real sign-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impersonating: Option<String>,
 }
 
 // ── Login / Register ─────────────────────────────────────────────────────────

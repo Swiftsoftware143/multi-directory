@@ -547,6 +547,7 @@ pub async fn visitor_register(
         iat: now_ts,
         aud: Some("multidirectory-api".to_string()),
         iss: Some("multidirectory".to_string()),
+        impersonating: None,
     };
     let token = create_token(&claims, &s.config.jwt_secret)?;
 
@@ -625,6 +626,7 @@ pub async fn visitor_login(
         iat: now_ts,
         aud: Some("multidirectory-api".to_string()),
         iss: Some("multidirectory".to_string()),
+        impersonating: None,
     };
     let token = create_token(&claims, &s.config.jwt_secret)?;
 
