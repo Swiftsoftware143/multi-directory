@@ -2121,7 +2121,7 @@ pub async fn my_notifications(
     require_b2b_feature(&b2b_config, "b2b_orders")?;
 
     let user_id = extract_user_id(&headers, &s)?;
-    let biz_id = resolve_buyer_business(&s.db, user_id).await?;
+    let biz_id = resolve_notification_business(&s.db, user_id).await?;
 
     let page = qs.page.unwrap_or(1).max(1);
     let per_page = qs.per_page.unwrap_or(20).min(100);
@@ -2212,7 +2212,7 @@ pub async fn mark_notification_read(
     require_b2b_feature(&b2b_config, "b2b_orders")?;
 
     let user_id = extract_user_id(&headers, &s)?;
-    let biz_id = resolve_buyer_business(&s.db, user_id).await?;
+    let biz_id = resolve_notification_business(&s.db, user_id).await?;
 
     let owner =
         sqlx::query_scalar::<_, Uuid>("SELECT business_id FROM b2b_notifications WHERE id = $1")
@@ -2244,7 +2244,7 @@ pub async fn mark_all_read(
     require_b2b_feature(&b2b_config, "b2b_orders")?;
 
     let user_id = extract_user_id(&headers, &s)?;
-    let biz_id = resolve_buyer_business(&s.db, user_id).await?;
+    let biz_id = resolve_notification_business(&s.db, user_id).await?;
 
     let result = sqlx::query(
         "UPDATE b2b_notifications SET is_read = true WHERE business_id = $1 AND is_read = false",
@@ -2351,6 +2351,20 @@ pub async fn resolve_supplier_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiR
     Err(AppError::NotFound(
         "No supplier business linked to your account. Register as a supplier first.".into(),
     ))
+}
+
+/// Card B128: the supplier portal reads the same per-business notification feed as buyers.
+/// Resolve the caller's business as a buyer first; when the signed-in account is a supplier
+/// (not a buyer) fall back to the supplier business, so the supplier portal's notification
+/// bell loads instead of 404-ing on every page load.
+pub(crate) async fn resolve_notification_business(
+    db: &sqlx::PgPool,
+    user_id: Uuid,
+) -> ApiResult<Uuid> {
+    match resolve_buyer_business(db, user_id).await {
+        Ok(id) => Ok(id),
+        Err(_) => resolve_supplier_business(db, user_id).await,
+    }
 }
 
 /// Resolve ANY claimed business for the authenticated user (no business_type filter).

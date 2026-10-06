@@ -1009,8 +1009,8 @@ async function loadDashboard() {
 
   try {
     // Try to load visitor profile
-    var data = await g('/visitor/profile');
-    var v = data.visitor || {};
+    var data = await g('/supplier/profile');
+    var v = data || {};
     $('profileName').textContent = v.name || 'Supplier';
     $('profileEmail').textContent = v.email;
     var bt = v.business_type || 'supplier';
