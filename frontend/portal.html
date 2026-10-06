@@ -1183,7 +1183,10 @@ function renderAnalytics(){
   var el=document.getElementById('pageContent');
   var did=CUR_DIR.id;
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
-  g('/analytics/by-directory/'+CUR_DIR.slug,function(a){
+  // B131: the route is `/analytics/by-directory/:directory_id` and takes a UUID — passing the
+  // SLUG made axum fail to parse the path and answer 400, so the page always showed
+  // "Failed to load analytics." `did` (CUR_DIR.id) is the real directory UUID.
+  g('/analytics/by-directory/'+did,function(a){
     a=a||{};
     el.innerHTML=
     '<div class="stat-grid">'+

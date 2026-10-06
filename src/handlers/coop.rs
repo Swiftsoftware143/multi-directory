@@ -393,7 +393,15 @@ pub async fn my_groups(
     headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     let user_id = extract_user_id(&headers, &state)?;
-    let biz_id = resolve_business_id(&state.db, user_id).await?;
+    // B131: an account with NO linked business is an EMPTY state, not a 404. Returning 404
+    // made the business portal print "Could not load your groups: No business linked to your
+    // account. Claim a business first." on every load. An empty list renders the intended
+    // "not in a buying group yet" panel instead.
+    let biz_id = match resolve_business_id(&state.db, user_id).await {
+        Ok(id) => id,
+        Err(AppError::NotFound(_)) => return Ok(Json(json!({ "my_groups": [] }))),
+        Err(e) => return Err(e),
+    };
 
     let groups = sqlx::query_as::<_, BuyingGroupRow>(
         "SELECT g.id, g.name, g.description, g.category, g.founder_business_id, g.status, \
