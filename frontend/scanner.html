@@ -289,7 +289,7 @@ function switchAuthTab(t) {
 async function doLogin() {
   var email = $('loginEmail').value.trim(), pw = $('loginPassword').value;
   var err = $('authError');
-  if(!email||!pw){err.textContent='Fill in all fields';err.style.display='';return}
+  if(!email||!pw){err.textContent='Fill in all fields';err.style.display='block';return}
   err.style.display='none';
   var btn = event.target; btn.disabled=true; btn.textContent='Signing in...';
   try{
@@ -302,14 +302,14 @@ async function doLogin() {
     _bizCategory = d.category || d.business_category || '';
     await loadBizProfile();
     showScanner();
-  }catch(e){err.textContent=e.message;err.style.display=''}finally{btn.disabled=false;btn.textContent='Sign In'}
+  }catch(e){err.textContent=e.message;err.style.display='block'}finally{btn.disabled=false;btn.textContent='Sign In'}
 }
 
 async function doRegister() {
   var name=$('regName').value.trim(),email=$('regEmail').value.trim(),pw=$('regPassword').value,cat=$('regCategory').value;
   var err=$('authError');
-  if(!name||!email||!pw){err.textContent='Fill in all fields';err.style.display='';return}
-  if(pw.length<8){err.textContent='Password must be 8+ characters';err.style.display='';return}
+  if(!name||!email||!pw){err.textContent='Fill in all fields';err.style.display='block';return}
+  if(pw.length<8){err.textContent='Password must be 8+ characters';err.style.display='block';return}
   err.style.display='none';
   var btn=event.target;btn.disabled=true;btn.textContent='Creating account...';
   try{
@@ -321,7 +321,7 @@ async function doRegister() {
     _bizName=name;_bizCategory=cat||'';
     await loadBizProfile();
     showScanner();
-  }catch(e){err.textContent=e.message;err.style.display=''}finally{btn.disabled=false;btn.textContent='Create Account'}
+  }catch(e){err.textContent=e.message;err.style.display='block'}finally{btn.disabled=false;btn.textContent='Create Account'}
 }
 
 function setSession(d) {
