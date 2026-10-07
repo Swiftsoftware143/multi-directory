@@ -21,7 +21,8 @@
   function detectAudience() {
     var path = window.location.pathname || '';
     if (path === '/portal' || path.indexOf('/portal/') === 0) return 'business';
-    if (path.indexOf('/distributor') === 0) return 'supplier';
+    // The supplier portal is served at BOTH /supplier and /distributor (routes.rs).
+    if (/^\/(supplier|suppliers|distributor)(\/|$)/.test(path)) return 'supplier';
     return 'customer';
   }
 
@@ -37,7 +38,7 @@
     var path = window.location.pathname || '';
     var parts = path.split('/').filter(Boolean);
     // A city landing page: /palm-bay — but not a portal, an app page or an asset path.
-    var reserved = ['visitor', 'portal', 'distributor', 'zaarhub', 'z', 'user', 'admin',
+    var reserved = ['visitor', 'portal', 'distributor', 'supplier', 'suppliers', 'zaarhub', 'z', 'user', 'admin',
       'scanner', 'login', 'grow', 'guide', 'claim', 'rfp', 'rfq', 'd', 'public'];
     if (audience === 'customer' && parts.length && reserved.indexOf(parts[0]) === -1 &&
         parts[0].indexOf('.') === -1) {
