@@ -168,6 +168,9 @@ pub async fn can_admin_business(
             SELECT 1 FROM claimed_businesses c \
              WHERE c.business_id = $1 AND c.user_id = $3 AND c.is_active \
             UNION ALL \
+            SELECT 1 FROM claimed_businesses c \
+             WHERE c.business_id = $1 AND c.visitor_account_id = $3 AND c.is_active \
+            UNION ALL \
             SELECT 1 FROM businesses b JOIN users u ON u.id = b.owner_id \
              WHERE b.id = $1 AND u.tenant_id = $2 \
             UNION ALL \
