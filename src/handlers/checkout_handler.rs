@@ -54,7 +54,18 @@ fn require_webhook_config_for_activation(
     api_key_present: bool,
     webhook_value_present: bool,
 ) -> Result<(), AppError> {
-    if !is_active || !matches!(provider_type, "stripe" | "paypal") {
+    // Gateways with no receiver implemented cannot be armed: there is nothing to verify an event
+    // against, so an "active" one would be a fake promising payments it can never take. They stay
+    // selectable and storable (the operator can record which gateway they intend to use), but
+    // activation is refused until the receiver is built.
+    if is_active && !matches!(provider_type, "stripe" | "paypal") {
+        return Err(AppError::BadRequest(format!(
+            "'{provider_type}' has no payment receiver built yet, so it cannot be activated. \
+                 Save its details if you wish, but leave it disabled until its receiver exists."
+        )));
+    }
+
+    if !is_active {
         return Ok(());
     }
 
@@ -122,6 +133,13 @@ pub async fn list_payment_providers(State(state): State<AppState>) -> ApiResult<
                     "paypal" => "/api/v1/webhooks/paypal",
                     _ => "",
                 },
+                // True only for the gateways whose receiver verifies a signature today (stripe,
+                // paypal). The Integration Center reads this to label the rest "no receiver yet"
+                // rather than hardcoding the set in the SPA.
+                "has_receiver": matches!(
+                    r.try_get::<&str,_>("provider_type").unwrap_or(""),
+                    "stripe" | "paypal"
+                ),
                 "is_test_mode": r.try_get::<bool,_>("is_test_mode").unwrap_or(true),
                 "config": r.try_get::<serde_json::Value,_>("config").unwrap_or(json!({})),
                 "created_at": r.try_get::<chrono::DateTime<chrono::Utc>,_>("created_at")
@@ -154,13 +172,22 @@ pub async fn upsert_payment_provider(
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             AppError::BadRequest(
-                "provider_type is required (stripe, paypal, square, paddle)".into(),
+                "provider_type is required (stripe, paypal, square, paddle, nmi, razorpay, epd)"
+                    .into(),
             )
         })?;
 
-    if !["stripe", "paypal", "square", "paddle"].contains(&provider_type) {
+    // The full set the Integration Center offers. Only stripe and paypal have a receiver that
+    // verifies a signature (`has_payment_receiver`); the rest are selectable so the operator can
+    // record the gateway they intend to use, and the panel labels them "no receiver yet".
+    if ![
+        "stripe", "paypal", "square", "paddle", "nmi", "razorpay", "epd",
+    ]
+    .contains(&provider_type)
+    {
         return Err(AppError::BadRequest(
-            "Invalid provider_type. Must be stripe, paypal, square, or paddle".into(),
+            "Invalid provider_type. Must be stripe, paypal, square, paddle, nmi, razorpay, or epd"
+                .into(),
         ));
     }
 

@@ -532,7 +532,7 @@
         <a href="#networks-section">🌐 Networks (create &amp; brand)</a>
         <a href="#directory-details-section">🧾 Directory Details</a>
         <a href="#local-notices-section">📌 Local Notices</a>
-        <a href="#provider-keys-section">🔑 Provider API Keys</a>
+        <a href="#provider-keys-section">🔌 Integration Center</a>
         <a href="#industries-section">🏭 Industries</a>
         <a href="#domains-section">🌐 Domains &amp; Subdomains</a>
         <a href="#payment-gateways-section">💳 Payment Gateways</a>
@@ -801,10 +801,10 @@
         .ob-tag{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:99px;background:rgba(148,163,184,.15);color:#94a3b8;margin:0 4px 4px 0}
       </style>
       <div class="feature-card" id="provider-keys-section">
-        <h3>🔑 Provider API Keys
-          <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html" target="_blank" rel="noopener">📘 Full setup guide — all 23 providers →</a>
+        <h3>🔌 Integration Center
+          <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html" target="_blank" rel="noopener">📘 Full setup guide — every provider →</a>
         </h3>
-        <p class="feature-subtitle">Paste your own keys here — encrypted at rest and shown <b>masked</b> (first 4 and last 4 characters only; the full value never leaves the server). <b>Every key can be named</b>, so you can store several accounts for one provider side by side. Every key is also <b>scoped</b>: platform-wide, to one <b>network</b>, or to one <b>directory</b> — a directory with no key of its own <b>inherits its network's</b>, so one Google Places key set on the ZaarHub network serves all ten cities.</p>
+        <p class="feature-subtitle"><b>One screen for every external service this directory uses</b> — enrichment, scraping, maps, listings, messaging, AI and your <b>CoreSwift CRM</b> connection. Paste your own keys here — encrypted at rest and shown <b>masked</b> (first 4 and last 4 characters only; the full value never leaves the server). <b>Every key can be named</b>, so you can store several accounts for one provider side by side. Every key is also <b>scoped</b>: platform-wide, to one <b>network</b>, or to one <b>directory</b> — a directory with no key of its own <b>inherits its network's</b>, so one Google Places key set on the ZaarHub network serves all ten cities. New directories appear here automatically. <b>Payment gateways</b> (Stripe, PayPal, NMI, EPD, Razorpay) live in the <a href="#payment-gateways-section">💳 Payment Gateways</a> card just below.</p>
         <div id="pk-loading" class="loading-state"><span class="spinner"></span> Loading providers...</div>
         <!-- Which Google key goes where (2026-09-23). The single most common setup error is
              pasting a Maps JavaScript (browser) key into the server-side Places row, so the rule
@@ -871,10 +871,9 @@
         <h3>💳 Payment Gateways
           <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html#payment-gateways" target="_blank" rel="noopener">📘 Setup guide →</a>
         </h3>
-        <p class="feature-subtitle">Where customers actually pay: connect <b>Stripe</b> and/or <b>PayPal</b> here.
+        <p class="feature-subtitle">Where customers actually pay. Choose your gateway here — <b>Stripe</b>, <b>PayPal</b>, <b>NMI</b>, <b>Razorpay</b> or <b>EPD</b>.
           Saved credentials are encrypted at rest and never sent back to the browser, so these fields are write-only.
-          A gateway <b>cannot be switched on without its webhook verification value</b>, and the receiver itself
-          refuses any event it cannot verify — otherwise a forged "payment complete" would hand out paid features for free.</p>
+          Only gateways with a live receiver (<b>Stripe</b> and <b>PayPal</b> today) can be switched on: a receiver <b>cannot be armed without its webhook verification value</b>, and it refuses any event it cannot verify — otherwise a forged "payment complete" would hand out paid features for free. The other gateways are listed so you can record your choice; they show <b>"no receiver yet"</b> and cannot be activated until the receiver is built.</p>
         <div id="pg-loading" class="loading-state"><span class="spinner"></span> Loading payment gateways...</div>
         <div id="pg-list"></div>
         <div style="margin-top:14px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px">
@@ -882,6 +881,9 @@
             <div class="em-field"><label>Gateway</label><select id="pg-type" onchange="window.__pgTypeChanged()">
               <option value="stripe">Stripe</option>
               <option value="paypal">PayPal</option>
+              <option value="nmi">NMI (no receiver yet)</option>
+              <option value="razorpay">Razorpay (no receiver yet)</option>
+              <option value="epd">EPD (no receiver yet)</option>
               <option value="square">Square (no receiver yet)</option>
               <option value="paddle">Paddle (no receiver yet)</option>
             </select></div>
@@ -4573,6 +4575,17 @@
       var isStripe = type === 'stripe';
       var isPaypal = type === 'paypal';
 
+      // A gateway with no receiver cannot be armed: there is nothing to verify an event, so the
+      // "Active" choice is disabled and forced off rather than quietly pretending payments work.
+      var hasReceiver = pgIsReceiver(type);
+      var activeSel = document.getElementById('pg-active');
+      if (activeSel) {
+        for (var oi = 0; oi < activeSel.options.length; oi++) {
+          activeSel.options[oi].disabled = (activeSel.options[oi].value === 'true' && !hasReceiver);
+        }
+        if (!hasReceiver) activeSel.value = 'false';
+      }
+
       document.getElementById('pg-webhook-label').textContent = isStripe
         ? 'Webhook signing secret (whsec_…)'
         : (isPaypal ? 'PayPal Webhook ID' : 'Webhook verification value');
@@ -4641,12 +4654,14 @@
         return;
       }
       wrap.innerHTML = pgProviders.map(function (p) {
-        var receiver = pgIsReceiver(p.provider_type);
+        var receiver = (typeof p.has_receiver === 'boolean') ? p.has_receiver : pgIsReceiver(p.provider_type);
         var verified = p.webhook_secret_status === 'configured';
         var risky = receiver && p.is_active && !verified;
         var badge = risky
           ? '<span class="pk-badge pk-missing">ACTIVE WITHOUT VERIFICATION — its events are refused</span>'
-          : (p.is_active ? '<span class="pk-badge pk-ok">active</span>' : '<span class="pk-badge pk-missing">disabled</span>');
+          : (!receiver
+              ? '<span class="pk-badge pk-missing">no receiver yet</span>'
+              : (p.is_active ? '<span class="pk-badge pk-ok">active</span>' : '<span class="pk-badge pk-missing">disabled</span>'));
         return '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#1e2a3a)">'
           + '<b style="min-width:80px;text-transform:capitalize">' + pkEsc(p.provider_type) + '</b>'
           + '<span style="flex:1 1 140px">' + pkEsc(p.label || '(no label)') + '</span>'
