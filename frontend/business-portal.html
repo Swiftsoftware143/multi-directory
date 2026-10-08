@@ -1646,7 +1646,10 @@ async function saveCtaType() {
   if (!_selectedBizId) return;
   var val = document.getElementById('listingCtaType').value;
   try {
-    await pu('/biz/' + _selectedBizId + '/meta', { cta_type: val === 'none' ? null : val });
+    // B131: this used to PUT /biz/:id/meta — a route that never existed, so saving the
+    // listing's CTA 404'd every time. The owner-scoped route below upserts
+    // business_meta.meta_data->'cta_type' (same shape the supplier portal uses).
+    await pu('/portal/business/' + _selectedBizId + '/meta', { cta_type: val || 'none' });
     document.getElementById('ctaSaveResult').textContent = '✅ Saved';
     setTimeout(function(){ document.getElementById('ctaSaveResult').textContent = ''; }, 2000);
   } catch(e) {
@@ -2073,12 +2076,15 @@ async function loadAdEarnings() {
 var _origRenderBusinesses = renderBusinesses;
 renderBusinesses = function(biz) {
   _origRenderBusinesses(biz);
-  // Select first business for ads
+  // B131: rows here are /portal/business/profile rows, i.e. {business, claim, subscription}.
+  // `biz[0].id` is always undefined for that shape, so this line used to CLOBBER the id
+  // setMyBiz had just resolved back to undefined — which silently disabled every control
+  // keyed on _selectedBizId (ads submit/earnings, deals, and the listing CTA save).
   if (Array.isArray(biz) && biz.length) {
-    _selectedBizId = biz[0].id;
+    var firstBiz = biz[0].business || {};
+    if (firstBiz.id) _selectedBizId = firstBiz.id;
     document.getElementById('adSubmissionForm').style.display = 'none';
-    loadMyAds();
-    loadAdEarnings();
+    if (_selectedBizId) { loadMyAds(); loadAdEarnings(); }
   }
 };
 

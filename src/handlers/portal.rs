@@ -1037,3 +1037,84 @@ pub async fn update_directory_features(
         "zaarhub_config": zaarhub_config,
     })))
 }
+
+// ── Business owner: listing meta (card B131) ────────────────────────────────
+// The business portal's "Call to action" control (business-portal.html saveCtaType) used to
+// PUT /api/v1/biz/:id/meta, a route that has never existed — every save 404'd (the `/biz/`
+// prefix is a PAGE route, not an API one). This is the owner-scoped replacement: it verifies
+// the caller owns the business outright or holds an active claim, then upserts
+// business_meta.meta_data->'cta_type' exactly like the supplier portal's /supplier/profile.
+#[derive(Debug, Deserialize)]
+pub struct UpdateBusinessMetaRequest {
+    pub cta_type: Option<String>,
+}
+
+pub async fn update_business_meta(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(business_id): Path<Uuid>,
+    Json(req): Json<UpdateBusinessMetaRequest>,
+) -> ApiResult<impl IntoResponse> {
+    if let Some(ref cta) = req.cta_type {
+        let cta = cta.trim();
+        if !cta.is_empty() && !crate::utils::is_valid_cta_type(cta) {
+            return Err(AppError::BadRequest(format!(
+                "Invalid CTA type '{}'. Must be one of: {}",
+                cta,
+                crate::utils::VALID_CTA_TYPES.join(", ")
+            )));
+        }
+    }
+
+    let exists: Option<Uuid> = sqlx::query_scalar("SELECT id FROM businesses WHERE id = $1")
+        .bind(business_id)
+        .fetch_optional(&s.db)
+        .await?;
+    if exists.is_none() {
+        return Err(AppError::NotFound("Business not found".to_string()));
+    }
+
+    let uid = Uuid::parse_str(&claims.sub)
+        .map_err(|_| AppError::Forbidden("Sign in to edit a listing".to_string()))?;
+
+    // Ownership: the caller owns the business outright, or holds an active claim on it.
+    let owns: i64 = sqlx::query_scalar(
+        r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
+                + (SELECT COUNT(*) FROM claimed_businesses
+                    WHERE business_id = $1 AND is_active
+                      AND (visitor_account_id = $2 OR user_id = $2))"#,
+    )
+    .bind(business_id)
+    .bind(uid)
+    .fetch_one(&s.db)
+    .await?;
+
+    let is_admin = claims.role == "admin" || claims.role == "super_admin";
+    if owns == 0 && !is_admin {
+        return Err(AppError::Forbidden(
+            "You can only edit a business you own or have claimed.".to_string(),
+        ));
+    }
+
+    if let Some(ref cta) = req.cta_type {
+        let trimmed = cta.trim();
+        let value = if trimmed.is_empty() { "none" } else { trimmed };
+        let meta_patch = json!({ "cta_type": value });
+        sqlx::query(
+            r#"INSERT INTO business_meta (business_id, template, meta_data)
+               VALUES ($1, $2, $3::jsonb)
+               ON CONFLICT (business_id, template)
+               DO UPDATE SET meta_data = business_meta.meta_data || $3::jsonb,
+                             updated_at = NOW()"#,
+        )
+        .bind(business_id)
+        .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
+        .bind(&meta_patch)
+        .execute(&s.db)
+        .await?;
+    }
+
+    Ok(Json(
+        json!({ "status": "updated", "cta_type": req.cta_type }),
+    ))
+}

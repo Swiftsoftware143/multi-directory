@@ -1950,6 +1950,12 @@ pub fn create_router(s: AppState) -> Router {
             "/portal/business/dashboard",
             get(business_dashboard::business_dashboard),
         )
+        // Owner-scoped listing meta (card B131): the business portal's CTA control used to
+        // PUT a non-existent /biz/:id/meta and 404 on every save. Private (auth_guard below).
+        .route(
+            "/portal/business/:id/meta",
+            put(portal::update_business_meta),
+        )
         // Stripe Connect onboarding for payouts (card B143). The business owner connects a
         // Stripe account so the clearinghouse can reimburse THIS business, not just the
         // operator's network-level destination. Private (auth_guard below).
