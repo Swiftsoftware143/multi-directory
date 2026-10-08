@@ -22,6 +22,7 @@ use lettre::{
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::handlers::tenant_scope::{assert_directory_admin, assert_directory_admin_by_slug};
+use crate::security::provider_key_crypto::{decrypt_for_use, encrypt_for_storage};
 use crate::AppState;
 
 // ── Newsletter Queue ──
@@ -483,9 +484,13 @@ pub async fn upsert_email_settings(
 
     // Write-only password: the panel never receives it back (it reads `********`),
     // so a masked/blank value means "keep the stored secret".
+    //
+    // A supplied secret is encrypted at rest with the app's enc:v1 helper (the same path every
+    // other credential uses), under the process-only PROVIDER_KEY_ENC_SECRET. Fail-closed: if
+    // encryption is unconfigured this errors rather than storing the credential in the clear.
     let password = match req.smtp_password.as_str() {
         "" | MASKED_SECRET => None,
-        pw => Some(pw.to_string()),
+        pw => Some(encrypt_for_storage(&s.db, pw).await?),
     };
 
     let settings = sqlx::query_as::<_, DirectoryEmailSettings>(
@@ -921,7 +926,14 @@ pub async fn send_newsletter(
     };
     let from_addr = format!("{} <{}>", from_name_final, from_email_final);
 
-    let creds = Credentials::new(smtp.smtp_username.clone(), smtp.smtp_password.clone());
+    // The stored password is enc:v1 ciphertext at rest — decrypt it with the env-only master key
+    // before it is handed to the SMTP transport. A legacy plaintext row is read through unchanged;
+    // a value that cannot be decrypted degrades to an empty credential (the send then fails
+    // honestly) rather than putting ciphertext on the wire.
+    let smtp_password = decrypt_for_use(&s.db, &smtp.smtp_password, "smtp_email")
+        .await
+        .unwrap_or_default();
+    let creds = Credentials::new(smtp.smtp_username.clone(), smtp_password);
 
     let mailer = match smtp.smtp_encryption.as_str() {
         "ssl" => AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.smtp_host)
