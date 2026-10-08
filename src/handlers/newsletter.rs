@@ -168,6 +168,50 @@ async fn directory_id_for_slug(db: &sqlx::PgPool, slug: &str) -> Result<Uuid, Ap
         .ok_or_else(|| AppError::NotFound("directory not found".into()))
 }
 
+/// David's NETWORK MAIL RULE: one email config serves the WHOLE network. Resolve the directory
+/// whose saved Email/SMTP settings should carry mail for `dir_id`:
+///   * the directory's OWN row when it has one (a city may still override the network);
+///   * otherwise the network's PRIMARY city when it has a row;
+///   * otherwise the network's most recently updated configured city;
+///   * otherwise `dir_id` itself, so an unconfigured standalone directory still fails honestly
+///     instead of silently borrowing a stranger's mailbox.
+pub async fn effective_mail_directory(db: &sqlx::PgPool, dir_id: Uuid) -> Result<Uuid, AppError> {
+    let own: Option<Uuid> = sqlx::query_scalar(
+        "SELECT directory_id FROM directory_email_settings WHERE directory_id = $1",
+    )
+    .bind(dir_id)
+    .fetch_optional(db)
+    .await?;
+    if let Some(id) = own {
+        return Ok(id);
+    }
+
+    let network_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT network_id FROM directories WHERE id = $1")
+            .bind(dir_id)
+            .fetch_optional(db)
+            .await?
+            .flatten();
+
+    if let Some(network_id) = network_id {
+        let inherited: Option<Uuid> = sqlx::query_scalar(
+            "SELECT des.directory_id FROM directories d \
+             JOIN directory_email_settings des ON des.directory_id = d.id \
+             WHERE d.network_id = $1 \
+             ORDER BY d.is_primary DESC, des.updated_at DESC NULLS LAST \
+             LIMIT 1",
+        )
+        .bind(network_id)
+        .fetch_optional(db)
+        .await?;
+        if let Some(id) = inherited {
+            return Ok(id);
+        }
+    }
+
+    Ok(dir_id)
+}
+
 /// Round 6 (U3) — POST /directories/:slug/email-settings/test
 /// Proxies the email service's `/verify`: a REAL transport credential check (SMTP
 /// login / API credential call). The service's own JSON is returned verbatim so the
@@ -217,9 +261,12 @@ pub async fn send_test_email(
     if req.to.trim().is_empty() {
         return Err(AppError::BadRequest("to is required".into()));
     }
+    // NETWORK MAIL RULE: send through the config that actually carries this city's mail — its own
+    // if it has one, otherwise its network's — so a test from any city proves the real transport.
+    let mail_dir = effective_mail_directory(&s.db, dir_id).await?;
     let url = format!("{}/send-email", email_service_url());
     let body = serde_json::json!({
-        "directory_id": dir_id,
+        "directory_id": mail_dir,
         "to": req.to.trim(),
         "subject": "Test email — your directory email settings work",
         "html": "<p>This is a test message sent from the Multi-Directory admin panel.</p>\
@@ -434,19 +481,54 @@ pub async fn get_email_settings(
         // admin-panel load (the browser logs any non-2xx response regardless of what the JS fetch
         // handler does with it), which trains operators to ignore the console — exactly how a real
         // error gets missed. 200 + {"configured": false} carries the same information, quietly.
-        None => Ok(Json(serde_json::json!({
-            "configured": false,
-            "transport": null,
-            "smtp_host": null,
-            "smtp_port": null,
-            "smtp_username": null,
-            "smtp_password": null,
-            "smtp_encryption": null,
-            "from_name": null,
-            "from_email": null,
-            "reply_to": null,
-        }))
-        .into_response()),
+        //
+        // NETWORK MAIL RULE: before answering "not configured", check whether this city inherits a
+        // config from its network (a network is ONE mail identity — David configures it once and
+        // every city uses it). If so, return that config, flagged `own:false` +
+        // `inherited_from:<primary city slug>` so the panel can say so out loud.
+        None => {
+            let effective = effective_mail_directory(&s.db, dir.0).await?;
+            if effective != dir.0 {
+                if let Some(inh) = sqlx::query_as::<_, DirectoryEmailSettings>(
+                    "SELECT * FROM directory_email_settings WHERE directory_id = $1",
+                )
+                .bind(effective)
+                .fetch_optional(&s.db)
+                .await?
+                {
+                    let from_slug: Option<String> =
+                        sqlx::query_scalar("SELECT slug FROM directories WHERE id = $1")
+                            .bind(effective)
+                            .fetch_optional(&s.db)
+                            .await?;
+                    let mut resp = serde_json::to_value(&inh).unwrap();
+                    if let Some(obj) = resp.as_object_mut() {
+                        obj.insert("smtp_password".into(), serde_json::json!("********"));
+                        obj.insert("configured".into(), serde_json::json!(true));
+                        obj.insert("own".into(), serde_json::json!(false));
+                        obj.insert(
+                            "inherited_from".into(),
+                            serde_json::json!(from_slug.unwrap_or_default()),
+                        );
+                    }
+                    return Ok(Json(resp).into_response());
+                }
+            }
+            Ok(Json(serde_json::json!({
+                "configured": false,
+                "own": true,
+                "transport": null,
+                "smtp_host": null,
+                "smtp_port": null,
+                "smtp_username": null,
+                "smtp_password": null,
+                "smtp_encryption": null,
+                "from_name": null,
+                "from_email": null,
+                "reply_to": null,
+            }))
+            .into_response())
+        }
     }
 }
 
@@ -892,13 +974,20 @@ pub async fn send_newsletter(
         return Err(AppError::BadRequest("newsletter already sent".into()));
     }
 
+    // NETWORK MAIL RULE: the city's own config wins; otherwise its network's carries the send, so a
+    // city never needs its own credentials once the network has them. The audience stays the city's.
+    let mail_dir = effective_mail_directory(&s.db, n.directory_id).await?;
     let smtp = sqlx::query_as::<_, DirectoryEmailSettings>(
         "SELECT * FROM directory_email_settings WHERE directory_id = $1",
     )
-    .bind(n.directory_id)
+    .bind(mail_dir)
     .fetch_optional(&s.db)
     .await?
-    .ok_or_else(|| AppError::BadRequest("no SMTP settings configured for this directory".into()))?;
+    .ok_or_else(|| {
+        AppError::BadRequest(
+            "no email provider configured for this directory or its network — save one on the Email/SMTP card".into(),
+        )
+    })?;
 
     let subscribers = sqlx::query_as::<_, NewsletterSubscriber>(
         "SELECT * FROM newsletter_subscribers WHERE directory_id = $1 AND status = 'active'",

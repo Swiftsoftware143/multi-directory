@@ -3557,9 +3557,18 @@
           document.getElementById('em-smtp-encryption').value = s.smtp_encryption || 'tls';
           document.getElementById('em-smtp-password').value = '';
           var badge = document.getElementById('em-saved-badge');
-          badge.textContent = '✓ Saved (transport: ' + (s.transport || 'smtp') + ')';
-          badge.classList.add('show');
-          emStatus(slug + ': settings loaded — password is stored and never returned', true);
+          if (s.own === false && s.inherited_from) {
+            // Network mail rule: one config serves the whole network. Say so out loud instead of
+            // showing the network's values as if the city had saved its own.
+            badge.textContent = '↳ Inherited from ' + s.inherited_from;
+            badge.classList.add('show');
+            emStatus(slug + ': uses the network email settings saved on ' + s.inherited_from +
+                     ' — fill and Save here only to give this city its own', true);
+          } else {
+            badge.textContent = '✓ Saved (transport: ' + (s.transport || 'smtp') + ')';
+            badge.classList.add('show');
+            emStatus(slug + ': settings loaded — password is stored and never returned', true);
+          }
         })
         .catch(function (e) {
           // A real failure (network, auth, 5xx) still lands here — show it, don't hide it.
