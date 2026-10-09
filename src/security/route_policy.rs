@@ -219,6 +219,11 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/health", "health"),
     // --- /homepage ---------------------------------------------------
     ("GET", "/homepage/config", "homepage-config"),
+    // --- /indexnow-key.txt -------------------------------------------
+    // B142 — the IndexNow ownership key file, served at the host ROOT (IndexNow
+    // refuses a nested keyLocation). Fetched unauthenticated by the engine; returns
+    // 404 when no key is set, so it can expose nothing but the public key.
+    ("GET", "/indexnow-key.txt", "indexnow-key"),
     // --- /l ----------------------------------------------------------
     ("GET", "/l/:short_code", "outer-ssr"),
     // --- /lead-exchange ----------------------------------------------
@@ -304,10 +309,6 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/scraper/providers", "scraper-providers"),
     // --- /search -----------------------------------------------------
     ("GET", "/search", "listings"),
-    // --- /seo --------------------------------------------------------
-    // B142 — the IndexNow ownership key file. IndexNow fetches it unauthenticated;
-    // it returns 404 when no key is configured, so it can expose nothing.
-    ("GET", "/seo/indexnow-key.txt", "indexnow-key"),
     // --- /sitemap.xml ------------------------------------------------
     ("GET", "/sitemap.xml", "outer-ssr"),
     // --- /spotlight --------------------------------------------------
@@ -711,8 +712,9 @@ mod tests {
                 r.1
             );
         }
-        // The count is the measured census result minus the 13 narrowed legs, plus
-        // the B142 IndexNow key file; if this changes, the census wants a look.
+        // The count is the measured census result minus the 13 narrowed legs, plus the
+        // B142 IndexNow key file (a public root path); if this changes, the census wants
+        // a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
             159,

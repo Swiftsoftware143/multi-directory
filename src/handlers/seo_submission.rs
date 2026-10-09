@@ -16,8 +16,8 @@
 //!     ("Sitemaps ping is deprecated") and Bing answers 410 Gone. The live
 //!     replacement is IndexNow: when `indexnow_key` is set the run POSTs the
 //!     sitemap's URLs to `https://api.indexnow.org/indexnow` with the key, and
-//!     the key is served back from `/api/v1/seo/indexnow-key.txt` on the same
-//!     host so the engine can verify ownership.
+//!     the key is served back from `/indexnow-key.txt` at the host ROOT so the
+//!     engine can verify ownership (IndexNow refuses a nested keyLocation path).
 //!   * a background task checks every 5 minutes for a due global row and runs it;
 //!     the same run is available on demand (`POST /seo/run-submission`) and each
 //!     target hit is written to `seo_submission_log` (status + ok + detail) so the
@@ -202,7 +202,7 @@ async fn submit_indexnow(
     let body = json!({
         "host": host,
         "key": key,
-        "keyLocation": format!("{origin}/api/v1/seo/indexnow-key.txt"),
+        "keyLocation": format!("{origin}/indexnow-key.txt"),
         "urlList": locs,
     });
 
@@ -504,9 +504,10 @@ pub async fn run_now(
     Ok(Json(outcome))
 }
 
-/// GET /api/v1/seo/indexnow-key.txt — PUBLIC (no credential). IndexNow re-fetches
-/// this to verify ownership before it trusts a submission. 404 when no key is
-/// configured, so an unset platform never serves a stray file.
+/// GET /indexnow-key.txt — PUBLIC (no credential), served at the host ROOT.
+/// IndexNow re-fetches this to verify ownership before it trusts a submission and
+/// refuses a nested keyLocation path (HTTP 422), so it must live at `/`. 404 when
+/// no key is configured, so an unset platform never serves a stray file.
 pub async fn indexnow_key_file(State(s): State<AppState>) -> impl IntoResponse {
     let key = sqlx::query_scalar::<_, Option<String>>(
         "SELECT indexnow_key FROM seo_submission_settings \

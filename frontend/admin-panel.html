@@ -2079,7 +2079,7 @@
         </div>
         <label class="feature-subtitle">Sitemap URL (blank = <code>https://&lt;base-domain&gt;/sitemap.xml</code>)</label>
         <input class="input" id="sub-sitemap" style="width:100%;margin:6px 0 12px" placeholder="(default)">
-        <label class="feature-subtitle">IndexNow key — the live path for Bing/Yandex/Seznam/Naver. Google and Bing <b>retired</b> the old <code>?sitemap=</code> ping (Google answers 404, Bing 410), so this is how engines are told today. Blank = off. The key is served back at <code>/api/v1/seo/indexnow-key.txt</code> so the engine can verify ownership.</label>
+        <label class="feature-subtitle">IndexNow key — the live path for Bing/Yandex/Seznam/Naver. Google and Bing <b>retired</b> the old <code>?sitemap=</code> ping (Google answers 404, Bing 410), so this is how engines are told today. Blank = off. The key is served back at <code>/indexnow-key.txt</code> (host root) so the engine can verify ownership.</label>
         <input class="input" id="sub-indexnow-key" style="width:100%;margin:6px 0 12px" placeholder="e.g. 32–128 hex characters">
         <div class="feature-subtitle" style="margin-bottom:4px">Targets</div>
         <div id="sub-targets"></div>

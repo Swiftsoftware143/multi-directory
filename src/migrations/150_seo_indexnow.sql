@@ -14,7 +14,8 @@
 -- This adds the one platform-level knob that requires: an admin-editable key.
 -- An empty/NULL key disables the IndexNow leg (the generic GET targets in
 -- ping_targets remain, so nothing is hardwired). The key file is served by the
--- app itself at /api/v1/seo/indexnow-key.txt (public, no credential).
+-- app itself at /indexnow-key.txt (host ROOT, public, no credential) — IndexNow
+-- refuses a nested keyLocation path with HTTP 422, so it must live at /.
 --
 -- Idempotent so re-applying is a no-op.
 -- ---------------------------------------------------------------------------

@@ -674,12 +674,6 @@ pub fn create_router(s: AppState) -> Router {
             get(seo_submission::get_settings).put(seo_submission::update_settings),
         )
         .route("/seo/run-submission", post(seo_submission::run_now))
-        // B142 — the IndexNow key file. IndexNow re-fetches this (public, no
-        // credential) on the submitted host before it trusts the urls.
-        .route(
-            "/seo/indexnow-key.txt",
-            get(seo_submission::indexnow_key_file),
-        )
         .route("/sitemap.xml", get(seo::generate_sitemap))
         .route("/robots.txt", get(seo::get_robots_txt))
         // Subfolder routing clash report — directories whose slug shadows a
@@ -2534,6 +2528,11 @@ pub fn create_router(s: AppState) -> Router {
         // name on purpose — the static copies are single-URL placeholders.
         .route("/sitemap.xml", get(subfolder::sitemap_handler))
         .route("/robots.txt", get(subfolder::robots_handler))
+        // B142 — the IndexNow ownership key file. IndexNow only accepts a keyLocation at
+        // the HOST ROOT (a nested path such as /api/v1/... is refused with HTTP 422), and
+        // it re-fetches this PUBLIC url before it trusts a submission. 404 when unset, so
+        // an unconfigured platform serves nothing.
+        .route("/indexnow-key.txt", get(seo_submission::indexnow_key_file))
         // Uploaded media (kanban t_63ffc2de): a stable, publicly fetchable url for an image
         // uploaded through POST /api/v1/admin/media/upload. MUST be a real route (the SPA
         // fallback used to swallow /uploads/* and every stored asset url was dead).
