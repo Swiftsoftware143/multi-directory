@@ -1025,7 +1025,8 @@ pub async fn clearing_logs(
         .and_then(|l| l.parse().ok())
         .unwrap_or(50);
 
-    let issued: Vec<(Uuid, i32, i32, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+    let issued: Vec<(Option<Uuid>, i32, i32, Option<String>, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as(
         "SELECT member_id, points_issued, total_billed_cents, business_name, created_at FROM point_issuance_log WHERE network_id = $1 ORDER BY created_at DESC LIMIT $2",
     )
     .bind(network_id)
@@ -1034,7 +1035,8 @@ pub async fn clearing_logs(
     .await
     .map_err(|e| AppError::Database(e))?;
 
-    let redeemed: Vec<(Uuid, i32, i32, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+    let redeemed: Vec<(Option<Uuid>, i32, i32, Option<String>, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as(
         "SELECT member_id, points_redeemed, total_reimbursement_cents, business_name, created_at FROM point_redemption_log WHERE network_id = $1 ORDER BY created_at DESC LIMIT $2",
     )
     .bind(network_id)
