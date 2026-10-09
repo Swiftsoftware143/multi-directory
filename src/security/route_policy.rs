@@ -304,6 +304,10 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/scraper/providers", "scraper-providers"),
     // --- /search -----------------------------------------------------
     ("GET", "/search", "listings"),
+    // --- /seo --------------------------------------------------------
+    // B142 — the IndexNow ownership key file. IndexNow fetches it unauthenticated;
+    // it returns 404 when no key is configured, so it can expose nothing.
+    ("GET", "/seo/indexnow-key.txt", "indexnow-key"),
     // --- /sitemap.xml ------------------------------------------------
     ("GET", "/sitemap.xml", "outer-ssr"),
     // --- /spotlight --------------------------------------------------
@@ -707,12 +711,12 @@ mod tests {
                 r.1
             );
         }
-        // The count is the measured census result minus the 13 narrowed legs; if this changes,
-        // the census has changed and the change wants a look.
+        // The count is the measured census result minus the 13 narrowed legs, plus
+        // the B142 IndexNow key file; if this changes, the census wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            158,
-            "allowlist size moved off the measured 158"
+            159,
+            "allowlist size moved off the measured 158 (+1 IndexNow key file)"
         );
     }
 }

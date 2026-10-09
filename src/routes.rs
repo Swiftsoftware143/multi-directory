@@ -674,6 +674,12 @@ pub fn create_router(s: AppState) -> Router {
             get(seo_submission::get_settings).put(seo_submission::update_settings),
         )
         .route("/seo/run-submission", post(seo_submission::run_now))
+        // B142 — the IndexNow key file. IndexNow re-fetches this (public, no
+        // credential) on the submitted host before it trusts the urls.
+        .route(
+            "/seo/indexnow-key.txt",
+            get(seo_submission::indexnow_key_file),
+        )
         .route("/sitemap.xml", get(seo::generate_sitemap))
         .route("/robots.txt", get(seo::get_robots_txt))
         // Subfolder routing clash report — directories whose slug shadows a

@@ -2068,7 +2068,7 @@
            scheduler in main.rs drives the same pass on its own cadence. -->
       <div class="feature-card" id="seo-submit-section">
         <h3>🔎 Search-engine submission</h3>
-        <p class="feature-subtitle">Tell search engines the sitemap changed — on a schedule or on demand. <code>{sitemap}</code> in a target URL is replaced with the sitemap address (URL-encoded); <code>{sitemap_raw}</code> inserts it unencoded. Nothing is sent until you tick <b>Enabled</b> and Save. Add any endpoint — Google, Bing, or an IndexNow consumer.</p>
+        <p class="feature-subtitle">Tell search engines the sitemap changed — on a schedule or on demand. <code>{sitemap}</code> in a target URL is replaced with the sitemap address (URL-encoded); <code>{sitemap_raw}</code> inserts it unencoded. Nothing is sent until you tick <b>Enabled</b> and Save.</p>
         <div class="pk-controls" style="margin-bottom:10px">
           <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="sub-enabled"> Enabled</label>
           <label style="display:inline-flex;align-items:center;gap:6px">Every <input class="input" id="sub-cadence" type="number" min="1" value="24" style="width:80px"> hours</label>
@@ -2079,6 +2079,8 @@
         </div>
         <label class="feature-subtitle">Sitemap URL (blank = <code>https://&lt;base-domain&gt;/sitemap.xml</code>)</label>
         <input class="input" id="sub-sitemap" style="width:100%;margin:6px 0 12px" placeholder="(default)">
+        <label class="feature-subtitle">IndexNow key — the live path for Bing/Yandex/Seznam/Naver. Google and Bing <b>retired</b> the old <code>?sitemap=</code> ping (Google answers 404, Bing 410), so this is how engines are told today. Blank = off. The key is served back at <code>/api/v1/seo/indexnow-key.txt</code> so the engine can verify ownership.</label>
+        <input class="input" id="sub-indexnow-key" style="width:100%;margin:6px 0 12px" placeholder="e.g. 32–128 hex characters">
         <div class="feature-subtitle" style="margin-bottom:4px">Targets</div>
         <div id="sub-targets"></div>
         <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subAddTarget()">+ Add target</button>
@@ -8723,6 +8725,7 @@
           document.getElementById('sub-enabled').checked = !!st.is_enabled;
           document.getElementById('sub-cadence').value = st.cadence_hours || 24;
           document.getElementById('sub-sitemap').value = st.sitemap_url || '';
+          document.getElementById('sub-indexnow-key').value = st.indexnow_key || '';
           subRenderTargets();
           subRenderRecent((res && res.recent) || [], (res && res.resolved_sitemap_url) || '');
           var last = st.last_run_at ? String(st.last_run_at).replace('T', ' ').slice(0, 19) : 'never';
@@ -8738,6 +8741,7 @@
         is_enabled: !!document.getElementById('sub-enabled').checked,
         cadence_hours: cadence,
         sitemap_url: (document.getElementById('sub-sitemap').value || '').trim() || null,
+        indexnow_key: (document.getElementById('sub-indexnow-key').value || '').trim(),
         ping_targets: subReadTargets()
       };
       r8Status('sub-status', 'Saving…', false);
