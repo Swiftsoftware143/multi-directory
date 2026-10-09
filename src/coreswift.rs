@@ -2371,13 +2371,15 @@ pub async fn probe_conn(conn: &CoreSwiftConn) -> Result<Value, String> {
             Ok(lists) => json!({
                 "ok": true,
                 "transport": "personal-key",
+                "tenant_verified": true,
                 "base_url": base,
                 "lists": lists.get("lists").and_then(|l| l.as_array()).map(|a| a.len()).unwrap_or(0),
-                "detail": "CoreSwift accepted the personal key.",
+                "detail": "CoreSwift accepted the personal key — the tenant was verified.",
             }),
             Err(e) => json!({
                 "ok": false,
                 "transport": "personal-key",
+                "tenant_verified": false,
                 "base_url": base,
                 "detail": e,
             }),
@@ -2393,13 +2395,18 @@ pub async fn probe_conn(conn: &CoreSwiftConn) -> Result<Value, String> {
         .map_err(|e| format!("CoreSwift probe failed: {e}"))?;
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
+    // The internal endpoint validates the FLEET KEY, not the tenant: it answers `{"tags":[]}` for
+    // ANY well-formed tenant_id (measured 2026-10-08 — three random uuids all returned 200). So a 2xx
+    // here proves the hub is reachable and the key is accepted, and NOTHING about the tenant. Say so,
+    // rather than reporting a connection the CRM would reject on the next push.
     Ok(json!({
         "ok": status.is_success(),
         "transport": "internal",
+        "tenant_verified": false,
         "base_url": base,
         "status": status.as_u16(),
         "detail": if status.is_success() {
-            "CoreSwift answered for this tenant; the fleet internal key is accepted.".to_string()
+            "CoreSwift hub reachable and the fleet internal key is accepted; the tenant id was NOT verified (only a personal csk_ key verifies a tenant).".to_string()
         } else {
             text.chars().take(300).collect::<String>()
         },

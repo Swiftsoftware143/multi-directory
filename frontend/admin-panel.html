@@ -1905,9 +1905,11 @@
         <p class="feature-subtitle">
           Link the CoreSwift account that receives this directory's data. <b>Every network and every
           directory links its own</b> — a city inherits its network's connection unless it is linked
-          here itself. The link is <b>probed before it is saved</b>, so the panel can never report
-          “connected” for a tenant CoreSwift will reject. Credentials are stored encrypted against
-          the scope row: nothing is server-wide and nothing is hardcoded.
+          here itself. The link is <b>probed before it is saved</b>: with a personal
+          <code>csk_</code> key CoreSwift verifies the tenant itself, and with only the fleet
+          internal key the panel confirms the hub is reachable and says plainly that the tenant id
+          was <b>not</b> verified. Credentials are stored encrypted against the scope row: nothing is
+          server-wide and nothing is hardcoded.
         </p>
         <div class="em-grid">
           <div class="em-field"><label>Scope</label>
@@ -10924,8 +10926,12 @@
         lists: lists
       };
       csConnMsg('Probing CoreSwift before saving…', true);
-      apiPost('/integrations/coreswift/connection', body).then(function () {
-        csConnMsg('Connected — CoreSwift accepted the link.', true); window.__csConnLoad();
+      apiPost('/integrations/coreswift/connection', body).then(function (r) {
+        var verified = !!(r && r.probe && r.probe.tenant_verified);
+        csConnMsg(verified
+          ? 'Connected — CoreSwift accepted the tenant.'
+          : 'Saved — the CoreSwift hub is reachable, but the tenant id could NOT be verified. Add a personal csk_ key to verify it.', verified);
+        window.__csConnLoad();
       }).catch(function (e) { csConnMsg('Refused: ' + e.message, false); });
     };
 

@@ -342,8 +342,10 @@ pub async fn coreswift_connection_get(
 
 /// POST /api/v1/integrations/coreswift/connection — connect or update a link.
 ///
-/// The connection is PROBED against the hub before it is stored, so the panel can never
-/// report "connected" for a tenant the CRM will reject on the next push.
+/// The connection is PROBED against the hub before it is stored. A personal `csk_` key makes the
+/// hub verify the TENANT (`probe.tenant_verified == true`); with only the fleet internal key the
+/// probe confirms the hub is reachable and reports `tenant_verified == false`, so the panel never
+/// claims a tenant was accepted when only reachability was checked.
 pub async fn coreswift_connection_save(
     State(s): State<AppState>,
     Json(req): Json<LinkSaveRequest>,
