@@ -15,6 +15,32 @@ use crate::error::{ApiResult, AppError};
 use crate::models::*;
 use crate::AppState;
 
+/// Normalise a network root domain to its bare form (`https://X/` -> `x`), or `None` when the
+/// value is blank. A non-blank value that is not a bare domain is a validation error.
+///
+/// Shared by the create/update editors and the dedicated `PUT /networks/:id/root-domain` endpoint
+/// so the panel cannot save a value the subdomain-mapping feature could never use (B136: the
+/// create form previously accepted `"not a domain"` while the dedicated endpoint rejected it).
+fn normalize_root_domain(raw: Option<String>) -> Result<Option<String>, AppError> {
+    let Some(raw) = raw else { return Ok(None) };
+    let root = raw
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+        .replace("https://", "")
+        .replace("http://", "");
+    let root = root.split('/').next().unwrap_or("").to_string();
+    if root.is_empty() {
+        return Ok(None);
+    }
+    if !root.contains('.') || root.contains(' ') {
+        return Err(AppError::Validation(
+            "Enter a bare domain, e.g. zaarhub.com".into(),
+        ));
+    }
+    Ok(Some(root))
+}
+
 /// GET /api/v1/networks
 pub async fn list_networks(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let networks = sqlx::query_as::<_, Network>("SELECT * FROM networks ORDER BY created_at DESC")
@@ -38,19 +64,8 @@ pub async fn set_root_domain(
     Path(id): Path<Uuid>,
     Json(req): Json<RootDomainRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let root = req
-        .root_domain
-        .trim()
-        .trim_end_matches('.')
-        .to_ascii_lowercase()
-        .replace("https://", "")
-        .replace("http://", "");
-    let root = root.split('/').next().unwrap_or("").to_string();
-    if root.is_empty() || !root.contains('.') || root.contains(' ') {
-        return Err(AppError::Validation(
-            "Enter a bare domain, e.g. zaarhub.com".into(),
-        ));
-    }
+    let root = normalize_root_domain(Some(req.root_domain))?
+        .ok_or_else(|| AppError::Validation("Enter a bare domain, e.g. zaarhub.com".into()))?;
 
     let network = sqlx::query_as::<_, Network>(
         "UPDATE networks SET root_domain = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
@@ -89,6 +104,8 @@ pub async fn create_network(
         ));
     }
 
+    let root_domain = normalize_root_domain(req.root_domain.clone())?;
+
     // Check slug uniqueness
     let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM networks WHERE slug = $1")
         .bind(&req.slug)
@@ -110,7 +127,7 @@ pub async fn create_network(
     .bind(&req.name)
     .bind(&req.slug)
     .bind(&req.description)
-    .bind(&req.root_domain)
+    .bind(&root_domain)
     .bind(&req.status.unwrap_or_else(|| "active".to_string()))
     .fetch_one(&s.db)
     .await?;
@@ -155,7 +172,10 @@ pub async fn update_network(
     let new_name = req.name.unwrap_or(existing.name.clone());
     let new_slug = req.slug.unwrap_or(existing.slug.clone());
     let new_description = req.description.or(existing.description);
-    let new_root_domain = req.root_domain.or(existing.root_domain);
+    let new_root_domain = match req.root_domain {
+        Some(raw) => normalize_root_domain(Some(raw))?,
+        None => existing.root_domain,
+    };
     let new_status = req.status.or(existing.status);
 
     if new_slug != existing.slug {
@@ -311,4 +331,37 @@ pub async fn update_network_branding(
     .await?;
 
     Ok(Json(json!(branding)))
+}
+
+#[cfg(test)]
+mod root_domain_tests {
+    use super::normalize_root_domain;
+
+    #[test]
+    fn bare_domain_is_kept() {
+        assert_eq!(
+            normalize_root_domain(Some("zaarhub.com".into())).unwrap(),
+            Some("zaarhub.com".to_string())
+        );
+    }
+
+    #[test]
+    fn scheme_path_and_trailing_dot_are_stripped() {
+        assert_eq!(
+            normalize_root_domain(Some("https://ZaarHub.com/".into())).unwrap(),
+            Some("zaarhub.com".to_string())
+        );
+    }
+
+    #[test]
+    fn blank_becomes_none() {
+        assert_eq!(normalize_root_domain(Some("   ".into())).unwrap(), None);
+        assert_eq!(normalize_root_domain(None).unwrap(), None);
+    }
+
+    #[test]
+    fn junk_is_rejected() {
+        assert!(normalize_root_domain(Some("not a domain".into())).is_err());
+        assert!(normalize_root_domain(Some("localhost".into())).is_err());
+    }
 }
