@@ -17,7 +17,7 @@
 //! a 500.
 
 use crate::brand_theme::BrandTheme;
-use axum::body::Body;
+use axum::body::{to_bytes, Body};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
 use sqlx::{PgPool, Row};
@@ -2795,7 +2795,7 @@ pub async fn try_render(
             return None;
         }
 
-        return match segs.as_slice() {
+        let resp = match segs.as_slice() {
             [_, "businesses"] => {
                 businesses_page(pool, host, proto, fallback_domain, slug, "").await
             }
@@ -2884,8 +2884,126 @@ pub async fn try_render(
             }
             _ => None,
         };
+        // Every server-rendered page of this directory gets the admin's head/body/footer code.
+        return apply_code_injection(pool, slug, resp).await;
     }
     None
+}
+
+/// ASCII-case-insensitive `find` that returns a byte offset valid for the ORIGINAL string (so a
+/// later `insert_str` lands correctly — `str::to_lowercase` can change byte length on non-ASCII).
+fn find_ci(hay: &str, needle: &str, from: usize) -> Option<usize> {
+    let hb = hay.as_bytes();
+    let nb = needle.as_bytes();
+    if nb.is_empty() || hb.len() < nb.len() {
+        return None;
+    }
+    let start = from.min(hb.len().saturating_sub(nb.len()));
+    (start..=hb.len() - nb.len()).find(|&i| hb[i..i + nb.len()].eq_ignore_ascii_case(nb))
+}
+
+/// ASCII-case-insensitive `rfind`, byte offsets valid for the original string.
+fn rfind_ci(hay: &str, needle: &str) -> Option<usize> {
+    let hb = hay.as_bytes();
+    let nb = needle.as_bytes();
+    if nb.is_empty() || hb.len() < nb.len() {
+        return None;
+    }
+    (0..=hb.len() - nb.len())
+        .rev()
+        .find(|&i| hb[i..i + nb.len()].eq_ignore_ascii_case(nb))
+}
+
+/// Byte offset just past the `<body …>` opening tag, or `None` when there is no body tag.
+fn body_open_end(hay: &str) -> Option<usize> {
+    let start = find_ci(hay, "<body", 0)?;
+    let gt = hay[start..].find('>')?;
+    Some(start + gt + 1)
+}
+
+/// Insert the directory's admin-authored head/body/footer code into a rendered page.
+///
+/// The portal's SEO screen offers "Custom Header HTML (head)", "Custom Body HTML (after <body>)"
+/// and "Custom Footer HTML (before </body>)" per directory (saved via PUT /directories/:slug) and
+/// promises the code lands on that directory's pages. The fields were stored and editable, but no
+/// server-rendered page ever emitted them — only the rarely-reached `/d/<slug>/blog` renderer read
+/// them — so the feature was dead. Applied here, in the shared SSR dispatcher, it reaches every page
+/// of the directory (home, businesses list/detail, blog list/post, articles, deals, programmatic).
+///
+/// The code is inserted VERBATIM (no sanitisation): this feature IS code injection by design — the
+/// UI's own placeholder is a `<script type="application/ld+json">` — and only an authenticated admin
+/// of the directory can set these fields. When nothing is configured the body is not even buffered.
+async fn apply_code_injection(
+    pool: &PgPool,
+    slug: &str,
+    resp: Option<Response<Body>>,
+) -> Option<Response<Body>> {
+    let resp = resp?;
+
+    let is_html = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("text/html"))
+        .unwrap_or(false);
+    if !is_html {
+        return Some(resp);
+    }
+
+    let row = sqlx::query(
+        "SELECT head_injection, body_injection, footer_injection FROM directories WHERE slug = $1",
+    )
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()?;
+
+    let head = row
+        .try_get::<Option<String>, _>("head_injection")
+        .ok()
+        .flatten()
+        .filter(|v| !v.trim().is_empty());
+    let body = row
+        .try_get::<Option<String>, _>("body_injection")
+        .ok()
+        .flatten()
+        .filter(|v| !v.trim().is_empty());
+    let footer = row
+        .try_get::<Option<String>, _>("footer_injection")
+        .ok()
+        .flatten()
+        .filter(|v| !v.trim().is_empty());
+    if head.is_none() && body.is_none() && footer.is_none() {
+        return Some(resp); // nothing configured — do not even buffer the body
+    }
+
+    let (mut parts, stream) = resp.into_parts();
+    let bytes = match to_bytes(stream, 4 * 1024 * 1024).await {
+        Ok(b) => b,
+        // Could not buffer — hand the page back rather than break it.
+        Err(_) => return None,
+    };
+    let mut html = String::from_utf8_lossy(&bytes).to_string();
+
+    if let Some(h) = head.as_deref() {
+        if let Some(pos) = find_ci(&html, "</head>", 0) {
+            html.insert_str(pos, &format!("\n{h}\n"));
+        }
+    }
+    if let Some(b) = body.as_deref() {
+        if let Some(pos) = body_open_end(&html) {
+            html.insert_str(pos, &format!("\n{b}\n"));
+        }
+    }
+    if let Some(f) = footer.as_deref() {
+        if let Some(pos) = rfind_ci(&html, "</body>") {
+            html.insert_str(pos, &format!("\n{f}\n"));
+        }
+    }
+
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Some(Response::from_parts(parts, Body::from(html)))
 }
 
 /// Same dispatcher but with the raw query string (so `/<slug>/businesses?page=2`
@@ -2915,7 +3033,10 @@ pub async fn try_render_with_query(
     }
     match segs.as_slice() {
         [_, "businesses"] => {
-            businesses_page(pool, host, proto, fallback_domain, segs[0], query).await
+            let resp = businesses_page(pool, host, proto, fallback_domain, segs[0], query).await;
+            // The `_` arm delegates to try_render, which applies the injection itself; this arm
+            // renders directly, so the code injection is applied here.
+            apply_code_injection(pool, segs[0], resp).await
         }
         _ => try_render(pool, host, proto, fallback_domain, path, spa_html).await,
     }
