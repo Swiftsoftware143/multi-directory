@@ -231,7 +231,7 @@ body{
     <h2 id="successTitle">Success!</h2>
     <div class="member-name" id="successMemberName"></div>
     <div class="member-tier" id="successMemberTier"></div>
-    <div class="points-badge"><span class="pts" id="successPoints">+0</span><span id="successPointsLabel">points</span></div>
+    <div class="points-badge"><span class="pts" id="successPoints">+0</span><span id="successPointsLabel">ZaarCash</span></div>
     <div class="success-details" id="successDetails"></div>
     <button class="btn btn-primary" onclick="closeSuccess()">Scan Next Customer</button>
   </div>
@@ -432,7 +432,7 @@ function handleQRCode(qrData) {
   _lastScannedQR = qrData;
   _scanLocked = true;
   $('scannerGuide').classList.add('found');
-  $('scannerStatus').textContent = '✅ QR scanned! ' + (_scanType==='checkin'?'Ready to check in.':(_scanType==='redemption'?'Enter points to redeem.':'Enter purchase amount.'));
+  $('scannerStatus').textContent = '✅ QR scanned! ' + (_scanType==='checkin'?'Ready to check in.':(_scanType==='redemption'?'Enter the amount to redeem.':'Enter purchase amount.'));
 
   // Store QR data for submission
   $('txCard').dataset.qrCode = qrData;
@@ -523,7 +523,7 @@ function showSuccess(d) {
   $('successMemberTier').textContent = tierLabel + ' ⭐ Member';
   $('successMemberTier').className = 'member-tier '+tierClass;
   $('successPoints').textContent = (points>=0?'+':'')+points;
-  $('successPointsLabel').textContent = 'points '+actionLabel;
+  $('successPointsLabel').textContent = (d.currency_name||'ZaarCash')+' '+actionLabel;
   $('successDetails').textContent = d.message||d.summary||'';
 
   $('successOverlay').classList.add('show');

@@ -599,7 +599,7 @@ async function loadWallet() {
   }
   var wallets = (data && data.wallet) || [];
   var sum = $('walletSummary');
-  if (sum) sum.textContent = wallets.length ? ('⭐ ' + (data.total_points || 0) + ' points total') : '';
+  if (sum) sum.textContent = wallets.length ? ('⭐ ' + (data.total_points || 0) + ' ' + ((wallets[0] && wallets[0].currency_name) || 'ZaarCash') + ' total') : '';
   if (!wallets.length) return;
 
   var html = '<div class="card-grid">';
