@@ -224,10 +224,14 @@ pub async fn test_email_settings(
     let dir_id = directory_id_for_slug(&s.db, &slug).await?;
     // Round 13 IDOR audit: credential test targets the directory's own settings.
     assert_directory_admin(&s.db, &claims, dir_id).await?;
+    // NETWORK MAIL RULE: verify the config that actually carries this city's mail — its own if it
+    // has one, otherwise its network's — so the Verify button agrees with the card above it
+    // instead of calling an inheriting city "not configured" (t_*: network email serves all cities).
+    let mail_dir = effective_mail_directory(&s.db, dir_id).await?;
     let url = format!("{}/verify", email_service_url());
     let resp = reqwest::Client::new()
         .post(&url)
-        .json(&serde_json::json!({ "directory_id": dir_id }))
+        .json(&serde_json::json!({ "directory_id": mail_dir }))
         .send()
         .await;
     match resp {
