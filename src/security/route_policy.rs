@@ -718,12 +718,13 @@ mod tests {
             );
         }
         // The count is the measured census result minus the 13 narrowed legs, plus the
-        // B142 IndexNow key file (a public root path); if this changes, the census wants
-        // a look.
+        // B142 IndexNow key file (a public root path), plus the B187 api-key verify
+        // endpoint (POST /api-keys/verify, made callable); if this changes, the census
+        // wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            159,
-            "allowlist size moved off the measured 158 (+1 IndexNow key file)"
+            160,
+            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify)"
         );
     }
 }
