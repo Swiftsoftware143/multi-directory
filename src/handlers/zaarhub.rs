@@ -2063,6 +2063,10 @@ pub async fn get_business_detail(
         "review_count": biz.review_count,
         "category_name": category_name.clone(),
         "category": category_name,
+        // Exposed so the visitor tracker can tag demand events with the business's
+        // category (the demand dataset groups by category; without the id every row
+        // fell into "Uncategorized").
+        "category_id": biz.category_id,
         "is_claimed": is_claimed,
         "is_verified": biz.verified,
         "licensed": biz.licensed,

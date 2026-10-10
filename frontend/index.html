@@ -1126,6 +1126,8 @@ async function load(){
     // Hide splash right before rendering content
     var splash=document.getElementById('splash-load');
     if(splash&&!splash.classList.contains('hide')) splash.classList.add('hide');
+    // Reset per-view demand context; the city / business loaders set it again.
+    window.__biz_ctx=null;window.__dir_id=null
     renderShell()
     if(state.page==='home')await loadHomepage()
     else if(state.page==='city')await loadCityPage()
@@ -1915,6 +1917,8 @@ async function loadCityPage(){
     // Card B90 local feed: city-scoped multi-source activity (fail-silent).
     try{var act=await g('/zaarhub/activity?directory='+encodeURIComponent(slug));if(act&&act.length){d.activity_feed=act}}catch(_e){}
     var dirId=d.directory&&d.directory.id
+    // Every tracked event on a city page is attributed to that directory.
+    window.__dir_id=dirId||null;window.__biz_ctx=null
     state.loyalty=await loadLoyalty(dirId)
     renderCityPage(d)
     // Load ads for this city
@@ -3444,6 +3448,12 @@ async function loadBizPage(){
 
 function renderBizPage(d){
   var b=d;var bizId=b.id||state.bizId
+  // Demand attribution: while a business page is on screen the tracker tags every event
+  // with this business + its category + directory, and one explicit view is recorded now
+  // (the page's own load happened before this data arrived).
+  window.__biz_ctx={business_id:bizId,category_id:b.category_id||null,directory_id:b.directory_id||null}
+  if(b.directory_id)window.__dir_id=b.directory_id
+  try{if(window.zhTrack)window.zhTrack('business_view',b.name||'',{business_id:bizId,category_id:b.category_id||null,directory_id:b.directory_id||null})}catch(e){}
   var el=document.getElementById('zh-content')
   var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
   var phoneHref=b.phone?'tel:'+b.phone.replace(/[^\d+]/g,''):''
@@ -3708,7 +3718,7 @@ setTimeout(function(){
 route()
 </script>
 <!-- Visitor tracking beacon: writes visitor_sessions + visitor_events -->
-<script src="/tracking-beacon.js?v=2" defer></script>
+<script src="/tracking-beacon.js?v=3" defer></script>
 <!-- Shared newsletter signup handler (card B89): the footer form is inserted via
      innerHTML on every route, so bind by inline onsubmit to this global. -->
 <script>

@@ -91,18 +91,29 @@
     return (el && el.getAttribute('data-directory-id')) || null;
   }
 
+  // The SPA sets window.__biz_ctx while a business page is on screen, so every event
+  // (page view, click, phone/website click) carries the business and its category.
+  // Without this the demand dataset only ever held directory-less, category-less rows
+  // and every area read "unknown".
+  function bizCtx() {
+    return (window.__biz_ctx && typeof window.__biz_ctx === 'object') ? window.__biz_ctx : {};
+  }
+
   function event(type, value, extra) {
     var st = read();
     if (!st || !st.s) return;
     if (eventsSent >= MAX_EVENTS_PER_PAGE) return;
     eventsSent++;
+    var c = bizCtx();
     var payload = {
       session_id: st.s,
-      directory_id: st.dir || null,
+      directory_id: window.__dir_id || c.directory_id || st.dir || null,
       event_type: type,
       event_value: value || null,
       page_url: location.href
     };
+    if (c.business_id) payload.business_id = c.business_id;
+    if (c.category_id) payload.category_id = c.category_id;
     if (extra) {
       for (var k in extra) {
         if (Object.prototype.hasOwnProperty.call(extra, k)) payload[k] = extra[k];
@@ -110,6 +121,9 @@
     }
     send('/visitors/event', payload);
   }
+
+  // Public hook so the SPA can record an explicit, context-carrying event.
+  window.zhTrack = event;
 
   function startSession() {
     var params = new URLSearchParams(location.search);
