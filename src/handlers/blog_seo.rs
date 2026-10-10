@@ -5,6 +5,7 @@
 
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     response::IntoResponse,
 };
 use chrono::{DateTime, Utc};
@@ -12,6 +13,61 @@ use serde::Deserialize;
 
 use crate::error::ApiResult;
 use crate::AppState;
+
+/// Derive the public site origin and the directory's path prefix for feed links.
+///
+/// A directory that owns a mapped domain owns that domain's ROOT
+/// (`https://<domain>/blog/…`); otherwise it is served as a SUBFOLDER on the
+/// platform host (`<origin>/<dir-slug>/blog/…`) — the same scheme the public
+/// sitemap and `articles_feed` use. The old code always built
+/// `https://<dir-slug>.<base_domain>/…`; those per-directory subdomains have no
+/// DNS record and no nginx block, so every link these feeds emitted (items,
+/// channel link, atom self) was unreachable (measured 2026-10-10).
+/// `articles_feed.rs` was fixed the same way in commit c345805; this module
+/// (news-sitemap + blog RSS) was the last caller still emitting the dead form.
+async fn origin_and_prefix(
+    s: &AppState,
+    headers: &HeaderMap,
+    dir_id: uuid::Uuid,
+    dir_slug: &str,
+) -> ApiResult<(String, String)> {
+    let mapped: Option<String> = sqlx::query_scalar(
+        "SELECT domain FROM domain_mappings WHERE directory_id = $1 AND status = 'active' \
+         ORDER BY created_at LIMIT 1",
+    )
+    .bind(dir_id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
+    Ok(
+        match mapped.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+            Some(d) => (format!("https://{d}"), String::new()),
+            None => {
+                let (host, proto) = crate::handlers::subfolder::host_proto(headers);
+                let host = host.filter(|h| {
+                    !crate::handlers::seo_config::is_directory_subdomain(h, &s.config.base_domain)
+                });
+                let host = host.or_else(|| {
+                    let b = s.config.base_domain.trim().to_string();
+                    if b.is_empty() {
+                        None
+                    } else {
+                        Some(b)
+                    }
+                });
+                (
+                    crate::handlers::subfolder::origin(
+                        host.as_deref(),
+                        &proto,
+                        &s.config.base_domain,
+                    ),
+                    format!("/{}", dir_slug),
+                )
+            }
+        },
+    )
+}
 
 // ── News Sitemap Helpers ─────────────────────────────────────────────────────
 
@@ -30,6 +86,7 @@ struct NewsSitemapItem {
 pub async fn news_sitemap(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     // 1. Fetch directory
     #[derive(sqlx::FromRow)]
@@ -53,8 +110,8 @@ pub async fn news_sitemap(
     .await?
     .flatten();
 
-    // 2. Determine domain
-    let domain = format!("{}.{}", dir.slug, s.config.base_domain);
+    // 2. Determine the site origin and path prefix for links (see `origin_and_prefix`).
+    let (site, prefix) = origin_and_prefix(&s, &headers, dir.id, &dir.slug).await?;
 
     // 3. Fetch items published within the last 48 hours from both tables
     //    Google News sitemap requires content within the last 48 hours.
@@ -96,9 +153,9 @@ pub async fn news_sitemap(
 
     for item in &items {
         let link = format!(
-            "https://{domain}/api/v1/d/{slug}/blog/{post_slug}",
-            domain = domain,
-            slug = dir.slug,
+            "{site}{prefix}/blog/{post_slug}",
+            site = site,
+            prefix = prefix,
             post_slug = item.slug,
         );
 
@@ -155,6 +212,7 @@ struct RssFeedItem {
 pub async fn blog_rss_feed(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     // 1. Fetch directory
     #[derive(sqlx::FromRow)]
@@ -178,8 +236,8 @@ pub async fn blog_rss_feed(
     .await?
     .flatten();
 
-    // 2. Determine domain
-    let domain = format!("{}.{}", dir.slug, s.config.base_domain);
+    // 2. Determine the site origin and path prefix for links (see `origin_and_prefix`).
+    let (site, prefix) = origin_and_prefix(&s, &headers, dir.id, &dir.slug).await?;
 
     // 3. Fetch last 50 published blog posts
     let items: Vec<RssFeedItem> = sqlx::query_as::<_, RssFeedItem>(
@@ -215,11 +273,7 @@ pub async fn blog_rss_feed(
         esc_xml(&dir_description)
     };
 
-    let feed_url = format!(
-        "https://{domain}/public/directories/{slug}/blog/feed.xml",
-        domain = domain,
-        slug = dir.slug,
-    );
+    let feed_url = format!("{site}{prefix}/blog/feed.xml", site = site, prefix = prefix,);
 
     let mut xml = String::with_capacity(8192);
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -229,9 +283,9 @@ pub async fn blog_rss_feed(
     // Channel metadata
     xml.push_str(&format!("  <title>{} Blog</title>\n", esc_xml(&dir.name)));
     xml.push_str(&format!(
-        "  <link>https://{domain}/api/v1/d/{slug}/blog</link>\n",
-        domain = domain,
-        slug = dir.slug,
+        "  <link>{site}{prefix}/blog</link>\n",
+        site = site,
+        prefix = prefix,
     ));
     xml.push_str(&format!(
         "  <description>{}</description>\n",
@@ -250,9 +304,9 @@ pub async fn blog_rss_feed(
     // Items
     for item in &items {
         let link = format!(
-            "https://{domain}/api/v1/d/{slug}/blog/{post_slug}",
-            domain = domain,
-            slug = dir.slug,
+            "{site}{prefix}/blog/{post_slug}",
+            site = site,
+            prefix = prefix,
             post_slug = item.slug,
         );
 
