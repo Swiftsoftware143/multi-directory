@@ -2550,6 +2550,14 @@ pub fn create_router(s: AppState) -> Router {
         // name on purpose — the static copies are single-URL placeholders.
         .route("/sitemap.xml", get(subfolder::sitemap_handler))
         .route("/robots.txt", get(subfolder::robots_handler))
+        // ── Blog RSS at the pretty URL the feed advertises (2026-10-10) ──
+        // blog_seo's feed sets its channel link and `<atom:link rel="self">` to
+        // `<origin>/<dir-slug>/blog/feed.xml` (see origin_and_prefix), but the app only
+        // served the feed at `/api/v1/public/directories/:slug/blog/feed.xml`. The pretty
+        // path therefore fell to the fallback, where `is_asset_path()` sees `.xml` and
+        // answers a plain 404 "Not found" — i.e. the self URL the feed advertises was
+        // dead (measured 2026-10-10). Serve the same handler at the advertised path.
+        .route("/:slug/blog/feed.xml", get(blog_seo::blog_rss_feed))
         // B142 — the IndexNow ownership key file. IndexNow only accepts a keyLocation at
         // the HOST ROOT (a nested path such as /api/v1/... is refused with HTTP 422), and
         // it re-fetches this PUBLIC url before it trusts a submission. 404 when unset, so

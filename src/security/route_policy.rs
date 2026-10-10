@@ -314,6 +314,12 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/scraper/providers", "scraper-providers"),
     // --- /search -----------------------------------------------------
     ("GET", "/search", "listings"),
+    // --- /:slug/blog/feed.xml ----------------------------------------
+    // The blog RSS feed, served at the pretty `<origin>/<dir-slug>/blog/feed.xml`
+    // url the feed itself advertises (channel link + atom self). Public: it is an
+    // RSS document, the same content the `/public/directories/:slug/blog/feed.xml`
+    // arm serves (added 2026-10-10; the pretty path used to 404 as a "missing asset").
+    ("GET", "/:slug/blog/feed.xml", "outer-ssr"),
     // --- /sitemap.xml ------------------------------------------------
     ("GET", "/sitemap.xml", "outer-ssr"),
     // --- /spotlight --------------------------------------------------
@@ -719,12 +725,13 @@ mod tests {
         }
         // The count is the measured census result minus the 13 narrowed legs, plus the
         // B142 IndexNow key file (a public root path), plus the B187 api-key verify
-        // endpoint (POST /api-keys/verify, made callable); if this changes, the census
-        // wants a look.
+        // endpoint (POST /api-keys/verify, made callable), plus the pretty blog RSS
+        // (GET /:slug/blog/feed.xml, so the feed's own advertised self url serves);
+        // if this changes, the census wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            160,
-            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify)"
+            161,
+            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url)"
         );
     }
 }
