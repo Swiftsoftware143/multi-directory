@@ -443,7 +443,7 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
-             AND (d.zaarhub_config->>'show_deals')::boolean = true
+             AND COALESCE((d.zaarhub_config->>'show_deals')::boolean, true) = true
              AND (d.zaarhub_config->>'network_visible')::boolean = true
            ORDER BY de.created_at DESC
            LIMIT 8"#
@@ -513,7 +513,7 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
            JOIN directories d ON d.id = e.directory_id
            WHERE (e.event_date >= NOW() - INTERVAL '1 day')
              AND e.zaarhub_featured = true
-             AND (d.zaarhub_config->>'show_events')::boolean = true
+             AND COALESCE((d.zaarhub_config->>'show_events')::boolean, true) = true
              AND (d.zaarhub_config->>'network_visible')::boolean = true
            ORDER BY e.event_date ASC
            LIMIT 6"#,
@@ -2160,7 +2160,7 @@ pub async fn list_featured_deals(
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
-             AND (d.zaarhub_config->>'show_deals')::boolean = true
+             AND COALESCE((d.zaarhub_config->>'show_deals')::boolean, true) = true
              AND (d.zaarhub_config->>'network_visible')::boolean = true"#;
     const DEALS_COLUMNS: &str = r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price,
                   de.discount_percent, de.image_url, b.name as biz_name, b.slug as biz_slug,
@@ -2274,7 +2274,7 @@ pub async fn list_featured_events(
            JOIN directories d ON d.id = e.directory_id
            WHERE e.status = 'active'
              AND e.zaarhub_featured = true
-             AND (d.zaarhub_config->>'show_events')::boolean = true
+             AND COALESCE((d.zaarhub_config->>'show_events')::boolean, true) = true
              AND (d.zaarhub_config->>'network_visible')::boolean = true"#;
     const EVENTS_COLUMNS: &str = r#"SELECT e.id, e.title, e.description, e.event_date, e.location,
                   e.image_url, b.name as biz_name, b.slug as biz_slug,
