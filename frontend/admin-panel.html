@@ -6736,11 +6736,15 @@
       return (v && v.value !== '') ? v.value : undefined;
     }
 
-    function chQs() {
+    // The settlement API reads the period from the JSON BODY (PeriodQuery in
+    // src/handlers/settlement.rs), not from query parameters — sending them as a query string
+    // silently left the box empty and every Preview/Run used the default previous month, so the
+    // operator's date pickers did nothing. Build the body instead.
+    function chPeriodBody() {
       var start = document.getElementById('ch-period-start').value;
       var end = document.getElementById('ch-period-end').value;
-      if (start && end) return '?period_start=' + encodeURIComponent(start) + '&period_end=' + encodeURIComponent(end);
-      return '';
+      if (start && end) return { period_start: start, period_end: end };
+      return {};
     }
 
     function loadClearinghouse() {
@@ -6832,7 +6836,7 @@
       var host = document.getElementById('ch-preview');
       if (!slug) { status.textContent = 'pick a network first'; return; }
       status.textContent = 'running preview (no writes)…';
-      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/settlement/preview' + chQs(), {})
+      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/settlement/preview', chPeriodBody())
         .then(function (r) {
           var t = r.totals || {};
           var p = r.period || {};
@@ -6855,7 +6859,7 @@
       var status = document.getElementById('ch-status');
       if (!slug) { status.textContent = 'pick a network first'; return; }
       status.textContent = 'running settlement…';
-      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/settlement/run' + chQs(), {})
+      return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/settlement/run', chPeriodBody())
         .then(function (r) {
           if (r.already_existed) {
             status.textContent = 'this period was already settled — existing run returned, nothing was billed twice.';
