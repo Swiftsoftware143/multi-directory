@@ -915,8 +915,8 @@
         <h3>✉️ Email / SMTP
           <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html#email-transport" target="_blank" rel="noopener">📘 Mailgun / SendGrid / Sendiio keys →</a>
         </h3>
-        <p class="feature-subtitle">Pick the transport this directory sends with, save its credentials, verify them for real, then send yourself a test message.
-          Settings are <b>per directory</b> and the password is write-only — it is never sent back to the browser once saved.</p>
+        <p class="feature-subtitle">Pick the transport the <b>network</b> sends with, save its credentials, verify them for real, then send yourself a test message.
+          <b>One email setup serves every city</b> in the network — a city never needs its own. The password is write-only and is never sent back to the browser once saved.</p>
         <div class="pk-controls" style="margin-bottom:12px">
           <select class="pk-input" id="em-directory" onchange="window.__emLoad()"></select>
           <span class="pk-badge pk-missing" id="em-service-badge">checking email service…</span>
@@ -3507,15 +3507,71 @@
       return sel ? sel.value : '';
     }
 
+    // The scope the console is switched to (MDContextBar): 'all:' | 'net:<id>' | 'dir:<id>'.
+    function emScope() {
+      try { return (window.MDContextBar && window.MDContextBar.scope && window.MDContextBar.scope()) || 'all:'; }
+      catch (e) { return 'all:'; }
+    }
+
+    function emNetworkName(netId) {
+      try { if (window.MDContextBar && window.MDContextBar.networkName) return window.MDContextBar.networkName(netId); } catch (e) {}
+      return 'network ' + String(netId).slice(0, 8);
+    }
+
+    // David's NETWORK MAIL RULE: one setup serves the whole network. The network's mail identity is
+    // its primary city — the row every other city inherits — so saving there reaches every city.
+    function emNetworkCarrier(netId) {
+      var cities = emDirectories.filter(function (d) { return String(d.network_id) === String(netId); });
+      if (!cities.length) return null;
+      var carrier = cities.filter(function (d) { return d.is_primary; })[0] || cities[0];
+      return { slug: carrier.slug, name: emNetworkName(netId), count: cities.length };
+    }
+
+    // Build the picker. On a NETWORK scope it edits the NETWORK (one setup, all cities) — never a
+    // single city, which is what made the card read as "1 city only". The platform view lists each
+    // network's mail identity; standalone directories keep their own.
     function loadEmailSettingsDirectories() {
       var sel = document.getElementById('em-directory');
       if (!sel) return;
       return apiGet('/directories?per_page=100').then(function (r) {
         emDirectories = (r && r.data) || [];
-        sel.innerHTML = emDirectories.map(function (d) {
-          return '<option value="' + pkEsc(d.slug) + '">' + pkEsc(d.name || d.slug) + ' (' + pkEsc(d.slug) + ')</option>';
-        }).join('') || '<option value="">No directories</option>';
-        if (emDirectories.length) loadEmailSettings();
+        var scope = emScope(), html = '';
+        if (scope.indexOf('net:') === 0) {
+          var net = emNetworkCarrier(scope.slice(4));
+          if (net) {
+            html = '<option value="' + pkEsc(net.slug) + '">' + pkEsc(net.name) +
+                   ' — whole network (' + net.count + ' cities)</option>';
+          }
+        }
+        if (scope.indexOf('dir:') === 0) {
+          var me = emDirectories.filter(function (d) { return String(d.id) === String(scope.slice(4)); })[0];
+          if (me && me.network_id) {
+            var net1 = emNetworkCarrier(me.network_id);
+            if (net1) html = '<option value="' + pkEsc(net1.slug) + '">' + pkEsc(net1.name) +
+                             ' — whole network (' + net1.count + ' cities)</option>';
+          } else if (me) {
+            html = '<option value="' + pkEsc(me.slug) + '">' + pkEsc(me.name || me.slug) + ' (standalone)</option>';
+          }
+        }
+        if (!html) {
+          var nets = {};
+          emDirectories.forEach(function (d) {
+            if (!d.network_id) return;
+            var k = String(d.network_id);
+            (nets[k] = nets[k] || []).push(d);
+          });
+          Object.keys(nets).forEach(function (k) {
+            var cities = nets[k];
+            var carrier = cities.filter(function (d) { return d.is_primary; })[0] || cities[0];
+            html += '<option value="' + pkEsc(carrier.slug) + '">' + pkEsc(emNetworkName(k)) +
+                    ' network — all ' + cities.length + ' cities</option>';
+          });
+          emDirectories.filter(function (d) { return !d.network_id; }).forEach(function (d) {
+            html += '<option value="' + pkEsc(d.slug) + '">' + pkEsc(d.name || d.slug) + ' (standalone)</option>';
+          });
+        }
+        sel.innerHTML = html || '<option value="">No directories</option>';
+        if (html) loadEmailSettings();
       }).catch(function (e) {
         sel.innerHTML = '<option value="">Could not load directories</option>';
         emStatus('Could not load directories: ' + e.message, false);
@@ -3540,7 +3596,7 @@
       if (tr) tr.value = 'smtp';
       var badge = document.getElementById('em-saved-badge');
       if (badge) { badge.textContent = 'Not configured yet'; badge.classList.add('show'); }
-      emStatus(slug + ': no email settings saved yet — fill the form and Save', false);
+      emStatus('no email settings saved yet for this network — fill the form and Save', false);
     }
 
     function loadEmailSettings() {
@@ -3564,14 +3620,15 @@
           if (s.own === false && s.inherited_from) {
             // Network mail rule: one config serves the whole network. Say so out loud instead of
             // showing the network's values as if the city had saved its own.
-            badge.textContent = '↳ Inherited from ' + s.inherited_from;
+            badge.textContent = '↳ Network-wide (saved on ' + s.inherited_from + ')';
             badge.classList.add('show');
-            emStatus(slug + ': uses the network email settings saved on ' + s.inherited_from +
-                     ' — fill and Save here only to give this city its own', true);
+            emStatus('One email setup serves every city in the network (saved on ' +
+                     s.inherited_from + ').', true);
           } else {
             badge.textContent = '✓ Saved (transport: ' + (s.transport || 'smtp') + ')';
             badge.classList.add('show');
-            emStatus(slug + ': settings loaded — password is stored and never returned', true);
+            emStatus('This email setup serves the whole network — every city sends with it ' +
+                     '(password is stored and never returned).', true);
           }
         })
         .catch(function (e) {
@@ -3642,7 +3699,8 @@
         .then(function (s) {
           emOut(JSON.stringify(s, null, 2), true);
           document.getElementById('em-smtp-password').value = '';
-          emStatus('Saved for ' + slug + ' (transport: ' + (s.transport || body.transport) + ')', true);
+          emStatus('Saved the network email setup (transport: ' + (s.transport || body.transport) +
+                   ') — every city in the network sends with it', true);
           showToast('Email settings saved');
           loadEmailSettings();
         })
@@ -4971,6 +5029,9 @@
       loadProviderKeys();
       loadEmailServiceStatus();
       loadEmailSettingsDirectories();
+      // Re-scope the email picker when the console switches network/city, so the card always shows
+      // the right mail identity (network-wide on a network scope).
+      document.addEventListener('md-context-change', function () { loadEmailSettingsDirectories(); });
       ddInit();
       loadAdZones();
       loadSubmissions();
