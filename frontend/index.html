@@ -1943,6 +1943,9 @@ function renderCityPage(d){
   var cityName=esc(dirInfo.name||toTitle(state.slug))
   var bizCount=d.stats?.business_count||biz.length
   var desc=esc(dirInfo.description||'Explore '+cityName)
+  // The company Headquarters (ONE value for the whole company, from zaarhub_site_config): shown on
+  // every city page. A city needs no address of its own (David's MD STRUCTURE rule).
+  var hqLine=dirInfo.headquarters?'<p class="zh-hero-hq" style="font-size:.9rem;color:#cbd5e1;margin-top:6px">🏢 Headquarters: '+esc(dirInfo.headquarters)+'</p>':''
 
   // ── Grouped category dropdown + top pill shortcuts ──
   var groups={}
@@ -2248,6 +2251,7 @@ function renderCityPage(d){
     <p id="zh-city-weather" style="font-size:.85rem;color:#94a3b8;margin-bottom:10px">🌤️ ${cityName} — Loading...</p>
     <h1>Discover & Support <span>${cityName}</span></h1>
     <p>${desc}</p>
+    ${hqLine}
     <div class="zh-hero-categories">
       <a class="zh-hero-cat" href="javascript:void(0)" onclick="filterCity('',this)"${state.filterCategory?'':_pillActive}>🔍 All${bizCount?' ('+bizCount+')':''}</a>
       ${heroPills}

@@ -40,6 +40,10 @@ pub const VOCABULARY: &[(&str, &str)] = &[
         "Support / help email (falls back to the contact email)",
     ),
     ("legal_name", "Legal / entity name"),
+    (
+        "headquarters",
+        "Company headquarters (one value for the whole company, shown on every city page)",
+    ),
     ("site_url", "Directory site URL"),
     ("current_year", "Current year"),
     (
@@ -100,7 +104,7 @@ impl MergeContext {
         ctx.set("network_name", "ZaarHub");
 
         if let Ok(Some(row)) = sqlx::query(
-            "SELECT site_name, primary_color, secondary_color, contact_email, contact_phone \
+            "SELECT site_name, primary_color, secondary_color, contact_email, contact_phone, headquarters \
              FROM zaarhub_site_config LIMIT 1",
         )
         .fetch_optional(db)
@@ -129,6 +133,14 @@ impl MergeContext {
             ctx.set_opt(
                 "contact_phone",
                 row.try_get::<Option<String>, _>("contact_phone")
+                    .ok()
+                    .flatten(),
+            );
+            // The company's Headquarters is ONE value that every city inherits (David's MD
+            // STRUCTURE rule): a city needs no address of its own.
+            ctx.set_opt(
+                "headquarters",
+                row.try_get::<Option<String>, _>("headquarters")
                     .ok()
                     .flatten(),
             );

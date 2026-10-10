@@ -87,6 +87,11 @@ pub struct DirectorySummary {
     /// (`directories.zaarhub_config.notices`). Present only when the list is non-empty.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notices: Option<Value>,
+    /// The company's Headquarters (ONE value for the whole company, from `zaarhub_site_config`;
+    /// David's MD STRUCTURE rule). A city needs no address of its own. Present only when set, so
+    /// the front end never renders an empty line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headquarters: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -857,6 +862,17 @@ pub async fn get_city_page(
         .cloned()
         .filter(|c| c.as_array().map(|a| !a.is_empty()).unwrap_or(false));
 
+    // The company's Headquarters — ONE value for the whole company (zaarhub_site_config), shown on
+    // every city page. A city never carries its own address.
+    let headquarters: Option<String> = sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(headquarters, '') FROM zaarhub_site_config LIMIT 1",
+    )
+    .fetch_optional(&s.db)
+    .await
+    .ok()
+    .flatten()
+    .filter(|h| !h.trim().is_empty());
+
     // Business count
     let biz_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND is_active = true",
@@ -1331,6 +1347,7 @@ pub async fn get_city_page(
             guarantee,
             cost_guides,
             notices,
+            headquarters,
         },
         stats: DirectoryStats {
             total_businesses: biz_count,
