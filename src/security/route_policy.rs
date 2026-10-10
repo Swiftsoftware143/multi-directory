@@ -99,6 +99,11 @@ pub const INTERNAL_KEY_HEADER: &str = "x-internal-key";
 pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     // --- /ads --------------------------------------------------------
     ("GET", "/ads/active/:directory_id", "ads"),
+    // --- /api-keys ---------------------------------------------------
+    // The endpoint's own credential IS the API key (read from the Authorization header), so it
+    // cannot also require a session JWT — that made it uncallable (401 for every caller). The
+    // hash-only lookup below means only the full key verifies; the prefix alone never does.
+    ("POST", "/api-keys/verify", "api-key-verify"),
     // --- /auth -------------------------------------------------------
     ("GET", "/auth/linked-accounts", "linked-accounts"),
     ("POST", "/auth/forgot-password", "auth"),

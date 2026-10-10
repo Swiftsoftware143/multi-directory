@@ -229,12 +229,13 @@ pub async fn verify_api_key(
         .ok_or_else(|| AppError::Unauthorized)?;
 
     let hash = sha256_hash(key);
-    let prefix = key.split('_').nth(1).unwrap_or("").to_string();
     let api_key = sqlx::query_as::<_, ApiKey>(
-        "SELECT * FROM api_keys WHERE key_hash = $1 OR key_prefix = $2",
+        // Hash-only: the key is verified by the SHA-256 of the FULL key. Matching on
+        // `key_prefix` as an alternative let the 8-char prefix alone (which the admin list
+        // displays) verify as if it were the whole secret — a prefix must never authenticate.
+        "SELECT * FROM api_keys WHERE key_hash = $1",
     )
     .bind(&hash)
-    .bind(&prefix)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::Unauthorized)?;
