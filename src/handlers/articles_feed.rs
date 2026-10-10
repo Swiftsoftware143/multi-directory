@@ -4,6 +4,7 @@
 
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     response::IntoResponse,
 };
 use chrono::{DateTime, Utc};
@@ -30,6 +31,7 @@ struct FeedItem {
 pub async fn articles_xml_feed(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     // 1. Fetch the directory to get name, description, and domain info
     // Fetch the directory by slug. `directories` is the table every *_directory_id column
@@ -57,8 +59,47 @@ pub async fn articles_xml_feed(
     .await?
     .flatten();
 
-    // 2. Determine the domain for links
-    let domain = format!("{}.{}", dir.slug, s.config.base_domain);
+    // 2. Determine the site origin and path prefix for links.
+    //
+    // A directory that owns a mapped domain owns that domain's ROOT (`https://<domain>/blog/…`).
+    // Otherwise it is served as a SUBFOLDER on the platform host
+    // (`<origin>/<dir-slug>/blog/…`) — the same scheme the public /sitemap.xml uses.
+    //
+    // The old code always built `https://<dir-slug>.<base_domain>/…`. Those per-directory
+    // subdomains have NO DNS record and no nginx server block, so every link this feed handed
+    // out (items, channel link, atom self) was unreachable (measured 2026-10-10). The sitemap
+    // was fixed the same way in t_543d51d8; this feed was the last caller still emitting the
+    // dead `<slug>.<base_domain>` form.
+    let mapped: Option<String> = sqlx::query_scalar(
+        "SELECT domain FROM domain_mappings WHERE directory_id = $1 AND status = 'active' \
+         ORDER BY created_at LIMIT 1",
+    )
+    .bind(dir.id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+
+    let (site, prefix) = match mapped.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+        Some(d) => (format!("https://{d}"), String::new()),
+        None => {
+            let (host, proto) = crate::handlers::subfolder::host_proto(&headers);
+            let host = host.filter(|h| {
+                !crate::handlers::seo_config::is_directory_subdomain(h, &s.config.base_domain)
+            });
+            let host = host.or_else(|| {
+                let b = s.config.base_domain.trim().to_string();
+                if b.is_empty() {
+                    None
+                } else {
+                    Some(b)
+                }
+            });
+            (
+                crate::handlers::subfolder::origin(host.as_deref(), &proto, &s.config.base_domain),
+                format!("/{}", dir.slug),
+            )
+        }
+    };
 
     // 3. Fetch the 50 latest published items from both tables
     let items: Vec<FeedItem> = sqlx::query_as::<_, FeedItem>(
@@ -111,9 +152,9 @@ pub async fn articles_xml_feed(
         name = esc_xml(&dir.name)
     ));
     xml.push_str(&format!(
-        "  <link>https://{domain}/{slug}/blog</link>\n",
-        domain = domain,
-        slug = dir.slug,
+        "  <link>{site}{prefix}/blog</link>\n",
+        site = site,
+        prefix = prefix,
     ));
     xml.push_str(&format!(
         "  <description>{desc}</description>\n",
@@ -121,9 +162,9 @@ pub async fn articles_xml_feed(
     ));
     xml.push_str("  <language>en-us</language>\n");
     xml.push_str(&format!(
-        "  <atom:link href=\"https://{domain}/{slug}/articles.xml\" rel=\"self\" type=\"application/rss+xml\"/>\n",
-        domain = domain,
-        slug = dir.slug,
+        "  <atom:link href=\"{site}{prefix}/articles.xml\" rel=\"self\" type=\"application/rss+xml\"/>\n",
+        site = site,
+        prefix = prefix,
     ));
     xml.push_str(&format!(
         "  <lastBuildDate>{}</lastBuildDate>\n",
@@ -133,9 +174,9 @@ pub async fn articles_xml_feed(
     // Items
     for item in &items {
         let link = format!(
-            "https://{domain}/{slug}/blog/{post_slug}",
-            domain = domain,
-            slug = dir.slug,
+            "{site}{prefix}/blog/{post_slug}",
+            site = site,
+            prefix = prefix,
             post_slug = item.slug,
         );
 

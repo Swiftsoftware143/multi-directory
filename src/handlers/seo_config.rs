@@ -193,7 +193,7 @@ pub async fn update_dir_seo_settings(
 /// True when `host` is a per-directory subdomain of `base_domain`
 /// (`<slug>.<base_domain>`). Those hosts have no DNS record, so they must never
 /// be named as the platform origin in a sitemap (kanban t_543d51d8).
-fn is_directory_subdomain(host: &str, base_domain: &str) -> bool {
+pub(crate) fn is_directory_subdomain(host: &str, base_domain: &str) -> bool {
     let base = base_domain.trim().trim_matches('.');
     if base.is_empty() {
         return false;
