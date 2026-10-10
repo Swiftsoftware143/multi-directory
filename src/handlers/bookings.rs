@@ -1073,10 +1073,22 @@ async fn notify_business_owners(
     .await;
 
     match result {
-        Ok(_) => tracing::info!(
-            "[notifications] Created service_booking_created event for business {}",
-            business_id
-        ),
+        Ok(_) => {
+            tracing::info!(
+                "[notifications] Created service_booking_created event for business {}",
+                business_id
+            );
+            // Deliver to the webhooks registered on the admin "Webhooks" screen — a new booking is
+            // a real app event, and a registered subscriber previously never heard about it.
+            crate::handlers::api_complete::dispatch_webhook_event(
+                s,
+                "service_booking_created",
+                "business",
+                business_id,
+                event_payload,
+            )
+            .await;
+        }
         Err(e) => tracing::warn!("[notifications] Failed to create event: {}", e),
     }
 

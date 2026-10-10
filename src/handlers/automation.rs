@@ -164,6 +164,21 @@ pub async fn create_event(
     .fetch_one(&state.db)
     .await?;
 
+    // Deliver to the webhooks registered on the admin "Webhooks" screen. Nothing used to call the
+    // dispatcher, so a registered subscriber received NOTHING for any event: the screen configured
+    // a black hole. Dispatch on every recorded event (the dispatcher itself selects the
+    // subscribers whose `events` contain this type) — the entity must be a real row to name it.
+    if let Some(entity_id) = req.entity_id {
+        crate::handlers::api_complete::dispatch_webhook_event(
+            &state,
+            &req.event_type,
+            &req.entity_type,
+            entity_id,
+            req.data.clone().unwrap_or(serde_json::Value::Null),
+        )
+        .await;
+    }
+
     // Try to forward to n8n if configured
     let n8n_url = std::env::var("N8N_WEBHOOK_URL").ok();
     if let Some(url) = n8n_url {
