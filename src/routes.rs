@@ -3433,14 +3433,19 @@ async fn auth_guard(
 ) -> Result<Response, AppError> {
     let path = req.uri().path().to_string();
     let has_auth = req.headers().get("Authorization").is_some();
-    let auth_preview = req
+    // A JWT is short-lived and safe to preview in a log line; a raw API key is a long-lived
+    // credential and must never be written anywhere, not even its opening characters.
+    let auth_preview = match req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("none")
-        .chars()
-        .take(40)
-        .collect::<String>();
+    {
+        Some(v) if v.starts_with("Bearer md_") || v.starts_with("md_") => {
+            "redacted-api-key".to_string()
+        }
+        Some(v) => v.chars().take(40).collect::<String>(),
+        None => "none".to_string(),
+    };
     warn!(
         "AUTH_GUARD: path={}, has_auth={}, auth_preview={}",
         path, has_auth, auth_preview
@@ -3458,7 +3463,7 @@ async fn auth_guard(
     }
 
     // For all other routes, require valid JWT
-    use crate::auth::middleware::verify_token;
+    use crate::auth::middleware::{create_token, verify_token};
 
     let auth_header = req
         .headers()
@@ -3466,9 +3471,66 @@ async fn auth_guard(
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized)?;
+    // An issued API key — the `md_…` value from the admin "API Access" screen — signs in as the
+    // user who owns it. Before this, a key could be created, listed and verified but unlocked
+    // nothing: every guarded route demanded a browser session, so the screen issued credentials
+    // that could never be used. The raw key is matched by SHA-256 (never the visible prefix) and
+    // immediately exchanged for a short-lived session token, so handlers downstream — both the
+    // `Extension<Claims>` readers and the ones that re-read the header — see an ordinary sign-in.
+    let token = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
+    if token.starts_with("md_") {
+        let ident = crate::auth::middleware::resolve_api_key(&s.db, token)
+            .await
+            .ok_or_else(|| AppError::Unauthorized)?;
+
+        // Per-minute ceiling, counted from the same usage rows the operator's Usage panel reads.
+        if ident.rate_limit_per_minute > 0 {
+            let recent: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM api_key_usage \
+                 WHERE api_key_id = $1 AND created_at > NOW() - INTERVAL '1 minute'",
+            )
+            .bind(ident.key_id)
+            .fetch_one(&s.db)
+            .await
+            .unwrap_or(0);
+            if recent >= ident.rate_limit_per_minute as i64 {
+                return Err(AppError::TooManyRequests(
+                    "API key rate limit reached — retry in a minute".to_string(),
+                ));
+            }
+        }
+
+        let minted = create_token(&ident.claims, &s.config.jwt_secret)
+            .map_err(|_| AppError::Unauthorized)?;
+        req.headers_mut().insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_str(&format!("Bearer {minted}"))
+                .map_err(|_| AppError::Unauthorized)?,
+        );
+        req.extensions_mut().insert(ident.claims.clone());
+
+        let method = req.method().to_string();
+        let resp = next.run(req).await;
+
+        // Best-effort bookkeeping — a request is never failed over an audit row. This is what
+        // makes the screen's "Last used" column and per-key usage panel tell the truth.
+        let _ = sqlx::query(
+            "INSERT INTO api_key_usage (api_key_id, endpoint, method, status_code) \
+             VALUES ($1, $2, $3, $4)",
+        )
+        .bind(ident.key_id)
+        .bind(&path)
+        .bind(&method)
+        .bind(resp.status().as_u16() as i32)
+        .execute(&s.db)
+        .await;
+        let _ = sqlx::query("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1")
+            .bind(ident.key_id)
+            .execute(&s.db)
+            .await;
+
+        return Ok(resp);
+    }
 
     let claims = verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
