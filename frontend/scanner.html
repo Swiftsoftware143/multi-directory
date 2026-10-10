@@ -360,7 +360,7 @@ function setScanType(type, btn) {
   // Show/hide amount field
   var showAmt = (type==='purchase'||type==='redemption');
   $('amountRow').style.display = showAmt ? '' : 'none';
-  $('amountLabel').textContent = type==='redemption' ? 'Points to Redeem' : 'Purchase Amount ($)';
+  $('amountLabel').textContent = type==='redemption' ? 'ZaarCash to Redeem' : 'Purchase Amount ($)';
   // Update segment buttons
   $('segCheckin').classList.toggle('active',type==='checkin');
   $('segPurchase').classList.toggle('active',type==='purchase');

@@ -1046,7 +1046,7 @@
           <div class="em-field"><label>Cycle day (1–28)</label><input id="ch-cycle-day" type="number" min="1" max="28" placeholder="1"></div>
           <div class="em-field"><label>Currency</label><input id="ch-currency" placeholder="USD"></div>
           <div class="em-field"><label>Minimum payout (cents)</label><input id="ch-min-payout" type="number" min="0" placeholder="0"></div>
-          <div class="em-field"><label>Points expiry (days)</label><input id="ch-expiry-days" type="number" min="1" placeholder="365"></div>
+          <div class="em-field"><label>ZaarCash expiry (days)</label><input id="ch-expiry-days" type="number" min="1" placeholder="365"></div>
           <div class="em-field"><label>Float floor — smallest reserve the programme will run on ($)</label><input id="ch-min-float" type="number" min="0" step="0.01" placeholder="100"></div>
           <div class="em-field"><label>Float coverage — % of the ZaarCash members hold (0 = off)</label><input id="ch-float-coverage" type="number" min="0" max="100" step="1" placeholder="100"></div>
           <div class="em-field"><label>Float burn — months of redemptions to hold (0 = off)</label><input id="ch-float-burn" type="number" min="0" max="12" step="0.5" placeholder="1"></div>
@@ -1065,7 +1065,7 @@
           <div class="em-field"><label>Payout destination (Stripe connected account ID)</label><input id="ch-payout-destination" placeholder="acct_… — where reimbursements are sent"><span class="feature-status" style="font-size:.72rem">Required for live Stripe payouts. Leave blank to inherit the destination stored on the Stripe provider key.</span></div>
           <div class="em-field"><label>Settlement enabled</label><select id="ch-enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
         </div>
-        <div class="feature-status" style="margin-top:6px">Float rule — three conditions, redemptions hold if any fails: <b>coverage</b> (% of the ZaarCash members still hold), <b>burn</b> (months of last-30-day redemptions) and the dollar <b>floor</b>. 0 turns a condition off. The Treasury card below shows the live verdict. A business is never charged for this — only redemptions pause, and points stay valid.</div>
+        <div class="feature-status" style="margin-top:6px">Float rule — three conditions, redemptions hold if any fails: <b>coverage</b> (% of the ZaarCash members still hold), <b>burn</b> (months of last-30-day redemptions) and the dollar <b>floor</b>. 0 turns a condition off. The Treasury card below shows the live verdict. A business is never charged for this — only redemptions pause, and ZaarCash stays valid.</div>
         <div class="pk-controls" style="margin-top:8px">
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__chSaveSettings()">Save settlement settings</button>
           <span class="feature-status" id="ch-settings-status"></span>
@@ -2845,7 +2845,7 @@
         <h3 style="font-size:1rem;margin-bottom:8px">🎯 Loyalty Management</h3>
         <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px">Credit rates, purchase PINs, offers, badges, QR codes, and scan history.</p>
         <a href="#loyalty-programme-section" class="btn btn-accent" style="display:inline-block;text-align:center;padding:8px 16px;font-size:.85rem">Set earning rates →</a>
-        <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">Points per redemption / check-in / visit are configured above and stored in Multi-Directory.</p>
+        <p style="font-size:.75rem;color:var(--text-tertiary);margin-top:8px">ZaarCash per redemption / check-in / visit are configured above and stored in Multi-Directory.</p>
       </div>
       <!-- CoreSwift connection screen shipped (card B67 / B91/B117 gap #5). The link below now
            points at the real #coreswift-connection-section, which drives
@@ -6403,7 +6403,7 @@
         // The currency itself is per-programme and admin-owned: a buyer running their own brand
         // renames the points, picks the symbol and the colour here — nothing is hard-coded.
         '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
-          '<label style="font-size:.8rem;color:var(--text-secondary)">Points are called <input class="input" style="width:150px" value="' + lpEsc(p.currency_name || '') + '" data-f="currency_name" placeholder="ZaarCash"></label>' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)">The currency is called <input class="input" style="width:150px" value="' + lpEsc(p.currency_name || '') + '" data-f="currency_name" placeholder="ZaarCash"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)">Symbol <input class="input" style="width:60px" value="' + lpEsc(p.currency_icon || '') + '" data-f="currency_icon" placeholder="💎"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)">Colour <input type="color" style="width:44px;height:30px;padding:2px" value="' + lpColor(p.currency_color) + '" data-f="currency_color" title="Currency colour"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="milestones_enabled" ' + (msOn ? 'checked' : '') + '> milestones on</label>' +
@@ -6418,7 +6418,7 @@
         '</div>' +
         '<p style="font-size:.75rem;color:var(--text-tertiary);margin-top:6px">' +
           (p.network_id && !p.directory_id ? '🌐 Network-wide — applies to every city, including new ones. ' : '') +
-          'Currency: ' + lpEsc(p.currency_name || 'Points') + ' ' + lpEsc(p.currency_icon || '') + ' · id ' + lpEsc(String(p.id).slice(0, 8)) +
+          'Currency: ' + lpEsc(p.currency_name || 'ZaarCash') + ' ' + lpEsc(p.currency_icon || '') + ' · id ' + lpEsc(String(p.id).slice(0, 8)) +
           '<br>💱 100 ' + cur + ' = US$1.00 — ' + cur + ' per $1 spent = ' + lpUsd(rate) + ' earned, minimum balance = ' +
           minBal + ' (' + lpUsd(minBal) + '), cap = ' + cap + '% of a bill (' + cur + ' pays up to ' + lpUsd(cap * 100) + ' on a $100 bill).</p>' +
         '<div id="lp-ms-' + lpEsc(p.id) + '" hidden></div>' +
@@ -6849,12 +6849,12 @@
           var p = r.period || {};
           status.textContent = 'preview ' + p.key + ' (' + p.start + ' → ' + p.end + ') — no writes made';
           var html = '<div style="font-size:.82rem;font-weight:600;margin:10px 0 4px">Preview ' + daEsc(p.key) + ' — ' +
-            t.points_issued + ' points issued (' + t.invoiced_cents + ' invoiced) · ' +
-            t.points_redeemed + ' points redeemed (' + t.payout_cents + ' reimbursed) · platform spread ' +
+            t.points_issued + ' ZaarCash issued (' + t.invoiced_cents + ' invoiced) · ' +
+            t.points_redeemed + ' ZaarCash redeemed (' + t.payout_cents + ' reimbursed) · platform spread ' +
             t.platform_spread_cents + '</div>';
-          html += daRollupTable('Invoices (issuing businesses owe)', ['Business', 'Points issued', 'Amount (cents)'],
+          html += daRollupTable('Invoices (issuing businesses owe)', ['Business', 'ZaarCash issued', 'Amount (cents)'],
             r.invoices, function (x) { return [x.business_name, x.points_issued, x.amount_cents]; });
-          html += daRollupTable('Payouts (redeeming businesses are reimbursed)', ['Business', 'Points redeemed', 'Amount (cents)', 'Below minimum'],
+          html += daRollupTable('Payouts (redeeming businesses are reimbursed)', ['Business', 'ZaarCash redeemed', 'Amount (cents)', 'Below minimum'],
             r.payouts, function (x) { return [x.business_name, x.points_redeemed, x.amount_cents, x.below_minimum ? 'yes' : 'no']; });
           host.innerHTML = html;
         })
@@ -6888,7 +6888,7 @@
       var slug = chSlug();
       var status = document.getElementById('ch-status');
       if (!slug) { status.textContent = 'pick a network first'; return; }
-      status.textContent = 'expiring points per policy…';
+      status.textContent = 'expiring ZaarCash per policy…';
       return apiFetch('POST', '/networks/' + encodeURIComponent(slug) + '/clear/expire', {})
         .then(function (r) { status.textContent = 'expiry sweep: ' + JSON.stringify(r).slice(0, 300); })
         .catch(function (e) { status.textContent = 'expiry error: ' + e.message; });
@@ -6902,8 +6902,8 @@
       return apiGet('/networks/' + encodeURIComponent(slug) + '/clear/treasury')
         .then(function (t) {
           var cells = [
-            ['Points issued', t.total_points_issued],
-            ['Points redeemed', t.total_points_redeemed],
+            ['ZaarCash issued', t.total_points_issued],
+            ['ZaarCash redeemed', t.total_points_redeemed],
             ['Revenue collected', t.revenue_collected],
             ['Reimbursements paid', t.reimbursements_paid],
             ['Position (collected − paid)', t.position],
@@ -6955,7 +6955,7 @@
           }
           var html = '<div style="font-size:.82rem;font-weight:600;margin:0 0 4px">Run history</div>' +
             '<table style="width:100%;border-collapse:collapse;font-size:.78rem"><thead><tr>' +
-            ['Period', 'Status', 'Points in', 'Points out', 'Invoiced', 'Paid out', 'Spread', 'Provider', '']
+            ['Period', 'Status', 'ZaarCash in', 'ZaarCash out', 'Invoiced', 'Paid out', 'Spread', 'Provider', '']
               .map(function (c) { return '<th style="text-align:left;padding:5px;border-bottom:1px solid var(--border,#1e2a3a)">' + c + '</th>'; }).join('') +
             '</tr></thead><tbody>';
           runs.forEach(function (x) {

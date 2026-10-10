@@ -187,13 +187,13 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
     <!-- Loyalty Wallet -->
     <div class="section">
       <div class="section-title">💳 Loyalty Wallet</div>
-      <div class="section-subtitle">Points, your check-in QR and recent activity across the loyalty programs you joined</div>
+      <div class="section-subtitle">Your ZaarCash balance, check-in QR and recent activity across the loyalty programs you joined</div>
       <div id="walletSummary" style="font-size:1.05rem;font-weight:800;margin-bottom:12px;color:#0d9488"></div>
       <div id="walletList">
         <div class="empty-state">
           <div class="icon">💳</div>
           <h3>No wallet yet</h3>
-          <p>Join a loyalty program at a local business to start earning points.</p>
+          <p>Join a loyalty program at a local business to start earning ZaarCash.</p>
         </div>
       </div>
     </div>
@@ -609,7 +609,7 @@ async function loadWallet() {
     html += '<div class="card" style="text-align:center">';
     html += '<h4>' + esc(m.program_name || 'Loyalty Program') + '</h4>';
     html += '<div style="font-size:2rem;font-weight:800;color:' + colour + '">' + (m.points_balance || 0) + '</div>';
-    html += '<div style="font-size:.78rem;color:#6b7280">' + esc(m.currency_name || 'Points') +
+    html += '<div style="font-size:.78rem;color:#6b7280">' + esc(m.currency_name || 'ZaarCash') +
             ' · lifetime ' + (m.lifetime_points || 0) + '</div>';
     html += '<div class="wallet-qr" data-qr="' + esc(m.qr_payload || '') +
             '" style="width:158px;height:158px;margin:10px auto;background:#fff;padding:6px;border-radius:8px;border:1px solid #e5e7eb"></div>';
