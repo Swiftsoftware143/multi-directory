@@ -754,7 +754,7 @@ a:hover{text-decoration:underline}
     <div class="step-num">4</div>
     <div class="step-text">
       <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Turn ZaarCash earning ON.</strong></label><br>
-      <strong>Why:</strong> the <strong>points-per-redemption rate is still 0</strong>, so customers earn
+      <strong>Why:</strong> the <strong>ZaarCash-per-redemption rate is still 0</strong>, so customers earn
       <strong>nothing</strong> when they redeem.<br>
       <strong>Where:</strong> <strong>Admin Panel → ⭐ Loyalty Programmes</strong> — set the units per
       <strong>redemption</strong> (and per <strong>check-in</strong> and <strong>visit</strong> if you use them).
@@ -768,7 +768,7 @@ a:hover{text-decoration:underline}
       <p><label><input type="checkbox" style="margin-right:8px;transform:scale(1.2);vertical-align:middle"><strong>Set the clearinghouse settlement settings.</strong></label><br>
       <strong>Where:</strong> <strong>Admin Panel → 🏦 Clearinghouse Settlement</strong> — set
       <strong>Settlement enabled</strong>, <strong>Cycle day (1–28)</strong>, the issue/redeem rates, minimum
-      payout and <strong>points expiry (days)</strong>, then <strong>Save settlement settings</strong>.<br>
+      payout and <strong>ZaarCash expiry (days)</strong>, then <strong>Save settlement settings</strong>.<br>
       <strong>Note:</strong> with no payment provider configured (item 2) a settlement run cannot pay out — it
       stays <strong>pending</strong>, by design.</p>
     </div>
@@ -797,7 +797,7 @@ a:hover{text-decoration:underline}
       <strong>Connect (wait for the screen):</strong> the server already exposes the connection endpoints
       (<code>/api/v1/integrations/coreswift/connection</code>, <code>…/connection/targets</code>,
       <code>…/connection/test</code>) but there is <strong>no admin screen for them yet</strong> — the
-      "Integration settings →" button on the panel points at a section that does not exist. Until that screen
+      "Integration settings →" button on the panel leads to a section that does not exist. Until that screen
       ships, the connection <strong>cannot be made from the panel</strong>. This is written down here as
       <strong>pending</strong> rather than sending you to a screen that is not there; an endpoint with no UI
       control is a defect to close, and this line is the reminder.</p>
@@ -814,7 +814,7 @@ a:hover{text-decoration:underline}
       then <strong>＋ Add mapping</strong>.<br>
       <strong>Why it needs you:</strong> the code side can be done from the panel, but a mapping only goes live
       once <strong>DNS resolves</strong>. After creating the record, press <strong>Check live</strong> — a host
-      whose DNS still points elsewhere is reported <strong>not live</strong>, never as working.</p>
+      whose DNS still resolves elsewhere is reported <strong>not live</strong>, never as working.</p>
     </div>
   </div>
 
