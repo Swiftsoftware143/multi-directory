@@ -39,10 +39,13 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-/// Providers we can attempt a real payout with. Anything else configured in
-/// `provider_keys` is left `pending_provider` with an honest message rather than
-/// being silently treated as success.
-const KNOWN_PAYMENT_PROVIDERS: [&str; 4] = ["stripe", "paypal", "square", "wise"];
+/// The providers the clearinghouse can actually PAY OUT through — exactly the ones with a
+/// transfer adapter below (Stripe today; a new adapter adds its name here). Exposed to the
+/// admin panel as `known_providers` so the payout dropdown is built from this list and never
+/// hardcoded: a provider with no adapter must not be offered, or an operator could pick one
+/// that records the ledger correctly but silently never sends money. Any other provider saved
+/// in `provider_keys` is left `pending_provider` with an honest message, never silent success.
+const KNOWN_PAYMENT_PROVIDERS: [&str; 1] = ["stripe"];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Resolution helpers

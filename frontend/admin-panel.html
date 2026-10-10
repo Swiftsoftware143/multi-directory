@@ -1056,12 +1056,11 @@
             <option value="pause">Pause earning at the allowance</option>
           </select></div>
           <div class="em-field"><label>Overage cap (points; 0 = uncapped)</label><input id="ch-overage-cap" type="number" min="0" placeholder="0"></div>
+          <!-- Options are built at load time from the API's own `known_providers` (only providers
+               with a real payout adapter) — never hardcoded here, so the operator can never pick
+               one the clearinghouse cannot actually pay through. -->
           <div class="em-field"><label>Payment provider</label><select id="ch-provider">
             <option value="">Auto (first configured provider)</option>
-            <option value="stripe">Stripe</option>
-            <option value="paypal">PayPal</option>
-            <option value="square">Square</option>
-            <option value="wise">Wise</option>
           </select></div>
           <div class="em-field"><label>Payout destination (Stripe connected account ID)</label><input id="ch-payout-destination" placeholder="acct_… — where reimbursements are sent"><span class="feature-status" style="font-size:.72rem">Required for live Stripe payouts. Leave blank to inherit the destination stored on the Stripe provider key.</span></div>
           <div class="em-field"><label>Settlement enabled</label><select id="ch-enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
@@ -6770,7 +6769,15 @@
           document.getElementById('ch-overage-rate').value = s.overage_rate_per_point;
           document.getElementById('ch-overage-mode').value = s.overage_mode || 'bill';
           document.getElementById('ch-overage-cap').value = (s.overage_cap_points == null ? '' : s.overage_cap_points);
-          document.getElementById('ch-provider').value = s.payment_provider || '';
+          // The provider choices come from the API's own authoritative list (`known_providers`:
+          // only providers with a real payout adapter), never a hardcoded list in this page.
+          var provSel = document.getElementById('ch-provider');
+          var known = (res.provider && res.provider.known_providers) || [];
+          provSel.innerHTML = '<option value="">Auto (first configured provider)</option>' +
+            known.map(function (k) {
+              return '<option value="' + pkEsc(k) + '">' + pkEsc(k.charAt(0).toUpperCase() + k.slice(1)) + '</option>';
+            }).join('');
+          provSel.value = s.payment_provider || '';
           document.getElementById('ch-payout-destination').value = s.payout_destination || '';
           document.getElementById('ch-enabled').value = s.settlement_enabled ? 'true' : 'false';
 
@@ -6778,7 +6785,7 @@
           var pb = document.getElementById('ch-provider-badge');
           pb.textContent = p.configured
             ? ('provider: ' + p.effective + ' (live)')
-            : ('provider: ' + (p.effective || 'none') + ' — runs stay pending_provider');
+            : ('provider: none — runs stay pending_provider until a ' + (known[0] || 'payment') + ' key is saved in Provider Keys');
           pb.className = 'pk-badge ' + (p.configured ? 'pk-ok' : 'pk-missing');
 
           var rates = res.effective_rates || {};
