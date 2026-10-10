@@ -298,6 +298,11 @@ pub struct Webhook {
     pub directory_id: Option<Uuid>,
     pub url: String,
     pub events: Vec<String>,
+    /// The signing secret is never serialized back to a client — it is a shared secret the
+    /// receiver verifies against, and the operator who set it already knows it. Echoing it in
+    /// every list/get/update response (as this did) turned each read into a leak surface (logs,
+    /// browser devtools, caches). Same discipline as api_keys, whose raw key is shown only once.
+    #[serde(skip_serializing)]
     pub secret: Option<String>,
     pub is_active: Option<bool>,
     pub retry_count: Option<i32>,
