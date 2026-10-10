@@ -238,6 +238,28 @@ pub fn create_router(s: AppState) -> Router {
             "/directories/:slug/businesses/:business_id/reviews",
             get(reviews::list_business_reviews).post(reviews::create_review),
         )
+        // ── Business-owner review surface (business-portal.html) ────────────────
+        // docs/GAMIFICATION_ENGINE.md advertises these two `/business/reviews/*` paths and
+        // docs/business-owner-guide.md tells a listing owner to approve/reject their own
+        // reviews — but the router had no `/business/reviews` prefix, so every documented
+        // business-side review call 404'd (measured 2026-10-10). All owner-scoped (the caller
+        // must own the review's business); deliberately NOT in the public allowlist.
+        .route(
+            "/business/reviews/pending",
+            get(reviews::business_pending_reviews),
+        )
+        .route(
+            "/business/reviews/:id/respond",
+            post(reviews::respond_to_review),
+        )
+        .route(
+            "/business/reviews/:id/approve",
+            post(reviews::business_approve_review),
+        )
+        .route(
+            "/business/reviews/:id/reject",
+            post(reviews::business_reject_review),
+        )
         // "Report a problem" on a listing (card B90 cross-cutting). The public POST is anonymous
         // (see the is_public allowlist); the moderation queue is directory-scoped + tenant-guarded.
         .route("/businesses/:id/report", post(reports::create_report))

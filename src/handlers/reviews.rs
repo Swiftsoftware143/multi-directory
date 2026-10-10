@@ -539,3 +539,136 @@ pub async fn respond_to_review(
 
     Ok(Json(json!(updated)))
 }
+
+// ── Business-owner review surface (business-portal.html) ─────────────────────────────────────
+//
+// `docs/GAMIFICATION_ENGINE.md` advertises `GET /business/reviews/pending` and
+// `POST /business/reviews/:id/respond`, and `docs/business-owner-guide.md` tells a listing owner
+// to "Approve or Reject" reviews of their own business — but the router had no `/business/reviews/*`
+// prefix, so every one of those documented business-side calls 404'd (measured 2026-10-10:
+// /business/reviews/pending -> 404, /business/reviews/:id/respond -> 404). These handlers close
+// that gap. All four are owner-scoped: the caller must own the review's business outright
+// (`businesses.owner_id`) or hold an active claim on it (`claimed_businesses`), the same ownership
+// test `create_review` and `respond_to_review` already use.
+
+/// Does `uid` own `business_id`? 1+ if they own it outright or hold an active claim, else 0.
+async fn owned_by(db: &sqlx::PgPool, business_id: Uuid, uid: Uuid) -> Result<i64, AppError> {
+    let owns: i64 = sqlx::query_scalar(
+        r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
+                + (SELECT COUNT(*) FROM claimed_businesses
+                    WHERE business_id = $1 AND is_active
+                      AND (visitor_account_id = $2 OR user_id = $2))"#,
+    )
+    .bind(business_id)
+    .bind(uid)
+    .fetch_one(db)
+    .await?;
+    Ok(owns)
+}
+
+/// GET /api/v1/business/reviews/pending — reviews on the caller's own businesses that the owner
+/// has not replied to yet. This is the documented "reviews needing response" list.
+pub async fn business_pending_reviews(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<impl IntoResponse> {
+    let uid = Uuid::parse_str(&claims.sub)
+        .map_err(|_| AppError::Forbidden("Sign in to see pending reviews".to_string()))?;
+
+    let rows = sqlx::query_as::<_, Review>(
+        r#"SELECT r.* FROM reviews r
+           WHERE r.owner_response IS NULL
+             AND r.status <> 'rejected'
+             AND (
+                 EXISTS (SELECT 1 FROM businesses b
+                         WHERE b.id = r.business_id AND b.owner_id = $1)
+                 OR EXISTS (SELECT 1 FROM claimed_businesses c
+                            WHERE c.business_id = r.business_id AND c.is_active
+                              AND (c.visitor_account_id = $1 OR c.user_id = $1))
+             )
+           ORDER BY r.created_at DESC
+           LIMIT 200"#,
+    )
+    .bind(uid)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(json!({ "data": rows })))
+}
+
+/// Approve/reject a review on a business the caller owns. Admins moderate on the owner's behalf.
+/// Recomputes the business rating aggregates so the public listing reflects the change at once.
+async fn set_review_status_owned(
+    s: &AppState,
+    claims: &Claims,
+    id: Uuid,
+    status: &str,
+) -> Result<Review, AppError> {
+    let uid = Uuid::parse_str(&claims.sub)
+        .map_err(|_| AppError::Forbidden("Sign in to moderate a review".to_string()))?;
+
+    let review = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound("Review not found".to_string()))?;
+
+    let business_id = review
+        .business_id
+        .ok_or(AppError::Validation("Review has no business".to_string()))?;
+
+    // Owner-scoped. Note the app's flat role model: `register` grants every new account the
+    // tenant role `admin`, so `role == "admin"` is NOT a platform-operator signal and must never
+    // widen this check — only the platform `super_admin` may moderate on an owner's behalf.
+    let is_super = claims.role == "super_admin";
+    if !is_super && owned_by(&s.db, business_id, uid).await? == 0 {
+        return Err(AppError::Forbidden(
+            "You can only moderate reviews of a business you own.".to_string(),
+        ));
+    }
+
+    let updated = sqlx::query_as::<_, Review>(
+        r#"UPDATE reviews SET
+             status = $1,
+             is_verified = CASE WHEN $1 = 'approved' THEN true ELSE is_verified END,
+             updated_at = NOW()
+           WHERE id = $2 RETURNING *"#,
+    )
+    .bind(status)
+    .bind(id)
+    .fetch_one(&s.db)
+    .await?;
+
+    sqlx::query(
+        r#"UPDATE businesses SET
+           rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+           review_count = (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+           updated_at = NOW()
+           WHERE id = $1"#,
+    )
+    .bind(business_id)
+    .execute(&s.db)
+    .await?;
+
+    Ok(updated)
+}
+
+/// POST /api/v1/business/reviews/:id/approve — a listing owner approves a review of their own business.
+pub async fn business_approve_review(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let review = set_review_status_owned(&s, &claims, id, "approved").await?;
+    Ok(Json(json!(review)))
+}
+
+/// POST /api/v1/business/reviews/:id/reject — a listing owner rejects a review of their own business.
+pub async fn business_reject_review(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let review = set_review_status_owned(&s, &claims, id, "rejected").await?;
+    Ok(Json(json!(review)))
+}
