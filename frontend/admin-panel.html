@@ -1055,7 +1055,7 @@
             <option value="bill">Bill the overage (consented, capped)</option>
             <option value="pause">Pause earning at the allowance</option>
           </select></div>
-          <div class="em-field"><label>Overage cap (points; 0 = uncapped)</label><input id="ch-overage-cap" type="number" min="0" placeholder="0"></div>
+          <div class="em-field"><label>Overage cap (ZaarCash; 0 = uncapped)</label><input id="ch-overage-cap" type="number" min="0" placeholder="0"></div>
           <!-- Options are built at load time from the API's own `known_providers` (only providers
                with a real payout adapter) — never hardcoded here, so the operator can never pick
                one the clearinghouse cannot actually pay through. -->
@@ -1076,7 +1076,7 @@
           <input class="pk-input" id="ch-period-end" type="date" style="flex:0 1 160px" title="period end (inclusive)">
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chPreview()">Preview (dry run)</button>
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__chRun()">Run settlement</button>
-          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chExpire()">Expire points (policy)</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__chExpire()">Expire ZaarCash (policy)</button>
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__chSendStatements()">✉️ Send statements now</button>
         </div>
         <!-- The scheduler's own panel: last run, next scheduled run, armed/off, the
@@ -6367,7 +6367,7 @@
           var progs = (res && res.programs) || [];
           badge.textContent = progs.length + ' programme' + (progs.length === 1 ? '' : 's') + ' · network-wide';
           list.innerHTML = progs.length ? progs.map(lpRow).join('')
-            : '<p style="font-size:.85rem;color:var(--text-secondary)">No programme yet — "New programme" creates one so customers start earning points.</p>';
+            : '<p style="font-size:.85rem;color:var(--text-secondary)">No programme yet — "New programme" creates one so customers start earning ZaarCash.</p>';
         })
         .catch(function (e) {
           badge.textContent = 'error';
@@ -6993,7 +6993,7 @@
           var html = '<div style="font-size:.82rem;font-weight:600;margin:0 0 4px">Statements — ' +
             daEsc((r.run && r.run.period_key) || '') + '</div>';
           if (!rows.length) {
-            host.innerHTML = html + '<div class="empty-state"><p>No statements for this run (no points moved in the period).</p></div>';
+            host.innerHTML = html + '<div class="empty-state"><p>No statements for this run (no ZaarCash moved in the period).</p></div>';
             return;
           }
           html += daRollupTable('Per-business position', ['Business', 'Issued', 'Invoiced', 'Redeemed', 'Reimbursed', 'Net', 'Invoice', 'Payout'],
