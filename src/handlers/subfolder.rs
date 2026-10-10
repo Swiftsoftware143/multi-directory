@@ -1665,7 +1665,34 @@ pub async fn blog_post_page(
     .fetch_optional(pool)
     .await
     .ok()
-    .flatten()?;
+    .flatten();
+
+    // B186: a published blog_post wins; if none matches, fall back to a published
+    // business / sponsored article. The public RSS feed (articles_feed.rs) advertises
+    // business_articles under this exact `/<city>/blog/<slug>` url, so without the
+    // fallback every sponsored article is advertised but unreachable — the request
+    // landed on the SPA shell instead of the article. Same column shape, so the render
+    // below is shared unchanged.
+    let row = match row {
+        Some(r) => Some(r),
+        None => {
+            sqlx::query(
+                "SELECT ba.id, ba.title, ba.slug, NULL::text AS excerpt, ba.content, \
+                        NULL::text AS meta_title, ba.meta_description, NULL::text AS canonical_url, \
+                        NULL::text AS robots_meta, NULL::text AS featured_image_url, \
+                        (SELECT b.name FROM businesses b WHERE b.id = ba.business_id) AS author_name, \
+                        ba.keyword AS blog_category, ba.created_at, ba.updated_at \
+                 FROM business_articles ba \
+                 WHERE ba.directory_id = $1 AND ba.slug = $2 AND ba.status = 'published' LIMIT 1",
+            )
+            .bind(dir.id)
+            .bind(post_slug)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+        }
+    }?;
 
     let post_id: Uuid = row.try_get("id").ok()?;
     let title_raw: String = row.try_get("title").unwrap_or_default();
