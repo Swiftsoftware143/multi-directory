@@ -3251,6 +3251,10 @@
       if (b && !b.value) b.innerHTML = dirOptionsHtml();
       var c = document.getElementById('cs-sync-dir');
       if (c && !c.value) c.innerHTML = dirOptionsHtml();
+      // B184: the bulk data-export picker had NO filler at all, so it stayed empty and every
+      // Bulk export refused with "Pick a directory for the bulk export." (the routes worked).
+      var e = document.getElementById('ex-dir');
+      if (e && !e.value) e.innerHTML = dirOptionsHtml();
     };
 
     // ===== 🌐 Domains, subdomains & subfolders per directory (Feature 2) =====

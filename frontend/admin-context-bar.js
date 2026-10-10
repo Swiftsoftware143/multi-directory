@@ -182,7 +182,7 @@
     }
     if (!dirId) return;
     if (window.__mdFillDirectorySelects) { try { window.__mdFillDirectorySelects(); } catch (e) {} }
-    ['pk-effective-directory', 'dm-directory'].forEach(function (id) {
+    ['pk-effective-directory', 'dm-directory', 'ex-dir'].forEach(function (id) {
       var el = document.getElementById(id);
       if (!el) return;
       var has = Array.prototype.some.call(el.options || [], function (o) { return o.value === dirId; });
