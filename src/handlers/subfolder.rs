@@ -1255,9 +1255,9 @@ pub async fn business_detail(
     let lng: Option<f64> = row.try_get("longitude").unwrap_or(None);
 
     // Category label (best-effort; falls back to the business category id).
+    let category_id: Option<Uuid> = row.try_get("category_id").unwrap_or(None);
     let category: Option<String> = {
-        let cid: Option<Uuid> = row.try_get("category_id").unwrap_or(None);
-        if let Some(cid) = cid {
+        if let Some(cid) = category_id {
             sqlx::query_scalar::<_, String>("SELECT name FROM directory_categories WHERE id = $1")
                 .bind(cid)
                 .fetch_optional(pool)
@@ -1426,8 +1426,20 @@ pub async fn business_detail(
         format!("<p class=\"lede\">{}</p>", h(&description))
     };
 
+    // Expose this page's own business + directory to the injected visitor tracker, so a
+    // click or scroll lands attributed instead of directory-less / category-less ("unknown").
+    let track_ctx = serde_json::json!({
+        "business_id": biz_id,
+        "category_id": category_id,
+        "directory_id": dir.id,
+    });
+    let ctx_script = format!(
+        "<script>window.__dir_id=\"{}\";window.__biz_ctx={};</script>",
+        dir.id, track_ctx
+    );
+
     let body = format!(
-        r#"{start}{crumbs}
+        r#"{start}{ctx}{crumbs}
 <div class="detail">
 {logo}
 <h1>{name}</h1>
@@ -1438,6 +1450,7 @@ pub async fn business_detail(
 <p class="row"><a href="{base}/{dslug}/businesses">← All businesses in {city}</a></p>
 </div>
 {end}"#,
+        ctx = ctx_script,
         start = shell_start(
             &seo,
             &site,
