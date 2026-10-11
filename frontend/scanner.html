@@ -332,6 +332,16 @@ function setSession(d) {
   localStorage.setItem('scannerBizCat',_bizCategory);
 }
 
+// The scanner saves its own sign-in under exactly these four keys. Signing out (or
+// finding a stale token on load) must remove ONLY these — never a blanket wipe of all
+// saved storage, which would take every other key on this address (the admin console's
+// sign-in, the visitor's wallet, a claim in progress) — so a reset looked like the data
+// vanishing.
+var SCANNER_KEYS = ['scannerToken','scannerBizName','scannerBizId','scannerBizCat'];
+function clearScannerSession(){
+  try{ SCANNER_KEYS.forEach(function(k){ localStorage.removeItem(k); }); }catch(e){}
+}
+
 async function loadBizProfile() {
   try{
     var r=await fetch(API+'/auth/me',{headers:{'Authorization':'Bearer '+_token}});
@@ -346,7 +356,7 @@ async function loadBizProfile() {
 
 function doLogout() {
   stopScanner();
-  _token=null;localStorage.clear();
+  _token=null;clearScannerSession();
   $('scannerScreen').style.display='none';
   $('authScreen').style.display='';
   resetForm();
@@ -555,7 +565,7 @@ window.addEventListener('beforeunload',function(){stopScanner()});
       showScanner();
     })
     .catch(function(){
-      localStorage.clear();
+      clearScannerSession();
       $('authScreen').style.display='';
     });
   }else{
