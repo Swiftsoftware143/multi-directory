@@ -473,8 +473,22 @@ fn strip_first_between(s: &str, open: &str, close: &str) -> String {
 /// markup, CSS, navigation and component set are therefore byte-identical to the
 /// homepage — only the data (loaded by the SPA from the city endpoint) and the
 /// head tags are city-scoped. This is what stops the two surfaces drifting.
-fn inject_city_document(spa_html: &str, seo: &Seo, site_name: &str, theme: &BrandTheme) -> String {
+fn inject_city_document(
+    spa_html: &str,
+    seo: &Seo,
+    site_name: &str,
+    theme: &BrandTheme,
+    dir_id: Uuid,
+) -> String {
     let head = head_html(seo, site_name);
+    // Attribute the entry view to this city, server-side. The visitor beacon fires its first
+    // page_view at boot — before the SPA has resolved the city from the path
+    // (`/api/v1/zaarhub/cities/<slug>` sets window.__dir_id only later) — so without this the
+    // whole first view AND its session row landed with no directory and the demand product
+    // read "unknown" for every city. window.__dir_id is exactly what the beacon reads when it
+    // starts the session; deferred scripts run before window 'load', so the value survives.
+    let attr =
+        format!("<script>window.__dir_id=\"{dir_id}\";window.__ssr_dir=\"{dir_id}\";</script>");
     let theme_tag = format!("<style id=\"brand-theme\">{}</style>", theme.css_block());
     // Drop the homepage's own <title> (the city's is the first line of `head`).
     let base = strip_first_between(spa_html, "<title", "</title>");
@@ -482,6 +496,7 @@ fn inject_city_document(spa_html: &str, seo: &Seo, site_name: &str, theme: &Bran
         Some(pos) => {
             let mut out = String::with_capacity(base.len() + head.len() + theme_tag.len());
             out.push_str(&base[..pos]);
+            out.push_str(&attr);
             out.push_str(&head);
             out.push_str(&theme_tag);
             out.push_str(&base[pos..]);
@@ -1000,7 +1015,7 @@ pub async fn directory_home(
     // The city page IS the homepage document — identical markup, CSS, nav and
     // components — carrying only the city's own <head>. The SPA scopes the data
     // to this city from `/api/v1/zaarhub/cities/<slug>`, keyed off the path.
-    let body = inject_city_document(spa_html, &seo, &site, &theme);
+    let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id);
 
     Some(html_response(StatusCode::OK, body))
 }

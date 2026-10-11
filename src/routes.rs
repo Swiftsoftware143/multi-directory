@@ -3372,6 +3372,39 @@ pub fn create_router(s: AppState) -> Router {
                         // White-label: if the path targets a directory (/d/{slug}),
                         // inject that directory's branding into the served HTML.
                         let mut html = index_clone2.as_ref().to_string();
+                        // Attribute the entry view to its directory, server-side. The visitor
+                        // beacon fires its first page_view at boot — before the SPA has resolved
+                        // the city from the path (frontend/index.html sets window.__dir_id only
+                        // after /zaarhub/cities/{slug} answers) — so without this the whole first
+                        // view AND its session row landed with no directory, and the demand
+                        // product read "unknown" for every city. Resolve the entry slug the SPA
+                        // router itself uses (/city/{slug}, /d/{slug} or /{slug}) and hand the
+                        // directory id to the beacon, which reads window.__dir_id when it starts
+                        // the session. Deferred scripts (the beacon) run before window 'load',
+                        // and the SPA only sets that global on 'load', so the value survives.
+                        if let Some(entry) = spa_entry_slug(&path) {
+                            let dir_row: Option<(uuid::Uuid,)> = match sqlx::query_as(
+                                "SELECT id FROM directories WHERE slug = $1 AND status = 'active' LIMIT 1",
+                            )
+                            .bind(&entry)
+                            .fetch_optional(&_pool_for_host)
+                            .await
+                            {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    warn!("spa entry attribution lookup failed for {entry}: {e}");
+                                    None
+                                }
+                            };
+                            if let Some((dir_id,)) = dir_row {
+                                let tag = format!(
+                                    "<script>window.__dir_id=\"{dir_id}\";window.__ssr_dir=\"{dir_id}\";</script>"
+                                );
+                                if let Some(pos) = html.find("<head>") {
+                                    html.insert_str(pos + "<head>".len(), &tag);
+                                }
+                            }
+                        }
                         let slug = crate::branding_injector::slug_from_dir_path(&path);
                         let branding = if let Some(slug) = slug {
                             crate::branding_injector::fetch_branding_by_slug(&_pool_for_host, &slug)
@@ -3733,4 +3766,23 @@ async fn health_check() -> impl axum::response::IntoResponse {
             "version": env!("CARGO_PKG_VERSION")
         })),
     )
+}
+
+/// The directory slug a public SPA entry path points at, using the SAME rule as the client
+/// router (`MD_ENTRY` in frontend/index.html): `/city/{slug}`, `/d/{slug}`, or a single-segment
+/// `/{slug}`. Anything else — the root, a deeper non-city path — yields None, so the SPA
+/// fallback only ever attributes a view to a slug that is a real, active directory.
+fn spa_entry_slug(path: &str) -> Option<String> {
+    let trimmed = path.trim_start_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let segs: Vec<&str> = trimmed.split('/').collect();
+    if (segs[0] == "city" || segs[0] == "d") && segs.len() > 1 && !segs[1].is_empty() {
+        return Some(segs[1].to_string());
+    }
+    if segs.len() == 1 && !segs[0].is_empty() {
+        return Some(segs[0].to_string());
+    }
+    None
 }
