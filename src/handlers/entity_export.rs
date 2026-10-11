@@ -86,8 +86,12 @@ const BULK_CUSTOMER: &str = "SELECT row_to_json(t)::text AS j FROM visitor_accou
      WHERE t.directory_id = $1 ORDER BY t.created_at";
 
 /// Every single-column FK in the live catalog pointing at `public.businesses`, as
-/// `(label, statement)`. `label` is `table.column` when one table points here through more
-/// than one column, otherwise just `table`.
+/// `(label, statement)`, PLUS the business-owned bookkeeping tables that carry a
+/// `business_id` without a declared FK yet are still part of the business's record
+/// (`deals`, `call_logs`, `business_subscriptions`, `business_point_ledger`,
+/// `twilio_numbers` — see the fk-probe note: an undeclared column survives a parent
+/// delete, and a complete export must not drop it). `label` is `table.column` when one
+/// table points here through more than one column, otherwise just `table`.
 const BUSINESS_CHILDREN: &[(&str, &str)] = &[
     (
         "b2b_notifications",
@@ -250,6 +254,47 @@ const BUSINESS_CHILDREN: &[(&str, &str)] = &[
         "visitor_favorites.business_id",
         child_q!("visitor_favorites", "business_id"),
     ),
+    // — B112 completeness gap (closed 2026-10-11): a business's OWN records that the
+    // harded-coded list had been dropping, so "download the complete record" was not complete.
+    (
+        "business_follows",
+        child_q!("business_follows", "business_id"),
+    ),
+    (
+        "business_point_ledger",
+        child_q!("business_point_ledger", "business_id"),
+    ),
+    (
+        "business_questions",
+        child_q!("business_questions", "business_id"),
+    ),
+    (
+        "business_recommendations",
+        child_q!("business_recommendations", "business_id"),
+    ),
+    (
+        "business_reports",
+        child_q!("business_reports", "business_id"),
+    ),
+    (
+        "business_subscriptions",
+        child_q!("business_subscriptions", "business_id"),
+    ),
+    ("call_logs", child_q!("call_logs", "business_id")),
+    ("deals", child_q!("deals", "business_id")),
+    (
+        "listing_invites",
+        child_q!("listing_invites", "business_id"),
+    ),
+    (
+        "supplier_prospect_outreach",
+        child_q!("supplier_prospect_outreach", "business_id"),
+    ),
+    (
+        "supplier_prospects",
+        child_q!("supplier_prospects", "business_id"),
+    ),
+    ("twilio_numbers", child_q!("twilio_numbers", "business_id")),
 ];
 
 /// Every single-column FK pointing at `public.visitor_accounts`.
