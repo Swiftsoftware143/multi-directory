@@ -104,6 +104,11 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     // cannot also require a session JWT — that made it uncallable (401 for every caller). The
     // hash-only lookup below means only the full key verifies; the prefix alone never does.
     ("POST", "/api-keys/verify", "api-key-verify"),
+    // --- /articles ---------------------------------------------------
+    // The public READ of a business/sponsored article, promised by the served help page
+    // ("GET /api/v1/articles/:slug — Serve article publicly"). Anonymous by design: it is a
+    // published SEO page, and it canonicalises to the one public url per record.
+    ("GET", "/articles/:slug", "public-article"),
     // --- /auth -------------------------------------------------------
     ("GET", "/auth/linked-accounts", "linked-accounts"),
     ("POST", "/auth/forgot-password", "auth"),
@@ -726,12 +731,13 @@ mod tests {
         // The count is the measured census result minus the 13 narrowed legs, plus the
         // B142 IndexNow key file (a public root path), plus the B187 api-key verify
         // endpoint (POST /api-keys/verify, made callable), plus the pretty blog RSS
-        // (GET /:slug/blog/feed.xml, so the feed's own advertised self url serves);
-        // if this changes, the census wants a look.
+        // (GET /:slug/blog/feed.xml, so the feed's own advertised self url serves), plus
+        // the public article read (GET /articles/:slug, the address the served help page
+        // promises); if this changes, the census wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            161,
-            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url)"
+            162,
+            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read)"
         );
     }
 }

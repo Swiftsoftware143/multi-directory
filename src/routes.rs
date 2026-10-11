@@ -1665,6 +1665,12 @@ pub fn create_router(s: AppState) -> Router {
             "/business-articles/:id/track",
             post(business_articles::track_article_event),
         )
+        // The article engine's public READ. `GET /api/v1/articles/:slug` is promised by the
+        // served help page ("Serve article publicly") but was never mounted, so the documented
+        // address answered the API 404 and the article was unreachable there. The rendered page
+        // canonicalises to the one public url per record (`/<city>/articles/<slug>`), so it is a
+        // view of the same article, not a second indexable url.
+        .route("/articles/:slug", get(business_articles::serve_article))
         // ??? Provider keys management
         .route(
             "/provider-keys",

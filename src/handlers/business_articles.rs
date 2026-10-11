@@ -657,6 +657,10 @@ pub async fn serve_article(
     let mt = htmlesc(&title);
     let md = htmlesc(&meta_description);
     let sl = htmlesc(&slug);
+    // The canonical is the directory subfolder page — the app's one public url per record
+    // (same address the sitemap/RSS advertise and the console links to). Pointing it at the
+    // bare `/articles/<slug>` used to name a path that resolves to nothing.
+    let ds = htmlesc(&dir_slug);
     let hn = htmlesc(&dir_name);
     let year_str = Utc::now().format("%Y").to_string();
 
@@ -671,7 +675,7 @@ pub async fn serve_article(
     <meta property="og:title" content="{mt}">
     <meta property="og:description" content="{md}">
     <meta name="robots" content="index,follow">
-    <link rel="canonical" href="/articles/{sl}">
+    <link rel="canonical" href="/{ds}/articles/{sl}">
     <style>
         *{{margin:0;padding:0;box-sizing:border-box}}
         body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;color:#1e293b;line-height:1.6}}
@@ -724,6 +728,7 @@ pub async fn serve_article(
         mt = mt,
         md = md,
         sl = sl,
+        ds = ds,
         sponsored_badge = sponsored_badge,
         status_badge = if status == "published" {
             r#"<div style="margin-bottom:16px"><span class="status-badge">Published</span></div>"#
