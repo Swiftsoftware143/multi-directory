@@ -87,6 +87,11 @@
   function directoryId() {
     // Pages may expose the directory; otherwise the server resolves by slug/host.
     if (window.__dir_id) return window.__dir_id;
+    // The SPA shell clears window.__dir_id while it boots (its per-view context reset) and can
+    // win the race against this deferred beacon, so the FIRST view of a city page was sometimes
+    // recorded with no city at all. window.__ssr_dir is the same server-injected entry directory
+    // and the SPA never clears it, so it is the race-free fallback.
+    if (window.__ssr_dir) return window.__ssr_dir;
     var el = document.querySelector('[data-directory-id]');
     return (el && el.getAttribute('data-directory-id')) || null;
   }
@@ -107,7 +112,7 @@
     var c = bizCtx();
     var payload = {
       session_id: st.s,
-      directory_id: window.__dir_id || c.directory_id || st.dir || null,
+      directory_id: window.__dir_id || c.directory_id || st.dir || window.__ssr_dir || null,
       event_type: type,
       event_value: value || null,
       page_url: location.href
