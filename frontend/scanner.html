@@ -521,16 +521,20 @@ async function processTransaction() {
 function showSuccess(d) {
   var points = d.points_awarded||d.points||0;
   var memberName = d.member_name||d.customer_name||'Customer';
-  var memberTier = (d.member_tier||d.tier||'silver').toLowerCase();
-  var tierLabel = memberTier.charAt(0).toUpperCase()+memberTier.slice(1);
-  var tierClass = 'tier-'+memberTier;
+  // The member's REAL tier, straight from the API. When they hold none the field is absent, so
+  // show a plain "Member" badge — never invent a level. (This used to default to "Silver" for
+  // every customer, whatever their real tier was.)
+  var memberTier = (d.member_tier||'').toString().trim();
+  var tierLabel = memberTier ? memberTier.charAt(0).toUpperCase()+memberTier.slice(1) : '';
+  var tierSlug = memberTier.toLowerCase();
+  var tierClass = /^(silver|gold|platinum|bronze)$/.test(tierSlug) ? 'tier-'+tierSlug : 'tier-silver';
   var actionLabel = _scanType==='redemption'?'redeemed':(_scanType==='purchase'?'earned':'check-in');
   var icon = _scanType==='redemption'?'🎁':(_scanType==='purchase'?'💰':'✅');
 
   $('successIcon').textContent = icon;
   $('successTitle').textContent = _scanType==='redemption'?'Redeemed!':(_scanType==='purchase'?'Purchase Credited!':'Checked In!');
   $('successMemberName').textContent = memberName;
-  $('successMemberTier').textContent = tierLabel + ' ⭐ Member';
+  $('successMemberTier').textContent = tierLabel ? tierLabel + ' ⭐ Member' : '⭐ Member';
   $('successMemberTier').className = 'member-tier '+tierClass;
   $('successPoints').textContent = (points>=0?'+':'')+points;
   $('successPointsLabel').textContent = (d.currency_name||'ZaarCash')+' '+actionLabel;

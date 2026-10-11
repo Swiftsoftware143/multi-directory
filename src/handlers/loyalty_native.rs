@@ -459,7 +459,60 @@ pub async fn record_checkin(
     .execute(pool)
     .await?;
 
+    // A check-in is an earn: the member's level follows their LIFETIME total, so move them
+    // up the moment this check-in crosses one of the programme's tier thresholds.
+    refresh_member_tier(pool, member_id).await?;
+
     Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tiers — a member's level follows their LIFETIME earnings
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Place the member in the loyalty tier their LIFETIME earnings qualify for: the highest
+/// tier whose `min_points` they have reached, or none while they are below the lowest.
+///
+/// This is the only writer of `loyalty_members.tier_id`, and it runs after every earn
+/// (check-in, purchase, one-off award), so a member moves up the moment they cross a
+/// threshold. It honours the programme's `tiers_enabled` switch: a programme with tiers
+/// switched off (or none defined) leaves `tier_id` NULL — nothing is ever invented.
+pub async fn refresh_member_tier(pool: &PgPool, member_id: &Uuid) -> Result<(), AppError> {
+    sqlx::query(
+        r#"UPDATE loyalty_members m
+              SET tier_id = (
+                    SELECT t.id FROM loyalty_tiers t
+                      JOIN loyalty_programs p ON p.id = t.loyalty_program_id
+                     WHERE p.tiers_enabled
+                       AND t.loyalty_program_id = m.program_id
+                       AND t.min_points <= m.lifetime_points
+                     ORDER BY t.min_points DESC, t.created_at ASC
+                     LIMIT 1)
+            WHERE m.id = $1"#,
+    )
+    .bind(member_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// The member's current tier as `(name, colour, multiplier)`, or `None` when they hold none.
+/// Read-only: it lets a caller (the counter scanner) tell the member's real level, so the
+/// screen can never show a level the member does not actually have.
+pub async fn member_tier(
+    pool: &PgPool,
+    member_id: &Uuid,
+) -> Result<Option<(String, String, f64)>, AppError> {
+    let row = sqlx::query_as::<_, (String, String, f64)>(
+        r#"SELECT t.name, t.color, t.multiplier::float8
+             FROM loyalty_members m
+             JOIN loyalty_tiers t ON t.id = m.tier_id
+            WHERE m.id = $1"#,
+    )
+    .bind(member_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -577,6 +630,10 @@ pub async fn credit_visitor_units(
     } else {
         balance_after
     };
+
+    // Every credit (purchase, one-off award) can cross a tier threshold — refresh the member's
+    // level after the milestone bonuses land, so the total that decides the tier is final.
+    refresh_member_tier(pool, &member_id).await?;
 
     Ok(Some(CreditedAward {
         member_id,
@@ -1157,7 +1214,7 @@ pub async fn counter_scan(
             .await?
             .flatten();
 
-    match body.scan_type.as_deref().unwrap_or("checkin") {
+    let mut resp = match body.scan_type.as_deref().unwrap_or("checkin") {
         "purchase" => {
             let amount = body
                 .purchase_amount
@@ -1186,7 +1243,7 @@ pub async fn counter_scan(
                 Some(a) => (a.units, a.balance_after),
                 None => (0, 0),
             };
-            Ok(Json(json!({
+            json!({
                 "status": "credited",
                 "points_awarded": awarded,
                 "points_balance": balance,
@@ -1198,7 +1255,7 @@ pub async fn counter_scan(
                 } else {
                     "Earning is switched off for this programme".to_string()
                 }
-            })))
+            })
         }
         "redemption" | "redeem" => {
             let points = body
@@ -1278,7 +1335,7 @@ pub async fn counter_scan(
             .execute(&mut *tx)
             .await?;
             tx.commit().await?;
-            Ok(Json(json!({
+            json!({
                 "status": "redeemed",
                 "points_awarded": -points,
                 "points_redeemed": points,
@@ -1287,7 +1344,7 @@ pub async fn counter_scan(
                 "currency_name": program.currency_name,
                 "currency_icon": program.currency_icon,
                 "message": format!("{points} {} redeemed", program.currency_name)
-            })))
+            })
         }
         _ => {
             let today_count: i64 = sqlx::query_scalar(
@@ -1318,7 +1375,7 @@ pub async fn counter_scan(
             .bind(member_id)
             .fetch_one(&state.db)
             .await?;
-            Ok(Json(json!({
+            json!({
                 "status": "checked_in",
                 "points_awarded": awarded,
                 "points_balance": balance,
@@ -1326,9 +1383,19 @@ pub async fn counter_scan(
                 "currency_name": program.currency_name,
                 "currency_icon": program.currency_icon,
                 "message": format!("Checked in — +{} {}", program.points_per_checkin, program.currency_name)
-            })))
+            })
         }
+    };
+
+    // Tell the caller the member's REAL tier after this transaction — the earn above set it.
+    // When the member holds none the fields are simply absent, so the scanner shows a plain
+    // "Member" badge: it must never invent a level (it used to default to "Silver" for every
+    // customer, whatever the programme's tiers actually said).
+    if let Some((name, color, _multiplier)) = member_tier(&state.db, &member_id).await? {
+        resp["member_tier"] = json!(name);
+        resp["member_tier_color"] = json!(color);
     }
+    Ok(Json(resp))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
