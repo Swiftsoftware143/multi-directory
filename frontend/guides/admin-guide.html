@@ -387,7 +387,7 @@ a:hover{text-decoration:underline}
   <p><strong>Tiers (membership levels):</strong></p>
   <ul>
     <li><code>GET/POST /api/v1/directories/:slug/loyalty/programs/:program_id/tiers</code> — list / create a tier (name, <code>min_points</code>, color, perks, <code>multiplier</code>)</li>
-    <li><code>DELETE /api/v1/directories/:slug/loyalty/programs/:program_id/tiers/:tier_id</code> — delete a tier</li>
+    <li><code>PUT/DELETE /api/v1/directories/:slug/loyalty/programs/:program_id/tiers/:tier_id</code> — edit a tier (name, <code>min_points</code>, color, perks, <code>multiplier</code>; omitted fields keep their value) / delete a tier</li>
   </ul>
 
   <p><strong>Rewards (catalog + earn + approval):</strong></p>

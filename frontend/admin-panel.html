@@ -6389,6 +6389,7 @@
       var cap = lpNum(p.redemption_cap_pct, 10);
       var minBal = lpNum(p.min_redeem_balance, 100);
       var noFree = (p.exclude_free_items == null) ? true : !!p.exclude_free_items;
+      var tiersOn = !!p.tiers_enabled;
       var msOn = !!p.milestones_enabled;
       return '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px" data-program="' + lpEsc(p.id) + '">' +
         '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">' +
@@ -6415,6 +6416,14 @@
           '<label style="font-size:.8rem;color:var(--text-secondary)">lifetime earned before redeeming <input class="input" type="number" min="0" style="width:100px" value="' + lpNum(p.min_lifetime_floor, 0) + '" data-f="min_lifetime_floor"></label>' +
           '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="exclude_free_items" ' + (noFree ? 'checked' : '') + '> free items earn nothing</label>' +
         '</div>' +
+        // Membership levels (tiers) had a full API and NO admin control: the operator could see the
+        // badge on the scanner but could never create, edit or remove a level from the console.
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
+          '<label style="font-size:.8rem;color:var(--text-secondary)"><input type="checkbox" data-f="tiers_enabled" ' + (tiersOn ? 'checked' : '') + '> membership levels on</label>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-tiers="' + lpEsc(p.id) + '">🏅 Membership levels</button>' +
+          '<span style="font-size:.75rem;color:var(--text-tertiary)">The ranks a loyal customer climbs — each one unlocks once they earn past a threshold.</span>' +
+        '</div>' +
+        '<div id="lp-tiers-' + lpEsc(p.id) + '" hidden></div>' +
         '<p style="font-size:.75rem;color:var(--text-tertiary);margin-top:6px">' +
           (p.network_id && !p.directory_id ? '🌐 Network-wide — applies to every city, including new ones. ' : '') +
           'Currency: ' + lpEsc(p.currency_name || 'ZaarCash') + ' ' + lpEsc(p.currency_icon || '') + ' · id ' + lpEsc(String(p.id).slice(0, 8)) +
@@ -6505,6 +6514,100 @@
         .then(function () { lpMsStatus(pid, 'deleted ✓'); })
         .catch(function (e) { lpMsStatus(pid, 'failed: ' + e.message); });
     }
+    // ── Membership levels (tiers) ────────────────────────────────────────────────────────────────
+    // The level a member holds is stored on the member and shown on the scanner; these controls are
+    // the only place an operator can define the levels themselves (the API alone was curl-only).
+    function lpTiersStatus(pid, msg) {
+      var el = document.getElementById('tiers-status-' + pid);
+      if (el) el.textContent = msg || '';
+    }
+    function lpTiersLoad(pid) {
+      var box = document.getElementById('lp-tiers-' + pid);
+      var slug = lpSlug();
+      if (!box) return;
+      box.hidden = false;
+      box.innerHTML = '<p style="font-size:.82rem;color:var(--text-secondary)">loading levels…</p>';
+      if (!slug) { box.innerHTML = '<p style="font-size:.82rem;color:#f87171">Pick a directory first.</p>'; return; }
+      return apiGet('/directories/' + encodeURIComponent(slug) + '/loyalty/programs/' + encodeURIComponent(pid) + '/tiers')
+        .then(function (res) { box.innerHTML = lpTiersRows(pid, (res && res.tiers) || []); })
+        .catch(function (e) {
+          box.innerHTML = '<p style="font-size:.82rem;color:#f87171">Could not load levels: ' + lpEsc(e.message) + '</p>';
+        });
+    }
+    function lpTiersRows(pid, tiers) {
+      return '<div style="border:1px dashed var(--border);border-radius:var(--radius);padding:12px;margin-top:8px">' +
+        '<div style="font-size:.85rem;font-weight:600;margin-bottom:6px">🏅 Membership levels — the rank a customer reaches as their lifetime earnings cross a threshold</div>' +
+        '<p style="font-size:.75rem;color:var(--text-tertiary);margin:0 0 8px">Levels only apply while “membership levels on” above is ticked. The threshold counts LIFETIME currency earned (not the balance). Change a level’s name, threshold, colour or reward rate and press its Save.</p>' +
+        (tiers.length ? tiers.map(function (t) {
+          return '<div class="lp-tier-row" data-tier="' + lpEsc(t.id) + '" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 0;border-top:1px solid var(--border)">' +
+            '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">Level name<input class="input" style="min-width:150px" value="' + lpEsc(t.name) + '" data-tf="name"></label>' +
+            '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">lifetime earned to reach it<input class="input" type="number" min="0" style="width:120px" value="' + lpNum(t.min_points, 0) + '" data-tf="min_points"></label>' +
+            '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">badge colour<input type="color" style="width:44px;height:30px;padding:2px" value="' + lpColor(t.color) + '" data-tf="color" title="Badge colour"></label>' +
+            '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">reward rate (currency per $1)<input class="input" type="number" min="0" step="0.1" style="width:110px" value="' + lpNum(t.multiplier, 1) + '" data-tf="multiplier" title="Applied to future earnings once the member reaches this level"></label>' +
+            '<button class="btn btn-accent btn-sm" type="button" data-tiersave="' + lpEsc(pid) + '" data-tierrow="' + lpEsc(t.id) + '">Save</button>' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-tierdel="' + lpEsc(t.id) + '" data-tierprog="' + lpEsc(pid) + '">Delete</button>' +
+          '</div>';
+        }).join('') : '<p style="font-size:.82rem;color:var(--text-secondary);margin:4px 0">No levels yet.</p>') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">' +
+          '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">New level name<input class="input" id="tier-name-' + lpEsc(pid) + '" placeholder="e.g. Gold" style="min-width:150px"></label>' +
+          '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">lifetime earned to reach it<input class="input" type="number" min="0" value="50" style="width:120px" id="tier-min-' + lpEsc(pid) + '"></label>' +
+          '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">badge colour<input type="color" value="#0ea5e9" style="width:44px;height:30px;padding:2px" id="tier-color-' + lpEsc(pid) + '"></label>' +
+          '<label style="font-size:.75rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px">reward rate<input class="input" type="number" min="0" step="0.1" value="1" style="width:100px" id="tier-mult-' + lpEsc(pid) + '"></label>' +
+          '<button class="btn btn-accent btn-sm" type="button" data-tieradd="' + lpEsc(pid) + '">＋ Add level</button>' +
+          '<span class="feature-status" id="tiers-status-' + lpEsc(pid) + '"></span>' +
+        '</div>' +
+      '</div>';
+    }
+    function lpNumEl(id, dflt) {
+      var el = document.getElementById(id);
+      return el ? el.value : dflt;
+    }
+    function lpTierAdd(pid) {
+      var slug = lpSlug();
+      if (!slug) return;
+      var name = String(lpNumEl('tier-name-' + pid, '')).trim();
+      if (!name) { lpTiersStatus(pid, 'a level needs a name'); return; }
+      var body = {
+        name: name,
+        min_points: parseInt(lpNumEl('tier-min-' + pid, '0') || '0', 10) || 0,
+        color: lpNumEl('tier-color-' + pid, '#0ea5e9') || '#0ea5e9',
+        multiplier: parseFloat(lpNumEl('tier-mult-' + pid, '1') || '1') || 1
+      };
+      lpTiersStatus(pid, 'adding…');
+      return apiPost('/directories/' + encodeURIComponent(slug) + '/loyalty/programs/' + encodeURIComponent(pid) + '/tiers', body)
+        .then(function () { return lpTiersLoad(pid); })
+        .then(function () { lpTiersStatus(pid, 'added ✓'); })
+        .catch(function (e) { lpTiersStatus(pid, 'failed: ' + e.message); });
+    }
+    function lpTierSave(pid, tid) {
+      var slug = lpSlug();
+      var row = document.querySelector('.lp-tier-row[data-tier="' + tid + '"]');
+      if (!slug || !row) return;
+      var nameEl = row.querySelector('[data-tf="name"]');
+      var name = nameEl ? String(nameEl.value || '').trim() : '';
+      if (!name) { lpTiersStatus(pid, 'a level needs a name'); return; }
+      var body = {
+        name: name,
+        min_points: parseInt((row.querySelector('[data-tf="min_points"]') || {}).value || '0', 10) || 0,
+        color: (row.querySelector('[data-tf="color"]') || {}).value || '#0ea5e9',
+        multiplier: parseFloat((row.querySelector('[data-tf="multiplier"]') || {}).value || '1') || 1
+      };
+      lpTiersStatus(pid, 'saving…');
+      return apiPut('/directories/' + encodeURIComponent(slug) + '/loyalty/programs/' + encodeURIComponent(pid) + '/tiers/' + encodeURIComponent(tid), body)
+        .then(function () { return lpTiersLoad(pid); })
+        .then(function () { lpTiersStatus(pid, 'saved ✓'); })
+        .catch(function (e) { lpTiersStatus(pid, 'failed: ' + e.message); });
+    }
+    function lpTierDelete(pid, tid) {
+      var slug = lpSlug();
+      if (!slug) return;
+      if (!confirm('Delete this membership level? Customers already on it keep their currency but lose the badge at their next visit.')) return;
+      lpTiersStatus(pid, 'deleting…');
+      return apiFetch('DELETE', '/directories/' + encodeURIComponent(slug) + '/loyalty/programs/' + encodeURIComponent(pid) + '/tiers/' + encodeURIComponent(tid))
+        .then(function () { return lpTiersLoad(pid); })
+        .then(function () { lpTiersStatus(pid, 'deleted ✓'); })
+        .catch(function (e) { lpTiersStatus(pid, 'failed: ' + e.message); });
+    }
     function saveLoyaltyProgram(id) {
       var slug = lpSlug();
       var box = document.querySelector('[data-program="' + id + '"]');
@@ -6551,6 +6654,14 @@
           if (add) { lpMsAdd(add.getAttribute('data-msadd')); return; }
           var del = e.target.closest ? e.target.closest('[data-msdel]') : null;
           if (del) { lpMsDelete(del.getAttribute('data-msprog'), del.getAttribute('data-msdel')); return; }
+          var tks = e.target.closest ? e.target.closest('[data-tiers]') : null;
+          if (tks) { lpTiersLoad(tks.getAttribute('data-tiers')); return; }
+          var tad = e.target.closest ? e.target.closest('[data-tieradd]') : null;
+          if (tad) { lpTierAdd(tad.getAttribute('data-tieradd')); return; }
+          var tsv = e.target.closest ? e.target.closest('[data-tiersave]') : null;
+          if (tsv) { lpTierSave(tsv.getAttribute('data-tiersave'), tsv.getAttribute('data-tierrow')); return; }
+          var tdl = e.target.closest ? e.target.closest('[data-tierdel]') : null;
+          if (tdl) { lpTierDelete(tdl.getAttribute('data-tierprog'), tdl.getAttribute('data-tierdel')); return; }
         });
       }
     })();

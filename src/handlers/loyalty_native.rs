@@ -1546,6 +1546,52 @@ pub async fn create_tier(
     Ok(Json(json!({ "tier": tier })))
 }
 
+/// PUT /directories/:slug/loyalty/programs/:program_id/tiers/:tier_id — edit a membership level.
+/// Only `name` is required; every other field is optional and an omitted one keeps its stored value
+/// (COALESCE), so a level can be re-thresholded or recoloured without deleting and re-creating it —
+/// which would orphan the `tier_id` every member sitting on that level already carries.
+pub async fn update_tier(
+    State(state): State<AppState>,
+    Path((slug, program_id, tier_id)): Path<(String, Uuid, Uuid)>,
+    Json(body): Json<TierInput>,
+) -> Result<Json<Value>, AppError> {
+    owned_program_id(&state.db, &slug, &program_id).await?;
+    if body.name.trim().is_empty() {
+        return Err(AppError::Validation("Tier name is required".into()));
+    }
+    let res = sqlx::query(
+        "UPDATE loyalty_tiers SET
+            name = $3,
+            min_points = COALESCE($4, min_points),
+            color = COALESCE($5, color),
+            perks = COALESCE($6, perks),
+            multiplier = COALESCE($7::numeric, multiplier)
+         WHERE id = $1 AND loyalty_program_id = $2",
+    )
+    .bind(tier_id)
+    .bind(program_id)
+    .bind(&body.name)
+    .bind(body.min_points)
+    .bind(body.color.as_deref())
+    .bind(body.perks)
+    .bind(body.multiplier)
+    .execute(&state.db)
+    .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("Tier not found".into()));
+    }
+
+    let tier: LoyaltyTier = sqlx::query_as(
+        "SELECT id, loyalty_program_id, name, min_points, color, perks, multiplier::float8 AS multiplier, created_at
+         FROM loyalty_tiers WHERE id = $1",
+    )
+    .bind(tier_id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(Json(json!({ "tier": tier })))
+}
+
 pub async fn delete_tier(
     State(state): State<AppState>,
     Path((slug, program_id, tier_id)): Path<(String, Uuid, Uuid)>,

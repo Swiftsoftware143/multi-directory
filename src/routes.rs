@@ -105,7 +105,7 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route(
             "/directories/:slug/loyalty/programs/:program_id/tiers/:tier_id",
-            delete(loyalty_native::delete_tier),
+            put(loyalty_native::update_tier).delete(loyalty_native::delete_tier),
         )
         .route(
             "/directories/:slug/loyalty/programs/:program_id/rewards",
