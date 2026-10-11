@@ -172,22 +172,18 @@ pub async fn upsert_payment_provider(
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             AppError::BadRequest(
-                "provider_type is required (stripe, paypal, square, paddle, nmi, razorpay, epd)"
-                    .into(),
+                "provider_type is required (stripe, paypal, square, paddle, nmi, epd)".into(),
             )
         })?;
 
     // The full set the Integration Center offers. Only stripe and paypal have a receiver that
     // verifies a signature (`has_payment_receiver`); the rest are selectable so the operator can
     // record the gateway they intend to use, and the panel labels them "no receiver yet".
-    if ![
-        "stripe", "paypal", "square", "paddle", "nmi", "razorpay", "epd",
-    ]
-    .contains(&provider_type)
-    {
+    // `razorpay` is deliberately NOT offered — David's MD STRUCTURE rule (2026-10-10) skips it
+    // (India-only); a US directory can never use it (migration 167 drops it from the DB check).
+    if !["stripe", "paypal", "square", "paddle", "nmi", "epd"].contains(&provider_type) {
         return Err(AppError::BadRequest(
-            "Invalid provider_type. Must be stripe, paypal, square, paddle, nmi, razorpay, or epd"
-                .into(),
+            "Invalid provider_type. Must be stripe, paypal, square, paddle, nmi, or epd".into(),
         ));
     }
 

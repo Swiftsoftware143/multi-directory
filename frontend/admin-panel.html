@@ -804,7 +804,7 @@
         <h3>🔌 Integration Center
           <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html" target="_blank" rel="noopener">📘 Full setup guide — every provider →</a>
         </h3>
-        <p class="feature-subtitle"><b>One screen for every external service this directory uses</b> — enrichment, scraping, maps, listings, messaging, AI and your <b>CoreSwift CRM</b> connection. Paste your own keys here — encrypted at rest and shown <b>masked</b> (first 4 and last 4 characters only; the full value never leaves the server). <b>Every key can be named</b>, so you can store several accounts for one provider side by side. Every key is also <b>scoped</b>: platform-wide, to one <b>network</b>, or to one <b>directory</b> — a directory with no key of its own <b>inherits its network's</b>, so one Google Places key set on the ZaarHub network serves all ten cities. New directories appear here automatically. <b>Payment gateways</b> (Stripe, PayPal, NMI, EPD, Razorpay) live in the <a href="#payment-gateways-section">💳 Payment Gateways</a> card just below.</p>
+        <p class="feature-subtitle"><b>One screen for every external service this directory uses</b> — enrichment, scraping, maps, listings, messaging, AI and your <b>CoreSwift CRM</b> connection. Paste your own keys here — encrypted at rest and shown <b>masked</b> (first 4 and last 4 characters only; the full value never leaves the server). <b>Every key can be named</b>, so you can store several accounts for one provider side by side. Every key is also <b>scoped</b>: platform-wide, to one <b>network</b>, or to one <b>directory</b> — a directory with no key of its own <b>inherits its network's</b>, so one Google Places key set on the ZaarHub network serves all ten cities. New directories appear here automatically. <b>Payment gateways</b> (Stripe, PayPal, NMI, EPD) live in the <a href="#payment-gateways-section">💳 Payment Gateways</a> card just below.</p>
         <div id="pk-loading" class="loading-state"><span class="spinner"></span> Loading providers...</div>
         <!-- Which Google key goes where (2026-09-23). The single most common setup error is
              pasting a Maps JavaScript (browser) key into the server-side Places row, so the rule
@@ -871,7 +871,7 @@
         <h3>💳 Payment Gateways
           <a class="pk-guide" style="float:right;font-size:.78rem" href="/guides/api-keys-setup.html#payment-gateways" target="_blank" rel="noopener">📘 Setup guide →</a>
         </h3>
-        <p class="feature-subtitle">Where customers actually pay. Choose your gateway here — <b>Stripe</b>, <b>PayPal</b>, <b>NMI</b>, <b>Razorpay</b> or <b>EPD</b>.
+        <p class="feature-subtitle">Where customers actually pay. Choose your gateway here — <b>Stripe</b>, <b>PayPal</b>, <b>NMI</b> or <b>EPD</b>.
           Saved credentials are encrypted at rest and never sent back to the browser, so these fields are write-only.
           Only gateways with a live receiver (<b>Stripe</b> and <b>PayPal</b> today) can be switched on: a receiver <b>cannot be armed without its webhook verification value</b>, and it refuses any event it cannot verify — otherwise a forged "payment complete" would hand out paid features for free. The other gateways are listed so you can record your choice; they show <b>"no receiver yet"</b> and cannot be activated until the receiver is built.</p>
         <div id="pg-loading" class="loading-state"><span class="spinner"></span> Loading payment gateways...</div>
@@ -882,7 +882,6 @@
               <option value="stripe">Stripe</option>
               <option value="paypal">PayPal</option>
               <option value="nmi">NMI (no receiver yet)</option>
-              <option value="razorpay">Razorpay (no receiver yet)</option>
               <option value="epd">EPD (no receiver yet)</option>
               <option value="square">Square (no receiver yet)</option>
               <option value="paddle">Paddle (no receiver yet)</option>
