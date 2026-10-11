@@ -5,11 +5,11 @@
 // device is offline. (This worker used to answer the page from the saved copy FIRST under a cache
 // name that never changed, so returning staff kept seeing an old scanner forever — every shipped
 // scanner fix was invisible to them.) Bumping CACHE below also purges the stale store on activate.
-const CACHE = 'zaarhub-scanner-v2';
+const CACHE = 'zaarhub-scanner-v3';
 const ASSETS = [
   '/scanner',
   '/scanner-manifest.json',
-  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'
+  '/vendor/jsqr.js'
 ];
 
 self.addEventListener('install', function(e) {

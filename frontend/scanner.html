@@ -240,8 +240,9 @@ body{
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<!-- jsQR from CDN -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<!-- QR decoder: self-hosted (no third-party CDN) so scanning keeps working even when the
+     internet is flaky or an external host is unreachable -->
+<script src="/vendor/jsqr.js"></script>
 
 <script>
 // ── State ──

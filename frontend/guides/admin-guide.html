@@ -416,7 +416,7 @@ a:hover{text-decoration:underline}
 
   <p><strong>Scanner PWA (<code>/scanner</code>):</strong></p>
   <ul>
-    <li>Camera-based QR scanning using jsQR (250ms interval, CDN-loaded)</li>
+    <li>Camera-based QR scanning using a decoder bundled with the app (250ms interval; works offline)</li>
     <li>Three scan types: Check-in (<code>points_per_checkin</code>), Purchase (earn rate × amount), Redeem (deduction with caps)</li>
     <li>Business auth via existing login/register → JWT stored in localStorage</li>
     <li>PWA: standalone mode, manifest, service worker for offline caching</li>
