@@ -1221,15 +1221,30 @@ pub async fn counter_scan(
                 .or(body.transaction_amount)
                 .unwrap_or(0.0)
                 .max(0.0);
+            // A membership level can carry its own reward rate ("currency per $1"). Apply the
+            // rate of the level the member holds *before* this purchase, so reaching a level
+            // lifts every future purchase. No level (or a rate of 1.0) leaves earnings unchanged.
+            let level_multiplier = member_tier(&state.db, &member_id)
+                .await?
+                .map(|(_, _, m)| m)
+                .filter(|m| *m > 0.0)
+                .unwrap_or(1.0);
             let units = if program.earn_rate > 0.0 {
-                (amount * program.earn_rate).floor() as i32
+                (amount * program.earn_rate * level_multiplier).floor() as i32
             } else {
                 0
             };
-            let description = format!(
-                "Earned {units} {} at {business_name}",
-                program.currency_name
-            );
+            let description = if level_multiplier != 1.0 {
+                format!(
+                    "Earned {units} {} at {business_name} (level reward rate ×{level_multiplier})",
+                    program.currency_name
+                )
+            } else {
+                format!(
+                    "Earned {units} {} at {business_name}",
+                    program.currency_name
+                )
+            };
             let award = credit_visitor_units(
                 &state.db,
                 &directory_id,
