@@ -220,12 +220,24 @@ macro_rules! sql_joins {
     () => {
         "FROM visitor_events ve \
          LEFT JOIN businesses b ON b.id = ve.business_id \
-         LEFT JOIN directory_categories dc ON dc.id = ve.category_id"
+         LEFT JOIN directory_categories dc ON dc.id = ve.category_id \
+         LEFT JOIN visitors v ON v.id = ve.visitor_id"
     };
 }
 
 /// The WHERE clause shared by every aggregation, as a macro for the same reason as
 /// `sql_joins!`. Bind order: $1 days, $2 directory_id, $3 category_id, $4 area, $5 city, $6 zip.
+///
+/// The trailing predicate keeps the fleet's OWN automated machinery out of the sellable demand
+/// figures: a visitor row created by a fleet harness (`probe_harness`, read from the
+/// `X-Swift-Harness` header — see `probe_harness.rs`) or reaching us under an obviously
+/// automated user agent (headless browser, curl, monitoring probe) is not demand from a person.
+/// The legacy placeholder value `'auto'` is deliberately NOT filtered: before kanban t_d5e5af7e
+/// the tracker wrote the literal `'auto'` for EVERY visitor, so those rows are real customers
+/// whose user agent was never captured — excluding them would delete most of the real demand.
+/// `COALESCE(..., FALSE)` is load-bearing: an event with no visitor row at all (`ve.visitor_id`
+/// NULL) yields NULL from the OR chain, and a bare `NOT` would then drop that row; coalescing to
+/// FALSE keeps it, so an unattributed event still counts exactly as it did before this predicate.
 macro_rules! sql_where {
     () => {
         "WHERE ve.created_at >= NOW() - make_interval(days => $1::int) \
@@ -233,7 +245,19 @@ macro_rules! sql_where {
          AND ($3::uuid IS NULL OR ve.category_id = $3) \
          AND ($4::text IS NULL OR COALESCE(b.zip, b.city, '') ILIKE '%' || $4 || '%') \
          AND ($5::text IS NULL OR b.city ILIKE '%' || $5 || '%') \
-         AND ($6::text IS NULL OR b.zip ILIKE '%' || $6 || '%')"
+         AND ($6::text IS NULL OR b.zip ILIKE '%' || $6 || '%') \
+         AND NOT COALESCE( \
+             v.probe_harness IS NOT NULL \
+             OR v.user_agent ILIKE '%headless%' \
+             OR v.user_agent ILIKE '%swiftops%' \
+             OR v.user_agent ILIKE '%curl%' \
+             OR v.user_agent ILIKE '%wget%' \
+             OR v.user_agent ILIKE '%python-requests%' \
+             OR v.user_agent ILIKE '%bot%' \
+             OR v.user_agent ILIKE '%spider%' \
+             OR v.user_agent ILIKE '%crawler%' \
+             OR v.user_agent ILIKE '%monitor%' \
+         , FALSE)"
     };
 }
 
