@@ -332,21 +332,53 @@ pub async fn me(
     )
     .bind(user_id)
     .fetch_optional(&s.db)
+    .await?;
+
+    use sqlx::Row;
+    if let Some(row) = row {
+        let user = User {
+            id: row.try_get("id")?,
+            tenant_id: row.try_get("tenant_id")?,
+            email: row.try_get("email")?,
+            password_hash: row.try_get("password_hash")?,
+            name: row.try_get("name")?,
+            role: row.try_get("role")?,
+            is_active: row.try_get("is_active")?,
+            last_login_at: row.try_get("last_login_at")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+        };
+
+        return Ok(Json(json!({ "user": UserResponse::from(user) })));
+    }
+
+    // Fall back to visitor_accounts (ZaarHub business-portal and counter-scanner accounts),
+    // mirroring the login path. Before this, /auth/me answered 404 "User not found" for every
+    // visitor account, so the scanner's saved-session arm (scanner.html init) treated a still
+    // valid token as dead, wiped the session and forced a re-login on every visit — even though
+    // /auth/login and /loyalty/scan both accept these accounts. Same account type login accepts,
+    // same role login assigns ("company_admin"), so the two endpoints agree.
+    let vrow = sqlx::query(
+        "SELECT id, email, name, is_active, last_login_at, created_at, updated_at FROM visitor_accounts WHERE id = \x241"
+    )
+    .bind(user_id)
+    .fetch_optional(&s.db)
     .await?
     .ok_or(AppError::NotFound("User not found".to_string()))?;
 
-    use sqlx::Row;
     let user = User {
-        id: row.try_get("id")?,
-        tenant_id: row.try_get("tenant_id")?,
-        email: row.try_get("email")?,
-        password_hash: row.try_get("password_hash")?,
-        name: row.try_get("name")?,
-        role: row.try_get("role")?,
-        is_active: row.try_get("is_active")?,
-        last_login_at: row.try_get("last_login_at")?,
-        created_at: row.try_get("created_at")?,
-        updated_at: row.try_get("updated_at")?,
+        id: vrow.try_get("id")?,
+        // Visitor/business accounts live on the SwiftSoftware system tenant, exactly as login sets it.
+        tenant_id: crate::system_tenant::system_tenant_uuid(),
+        email: vrow.try_get("email")?,
+        // Never surfaced: UserResponse omits password_hash. Kept empty so no secret leaves the DB.
+        password_hash: String::new(),
+        name: vrow.try_get("name")?,
+        role: "company_admin".to_string(),
+        is_active: vrow.try_get("is_active")?,
+        last_login_at: vrow.try_get("last_login_at")?,
+        created_at: vrow.try_get("created_at")?,
+        updated_at: vrow.try_get("updated_at")?,
     };
 
     Ok(Json(json!({ "user": UserResponse::from(user) })))
