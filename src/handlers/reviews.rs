@@ -279,8 +279,11 @@ pub async fn approve_review(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Approving is moderation, not customer verification: `is_verified` (the "Verified customer"
+    // badge) is earned by a real transaction at the business and set at review creation, so an
+    // approval here must not force it true for a reviewer who never transacted.
     let review = sqlx::query_as::<_, Review>(
-        r#"UPDATE reviews SET status = 'approved', is_verified = true, updated_at = NOW()
+        r#"UPDATE reviews SET status = 'approved', updated_at = NOW()
            WHERE id = $1 RETURNING *"#,
     )
     .bind(id)
@@ -627,10 +630,13 @@ async fn set_review_status_owned(
         ));
     }
 
+    // Moderation is orthogonal to the "verified customer" trust signal. `is_verified` means the
+    // reviewer had a real transaction at this business (a loyalty scan) and is computed once at
+    // review creation (create_review); approving a review must NOT mint that badge for an
+    // ordinary reviewer, so the status update leaves `is_verified` untouched.
     let updated = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET
              status = $1,
-             is_verified = CASE WHEN $1 = 'approved' THEN true ELSE is_verified END,
              updated_at = NOW()
            WHERE id = $2 RETURNING *"#,
     )
