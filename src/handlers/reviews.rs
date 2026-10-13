@@ -246,12 +246,25 @@ pub async fn get_review(
     Ok(Json(json!(review)))
 }
 
-/// PUT /api/v1/reviews/:id — update review (admin moderation)
+/// PUT /api/v1/reviews/:id — update review (owner of the business, owner of its directory, or the
+/// platform `super_admin`).
 pub async fn update_review(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateReviewRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    let existing = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound("Review not found".to_string()))?;
+    if !can_moderate(&s.db, &claims, existing.business_id).await? {
+        return Err(AppError::Forbidden(
+            "You can only moderate reviews of a business you own.".to_string(),
+        ));
+    }
+
     let review = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET
            rating = COALESCE($1, rating),
@@ -281,11 +294,24 @@ pub async fn update_review(
     Ok(Json(json!(review)))
 }
 
-/// DELETE /api/v1/reviews/:id — delete a review
+/// DELETE /api/v1/reviews/:id — delete a review (owner of the business, owner of its directory, or
+/// the platform `super_admin`).
 pub async fn delete_review(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    let existing = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound("Review not found".to_string()))?;
+    if !can_moderate(&s.db, &claims, existing.business_id).await? {
+        return Err(AppError::Forbidden(
+            "You can only moderate reviews of a business you own.".to_string(),
+        ));
+    }
+
     let result = sqlx::query("DELETE FROM reviews WHERE id = \x241")
         .bind(id)
         .execute(&s.db)
@@ -298,54 +324,27 @@ pub async fn delete_review(
     Ok(Json(json!({"message": "Review deleted successfully"})))
 }
 
-/// POST /api/v1/reviews/:id/approve — approve a review
+/// POST /api/v1/reviews/:id/approve — approve a review. Authorized for the business's owner (or an
+/// active claimant), the owner of its directory, or the platform `super_admin`; recomputes the
+/// business rating aggregates. Approving is moderation, not customer verification: the "Verified
+/// customer" badge is earned by a real transaction and set at review creation, so this leaves
+/// `is_verified` untouched.
 pub async fn approve_review(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // Approving is moderation, not customer verification: `is_verified` (the "Verified customer"
-    // badge) is earned by a real transaction at the business and set at review creation, so an
-    // approval here must not force it true for a reviewer who never transacted.
-    let review = sqlx::query_as::<_, Review>(
-        r#"UPDATE reviews SET status = 'approved', updated_at = NOW()
-           WHERE id = $1 RETURNING *"#,
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Review not found".to_string()))?;
-
-    // Update business rating aggregates
-    if let Some(biz_id) = review.business_id {
-        sqlx::query(
-            r#"UPDATE businesses SET
-               rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE business_id = $1 AND status = 'approved'),
-               review_count = (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
-               updated_at = NOW()
-               WHERE id = $1"#
-        )
-        .bind(biz_id)
-        .execute(&s.db)
-        .await?;
-    }
-
+    let review = set_review_status_owned(&s, &claims, id, "approved").await?;
     Ok(Json(json!(review)))
 }
 
-/// POST /api/v1/reviews/:id/reject — reject a review
+/// POST /api/v1/reviews/:id/reject — reject a review (same authorization as approve).
 pub async fn reject_review(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let review = sqlx::query_as::<_, Review>(
-        r#"UPDATE reviews SET status = 'rejected', updated_at = NOW()
-           WHERE id = $1 RETURNING *"#,
-    )
-    .bind(id)
-    .fetch_optional(&s.db)
-    .await?
-    .ok_or(AppError::NotFound("Review not found".to_string()))?;
-
+    let review = set_review_status_owned(&s, &claims, id, "rejected").await?;
     Ok(Json(json!(review)))
 }
 
@@ -593,6 +592,40 @@ async fn owned_by(db: &sqlx::PgPool, business_id: Uuid, uid: Uuid) -> Result<i64
     Ok(owns)
 }
 
+/// True when the caller may moderate a review on `business_id`: the platform `super_admin`, the
+/// business's owner (or an active claimant), or the owner of the directory the business belongs to.
+/// The app's flat role model grants every new account the tenant role `admin`, so `role == "admin"`
+/// is NOT an operator signal and is never consulted here.
+async fn can_moderate(
+    db: &sqlx::PgPool,
+    claims: &Claims,
+    business_id: Option<Uuid>,
+) -> Result<bool, AppError> {
+    if claims.role == "super_admin" {
+        return Ok(true);
+    }
+    let uid = match Uuid::parse_str(&claims.sub) {
+        Ok(u) => u,
+        Err(_) => return Ok(false),
+    };
+    let Some(bid) = business_id else {
+        return Ok(false);
+    };
+    if owned_by(db, bid, uid).await? > 0 {
+        return Ok(true);
+    }
+    let dir_owns: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM businesses b
+           JOIN directories d ON d.id = b.directory_id
+           WHERE b.id = $1 AND d.owner_id = $2"#,
+    )
+    .bind(bid)
+    .bind(uid)
+    .fetch_one(db)
+    .await?;
+    Ok(dir_owns > 0)
+}
+
 /// GET /api/v1/business/reviews/pending — reviews on the caller's own businesses that the owner
 /// has not replied to yet. This is the documented "reviews needing response" list.
 pub async fn business_pending_reviews(
@@ -631,9 +664,6 @@ async fn set_review_status_owned(
     id: Uuid,
     status: &str,
 ) -> Result<Review, AppError> {
-    let uid = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Forbidden("Sign in to moderate a review".to_string()))?;
-
     let review = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = $1")
         .bind(id)
         .fetch_optional(&s.db)
@@ -644,11 +674,7 @@ async fn set_review_status_owned(
         .business_id
         .ok_or(AppError::Validation("Review has no business".to_string()))?;
 
-    // Owner-scoped. Note the app's flat role model: `register` grants every new account the
-    // tenant role `admin`, so `role == "admin"` is NOT a platform-operator signal and must never
-    // widen this check — only the platform `super_admin` may moderate on an owner's behalf.
-    let is_super = claims.role == "super_admin";
-    if !is_super && owned_by(&s.db, business_id, uid).await? == 0 {
+    if !can_moderate(&s.db, claims, review.business_id).await? {
         return Err(AppError::Forbidden(
             "You can only moderate reviews of a business you own.".to_string(),
         ));
