@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -18,6 +18,7 @@ use crate::AppState;
 /// GET /api/v1/reviews — list all reviews (admin)
 pub async fn list_reviews(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     let page = params
@@ -31,7 +32,30 @@ pub async fn list_reviews(
     let (page, per_page) = validate_pagination(Some(page), Some(per_page));
     let offset = (page - 1) * per_page;
 
-    let status_filter: Option<&str> = params.get("status").map(|s| s.as_str());
+    // Moderation gate. This route lives in the public allowlist — business-detail.html calls it
+    // anonymously with `?status=approved` — so an anonymous caller must only ever see reviews a
+    // business owner (or an admin) has APPROVED. Before this, a request with `business_id` and no
+    // `status` returned EVERY status: a pending or rejected review's text answered 200 to anyone
+    // on the internet (measured 2026-10-13 on https://zaarhub.com/api/v1/reviews?business_id=…,
+    // which returned a `pending` row anonymously). A signed-in caller (owner portal, admin console)
+    // sends a valid session token and may filter to any status; anonymous callers are pinned to
+    // `approved`.
+    let requested_status: Option<String> = params.get("status").map(|s| s.to_string());
+    let privileged = match headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(h) => {
+            let token = h.strip_prefix("Bearer ").unwrap_or(h);
+            crate::auth::middleware::verify_token(token, &s.config.jwt_secret).is_ok()
+        }
+        None => false,
+    };
+    let status_filter: Option<String> = if privileged {
+        requested_status
+    } else {
+        Some("approved".to_string())
+    };
     // Optional business scoping. This route is public for GET and the business-detail
     // page needs the reviews for ONE business; without a business filter it returned the
     // newest reviews on the whole platform (i.e. somebody else's reviews on every page).
@@ -48,7 +72,7 @@ pub async fn list_reviews(
     let total = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) AND (\x243::uuid IS NULL OR directory_id = \x243 OR business_id IN (SELECT id FROM businesses WHERE directory_id = \x243)) ",
     )
-    .bind(status_filter)
+    .bind(status_filter.as_deref())
     .bind(business_id)
     .bind(directory_id)
     .fetch_one(&s.db)
@@ -57,7 +81,7 @@ pub async fn list_reviews(
     let reviews = sqlx::query_as::<_, Review>(
         "SELECT * FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) AND (\x243::uuid IS NULL OR directory_id = \x243 OR business_id IN (SELECT id FROM businesses WHERE directory_id = \x243)) ORDER BY created_at DESC LIMIT \x244 OFFSET \x245 ",
     )
-    .bind(status_filter)
+    .bind(status_filter.as_deref())
     .bind(business_id)
     .bind(directory_id)
     .bind(per_page)
