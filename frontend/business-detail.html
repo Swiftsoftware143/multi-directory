@@ -767,8 +767,13 @@ function renderBusiness() {
 
   const rating = b.rating || 0;
   const rc = b.review_count || 0;
+  const shown = (reviews && reviews.length) || 0;
   document.getElementById('starsDisplay').textContent = renderStars(rating) + ' ' + rating.toFixed(1);
-  document.getElementById('reviewCount').textContent = `(${rc} review${rc !== 1 ? 's' : ''})`;
+  // Attribute the number: a listing imported from public data carries a rating/count with no
+  // rows of our own behind it, so the header must not imply they are ZaarHub reviews.
+  document.getElementById('reviewCount').textContent = rc
+    ? `(${rc.toLocaleString()} review${rc !== 1 ? 's' : ''}${rc > shown ? ' from public listings' : ''})`
+    : '';
   document.getElementById('ratingBadge').textContent = rating >= 4 ? '🏆 Great' : rating >= 3 ? '👍 Good' : '📊 Average';
 
   document.getElementById('bizAddress').textContent = [b.address, b.city, b.state].filter(Boolean).join(', ') || 'Location not listed';
@@ -966,7 +971,11 @@ function renderReviews() {
   const container = document.getElementById('reviewsContent');
   
   if (!reviews || reviews.length === 0) {
-    container.innerHTML = '<div class="no-reviews">No reviews yet. Be the first to review!</div>';
+    // Do not deny the header rating: it can come from public listings data with no ZaarHub rows.
+    const rc = Number((bizData && bizData.review_count) || 0);
+    container.innerHTML = rc > 0
+      ? '<div class="no-reviews">No ZaarHub reviews yet. The rating above is this business\'s rating from public listings — be the first to review it here!</div>'
+      : '<div class="no-reviews">No reviews yet. Be the first to review!</div>';
     return;
   }
   
