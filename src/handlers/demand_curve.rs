@@ -60,11 +60,11 @@ pub async fn get_demand_curve(
                 v.city,
                 v.region,
                 b.category_id,
-                EXTRACT(HOUR FROM ve.created_at) AS hour_slot,
-                EXTRACT(DOW FROM ve.created_at) AS day_of_week,
+                EXTRACT(HOUR FROM ve.created_at)::float8 AS hour_slot,
+                EXTRACT(DOW FROM ve.created_at)::float8 AS day_of_week,
                 COUNT(*)::bigint AS impressions,
                 COUNT(DISTINCT v.id)::bigint AS unique_visitors,
-                AVG(ve.scroll_depth) AS avg_scroll,
+                AVG(ve.scroll_depth)::float8 AS avg_scroll,
                 COUNT(CASE WHEN ve.event_type = 'phone_click' THEN 1 END)::bigint AS phone_clicks
             FROM visitor_events ve
             JOIN visitors v ON v.id = ve.visitor_id
@@ -87,11 +87,11 @@ pub async fn get_demand_curve(
                 v.city,
                 v.region,
                 b.category_id,
-                EXTRACT(HOUR FROM ve.created_at) AS hour_slot,
-                EXTRACT(DOW FROM ve.created_at) AS day_of_week,
+                EXTRACT(HOUR FROM ve.created_at)::float8 AS hour_slot,
+                EXTRACT(DOW FROM ve.created_at)::float8 AS day_of_week,
                 COUNT(*)::bigint AS impressions,
                 COUNT(DISTINCT v.id)::bigint AS unique_visitors,
-                AVG(ve.scroll_depth) AS avg_scroll,
+                AVG(ve.scroll_depth)::float8 AS avg_scroll,
                 COUNT(CASE WHEN ve.event_type = 'phone_click' THEN 1 END)::bigint AS phone_clicks
             FROM visitor_events ve
             JOIN visitors v ON v.id = ve.visitor_id
@@ -114,11 +114,11 @@ pub async fn get_demand_curve(
                 v.city,
                 v.region,
                 b.category_id,
-                EXTRACT(HOUR FROM ve.created_at) AS hour_slot,
-                EXTRACT(DOW FROM ve.created_at) AS day_of_week,
+                EXTRACT(HOUR FROM ve.created_at)::float8 AS hour_slot,
+                EXTRACT(DOW FROM ve.created_at)::float8 AS day_of_week,
                 COUNT(*)::bigint AS impressions,
                 COUNT(DISTINCT v.id)::bigint AS unique_visitors,
-                AVG(ve.scroll_depth) AS avg_scroll,
+                AVG(ve.scroll_depth)::float8 AS avg_scroll,
                 COUNT(CASE WHEN ve.event_type = 'phone_click' THEN 1 END)::bigint AS phone_clicks
             FROM visitor_events ve
             JOIN visitors v ON v.id = ve.visitor_id
