@@ -19,6 +19,7 @@ use axum::{
     http::HeaderMap,
     Json,
 };
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -1150,6 +1151,45 @@ pub struct CounterScanInput {
     pub transaction_id: Option<String>,
 }
 
+/// Record the scan itself in `loyalty_scans`.
+///
+/// This table is the ledger the "Verified customer" review badge is computed from
+/// (`src/handlers/reviews.rs` counts a member's scans at the business) and it is the scan
+/// history the business export lists. Before this a real counter scan left no row here — the
+/// points were credited but the scan the customer actually made was invisible, so a genuine
+/// customer could never earn the trust badge. `clearinghouse_processed` stays false: this is a
+/// native counter scan, not one the clearinghouse settled.
+#[allow(clippy::too_many_arguments)]
+async fn record_scan(
+    pool: &PgPool,
+    member_id: &Uuid,
+    program_id: &Uuid,
+    business_id: &Uuid,
+    business_name: &str,
+    scan_type: &str,
+    points_awarded: i32,
+    points_balance: i32,
+    transaction_amount: Option<Decimal>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        r#"INSERT INTO loyalty_scans (id, member_id, program_id, business_id, business_name,
+                                      scan_type, points_awarded, points_balance, transaction_amount)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(member_id)
+    .bind(program_id)
+    .bind(business_id)
+    .bind(business_name)
+    .bind(scan_type)
+    .bind(points_awarded)
+    .bind(points_balance)
+    .bind(transaction_amount)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// POST /api/v1/loyalty/scan
 pub async fn counter_scan(
     State(state): State<AppState>,
@@ -1254,10 +1294,26 @@ pub async fn counter_scan(
                 &description,
             )
             .await?;
-            let (awarded, balance) = match award {
-                Some(a) => (a.units, a.balance_after),
-                None => (0, 0),
+            let (awarded, balance, recorded) = match award {
+                Some(a) => (a.units, a.balance_after, true),
+                None => (0, 0, false),
             };
+            // The scan itself is the ledger row the "Verified customer" badge is computed from:
+            // write it so a real counter purchase leaves a trace the review can stand on.
+            if recorded {
+                record_scan(
+                    &state.db,
+                    &member_id,
+                    &program_id,
+                    &business_id,
+                    &business_name,
+                    "purchase",
+                    awarded,
+                    balance,
+                    Some(Decimal::new((amount * 100.0).round() as i64, 2)),
+                )
+                .await?;
+            }
             json!({
                 "status": "credited",
                 "points_awarded": awarded,
@@ -1349,6 +1405,23 @@ pub async fn counter_scan(
             .bind(-i64::from(points))
             .execute(&mut *tx)
             .await?;
+            // The scan-ledger row for this redemption, written in the SAME transaction as the
+            // debit so the record and the balance can never disagree.
+            sqlx::query(
+                r#"INSERT INTO loyalty_scans (id, member_id, program_id, business_id, business_name,
+                                              scan_type, points_awarded, points_balance, transaction_amount)
+                   VALUES ($1, $2, $3, $4, $5, 'redemption', $6, $7, $8)"#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(member_id)
+            .bind(program_id)
+            .bind(business_id)
+            .bind(&business_name)
+            .bind(-points)
+            .bind(new_balance)
+            .bind(body.transaction_amount.map(|v| Decimal::new((v * 100.0).round() as i64, 2)))
+            .execute(&mut *tx)
+            .await?;
             tx.commit().await?;
             json!({
                 "status": "redeemed",
@@ -1389,6 +1462,19 @@ pub async fn counter_scan(
             )
             .bind(member_id)
             .fetch_one(&state.db)
+            .await?;
+            // Record the check-in scan in the ledger (see `record_scan`).
+            record_scan(
+                &state.db,
+                &member_id,
+                &program_id,
+                &business_id,
+                &business_name,
+                "checkin",
+                awarded,
+                balance,
+                None,
+            )
             .await?;
             json!({
                 "status": "checked_in",
