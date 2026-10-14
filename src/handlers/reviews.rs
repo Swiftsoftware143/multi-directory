@@ -320,19 +320,43 @@ pub async fn delete_review(
         .fetch_optional(&s.db)
         .await?
         .ok_or(AppError::NotFound("Review not found".to_string()))?;
-    if !can_moderate(&s.db, &claims, existing.business_id).await? {
+    // An account may always remove a review it wrote; a moderator of the business may remove any
+    // review on it. (The customer's own "My Reviews" page offers Delete on their own rows — before
+    // this, the author's own delete was refused as if it were somebody else's review.)
+    let caller = Uuid::parse_str(&claims.sub).ok();
+    let is_author = caller.is_some() && existing.user_id == caller;
+    if !is_author && !can_moderate(&s.db, &claims, existing.business_id).await? {
         return Err(AppError::Forbidden(
-            "You can only moderate reviews of a business you own.".to_string(),
+            "You can only delete a review you wrote, or moderate reviews of a business you own."
+                .to_string(),
         ));
     }
 
-    let result = sqlx::query("DELETE FROM reviews WHERE id = \x241")
+    let business_id = existing.business_id;
+
+    let result = sqlx::query("DELETE FROM reviews WHERE id = $1")
         .bind(id)
         .execute(&s.db)
         .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Review not found".to_string()));
+    }
+
+    // Keep the listing's rating/count honest: removing a review changes the average. Approve/reject
+    // already recompute this; delete used to leave a business showing a rating backed by a review
+    // that no longer exists.
+    if let Some(bid) = business_id {
+        sqlx::query(
+            r#"UPDATE businesses SET
+               rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+               review_count = (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+               updated_at = NOW()
+               WHERE id = $1"#,
+        )
+        .bind(bid)
+        .execute(&s.db)
+        .await?;
     }
 
     Ok(Json(json!({"message": "Review deleted successfully"})))
