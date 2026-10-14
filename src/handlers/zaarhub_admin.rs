@@ -4,7 +4,7 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;

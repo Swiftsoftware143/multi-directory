@@ -1,6 +1,5 @@
 /// SSR handlers for ZaarHub city landing pages
 use axum::extract::{Path, State};
-use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
 

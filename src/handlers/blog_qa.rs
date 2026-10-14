@@ -1,7 +1,6 @@
 //! Blog Q&A Automation — keyword fetching, post generation, newsletter digests, integration configs
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     response::IntoResponse,
     Json,
 };
@@ -444,7 +443,6 @@ fn urlencoding(s: &str) -> String {
 }
 
 fn base64_encode(s: String) -> String {
-    use std::fmt::Write;
     let bytes = s.as_bytes();
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
     let mut result = String::new();

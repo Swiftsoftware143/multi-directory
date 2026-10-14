@@ -12,7 +12,6 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::coreswift::{coreswift_url, internal_key};

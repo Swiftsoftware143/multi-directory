@@ -11,7 +11,6 @@ use crate::error::{ApiResult, AppError};
 use crate::models::directory::Directory;
 use crate::models::directory::{AuthorProfile, BlogPost};
 use crate::template_engine;
-use crate::tracking_script;
 use crate::AppState;
 
 /// GET /api/v1/directories/:slug/blog — public blog listing page

@@ -10,7 +10,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::middleware::{is_business_owner, is_super_admin};

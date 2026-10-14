@@ -2,7 +2,7 @@
 //! Tracks anonymous visitors, sessions, events, and business owner claims.
 
 use axum::{
-    extract::{ConnectInfo, Extension, Path, Query, State},
+    extract::{ConnectInfo, Extension, Path, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
     Json,

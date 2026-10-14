@@ -10,8 +10,6 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use serde_json::json;
-
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;

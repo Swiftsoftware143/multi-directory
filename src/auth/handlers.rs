@@ -11,7 +11,7 @@ use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::middleware::{create_token, verify_token};
+use super::middleware::create_token;
 use super::models::*;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;

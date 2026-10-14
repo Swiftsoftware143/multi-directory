@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::error::{ApiResult, AppError};
+use crate::error::ApiResult;
 use crate::AppState;
 
 // ── Query Parameters ─────────────────────────────────────────────────────────

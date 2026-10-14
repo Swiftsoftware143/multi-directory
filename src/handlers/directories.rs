@@ -19,7 +19,6 @@ use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::handlers::tenant_scope;
 use crate::models::*;
 use crate::template_engine;
-use crate::tracking_script;
 use crate::AppState;
 
 /// GET /api/v1/directories

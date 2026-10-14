@@ -12,7 +12,7 @@ use serde_json::json;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::error::{validate_pagination, ApiResult, AppError};
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 // ── Filter Options ───────────────────────────────────────────────────────────

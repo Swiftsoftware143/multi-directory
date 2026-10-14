@@ -8,7 +8,7 @@
 
 use axum::{
     extract::{Extension, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::IntoResponse,
     Json,
 };

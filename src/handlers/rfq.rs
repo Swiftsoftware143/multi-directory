@@ -3,7 +3,7 @@
 //! Creates a B2B lead exchange that Google's algorithm cannot replicate.
 
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query, State},
     http::HeaderMap,
     response::IntoResponse,
     Json,
@@ -16,7 +16,6 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
-use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 

@@ -2,14 +2,7 @@
 //! This file exists to keep the module import happy.
 //! The actual logic is in routes.rs fallback_service.
 
-use crate::AppState;
-use axum::{
-    body::Body,
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::{IntoResponse, Response},
-};
+use axum::{extract::Request, middleware::Next, response::Response};
 
 /// Placeholder - actual logic moved to fallback_service in routes.rs
 pub async fn resolve_host(_req: Request, _next: Next) -> Response {

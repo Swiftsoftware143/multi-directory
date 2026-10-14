@@ -29,7 +29,6 @@ mod template_engine;
 pub mod tracking_script;
 mod utils;
 
-use axum::Router;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::signal;

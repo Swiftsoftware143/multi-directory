@@ -13,9 +13,8 @@
 //! Updates `businesses.updated_at` and `businesses.enriched_at`.
 
 use axum::{extract::State, response::IntoResponse, Json};
-use chrono::{DateTime, Utc};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};

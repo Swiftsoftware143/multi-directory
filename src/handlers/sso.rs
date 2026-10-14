@@ -5,20 +5,13 @@
 //!
 //! Accounts are linked by email in the `account_links` table.
 
-use axum::{
-    extract::{Extension, State},
-    http::{HeaderMap, StatusCode},
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::HeaderMap, response::IntoResponse, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use uuid::Uuid;
 
-use crate::auth::middleware::{
-    create_token, is_admin, is_business_owner, is_visitor, verify_token,
-};
+use crate::auth::middleware::{create_token, verify_token};
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;

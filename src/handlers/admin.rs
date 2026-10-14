@@ -1,11 +1,6 @@
 //! Admin handlers: dashboard, admin listings, portfolio sync.
 
-use axum::{
-    extract::{Extension, State},
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
 use crate::error::{ApiResult, AppError};

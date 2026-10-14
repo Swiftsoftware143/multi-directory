@@ -10,11 +10,11 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::auth::{middleware::verify_token, models::Claims};
+use crate::auth::middleware::verify_token;
 use crate::error::{ApiResult, AppError};
 use crate::handlers::b2b::{get_b2b_config, get_first_directory_id, require_b2b_feature};
 use crate::utils;

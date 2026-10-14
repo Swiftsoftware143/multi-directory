@@ -2,7 +2,6 @@
 
 use axum::{
     extract::{Extension, Path, State},
-    http::StatusCode,
     response::IntoResponse,
     Json,
 };

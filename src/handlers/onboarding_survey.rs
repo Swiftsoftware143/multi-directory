@@ -21,7 +21,7 @@
 
 use axum::{
     extract::{Extension, Path, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::IntoResponse,
     Json,
 };

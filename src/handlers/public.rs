@@ -1,7 +1,7 @@
 //! PublicPage CRUD handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
@@ -12,7 +12,6 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::auth::middleware::verify_token;
-use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
 use crate::utils;
 use crate::AppState;
@@ -305,11 +304,6 @@ pub async fn list_business_public_pages(
 }
 
 // ── Landing Pages (re-exported from public_pages) ────────────────
-pub use crate::handlers::public_pages::{
-    create_landing_page, create_public_theme, delete_landing_page, delete_public_theme,
-    get_landing_page, get_public_theme, list_landing_pages, list_public_themes, toggle_publish,
-    update_landing_page, update_public_theme,
-};
 
 // ── Homepage / Directory / Business data endpoints ──────────────
 

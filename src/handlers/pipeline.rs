@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::error::{ApiResult, AppError};
+use crate::error::ApiResult;
 use crate::AppState;
 
 // ── Request ──

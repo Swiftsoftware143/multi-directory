@@ -440,6 +440,7 @@ pub fn build_template_context(
     })
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -10,7 +10,6 @@ use axum::{
 use chrono::Utc;
 use serde::Serialize;
 use serde_json::json;
-use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::auth::models::Claims;

@@ -1,7 +1,7 @@
 //! Import/Export handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,

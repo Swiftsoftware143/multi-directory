@@ -5,5 +5,3 @@ pub mod franchise;
 pub mod url_cleaner;
 
 pub use cta_resolver::*;
-pub use franchise::*;
-pub use url_cleaner::*;

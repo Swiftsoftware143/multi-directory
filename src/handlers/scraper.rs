@@ -10,8 +10,7 @@ use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
 use crate::handlers::pipeline::{
-    find_existing_by_phone, find_existing_by_website, pipeline_ingest, IngestBusiness,
-    IngestRequest,
+    find_existing_by_phone, find_existing_by_website, pipeline_ingest,
 };
 use crate::handlers::provider_keys_handler::resolve_provider_key;
 use crate::AppState;

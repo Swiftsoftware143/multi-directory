@@ -7,7 +7,7 @@
 //! are preserved alongside the new visitor booking system.
 
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tracing;
 use uuid::Uuid;
 
-use crate::auth::middleware::{is_business_owner, is_super_admin, is_visitor, verify_token};
+use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
 use crate::coreswift::{coreswift_url, internal_key};
 use crate::error::{ApiResult, AppError};
