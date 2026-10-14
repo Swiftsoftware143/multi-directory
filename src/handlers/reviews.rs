@@ -235,13 +235,27 @@ pub async fn create_review(
 /// GET /api/v1/reviews/:id — get single review
 pub async fn get_review(
     State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let review = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = \x241 ")
+    let review = sqlx::query_as::<_, Review>("SELECT * FROM reviews WHERE id = $1")
         .bind(id)
         .fetch_optional(&s.db)
         .await?
         .ok_or(AppError::NotFound("Review not found".to_string()))?;
+
+    // An unapproved review is private. The list route already hides non-approved rows from
+    // everyone but a moderator; this single-read route must not undo that. A pending or rejected
+    // review (and the reviewer's email carried on it) is readable only by its author or by a
+    // moderator of its business — anyone else gets the same "not found" as a review that does not
+    // exist, so the route cannot be used to confirm that a hidden review is there.
+    if review.status.as_deref() != Some("approved") {
+        let caller = Uuid::parse_str(&claims.sub).ok();
+        let is_author = caller.is_some() && review.user_id == caller;
+        if !is_author && !can_moderate(&s.db, &claims, review.business_id).await? {
+            return Err(AppError::NotFound("Review not found".to_string()));
+        }
+    }
 
     Ok(Json(json!(review)))
 }
