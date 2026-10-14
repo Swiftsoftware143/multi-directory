@@ -20,7 +20,22 @@ Proves, against the running app and the live database:
      Save writes the new name through; a network that still has cities attached is REFUSED on screen
      (nothing orphaned); the row's own "Delete" removes the network (API + table);
   6. no console or auth errors during the walk;
-  7. cleanup is net-zero: every probe network is gone and the live network count is back to before.
+  7. cleanup is net-zero: every probe network is gone and the live network count is back to before;
+  8. the CROSS-APP residue is cleaned and proven zero: creating a network provisions a CoreSwift
+     workspace, and deleting the MD network does not touch it, so each run used to leave two
+     orphan workspaces ("zz api probe" + "zz builds item 13 probe") behind in the tenant list
+     (kanban t_8bea040a). Both workspaces are deleted by their exact reserved address through
+     `/opt/swift/scripts/probe-identity-cleanup.py --app coreswift_crm`, and the probe asserts no
+     `zz` workspace and no `md-zz*` user is left in the CoreSwift database;
+  9. the minted workspaces carry the fleet marker: the probe sends `X-Swift-Harness: <MD_HARNESS
+     or t_8bea040a>` on its own calls AND the product forwards it onto the cross-app register call,
+     so `tenants.probe_harness` on the CoreSwift workspace is non-NULL and names this card.
+
+The minted address must stay `md-<slug>@local.coreswift`: that domain is what the fleet residue
+instrument (`scripts/fleet-probe-residue.py` LOCAL_APP_PROBE_DOM / `probe-residue-classify.py`
+LOCAL_APP_PROBE) recognises as non-routable, so the sweep PAGES on a leaked workspace. Changing the
+shape re-blinds the guard until the new `<x>@local.<app>` domain is added to BOTH constants
+(`/opt/swift/docs/fleet-harness-probe-address-convention-2026-09-28.md`).
 
 Run:  python3 scripts/network-create-admin-smoke.py
 Exit: 0 = PASS, 1 = FAIL.  Writes only into $AUD (default /opt/swift/audits/zz-item13-netcreate-...).
@@ -38,6 +53,13 @@ BROWSER = os.path.join(APP, "scripts", "network-create-admin-browser.js")
 PANEL = os.path.join(APP, "frontend", "admin-panel.html")
 NODE_PATH = "/opt/swift/browser-run/node_modules"
 MINT = "/opt/swift/browser-run/md-mint-token.js"
+CLEANUP = "/opt/swift/scripts/probe-identity-cleanup.py"
+CS_ENV = "/etc/swift/env/coreswift.env"
+# Fleet probe attribution (kanban t_8bea040a). The reserved address `md-<slug>@local.coreswift` is
+# convention (a); the marker below is layer (c) — the tag CoreSwift stores on the workspace it mints
+# from our register call, so a sweep can tell this probe's workspace from a customer's. Override
+# with MD_HARNESS when another card drives this probe.
+HARNESS = os.environ.get("MD_HARNESS", "t_8bea040a")
 AUD = os.environ.get("AUD", f"/opt/swift/audits/zz-item13-netcreate-{time.strftime('%Y%m%d-%H%M%S')}")
 SLUG_PREFIX = "zz-nw-probe"
 FAILS = []
@@ -84,6 +106,10 @@ def call(method, path, token=None, body=None):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(BASE + "/api/v1" + path, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    # the fleet probe marker travels on EVERY call this harness makes (kanban t_8bea040a): the
+    # product forwards it onto the cross-app CoreSwift register call, which is where the row that
+    # marks the residue is actually written.
+    req.add_header("X-Swift-Harness", HARNESS)
     if token:
         req.add_header("Authorization", "Bearer " + token)
     try:
@@ -96,6 +122,76 @@ def call(method, path, token=None, body=None):
 def db_networks():
     return psql("SELECT id, name, slug, COALESCE(root_domain,''), COALESCE(status,'') "
                 "FROM networks ORDER BY slug")
+
+
+def coreswift_psql(sql):
+    """One read-only query against CoreSwift's database (the OTHER app this probe touches).
+
+    The probe's own database is the MD one, so the cross-app assertions (the workspace marker and
+    the workspace residue) need their own connection. `None` = could not read (treated as a failure
+    by the caller, never as "clean").
+    """
+    url = ""
+    try:
+        with open(CS_ENV) as fh:
+            for line in fh:
+                if line.startswith("DATABASE_URL="):
+                    url = line.strip().split("=", 1)[1]
+    except OSError:
+        return None
+    m = re.search(r"://[^:]+:([^@]+)@[^/]+/([A-Za-z0-9_]+)", url)
+    if not m:
+        return None
+    r = sh("docker", "exec", "-e", f"PGPASSWORD={m.group(1)}", "swift-postgres",
+           "psql", "-U", "swift", "-d", m.group(2), "-At", "-c", sql)
+    if r.returncode != 0:
+        return None
+    return r.stdout.strip()
+
+
+def cs_workspace_markers():
+    """`name|probe_harness` for every zz-named CoreSwift workspace (the marker evidence)."""
+    out = coreswift_psql("SELECT name || '|' || COALESCE(probe_harness,'NULL') FROM tenants "
+                         "WHERE name ILIKE '%zz%' ORDER BY name")
+    return [l for l in (out or "").splitlines() if l]
+
+
+def cs_zz_residue():
+    """(users, tenants) still matching this probe's zz naming — the cross-app residue count."""
+    users = coreswift_psql("SELECT count(*) FROM users WHERE email LIKE 'md-zz%local.coreswift'")
+    tenants = coreswift_psql("SELECT count(*) FROM tenants WHERE name ILIKE '%zz%'")
+    return users, tenants
+
+
+def cs_outbound():
+    """Rows CoreSwift queued to send to a probe address (must be 0 — nothing may be mailed)."""
+    return coreswift_psql("SELECT count(*) FROM outbound_messages "
+                          "WHERE to_address ILIKE '%local.coreswift%'")
+
+
+def delete_cs_workspaces(slugs, tries=10):
+    """Delete the CoreSwift workspaces minted for `slugs` by their EXACT reserved addresses and prove
+    the cross-app residue is zero.
+
+    Both addresses are deleted in each pass and the residue is asserted GLOBALLY (no `zz` workspace,
+    no `md-zz*` user), never per-slug: a per-slug tenant count reads the other workspace still sitting
+    there and can never reach zero (measured 2026-10-14). `provision_tenant` also runs in a detached
+    task, so a workspace can still be landing when the MD row is already gone — hence the re-run
+    rather than a single pass.
+    """
+    detail = ""
+    for _ in range(tries):
+        for slug in slugs:
+            email = f"md-{slug}@local.coreswift"
+            r = sh("python3", CLEANUP, "--app", "coreswift_crm", "--email", email)
+            out = (r.stdout + r.stderr).strip()
+            if out:
+                detail = f"{slug}: {out.splitlines()[-1]}"
+        users, tenants = cs_zz_residue()
+        if users == "0" and tenants == "0":
+            return True, detail
+        time.sleep(3)
+    return False, detail
 
 
 def main():
@@ -157,7 +253,7 @@ def main():
     # ---- the SCREEN itself (real browser, the page's own controls) -----------
     chrome = os.environ.get("CHROME_PATH", "/usr/bin/chromium-browser")
     try:
-        env = dict(os.environ, MD_BASE=BASE, TOKEN=tok, AUD=AUD,
+        env = dict(os.environ, MD_BASE=BASE, TOKEN=tok, AUD=AUD, MD_HARNESS=HARNESS,
                    PROBE_NAME="zz builds item 13 probe", PROBE_SLUG=probe_slug,
                    PROBE_ROOT=probe_root, NODE_PATH=NODE_PATH, CHROME_PATH=chrome)
         r = sh("node", BROWSER, env=env, timeout=300)
@@ -173,6 +269,20 @@ def main():
         check("the console walk had no browser failures", proof.get("fail", 1) == 0,
               f"pass={proof.get('pass')} fail={proof.get('fail')}")
     finally:
+        # ---- the freed row was never the whole residue (kanban t_8bea040a) -------------------
+        # Both creates above provisioned a CORE SWIFT WORKSPACE (the API create and the console
+        # create), and deleting the MD network does not touch it — so read the marker and the
+        # cross-app residue while the workspaces still exist, then delete them.
+        rows = cs_workspace_markers()
+        names = [rec.split("|", 1)[0] for rec in rows]
+        check("both harness paths minted a CoreSwift workspace",
+              any("zz api probe" in n for n in names)
+              and any("zz builds item 13 probe" in n for n in names), str(rows))
+        check("every minted CoreSwift workspace carries the harness marker",
+              bool(rows) and all(rec.split("|", 1)[1] == HARNESS for rec in rows), str(rows))
+        check("CoreSwift queued no mail to a probe address", cs_outbound() == "0",
+              f"outbound={cs_outbound()}")
+
         # ---- cleanup: net zero ------------------------------------------------
         psql(f"DELETE FROM networks WHERE slug LIKE '{SLUG_PREFIX}%'")
         left = int(one(f"SELECT count(*) FROM networks WHERE slug LIKE '{SLUG_PREFIX}%'"))
@@ -180,6 +290,14 @@ def main():
         after = db_networks()
         check("the live networks are back to their before state", after == before,
               f"before={db_nets} after={len(after)}")
+
+        # ---- cleanup: the cross-app workspace --------------------------------
+        deleted, detail = delete_cs_workspaces([api_slug, probe_slug])
+        check("the CoreSwift workspaces both harness creates minted were deleted", deleted, detail)
+        users_left, tenants_left = cs_zz_residue()
+        check("no probe workspace or user remains in CoreSwift",
+              users_left == "0" and tenants_left == "0",
+              f"users={users_left} tenants={tenants_left}")
 
     # ---- the screen exists in the served console -----------------------------
     html = open(PANEL, encoding="utf-8", errors="ignore").read()

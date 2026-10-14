@@ -94,26 +94,43 @@ fn cs_url(path: &str) -> String {
 /// Provision a CoreSwift tenant for a new entity (network or standalone directory).
 /// Creates: tenant account, 3 lists (claimed, newsletter, sponsors), and city-prefixed tag groups.
 /// Stores the tenant + list IDs back in the database.
+///
+/// `probe_harness` is the fleet probe-attribution marker (`X-Swift-Harness`, see
+/// [`crate::probe_harness`]) when an AUTOMATED HARNESS drove the product route that got here.
+///
+/// It is forwarded onto the cross-app register call on purpose (kanban t_8bea040a): the row that
+/// marks the residue is the CORE SWIFT WORKSPACE, and that row is minted by CoreSwift from THIS
+/// request. A marker carried only on the harness's own call into Multi-Directory never reaches the
+/// app that writes the row, so a sweep could not tell the harness workspace from a customer's.
+/// `None` = an ordinary operator/customer request, byte-identical to what this call sent before
+/// the parameter existed.
 pub async fn provision_tenant(
     db: &PgPool,
     entity_id: Uuid,
     name: &str,
     slug: &str,
     is_network: bool,
+    probe_harness: Option<&str>,
 ) -> Result<(), String> {
     let email = format!("md-{slug}@local.coreswift");
     let pass = Uuid::new_v4().to_string();
     let base = coreswift_url();
 
-    let resp = HTTP
-        .post(format!("{base}/api/auth/register"))
-        .json(&json!({
-            "name": format!("Multi-Directory: {name}"),
-            "email": email,
-            "password": pass,
-            "account_name": name,
-            "account_slug": slug,
-        }))
+    let mut register = HTTP.post(format!("{base}/api/auth/register")).json(&json!({
+        "name": format!("Multi-Directory: {name}"),
+        "email": email,
+        "password": pass,
+        "account_name": name,
+        "account_slug": slug,
+    }));
+    if let Some(marker) = probe_harness {
+        register = register.header(crate::probe_harness::PROBE_HARNESS_HEADER, marker);
+        // The deploy proof greps the release artifact for this line (kanban t_8bea040a): a binary
+        // that carries it is a binary whose register call is tagged. Debug level — no log noise.
+        tracing::debug!("[coreswift] register call tagged harness={marker}");
+    }
+
+    let resp = register
         .send()
         .await
         .map_err(|e| format!("CoreSwift register failed: {e}"))?;

@@ -148,6 +148,7 @@ pub async fn get_directory(
 /// POST /api/v1/directories
 pub async fn create_directory(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateDirectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.name.is_empty() {
@@ -155,6 +156,12 @@ pub async fn create_directory(
             "Directory name is required".to_string(),
         ));
     }
+
+    // Fleet probe attribution (kanban t_8bea040a). Creating a directory provisions a CoreSwift
+    // workspace (see the spawns below); that workspace is the residue an automated harness leaves
+    // in the OTHER app, so the `X-Swift-Harness` marker has to be forwarded onto the cross-app
+    // register call. Absent header => None => byte-identical to a customer's create.
+    let probe_harness = crate::probe_harness::from_headers(&headers);
 
     // Auto-generate slug if not provided
     let slug = match &req.slug {
@@ -318,10 +325,18 @@ pub async fn create_directory(
         let dir_id2 = directory.id;
         let dir_name2 = req.name.clone();
         let dir_slug2 = slug.clone();
+        let probe2 = probe_harness.clone();
         tokio::spawn(async move {
             // First provision the network tenant
-            match crate::coreswift::provision_tenant(&db2, dir_id2, &dir_name2, &dir_slug2, true)
-                .await
+            match crate::coreswift::provision_tenant(
+                &db2,
+                dir_id2,
+                &dir_name2,
+                &dir_slug2,
+                true,
+                probe2.as_deref(),
+            )
+            .await
             {
                 Ok(_) => tracing::info!(
                     "[directory] CoreSwift network tenant provisioned for {dir_slug2}"
@@ -348,8 +363,17 @@ pub async fn create_directory(
         let dir_id = directory.id;
         let dir_name = req.name.clone();
         let dir_slug = slug.clone();
+        let probe1 = probe_harness.clone();
         tokio::spawn(async move {
-            match crate::coreswift::provision_tenant(&db, dir_id, &dir_name, &dir_slug, false).await
+            match crate::coreswift::provision_tenant(
+                &db,
+                dir_id,
+                &dir_name,
+                &dir_slug,
+                false,
+                probe1.as_deref(),
+            )
+            .await
             {
                 Ok(_) => {
                     tracing::info!("[directory] CoreSwift tenant provisioned for {dir_slug}");

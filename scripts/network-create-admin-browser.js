@@ -19,8 +19,13 @@
  *   J. No console or auth errors during the walk.
  *
  * The token is the platform-operator JWT minted by the orchestrator and passed in $TOKEN.
- * Env: MD_BASE, TOKEN, AUD, PROBE_NAME, PROBE_SLUG, PROBE_ROOT, CHROME_PATH
+ * Env: MD_BASE, TOKEN, AUD, PROBE_NAME, PROBE_SLUG, PROBE_ROOT, CHROME_PATH, MD_HARNESS
  * Output: $AUD/networks-proof.json  (+ networks-table.png, networks-editor.png)
+ *
+ * MD_HARNESS is the fleet probe marker (kanban t_8bea040a). It rides EVERY request this walk makes
+ * — including the console's own fetch, via setExtraHTTPHeaders — because the product forwards
+ * `X-Swift-Harness` onto the cross-app CoreSwift register call, and THAT is the row that has to end
+ * up tagged with the harness that created it.
  */
 const fs = require('fs');
 const path = require('path');
@@ -33,6 +38,7 @@ const PROBE_NAME = process.env.PROBE_NAME || '';
 const PROBE_SLUG = process.env.PROBE_SLUG || '';
 const PROBE_ROOT = process.env.PROBE_ROOT || '';
 const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const HARNESS = process.env.MD_HARNESS || 't_8bea040a';
 
 if (!TOKEN || !AUD || !PROBE_SLUG) {
   console.error('TOKEN, AUD and PROBE_SLUG are required');
@@ -47,7 +53,7 @@ function rec(ok, name, detail) {
 }
 
 async function apiJson(method, p, body) {
-  const headers = { Authorization: 'Bearer ' + TOKEN };
+  const headers = { Authorization: 'Bearer ' + TOKEN, 'X-Swift-Harness': HARNESS };
   if (body != null) headers['Content-Type'] = 'application/json';
   const r = await fetch(MD_BASE + '/api/v1' + p, {
     method,
@@ -78,6 +84,19 @@ async function openEditor() {
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
   page = await browser.newPage();
+  // Every SAME-ORIGIN request the PAGE makes carries the fleet probe marker too (kanban t_8bea040a):
+  // the console creates the network with its own fetch, and the marker has to survive that path down
+  // to the cross-app register call — the walk must not lose its attribution just because a
+  // human-equivalent click (rather than a script's fetch) triggered the create.
+  // Scoped to MD_BASE on purpose: `page.setExtraHTTPHeaders` would stamp the header on EVERY request
+  // including the page's fonts.googleapis.com fetch, which then fails CORS preflight on an
+  // unknown request header and trips this walk's own no-page-errors check (measured 2026-10-14).
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    if (!req.url().startsWith(MD_BASE)) { req.continue().catch(() => {}); return; }
+    req.continue({ headers: Object.assign({}, req.headers(), { 'x-swift-harness': HARNESS }) })
+      .catch(() => {});
+  });
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const t = m.text();

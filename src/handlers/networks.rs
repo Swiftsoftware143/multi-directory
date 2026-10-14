@@ -4,7 +4,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -96,6 +96,7 @@ pub async fn get_network(
 /// POST /api/v1/networks
 pub async fn create_network(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateNetworkRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if req.name.is_empty() || req.slug.is_empty() {
@@ -147,8 +148,22 @@ pub async fn create_network(
     let net_id = network.id;
     let net_name = req.name.clone();
     let net_slug = req.slug.clone();
+    // Fleet probe attribution (kanban t_8bea040a). The row an automated harness leaves behind is
+    // the CORE SWIFT WORKSPACE minted by the spawn below, so the marker has to ride the cross-app
+    // register call — carrying it only on the harness's call into this route would tag nothing.
+    // Absent header => None => byte-identical to a customer's create.
+    let probe_harness = crate::probe_harness::from_headers(&headers);
     tokio::spawn(async move {
-        match crate::coreswift::provision_tenant(&db, net_id, &net_name, &net_slug, true).await {
+        match crate::coreswift::provision_tenant(
+            &db,
+            net_id,
+            &net_name,
+            &net_slug,
+            true,
+            probe_harness.as_deref(),
+        )
+        .await
+        {
             Ok(_) => tracing::info!("[network] CoreSwift provisioned for {net_slug}"),
             Err(e) => tracing::warn!("[network] CoreSwift provisioning failed for {net_slug}: {e}"),
         }
