@@ -1074,23 +1074,11 @@ pub async fn update_business_meta(
         return Err(AppError::NotFound("Business not found".to_string()));
     }
 
-    let uid = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Forbidden("Sign in to edit a listing".to_string()))?;
-
-    // Ownership: the caller owns the business outright, or holds an active claim on it.
-    let owns: i64 = sqlx::query_scalar(
-        r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
-                + (SELECT COUNT(*) FROM claimed_businesses
-                    WHERE business_id = $1 AND is_active
-                      AND (visitor_account_id = $2 OR user_id = $2))"#,
-    )
-    .bind(business_id)
-    .bind(uid)
-    .fetch_one(&s.db)
-    .await?;
-
-    let is_admin = claims.role == "admin" || claims.role == "super_admin";
-    if owns == 0 && !is_admin {
+    // Ownership: outright owner, active claimant, the owning directory's owner, or super_admin.
+    // NOT `role == "admin"` — `/auth/register` mints that role for every new signup, so trusting
+    // it let any account edit a listing it had nothing to do with (same class of hole as the
+    // review-reply bypass fixed alongside this, 2026-10-14).
+    if !crate::handlers::reviews::can_moderate(&s.db, &claims, Some(business_id)).await? {
         return Err(AppError::Forbidden(
             "You can only edit a business you own or have claimed.".to_string(),
         ));

@@ -551,20 +551,12 @@ pub async fn respond_to_review(
     let uid = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::Forbidden("Sign in to reply to a review".to_string()))?;
 
-    // Ownership: the caller owns the business outright, or holds an active claim on it.
-    let owns: i64 = sqlx::query_scalar(
-        r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
-                + (SELECT COUNT(*) FROM claimed_businesses
-                    WHERE business_id = $1 AND is_active
-                      AND (visitor_account_id = $2 OR user_id = $2))"#,
-    )
-    .bind(business_id)
-    .bind(uid)
-    .fetch_one(&s.db)
-    .await?;
-
-    let is_admin = claims.role == "admin" || claims.role == "super_admin";
-    if owns == 0 && !is_admin {
+    // Ownership: outright owner, active claimant, the owning directory's owner, or super_admin.
+    // NOT `role == "admin"`: `/auth/register` mints that role for EVERY new signup, so trusting it
+    // let any account post a public "owner reply" on a stranger's review (measured 2026-10-14 —
+    // a fresh signup answered an unrelated business's review with HTTP 200 and the text was
+    // written to the row). Same gate the approve/reject path uses.
+    if !can_moderate(&s.db, &claims, Some(business_id)).await? {
         return Err(AppError::Forbidden(
             "You can only reply to reviews of a business you own.".to_string(),
         ));
@@ -634,7 +626,7 @@ async fn owned_by(db: &sqlx::PgPool, business_id: Uuid, uid: Uuid) -> Result<i64
 /// business's owner (or an active claimant), or the owner of the directory the business belongs to.
 /// The app's flat role model grants every new account the tenant role `admin`, so `role == "admin"`
 /// is NOT an operator signal and is never consulted here.
-async fn can_moderate(
+pub(crate) async fn can_moderate(
     db: &sqlx::PgPool,
     claims: &Claims,
     business_id: Option<Uuid>,
