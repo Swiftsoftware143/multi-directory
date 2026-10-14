@@ -14,8 +14,9 @@ Proves, against the running app and the live database:
   2. the operator creates a key on the screen route -> 201 + the raw `md_…` secret returned ONCE;
   3. the database stores only the SHA-256 of that secret (the raw value is nowhere on the row) and
      the visible prefix is genuinely a prefix;
-  4. THE FIX: the raw key, presented with NO browser session, unlocks an operator-guarded route
-     (200) — before d081b39 this was 401;
+  4. THE FIX: the raw key, presented with NO browser session, unlocks operator-guarded routes
+     (200) — before d081b39 this was 401. Two arms: the key's own management route AND the real
+     integration endpoints an outside system actually calls (`/directories`, `/dashboard/stats`);
   5. the call is recorded: `last_used_at` is stamped and an `api_key_usage` row carries the
      endpoint / method / status, so the screen's usage panel is real;
   6. the prefix alone, or a fabricated `md_…`, authenticates nothing (401);
@@ -168,6 +169,13 @@ def main():
         check("the key's own row is visible through the key",
               any(k.get("id") == key_id for k in listed), f"rows={len(listed)}")
 
+        # ---- THE INTEGRATION ARM: the key alone unlocks the endpoints outside systems call ----
+        # (item 7 durable arm: the /tmp use-probe that first proved this was ephemeral and
+        #  unmovable — its bearer values were redacted on disk; this arm re-proves it in-repo.)
+        for ep in ("/api/v1/directories", "/api/v1/dashboard/stats"):
+            s, body = call("GET", ep, raw_key, raw_auth=True)
+            check(f"the issued key alone unlocks {ep} (200)", s == 200, f"status={s}")
+
         # ---- usage bookkeeping is real ---------------------------------------
         last_used = psql(f"select coalesce(last_used_at::text,'') from api_keys where id='{key_id}'")
         check("last_used_at is stamped after a real call", last_used != "", f"last_used={last_used}")
@@ -175,6 +183,11 @@ def main():
                     f" and method='GET' and status_code=200")
         check("an api_key_usage row records the call (endpoint/method/status)",
               int(used) >= 1, f"rows={used}")
+        for ep in ("/directories", "/dashboard/stats"):
+            n = psql(f"select count(*) from api_key_usage where api_key_id='{key_id}'"
+                     f" and endpoint like '%{ep}%' and status_code=200")
+            check(f"the usage log records the real {ep} call (screen usage panel is honest)",
+                  int(n) >= 1, f"rows={n}")
 
         # ---- verify endpoint --------------------------------------------------
         s, body = call("POST", "/api/v1/api-keys/verify", raw_key, raw_auth=True)
