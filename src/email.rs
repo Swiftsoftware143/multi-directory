@@ -97,6 +97,85 @@ pub async fn send_reset_email(db: &PgPool, to: &str, token: &str) -> Result<(), 
     send_rendered_email(to, &subject, &html_body, text_body.as_deref()).await
 }
 
+/// Could a SYSTEM message leave right now? Configuration only — no mail is sent.
+///
+/// Mirrors the in-house email service's SYSTEM-default rule (its `resolve_default_settings` plus
+/// the guards at the top of its `send()`): the network's mail identity — the primary city's
+/// Email/SMTP row, else the most recently saved row — must exist, name a supported transport,
+/// carry a from address, and hold the piece that transport needs (a SMTP host, or an active
+/// provider key).
+///
+/// This exists so a mail-dependent flow can refuse HONESTLY instead of promising a message that
+/// can never arrive (t_forgot_honest). It is deliberately config-only and permissive: a provider
+/// outage is not a configuration problem, so it is never reported here, and a check that is not
+/// certain must not block the caller. `Err` carries the operator-facing reason (logged, never
+/// shown to an end user as-is).
+pub async fn mail_transport_ready(db: &PgPool) -> Result<(), String> {
+    use sqlx::Row;
+
+    let row = sqlx::query(
+        "SELECT des.transport, des.from_email, des.smtp_host \
+         FROM directory_email_settings des \
+         JOIN directories d ON d.id = des.directory_id \
+         ORDER BY d.is_primary DESC NULLS LAST, des.updated_at DESC \
+         LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("could not read the saved email settings: {e}"))?;
+
+    let Some(row) = row else {
+        return Err("no Email/SMTP settings have been saved yet".to_string());
+    };
+
+    let transport = row
+        .try_get::<String, _>("transport")
+        .map_err(|e| format!("transport column unreadable: {e}"))?
+        .trim()
+        .to_lowercase();
+    let from_email = row
+        .try_get::<String, _>("from_email")
+        .map_err(|e| format!("from_email column unreadable: {e}"))?;
+    let smtp_host = row
+        .try_get::<String, _>("smtp_host")
+        .map_err(|e| format!("smtp_host column unreadable: {e}"))?;
+
+    if !matches!(
+        transport.as_str(),
+        "smtp" | "mailgun" | "sendgrid" | "sendiio"
+    ) {
+        return Err(format!(
+            "the saved transport '{transport}' is not one of smtp/mailgun/sendgrid/sendiio"
+        ));
+    }
+    if from_email.trim().is_empty() {
+        return Err("the saved from-address is empty".to_string());
+    }
+    if transport == "smtp" {
+        return if smtp_host.trim().is_empty() {
+            Err("the saved SMTP host is empty".to_string())
+        } else {
+            Ok(())
+        };
+    }
+
+    // An API transport needs an active key with credentials stored (plaintext or sealed).
+    let keys: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM provider_keys \
+         WHERE provider = $1 AND is_active = true \
+           AND (TRIM(api_key) <> '' OR COALESCE(octet_length(api_key_encrypted), 0) > 0)",
+    )
+    .bind(&transport)
+    .fetch_one(db)
+    .await
+    .map_err(|e| format!("could not read provider keys: {e}"))?;
+
+    if keys == 0 {
+        return Err(format!("no active '{transport}' key is saved"));
+    }
+    Ok(())
+}
+
 /// Card B76 — the two-step claim verification mail.
 ///
 /// `link` is the absolute confirm URL; when the claim was AUTO-accepted, `temp_password` carries

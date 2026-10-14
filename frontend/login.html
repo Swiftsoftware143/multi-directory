@@ -194,7 +194,15 @@ async function submitForgot(){
   btn.textContent='Sending...';btn.disabled=true;
   try{
     const r=await fetch('/api/v1/auth/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
-    const d=await r.json();
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){
+      // The platform refused honestly (e.g. no email provider is set up, so no link could ever
+      // arrive). Say so in the error box and stay on this step — never claim a code was sent.
+      msg.textContent=d.message||'That did not work. Please try again.';
+      msg.classList.add('show');
+      btn.textContent='Send Reset Code';btn.disabled=false;
+      return;
+    }
     success.textContent=d.message||'If that email is registered, a reset code has been sent.';
     success.style.display='';
     btn.textContent='Sent ✓';btn.disabled=false;

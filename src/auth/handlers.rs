@@ -458,6 +458,24 @@ pub async fn forgot_password(
     State(s): State<AppState>,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // The user must never be told a reset link was sent when nothing can leave. Check the mail
+    // transport BEFORE looking the account up, so the answer is byte-for-byte identical whether or
+    // not the address is registered (no account-existence oracle), and refuse honestly when the
+    // platform has no email provider configured. Config-only: a provider outage is not reported
+    // here (email::mail_transport_ready).
+    if let Err(reason) = crate::email::mail_transport_ready(&s.db).await {
+        tracing::error!(
+            "forgot-password refused: no email could be delivered ({}) — save an Email/SMTP \
+             transport in the admin panel (Integration Center / Email) and retry",
+            reason
+        );
+        return Err(AppError::ServiceUnavailable(
+            "We can't email a reset link yet: this site's email provider is not set up. \
+             Please contact support so they can enable password resets."
+                .to_string(),
+        ));
+    }
+
     // Read-side: the same trim+lowercase as the writers, so an address stored normalised resolves
     // no matter how the caller typed it (t_01f183b1). A malformed value matches nothing and the
     // endpoint keeps its generic response — never an account-existence oracle.

@@ -48,6 +48,14 @@ pub enum AppError {
     #[error("Internal server error: {0}")]
     Internal(String),
 
+    /// A required piece of infrastructure is not configured, so the platform cannot carry the
+    /// request out at all — e.g. no email provider is set up, so a reset link could never arrive.
+    /// Distinct from Internal: nothing is broken, and retrying after an operator saves the missing
+    /// setting (admin panel > Integration Center) will succeed. The message is shown to the caller,
+    /// so it must stay plain and must never leak whether an account exists.
+    #[error("{0}")]
+    ServiceUnavailable(String),
+
     #[error("JWT error: {0}")]
     Jwt(#[from] jsonwebtoken::errors::Error),
 }
@@ -69,6 +77,10 @@ impl IntoResponse for AppError {
             AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, msg.clone()),
+            AppError::ServiceUnavailable(msg) => {
+                tracing::error!("Unavailable (not configured): {}", msg);
+                (StatusCode::SERVICE_UNAVAILABLE, msg.clone())
+            }
             AppError::Hash(msg) => {
                 tracing::error!("Password hashing error: {}", msg);
                 (
