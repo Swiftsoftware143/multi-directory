@@ -1197,10 +1197,34 @@ pub struct BulkExportQuery {
 }
 
 /// GET /api/v1/export/bulk — bulk export businesses/reviews as JSON (CSV via format=csv)
+///
+/// A bulk export dumps a whole directory — business names, addresses, phone numbers and emails —
+/// so it carries the SAME scope rule as the per-directory export routes
+/// (`/export/businesses/:directory_id`): the platform operator, or an admin of the directory being
+/// exported. Without this, any signed-in account (a plain visitor token included) could download
+/// every city's rows by passing its id.
 pub async fn bulk_export(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<BulkExportQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    use crate::handlers::tenant_scope;
+
+    let claims = tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    match q.directory_id {
+        Some(did) => {
+            tenant_scope::assert_directory_admin(&state.db, &claims, did).await?;
+        }
+        // No directory: the whole network. Operator only.
+        None => {
+            if !tenant_scope::is_platform_operator(&claims) {
+                return Err(AppError::Forbidden(
+                    "A whole-network export requires the platform operator".to_string(),
+                ));
+            }
+        }
+    }
+
     let entity_type = q.entity_type.as_deref().unwrap_or("businesses");
     let output_format = q.format.as_deref().unwrap_or("json");
 

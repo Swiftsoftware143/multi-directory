@@ -828,11 +828,33 @@ function renderDataCompany(){
 }
 function exportData(fmt){
   var did=CUR_DIR.id;
-  var a=document.createElement('a');
-  a.href='/api/v1/export/bulk?directory_id='+did+'&format='+fmt;
-  a.download='export.'+fmt;
-  a.click();
-  toast('Download started','info');
+  var url='/api/v1/export/bulk?directory_id='+encodeURIComponent(did)+'&format='+encodeURIComponent(fmt);
+  toast('Preparing '+fmt.toUpperCase()+' export…','info');
+  // The export route is authenticated, so the download must carry the same Bearer token the
+  // rest of this portal uses. A plain <a href> navigation sends no Authorization header and
+  // came back 401 ("Authentication required") as the downloaded file — i.e. the button never
+  // delivered data. Fetch it, then save the bytes from the browser.
+  fetch(url,{headers:{'Authorization':'Bearer '+localStorage.token,'Accept':'application/json'}})
+    .then(function(r){
+      if(!r.ok){return r.text().then(function(t){var m;try{m=JSON.parse(t).message;}catch(e){}throw new Error(m||('Export failed ('+r.status+')'));});}
+      return r.json();
+    })
+    .then(function(r){
+      var text,name,mime;
+      if(fmt==='csv'&&Array.isArray(r.data)&&typeof r.data[0]==='string'){
+        text=r.data.join('\n');name='export-'+CUR_DIR.slug+'.csv';mime='text/csv';
+      }else{
+        text=JSON.stringify(r.data==null?r:r.data,null,2);name='export-'+CUR_DIR.slug+'.json';mime='application/json';
+      }
+      var blob=new Blob([text],{type:mime});
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=name;
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(function(){URL.revokeObjectURL(a.href);},4000);
+      toast('Exported '+CUR_DIR.name+' ('+fmt.toUpperCase()+')','success');
+    })
+    .catch(function(e){toast('Export failed: '+e.message,'error');});
 }
 function importData(){
   var file=document.getElementById('importFile').files[0];
