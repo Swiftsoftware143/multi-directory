@@ -2493,15 +2493,31 @@ pub async fn list_city_blog_posts(
             Option<String>,
             Option<String>,
             Option<String>,
+            String,
         ),
     >(
+        // Sponsored/SEO articles (`business_articles`) are published city content too —
+        // the RSS feed and sitemap already carry them, so the city blog view/feed must
+        // list them as well or a visitor can never browse to one.
         r#"SELECT id, slug, title, excerpt, scheduled_at, created_at,
-                  featured_image_url, author_name, blog_category
-           FROM blog_posts
-           WHERE directory_id = $1
-             AND published = true
-             AND status = 'published'
-             AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+                  featured_image_url, author_name, blog_category, source_type
+           FROM (
+             SELECT bp.id, bp.slug, bp.title, bp.excerpt, bp.scheduled_at, bp.created_at,
+                    bp.featured_image_url, bp.author_name, bp.blog_category,
+                    'blog'::text AS source_type
+             FROM blog_posts bp
+             WHERE bp.directory_id = $1
+               AND bp.published = true
+               AND bp.status = 'published'
+               AND (bp.scheduled_at IS NULL OR bp.scheduled_at <= NOW())
+             UNION ALL
+             SELECT ba.id, ba.slug, ba.title, ba.meta_description, NULL::timestamptz,
+                    ba.created_at, NULL::text,
+                    (SELECT b.name FROM businesses b WHERE b.id = ba.business_id),
+                    ba.keyword, 'article'::text
+             FROM business_articles ba
+             WHERE ba.directory_id = $1 AND ba.status = 'published'
+           ) u
            ORDER BY COALESCE(scheduled_at, created_at) DESC
            LIMIT $2"#,
     )
@@ -2513,19 +2529,36 @@ pub async fn list_city_blog_posts(
     let posts: Vec<Value> = rows
         .into_iter()
         .map(
-            |(id, post_slug, title, excerpt, scheduled_at, created_at, image, author, category)| {
+            |(
+                id,
+                post_slug,
+                title,
+                excerpt,
+                scheduled_at,
+                created_at,
+                image,
+                author,
+                category,
+                source_type,
+            )| {
                 let date = scheduled_at.or(created_at);
                 let post_slug = post_slug.unwrap_or_default();
+                let url = if source_type == "article" {
+                    format!("/{}/articles/{}", dir_slug, post_slug)
+                } else {
+                    format!("/api/v1/d/{}/blog/{}", dir_slug, post_slug)
+                };
                 json!({
                     "id": id,
                     "slug": post_slug,
                     "title": title,
                     "excerpt": excerpt,
                     "date": date,
-                    "url": format!("/api/v1/d/{}/blog/{}", dir_slug, post_slug),
+                    "url": url,
                     "featured_image_url": image,
                     "author_name": author,
                     "category": category,
+                    "type": source_type,
                 })
             },
         )

@@ -1920,11 +1920,27 @@ pub async fn blog_list_page(
     // A failed read returns None (the caller falls back to the SPA) rather than
     // painting a misleading "no posts yet" page over a query that never ran.
     let rows = sqlx::query(
+        // Sponsored/SEO articles (`business_articles`) are part of the city's published
+        // content — the public RSS feed already unions them and the sitemap advertises
+        // `/<city>/articles/<slug>`. Listing only `blog_posts` here left every sponsored
+        // article invisible on the browse surface a visitor actually lands on, so the
+        // index and the feed disagreed about what this city publishes.
         "SELECT slug, title, excerpt, scheduled_at, created_at, featured_image_url, \
-                author_name, blog_category \
-         FROM blog_posts \
-         WHERE directory_id = $1 AND published = true AND status = 'published' \
-           AND (scheduled_at IS NULL OR scheduled_at <= NOW()) \
+                author_name, blog_category, source_type \
+         FROM ( \
+           SELECT bp.slug, bp.title, bp.excerpt, bp.scheduled_at, bp.created_at, \
+                  bp.featured_image_url, bp.author_name, bp.blog_category, \
+                  'blog'::text AS source_type \
+           FROM blog_posts bp \
+           WHERE bp.directory_id = $1 AND bp.published = true AND bp.status = 'published' \
+             AND (bp.scheduled_at IS NULL OR bp.scheduled_at <= NOW()) \
+           UNION ALL \
+           SELECT ba.slug, ba.title, ba.meta_description, NULL::timestamptz, ba.created_at, \
+                  NULL::text, (SELECT b.name FROM businesses b WHERE b.id = ba.business_id), \
+                  ba.keyword, 'article'::text \
+           FROM business_articles ba \
+           WHERE ba.directory_id = $1 AND ba.status = 'published' \
+         ) u \
          ORDER BY COALESCE(scheduled_at, created_at) DESC LIMIT 50",
     )
     .bind(dir.id)
@@ -1957,6 +1973,9 @@ pub async fn blog_list_page(
             let image: Option<String> = r.try_get("featured_image_url").unwrap_or(None);
             let author: Option<String> = r.try_get("author_name").unwrap_or(None);
             let category: Option<String> = r.try_get("blog_category").unwrap_or(None);
+            let source: String = r
+                .try_get("source_type")
+                .unwrap_or_else(|_| "blog".to_string());
             let date = scheduled.or(created);
 
             let mut meta_bits = Vec::new();
@@ -1972,7 +1991,12 @@ pub async fn blog_list_page(
 
             Some(BlogItem {
                 title: title_raw,
-                url: format!("{}/{}/blog/{}", base, dir.slug, post_slug),
+                url: if source == "article" {
+                    // A sponsored/SEO article's published page.
+                    format!("{}/{}/articles/{}", base, dir.slug, post_slug)
+                } else {
+                    format!("{}/{}/blog/{}", base, dir.slug, post_slug)
+                },
                 date,
                 excerpt: excerpt.filter(|e| !e.trim().is_empty()),
                 image: image.filter(|i| !i.trim().is_empty()),
