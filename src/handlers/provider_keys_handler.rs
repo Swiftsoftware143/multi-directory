@@ -285,7 +285,7 @@ async fn fetch_keys(
         " WHERE tenant_id = $1 \
          ORDER BY provider ASC, is_default DESC, updated_at DESC"
     );
-    let rows = sqlx::query(&sql).bind(tenant_id).fetch_all(db).await?;
+    let rows = sqlx::query(sql).bind(tenant_id).fetch_all(db).await?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows.iter() {
         // Decryption happens per row in Rust (the master key is not available to SQL).
@@ -448,7 +448,7 @@ pub async fn upsert_provider_key(
                    api_key, base_url, \
                    metadata, is_active, scope, network_id, directory_id, \
                    created_at::text, updated_at::text";
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(sql)
         .bind(tenant_id)
         .bind(&req.provider)
         .bind(&label)

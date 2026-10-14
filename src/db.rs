@@ -170,7 +170,7 @@ pub fn split_statements(sql: &str) -> Vec<String> {
                         }
                     }
                     if ok && chars.get(j) == Some(&'$') {
-                        current.extend(tag.chars());
+                        current.push_str(tag);
                         current.push('$');
                         i = j + 1;
                         state = St::Normal;

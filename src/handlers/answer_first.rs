@@ -112,54 +112,54 @@ pub async fn generate_answer_first(
     }
 
     // ── Resolve business info ─────────────────────────────────────────────
-    let (biz_name, biz_slug, biz_city, biz_state, biz_category) = if let Some(bid) = req.business_id
-    {
-        let row2: Option<(String, String, Option<String>, Option<String>, Option<Uuid>)> =
-            sqlx::query_as(
-                "SELECT name, slug, city, state, category_id FROM businesses WHERE id = $1",
-            )
-            .bind(bid)
-            .fetch_optional(&app.db)
-            .await?;
-        match row2 {
-            Some((n, biz_slug2, c, st, cat_id)) => {
-                let cat_name: Option<String> = if let Some(cid) = cat_id {
-                    sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
-                        .bind(cid)
-                        .fetch_optional(&app.db)
-                        .await
-                        .unwrap_or(None)
-                } else {
-                    None
-                };
-                (
-                    n,
-                    biz_slug2,
-                    c.unwrap_or_default(),
-                    st.unwrap_or_default(),
-                    cat_name.unwrap_or_default(),
+    let (biz_name, _biz_slug, biz_city, biz_state, biz_category) =
+        if let Some(bid) = req.business_id {
+            let row2: Option<(String, String, Option<String>, Option<String>, Option<Uuid>)> =
+                sqlx::query_as(
+                    "SELECT name, slug, city, state, category_id FROM businesses WHERE id = $1",
                 )
+                .bind(bid)
+                .fetch_optional(&app.db)
+                .await?;
+            match row2 {
+                Some((n, biz_slug2, c, st, cat_id)) => {
+                    let cat_name: Option<String> = if let Some(cid) = cat_id {
+                        sqlx::query_scalar("SELECT name FROM directory_categories WHERE id = $1")
+                            .bind(cid)
+                            .fetch_optional(&app.db)
+                            .await
+                            .unwrap_or(None)
+                    } else {
+                        None
+                    };
+                    (
+                        n,
+                        biz_slug2,
+                        c.unwrap_or_default(),
+                        st.unwrap_or_default(),
+                        cat_name.unwrap_or_default(),
+                    )
+                }
+                None => return Err(AppError::NotFound("Business not found".into())),
             }
-            None => return Err(AppError::NotFound("Business not found".into())),
-        }
-    } else {
-        // Use submitted data or fallbacks
-        (
-            req.business_name
-                .clone()
-                .unwrap_or_else(|| "Business".to_string()),
-            slugify(
-                &req.business_name
+        } else {
+            // Use submitted data or fallbacks
+            (
+                req.business_name
                     .clone()
-                    .unwrap_or_else(|| "business".to_string()),
-            ),
-            req.city.clone().unwrap_or_default(),
-            req.state.clone().unwrap_or_default(),
-            req.specialty
-                .clone()
-                .unwrap_or_else(|| "Service".to_string()),
-        )
-    };
+                    .unwrap_or_else(|| "Business".to_string()),
+                slugify(
+                    &req.business_name
+                        .clone()
+                        .unwrap_or_else(|| "business".to_string()),
+                ),
+                req.city.clone().unwrap_or_default(),
+                req.state.clone().unwrap_or_default(),
+                req.specialty
+                    .clone()
+                    .unwrap_or_else(|| "Service".to_string()),
+            )
+        };
 
     let city = if biz_city.is_empty() {
         req.city.as_deref().unwrap_or("Your City")
@@ -197,7 +197,7 @@ pub async fn generate_answer_first(
     } else {
         format!(", {}", state)
     };
-    let city_state = format!("{}{}", city, state_display);
+    let _city_state = format!("{}{}", city, state_display);
     let city_display = format!(
         "{}{}",
         city,
@@ -216,13 +216,13 @@ pub async fn generate_answer_first(
 
     let competitor_html = build_comparison_table(
         &biz_name,
-        &specialty,
+        specialty,
         &req.competitor_names,
         &req.competitor_metrics,
     );
     let faq_html = build_faq_section(
         &biz_name,
-        &specialty,
+        specialty,
         &city_display,
         price_range,
         booking_method,
@@ -274,13 +274,13 @@ pub async fn generate_answer_first(
     let title = if city.is_empty() {
         format!(
             "{} - Best {} Provider",
-            &biz_name,
+            biz_name,
             capitalize_first(specialty)
         )
     } else {
         format!(
             "{} - Best {} in {}, {}",
-            &biz_name,
+            biz_name,
             capitalize_first(specialty),
             city,
             state
@@ -289,9 +289,9 @@ pub async fn generate_answer_first(
 
     // ── Generate slug ──────────────────────────────────────────────────────
     let base_slug = if city.is_empty() || state.is_empty() {
-        slugify(&format!("{}-{}-answer-first", &biz_name, specialty))
+        slugify(&format!("{}-{}-answer-first", biz_name, specialty))
     } else {
-        slugify(&format!("{}-{}-{}-{}", &biz_name, specialty, city, state))
+        slugify(&format!("{}-{}-{}-{}", biz_name, specialty, city, state))
     };
 
     // ── Save to business_meta ──────────────────────────────────────────────
@@ -339,7 +339,7 @@ pub async fn generate_answer_first(
     // ── Create excerpt ─────────────────────────────────────────────────────
     let excerpt = format!(
         "Learn why {} is the top choice for {} in {} — {} with {}.",
-        &biz_name, specialty, city_display, differentiator, metric,
+        biz_name, specialty, city_display, differentiator, metric,
     );
 
     // ── Save as blog post ──────────────────────────────────────────────────
@@ -362,7 +362,7 @@ pub async fn generate_answer_first(
 
         let meta_desc = format!(
             "{} is a leading {} serving {}, {}. {} specializes in {} with {}.",
-            &biz_name, specialty, city, state, &biz_name, differentiator, metric
+            biz_name, specialty, city, state, biz_name, differentiator, metric
         );
 
         sqlx::query(
@@ -384,7 +384,7 @@ pub async fn generate_answer_first(
 
     // ── Build response ─────────────────────────────────────────────────────
     let content_preview = strip_html_for_preview(&article_html, 300);
-    let public_url = format!("/d/{}/blog/{}", &dir_slug, &final_slug);
+    let public_url = format!("/d/{}/blog/{}", dir_slug, final_slug);
 
     Ok((
         StatusCode::CREATED,
@@ -756,8 +756,7 @@ fn strip_html_for_preview(html: &str, max_len: usize) -> String {
         .replace("</strong>", "")
         .replace("<h2>", "\n")
         .replace("</h2>", ": ")
-        .replace('<', " ")
-        .replace('>', " ")
+        .replace(['<', '>'], " ")
         .replace("  ", " ")
         .trim()
         .to_string();

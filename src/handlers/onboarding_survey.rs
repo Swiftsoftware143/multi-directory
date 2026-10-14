@@ -1151,7 +1151,7 @@ pub async fn public_submit_survey(
     }
 
     // ── Newsletter opt-in straight from the questionnaire (native, in-house) ──
-    if let Some(visitor_id) = respondent_id {
+    if let Some(_visitor_id) = respondent_id {
         let wants_newsletter = answers.iter().any(|a| {
             let qid = a
                 .get("question_id")

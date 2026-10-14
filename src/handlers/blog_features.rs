@@ -48,7 +48,7 @@ pub struct DecaySummary {
 /// POST /api/v1/blog/decay/scan
 /// Scan all published blog posts and update decay flags + refresh priorities.
 pub async fn scan_content_decay(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let now = Utc::now();
+    let _now = Utc::now();
 
     // Mark posts as decayed if last_refreshed is > 6 months old or null and created > 6 months ago
     sqlx::query(
@@ -340,10 +340,10 @@ pub async fn add_internal_link(
         // Try to find anchor_text in body outside of existing <a> tags
         if let Some(pos) = body_lower.find(&anchor_lower) {
             // Check if this occurrence is inside an existing <a> tag
-            let context_start = if pos > 200 { pos - 200 } else { 0 };
+            let context_start = pos.saturating_sub(200);
             let before = &body_lower[context_start..pos];
 
-            let inside_existing_link = before.rfind("<a ").map_or(false, |lp| {
+            let inside_existing_link = before.rfind("<a ").is_some_and(|lp| {
                 let between = &body_lower[context_start + lp..pos];
                 !between.contains("</a>")
             });
@@ -473,9 +473,9 @@ pub async fn score_post_aeo(
     let mut score: i32 = 0;
 
     // 1. Has a dedicated answer block (0-20 pts)
-    if post.answer_block.as_ref().map_or(false, |a| a.len() > 100) {
+    if post.answer_block.as_ref().is_some_and(|a| a.len() > 100) {
         score += 20;
-    } else if post.answer_block.as_ref().map_or(false, |a| !a.is_empty()) {
+    } else if post.answer_block.as_ref().is_some_and(|a| !a.is_empty()) {
         score += 10;
     }
 
@@ -657,7 +657,7 @@ pub async fn score_post_aeo(
         "aeo_score": score,
         "traffic_trend": trend,
         "breakdown": {
-            "answer_block": if post.answer_block.as_ref().map_or(false, |a| a.len() > 100) { 20 } else { 10 },
+            "answer_block": if post.answer_block.as_ref().is_some_and(|a| a.len() > 100) { 20 } else { 10 },
             "heading_structure": if h2_count >= 3 && h3_count >= 2 { 15 } else if h2_count >= 2 { 10 } else { 5 },
             "schema_markup": if post.schema_json.is_some() { 20 } else { 0 },
             "internal_links": if link_count >= 5 { 15 } else if link_count >= 2 { 10 } else { 5 },
@@ -696,8 +696,8 @@ pub async fn score_all_posts_aeo(State(s): State<AppState>) -> ApiResult<impl In
             let cl = data.content.to_lowercase();
             let mut blog_score: i32 = 0;
 
-            if data.answer_block.as_ref().map_or(false, |a| a.len() > 100) { blog_score += 20 }
-            else if data.answer_block.as_ref().map_or(false, |a| !a.is_empty()) { blog_score += 10 }
+            if data.answer_block.as_ref().is_some_and(|a| a.len() > 100) { blog_score += 20 }
+            else if data.answer_block.as_ref().is_some_and(|a| !a.is_empty()) { blog_score += 10 }
 
             let h2c = cl.matches("<h2").count();
             let h3c = cl.matches("<h3").count();
@@ -948,7 +948,7 @@ pub async fn generate_all_schema(
     let schema_type = req.schema_type.unwrap_or_else(|| "Article".to_string());
     let mut generated = 0;
 
-    for (pid, title, slug, content, author_name, created_at, updated_at, directory_id) in &posts {
+    for (pid, title, _slug, content, author_name, created_at, updated_at, directory_id) in &posts {
         let dir_info: Option<String> = if let Some(did) = directory_id {
             sqlx::query_scalar::<_, String>("SELECT name FROM directories WHERE id = $1")
                 .bind(did)

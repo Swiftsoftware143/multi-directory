@@ -251,7 +251,7 @@ pub async fn get_activity(
         .map(
             |(id, biz_name, reviewer, rating, _comment, ts, biz_slug, dir_slug)| {
                 let reviewer_name = reviewer.unwrap_or_else(|| "Someone".to_string());
-                let stars = "★".repeat(rating as usize);
+                let _stars = "★".repeat(rating as usize);
                 ActivityItem {
                     id: format!("review-{}", id),
                     activity_type: "review".to_string(),
@@ -659,7 +659,7 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
     let spotlight_list: Vec<Value> = spotlights
         .into_iter()
         .map(
-            |(id, name, slug, desc, cat, rating, rv_count, badge, pos, dir_slug)| {
+            |(id, name, slug, desc, cat, rating, rv_count, badge, _pos, dir_slug)| {
                 json!({
                     "id": id,
                     "name": name,
@@ -961,7 +961,7 @@ pub async fn get_city_page(
                 city,
                 lat,
                 lng,
-                cat_id,
+                _cat_id,
                 cat_name,
                 cat_slug,
                 neighbourhood,
@@ -1393,7 +1393,7 @@ pub async fn search_businesses(
     let search_pattern = if search_term.is_empty() {
         String::new()
     } else {
-        format!("%{}%", search_term.replace('%', "").replace('_', ""))
+        format!("%{}%", search_term.replace(['%', '_'], ""))
     };
 
     // Use a parameterized approach: build query with numbered placeholders

@@ -1568,11 +1568,11 @@ pub async fn claim_business(
         .as_ref()
         .map(|w| w.trim())
         .filter(|w| !w.is_empty())
-        .or_else(|| biz_website.as_ref().map(|w| w.as_str()));
+        .or(biz_website.as_deref());
 
     let mut auto_approved = false;
     let mut temp_password = String::new();
-    let mut no_website = submitted_website.is_none();
+    let no_website = submitted_website.is_none();
 
     // Check business email field match
     if let Some(ref be) = biz_email {
@@ -1587,7 +1587,7 @@ pub async fn claim_business(
 
     // Check website domain match (without url crate — manual extraction)
     if !auto_approved {
-        if let Some(ref w) = submitted_website {
+        if let Some(w) = submitted_website {
             // Extract host from website URL
             let w_lower = w.to_lowercase();
             let host = w_lower
@@ -1938,9 +1938,9 @@ pub async fn verify_claim_email(
 async fn create_claim_deal(
     db: &sqlx::PgPool,
     business_id: Uuid,
-    owner_name: &Option<String>,
-    owner_email: &str,
-    owner_phone: &Option<String>,
+    _owner_name: &Option<String>,
+    _owner_email: &str,
+    _owner_phone: &Option<String>,
 ) -> Result<(), String> {
     // Get the business info
     // t_c16b2e1e: directory_id is NULLABLE (14 live NULLs) and the bare `Uuid` element failed the
@@ -2135,7 +2135,7 @@ async fn fetch_business_images_on_claim(
     let photos_json = serde_json::to_value(&photos).unwrap_or_default();
 
     // Get existing images and merge
-    let existing: serde_json::Value =
+    let _existing: serde_json::Value =
         sqlx::query_scalar(r#"SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"#)
             .bind(business_id)
             .fetch_one(db)
@@ -2237,7 +2237,7 @@ pub async fn request_city(
                updated_at = NOW()
            RETURNING id, votes"#,
     )
-    .bind(&city_name)
+    .bind(city_name)
     .bind(state)
     .bind(email)
     .fetch_optional(&app_state.db)

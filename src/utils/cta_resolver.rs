@@ -31,7 +31,7 @@ pub fn resolve_cta_url(cta_type: &str, business: &Value, meta_data: &Value) -> S
     let city_slug = business
         .get("city")
         .and_then(|v| v.as_str())
-        .map(|c| slugify(c))
+        .map(slugify)
         .unwrap_or_default();
     let website = business
         .get("website")

@@ -253,15 +253,15 @@ pub async fn create_directory(
     .bind(&req.name)
     .bind(&slug)
     .bind(&req.description)
-    .bind(&req.status.unwrap_or_else(|| "draft".to_string()))
+    .bind(req.status.unwrap_or_else(|| "draft".to_string()))
     .bind(template)
-    .bind(&color_scheme.to_string())
-    .bind(&network_id)
+    .bind(color_scheme.to_string())
+    .bind(network_id)
     .bind(&url_type)
     .bind(&url_value)
     .bind(&custom_domain)
     .bind(&req.city)
-    .bind(&template_config.to_string())
+    .bind(template_config.to_string())
     .bind(&req.head_injection)
     .bind(&req.body_injection)
     .bind(&req.footer_injection)
@@ -278,7 +278,7 @@ pub async fn create_directory(
 
     // If network_mode="new_network", create the network and link it
     if network_mode == "new_network" {
-        let network_slug = format!("network-{}", &slug);
+        let network_slug = format!("network-{}", slug);
         let network = sqlx::query_as::<_, crate::models::Network>(
             r#"INSERT INTO networks (name, slug, description, root_domain)
                VALUES ($1, $2, $3, $4)
@@ -591,7 +591,7 @@ pub async fn update_directory(
     // Binding `""` (the old unwrap_or_default) is invalid JSON and made every PUT on a
     // directory with a NULL jsonb column fail with `invalid input syntax for type json`.
     .bind(new_color_scheme.as_ref().map(|v| v.to_string()))
-    .bind(&new_network_id)
+    .bind(new_network_id)
     .bind(&new_url_type)
     .bind(&new_url_value)
     .bind(&new_custom_domain)
@@ -701,7 +701,7 @@ pub async fn set_primary_directory(
 pub async fn render_directory(
     State(s): State<AppState>,
     Path(slug): Path<String>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(_params): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     let directory = sqlx::query_as::<_, Directory>("SELECT * FROM directories WHERE slug = \x241 ")
         .bind(&slug)
@@ -760,7 +760,7 @@ pub async fn render_directory(
     let ctx = template_engine::build_template_context(&dir_val, &biz_val, &cats_val, None, None);
     let html = engine
         .render_directory_page(template_id, &ctx)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     // Inject visitor tracking script into directory page
     let mut output = if directory.tracking_enabled.unwrap_or(true) {

@@ -892,7 +892,7 @@ pub async fn stripe_webhook(
     .bind(event_type)
     .bind(event_id)
     .bind(&event_body)
-    .bind(&json!({"stripe-signature": signature}))
+    .bind(json!({"stripe-signature": signature}))
     .bind(db_status)
     .bind(rejection.map(|(reason, _, _)| reason))
     .execute(&state.db)

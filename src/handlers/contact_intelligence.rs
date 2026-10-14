@@ -305,7 +305,7 @@ async fn enrich_via_google_places(
 
     let url = format!(
         "https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={}&inputtype=textquery&fields=place_id,name,formatted_address,opening_hours,photos,geometry,rating,user_ratings_total&key={}",
-        urlencoding(&search_query.trim()),
+        urlencoding(search_query.trim()),
         api_key
     );
 
@@ -461,7 +461,7 @@ async fn enrich_via_google_places(
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb) \
              ON CONFLICT DO NOTHING",
         )
-        .bind(&search_query.trim())
+        .bind(search_query.trim())
         .bind(place_id)
         .bind(name)
         .bind(formatted_address)

@@ -102,7 +102,7 @@ pub async fn news_sitemap(
             .await?
             .ok_or_else(|| crate::error::AppError::NotFound("Directory not found".into()))?;
 
-    let description: Option<String> = sqlx::query_scalar(
+    let _description: Option<String> = sqlx::query_scalar(
         "SELECT description FROM seo_meta WHERE page_type = 'directory' AND page_id = $1",
     )
     .bind(dir.id)

@@ -1239,10 +1239,10 @@ pub async fn serve_media(Path(path): Path<String>) -> Result<Response, AppError>
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, mime_for_ext(&ext))
         .header(header::CACHE_CONTROL, "public, max-age=86400")
         .body(Body::from(bytes))
-        .map_err(|e| AppError::Internal(format!("could not build the response: {e}")))?)
+        .map_err(|e| AppError::Internal(format!("could not build the response: {e}")))
 }

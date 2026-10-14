@@ -174,7 +174,7 @@ async fn update_business_ledger(
     points_redeemed: i32,
 ) -> Result<(), AppError> {
     // Billed = points issued x $0.01; Reimbursed = points redeemed x $0.008
-    let billed = Decimal::new((points_issued * 1) as i64, 2); // $x.xx
+    let billed = Decimal::new(points_issued as i64, 2); // $x.xx
     let reimbursed = Decimal::new((points_redeemed * 8) as i64, 3); // $x.xxx
 
     sqlx::query(
@@ -235,7 +235,7 @@ pub async fn clearhouse_scan(
         .bind(&slug)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let network_id = directory_network(&state.db, directory_id)
@@ -370,9 +370,9 @@ async fn issue(
     .bind(member_id)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
-    let total_billed_cents = points * 1; // $0.01/pt
+    let total_billed_cents = points; // $0.01/pt
 
     // Issuance log
     sqlx::query(
@@ -392,7 +392,7 @@ async fn issue(
     .bind(&req.scan_type)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     // Treasury
     sqlx::query(
@@ -405,7 +405,7 @@ async fn issue(
     .bind(network_id)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     update_business_ledger(sqlx, network_id, req.business_id, &business_name, points, 0).await?;
 
@@ -427,7 +427,7 @@ async fn issue(
     .bind(&req.business_category)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     // Activity
     sqlx::query(
@@ -485,7 +485,7 @@ async fn redeem(
             .bind(member_id)
             .fetch_one(sqlx)
             .await
-            .map_err(|e| AppError::Database(e))?;
+            .map_err(AppError::Database)?;
     if balance < points {
         return Err(AppError::BadRequest(format!(
             "Insufficient points: have {balance}, need {points}"
@@ -502,7 +502,7 @@ async fn redeem(
         .bind(cat)
         .fetch_optional(sqlx)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         max_pct = cap.unwrap_or(100);
     }
 
@@ -527,7 +527,7 @@ async fn redeem(
     .bind(member_id)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     let reimbursement_cents = points * 8 / 10; // 0.8c/pt (÷10 for 0.8)
     let reimbursement = Decimal::new(reimbursement_cents as i64, 2);
@@ -550,7 +550,7 @@ async fn redeem(
     .bind(&req.transaction_id)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     // Treasury
     sqlx::query(
@@ -564,7 +564,7 @@ async fn redeem(
     .bind(network_id)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     update_business_ledger(sqlx, network_id, req.business_id, &business_name, 0, points).await?;
 
@@ -585,7 +585,7 @@ async fn redeem(
     .bind(&req.business_category)
     .execute(sqlx)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     // Activity
     sqlx::query(
@@ -677,7 +677,7 @@ pub async fn treasury_summary(
         .bind(&slug)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let network_id = directory_network(&state.db, directory_id).await?;
     let Some(network_id) = network_id else {
@@ -708,7 +708,7 @@ pub async fn treasury_summary(
     .bind(network_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     // Every rate is read from the treasury row — nothing is baked into this handler, so an
     // admin who changes a rate sees the change here without a deploy.
@@ -744,7 +744,7 @@ pub async fn business_ledgers(
         .bind(&slug)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let network_id = directory_network(&state.db, directory_id).await?;
     let Some(network_id) = network_id else {
@@ -761,7 +761,7 @@ pub async fn business_ledgers(
         .bind(network_id)
         .fetch_all(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
 
     let items: Vec<Value> = rows
         .into_iter()
@@ -793,7 +793,7 @@ pub async fn category_caps(
         .bind(&slug)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let network_id = directory_network(&state.db, directory_id).await?;
     let Some(network_id) = network_id else {
@@ -806,7 +806,7 @@ pub async fn category_caps(
     .bind(network_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     let items: Vec<Value> = rows
         .into_iter()
@@ -833,7 +833,7 @@ pub async fn upsert_category_cap(
         .bind(&slug)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let network_id = directory_network(&state.db, directory_id).await?;
     let Some(network_id) = network_id else {
@@ -857,7 +857,7 @@ pub async fn upsert_category_cap(
     .bind(&req.description)
     .execute(&state.db)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     Ok(Json(
         json!({ "success": true, "category": req.category, "max_redeem_percent": req.max_redeem_percent }),
@@ -1014,7 +1014,7 @@ pub async fn clearing_logs(
         .bind(&slug)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
     let network_id = directory_network(&state.db, directory_id).await?;
     let Some(network_id) = network_id else {
@@ -1033,7 +1033,7 @@ pub async fn clearing_logs(
     .bind(limit)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     let redeemed: Vec<(Option<Uuid>, i32, i32, Option<String>, chrono::DateTime<chrono::Utc>)> =
         sqlx::query_as(
@@ -1043,7 +1043,7 @@ pub async fn clearing_logs(
     .bind(limit)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
 
     let mut items: Vec<Value> = Vec::new();
     for (mid, pts, cents, name, ts) in issued {

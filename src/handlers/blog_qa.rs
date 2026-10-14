@@ -273,7 +273,7 @@ async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Va
                     .unwrap_or("");
                 if !question.is_empty() {
                     // Infer a keyword from the seed or the question
-                    let kw = seeds.get(0).cloned().unwrap_or_default();
+                    let kw = seeds.first().cloned().unwrap_or_default();
                     let intent = if question.starts_with("how") {
                         "how"
                     } else if question.starts_with("what") {
@@ -353,7 +353,7 @@ async fn fetch_dataforseo_keywords(
     // DataForSEO uses Basic auth: login:api_key
     let auth = base64_encode(format!("{}:{}", login, api_key));
 
-    let keywords = seeds.join(", ");
+    let _keywords = seeds.join(", ");
     let url = "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live";
     let payload = serde_json::json!([{
         "keywords": seeds,
@@ -540,7 +540,7 @@ pub async fn generate_posts(
         )
         .bind(&question)
         .bind(&slug)
-        .bind(&format!("Answering: {}", question))
+        .bind(format!("Answering: {}", question))
         .bind(&final_content)
         .bind(req.directory_id)
         .fetch_one(&s.db)
@@ -773,7 +773,7 @@ pub async fn schedule_weekly(
 
     Ok(Json(ScheduleResponse {
         scheduled: true,
-        config: config,
+        config,
     }))
 }
 

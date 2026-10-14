@@ -167,7 +167,7 @@ pub async fn render_city_page(
             logo = plogo_html,
             name = h(&pname),
             cat = h(&pcat.unwrap_or_default()),
-            stars = String::from("\u{2605}".repeat(pr as usize))
+            stars = "\u{2605}".repeat(pr as usize)
                 + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize)),
             rating = pr,
             reviews = previews,
@@ -222,8 +222,7 @@ pub async fn render_city_page(
             ""
         };
         let r = rating.unwrap_or(0.0);
-        let stars =
-            String::from("★".repeat(r as usize)) + &"☆".repeat(5usize.saturating_sub(r as usize));
+        let stars = "★".repeat(r as usize) + &"☆".repeat(5usize.saturating_sub(r as usize));
 
         let logo_html = match &logo {
             Some(img) if !img.is_empty() => format!(
@@ -432,8 +431,8 @@ pub async fn render_cities_index(
         let puname: String = p.try_get("city_name").unwrap_or_default();
         let pid: Uuid = p.try_get("id").unwrap_or_default();
         let pr = prating.unwrap_or(0.0);
-        let pstars = String::from("\u{2605}".repeat(pr as usize))
-            + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize));
+        let pstars =
+            "\u{2605}".repeat(pr as usize) + &"\u{2606}".repeat(5usize.saturating_sub(pr as usize));
 
         let plogo_html = match &plogo {
             Some(img) if !img.is_empty() => format!("<img src=\"{}\" alt=\"{}\" class=\"pick-logo\" loading=\"lazy\" onerror=\"this.style.display='none'\">", h(img), h(&pname)),
@@ -578,8 +577,7 @@ pub async fn render_listing_page(
     let city_name: String = r.try_get("city_name").unwrap_or_default();
 
     let rv = rating.unwrap_or(0.0);
-    let stars =
-        String::from("★".repeat(rv as usize)) + &"☆".repeat(5usize.saturating_sub(rv as usize));
+    let stars = "★".repeat(rv as usize) + &"☆".repeat(5usize.saturating_sub(rv as usize));
     let page_title = format!(
         "{} — {} | ZaarHub",
         name,
@@ -832,9 +830,7 @@ pub async fn render_legal_page(
             r.try_get::<String, _>("content").unwrap_or_default(),
         ),
         None => {
-            return axum::response::Html(format!(
-                "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Page Not Found | ZaarHub</title><style>body{{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}h1{{font-size:48px;color:#2b3255}}a{{color:#f27f2f}}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Page not found.</p><a href=\"/zaarhub\">← Back to ZaarHub</a></div></body></html>",
-            ));
+            return axum::response::Html("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Page Not Found | ZaarHub</title><style>body{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}h1{font-size:48px;color:#2b3255}a{color:#f27f2f}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Page not found.</p><a href=\"/zaarhub\">← Back to ZaarHub</a></div></body></html>".to_string());
         }
     };
 

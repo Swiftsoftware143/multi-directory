@@ -184,8 +184,8 @@ pub async fn generate_trap_doors(
                     .bind(&meta_title)
                     .bind(&meta_description)
                     .bind(&h1)
-                    .bind(&[day.clone()])
-                    .bind(&[time.clone()])
+                    .bind(std::slice::from_ref(day))
+                    .bind(std::slice::from_ref(time))
                     .execute(&s.db)
                     .await?;
 
@@ -254,7 +254,7 @@ pub async fn preview_trap_doors(
 
     // Build a few sample slugs
     let mut sample_slugs: Vec<String> = Vec::new();
-    'outer: for (_, svc_name, svc_slug) in &services {
+    'outer: for (_, _svc_name, svc_slug) in &services {
         for city in &req.cities {
             let city_slug = slugify(city);
             for day in &user_day_tags {
@@ -832,7 +832,7 @@ pub async fn serve_trap_door_page(
 
     use sqlx::Row;
     let page_id: Uuid = page.try_get("id").unwrap_or_default();
-    let dir_id: Uuid = page.try_get("directory_id").unwrap_or_default();
+    let _dir_id: Uuid = page.try_get("directory_id").unwrap_or_default();
     let dir_name: String = page
         .try_get::<String, _>("directory_name")
         .unwrap_or_default();
@@ -1140,8 +1140,8 @@ pub async fn scheduled_generate_trap_doors(
                     .bind(&h1)
                     .bind(&content)
                     .bind("scheduled-trap-door")
-                    .bind(&vec![day.clone()])
-                    .bind(&vec![time.clone()])
+                    .bind(vec![day.clone()])
+                    .bind(vec![time.clone()])
                     .execute(&s.db)
                     .await;
 

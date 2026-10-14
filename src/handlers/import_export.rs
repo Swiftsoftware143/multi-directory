@@ -192,10 +192,10 @@ async fn import_business_row(
             updated_at = NOW()"
     )
     .bind(name).bind(slug).bind(directory_id)
-    .bind(&description)
-    .bind(&address)
-    .bind(&city).bind(&state).bind(&zip)
-    .bind(&phone).bind(&email).bind(&website)
+    .bind(description)
+    .bind(address)
+    .bind(city).bind(state).bind(zip)
+    .bind(phone).bind(email).bind(&website)
     .bind(latitude).bind(longitude)
     .bind(rating)
     .bind(review_count)
@@ -378,7 +378,7 @@ async fn enrich_from_google(
     // Autocomplete
     let autocomplete_url = format!(
         "https://maps.googleapis.com/maps/api/place/autocomplete/json?input={}&key={}&types=establishment",
-        urlencode(&query), &api_key
+        urlencode(&query), api_key
     );
     let resp = client
         .get(&autocomplete_url)
@@ -400,7 +400,7 @@ async fn enrich_from_google(
         // Get place details
         let details_url = format!(
             "https://maps.googleapis.com/maps/api/place/details/json?place_id={}&key={}&fields=name,formatted_address,formatted_phone_number,website,geometry,rating,user_ratings_total,types,photos,editorial_summary",
-            urlencode(&pid), &api_key
+            urlencode(&pid), api_key
         );
         let dresp = client
             .get(&details_url)
@@ -421,7 +421,7 @@ async fn enrich_from_google(
                         let ref_ = p.get("photo_reference").and_then(|v| v.as_str())?;
                         Some(format!(
                             "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference={}&key={}",
-                            urlencode(ref_), &api_key
+                            urlencode(ref_), api_key
                         ))
                     }).collect()
                 })

@@ -756,7 +756,7 @@ async fn provision_nginx_site(domain: &str, upstream_addr: &str) -> Result<(), S
     use std::process::Command;
 
     if let Err(e) = validate_domain_safe(domain) {
-        return Err(format!("Invalid domain: {}", e.to_string()));
+        return Err(format!("Invalid domain: {}", e));
     }
 
     let config_content = format!(
@@ -819,7 +819,7 @@ async fn provision_ssl_certificate(
     use std::process::Command;
 
     if let Err(e) = validate_domain_safe(domain) {
-        return Err(format!("Invalid domain: {}", e.to_string()));
+        return Err(format!("Invalid domain: {}", e));
     }
 
     // Try certbot first - domain is validated so -d argument is safe

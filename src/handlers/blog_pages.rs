@@ -86,7 +86,7 @@ pub async fn render_blog_list(
 
     let full_html = engine
         .render_blog_page(template_id, &ctx, &blog_section)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     let mut output = crate::tracking_script::inject_tracking_script(&full_html);
     // Apply custom head/body/footer injections
@@ -459,7 +459,7 @@ n             <h3>Related Articles</h3>\n\
 
     let full_html = engine
         .render_blog_page(template_id, &ctx, &article_html)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     let mut output = crate::tracking_script::inject_tracking_script(&full_html);
     // Apply custom head/body/footer injections

@@ -1,12 +1,4 @@
-use axum::{
-    extract::{Request, State},
-    middleware::Next,
-    response::Response,
-};
-
 use super::models::Claims;
-use crate::error::AppError;
-use crate::AppState;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -28,7 +20,7 @@ pub fn create_token(claims: &Claims, secret: &str) -> Result<String, jsonwebtoke
     use jsonwebtoken::{encode, EncodingKey, Header};
 
     let encoding_key = EncodingKey::from_secret(secret.as_bytes());
-    Ok(encode(&Header::default(), claims, &encoding_key)?)
+    encode(&Header::default(), claims, &encoding_key)
 }
 
 /// Is the caller the platform operator?

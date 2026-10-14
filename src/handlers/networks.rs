@@ -129,7 +129,7 @@ pub async fn create_network(
     .bind(&req.slug)
     .bind(&req.description)
     .bind(&root_domain)
-    .bind(&req.status.unwrap_or_else(|| "active".to_string()))
+    .bind(req.status.unwrap_or_else(|| "active".to_string()))
     .fetch_one(&s.db)
     .await?;
 

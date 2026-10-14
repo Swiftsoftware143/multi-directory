@@ -1390,7 +1390,7 @@ pub async fn list_sponsors(
     State(s): State<AppState>,
     Query(q): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir_id = q
+    let _dir_id = q
         .get("directory_id")
         .ok_or_else(|| AppError::Validation("directory_id is required".to_string()))?;
     let dir_id = q
@@ -1781,7 +1781,7 @@ pub async fn list_schedules(
     State(s): State<AppState>,
     Query(q): Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
-    let dir_id = q
+    let _dir_id = q
         .get("directory_id")
         .ok_or_else(|| AppError::Validation("directory_id is required".to_string()))?;
     let dir_id = q
@@ -2158,7 +2158,7 @@ pub async fn list_approvals(
            ORDER BY aq.submitted_at DESC LIMIT 50"#
     };
 
-    let mut q = sqlx::query_as(&sql).bind(dir_uuid).bind(status_filter);
+    let mut q = sqlx::query_as(sql).bind(dir_uuid).bind(status_filter);
     if let Some(itype) = item_type {
         q = q.bind(itype);
     }
@@ -2504,7 +2504,7 @@ pub async fn submit_business_ad(
     .await?
     .ok_or_else(|| AppError::NotFound("Ad zone not found or not available for this directory".to_string()))?;
 
-    let (zone_w, zone_h, zone_name) = zone;
+    let (zone_w, zone_h, _zone_name) = zone;
 
     // Auto-create or find existing sponsor
     let existing_sponsor = sqlx::query_as::<_, Sponsor>(

@@ -843,7 +843,7 @@ pub async fn events_page(
     let engine = s.template_engine.lock().unwrap();
     let html = engine
         .render_directory_page(template_engine::TEMPLATE_EVENTS, &context)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     Ok(axum::response::Html(html).into_response())
 }

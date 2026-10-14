@@ -282,7 +282,7 @@ impl TemplateEngine {
             let after = rendered[footer_pos..].to_string();
 
             // Find the last .container div before footer
-            if let Some(container_end) = before.rfind('<') {
+            if let Some(_container_end) = before.rfind('<') {
                 // Simple approach: remove the last closing </div> before footer
                 // and insert blog content + a new </div>
                 let mut cleaned = before.trim_end().to_string();
@@ -290,7 +290,7 @@ impl TemplateEngine {
                 while cleaned.ends_with("</div>") {
                     cleaned = cleaned[..cleaned.len() - 6].trim_end().to_string();
                 }
-                let blog_section = format!("{}", blog_content);
+                let blog_section = blog_content.to_string();
                 html = format!(
                     "<div class=\x22container\x22 style=\x22padding-top:30px;padding-bottom:30px\x22>\n{}\n</div>",
                     blog_section

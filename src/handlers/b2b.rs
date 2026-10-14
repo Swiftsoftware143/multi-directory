@@ -1677,7 +1677,7 @@ pub async fn export_products(
     .await?;
 
     let mut wtr = csv::Writer::from_writer(Vec::new());
-    wtr.write_record(&[
+    wtr.write_record([
         "name",
         "description",
         "category",
@@ -1699,7 +1699,7 @@ pub async fn export_products(
             "false"
         };
 
-        wtr.write_record(&[
+        wtr.write_record([
             &row.0,
             row.1.as_deref().unwrap_or(""),
             row.2.as_deref().unwrap_or(""),
@@ -2012,7 +2012,7 @@ pub async fn discover_suppliers(
                 .push(" || '%')");
         }
     }
-    let category_filter = qs.category.as_ref().map_or(false, |c| !c.is_empty());
+    let category_filter = qs.category.as_ref().is_some_and(|c| !c.is_empty());
     if let Some(ref cat) = qs.category {
         if !cat.is_empty() {
             // The supplier-category filter rides an EXISTS subquery so it belongs to WHERE.

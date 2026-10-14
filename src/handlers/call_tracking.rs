@@ -470,10 +470,10 @@ pub async fn update_phone_number(
     Json(body): Json<UpdatePhoneNumberRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Build dynamic update
-    let mut updates: Vec<String> = Vec::new();
-    let mut params: Vec<String> = Vec::new();
-    let mut bind_values: Vec<serde_json::Value> = Vec::new();
-    let mut param_idx = 1;
+    let _updates: Vec<String> = Vec::new();
+    let _params: Vec<String> = Vec::new();
+    let _bind_values: Vec<serde_json::Value> = Vec::new();
+    let _param_idx = 1;
 
     macro_rules! push_update {
         ($field:expr, $val:expr) => {

@@ -176,7 +176,7 @@ pub async fn list_polls(
 ) -> ApiResult<impl IntoResponse> {
     let visitor_id = extract_visitor_id_optional(&headers, &s.config.jwt_secret);
 
-    let mut polls: Vec<Poll> = if let Some(dir_id) = q.directory_id {
+    let polls: Vec<Poll> = if let Some(dir_id) = q.directory_id {
         if let Some(ref status) = q.status {
             sqlx::query_as::<_, Poll>(
                 "SELECT * FROM polls WHERE directory_id = $1 AND status = $2 ORDER BY created_at DESC"
@@ -256,7 +256,7 @@ pub async fn list_polls(
             created_at: poll.created_at,
             total_votes,
             option_votes,
-            user_vote: user_vote.map(|v| v as i32),
+            user_vote: user_vote.map(|v| v),
         });
     }
 
@@ -329,7 +329,7 @@ pub async fn get_poll(
             created_at: poll.created_at,
             total_votes,
             option_votes,
-            user_vote: user_vote.map(|v| v as i32),
+            user_vote: user_vote.map(|v| v),
         }
     })))
 }

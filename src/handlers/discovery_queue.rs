@@ -231,7 +231,7 @@ async fn map_category(
             if nl.contains(&cleaned)
                 || hints
                     .iter()
-                    .any(|h| nl.contains(&h.to_lowercase().as_str() as &str))
+                    .any(|h| nl.contains(h.to_lowercase().as_str() as &str))
             {
                 return (Some(*id), Some(name.clone()));
             }

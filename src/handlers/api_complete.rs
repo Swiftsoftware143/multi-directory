@@ -678,7 +678,7 @@ pub async fn dispatch_webhook_event(
     let _ = sqlx::query(
         "UPDATE webhooks SET last_triggered_at = NOW() WHERE id = ANY($1) AND is_active = true",
     )
-    .bind(&webhooks.iter().map(|w| w.id).collect::<Vec<_>>())
+    .bind(webhooks.iter().map(|w| w.id).collect::<Vec<_>>())
     .execute(&state.db)
     .await;
 }

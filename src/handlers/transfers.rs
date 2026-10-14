@@ -224,7 +224,7 @@ async fn fetch_transfer(db: &sqlx::PgPool, id: Uuid) -> ApiResult<Transfer> {
         transfer_columns!(),
         " FROM business_transfers t JOIN businesses b ON b.id = t.business_id WHERE t.id = $1"
     );
-    sqlx::query_as::<_, Transfer>(&sql)
+    sqlx::query_as::<_, Transfer>(sql)
         .bind(id)
         .fetch_optional(db)
         .await?
@@ -417,7 +417,7 @@ pub async fn list_transfers(
            AND ($7::uuid IS NULL OR b.directory_id = $7) \
          ORDER BY t.created_at DESC LIMIT $8");
 
-    let rows = sqlx::query_as::<_, Transfer>(&sql)
+    let rows = sqlx::query_as::<_, Transfer>(sql)
         .bind(admin)
         .bind(actor)
         .bind(&email)

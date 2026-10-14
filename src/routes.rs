@@ -2517,7 +2517,7 @@ pub fn create_router(s: AppState) -> Router {
         "./frontend",
     ]
     .iter()
-    .map(|p| std::path::Path::new(p))
+    .map(std::path::Path::new)
     .find(|p| p.join("index.html").exists())
     .map(|p| p.to_string_lossy().to_string())
     .unwrap_or_else(|| "/opt/swift/multidirectory-rust/frontend".to_string());
@@ -2594,7 +2594,7 @@ pub fn create_router(s: AppState) -> Router {
         .fallback_service(tower::service_fn(
             move |req: axum::http::Request<axum::body::Body>| {
                 let frontend = frontend_path.clone();
-                let index_clone = index_content.clone();
+                let _index_clone = index_content.clone();
                 let login_clone = login_content.clone();
                 let index_clone2 = index_content2.clone();
                 let _pool_for_host = _state_for_host.db.clone();
@@ -2736,20 +2736,17 @@ pub fn create_router(s: AppState) -> Router {
                         let pricing_path =
                             std::path::Path::new(&frontend).join("pricing-admin.html");
                         if pricing_path.exists() {
-                            match tokio::fs::read(&pricing_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&pricing_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2761,20 +2758,17 @@ pub fn create_router(s: AppState) -> Router {
                     {
                         let admin_path = std::path::Path::new(&frontend).join("admin-panel.html");
                         if admin_path.exists() {
-                            match tokio::fs::read(&admin_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&admin_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2789,20 +2783,17 @@ pub fn create_router(s: AppState) -> Router {
                     {
                         let ops_path = std::path::Path::new(&frontend).join("admin-ops.html");
                         if ops_path.exists() {
-                            match tokio::fs::read(&ops_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&ops_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2812,20 +2803,17 @@ pub fn create_router(s: AppState) -> Router {
                         let blog_feat_path =
                             std::path::Path::new(&frontend).join("blog-features-admin.html");
                         if blog_feat_path.exists() {
-                            match tokio::fs::read(&blog_feat_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&blog_feat_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2835,20 +2823,17 @@ pub fn create_router(s: AppState) -> Router {
                         let research_path =
                             std::path::Path::new(&frontend).join("content-research.html");
                         if research_path.exists() {
-                            match tokio::fs::read(&research_path).await {
-                                Ok(html) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(html))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(html) = tokio::fs::read(&research_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(html))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2861,20 +2846,17 @@ pub fn create_router(s: AppState) -> Router {
                         let portal_path =
                             std::path::Path::new(&frontend).join("business-portal.html");
                         if portal_path.exists() {
-                            match tokio::fs::read(&portal_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&portal_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2885,20 +2867,17 @@ pub fn create_router(s: AppState) -> Router {
                         let portal_path =
                             std::path::Path::new(&frontend).join("visitor-portal.html");
                         if portal_path.exists() {
-                            match tokio::fs::read(&portal_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&portal_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2908,20 +2887,17 @@ pub fn create_router(s: AppState) -> Router {
                         let faq_path =
                             std::path::Path::new(&frontend).join("hotel-savings-faq.html");
                         if faq_path.exists() {
-                            match tokio::fs::read(&faq_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&faq_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2929,20 +2905,17 @@ pub fn create_router(s: AppState) -> Router {
                         let terms_path =
                             std::path::Path::new(&frontend).join("hotel-savings-terms.html");
                         if terms_path.exists() {
-                            match tokio::fs::read(&terms_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&terms_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2951,20 +2924,17 @@ pub fn create_router(s: AppState) -> Router {
                     if path == "/legal-terms" || path == "/legal-terms/" {
                         let legal_path = std::path::Path::new(&frontend).join("legal-terms.html");
                         if legal_path.exists() {
-                            match tokio::fs::read(&legal_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&legal_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -2978,20 +2948,17 @@ pub fn create_router(s: AppState) -> Router {
                     {
                         let cl_path = std::path::Path::new(&frontend).join("complete-listing.html");
                         if cl_path.exists() {
-                            match tokio::fs::read(&cl_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&cl_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3006,20 +2973,17 @@ pub fn create_router(s: AppState) -> Router {
                         let portal_path =
                             std::path::Path::new(&frontend).join("supplier-portal.html");
                         if portal_path.exists() {
-                            match tokio::fs::read(&portal_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&portal_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3033,20 +2997,17 @@ pub fn create_router(s: AppState) -> Router {
                         let dir_path =
                             std::path::Path::new(&frontend).join("supplier-directory.html");
                         if dir_path.exists() {
-                            match tokio::fs::read(&dir_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&dir_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3056,20 +3017,17 @@ pub fn create_router(s: AppState) -> Router {
                         let detail_path =
                             std::path::Path::new(&frontend).join("business-detail.html");
                         if detail_path.exists() {
-                            match tokio::fs::read(&detail_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&detail_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3078,20 +3036,17 @@ pub fn create_router(s: AppState) -> Router {
                     if path == "/grow" || path == "/grow/" {
                         let grow_path = std::path::Path::new(&frontend).join("grow.html");
                         if grow_path.exists() {
-                            match tokio::fs::read(&grow_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&grow_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3100,20 +3055,17 @@ pub fn create_router(s: AppState) -> Router {
                     if path == "/claim" || path == "/claim/" || path.starts_with("/claim?") {
                         let claim_path = std::path::Path::new(&frontend).join("claim.html");
                         if claim_path.exists() {
-                            match tokio::fs::read(&claim_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&claim_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3126,20 +3078,17 @@ pub fn create_router(s: AppState) -> Router {
                     {
                         let scanner_path = std::path::Path::new(&frontend).join("scanner.html");
                         if scanner_path.exists() {
-                            match tokio::fs::read(&scanner_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&scanner_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3148,41 +3097,35 @@ pub fn create_router(s: AppState) -> Router {
                     if path == "/scanner-manifest.json" {
                         let mf_path = std::path::Path::new(&frontend).join("scanner-manifest.json");
                         if mf_path.exists() {
-                            match tokio::fs::read(&mf_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "application/manifest+json",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&mf_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "application/manifest+json",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
                     if path == "/sw-scanner.js" {
                         let sw_path = std::path::Path::new(&frontend).join("sw-scanner.js");
                         if sw_path.exists() {
-                            match tokio::fs::read(&sw_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "application/javascript; charset=utf-8",
-                                            )
-                                            .header("Service-Worker-Allowed", "/")
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&sw_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "application/javascript; charset=utf-8",
+                                        )
+                                        .header("Service-Worker-Allowed", "/")
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3191,20 +3134,17 @@ pub fn create_router(s: AppState) -> Router {
                     if path == "/user/saved" || path == "/user/saved/" {
                         let user_path = std::path::Path::new(&frontend).join("user-saved.html");
                         if user_path.exists() {
-                            match tokio::fs::read(&user_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&user_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3219,20 +3159,17 @@ pub fn create_router(s: AppState) -> Router {
                     {
                         let zh_path = std::path::Path::new(&frontend).join("zaarhub.html");
                         if zh_path.exists() {
-                            match tokio::fs::read(&zh_path).await {
-                                Ok(content) => {
-                                    return Ok::<_, std::convert::Infallible>(
-                                        axum::response::Response::builder()
-                                            .status(axum::http::StatusCode::OK)
-                                            .header(
-                                                axum::http::header::CONTENT_TYPE,
-                                                "text/html; charset=utf-8",
-                                            )
-                                            .body(axum::body::Body::from(content))
-                                            .unwrap(),
-                                    );
-                                }
-                                Err(_) => {}
+                            if let Ok(content) = tokio::fs::read(&zh_path).await {
+                                return Ok::<_, std::convert::Infallible>(
+                                    axum::response::Response::builder()
+                                        .status(axum::http::StatusCode::OK)
+                                        .header(
+                                            axum::http::header::CONTENT_TYPE,
+                                            "text/html; charset=utf-8",
+                                        )
+                                        .body(axum::body::Body::from(content))
+                                        .unwrap(),
+                                );
                             }
                         }
                     }
@@ -3245,58 +3182,55 @@ pub fn create_router(s: AppState) -> Router {
                     };
 
                     if file_path.exists() && file_path.is_file() {
-                        match tokio::fs::read(&file_path).await {
-                            Ok(content) => {
-                                let ext =
-                                    file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                                let mime = match ext {
-                                    "html" => "text/html; charset=utf-8",
-                                    "css" => "text/css; charset=utf-8",
-                                    "js" => "application/javascript; charset=utf-8",
-                                    "json" => "application/json",
-                                    "png" => "image/png",
-                                    "jpg" | "jpeg" => "image/jpeg",
-                                    "svg" => "image/svg+xml",
-                                    "ico" => "image/x-icon",
-                                    "woff2" => "font/woff2",
-                                    _ => "application/octet-stream",
-                                };
-                                // The homepage consumes the SAME brand tokens as
-                                // the server-rendered city pages (`brand_theme`),
-                                // so the two surfaces cannot drift apart again.
-                                let content = if clean_path.is_empty() && ext == "html" {
-                                    let theme =
-                                        crate::brand_theme::theme_for_home(&_pool_for_host).await;
-                                    let mut themed =
-                                        theme.inject(&String::from_utf8_lossy(&content));
-                                    // B88: the homepage carries a server-rendered "Cities we
-                                    // cover" list — every active directory as a real crawlable
-                                    // `<a href="/{slug}">`, read live from the DB, so the city
-                                    // list is in the served HTML with no JavaScript and every
-                                    // city the homepage points to is linked for search engines.
-                                    let cities_nav = crate::handlers::subfolder::city_links_html(
-                                        &_pool_for_host,
-                                    )
-                                    .await;
-                                    if !cities_nav.is_empty() {
-                                        match themed.rfind("</body>") {
-                                            Some(pos) => themed.insert_str(pos, &cities_nav),
-                                            None => themed.push_str(&cities_nav),
-                                        }
+                        if let Ok(content) = tokio::fs::read(&file_path).await {
+                            let ext =
+                                file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                            let mime = match ext {
+                                "html" => "text/html; charset=utf-8",
+                                "css" => "text/css; charset=utf-8",
+                                "js" => "application/javascript; charset=utf-8",
+                                "json" => "application/json",
+                                "png" => "image/png",
+                                "jpg" | "jpeg" => "image/jpeg",
+                                "svg" => "image/svg+xml",
+                                "ico" => "image/x-icon",
+                                "woff2" => "font/woff2",
+                                _ => "application/octet-stream",
+                            };
+                            // The homepage consumes the SAME brand tokens as
+                            // the server-rendered city pages (`brand_theme`),
+                            // so the two surfaces cannot drift apart again.
+                            let content = if clean_path.is_empty() && ext == "html" {
+                                let theme =
+                                    crate::brand_theme::theme_for_home(&_pool_for_host).await;
+                                let mut themed =
+                                    theme.inject(&String::from_utf8_lossy(&content));
+                                // B88: the homepage carries a server-rendered "Cities we
+                                // cover" list — every active directory as a real crawlable
+                                // `<a href="/{slug}">`, read live from the DB, so the city
+                                // list is in the served HTML with no JavaScript and every
+                                // city the homepage points to is linked for search engines.
+                                let cities_nav = crate::handlers::subfolder::city_links_html(
+                                    &_pool_for_host,
+                                )
+                                .await;
+                                if !cities_nav.is_empty() {
+                                    match themed.rfind("</body>") {
+                                        Some(pos) => themed.insert_str(pos, &cities_nav),
+                                        None => themed.push_str(&cities_nav),
                                     }
-                                    themed.into_bytes()
-                                } else {
-                                    content
-                                };
-                                return Ok::<_, std::convert::Infallible>(
-                                    axum::response::Response::builder()
-                                        .status(axum::http::StatusCode::OK)
-                                        .header(axum::http::header::CONTENT_TYPE, mime)
-                                        .body(axum::body::Body::from(content))
-                                        .unwrap(),
-                                );
-                            }
-                            Err(_) => {}
+                                }
+                                themed.into_bytes()
+                            } else {
+                                content
+                            };
+                            return Ok::<_, std::convert::Infallible>(
+                                axum::response::Response::builder()
+                                    .status(axum::http::StatusCode::OK)
+                                    .header(axum::http::header::CONTENT_TYPE, mime)
+                                    .body(axum::body::Body::from(content))
+                                    .unwrap(),
+                            );
                         }
                     }
 
@@ -3356,7 +3290,7 @@ pub fn create_router(s: AppState) -> Router {
                             host.as_deref(),
                             proto,
                             &_base_domain,
-                            &path,
+                            path,
                             query,
                             index_clone2.as_ref(),
                         )
@@ -3377,7 +3311,7 @@ pub fn create_router(s: AppState) -> Router {
                     // No Cache-Control header here on purpose: the vhost includes
                     // security-headers.conf, whose negative-cache guard already sends
                     // `no-store` on 404 — a second app-level header would conflict at the edge.
-                    if !file_path.exists() && is_asset_path(&path) {
+                    if !file_path.exists() && is_asset_path(path) {
                         return Ok::<_, std::convert::Infallible>(
                             axum::response::Response::builder()
                                 .status(axum::http::StatusCode::NOT_FOUND)
@@ -3405,7 +3339,7 @@ pub fn create_router(s: AppState) -> Router {
                         // directory id to the beacon, which reads window.__dir_id when it starts
                         // the session. Deferred scripts (the beacon) run before window 'load',
                         // and the SPA only sets that global on 'load', so the value survives.
-                        if let Some(entry) = spa_entry_slug(&path) {
+                        if let Some(entry) = spa_entry_slug(path) {
                             let dir_row: Option<(uuid::Uuid,)> = match sqlx::query_as(
                                 "SELECT id FROM directories WHERE slug = $1 AND status = 'active' LIMIT 1",
                             )
@@ -3428,7 +3362,7 @@ pub fn create_router(s: AppState) -> Router {
                                 }
                             }
                         }
-                        let slug = crate::branding_injector::slug_from_dir_path(&path);
+                        let slug = crate::branding_injector::slug_from_dir_path(path);
                         let branding = if let Some(slug) = slug {
                             crate::branding_injector::fetch_branding_by_slug(&_pool_for_host, &slug)
                                 .await
@@ -3456,11 +3390,11 @@ pub fn create_router(s: AppState) -> Router {
                                 }
                             }
                         }
-                        return Ok(axum::response::Response::builder()
+                        Ok(axum::response::Response::builder()
                             .status(axum::http::StatusCode::OK)
                             .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
                             .body(axum::body::Body::from(html))
-                            .unwrap());
+                            .unwrap())
                     }
                 }
             },

@@ -153,9 +153,9 @@ pub async fn search_businesses(
     // Statement heads, JOINs and WHERE clauses below are compile-time literals; every filter is
     // appended as a BIND only, so no SQL is assembled at run time (class-14 paydown,
     // kanban t_0d0e26a9). The ORDER BY is one of two hardcoded literals, never request text.
-    let has_subcat_filter = qs.subcategory.as_ref().map_or(false, |v| !v.is_empty());
-    let has_cat_filter = qs.category.as_ref().map_or(false, |v| !v.is_empty());
-    let has_q = qs.q.as_ref().map_or(false, |q| !q.is_empty());
+    let has_subcat_filter = qs.subcategory.as_ref().is_some_and(|v| !v.is_empty());
+    let has_cat_filter = qs.category.as_ref().is_some_and(|v| !v.is_empty());
+    let has_q = qs.q.as_ref().is_some_and(|q| !q.is_empty());
 
     // --- Count query ---
     let mut count_qb =

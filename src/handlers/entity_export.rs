@@ -585,7 +585,7 @@ pub async fn export_entity(
         return csv_response(&csv_sections, &name);
     }
 
-    Ok(json_response(
+    json_response(
         json!({
             "kind": kind.trim().to_ascii_lowercase(),
             "id": id,
@@ -596,7 +596,7 @@ pub async fn export_entity(
             "sections": section_labels,
         }),
         &format!("{}_entity_{}", kind.trim().to_ascii_lowercase(), id),
-    )?)
+    )
 }
 
 /// GET /api/v1/export/bulk/:kind?directory_id=…&format=csv|json

@@ -43,7 +43,7 @@ pub async fn booking_page(
     .await?
     .ok_or(AppError::NotFound(format!("Directory '{}' not found", slug)))?;
 
-    let (dir_id, tenant_id_opt, calendar_slug_opt, dir_name) = directory;
+    let (dir_id, tenant_id_opt, _calendar_slug_opt, dir_name) = directory;
 
     let tenant_id = tenant_id_opt.ok_or(AppError::BadRequest(format!(
         "Directory '{}' has no CoreSwift tenant configured",

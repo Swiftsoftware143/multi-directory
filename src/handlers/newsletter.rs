@@ -1147,7 +1147,7 @@ async fn build_newsletter_render(
            </table>"#,
         html_escape(&n.title)
     ));
-    text_parts.push(format!("=== {} ===\n", &n.title));
+    text_parts.push(format!("=== {} ===\n", n.title));
 
     // Intro
     if let Some(ref intro) = n.intro_text {

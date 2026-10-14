@@ -52,7 +52,7 @@ pub async fn switch_role(
 ) -> ApiResult<impl IntoResponse> {
     // Extract and verify JWT manually (route is outside auth_guard)
     let claims = extract_claims_from_headers(&headers, &s.config.jwt_secret)?;
-    let email = claims
+    let _email = claims
         .aud
         .clone()
         .unwrap_or_else(|| "unknown@example.com".to_string());

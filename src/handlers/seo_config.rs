@@ -217,7 +217,7 @@ pub async fn generate_sitemap(
     .fetch_optional(&s.db)
     .await?
     .ok_or(AppError::NotFound("Directory".into()))?;
-    let site_name = dir.0;
+    let _site_name = dir.0;
     let dir_slug = dir.2;
 
     // Get the directory domain
@@ -255,7 +255,7 @@ pub async fn generate_sitemap(
     };
 
     let mut urls = Vec::new();
-    urls.push(format!("{}", base_url));
+    urls.push(base_url.to_string());
     urls.push(format!("{}/blog", base_url));
 
     // Add blog posts

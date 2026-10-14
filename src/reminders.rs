@@ -114,18 +114,15 @@ async fn run_reminder_check(db: &PgPool) -> Result<(), Box<dyn std::error::Error
     let mut failed = 0u32;
 
     for c in &candidates {
-        if !brand_cache.contains_key(&c.directory_id) {
-            brand_cache.insert(
-                c.directory_id,
-                resolve_brand_colors(db, c.directory_id).await,
-            );
+        if let std::collections::hash_map::Entry::Vacant(e) = brand_cache.entry(c.directory_id) {
+            e.insert(resolve_brand_colors(db, c.directory_id).await);
         }
         let brand = &brand_cache[&c.directory_id];
 
-        if !template_cache.contains_key(&c.directory_id) {
+        if let std::collections::hash_map::Entry::Vacant(e) = template_cache.entry(c.directory_id) {
             match load_or_create_template(db, c.directory_id, brand).await {
                 Ok(t) => {
-                    template_cache.insert(c.directory_id, t);
+                    e.insert(t);
                 }
                 Err(e) => {
                     tracing::error!(

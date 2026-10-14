@@ -453,12 +453,12 @@ pub async fn generate_blog_posts(
                             generated_at: Utc::now(),
                         });
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         failed += 1;
                     }
                 }
             }
-            Err(e) => {
+            Err(_e) => {
                 failed += 1;
             }
         }
@@ -564,7 +564,7 @@ async fn inject_media(
     post_id: Uuid,
     _title: &str,
     fields: &HashMap<String, String>,
-    tpl: &BlogTemplate,
+    _tpl: &BlogTemplate,
 ) -> Result<(), AppError> {
     // Try to find relevant YouTube videos
     let query = fields
@@ -582,7 +582,7 @@ async fn inject_media(
     // Use existing YouTube API if configured, or try to fetch relevant videos
     // For now, use a simple approach — search for free stock image and video
     let image_url = generate_image_url(&search_query);
-    let video_url = search_youtube_video(&s, &search_query)
+    let video_url = search_youtube_video(s, &search_query)
         .await
         .ok()
         .unwrap_or_default();
@@ -612,7 +612,7 @@ async fn inject_media(
     Ok(())
 }
 
-fn generate_image_url(query: &str) -> String {
+fn generate_image_url(_query: &str) -> String {
     // Placeholder — integrate with Unsplash/Pexels or Gemini image generation
     // Returns empty for now; will be wired up with actual API later
     String::new()
@@ -643,7 +643,7 @@ fn build_llm_prompt(
     filled_template: &str,
     fields: &HashMap<String, String>,
     word_count: i32,
-    provider: &str,
+    _provider: &str,
     _merge_fields_schema: &str,
 ) -> String {
     let keyword = fields.get("focus_keyword").cloned().unwrap_or_default();
@@ -802,7 +802,7 @@ fn extract_title_and_content(
 
     // Fallback: use the template name with city context
     let city = fields.get("city").cloned().unwrap_or_default();
-    let industry = fields
+    let _industry = fields
         .get("industry")
         .cloned()
         .unwrap_or_else(|| fields.get("service_area").cloned().unwrap_or_default());

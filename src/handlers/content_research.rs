@@ -340,7 +340,7 @@ pub async fn draft_post_from_question(
         "SwiftSoftware Directory".into()
     };
 
-    let tone = req.tone.unwrap_or_else(|| "professional".into());
+    let _tone = req.tone.unwrap_or_else(|| "professional".into());
     let clean_q = question
         .question
         .trim_end_matches(['?', '.', ' '])
@@ -606,7 +606,7 @@ pub async fn bulk_research(
             None => {
                 let id = sqlx::query_scalar::<_, Uuid>(
                     "INSERT INTO content_topics (name, title, directory_id, description, keywords, search_phrase) VALUES ($1, $1, $2, $3, $4::jsonb, $5) RETURNING id"
-                ).bind(&topic_req.name).bind(req.directory_id).bind(&topic_req.description).bind(&Value::Array(kw.iter().cloned().map(Value::String).collect::<Vec<_>>())).bind(&base_search).fetch_one(&s.db).await?;
+                ).bind(&topic_req.name).bind(req.directory_id).bind(&topic_req.description).bind(Value::Array(kw.iter().cloned().map(Value::String).collect::<Vec<_>>())).bind(&base_search).fetch_one(&s.db).await?;
                 result.topics_created += 1;
                 id
             }

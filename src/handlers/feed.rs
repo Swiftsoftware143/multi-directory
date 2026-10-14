@@ -314,7 +314,7 @@ pub async fn get_feed(
         .fetch_optional(&s.db)
         .await
         .unwrap_or(None)
-        .map(|v| v as i32);
+        .map(|v| v);
 
         active_polls.push(ActivePoll {
             id: poll_id,
@@ -421,7 +421,7 @@ pub async fn get_feed(
                LIMIT 12"#
         )
         .bind(directory_id)
-        .bind(&interest_categories.iter().map(|c| c.to_lowercase()).collect::<Vec<_>>())
+        .bind(interest_categories.iter().map(|c| c.to_lowercase()).collect::<Vec<_>>())
         .fetch_all(&s.db)
         .await?;
 
@@ -664,7 +664,7 @@ pub async fn feed_page(
         .fetch_optional(&s.db)
         .await
         .unwrap_or(None)
-        .map(|v| v as i32);
+        .map(|v| v);
 
         polls_list.push(json!({
             "id": poll_id,
@@ -781,7 +781,7 @@ pub async fn feed_page(
         )
         .bind(directory_id)
         .bind(
-            &interest_categories
+            interest_categories
                 .iter()
                 .map(|c| c.to_lowercase())
                 .collect::<Vec<_>>(),
@@ -842,7 +842,7 @@ pub async fn feed_page(
     let engine = s.template_engine.lock().unwrap();
     let html = engine
         .render_directory_page(template_engine::TEMPLATE_FEED, &context)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     Ok(axum::response::Html(html).into_response())
 }

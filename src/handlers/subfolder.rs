@@ -360,7 +360,7 @@ async fn seo_pattern(
     let mut ctx = crate::merge_fields::MergeContext::for_directory(pool, directory_id).await;
     for (k, v) in extra {
         if !v.trim().is_empty() {
-            ctx.set(*k, *v);
+            ctx.set(k, *v);
         }
     }
 

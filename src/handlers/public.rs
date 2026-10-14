@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::IntoResponse,
     Json,
 };
@@ -66,14 +66,14 @@ pub async fn list_directory_public_pages(
 
 // ── Homepage / Directory / Business data endpoints ──────────────
 
-pub async fn homepage_data(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+pub async fn homepage_data(State(_state): State<AppState>) -> ApiResult<Json<Value>> {
     Ok(Json(
         json!({"status": "ok", "message": "Homepage data endpoint"}),
     ))
 }
 
 pub async fn directory_data(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<Value>> {
     Ok(Json(
@@ -188,8 +188,7 @@ pub async fn business_data(
                         .replace("</p>", " ")
                         .replace("<br>", " ")
                         .replace("<br/>", " ")
-                        .replace('<', "")
-                        .replace('>', "")
+                        .replace(['<', '>'], "")
                         .trim()
                         .to_string()
                 })
@@ -269,7 +268,7 @@ pub async fn business_data(
     let engine = s.template_engine.lock().unwrap();
     let html = engine
         .render_directory_page(crate::template_engine::TEMPLATE_BUSINESS_DETAIL, &context)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     Ok(axum::response::Html(html))
 }
@@ -385,7 +384,7 @@ pub async fn saved_places_page(
     let engine = s.template_engine.lock().unwrap();
     let html = engine
         .render_directory_page(crate::template_engine::TEMPLATE_SAVED_PLACES, &context)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     Ok(axum::response::Html(html).into_response())
 }
@@ -452,8 +451,8 @@ pub async fn my_bookings_page(
         .map(
             |(
                 id,
-                dir_id,
-                biz_id,
+                _dir_id,
+                _biz_id,
                 svc_name,
                 desc,
                 pref_date,
@@ -495,7 +494,7 @@ pub async fn my_bookings_page(
     let engine = s.template_engine.lock().unwrap();
     let html = engine
         .render_directory_page(crate::template_engine::TEMPLATE_MY_BOOKINGS, &context)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     Ok(axum::response::Html(html).into_response())
 }

@@ -425,7 +425,7 @@ async fn find_member(
 /// Record a check-in and update balances (+ activity ledger).
 pub async fn record_checkin(
     pool: &PgPool,
-    program_id: &Uuid,
+    _program_id: &Uuid,
     member_id: &Uuid,
     points: i32,
     method: &str,

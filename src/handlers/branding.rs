@@ -170,7 +170,7 @@ pub async fn upload_branding_asset(
             "./frontend",
         ]
         .iter()
-        .map(|p| std::path::Path::new(p))
+        .map(std::path::Path::new)
         .find(|p| p.join("index.html").exists())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "/opt/swift/multidirectory-rust/frontend".to_string());
@@ -219,7 +219,7 @@ pub async fn upload_branding_asset(
             .bind(url)
             .execute(&s.db)
             .await
-            .map_err(|e| AppError::Database(e))?;
+            .map_err(AppError::Database)?;
     }
 
     Ok(Json(json!({
@@ -385,7 +385,7 @@ fn extract_hex_color(line: &str, keywords: &[&str]) -> Option<String> {
     }
 
     // Find hex color patterns
-    for part in line.split(|c: char| c == ':' || c == ';' || c == ' ' || c == '"' || c == '\'') {
+    for part in line.split([':', ';', ' ', '"', '\'']) {
         let part = part.trim();
         if part.starts_with('#') && part.len() == 7 {
             return Some(part.to_string());

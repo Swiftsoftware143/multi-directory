@@ -654,7 +654,7 @@ pub async fn scrape_google_places(
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let parts: Vec<&str> = formatted_addr.split(',').collect();
-        let city = parts.get(0).map(|s| s.trim().to_string());
+        let city = parts.first().map(|s| s.trim().to_string());
         let state_zip = parts.get(1).map(|s| s.trim().to_string());
 
         businesses.push(ScrapedBusiness {

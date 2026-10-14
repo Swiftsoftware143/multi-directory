@@ -502,7 +502,7 @@ pub struct AiDraftReq {
 
 pub async fn generate_ai_draft(
     State(s): State<AppState>,
-    Path(dir_id): Path<Uuid>,
+    Path(_dir_id): Path<Uuid>,
     Json(req): Json<AiDraftReq>,
 ) -> ApiResult<impl IntoResponse> {
     let wc = req.word_count.unwrap_or(1000);
@@ -528,7 +528,7 @@ pub async fn generate_ai_draft(
     // Build AI prompt
     let prompt = format!(
         "Write a {} word blog post titled: '{}'. Focus keyword: {}. Service: {}. Location: {}. Use proper HTML structure with h2, h3, p, ul. Include a FAQ section. Make it informative and SEO-optimized.",
-        wc, &req.title, req.target_keyword.as_deref().unwrap_or(""), svc_name, loc_name
+        wc, req.title, req.target_keyword.as_deref().unwrap_or(""), svc_name, loc_name
     );
 
     // Store draft as pending for now — returns prompt for display

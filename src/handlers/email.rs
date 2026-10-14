@@ -531,11 +531,11 @@ pub async fn test_send_template(
     let signature_applied = sig
         .email_signature_html
         .as_deref()
-        .map_or(false, |s| !s.is_empty())
+        .is_some_and(|s| !s.is_empty())
         || sig
             .email_signature_text
             .as_deref()
-            .map_or(false, |s| !s.is_empty());
+            .is_some_and(|s| !s.is_empty());
     let (preview_html, preview_text) = append_signature(&html, text.as_deref(), &sig);
 
     match crate::email::send_rendered_email(&to, &subject, &preview_html, preview_text.as_deref())
@@ -796,7 +796,7 @@ pub fn append_signature(
     let result_text: Option<String> = match (text_body, sig_text) {
         (Some(tb), st) if !st.is_empty() => Some(format!("{tb}\n\n{st}")),
         (Some(tb), _) => Some(tb.to_string()),
-        (None, st) if !st.is_empty() => Some(format!("{st}")),
+        (None, st) if !st.is_empty() => Some(st.to_string()),
         _ => None, // smtp service will generate from HTML
     };
 

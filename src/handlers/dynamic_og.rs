@@ -34,7 +34,7 @@ pub async fn dynamic_og_image(
 
             let dir_name = row.0.clone();
             let desc = row.1.unwrap_or_else(|| {
-                format!("Browse {} - find local businesses and services.", &row.0)
+                format!("Browse {} - find local businesses and services.", row.0)
             });
             (row.0, desc, dir_name)
         }
@@ -74,7 +74,7 @@ pub async fn dynamic_og_image(
             let desc = row.1.unwrap_or_else(|| {
                 format!(
                     "Find {} - browse services, reviews, and contact info.",
-                    &row.0
+                    row.0
                 )
             });
             (row.0, desc, dir_name)

@@ -236,7 +236,7 @@ pub async fn create_booking(
             return Err(AppError::Internal(format!(
                 "CoreSwift checkout returned status {} with non-JSON body: {} (parse: {})",
                 status,
-                &body_text.chars().take(200).collect::<String>(),
+                body_text.chars().take(200).collect::<String>(),
                 e
             )));
         }
@@ -479,15 +479,11 @@ pub async fn create_service_booking(
     let contact_email = req.contact_email.clone().or(visitor_email);
 
     // Parse preferred_date if provided
-    let preferred_date = if let Some(ref date_str) = req.preferred_date {
-        Some(
-            chrono::DateTime::parse_from_rfc3339(date_str)
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(|_| chrono::Utc::now()),
-        )
-    } else {
-        None
-    };
+    let preferred_date = req.preferred_date.as_ref().map(|date_str| {
+        chrono::DateTime::parse_from_rfc3339(date_str)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now())
+    });
 
     let row = sqlx::query_as::<
         _,
@@ -683,8 +679,8 @@ pub async fn list_visitor_bookings(
                 desc,
                 pref_date,
                 pref_time,
-                phone,
-                email,
+                _phone,
+                _email,
                 status,
                 notes,
                 created_at,
@@ -987,7 +983,7 @@ pub async fn cancel_booking(
 ) -> ApiResult<impl IntoResponse> {
     let claims = extract_claims_from_headers(&headers, &s.config.jwt_secret)?;
     let visitor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
-    let role = &claims.role;
+    let _role = &claims.role;
 
     // Get booking info to verify ownership
     let booking: Option<(Uuid, String)> =

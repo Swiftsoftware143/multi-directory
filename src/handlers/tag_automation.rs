@@ -701,7 +701,7 @@ pub async fn track_link_click(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
-    let ip_inet: Option<sqlx::postgres::types::PgInterval> = None; // simplified
+    let _ip_inet: Option<sqlx::postgres::types::PgInterval> = None; // simplified
     let _ = sqlx::query(
         r#"INSERT INTO link_clicks (link_id, ip_address, user_agent, referer)
            VALUES ($1, $2::inet, $3, $4)"#,
@@ -724,16 +724,16 @@ pub async fn track_link_click(
     let mut params = Vec::new();
 
     if let Some(ref src) = link.utm_source {
-        params.push(format!("utm_source={}", urlencoding(&src)));
+        params.push(format!("utm_source={}", urlencoding(src)));
     }
     if let Some(ref med) = link.utm_medium {
-        params.push(format!("utm_medium={}", urlencoding(&med)));
+        params.push(format!("utm_medium={}", urlencoding(med)));
     }
     if let Some(ref cam) = link.utm_campaign {
-        params.push(format!("utm_campaign={}", urlencoding(&cam)));
+        params.push(format!("utm_campaign={}", urlencoding(cam)));
     }
     if let Some(ref cnt) = link.utm_content {
-        params.push(format!("utm_content={}", urlencoding(&cnt)));
+        params.push(format!("utm_content={}", urlencoding(cnt)));
     }
 
     if !params.is_empty() {

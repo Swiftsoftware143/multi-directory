@@ -416,8 +416,8 @@ pub async fn update_blog_post_ext(
     .bind(req.scheduled_at.or(existing.scheduled_at)).bind(req.template_id.or(existing.template_id))
     .bind(req.template_data.clone().or(existing.template_data.clone()))
     .bind(req.blog_category.unwrap_or_else(|| existing.blog_category.unwrap_or_else(|| "general".to_string())))
-    .bind(&tags).bind(&req.meta_description.or(existing.meta_description))
-    .bind(&req.feature_image.or(existing.feature_image)).bind(id).fetch_one(&s.db).await?;
+    .bind(&tags).bind(req.meta_description.or(existing.meta_description))
+    .bind(req.feature_image.or(existing.feature_image)).bind(id).fetch_one(&s.db).await?;
     Ok(Json(post))
 }
 
@@ -517,13 +517,11 @@ pub async fn distribute_blog_post(
     for (dir_id, dir_name, dir_location) in &directories {
         let mut data = req.template_data.clone();
         if let Some(obj) = data.as_object_mut() {
-            if !obj.contains_key("city") || obj["city"].as_str().map_or(true, |s| s.is_empty()) {
+            if !obj.contains_key("city") || obj["city"].as_str().is_none_or(|s| s.is_empty()) {
                 obj.insert("city".to_string(), Value::String(dir_location.clone()));
             }
             if !obj.contains_key("directory_name")
-                || obj["directory_name"]
-                    .as_str()
-                    .map_or(true, |s| s.is_empty())
+                || obj["directory_name"].as_str().is_none_or(|s| s.is_empty())
             {
                 obj.insert(
                     "directory_name".to_string(),

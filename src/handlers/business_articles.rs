@@ -193,10 +193,10 @@ pub async fn generate_article(
     let title = format!(
         "{} in {} – A Complete Guide",
         capitalize_first(&req.keyword),
-        &req.city
+        req.city
     );
 
-    let base_slug = slugify(&format!("{}-in-{}", &req.keyword, &req.city));
+    let base_slug = slugify(&format!("{}-in-{}", req.keyword, req.city));
     let slug = format!("{}-guide", base_slug);
 
     let meta_description = generate_meta_description(&req.keyword, &req.service, &req.city);
@@ -223,7 +223,7 @@ pub async fn generate_article(
 
     let final_slug = if existing > 0 {
         let ts = Utc::now().timestamp();
-        format!("{}-{}", &slug, ts)
+        format!("{}-{}", slug, ts)
     } else {
         slug
     };
@@ -476,7 +476,7 @@ pub async fn generate_weekly(
 
     // Parse city and service from keyword or fallback
     let service = capitalize_first(
-        &article
+        article
             .keyword
             .split_whitespace()
             .last()
@@ -489,7 +489,7 @@ pub async fn generate_weekly(
     let fresh_slug = format!("{}-{}", slugify(&article.keyword), ts);
 
     // Generate fresh content
-    let title = format!("{} – Updated Guide", &article.title);
+    let title = format!("{} – Updated Guide", article.title);
 
     let fresh_content = generate_article_content(
         &article.keyword,
@@ -551,7 +551,7 @@ pub async fn serve_article(
     .ok_or(AppError::NotFound("Article not found".into()))?;
 
     let article_id: Uuid = row.try_get("id").unwrap_or_default();
-    let dir_id: Uuid = row.try_get("directory_id").unwrap_or_default();
+    let _dir_id: Uuid = row.try_get("directory_id").unwrap_or_default();
     let dir_name: String = row
         .try_get::<String, _>("directory_name")
         .unwrap_or_default();

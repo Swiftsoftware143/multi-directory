@@ -558,8 +558,8 @@ async fn process_trap_door_job(s: &AppState, job: &ContentQueueItem) -> Result<S
                     .bind(&h1)
                     .bind(&content)
                     .bind("content-queue-trap-door")
-                    .bind(&vec![day.clone()])
-                    .bind(&vec![time.clone()])
+                    .bind(vec![day.clone()])
+                    .bind(vec![time.clone()])
                     .execute(&s.db)
                     .await;
 

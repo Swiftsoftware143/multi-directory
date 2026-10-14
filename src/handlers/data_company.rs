@@ -415,10 +415,10 @@ pub async fn yelp_search(
         q.limit.unwrap_or(10)
     );
     if let Some(term) = &q.term {
-        url.push_str(&format!("&term={}", urlencoding(&term)));
+        url.push_str(&format!("&term={}", urlencoding(term)));
     }
     if let Some(location) = &q.location {
-        url.push_str(&format!("&location={}", urlencoding(&location)));
+        url.push_str(&format!("&location={}", urlencoding(location)));
     }
     if let Some(lat) = q.latitude {
         if let Some(lon) = q.longitude {
@@ -426,7 +426,7 @@ pub async fn yelp_search(
         }
     }
     if let Some(cats) = &q.categories {
-        url.push_str(&format!("&categories={}", urlencoding(&cats)));
+        url.push_str(&format!("&categories={}", urlencoding(cats)));
     }
 
     let client = reqwest::Client::new();
