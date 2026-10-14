@@ -10,29 +10,6 @@ use crate::AppState;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn auth_middleware(
-    State(s): State<AppState>,
-    req: Request,
-    next: Next,
-) -> Result<Response, AppError> {
-    let auth_header = req
-        .headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized)?;
-
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized)?;
-
-    let claims = verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
-
-    let mut req = req;
-    req.extensions_mut().insert(claims);
-
-    Ok(next.run(req).await)
-}
-
 pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 

@@ -205,27 +205,6 @@ pub async fn toggle_publish(
     Ok(Json(page))
 }
 
-/// GET /api/v1/directories/:slug/landing-pages — landing pages for a directory
-pub async fn directory_landing_pages(
-    State(s): State<AppState>,
-    Path(slug): Path<String>,
-) -> ApiResult<impl IntoResponse> {
-    let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
-        .bind(&slug)
-        .fetch_optional(&s.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
-
-    let pages = sqlx::query_as::<_, LandingPage>(
-        "SELECT id, title, slug, directory_id, hero_title, hero_subtitle, hero_cta_text, hero_cta_url, features, testimonials, faq, seo_title, seo_description, published, created_at, updated_at FROM landing_pages WHERE directory_id = \x241 ORDER BY created_at DESC "
-    )
-    .bind(dir.0)
-    .fetch_all(&s.db)
-    .await?;
-
-    Ok(Json(pages))
-}
-
 // ===== Public Theme =====
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

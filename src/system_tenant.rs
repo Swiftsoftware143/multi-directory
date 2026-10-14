@@ -27,19 +27,3 @@ pub const SYSTEM_TENANT_ID: &str = "00000000-0000-0000-0000-000000000001";
 pub fn system_tenant_uuid() -> Uuid {
     Uuid::parse_str(SYSTEM_TENANT_ID).expect("SYSTEM_TENANT_ID is a valid UUID constant")
 }
-
-/// The `swiftsoftware` tenant id, resolved BY SLUG from the database.
-///
-/// Prefer this over the constant wherever a pool is available: a missing row fails loudly by NAME
-/// instead of silently binding an id that no tenant owns.
-pub async fn resolve_system_tenant_id(db: &sqlx::PgPool) -> Result<Uuid, crate::error::AppError> {
-    sqlx::query_scalar::<_, Uuid>("SELECT id FROM tenants WHERE slug = $1")
-        .bind(SYSTEM_TENANT_SLUG)
-        .fetch_optional(db)
-        .await?
-        .ok_or_else(|| {
-            crate::error::AppError::Internal(format!(
-                "the '{SYSTEM_TENANT_SLUG}' system tenant is missing — migration 001 seeds it"
-            ))
-        })
-}

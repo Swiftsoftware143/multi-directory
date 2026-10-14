@@ -72,7 +72,6 @@ macro_rules! child_q {
 const ENTITY_BUSINESS: &str = "SELECT row_to_json(t)::text AS j FROM businesses t WHERE t.id = $1";
 const ENTITY_CUSTOMER: &str =
     "SELECT row_to_json(t)::text AS j FROM visitor_accounts t WHERE t.id = $1";
-const BUSINESS_DIRECTORY: &str = "SELECT directory_id FROM businesses WHERE id = $1";
 const BUSINESS_TYPE: &str = "SELECT business_type FROM businesses WHERE id = $1";
 const CUSTOMER_DIRECTORY: &str = "SELECT directory_id FROM visitor_accounts WHERE id = $1";
 

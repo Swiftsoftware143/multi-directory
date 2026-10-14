@@ -109,41 +109,6 @@ pub async fn list_cities(State(state): State<AppState>) -> ApiResult<Json<Value>
     Ok(Json(json!({"cities": cities, "total": cities.len()})))
 }
 
-/// Get a single city page by slug (with listing count)
-pub async fn get_city(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-) -> ApiResult<Json<Value>> {
-    let row = sqlx::query(
-        "SELECT cp.*, (SELECT COUNT(*) FROM business_listings bl WHERE bl.city_page_id = cp.id) AS listing_count \
-         FROM city_pages cp \
-         WHERE cp.city_slug = $1 AND cp.is_active = true"
-    )
-    .bind(&slug)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("City page not found: {}", slug)))?;
-
-    let city = json!({
-        "id": row.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
-        "tenant_id": row.try_get::<Uuid, _>("tenant_id").map(|v| v.to_string()).unwrap_or_default(),
-        "city_slug": row.try_get::<String, _>("city_slug").unwrap_or_default(),
-        "city_name": row.try_get::<String, _>("city_name").unwrap_or_default(),
-        "state": row.try_get::<Option<String>, _>("state").unwrap_or_default(),
-        "description": row.try_get::<Option<String>, _>("description").unwrap_or_default(),
-        "hero_image_url": row.try_get::<Option<String>, _>("hero_image_url").unwrap_or_default(),
-        "meta_title": row.try_get::<Option<String>, _>("meta_title").unwrap_or_default(),
-        "meta_description": row.try_get::<Option<String>, _>("meta_description").unwrap_or_default(),
-        "is_active": row.try_get::<bool, _>("is_active").unwrap_or(false),
-        "display_order": row.try_get::<i32, _>("display_order").unwrap_or(0),
-        "listing_count": row.try_get::<i64, _>("listing_count").unwrap_or(0),
-        "created_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
-        "updated_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
-    });
-
-    Ok(Json(json!({"city": city})))
-}
-
 /// List businesses for a city with pagination, filtering, and sorting
 pub async fn list_city_listings(
     State(state): State<AppState>,
