@@ -133,16 +133,10 @@ pub async fn create_review(
     let caller: Option<Uuid> = Uuid::parse_str(&claims.sub).ok();
 
     if let Some(uid) = caller {
-        let owns: i64 = sqlx::query_scalar(
-            r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
-                    + (SELECT COUNT(*) FROM claimed_businesses
-                        WHERE business_id = $1 AND is_active
-                          AND (visitor_account_id = $2 OR user_id = $2))"#,
-        )
-        .bind(req.business_id)
-        .bind(uid)
-        .fetch_one(&s.db)
-        .await?;
+        // Same ownership resolution the moderation gate uses (`owned_by`), so an owner who claimed
+        // their listing through the public claim route — a claim linked by email only — is held to
+        // it too and cannot review their own business.
+        let owns = owned_by(&s.db, req.business_id, uid).await?;
 
         if owns > 0 {
             return Err(AppError::Forbidden(
@@ -608,12 +602,27 @@ pub async fn respond_to_review(
 // test `create_review` and `respond_to_review` already use.
 
 /// Does `uid` own `business_id`? 1+ if they own it outright or hold an active claim, else 0.
+///
+/// A claim is tied to its owner two ways. The supplier-register, listing-invite and ownership-
+/// transfer flows link it by ACCOUNT id (`visitor_account_id`/`user_id`). The PUBLIC claim route
+/// (`POST /businesses/:id/claim`) cannot — it runs while the claimant has no account at all — so it
+/// records the owner's EMAIL only. The business console already resolves an owner's listings by
+/// email (`handlers::portal::business_profile`), so an email-only claimant saw their listing and its
+/// pending review on the Reviews tab, clicked Approve, and got
+/// "You can only moderate reviews of a business you own." (403) — measured 2026-10-14 with a claim
+/// minted by the real claim route. The email branch therefore matches ONLY a claim that carries no
+/// account id, so a claim already linked to somebody else can never be shadowed by an email match.
 async fn owned_by(db: &sqlx::PgPool, business_id: Uuid, uid: Uuid) -> Result<i64, AppError> {
     let owns: i64 = sqlx::query_scalar(
         r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
-                + (SELECT COUNT(*) FROM claimed_businesses
-                    WHERE business_id = $1 AND is_active
-                      AND (visitor_account_id = $2 OR user_id = $2))"#,
+                + (SELECT COUNT(*) FROM claimed_businesses c
+                    WHERE c.business_id = $1 AND c.is_active
+                      AND (
+                           c.visitor_account_id = $2
+                        OR c.user_id = $2
+                        OR (c.visitor_account_id IS NULL AND c.user_id IS NULL
+                            AND lower(c.owner_email) = (SELECT lower(email) FROM visitor_accounts WHERE id = $2))
+                      ))"#,
     )
     .bind(business_id)
     .bind(uid)
