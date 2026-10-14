@@ -149,6 +149,7 @@ def main():
     dead_url = f"http://127.0.0.1:{DEAD_PORT}/nobody-listens"
 
     signup_uid = None
+    signup_tid = None
     wh_a = wh_b = wh_c = None
     event_id = None
 
@@ -160,7 +161,13 @@ def main():
         s, body = call("POST", "/api/v1/auth/register",
                        body={"email": EMAIL, "password": PASSWORD, "name": "Probe Webhooks"})
         check("a plain account could be created (POST /auth/register)", s in (200, 201), f"status={s}")
-        signup_uid = psql(f"SELECT id FROM visitor_accounts WHERE lower(email) = lower('{EMAIL}')")
+        # `/auth/register` mints a `users` row + a `tenants` row (it is NOT the visitor route),
+        # so resolve the identity from `users`. The old lookup read `visitor_accounts`, found
+        # nothing, and the teardown silently removed none of it: every run leaked one tenant +
+        # one user (eight were left behind by 2026-10-14, which then exhausted the register
+        # slug walk and made the ninth run fail at signup).
+        signup_uid = psql(f"SELECT id FROM users WHERE lower(email) = lower('{EMAIL}')")
+        signup_tid = psql(f"SELECT tenant_id::text FROM users WHERE lower(email) = lower('{EMAIL}')")
         tok = None
         if s in (200, 201):
             tok = json.loads(body).get("token") or json.loads(body).get("access_token")
@@ -282,11 +289,23 @@ def main():
                 psql(f"DELETE FROM webhooks WHERE id = '{wid}'")
         if event_id:
             psql(f"DELETE FROM directory_events WHERE id = '{event_id}'")
-        if signup_uid:
-            psql(f"DELETE FROM visitor_accounts WHERE id = '{signup_uid}'")
-            psql(f"DELETE FROM users WHERE id = '{signup_uid}'")
+        # Everything the signup minted, in FK-safe order: tenant-keyed rows first, then the
+        # account, then the tenant itself.
+        if signup_tid:
+            for tbl in ("directory_events", "webhooks", "api_keys", "provider_keys",
+                        "tracked_links", "tag_rules"):
+                psql(f"DELETE FROM {tbl} WHERE tenant_id = '{signup_tid}'")
+        psql(f"DELETE FROM visitor_accounts WHERE lower(email) = lower('{EMAIL}')")
+        psql(f"DELETE FROM users WHERE lower(email) = lower('{EMAIL}')")
+        if signup_tid:
+            psql(f"DELETE FROM tenants WHERE id = '{signup_tid}'")
         srv.shutdown()
         left = psql("SELECT COUNT(*) FROM webhooks WHERE url LIKE 'http://127.0.0.1:%'")
+        tres = psql(f"SELECT COUNT(*) FROM tenants WHERE id = '{signup_tid}'") if signup_tid else "0"
+        ures = psql(f"SELECT COUNT(*) FROM users WHERE lower(email) = lower('{EMAIL}')")
+        check("the probe removed the account and tenant it created (no residue)",
+              left == "0" and tres == "0" and ures == "0",
+              f"webhooks={left} tenants={tres} users={ures}")
         print(f"probe rows removed (remaining probe webhooks = {left})")
 
     print()

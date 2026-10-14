@@ -80,9 +80,17 @@ pub async fn register(
     // request), so the SECOND person to sign up under a name already in use got a bare 500
     // "Database error" and could not create an account at all. Walk to the next free slug.
     let tenant_id = Uuid::new_v4();
-    let slug_base = tenant_slug.trim_matches('-').to_string();
+    let slug_base = match tenant_slug.trim_matches('-') {
+        "" => "directory".to_string(),
+        s => s.chars().take(40).collect(),
+    };
     let mut slug = slug_base.clone();
-    for attempt in 0..8u32 {
+    // The walk must not run dry. The old fixed `base-2 … base-8` candidate list was exhausted
+    // by the ninth tenant that shared a display name and the signup got the bare 500 right back
+    // (measured 2026-10-14: tenants `probe-webhooks` … `probe-webhooks-8`; every signup after
+    // that failed). Try the readable `-2 … -9` first, then a random suffix, so the loop
+    // converges instead of running out of candidates.
+    for attempt in 0..16u32 {
         let inserted = sqlx::query(
             "INSERT INTO tenants (id, name, slug, is_active) VALUES (\x241, \x242, \x243, true)",
         )
@@ -93,8 +101,16 @@ pub async fn register(
         .await;
         match inserted {
             Ok(_) => break,
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() && attempt < 7 => {
-                slug = format!("{slug_base}-{}", attempt + 2);
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() && attempt < 15 => {
+                slug = if attempt < 8 {
+                    format!("{slug_base}-{}", attempt + 2)
+                } else {
+                    format!(
+                        "{}-{}",
+                        slug_base,
+                        &Uuid::new_v4().simple().to_string()[..8]
+                    )
+                };
             }
             Err(e) => return Err(e.into()),
         }
