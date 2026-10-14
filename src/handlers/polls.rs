@@ -91,15 +91,6 @@ pub struct PollWithCounts {
     pub user_vote: Option<i32>, // the option_index the calling user voted for, if any
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
-pub struct PollVote {
-    pub id: Uuid,
-    pub poll_id: Uuid,
-    pub visitor_account_id: Uuid,
-    pub option_index: i32,
-    pub created_at: DateTime<Utc>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct CreatePollRequest {
     pub directory_id: Uuid,

@@ -687,13 +687,6 @@ pub struct SwiftSetupRequest {
     pub directory_name: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct SwiftSetupResponse {
-    pub api_url: String,
-    pub api_token: String,
-    pub message: String,
-}
-
 /// Auto-create a Core Swift tenant for this directory + seed campaigns.
 /// In production this calls the Core Swift API. In self-hosted mode
 /// where Core Swift shares the same DB, we create the tenant directly.

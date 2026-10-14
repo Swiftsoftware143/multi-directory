@@ -52,20 +52,6 @@ pub struct TrackedLink {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct LinkClick {
-    pub id: Uuid,
-    pub link_id: Uuid,
-    pub contact_id: Option<Uuid>,
-    pub ip_address: Option<String>,
-    pub user_agent: Option<String>,
-    pub referer: Option<String>,
-    pub country: Option<String>,
-    pub city: Option<String>,
-    pub device_type: Option<String>,
-    pub clicked_at: Option<DateTime<Utc>>,
-}
-
 // ── Request types ──
 
 #[derive(Debug, Deserialize)]
@@ -85,13 +71,6 @@ pub struct LinkListQuery {
     pub per_page: Option<i64>,
     pub tenant_id: Option<Uuid>,
     pub search: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ClickListQuery {
-    pub page: Option<i64>,
-    pub per_page: Option<i64>,
-    pub link_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

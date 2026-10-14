@@ -152,46 +152,6 @@ pub struct UpdateCategoryRequest {
     pub group_name: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct BulkMoveRequest {
-    pub category_ids: Vec<Uuid>,
-    pub target_category_id: Uuid,
-    pub move_businesses: bool,
-    pub move_subcategories: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct BulkDeleteCategoriesRequest {
-    pub category_ids: Vec<Uuid>,
-    pub reassign_to: Option<Uuid>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CategoryVisitorSummary {
-    pub id: Uuid,
-    pub name: String,
-    pub parent_id: Option<Uuid>,
-    pub unique_visitors: i64,
-    pub total_events: i64,
-    pub businesses_clicked: i64,
-    pub listing_views: i64,
-    pub phone_clicks: i64,
-    pub website_clicks: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CategoryDeleteCheck {
-    pub business_count: i64,
-    pub subcategory_count: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CategoryBulkResult {
-    pub success: bool,
-    pub message: String,
-    pub affected_categories: usize,
-}
-
 // ── Business ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -547,12 +507,6 @@ pub struct BusinessMeta {
     pub meta_data: serde_json::Value,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpsertBusinessMetaRequest {
-    pub template: Option<String>,
-    pub meta_data: Option<serde_json::Value>,
 }
 
 // ── Template info ────────────────────────────────────────────────────────────

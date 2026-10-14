@@ -179,11 +179,6 @@ pub struct CategoryPill {
     pub group_name: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DirectoryListQuery {
-    pub status: Option<String>,
-}
-
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 /// GET /api/v1/zaarhub/cities — list active cities with counts

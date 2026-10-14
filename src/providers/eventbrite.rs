@@ -14,12 +14,6 @@ const EVENTBRITE_API_BASE: &str = "https://www.eventbriteapi.com/v3";
 pub struct EventbriteProvider;
 
 #[derive(Debug, Deserialize)]
-struct EventbriteUserResponse {
-    #[allow(dead_code)]
-    id: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct EventbriteEventsResponse {
     events: Vec<EventbriteEvent>,
     pagination: EventbritePagination,

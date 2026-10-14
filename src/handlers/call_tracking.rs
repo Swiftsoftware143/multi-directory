@@ -133,21 +133,6 @@ pub struct UpdatePhoneNumberRequest {
 
 // ── Directory Slug Extractor ─────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-pub struct SlugPath {
-    pub slug: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct IdPath {
-    pub id: Uuid,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct BizIdPath {
-    pub id: Uuid,
-}
-
 // ── Call Log Handlers ────────────────────────────────────────────────────────
 
 /// GET /api/v1/call-logs — list all call logs

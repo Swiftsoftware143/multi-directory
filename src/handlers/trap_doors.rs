@@ -49,19 +49,6 @@ pub struct TrackPageEventReq {
 }
 
 #[derive(Debug, Serialize)]
-pub struct GenerateResult {
-    pub created: usize,
-    pub skipped: usize,
-    pub total: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PreviewResult {
-    pub estimated_total: usize,
-    pub unique_slugs: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
 pub struct AvailableFactorsResult {
     pub cities: Vec<String>,
     pub day_tags: Vec<String>,

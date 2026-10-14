@@ -1529,17 +1529,6 @@ pub struct LoyaltyRewardTier {
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
-pub struct LoyaltyRewardEarned {
-    pub id: Uuid,
-    pub member_id: Uuid,
-    pub tier_id: Option<Uuid>,
-    pub status: String,
-    pub earned_at: chrono::DateTime<chrono::Utc>,
-    pub approved_by: Option<Uuid>,
-    pub fulfilled_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct LoyaltyMilestone {
     pub id: Uuid,
     pub loyalty_program_id: Uuid,

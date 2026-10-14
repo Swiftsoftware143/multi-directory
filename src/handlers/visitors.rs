@@ -142,19 +142,6 @@ pub struct EndSessionRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub struct VisitorSummary {
-    pub total_visitors: i64,
-    pub unique_visitors_30d: i64,
-    pub total_sessions: i64,
-    pub avg_session_duration: f64,
-    pub bounce_rate: f64,
-    pub avg_scroll_depth: f64,
-    pub locations: Vec<LocationCount>,
-    pub devices: Vec<DeviceCount>,
-    pub daily_visitors: Vec<DailyVisitorCount>,
-}
-
-#[derive(Debug, Serialize)]
 pub struct LocationCount {
     pub city: Option<String>,
     pub region: Option<String>,

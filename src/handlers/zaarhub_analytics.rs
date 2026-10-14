@@ -31,11 +31,6 @@ pub struct DateRangeQuery {
     pub per_page: Option<i32>,
 }
 
-#[derive(Deserialize)]
-pub struct CityStatsQuery {
-    pub city_slug: Option<String>,
-}
-
 /// GET /api/v1/zaarhub/analytics/overview — overall performance summary
 pub async fn overview(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     // Total metrics

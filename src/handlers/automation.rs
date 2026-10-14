@@ -259,15 +259,6 @@ pub async fn mark_event_processed(
 
 // ── n8n Webhook Receiver ─────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-pub struct N8nWebhookPayload {
-    pub action: Option<String>,
-    pub event_type: Option<String>,
-    pub entity_type: Option<String>,
-    pub entity_id: Option<String>,
-    pub data: Option<serde_json::Value>,
-}
-
 /// POST /api/v1/n8n/webhook — receive webhook from n8n
 pub async fn n8n_webhook_receiver(
     Json(payload): Json<serde_json::Value>,

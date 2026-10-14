@@ -891,10 +891,3 @@ async fn advance_deal_to_contacted(db: &sqlx::PgPool, business_id: Uuid) -> Resu
 
     Ok(())
 }
-
-/// PUT /api/v1/businesses/:id/featured-deal — set featured deal for a business
-#[derive(Debug, Deserialize)]
-pub struct FeaturedDealRequest {
-    pub deal_id: Option<Uuid>,
-    pub cta_text: Option<String>,
-}

@@ -76,41 +76,4 @@ pub struct UpdateNetworkBrandingRequest {
 
 // ── Extended Directory with network info ─────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DirectoryWithNetwork {
-    pub id: Uuid,
-    pub name: String,
-    pub slug: String,
-    pub description: Option<String>,
-    pub status: Option<String>,
-    pub template: Option<String>,
-    pub color_scheme: Option<serde_json::Value>,
-    pub network_id: Option<Uuid>,
-    pub network_name: Option<String>,
-    pub network_slug: Option<String>,
-    pub url_type: Option<String>,
-    pub url_value: Option<String>,
-    pub custom_domain: Option<String>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
 // ── CreateDirectoryRequest (extended with network option) ────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct CreateDirectoryRequestV2 {
-    pub name: String,
-    pub slug: String,
-    pub description: Option<String>,
-    pub status: Option<String>,
-    pub template: Option<String>,
-    pub color_scheme: Option<serde_json::Value>,
-    /// "standalone" | "new_network" | "connect:<network_id>"
-    pub network_mode: Option<String>,
-    /// Used when network_mode="connect" — network_id to join
-    pub parent_network_id: Option<Uuid>,
-    /// URL config — only meaningful when connecting to a network
-    pub url_type: Option<String>, // "subdomain" | "subfolder" | "custom"
-    pub url_value: Option<String>, // the slug for subdomain/subfolder
-    pub custom_domain: Option<String>, // only for url_type="custom"
-}

@@ -41,48 +41,6 @@ pub struct PublicPage {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreatePublicPageRequest {
-    pub title: String,
-    pub description: Option<String>,
-    pub original_price: Option<String>,
-    pub public_page_price: Option<String>,
-    pub discount_percent: Option<i32>,
-    pub currency: Option<String>,
-    pub image_url: Option<String>,
-    pub terms: Option<String>,
-    pub redemption_limit: Option<i32>,
-    pub status: Option<String>,
-    pub directory_id: Option<Uuid>,
-    pub business_id: Uuid,
-    pub start_date: Option<DateTime<Utc>>,
-    pub end_date: Option<DateTime<Utc>>,
-    pub featured: Option<bool>,
-    pub public_page_type: Option<String>,
-    pub coupon_code: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdatePublicPageRequest {
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub original_price: Option<String>,
-    pub public_page_price: Option<String>,
-    pub discount_percent: Option<i32>,
-    pub currency: Option<String>,
-    pub image_url: Option<String>,
-    pub terms: Option<String>,
-    pub redemption_limit: Option<i32>,
-    pub status: Option<String>,
-    pub directory_id: Option<Uuid>,
-    pub business_id: Option<Uuid>,
-    pub start_date: Option<DateTime<Utc>>,
-    pub end_date: Option<DateTime<Utc>>,
-    pub featured: Option<bool>,
-    pub public_page_type: Option<String>,
-    pub coupon_code: Option<String>,
-}
-
 /// GET /api/v1/directories/:slug/public_pages — public_pages for a directory
 pub async fn list_directory_public_pages(
     State(s): State<AppState>,

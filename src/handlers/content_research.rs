@@ -512,12 +512,6 @@ async fn save_question_raw(
 // ── Bulk Research ──
 
 #[derive(Debug, Deserialize)]
-pub struct BulkResearchRequest {
-    pub topics: Vec<BulkResearchTopic>,
-    pub directory_id: Option<Uuid>,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct BulkResearchTopic {
     pub name: String,
     pub keywords: Option<Vec<String>>,

@@ -62,15 +62,6 @@ pub struct EventWithRsvpCount {
     pub user_rsvp_status: Option<String>,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
-pub struct EventRsvp {
-    pub id: Uuid,
-    pub event_id: Uuid,
-    pub visitor_account_id: Uuid,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct CreateEventRequest {
     pub directory_id: Uuid,
