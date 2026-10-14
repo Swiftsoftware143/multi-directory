@@ -181,14 +181,18 @@ def delete_cs_workspaces(slugs, tries=10):
     """
     detail = ""
     for _ in range(tries):
+        rcs = []
         for slug in slugs:
             email = f"md-{slug}@local.coreswift"
             r = sh("python3", CLEANUP, "--app", "coreswift_crm", "--email", email)
+            rcs.append(r.returncode)
             out = (r.stdout + r.stderr).strip()
             if out:
                 detail = f"{slug}: {out.splitlines()[-1]}"
         users, tenants = cs_zz_residue()
-        if users == "0" and tenants == "0":
+        # both signals: the tool must have succeeded (its own RESIDUE=0 -> rc 0) AND the cross-app
+        # counts must read zero (a detached provisioning task can land after the delete).
+        if set(rcs) == {0} and users == "0" and tenants == "0":
             return True, detail
         time.sleep(3)
     return False, detail
