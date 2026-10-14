@@ -24,8 +24,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::auth::middleware::verify_token;
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope::{assert_directory_admin, claims_from_headers};
 use crate::providers::{EventProvider, ProviderConfig};
 use crate::AppState;
 
@@ -74,27 +75,13 @@ pub struct UpdateProviderRequest {
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 
-fn extract_admin(headers: &HeaderMap, jwt_secret: &str) -> Result<(Uuid, String), AppError> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(AppError::Unauthorized)?;
-
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or(AppError::Unauthorized)?;
-
-    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
-
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
-    Ok((user_id, claims.role))
-}
-
-fn require_admin(role: &str) -> Result<(), AppError> {
-    if role != "admin" && role != "super_admin" {
-        return Err(AppError::Forbidden("Admin access required".to_string()));
-    }
-    Ok(())
+/// Verify the caller's JWT from the request headers. Authorization is decided per-handler by
+/// [`assert_directory_admin`], NEVER by the role string: `/auth/register` mints `role = "admin"`
+/// for EVERY new account, so `role == "admin"` is a tenant role, not an operator signal.
+/// (Round 13 audit — the old `require_admin(role)` here let any public signup manage every
+/// directory's event providers.)
+fn caller_claims(headers: &HeaderMap, jwt_secret: &str) -> Result<Claims, AppError> {
+    claims_from_headers(headers, jwt_secret)
 }
 
 // ── Config helpers ───────────────────────────────────────────────────────────
@@ -195,8 +182,8 @@ pub async fn list_providers(
     headers: HeaderMap,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
-    require_admin(&role)?;
+    let claims = caller_claims(&headers, &s.config.jwt_secret)?;
+    assert_directory_admin(&s.db, &claims, directory_id).await?;
 
     let rows = sqlx::query_as::<_, EventProviderRow>(
         "SELECT * FROM event_providers WHERE directory_id = $1 ORDER BY created_at DESC",
@@ -218,8 +205,8 @@ pub async fn create_provider(
     Path(directory_id): Path<Uuid>,
     Json(req): Json<CreateProviderRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
-    require_admin(&role)?;
+    let claims = caller_claims(&headers, &s.config.jwt_secret)?;
+    assert_directory_admin(&s.db, &claims, directory_id).await?;
 
     // Validate provider_type
     let valid_types = ["eventbrite", "meetup", "ics_feed", "n8n_webhook"];
@@ -272,8 +259,8 @@ pub async fn update_provider(
     Path((directory_id, provider_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
-    require_admin(&role)?;
+    let claims = caller_claims(&headers, &s.config.jwt_secret)?;
+    assert_directory_admin(&s.db, &claims, directory_id).await?;
 
     let existing = sqlx::query_as::<_, EventProviderRow>(
         "SELECT * FROM event_providers WHERE id = $1 AND directory_id = $2",
@@ -339,8 +326,8 @@ pub async fn delete_provider(
     headers: HeaderMap,
     Path((directory_id, provider_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<impl IntoResponse> {
-    let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
-    require_admin(&role)?;
+    let claims = caller_claims(&headers, &s.config.jwt_secret)?;
+    assert_directory_admin(&s.db, &claims, directory_id).await?;
 
     let result = sqlx::query("DELETE FROM event_providers WHERE id = $1 AND directory_id = $2")
         .bind(provider_id)
@@ -364,14 +351,16 @@ pub async fn test_provider(
     headers: HeaderMap,
     Path(provider_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
-    require_admin(&role)?;
+    let claims = caller_claims(&headers, &s.config.jwt_secret)?;
 
     let row = sqlx::query_as::<_, EventProviderRow>("SELECT * FROM event_providers WHERE id = $1")
         .bind(provider_id)
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
+
+    // Gate on the provider's OWN directory — never on the tenant role every signup holds.
+    assert_directory_admin(&s.db, &claims, row.directory_id).await?;
 
     let api_key = row
         .api_key
@@ -410,14 +399,16 @@ pub async fn sync_provider(
     headers: HeaderMap,
     Path(provider_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
-    require_admin(&role)?;
+    let claims = caller_claims(&headers, &s.config.jwt_secret)?;
 
     let row = sqlx::query_as::<_, EventProviderRow>("SELECT * FROM event_providers WHERE id = $1")
         .bind(provider_id)
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
+
+    // Gate on the provider's OWN directory — never on the tenant role every signup holds.
+    assert_directory_admin(&s.db, &claims, row.directory_id).await?;
 
     let api_key = row
         .api_key
@@ -487,14 +478,16 @@ pub async fn sync_status(
     headers: HeaderMap,
     Path(provider_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let (_user_id, role) = extract_admin(&headers, &s.config.jwt_secret)?;
-    require_admin(&role)?;
+    let claims = caller_claims(&headers, &s.config.jwt_secret)?;
 
     let row = sqlx::query_as::<_, EventProviderRow>("SELECT * FROM event_providers WHERE id = $1")
         .bind(provider_id)
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Event provider not found".to_string()))?;
+
+    // Gate on the provider's OWN directory — never on the tenant role every signup holds.
+    assert_directory_admin(&s.db, &claims, row.directory_id).await?;
 
     Ok(Json(json!({
         "provider_id": row.id,

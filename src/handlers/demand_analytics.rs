@@ -689,10 +689,20 @@ pub async fn update_demand_analytics_config(
     Extension(claims): Extension<Claims>,
     Json(req): Json<DemandConfigUpdate>,
 ) -> ApiResult<impl IntoResponse> {
-    if claims.role != "admin" && claims.role != "super_admin" {
-        return Err(AppError::Forbidden(
-            "Admin role required to change demand analytics settings".into(),
-        ));
+    // `role == "admin"` is the tenant role EVERY public signup is minted, so it is not a gate.
+    // A scoped save must be administered by that directory's owner/operator; the global row
+    // (directory_id = None) is platform-only.
+    match req.directory_id {
+        Some(dir) => {
+            crate::handlers::tenant_scope::assert_directory_admin(&s.db, &claims, dir).await?
+        }
+        None => {
+            if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+                return Err(AppError::NotFound(
+                    "demand analytics settings not found".into(),
+                ));
+            }
+        }
     }
 
     let current = effective_settings(&s.db, req.directory_id).await?;

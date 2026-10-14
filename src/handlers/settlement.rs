@@ -214,6 +214,9 @@ pub async fn update_settlement_settings(
     Extension(claims): Extension<Claims>,
     Json(req): Json<SettlementSettingsUpdate>,
 ) -> ApiResult<impl IntoResponse> {
+    // The rates money is moved at are directory-scoped. `role == "admin"` is the tenant role
+    // EVERY public signup holds, so it is not a gate — scope to the directory owner/operator.
+    assert_directory_admin_by_slug(&s.db, &claims, &slug).await?;
     if claims.role != "admin" && claims.role != "super_admin" {
         return Err(AppError::Forbidden(
             "Admin role required to change settlement settings".into(),
