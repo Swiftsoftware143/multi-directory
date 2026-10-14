@@ -216,12 +216,19 @@ def cleanup():
     except Exception:
         pass
     try:
+        # Registering the probe account ALSO creates a tenant ("<Name>'s Directory"); deleting the
+        # user alone leaves it behind (caught by md-health's test-fixture census). Capture the
+        # tenant before the user goes, and remove it too — only the slug this probe minted.
+        psql(f"DELETE FROM password_resets WHERE user_id IN "
+             f"(SELECT id FROM users WHERE email LIKE 'zz-forgot-honest-%@probe.invalid')")
+        psql("DELETE FROM tenants WHERE slug LIKE 'zz-forgot-honest%' "
+             "AND id IN (SELECT tenant_id FROM users WHERE email LIKE "
+             "'zz-forgot-honest-%@probe.invalid')")
+        psql("DELETE FROM tenants WHERE slug LIKE 'zz-forgot-honest%'")
+        psql("DELETE FROM users WHERE email LIKE 'zz-forgot-honest-%@probe.invalid'")
         if probe_user_id:
             psql(f"DELETE FROM password_resets WHERE user_id = {lit(probe_user_id)}")
             psql(f"DELETE FROM users WHERE id = {lit(probe_user_id)}")
-        psql(f"DELETE FROM password_resets WHERE user_id IN "
-             f"(SELECT id FROM users WHERE email LIKE 'zz-forgot-honest-%@probe.invalid')")
-        psql("DELETE FROM users WHERE email LIKE 'zz-forgot-honest-%@probe.invalid'")
     except Exception as e:
         print("cleanup warning:", e)
     try:
@@ -247,7 +254,9 @@ try:
     base_users = int(psql("SELECT count(*) FROM users"))
     base_resets = int(psql("SELECT count(*) FROM password_resets"))
     base_visitors = int(psql("SELECT count(*) FROM visitor_accounts"))
-    baseline.update(users=base_users, resets=base_resets, visitors=base_visitors)
+    base_tenants = int(psql("SELECT count(*) FROM tenants"))
+    baseline.update(users=base_users, resets=base_resets, visitors=base_visitors,
+                    tenants=base_tenants)
 
     real_email = psql("SELECT email FROM users ORDER BY created_at LIMIT 1") or ""
 
@@ -373,6 +382,11 @@ try:
         and int(psql("SELECT count(*) FROM visitor_accounts")) == baseline.get("visitors"),
         f"users {baseline.get('users')}->{psql('SELECT count(*) FROM users')} "
         f"resets {baseline.get('resets')}->{psql('SELECT count(*) FROM password_resets')}")
+    zz_tenants = int(psql("SELECT count(*) FROM tenants WHERE slug LIKE 'zz-forgot-honest%'"))
+    all_tenants = int(psql("SELECT count(*) FROM tenants"))
+    rec("C5 the probe's tenant is gone too (registering creates one; md-health counts fixtures)",
+        zz_tenants == 0 and all_tenants == baseline.get("tenants"),
+        f"zz-tenants={zz_tenants} tenants {baseline.get('tenants')}->{all_tenants}")
 except Exception as e:
     rec("C restore/residue checks ran", False, repr(e))
 
