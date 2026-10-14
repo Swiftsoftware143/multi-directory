@@ -1669,8 +1669,8 @@
       <div class="feature-card" id="submissions-section">
         <h3>📥 Submission Queue</h3>
         <p class="feature-subtitle">Businesses submitted from the public "Add your business" form. Approving a submission creates the business record.</p>
-        <div id="sub-list"></div>
-        <div class="feature-status" id="sub-status"></div>
+        <div id="subq-list"></div>
+        <div class="feature-status" id="subq-status"></div>
       </div>
 
       <!-- ⭐ Reviews moderation (card B123). The routes POST /reviews/:id/approve and
@@ -1780,7 +1780,7 @@
         <div class="em-grid">
           <div class="em-field"><label>Directory (city)</label><select id="sub-dir" onchange="window.__subLoad()"></select></div>
           <div class="em-field"><label>Status</label>
-            <select id="sub-status" onchange="window.__subLoad()">
+            <select id="subnl-status" onchange="window.__subLoad()">
               <option value="active">Subscribed (active)</option>
               <option value="unsubscribed">Unsubscribed</option>
             </select>
@@ -1793,7 +1793,7 @@
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subExport()">⬇ Export CSV</button>
           <span class="feature-status" id="sub-msg"></span>
         </div>
-        <div id="sub-list"></div>
+        <div id="subnl-list"></div>
         <div class="em-field" style="margin-top:12px">
           <label>Import from CSV <span style="font-weight:400;color:var(--text-muted,#8aa0b8)">— one per line, <code>email,name</code> or just <code>email</code>. An existing unsubscribed address is re-subscribed.</span></label>
           <textarea id="sub-csv" rows="4" placeholder="jane@example.com,Jane"></textarea>
@@ -2068,22 +2068,22 @@
         <h3>🔎 Search-engine submission</h3>
         <p class="feature-subtitle">Tell search engines the sitemap changed — on a schedule or on demand. <code>{sitemap}</code> in a target URL is replaced with the sitemap address (URL-encoded); <code>{sitemap_raw}</code> inserts it unencoded. Nothing is sent until you tick <b>Enabled</b> and Save.</p>
         <div class="pk-controls" style="margin-bottom:10px">
-          <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="sub-enabled"> Enabled</label>
-          <label style="display:inline-flex;align-items:center;gap:6px">Every <input class="input" id="sub-cadence" type="number" min="1" value="24" style="width:80px"> hours</label>
+          <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="seosub-enabled"> Enabled</label>
+          <label style="display:inline-flex;align-items:center;gap:6px">Every <input class="input" id="seosub-cadence" type="number" min="1" value="24" style="width:80px"> hours</label>
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__subSave()">💾 Save</button>
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subRun()">▶ Run now</button>
-          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subLoad()">↻ Refresh</button>
-          <span class="feature-status" id="sub-status"></span>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__seoSubLoad()">↻ Refresh</button>
+          <span class="feature-status" id="seosub-status"></span>
         </div>
         <label class="feature-subtitle">Sitemap URL (blank = <code>https://&lt;base-domain&gt;/sitemap.xml</code>)</label>
-        <input class="input" id="sub-sitemap" style="width:100%;margin:6px 0 12px" placeholder="(default)">
+        <input class="input" id="seosub-sitemap" style="width:100%;margin:6px 0 12px" placeholder="(default)">
         <label class="feature-subtitle">IndexNow key — the live path for Bing/Yandex/Seznam/Naver. Google and Bing <b>retired</b> the old <code>?sitemap=</code> ping (Google answers 404, Bing 410), so this is how engines are told today. Blank = off. The key is served back at <code>/indexnow-key.txt</code> (host root) so the engine can verify ownership.</label>
-        <input class="input" id="sub-indexnow-key" style="width:100%;margin:6px 0 12px" placeholder="e.g. 32–128 hex characters">
+        <input class="input" id="seosub-indexnow-key" style="width:100%;margin:6px 0 12px" placeholder="e.g. 32–128 hex characters">
         <div class="feature-subtitle" style="margin-bottom:4px">Targets</div>
-        <div id="sub-targets"></div>
+        <div id="seosub-targets"></div>
         <button class="btn btn-ghost btn-sm" type="button" onclick="window.__subAddTarget()">+ Add target</button>
         <div class="feature-subtitle" style="margin:12px 0 4px">Last run / recent submissions</div>
-        <div id="sub-recent"></div>
+        <div id="seosub-recent"></div>
       </div>
 
       <!-- ─────────────────────────────────────────────────────────────────────────────
@@ -7993,15 +7993,15 @@
     };
 
     // ===== Submission Queue (public submit-a-business form) =====
-    function subStatus(msg, ok) {
-      var el = document.getElementById('sub-status');
+    function subqStatus(msg, ok) {
+      var el = document.getElementById('subq-status');
       if (!el) return;
       el.textContent = msg || '';
       el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
     }
 
     function loadSubmissions() {
-      var list = document.getElementById('sub-list');
+      var list = document.getElementById('subq-list');
       if (!list) return;
       apiGet('/submissions')
         .then(function (data) {
@@ -8009,7 +8009,7 @@
           subs = Array.isArray(subs) ? subs : [];
           if (!subs.length) {
             list.innerHTML = '<div class="empty-state"><p>No submissions yet.</p></div>';
-            subStatus('0 submissions', true);
+            subqStatus('0 submissions', true);
             return;
           }
           list.innerHTML = subs.slice(0, 50).map(function (s) {
@@ -8029,28 +8029,28 @@
                 '</div>' +
               '</div>';
           }).join('');
-          subStatus(subs.length + ' submission(s)', true);
+          subqStatus(subs.length + ' submission(s)', true);
         })
-        .catch(function (e) { subStatus('Could not load submissions: ' + e.message, false); });
+        .catch(function (e) { subqStatus('Could not load submissions: ' + e.message, false); });
     }
 
     window.__subApprove = function (id) {
       apiPost('/submissions/' + id + '/approve', {})
         .then(function () { showToast('Submission approved'); loadSubmissions(); })
-        .catch(function (e) { subStatus('Approve failed: ' + e.message, false); });
+        .catch(function (e) { subqStatus('Approve failed: ' + e.message, false); });
     };
 
     window.__subReject = function (id) {
       apiPost('/submissions/' + id + '/reject', { admin_notes: 'Rejected from admin panel' })
         .then(function () { showToast('Submission rejected'); loadSubmissions(); })
-        .catch(function (e) { subStatus('Reject failed: ' + e.message, false); });
+        .catch(function (e) { subqStatus('Reject failed: ' + e.message, false); });
     };
 
     window.__subDelete = function (id) {
       if (!confirm('Delete this submission?')) return;
       apiFetch('DELETE', '/submissions/' + id)
         .then(function () { showToast('Submission deleted'); loadSubmissions(); })
-        .catch(function (e) { subStatus('Delete failed: ' + e.message, false); });
+        .catch(function (e) { subqStatus('Delete failed: ' + e.message, false); });
     };
 
     // ===== Reviews moderation (card B123) =====
@@ -8200,11 +8200,11 @@
       });
     }
     window.__subLoad = function () {
-      var box = document.getElementById('sub-list');
+      var box = document.getElementById('subnl-list');
       if (!box) return;
       var slug = subSlug();
       if (!slug) { box.innerHTML = '<p class="feature-subtitle">No directory selected.</p>'; return; }
-      var status = (document.getElementById('sub-status') || {}).value || 'active';
+      var status = (document.getElementById('subnl-status') || {}).value || 'active';
       var per = parseInt((document.getElementById('sub-per') || {}).value || '50', 10);
       subStatus('loading…');
       return apiGet('/directories/' + encodeURIComponent(slug) + '/subscribers?status=' + encodeURIComponent(status) + '&per_page=' + per)
@@ -8280,7 +8280,7 @@
       subStatus('exported ' + subRows.length + ' rows');
     };
     (function wireSubscribers() {
-      var list = document.getElementById('sub-list');
+      var list = document.getElementById('subnl-list');
       if (!list) return;
       list.addEventListener('click', function (e) {
         var b = e.target.closest ? e.target.closest('[data-subunsub]') : null;
@@ -8848,7 +8848,7 @@
     var subTargets = [];
 
     function subRenderTargets() {
-      var box = document.getElementById('sub-targets');
+      var box = document.getElementById('seosub-targets');
       if (!box) return;
       if (!subTargets.length) {
         box.innerHTML = '<p class="feature-subtitle">No targets — add one below.</p>';
@@ -8868,7 +8868,7 @@
     }
 
     function subReadTargets() {
-      var rows = document.querySelectorAll('#sub-targets tbody tr');
+      var rows = document.querySelectorAll('#seosub-targets tbody tr');
       var out = [];
       for (var i = 0; i < rows.length; i++) {
         var url = (rows[i].querySelector('.sub-url').value || '').trim();
@@ -8880,7 +8880,7 @@
     }
 
     function subRenderRecent(recent, sitemapUrl) {
-      var box = document.getElementById('sub-recent');
+      var box = document.getElementById('seosub-recent');
       if (!box) return;
       var head = sitemapUrl
         ? '<p class="feature-subtitle">Submitting <code>' + pkEsc(sitemapUrl) + '</code></p>' : '';
@@ -8903,52 +8903,52 @@
     }
 
     function loadSubmission() {
-      if (!document.getElementById('sub-targets')) return;
+      if (!document.getElementById('seosub-targets')) return;
       return apiGet('/seo/submission-settings')
         .then(function (res) {
           var st = (res && res.settings) || {};
           subTargets = Array.isArray(st.ping_targets) ? st.ping_targets : [];
-          document.getElementById('sub-enabled').checked = !!st.is_enabled;
-          document.getElementById('sub-cadence').value = st.cadence_hours || 24;
-          document.getElementById('sub-sitemap').value = st.sitemap_url || '';
-          document.getElementById('sub-indexnow-key').value = st.indexnow_key || '';
+          document.getElementById('seosub-enabled').checked = !!st.is_enabled;
+          document.getElementById('seosub-cadence').value = st.cadence_hours || 24;
+          document.getElementById('seosub-sitemap').value = st.sitemap_url || '';
+          document.getElementById('seosub-indexnow-key').value = st.indexnow_key || '';
           subRenderTargets();
           subRenderRecent((res && res.recent) || [], (res && res.resolved_sitemap_url) || '');
           var last = st.last_run_at ? String(st.last_run_at).replace('T', ' ').slice(0, 19) : 'never';
-          r8Status('sub-status', (st.is_enabled ? 'On' : 'Off') + ' — last run ' + last, true);
+          r8Status('seosub-status', (st.is_enabled ? 'On' : 'Off') + ' — last run ' + last, true);
         })
-        .catch(function (e) { r8Status('sub-status', 'Could not load submission settings: ' + e.message, false); });
+        .catch(function (e) { r8Status('seosub-status', 'Could not load submission settings: ' + e.message, false); });
     }
 
     function subSave() {
-      var cadence = parseInt(document.getElementById('sub-cadence').value, 10);
+      var cadence = parseInt(document.getElementById('seosub-cadence').value, 10);
       if (isNaN(cadence) || cadence < 1) cadence = 24;
       var body = {
-        is_enabled: !!document.getElementById('sub-enabled').checked,
+        is_enabled: !!document.getElementById('seosub-enabled').checked,
         cadence_hours: cadence,
-        sitemap_url: (document.getElementById('sub-sitemap').value || '').trim() || null,
-        indexnow_key: (document.getElementById('sub-indexnow-key').value || '').trim(),
+        sitemap_url: (document.getElementById('seosub-sitemap').value || '').trim() || null,
+        indexnow_key: (document.getElementById('seosub-indexnow-key').value || '').trim(),
         ping_targets: subReadTargets()
       };
-      r8Status('sub-status', 'Saving…', false);
+      r8Status('seosub-status', 'Saving…', false);
       return apiPut('/seo/submission-settings', body)
         .then(function () { showToast('Submission settings saved'); return loadSubmission(); })
-        .catch(function (e) { r8Status('sub-status', 'Save failed: ' + e.message, false); });
+        .catch(function (e) { r8Status('seosub-status', 'Save failed: ' + e.message, false); });
     }
 
     function subRun() {
-      r8Status('sub-status', 'Running…', false);
+      r8Status('seosub-status', 'Running…', false);
       return apiPost('/seo/run-submission', {})
         .then(function (r) {
           var n = (r && r.targets_submitted) || 0;
-          r8Status('sub-status', 'Run ' + ((r && r.status) || 'done') + ' — ' + n + ' target(s)', true);
+          r8Status('seosub-status', 'Run ' + ((r && r.status) || 'done') + ' — ' + n + ' target(s)', true);
           showToast('Sitemap submission: ' + ((r && r.status) || 'done'));
           return loadSubmission();
         })
-        .catch(function (e) { r8Status('sub-status', 'Run failed: ' + e.message, false); });
+        .catch(function (e) { r8Status('seosub-status', 'Run failed: ' + e.message, false); });
     }
 
-    window.__subLoad = loadSubmission;
+    window.__seoSubLoad = loadSubmission;
     window.__subSave = subSave;
     window.__subRun = subRun;
     window.__subAddTarget = function () { subTargets = subReadTargets(); subTargets.push({ name: '', url: '', enabled: true }); subRenderTargets(); };
