@@ -11,9 +11,6 @@
 //! The all-zero "no tenant / platform scope" sentinel is deliberately NOT a constant: it is not a
 //! tenant row at all, and Rust already spells it canonically as `uuid::Uuid::nil()`, so every use
 //! site says `Uuid::nil()` and carries no literal.
-//!
-//! Where a pool is available, prefer [`resolve_system_tenant_id`]: it looks the tenant up BY SLUG,
-//! so a missing row fails loudly by NAME instead of silently binding an id nobody owns.
 
 use uuid::Uuid;
 
