@@ -111,8 +111,11 @@ const DEFAULT_APIFY_ACTOR: &str = "compass/crawler-google-places";
 const OSM_NOMINATIM_BASE: &str = "https://nominatim.openstreetmap.org";
 const OSM_USER_AGENT: &str = "ZaarHub-MultiDirectory/1.0 (+https://zaarhub.com)";
 
+/// Only the platform operator may fire the paid search sources. `role == "admin"` is the tenant
+/// role every signup is minted, so it is NOT an operator signal (measured 2026-10-14: a stranger's
+/// signup token cleared this gate). `handlers::tenant_scope::is_platform_operator` is the same rule.
 fn is_admin(claims: &Claims) -> bool {
-    claims.role == "admin" || claims.role == "super_admin"
+    claims.role == "super_admin"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

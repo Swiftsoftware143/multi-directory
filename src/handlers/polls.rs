@@ -32,8 +32,11 @@ pub fn extract_admin_id(headers: &HeaderMap, jwt_secret: &str) -> Result<Uuid, A
 
     let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
-    // Verify the user has admin role
-    if claims.role != "admin" && claims.role != "superadmin" {
+    // Platform operator only. `admin` is the tenant role every public signup is minted, so it is
+    // NOT an operator signal; the previous `!= "superadmin"` (no underscore) tested a role that
+    // does not exist in this app, which let any stranger manage polls AND refused the real
+    // operator (measured 2026-10-14).
+    if claims.role != "super_admin" {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 

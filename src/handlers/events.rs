@@ -141,7 +141,9 @@ fn extract_admin_id(headers: &HeaderMap, jwt_secret: &str) -> Result<Uuid, AppEr
 
     let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
-    if claims.role != "admin" && claims.role != "super_admin" {
+    // Platform operator only: `role == "admin"` is the tenant role every signup holds, so it is
+    // NOT an operator signal (same rule as tenant_scope::is_platform_operator).
+    if claims.role != "super_admin" {
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
 
@@ -198,8 +200,10 @@ async fn user_can_manage_event(
     role: &str,
     event_id: Uuid,
 ) -> Result<bool, AppError> {
-    // Admins and superadmins can manage any event
-    if role == "admin" || role == "super_admin" {
+    // The platform operator manages any event; `role == "admin"` is the tenant role every signup
+    // holds, so it is NOT an operator signal (measured 2026-10-14: a stranger's signup token could
+    // edit/cancel any community event). Everyone else must be the creator (checked below).
+    if role == "super_admin" {
         return Ok(true);
     }
 
@@ -248,7 +252,9 @@ pub async fn create_event(
     }
 
     let (user_id, role) = extract_user_id(&headers, &s.config.jwt_secret)?;
-    let is_admin = role == "admin" || role == "super_admin";
+    // Platform operator or a business owner: `role == "admin"` is the tenant role every signup
+    // holds, so it is NOT an operator signal (measured 2026-10-14).
+    let is_admin = role == "super_admin";
     let is_business_owner = role == "business_owner";
 
     if !is_admin && !is_business_owner {

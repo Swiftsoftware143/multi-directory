@@ -54,9 +54,15 @@ pub fn create_token(claims: &Claims, secret: &str) -> Result<String, jsonwebtoke
     Ok(encode(&Header::default(), claims, &encoding_key)?)
 }
 
-/// Check if user has admin or super_admin role
+/// Is the caller the platform operator?
+///
+/// The app's flat role model mints `role = "admin"` for EVERY account created through the public
+/// `/auth/register` route, so `admin` is a tenant role and never an operator signal (measured
+/// 2026-10-14: a stranger's ordinary signup token cleared the checkout-book, enrichment-search,
+/// community-event and poll gates). Operator-only surfaces therefore test `super_admin`
+/// (`handlers::tenant_scope::is_platform_operator` is the canonical form of this rule).
 pub fn is_admin(claims: &Claims) -> bool {
-    claims.role == "admin" || claims.role == "super_admin"
+    is_super_admin(claims)
 }
 
 /// Check if user is super_admin

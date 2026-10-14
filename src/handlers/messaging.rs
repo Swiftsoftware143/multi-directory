@@ -252,7 +252,13 @@ pub async fn mark_read(
 
     let biz_id = biz_id.ok_or_else(|| AppError::NotFound("Message not found".into()))?;
 
-    if !is_owner_of(db, &claims.sub, biz_id).await? && claims.role != "admin" {
+    // Same guard as list_messages/unread_count: the business's owner/claimant, or the platform
+    // operator. `role == "admin"` is the tenant role every signup is minted, so it is NOT an
+    // operator signal (measured 2026-10-14: a stranger's signup token could flip is_read on any
+    // business's message).
+    if !is_owner_of(db, &claims.sub, biz_id).await?
+        && !crate::handlers::tenant_scope::is_platform_operator(&claims)
+    {
         return Err(AppError::Forbidden("Not authorized".into()));
     }
 
