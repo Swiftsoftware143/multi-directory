@@ -43,7 +43,17 @@ struct StripePlatform {
 }
 
 /// The signed-in user's business, resolved the same way as the rest of the business portal:
-/// the account's own claim first, then a legacy `user_id` claim.
+/// the account's own claim first, then a legacy `user_id` claim, then an ACTIVE claim linked by
+/// the caller's email only.
+///
+/// That third branch is the same rule `handlers::reviews::owned_by` and
+/// `tenant_scope::assert_business_admin_or_claimant` already apply. The public claim route
+/// (`POST /businesses/:id/claim`) runs before the claimant has an account, so it records the
+/// owner's EMAIL only — and the business portal lists their listing by email too
+/// (`handlers::portal::business_profile`). Without this branch that owner saw the listing in the
+/// portal while their payouts card answered "No claimed business is linked to this account yet."
+/// (403) — measured live 2026-10-14. The email branch matches ONLY a claim that carries no
+/// account id at all, so a claim already linked to somebody else can never be shadowed by it.
 async fn resolve_business_id(db: &sqlx::PgPool, user_id: Uuid) -> ApiResult<Uuid> {
     if let Some(bid) = sqlx::query_scalar::<_, Uuid>(
         r#"SELECT business_id FROM claimed_businesses
@@ -61,6 +71,22 @@ async fn resolve_business_id(db: &sqlx::PgPool, user_id: Uuid) -> ApiResult<Uuid
         r#"SELECT business_id FROM claimed_businesses
            WHERE user_id = $1 AND business_id IS NOT NULL
            ORDER BY created_at DESC LIMIT 1"#,
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?
+    {
+        return Ok(bid);
+    }
+
+    if let Some(bid) = sqlx::query_scalar::<_, Uuid>(
+        r#"SELECT c.business_id FROM claimed_businesses c
+           WHERE c.business_id IS NOT NULL AND c.is_active
+             AND c.visitor_account_id IS NULL AND c.user_id IS NULL
+             AND lower(c.owner_email) = lower(COALESCE(
+                   (SELECT email FROM visitor_accounts WHERE id = $1),
+                   (SELECT email FROM users WHERE id = $1)))
+           ORDER BY c.created_at DESC LIMIT 1"#,
     )
     .bind(user_id)
     .fetch_optional(db)
