@@ -295,6 +295,18 @@ const BUSINESS_CHILDREN: &[(&str, &str)] = &[
         child_q!("supplier_prospects", "business_id"),
     ),
     ("twilio_numbers", child_q!("twilio_numbers", "business_id")),
+    // — completeness gap closed 2026-10-13: the clearinghouse money loop records points a business
+    // ISSUED and points REDEEMED at it. Both are the business's own financial record and carry a
+    // per-business id column with no declared FK (the same class the B112 block above closed), so a
+    // "complete record" was silently dropping them.
+    (
+        "point_issuance_log.issuing_business_id",
+        child_q!("point_issuance_log", "issuing_business_id"),
+    ),
+    (
+        "point_redemption_log.redeeming_business_id",
+        child_q!("point_redemption_log", "redeeming_business_id"),
+    ),
 ];
 
 /// Every single-column FK pointing at `public.visitor_accounts`.
@@ -328,6 +340,23 @@ const CUSTOMER_CHILDREN: &[(&str, &str)] = &[
     (
         "visitor_favorites.visitor_account_id",
         child_q!("visitor_favorites", "visitor_account_id"),
+    ),
+    // — completeness gap closed 2026-10-13: a customer's own rows that carry their ACCOUNT id with no
+    // declared FK, so a "complete customer record" was silently dropping them (their follows,
+    // recommendations and the invite they accepted). Keyed on visitor_accounts.id only: the
+    // visitor_sessions / visitor_events "visitor_id" columns hold anonymous visitor ids, which never
+    // equal an account id, so those are deliberately NOT listed here.
+    (
+        "business_follows.visitor_account_id",
+        child_q!("business_follows", "visitor_account_id"),
+    ),
+    (
+        "business_recommendations.visitor_account_id",
+        child_q!("business_recommendations", "visitor_account_id"),
+    ),
+    (
+        "listing_invites.used_by_visitor_id",
+        child_q!("listing_invites", "used_by_visitor_id"),
     ),
 ];
 
