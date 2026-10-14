@@ -215,22 +215,33 @@ pub async fn assert_business_admin_or_claimant(
         return Ok(());
     }
     let uid = caller_user(claims)?;
-    let email: Option<String> = sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
-        .bind(uid)
-        .fetch_optional(db)
-        .await?;
-    if let Some(email) = email {
-        let claimed = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM claimed_businesses \
-             WHERE business_id = $1 AND owner_email = $2 AND is_active)",
-        )
-        .bind(business_id)
-        .bind(&email)
-        .fetch_one(db)
-        .await?;
-        if claimed {
-            return Ok(());
-        }
+    // The caller's email comes from EITHER account table. A business owner who signed up through
+    // the public visitor form lives in `visitor_accounts`, not `users`, so looking only at `users`
+    // made this guard answer 404 for the very owners the public claim route creates — the portal's
+    // ad-earnings card (and every other route behind this guard) silently vanished for them
+    // (measured live 2026-10-14: GET /businesses/:id/ads/earnings 404 while the list route, which
+    // uses `can_admin_business`'s visitor branch, answered 200). Same rule as
+    // `handlers::reviews::owned_by` and `handlers::business_payouts::resolve_business_id`.
+    let claimed = sqlx::query_scalar::<_, bool>(
+        r#"SELECT EXISTS (SELECT 1 FROM claimed_businesses c
+             WHERE c.business_id = $1 AND c.is_active
+               AND (
+                    c.visitor_account_id = $2
+                 OR c.user_id = $2
+                 -- The email branch matches ONLY a claim that carries no account id, so a claim
+                 -- already linked to somebody else can never be shadowed by it.
+                 OR (c.visitor_account_id IS NULL AND c.user_id IS NULL
+                     AND lower(c.owner_email) = lower(COALESCE(
+                           (SELECT email FROM visitor_accounts WHERE id = $2),
+                           (SELECT email FROM users WHERE id = $2))))
+               ))"#,
+    )
+    .bind(business_id)
+    .bind(uid)
+    .fetch_one(db)
+    .await?;
+    if claimed {
+        return Ok(());
     }
     Err(AppError::NotFound("business not found".into()))
 }
