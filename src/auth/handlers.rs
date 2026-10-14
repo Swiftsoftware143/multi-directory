@@ -76,15 +76,29 @@ pub async fn register(
             .collect()
     });
 
+    // `tenants.slug` is UNIQUE, but it is derived from the display name (or taken from the
+    // request), so the SECOND person to sign up under a name already in use got a bare 500
+    // "Database error" and could not create an account at all. Walk to the next free slug.
     let tenant_id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO tenants (id, name, slug, is_active) VALUES (\x241, \x242, \x243, true)",
-    )
-    .bind(tenant_id)
-    .bind(&tenant_name)
-    .bind(&tenant_slug)
-    .execute(&s.db)
-    .await?;
+    let slug_base = tenant_slug.trim_matches('-').to_string();
+    let mut slug = slug_base.clone();
+    for attempt in 0..8u32 {
+        let inserted = sqlx::query(
+            "INSERT INTO tenants (id, name, slug, is_active) VALUES (\x241, \x242, \x243, true)",
+        )
+        .bind(tenant_id)
+        .bind(&tenant_name)
+        .bind(&slug)
+        .execute(&s.db)
+        .await;
+        match inserted {
+            Ok(_) => break,
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() && attempt < 7 => {
+                slug = format!("{slug_base}-{}", attempt + 2);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
 
     // Create user
     let user_id = Uuid::new_v4();
