@@ -105,6 +105,7 @@ def main():
     ts = str(int(time.time()))
     owner_email = f"zz-review-owner-{ts}@swiftsoftware.dev"
     other_email = f"zz-review-other-{ts}@swiftsoftware.dev"
+    stranger_email = f"zz-review-stranger-{ts}@swiftsoftware.dev"
     pw = "ProbePass123!"
     slug = f"zz-review-probe-{ts}"
     directory_id = psql("SELECT id FROM directories ORDER BY name LIMIT 1")
@@ -117,11 +118,14 @@ def main():
     st2, _ = http("POST", "/api/v1/visitor/register",
                   {"email": other_email, "password": pw, "name": "ZZ Probe Other"})
     check("second account can be created", st2 in (200, 201), f"status={st2}")
-    for em in (owner_email, other_email):
+    st3, _ = http("POST", "/api/v1/visitor/register",
+                  {"email": stranger_email, "password": pw, "name": "ZZ Probe Stranger"})
+    check("a third, unrelated account can be created", st3 in (200, 201), f"status={st3}")
+    for em in (owner_email, other_email, stranger_email):
         vid = psql(f"SELECT id FROM visitor_accounts WHERE lower(email)='{em}'")
         if vid:
             created["visitors"].append(vid)
-    check("both accounts exist in the database", len(created["visitors"]) == 2,
+    check("all three accounts exist in the database", len(created["visitors"]) == 3,
           f"found={len(created['visitors'])}")
 
     # ── 2. a disposable listing the owner will claim ─────────────────────────────
@@ -166,6 +170,29 @@ def main():
     feed_ids = [r.get("id") for r in ((feed or {}).get("data") or [])] if isinstance(feed, dict) else []
     check("the owner's review feed shows the pending review (Approve button source)",
           rid in feed_ids, f"status={st} ids={len(feed_ids)}")
+
+    # ── 5b. an UNRELATED signed-in account must not read the pending review ──────
+    # A token is not a moderator signal: the app hands every new account the tenant role `admin`,
+    # so "any signed-in caller" would let a free signup ask for `?status=pending` — scoped to a
+    # business it does not own, or with no scope at all — and read this pending review's text and
+    # the reviewer's email. The single-read route already refuses that; this list route must too.
+    st, tok_str = http("POST", "/api/v1/auth/login", {"email": stranger_email, "password": pw})
+    check("the unrelated account can sign in", st == 200 and "access_token" in (tok_str or {}), f"status={st}")
+    stranger_token = (tok_str or {}).get("access_token")
+
+    st, leak = http("GET", f"/api/v1/reviews?business_id={bid}&status=pending", token=stranger_token)
+    leak_ids = [r.get("id") for r in ((leak or {}).get("data") or [])] if isinstance(leak, dict) else []
+    check("a stranger CANNOT read another business's pending review", rid not in leak_ids,
+          f"status={st} ids={len(leak_ids)}")
+
+    st, leak2 = http("GET", "/api/v1/reviews?status=pending&per_page=50", token=stranger_token)
+    leak2_ids = [r.get("id") for r in ((leak2 or {}).get("data") or [])] if isinstance(leak2, dict) else []
+    check("a stranger CANNOT read the platform-wide pending queue", rid not in leak2_ids,
+          f"status={st} ids={len(leak2_ids)}")
+    st, leak3 = http("GET", f"/api/v1/reviews?business_id={bid}&status=pending")
+    anon_ids = [r.get("id") for r in ((leak3 or {}).get("data") or [])] if isinstance(leak3, dict) else []
+    check("a logged-out visitor CANNOT read it either", rid not in anon_ids,
+          f"status={st} ids={len(anon_ids)}")
 
     # ── 6. a stranger cannot approve ─────────────────────────────────────────────
     st, _ = http("POST", f"/api/v1/business/reviews/{rid}/approve", {}, token=other_token)

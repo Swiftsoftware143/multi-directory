@@ -33,29 +33,20 @@ pub async fn list_reviews(
     let offset = (page - 1) * per_page;
 
     // Moderation gate. This route lives in the public allowlist — business-detail.html calls it
-    // anonymously with `?status=approved` — so an anonymous caller must only ever see reviews a
-    // business owner (or an admin) has APPROVED. Before this, a request with `business_id` and no
-    // `status` returned EVERY status: a pending or rejected review's text answered 200 to anyone
-    // on the internet (measured 2026-10-13 on https://zaarhub.com/api/v1/reviews?business_id=…,
-    // which returned a `pending` row anonymously). A signed-in caller (owner portal, admin console)
-    // sends a valid session token and may filter to any status; anonymous callers are pinned to
-    // `approved`.
+    // anonymously with `?status=approved` — so a caller without a token must only ever see reviews
+    // a business owner (or an admin) has APPROVED.
+    //
+    // A valid token alone is NOT a moderator signal. The app's flat role model grants every new
+    // account the tenant role `admin`, so treating "any signed-in caller" as privileged let a free
+    // signup ask for `?status=pending` — scoped to a business it does not own, or with no scope at
+    // all — and read EVERY business's pending/rejected review text together with the reviewer's
+    // email (measured 2026-10-14: a stranger account read another business's pending review and the
+    // platform-wide pending queue, both HTTP 200). The single-read route (`get_review`) already
+    // closes that hole; this list route must apply the same rule. A non-approved status is therefore
+    // served only to the platform `super_admin`, to a moderator of the requested business, or to the
+    // owner of the requested directory.
     let requested_status: Option<String> = params.get("status").map(|s| s.to_string());
-    let privileged = match headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-    {
-        Some(h) => {
-            let token = h.strip_prefix("Bearer ").unwrap_or(h);
-            crate::auth::middleware::verify_token(token, &s.config.jwt_secret).is_ok()
-        }
-        None => false,
-    };
-    let status_filter: Option<String> = if privileged {
-        requested_status
-    } else {
-        Some("approved".to_string())
-    };
+
     // Optional business scoping. This route is public for GET and the business-detail
     // page needs the reviews for ONE business; without a business filter it returned the
     // newest reviews on the whole platform (i.e. somebody else's reviews on every page).
@@ -68,6 +59,28 @@ pub async fn list_reviews(
     let directory_id = params
         .get("directory_id")
         .and_then(|v| Uuid::parse_str(v).ok());
+
+    let claims = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| {
+            let token = h.strip_prefix("Bearer ").unwrap_or(h);
+            crate::auth::middleware::verify_token(token, &s.config.jwt_secret).ok()
+        });
+    let trusted = match &claims {
+        None => false,
+        Some(c) if c.role == "super_admin" => true,
+        Some(c) => match (business_id, directory_id) {
+            (Some(bid), _) => can_moderate(&s.db, c, Some(bid)).await?,
+            (None, Some(did)) => owns_directory(&s.db, c, did).await?,
+            (None, None) => false,
+        },
+    };
+    let status_filter: Option<String> = if trusted {
+        requested_status
+    } else {
+        Some("approved".to_string())
+    };
 
     let total = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM reviews WHERE (\x241::text IS NULL OR status = \x241) AND (\x242::uuid IS NULL OR business_id = \x242) AND (\x243::uuid IS NULL OR directory_id = \x243 OR business_id IN (SELECT id FROM businesses WHERE directory_id = \x243)) ",
@@ -663,6 +676,27 @@ pub(crate) async fn can_moderate(
     .fetch_one(db)
     .await?;
     Ok(dir_owns > 0)
+}
+
+/// Does `claims` own the directory `directory_id`? The owner portal's review queue and the operator
+/// console's moderation card scope by `directory_id`, so a directory owner must still see the
+/// pending reviews of their own directory (and only theirs).
+async fn owns_directory(
+    db: &sqlx::PgPool,
+    claims: &Claims,
+    directory_id: Uuid,
+) -> Result<bool, AppError> {
+    let uid = match Uuid::parse_str(&claims.sub) {
+        Ok(u) => u,
+        Err(_) => return Ok(false),
+    };
+    let owns: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM directories WHERE id = $1 AND owner_id = $2")
+            .bind(directory_id)
+            .bind(uid)
+            .fetch_one(db)
+            .await?;
+    Ok(owns > 0)
 }
 
 /// GET /api/v1/business/reviews/pending — reviews on the caller's own businesses that the owner
