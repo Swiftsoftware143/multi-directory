@@ -683,7 +683,17 @@ pub async fn business_pending_reviews(
                          WHERE b.id = r.business_id AND b.owner_id = $1)
                  OR EXISTS (SELECT 1 FROM claimed_businesses c
                             WHERE c.business_id = r.business_id AND c.is_active
-                              AND (c.visitor_account_id = $1 OR c.user_id = $1))
+                              AND (
+                                   c.visitor_account_id = $1
+                                OR c.user_id = $1
+                                -- The PUBLIC claim route runs before the claimant has an account,
+                                -- so it records the owner's EMAIL only. Same email branch (and the
+                                -- same "no account id" guard) as `owned_by`, or this counter reports
+                                -- "No reviews awaiting a reply" while the owner's list shows the
+                                -- review (measured 2026-10-14).
+                                OR (c.visitor_account_id IS NULL AND c.user_id IS NULL
+                                    AND lower(c.owner_email) = (SELECT lower(email) FROM visitor_accounts WHERE id = $1))
+                              ))
              )
            ORDER BY r.created_at DESC
            LIMIT 200"#,
