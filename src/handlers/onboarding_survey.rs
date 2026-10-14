@@ -1100,25 +1100,13 @@ pub async fn public_submit_survey(
                 None,
             )
         } else {
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(8),
-                crate::coreswift::push_lead_to_coreswift(&s.db, None, Some(directory_id), lead),
+            classify_push(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(8),
+                    crate::coreswift::push_lead_to_coreswift(&s.db, None, Some(directory_id), lead),
+                )
+                .await,
             )
-            .await
-            {
-                Err(_) => (
-                    false,
-                    Some("CoreSwift push timed out after 8s".to_string()),
-                    None,
-                ),
-                Ok(Ok(contact_id)) => (true, None, contact_id),
-                Ok(Ok(None)) => (
-                    false,
-                    Some("skipped: no CoreSwift connection for this directory".to_string()),
-                    None,
-                ),
-                Ok(Err(e)) => (false, Some(e), None),
-            }
         };
 
     if let Some(reason) = &push_error {
@@ -1241,6 +1229,31 @@ pub async fn public_submit_survey(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+/// Classify one CoreSwift lead-push attempt as `(pushed, reason, contact_id)`.
+///
+/// Split out of [`public_submit_survey`] so every arm is covered by a unit test — in
+/// particular the "not connected" arm, which used to sit BELOW an irrefutable
+/// `Ok(Ok(contact_id))` arm and was therefore dead: an unconnected directory reported a
+/// successful CRM push (and no reason) on every questionnaire submission.
+fn classify_push(
+    outcome: Result<Result<Option<Uuid>, String>, tokio::time::error::Elapsed>,
+) -> (bool, Option<String>, Option<Uuid>) {
+    match outcome {
+        Err(_) => (
+            false,
+            Some("CoreSwift push timed out after 8s".to_string()),
+            None,
+        ),
+        Ok(Ok(Some(contact_id))) => (true, None, Some(contact_id)),
+        Ok(Ok(None)) => (
+            false,
+            Some("skipped: no CoreSwift connection for this directory".to_string()),
+            None,
+        ),
+        Ok(Err(e)) => (false, Some(e), None),
+    }
+}
+
 /// Sync the onboarding_survey toggle into the directory's feature_config JSONB
 async fn sync_feature_config(
     db: &sqlx::PgPool,
@@ -1283,5 +1296,54 @@ fn directory_slug_to_code(slug: &str) -> &str {
         "st-petersburg" => "sp",
         "winter-garden" => "wg",
         _ => slug, // fallback: use slug as-is
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_push;
+    use uuid::Uuid;
+
+    /// A lead that really landed in the hub is the ONLY case that may report success.
+    #[test]
+    fn a_contact_id_is_the_only_success() {
+        let id = Uuid::new_v4();
+        assert_eq!(classify_push(Ok(Ok(Some(id)))), (true, None, Some(id)));
+    }
+
+    /// The regression this helper exists for: an unconnected directory used to report
+    /// `pushed = true` (with no reason) because the `Ok(Ok(None))` arm was unreachable.
+    #[test]
+    fn no_connection_is_reported_as_skipped_not_pushed() {
+        let (pushed, reason, contact_id) = classify_push(Ok(Ok(None)));
+        assert!(!pushed, "an unconnected push must not report success");
+        assert_eq!(
+            reason.as_deref(),
+            Some("skipped: no CoreSwift connection for this directory")
+        );
+        assert!(contact_id.is_none());
+    }
+
+    /// A hub error travels to the operator as the reason, and is never a success.
+    #[test]
+    fn a_hub_error_travels_as_the_reason() {
+        let (pushed, reason, contact_id) = classify_push(Ok(Err("hub said 503".into())));
+        assert!(!pushed);
+        assert_eq!(reason.as_deref(), Some("hub said 503"));
+        assert!(contact_id.is_none());
+    }
+
+    /// A push that outlives the 8s deadline is a failure, not a silent success.
+    #[tokio::test]
+    async fn a_timeout_is_a_failure() {
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_millis(1),
+            std::future::pending::<Result<Option<Uuid>, String>>(),
+        )
+        .await;
+        let (pushed, reason, contact_id) = classify_push(outcome);
+        assert!(!pushed);
+        assert_eq!(reason.as_deref(), Some("CoreSwift push timed out after 8s"));
+        assert!(contact_id.is_none());
     }
 }

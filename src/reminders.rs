@@ -238,6 +238,48 @@ async fn run_reminder_check(db: &PgPool) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+/// A network's branding row, reduced to the four colours the reminder email needs.
+#[derive(Debug, Clone, Default, sqlx::FromRow)]
+struct NetworkBrandRow {
+    primary_color: Option<String>,
+    accent_color: Option<String>,
+    background_color: Option<String>,
+    text_color: Option<String>,
+}
+
+/// Merge precedence for one directory's reminder-email palette: the directory's own
+/// `color_scheme` value wins, the network's `network_branding` row fills any gap, and the
+/// built-in default covers what is left. Split out of [`resolve_brand_colors`] so the
+/// precedence is unit-testable without a database.
+fn pick_colors(
+    scheme: Option<&Value>,
+    net: Option<&NetworkBrandRow>,
+    default: &BrandColors,
+) -> BrandColors {
+    let from_scheme = |key: &str| {
+        scheme
+            .and_then(|s| s.get(key))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let from_net =
+        |pick: fn(&NetworkBrandRow) -> &Option<String>| net.and_then(|n| pick(n).clone());
+    BrandColors {
+        primary: from_scheme("primary")
+            .or_else(|| from_net(|n| &n.primary_color))
+            .unwrap_or_else(|| default.primary.clone()),
+        accent: from_scheme("accent")
+            .or_else(|| from_net(|n| &n.accent_color))
+            .unwrap_or_else(|| default.accent.clone()),
+        background: from_scheme("background")
+            .or_else(|| from_net(|n| &n.background_color))
+            .unwrap_or_else(|| default.background.clone()),
+        text: from_scheme("text")
+            .or_else(|| from_net(|n| &n.text_color))
+            .unwrap_or_else(|| default.text.clone()),
+    }
+}
+
 async fn resolve_brand_colors(db: &PgPool, dir_id: Uuid) -> BrandColors {
     let default = BrandColors {
         primary: "#2563eb".into(),
@@ -246,7 +288,7 @@ async fn resolve_brand_colors(db: &PgPool, dir_id: Uuid) -> BrandColors {
         text: "#1e293b".into(),
     };
 
-    let Ok(Some((Some(scheme), network_id))) = sqlx::query_as::<_, (Option<Value>, Option<Uuid>)>(
+    let Ok(Some((scheme, network_id))) = sqlx::query_as::<_, (Option<Value>, Option<Uuid>)>(
         "SELECT d.color_scheme, d.network_id FROM directories d WHERE d.id = $1",
     )
     .bind(dir_id)
@@ -256,52 +298,25 @@ async fn resolve_brand_colors(db: &PgPool, dir_id: Uuid) -> BrandColors {
         return default;
     };
 
-    let primary = scheme
-        .get("primary")
-        .and_then(Value::as_str)
-        .unwrap_or(&default.primary)
-        .to_string();
-    let accent = scheme
-        .get("accent")
-        .and_then(Value::as_str)
-        .unwrap_or(&default.accent)
-        .to_string();
-    let bg = scheme
-        .get("background")
-        .and_then(Value::as_str)
-        .unwrap_or(&default.background)
-        .to_string();
-    let text = scheme
-        .get("text")
-        .and_then(Value::as_str)
-        .unwrap_or(&default.text)
-        .to_string();
-
-    return BrandColors {
-        primary,
-        accent,
-        background: bg,
-        text,
-    };
-
-    // Fallback: network branding
-    if let Some(nid) = network_id {
-        if let Ok(Some(row)) = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, Option<String>)>(
-            "SELECT primary_color, accent_color, background_color, text_color FROM network_branding WHERE network_id = $1"
+    // The network's branding row supplies every colour the directory's own scheme
+    // does not pin down. Read it even when `color_scheme` is absent.
+    let net: Option<NetworkBrandRow> = if let Some(nid) = network_id {
+        sqlx::query_as::<_, NetworkBrandRow>(
+            "SELECT primary_color, accent_color, background_color, text_color \
+             FROM network_branding WHERE network_id = $1",
         )
         .bind(nid)
         .fetch_optional(db)
-        .await {
-            return BrandColors {
-                primary: row.0.unwrap_or(default.primary.clone()),
-                accent: row.1.unwrap_or(default.accent.clone()),
-                background: row.2.unwrap_or(default.background.clone()),
-                text: row.3.unwrap_or(default.text.clone()),
-            };
-        }
-    }
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("[reminders] network branding lookup failed for {nid}: {e}");
+            None
+        })
+    } else {
+        None
+    };
 
-    default
+    pick_colors(scheme.as_ref(), net.as_ref(), &default)
 }
 
 async fn load_or_create_template(
@@ -465,4 +480,88 @@ fn strip_html(html: &str) -> String {
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn default_colors() -> BrandColors {
+        BrandColors {
+            primary: "#2563eb".into(),
+            accent: "#f59e0b".into(),
+            background: "#ffffff".into(),
+            text: "#1e293b".into(),
+        }
+    }
+
+    fn network_all(set: &str) -> NetworkBrandRow {
+        NetworkBrandRow {
+            primary_color: Some(format!("{set}11")),
+            accent_color: Some(format!("{set}22")),
+            background_color: Some(format!("{set}33")),
+            text_color: Some(format!("{set}44")),
+        }
+    }
+
+    /// A directory colour that IS set must win over the network's.
+    #[test]
+    fn directory_scheme_wins_over_network_branding() {
+        let scheme = json!({ "primary": "#010101" });
+        let net = network_all("#ff");
+        let c = pick_colors(Some(&scheme), Some(&net), &default_colors());
+        assert_eq!(c.primary, "#010101", "the directory's own colour must win");
+        assert_eq!(c.accent, "#ff22", "the network must fill the gap");
+        assert_eq!(c.background, "#ff33");
+        assert_eq!(c.text, "#ff44");
+    }
+
+    /// The regression this module was fixed for: a network-branded directory with no
+    /// usable `color_scheme` used to fall all the way through to the hardcoded default,
+    /// so per-network branding never reached the reminder email.
+    #[test]
+    fn network_branding_is_used_when_the_directory_has_no_scheme() {
+        let net = network_all("#aa");
+        let c = pick_colors(None, Some(&net), &default_colors());
+        assert_eq!(c.primary, "#aa11");
+        assert_eq!(c.accent, "#aa22");
+        assert_eq!(c.background, "#aa33");
+        assert_eq!(c.text, "#aa44");
+    }
+
+    /// A network row that exists but leaves a colour NULL still falls back to the default
+    /// for that one colour, and never drops the colours it does define.
+    #[test]
+    fn network_gaps_fall_through_to_the_default() {
+        let net = NetworkBrandRow {
+            primary_color: Some("#123456".into()),
+            ..Default::default()
+        };
+        let c = pick_colors(None, Some(&net), &default_colors());
+        assert_eq!(c.primary, "#123456");
+        assert_eq!(c.accent, "#f59e0b");
+        assert_eq!(c.background, "#ffffff");
+        assert_eq!(c.text, "#1e293b");
+    }
+
+    /// No directory scheme and no network branding at all → the built-in palette.
+    #[test]
+    fn nothing_configured_uses_the_built_in_default() {
+        let c = pick_colors(None, None, &default_colors());
+        assert_eq!(c.primary, "#2563eb");
+        assert_eq!(c.accent, "#f59e0b");
+        assert_eq!(c.background, "#ffffff");
+        assert_eq!(c.text, "#1e293b");
+    }
+
+    /// A non-string scheme value (e.g. a number) must not be rendered into the email;
+    /// it falls through to the network/default exactly like an absent key.
+    #[test]
+    fn non_string_scheme_values_are_ignored() {
+        let scheme = json!({ "primary": 12345 });
+        let net = network_all("#55");
+        let c = pick_colors(Some(&scheme), Some(&net), &default_colors());
+        assert_eq!(c.primary, "#5511");
+    }
 }
