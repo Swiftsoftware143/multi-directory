@@ -1229,9 +1229,12 @@ function renderAnalytics(){
 
 // ── SEO ────────────────────────────────────────────────
 // Round 7 fix: this page used to call /admin/seo-meta — a route that does not exist,
-// so it could never load or save. Meta fields now use the real seo_meta endpoint
-// (GET/PUT /seo/directory/:id) and the head HTML uses directories.head_injection
+// so it could never load or save. The head/body/footer HTML uses directories.head_injection
 // (PUT /directories/:slug), which are the endpoints the backend actually serves.
+// 2026-10-14: the three META fields used page_type 'directory', which no city page reads —
+// the city page's title/description come from seo_meta keyed page_type='city' + the directory id
+// (src/handlers/subfolder.rs), so the card showed blank fields and "SEO settings saved" changed
+// nothing on the live page. The meta calls now use the key the city page renders.
 function drawSEO(seo){
   seo=seo||{};
   var el=document.getElementById('pageContent');
@@ -1261,7 +1264,7 @@ function drawSEO(seo){
 function renderSEO(){
   var el=document.getElementById('pageContent');
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
-  g('/seo/directory/'+CUR_DIR.id,drawSEO,function(){drawSEO({});});
+  g('/seo/city/'+CUR_DIR.id,drawSEO,function(){drawSEO({});});
 }
 function saveSEO(){
   var data={
@@ -1269,7 +1272,7 @@ function saveSEO(){
     description:document.getElementById('seo_desc').value,
     keywords:document.getElementById('seo_kw').value
   };
-  pu('/seo/directory/'+CUR_DIR.id,data,function(){toast('SEO settings saved','success');},function(){toast('SEO save failed','error');});
+  pu('/seo/city/'+CUR_DIR.id,data,function(){toast('SEO settings saved','success');},function(){toast('SEO save failed','error');});
   pu('/directories/'+encodeURIComponent(CUR_DIR.slug),{head_injection:document.getElementById('seo_head').value,body_injection:document.getElementById('seo_body').value,footer_injection:document.getElementById('seo_footer').value},
      function(){toast('Header HTML saved','success');},function(){toast('Header HTML save failed','error');});
 }
