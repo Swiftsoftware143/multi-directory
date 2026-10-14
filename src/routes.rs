@@ -678,16 +678,33 @@ pub fn create_router(s: AppState) -> Router {
             post(submissions::reject_submission),
         )
         // ??? SEO routes
+        // Operator-only: seo.rs checks NO caller at all, and the app's flat role model hands every
+        // public signup the tenant role `admin`, so an unguarded route let any free account read
+        // every city's sitemap config, rewrite another city's config, and force a global
+        // regeneration. The sibling /seo/submission-settings is operator-gated inside its handler;
+        // the seo group now carries the same gate as the rest of the operation console.
         .route(
             "/seo/:page_type/:page_id",
-            get(seo::get_seo_meta).put(seo::update_seo_meta),
+            get(seo::get_seo_meta)
+                .put(seo::update_seo_meta)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
-        .route("/seo/sitemap-config", get(seo::list_all_sitemap_configs))
+        .route(
+            "/seo/sitemap-config",
+            get(seo::list_all_sitemap_configs)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route(
             "/seo/sitemap-config/:directory_id",
-            get(seo::get_sitemap_config).put(seo::update_sitemap_config),
+            get(seo::get_sitemap_config)
+                .put(seo::update_sitemap_config)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
-        .route("/seo/regenerate-sitemap", post(seo::regenerate_sitemap))
+        .route(
+            "/seo/regenerate-sitemap",
+            post(seo::regenerate_sitemap)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // B91/B117 gap #10 — nightly sitemap submission: admin-editable settings
         // (targets, cadence, enable) + a run-now endpoint; the scheduler in main
         // drives the configured passes.
