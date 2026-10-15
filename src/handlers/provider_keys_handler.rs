@@ -1246,6 +1246,18 @@ mod scope_probe_tests {
                 return;
             }
 
+            // The sanctioned scratch database (hermes verify) is provisioned EMPTY, so the app
+            // schema may be absent entirely. Skip, don't panic on a missing `directories` relation.
+            let schema_ready: Option<String> =
+                sqlx::query_scalar("SELECT to_regclass('public.directories')::text")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or(None);
+            if schema_ready.is_none() {
+                eprintln!("SKIP scope_probe_tests: database has no app schema");
+                return;
+            }
+
             // Two cities of the ONE network (so inheritance is measurable) plus a different
             // network (so cross-network bleed is measurable).
             let dir_a: Option<Uuid> = sqlx::query_scalar("SELECT id FROM directories WHERE slug = 'palm-bay'")
