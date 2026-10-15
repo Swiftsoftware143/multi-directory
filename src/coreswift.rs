@@ -186,42 +186,6 @@ pub async fn provision_tenant(
     Ok(())
 }
 
-/// Create city-prefixed tags for a directory's CoreSwift tenant.
-/// Tags follow the pattern: {city_prefix}-{tag_type} (e.g. "pb-featured", "pb-sponsors").
-/// This is called when a new city is added to a network to set up the tag group.
-/// Currently creates placeholder tags — real tag names come from the admin settings.
-pub async fn provision_city_tags(
-    db: &PgPool,
-    directory_id: Uuid,
-    city_prefix: &str,
-) -> Result<Vec<(String, Uuid)>, String> {
-    let (tenant_id, _, _, _) = resolve_config(db, directory_id).await?;
-    let mut results = Vec::new();
-
-    // Create initial placeholder tags for this city
-    // Tag types are deliberately generic — admins rename them later via the UI
-    let initial_tags = vec![
-        ("featured", "#f59e0b"),
-        ("sponsors", "#10b981"),
-        ("premium", "#8b5cf6"),
-    ];
-
-    for (tag_type, color) in &initial_tags {
-        let full_name = format!("{}-{}", city_prefix, tag_type);
-        match create_tag_internal(tenant_id, &full_name, color).await {
-            Ok(tag_id) => {
-                results.push((full_name, tag_id));
-            }
-            Err(e) => {
-                tracing::warn!("[coreswift] Failed to create tag '{full_name}': {e}");
-                // Non-fatal — continue with other tags
-            }
-        }
-    }
-
-    Ok(results)
-}
-
 /// Create a static list in CoreSwift, return its UUID.
 async fn create_list(token: &str, _name: &str, list_name: &str) -> Result<Uuid, String> {
     let base = coreswift_url();
@@ -602,8 +566,8 @@ pub async fn push_sponsor_business(db: &PgPool, business_id: Uuid) -> Result<(),
         return Err(format!("CoreSwift sponsors list add returned {ls}: {body}"));
     }
 
-    // 3. City sponsor tag on the SAME tenant the list lives on (provision_city_tags planted
-    //    `{prefix}-sponsors`), so the sponsor nurture can be segmented by city.
+    // 3. City sponsor tag on the SAME tenant the list lives on (the `{prefix}-sponsors`
+    //    convention), so the sponsor nurture can be segmented by city.
     let slug: Option<String> = sqlx::query_scalar::<_, String>(
         "SELECT slug FROM directories WHERE id = $1 AND slug IS NOT NULL",
     )

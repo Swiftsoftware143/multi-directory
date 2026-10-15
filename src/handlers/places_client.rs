@@ -28,7 +28,6 @@ pub const PLACES_NON_ERROR_STATUSES: [&str; 2] = ["OK", "ZERO_RESULTS"];
 pub enum PlacesCall {
     Autocomplete,
     FindPlace,
-    TextSearch,
     Details,
 }
 
@@ -37,7 +36,6 @@ impl PlacesCall {
         match self {
             PlacesCall::Autocomplete => "place/autocomplete",
             PlacesCall::FindPlace => "place/findplacefromtext",
-            PlacesCall::TextSearch => "place/textsearch",
             PlacesCall::Details => "place/details",
         }
     }
@@ -205,15 +203,6 @@ pub enum PlacesOutcome {
 }
 
 impl PlacesLookup {
-    /// The place id Find Place resolved — the join key between the two calls.
-    pub fn place_id(&self) -> Option<&str> {
-        self.candidate
-            .get("place_id")
-            .or_else(|| self.details.get("place_id"))
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-    }
-
     /// Candidate fields overlaid with the (non-null) Details fields: the richest answer
     /// available. Sibling fields such as `field_sources` say which call supplied each value.
     pub fn merged(&self) -> Value {
