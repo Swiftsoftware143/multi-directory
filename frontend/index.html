@@ -994,7 +994,13 @@ function renderCityDropdown(q){
     if(cityMatches(cities[i],q))filtered.push(cities[i])
   }
   zhCityActive=-1
-  if(!filtered.length){dd.innerHTML='<div class="zh-city-empty">No cities match "'+esc(q)+'"</div>';dd.classList.add('open');return}
+  if(!filtered.length){
+    dd.innerHTML='<div class="zh-city-empty">No cities match "'+esc(q)+'"</div>'
+      +(q?('<div class="zh-city-opt" id="zh-city-reqrow"><div>➕ Request this city be added</div></div>'):'')
+    var rq=document.getElementById('zh-city-reqrow')
+    if(rq)rq.onclick=function(){closeCityDropdown();zhRequestCity(q)}
+    dd.classList.add('open');return
+  }
   var html='<div class="zh-city-opt" data-slug="" onclick="pickCity(this.dataset.slug)"><div>🌐 All Cities</div></div>'
   for(var j=0;j<filtered.length;j++){
     var c=filtered[j]
@@ -1003,6 +1009,55 @@ function renderCityDropdown(q){
   }
   dd.innerHTML=html;dd.classList.add('open')
   zhPlacesAugment(cityNorm(q), dd)
+}
+
+// ── Request a city (public) ─────────────────────────────────────────────
+// POST /api/v1/city-requests has existed for a while and is anonymous, and the operator
+// console lists requests per directory — but no public page ever called it, so the queue
+// could never fill. This is that caller.
+function zhRequestCity(name){
+  var ex=document.getElementById('zh-reqcity-overlay');if(ex)ex.remove()
+  var ov=document.createElement('div');ov.className='zh-modal-overlay';ov.id='zh-reqcity-overlay'
+  ov.onclick=function(e){if(e.target===ov)ov.remove()}
+  ov.innerHTML='<div class="zh-modal" style="max-width:420px">'
+    +'<button class="zh-modal-close" type="button" onclick="document.getElementById(\'zh-reqcity-overlay\').remove()">✕</button>'
+    +'<h3>📍 Request a City</h3>'
+    +'<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">Tell us where ZaarHub should go next. We add the most-requested cities first.</p>'
+    +'<form onsubmit="return zhRequestCitySubmit(event)">'
+    +'<input id="zh-reqcity-name" required placeholder="City name (e.g. Miami)" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;box-sizing:border-box">'
+    +'<div style="display:flex;gap:10px;margin-bottom:10px">'
+    +'<input id="zh-reqcity-state" placeholder="State (FL)" maxlength="2" value="FL" style="flex:1;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;box-sizing:border-box">'
+    +'<input id="zh-reqcity-email" type="email" placeholder="Email (optional)" style="flex:2;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;box-sizing:border-box">'
+    +'</div>'
+    +'<button type="submit" style="width:100%;background:var(--primary,#4f46e5);color:#fff;border:0;border-radius:8px;padding:11px;font-weight:700;cursor:pointer">Request this city</button>'
+    +'<div id="zh-reqcity-msg" role="status" aria-live="polite" style="font-size:.85rem;margin-top:10px;text-align:center"></div>'
+    +'</form></div>'
+  document.body.appendChild(ov)
+  var nm=document.getElementById('zh-reqcity-name')
+  if(nm){if(name)nm.value=name;nm.focus()}
+}
+async function zhRequestCitySubmit(e){
+  if(e&&e.preventDefault)e.preventDefault()
+  var msg=document.getElementById('zh-reqcity-msg')
+  var name=(document.getElementById('zh-reqcity-name').value||'').trim()
+  var st=(document.getElementById('zh-reqcity-state').value||'').trim().toUpperCase()
+  var em=(document.getElementById('zh-reqcity-email').value||'').trim()
+  if(!name){if(msg){msg.style.color='#dc2626';msg.textContent='Please enter a city name.'}return false}
+  if(msg){msg.style.color='var(--text-muted)';msg.textContent='Sending…'}
+  var body={city_name:name,state:st||'FL',email:em||null,directory_id:(window.__dir_id||null)}
+  try{
+    var r=await fetch('/api/v1/city-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    var d={};try{d=await r.json()}catch(_){}
+    if(r.ok){
+      if(msg){msg.style.color='#166534';msg.textContent='✅ '+(d.message||'Thanks! Your vote has been counted.')+(d.votes?(' ('+d.votes+' '+(d.votes===1?'vote':'votes')+')'):'')}
+      var f=document.getElementById('zh-reqcity-name');if(f)f.value=''
+    }else if(msg){
+      msg.style.color='#dc2626';msg.textContent='⚠️ '+(d.error||'Could not send your request.')
+    }
+  }catch(err){
+    if(msg){msg.style.color='#dc2626';msg.textContent='⚠️ Network error — please try again.'}
+  }
+  return false
 }
 
 // ── Google Places suggestions in the city box (GET /api/v1/places/autocomplete) ──
@@ -1242,6 +1297,7 @@ function renderShell(){
     </div>
     <div><h4>Community</h4>
       <a href="#/about">About Us</a>
+      <a href="#" onclick="zhRequestCity('');return false">Request a City</a>
       <a href="mailto:support&#64;zaarhub.com">Contact</a>
     </div>
   </div>

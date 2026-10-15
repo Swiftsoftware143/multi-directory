@@ -2252,7 +2252,22 @@ pub async fn request_city(
                     Json(json!({"error": e.to_string()})),
                 )
             })?,
-        None => None,
+        // The public homepage form has no directory id to send (the network is the unit the
+        // visitor is browsing), so an anonymous vote is attributed to the network's primary
+        // directory. Without this the row landed with `directory_id` NULL and the operator
+        // console's per-directory request screen stayed empty for every vote cast from the
+        // public site.
+        None => sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM directories WHERE is_primary = true ORDER BY created_at ASC LIMIT 1",
+        )
+        .fetch_optional(&app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?,
     };
 
     let result = sqlx::query_as::<_, (Uuid, i32)>(
