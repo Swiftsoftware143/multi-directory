@@ -397,8 +397,10 @@ mod tests {
         assert_eq!(parse_burn_months(Some("nope")), Decimal::from(1));
         assert_eq!(parse_burn_months(Some("1.5")), d("1.5"));
         assert_eq!(parse_burn_months(Some("99")), Decimal::from(1));
-        assert_eq!(parse_floor(Some("-3")), Decimal::from(DEFAULT_FLOAT_FLOOR));
         // A negative floor cannot be stored as "no floor" through this path.
+        // (`parse_floor` was removed with the text-parsed floor — the floor now arrives as the
+        // typed `minimum_float` column and is clamped by `rule_from_settings`; this test used to
+        // assert on the removed helper and stopped the whole test target from compiling.)
         let r = rule_from_settings(None, None, d("-1"));
         assert_eq!(r.floor, Decimal::from(DEFAULT_FLOAT_FLOOR));
     }

@@ -216,6 +216,23 @@ pub async fn list_rfqs(
     let page = params.page.unwrap_or(1).max(1);
     let offset = (page - 1) * per_page;
 
+    // The supplier page's filter bar (`frontend/rfq.html` #fq/#fcat/#furg) sends `q`, `category`
+    // and `urgency` — but this handler ignored all three, so the search box did nothing while the
+    // UI still claimed "No open RFQs match these filters right now." (measured 2026-10-15: the
+    // three fields were flagged `never read`). Blank params are treated as absent so `?q=` (an
+    // empty box) is not a filter. `q` matches title OR description, case-insensitively.
+    let q = params.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let category = params
+        .category
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let urgency = params
+        .urgency
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
     let rfqs = sqlx::query_as::<_, RfqRow>(
         "SELECT r.id, r.title, r.description, r.category, r.quantity, r.budget_min, r.budget_max, \
          r.deadline, r.delivery_location, r.poster_business_id, r.status, r.urgency, r.is_public, \
@@ -224,19 +241,35 @@ pub async fn list_rfqs(
          COALESCE((SELECT COUNT(*) FROM rfq_bids WHERE rfq_id = r.id), 0) as bid_count \
          FROM rfqs r \
          WHERE r.status = 'open' AND r.is_public = true \
+           AND ($3::text IS NULL OR r.title ILIKE '%' || $3 || '%' OR r.description ILIKE '%' || $3 || '%') \
+           AND ($4::text IS NULL OR lower(r.category) = lower($4)) \
+           AND ($5::text IS NULL OR r.urgency = $5) \
          ORDER BY r.created_at DESC \
          LIMIT $1 OFFSET $2",
     )
     .bind(per_page)
     .bind(offset)
+    .bind(q)
+    .bind(category)
+    .bind(urgency)
     .fetch_all(&state.db)
     .await?;
 
-    let total: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM rfqs WHERE status = 'open' AND is_public = true")
-            .fetch_one(&state.db)
-            .await
-            .unwrap_or(0);
+    // `total` must be computed under the SAME filters, else the page's "N of M total" line is
+    // wrong the moment a filter is applied.
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM rfqs r \
+         WHERE r.status = 'open' AND r.is_public = true \
+           AND ($1::text IS NULL OR r.title ILIKE '%' || $1 || '%' OR r.description ILIKE '%' || $1 || '%') \
+           AND ($2::text IS NULL OR lower(r.category) = lower($2)) \
+           AND ($3::text IS NULL OR r.urgency = $3)",
+    )
+    .bind(q)
+    .bind(category)
+    .bind(urgency)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
 
     Ok(Json(json!({
         "rfqs": rfqs,
