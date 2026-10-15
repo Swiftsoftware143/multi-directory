@@ -198,41 +198,46 @@ pub async fn list_rules(
     let per_page = q.per_page.unwrap_or(50).min(100);
     let offset = (page - 1) * per_page;
 
-    let (total, items) = if let Some(tenant_id) = q.tenant_id {
-        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tag_rules WHERE tenant_id = $1")
-            .bind(tenant_id)
-            .fetch_one(&s.db)
-            .await
-            .map_err(AppError::from)?;
+    // EVERY declared filter is honoured. `tag_id`, `trigger_type`, `action_type` and
+    // `is_active` used to be accepted and then silently dropped: the request came back
+    // unfiltered, so a filter looked like it worked and matched the whole table. One static
+    // statement with an `IS NULL OR` guard per filter (never SQL text built at run time).
+    let total: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM tag_rules
+           WHERE ($1::uuid IS NULL OR tenant_id = $1)
+             AND ($2::uuid IS NULL OR tag_id = $2)
+             AND ($3::text IS NULL OR trigger_type = $3)
+             AND ($4::text IS NULL OR action_type = $4)
+             AND ($5::boolean IS NULL OR is_active = $5)"#,
+    )
+    .bind(q.tenant_id)
+    .bind(q.tag_id)
+    .bind(q.trigger_type.as_deref())
+    .bind(q.action_type.as_deref())
+    .bind(q.is_active)
+    .fetch_one(&s.db)
+    .await
+    .map_err(AppError::from)?;
 
-        let items = sqlx::query_as::<_, TagRule>(
-            "SELECT * FROM tag_rules WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
-        )
-        .bind(tenant_id)
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&s.db)
-        .await
-        .map_err(AppError::from)?;
-
-        (total, items)
-    } else {
-        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tag_rules")
-            .fetch_one(&s.db)
-            .await
-            .map_err(AppError::from)?;
-
-        let items = sqlx::query_as::<_, TagRule>(
-            "SELECT * FROM tag_rules ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-        )
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&s.db)
-        .await
-        .map_err(AppError::from)?;
-
-        (total, items)
-    };
+    let items = sqlx::query_as::<_, TagRule>(
+        r#"SELECT * FROM tag_rules
+           WHERE ($1::uuid IS NULL OR tenant_id = $1)
+             AND ($2::uuid IS NULL OR tag_id = $2)
+             AND ($3::text IS NULL OR trigger_type = $3)
+             AND ($4::text IS NULL OR action_type = $4)
+             AND ($5::boolean IS NULL OR is_active = $5)
+           ORDER BY created_at DESC LIMIT $6 OFFSET $7"#,
+    )
+    .bind(q.tenant_id)
+    .bind(q.tag_id)
+    .bind(q.trigger_type.as_deref())
+    .bind(q.action_type.as_deref())
+    .bind(q.is_active)
+    .bind(per_page)
+    .bind(offset)
+    .fetch_all(&s.db)
+    .await
+    .map_err(AppError::from)?;
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i64;
 
@@ -458,42 +463,39 @@ pub async fn list_tracked_links(
     let per_page = q.per_page.unwrap_or(50).min(100);
     let offset = (page - 1) * per_page;
 
-    let (total, items) = if let Some(tid) = q.tenant_id {
-        let total: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM tracked_links WHERE tenant_id = $1")
-                .bind(tid)
-                .fetch_one(&s.db)
-                .await
-                .map_err(AppError::from)?;
+    // `search` was accepted and silently dropped, so typing in the console's search box came
+    // back with the whole table (the filter looked like it worked). Matches the link's name,
+    // its destination url and its short code; a blank/whitespace search is no filter at all.
+    let search = q.search.as_deref().map(str::trim).filter(|s| !s.is_empty());
 
-        let items = sqlx::query_as::<_, TrackedLink>(
-            "SELECT * FROM tracked_links WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
-        )
-        .bind(tid)
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&s.db)
-        .await
-        .map_err(AppError::from)?;
+    let total: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM tracked_links
+           WHERE ($1::uuid IS NULL OR tenant_id = $1)
+             AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%'
+                  OR url ILIKE '%' || $2 || '%'
+                  OR short_code ILIKE '%' || $2 || '%')"#,
+    )
+    .bind(q.tenant_id)
+    .bind(search)
+    .fetch_one(&s.db)
+    .await
+    .map_err(AppError::from)?;
 
-        (total, items)
-    } else {
-        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tracked_links")
-            .fetch_one(&s.db)
-            .await
-            .map_err(AppError::from)?;
-
-        let items = sqlx::query_as::<_, TrackedLink>(
-            "SELECT * FROM tracked_links ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-        )
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(&s.db)
-        .await
-        .map_err(AppError::from)?;
-
-        (total, items)
-    };
+    let items = sqlx::query_as::<_, TrackedLink>(
+        r#"SELECT * FROM tracked_links
+           WHERE ($1::uuid IS NULL OR tenant_id = $1)
+             AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%'
+                  OR url ILIKE '%' || $2 || '%'
+                  OR short_code ILIKE '%' || $2 || '%')
+           ORDER BY created_at DESC LIMIT $3 OFFSET $4"#,
+    )
+    .bind(q.tenant_id)
+    .bind(search)
+    .bind(per_page)
+    .bind(offset)
+    .fetch_all(&s.db)
+    .await
+    .map_err(AppError::from)?;
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i64;
 

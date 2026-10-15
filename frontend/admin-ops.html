@@ -163,13 +163,17 @@
 
     { g: 'Tags & Tracked Links', items: [
       { t: 'List tag rules', m: 'GET', p: '/admin/tag-rules', f: [
-        { k: 'tenant_id', l: 'Tenant', ty: 'tenant', q: true } ] },
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant', q: true },
+        { k: 'tag_id', l: 'Tag id', ty: 'uuid', q: true },
+        { k: 'trigger_type', l: 'Trigger', ty: 'select', o: ['tag_applied', 'tag_removed', 'workflow_completed'], q: true },
+        { k: 'action_type', l: 'Action', ty: 'select', o: ['add_tag', 'remove_tag', 'send_email', 'send_sms', 'webhook', 'pipeline_move', 'scoring_update'], q: true },
+        { k: 'is_active', l: 'Active', ty: 'bool', q: true } ] },
       { t: 'Create tag rule', m: 'POST', p: '/admin/tag-rules', f: [
         { k: 'tenant_id', l: 'Tenant', ty: 'tenant' },
         { k: 'name', l: 'Rule name' },
         { k: 'tag_id', l: 'Tag id', ty: 'uuid' },
-        { k: 'trigger_type', l: 'Trigger', ty: 'select', o: ['contact_created', 'event_attended', 'page_view', 'purchase'], d: 'contact_created' },
-        { k: 'action_type', l: 'Action', ty: 'select', o: ['apply_tag', 'send_email', 'webhook'], d: 'apply_tag' },
+        { k: 'trigger_type', l: 'Trigger', ty: 'select', o: ['tag_applied', 'tag_removed', 'workflow_completed'], d: 'tag_applied' },
+        { k: 'action_type', l: 'Action', ty: 'select', o: ['add_tag', 'remove_tag', 'send_email', 'send_sms', 'webhook', 'pipeline_move', 'scoring_update'], d: 'add_tag' },
         { k: 'action_config', l: 'Action config (JSON, optional)', ty: 'json' },
         { k: 'is_active', l: 'Active', ty: 'bool', d: 'true' } ] },
       { t: 'Update tag rule', m: 'PUT', p: '/admin/tag-rules/{id}', f: [
@@ -187,7 +191,8 @@
         { k: 'trigger_type', l: 'Trigger' },
         { k: 'contact_id', l: 'Contact id (optional)', ty: 'uuid' } ] },
       { t: 'List tracked links', m: 'GET', p: '/admin/tracked-links', f: [
-        { k: 'tenant_id', l: 'Tenant', ty: 'tenant', q: true } ] },
+        { k: 'tenant_id', l: 'Tenant', ty: 'tenant', q: true },
+        { k: 'search', l: 'Search name / url / short code', q: true } ] },
       { t: 'Create tracked link', m: 'POST', p: '/admin/tracked-links', f: [
         { k: 'tenant_id', l: 'Tenant', ty: 'tenant' },
         { k: 'name', l: 'Link name' },
