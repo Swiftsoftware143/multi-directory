@@ -186,17 +186,22 @@ pub async fn available_leads(
          source, poster_business_id, status, claimed_by, claimed_at, expires_at, created_at, updated_at \
          FROM shared_leads \
          WHERE status = 'available' AND (expires_at IS NULL OR expires_at > now()) \
+           AND ($3::text IS NULL OR category = $3) \
          ORDER BY created_at DESC \
          LIMIT $1 OFFSET $2",
     )
     .bind(per_page)
     .bind(offset)
+    .bind(params.category.clone())
     .fetch_all(&state.db)
     .await?;
 
     let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM shared_leads WHERE status = 'available' AND (expires_at IS NULL OR expires_at > now())",
+        "SELECT COUNT(*) FROM shared_leads \
+         WHERE status = 'available' AND (expires_at IS NULL OR expires_at > now()) \
+           AND ($1::text IS NULL OR category = $1)",
     )
+    .bind(params.category.clone())
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);

@@ -548,6 +548,14 @@ pub async fn search_products(
             .push_bind(mp);
         data_qb.push(" AND COALESCE(sp.price, 0) <= ").push_bind(mp);
     }
+    // min_price was declared on ProductQuery and silently dropped: the list honoured a ceiling
+    // but not a floor, so `?min_price=50` returned the cheap rows too. Mirror max_price above.
+    if let Some(mp) = qs.min_price {
+        count_qb
+            .push(" AND COALESCE(sp.price, 0) >= ")
+            .push_bind(mp);
+        data_qb.push(" AND COALESCE(sp.price, 0) >= ").push_bind(mp);
+    }
 
     let total = count_qb
         .build_query_scalar::<i64>()

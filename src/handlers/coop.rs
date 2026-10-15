@@ -193,17 +193,21 @@ pub async fn list_groups(
          NULL::text as role \
          FROM buying_groups g \
          WHERE g.status IN ('recruiting', 'active') \
+           AND ($3::text IS NULL OR g.category = $3) \
          ORDER BY g.created_at DESC \
          LIMIT $1 OFFSET $2",
     )
     .bind(per_page)
     .bind(offset)
+    .bind(params.category.clone())
     .fetch_all(&state.db)
     .await?;
 
     let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM buying_groups WHERE status IN ('recruiting', 'active')",
+        "SELECT COUNT(*) FROM buying_groups \
+         WHERE status IN ('recruiting', 'active') AND ($1::text IS NULL OR category = $1)",
     )
+    .bind(params.category.clone())
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);
@@ -513,17 +517,23 @@ pub async fn active_deals(
          FROM buying_group_deals d \
          JOIN buying_groups g ON g.id = d.group_id \
          WHERE d.status = 'active' AND (d.deadline IS NULL OR d.deadline >= CURRENT_DATE) \
+           AND ($3::text IS NULL OR g.category = $3) \
          ORDER BY d.created_at DESC \
          LIMIT $1 OFFSET $2",
     )
     .bind(per_page)
     .bind(offset)
+    .bind(params.category.clone())
     .fetch_all(&state.db)
     .await?;
 
     let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM buying_group_deals WHERE status = 'active' AND (deadline IS NULL OR deadline >= CURRENT_DATE)",
+        "SELECT COUNT(*) FROM buying_group_deals d \
+         JOIN buying_groups g ON g.id = d.group_id \
+         WHERE d.status = 'active' AND (d.deadline IS NULL OR d.deadline >= CURRENT_DATE) \
+           AND ($1::text IS NULL OR g.category = $1)",
     )
+    .bind(params.category.clone())
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);
