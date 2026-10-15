@@ -359,6 +359,8 @@
         { k: 'directory_id', l: 'Directory', ty: 'dir', q: true } ] },
       { t: 'Demand curve', m: 'GET', p: '/analytics/demand-curve', f: [
         { k: 'directory_id', l: 'Directory', ty: 'dir', q: true },
+        { k: 'city', l: 'City', q: true },
+        { k: 'category', l: 'Category (name, slug or id)', q: true },
         { k: 'days', l: 'Days', ty: 'num', d: '90', q: true } ] },
       { t: 'Checkout sessions', m: 'GET', p: '/checkout/sessions' },
       { t: 'Start a checkout', m: 'POST', p: '/checkout/create', f: [

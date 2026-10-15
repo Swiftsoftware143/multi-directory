@@ -71,12 +71,14 @@ pub async fn get_demand_curve(
             JOIN businesses b ON b.id = ve.business_id
             WHERE ve.directory_id = $1
               AND ve.created_at >= NOW() - ($2 || ' days')::interval
+              AND ($3::text IS NULL OR b.category_id IN (SELECT dc.id FROM directory_categories dc WHERE dc.name ILIKE $3 OR dc.slug ILIKE $3 OR dc.id::text = $3))
             GROUP BY v.city, v.region, b.category_id, hour_slot, day_of_week
             ORDER BY impressions DESC
             "#,
         )
         .bind(dir_id)
         .bind(days.to_string())
+        .bind(params.category.clone())
         .fetch_all(&s.db)
         .await?
     } else if let Some(ref city) = params.city {
@@ -98,12 +100,14 @@ pub async fn get_demand_curve(
             JOIN businesses b ON b.id = ve.business_id
             WHERE v.city ILIKE $1
               AND ve.created_at >= NOW() - ($2 || ' days')::interval
+              AND ($3::text IS NULL OR b.category_id IN (SELECT dc.id FROM directory_categories dc WHERE dc.name ILIKE $3 OR dc.slug ILIKE $3 OR dc.id::text = $3))
             GROUP BY v.city, v.region, b.category_id, hour_slot, day_of_week
             ORDER BY impressions DESC
             "#,
         )
         .bind(city)
         .bind(days.to_string())
+        .bind(params.category.clone())
         .fetch_all(&s.db)
         .await?
     } else {
@@ -124,11 +128,13 @@ pub async fn get_demand_curve(
             JOIN visitors v ON v.id = ve.visitor_id
             JOIN businesses b ON b.id = ve.business_id
             WHERE ve.created_at >= NOW() - ($1 || ' days')::interval
+              AND ($2::text IS NULL OR b.category_id IN (SELECT dc.id FROM directory_categories dc WHERE dc.name ILIKE $2 OR dc.slug ILIKE $2 OR dc.id::text = $2))
             GROUP BY v.city, v.region, b.category_id, hour_slot, day_of_week
             ORDER BY impressions DESC
             "#,
         )
         .bind(days.to_string())
+        .bind(params.category.clone())
         .fetch_all(&s.db)
         .await?
     };
