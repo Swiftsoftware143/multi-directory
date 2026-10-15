@@ -509,17 +509,6 @@ pub struct BusinessMeta {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-// ── Template info ────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateInfo {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub industries: Vec<String>,
-    pub preview_image: Option<String>,
-}
-
 // ── Dashboard Stats ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -597,57 +586,6 @@ pub struct AuthorProfile {
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateBlogPostRequest {
-    pub title: String,
-    pub slug: Option<String>,
-    pub excerpt: Option<String>,
-    pub content: String,
-    pub directory_id: uuid::Uuid,
-    pub published: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateBlogPostRequest {
-    pub title: Option<String>,
-    pub slug: Option<String>,
-    pub excerpt: Option<String>,
-    pub content: Option<String>,
-    pub published: Option<bool>,
-}
-
-// ── LegalPage ────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct LegalPage {
-    pub id: uuid::Uuid,
-    pub title: String,
-    pub page_type: String,
-    pub content: String,
-    pub published: Option<bool>,
-    pub is_global: Option<bool>,
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreateLegalPageRequest {
-    pub title: String,
-    pub page_type: Option<String>,
-    pub content: String,
-    pub published: Option<bool>,
-    pub is_global: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateLegalPageRequest {
-    pub title: Option<String>,
-    pub page_type: Option<String>,
-    pub content: Option<String>,
-    pub published: Option<bool>,
-    pub is_global: Option<bool>,
-}
-
 // ── ImportLog ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -701,12 +639,6 @@ pub struct UpdateExportTemplateRequest {
     pub directory_id: Option<Uuid>,
     pub delimiter: Option<String>,
     pub include_header: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ExportQuery {
-    pub format: Option<String>,
-    pub fields: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
