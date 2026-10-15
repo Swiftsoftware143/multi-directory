@@ -15,6 +15,19 @@ use crate::error::{validate_pagination, ApiResult, AppError};
 use crate::models::*;
 use crate::AppState;
 
+/// The reviewer's address is personal data and NO screen uses it: no page in `frontend/` reads
+/// `reviewer_email`, and `business-detail.html` renders only the name, title and text. Every read
+/// path a non-moderator can reach must therefore serve the row WITHOUT it — otherwise a logged-out
+/// visitor (or any free signup, since a plain account is not a moderator) harvests customer
+/// addresses straight out of an approved review. Measured 2026-10-15: the anonymous list route
+/// returned the reviewer's account address verbatim. The scoped rule, applied by each route below:
+/// a moderator of the review's business (its owner, the owner of its directory) and the review's
+/// own author keep seeing it.
+fn without_reviewer_email(mut review: Review) -> Review {
+    review.reviewer_email = None;
+    review
+}
+
 /// GET /api/v1/reviews — list all reviews (admin)
 pub async fn list_reviews(
     State(s): State<AppState>,
@@ -101,6 +114,13 @@ pub async fn list_reviews(
     .bind(offset)
     .fetch_all(&s.db)
     .await?;
+
+    // A row served to a non-moderator carries no reviewer address (see `without_reviewer_email`).
+    let reviews: Vec<Review> = if trusted {
+        reviews
+    } else {
+        reviews.into_iter().map(without_reviewer_email).collect()
+    };
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i64;
 
@@ -256,13 +276,20 @@ pub async fn get_review(
     // review (and the reviewer's email carried on it) is readable only by its author or by a
     // moderator of its business — anyone else gets the same "not found" as a review that does not
     // exist, so the route cannot be used to confirm that a hidden review is there.
-    if review.status.as_deref() != Some("approved") {
-        let caller = Uuid::parse_str(&claims.sub).ok();
-        let is_author = caller.is_some() && review.user_id == caller;
-        if !is_author && !can_moderate(&s.db, &claims, review.business_id).await? {
-            return Err(AppError::NotFound("Review not found".to_string()));
-        }
+    let caller = Uuid::parse_str(&claims.sub).ok();
+    let is_author = caller.is_some() && review.user_id == caller;
+    let moderate = can_moderate(&s.db, &claims, review.business_id).await?;
+    if review.status.as_deref() != Some("approved") && !is_author && !moderate {
+        return Err(AppError::NotFound("Review not found".to_string()));
     }
+
+    // An APPROVED review is public, but its reviewer's address is not: only the author and a
+    // moderator of the business get it (see `without_reviewer_email`).
+    let review = if is_author || moderate {
+        review
+    } else {
+        without_reviewer_email(review)
+    };
 
     Ok(Json(json!(review)))
 }
@@ -497,13 +524,17 @@ pub async fn list_business_reviews(
     .await?;
 
     let reviews = sqlx::query_as::<_, Review>(
-        "SELECT * FROM reviews WHERE business_id = \x241 AND status = 'approved' ORDER BY created_at DESC LIMIT \x242 OFFSET \x243 "
+        "SELECT * FROM reviews WHERE business_id = $1 AND status = 'approved' ORDER BY created_at DESC LIMIT $2 OFFSET $3 "
     )
     .bind(business_id)
     .bind(per_page)
     .bind(offset)
     .fetch_all(&s.db)
     .await?;
+
+    // This route carries no caller context, so it never serves the reviewer's address: the public
+    // business page renders the name, title and text only (see `without_reviewer_email`).
+    let reviews: Vec<Review> = reviews.into_iter().map(without_reviewer_email).collect();
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i64;
 
