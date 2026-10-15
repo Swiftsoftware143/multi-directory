@@ -190,15 +190,6 @@ pub fn mask_key(key: &str) -> String {
     }
 }
 
-/// Shared selection SQL — default row first, then most recently updated active row.
-/// `api_key` is selected AS STORED (ciphertext); `row_to_response` decrypts it in Rust with
-/// the env-only master key, so no SQL path here depends on a key held in the database.
-const SELECT_KEYS: &str = "SELECT id, tenant_id, provider, label, is_default, \
-        api_key, base_url, \
-        metadata, is_active, scope, network_id, directory_id, \
-        created_at::text, updated_at::text \
-     FROM provider_keys";
-
 /// Compile-time form of `SELECT_KEYS` for gate rule 5d: `concat!` needs a LITERAL, not a
 /// const, so the same bytes are published as a macro and the statements that use it are
 /// assembled entirely at compile time (a run-time build is the defect the rule names).

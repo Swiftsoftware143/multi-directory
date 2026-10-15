@@ -119,28 +119,6 @@ pub struct RsvpWithVisitor {
 
 // ── Auth helpers ──
 
-/// Extract admin user ID from JWT (for admin-only operations).
-fn extract_admin_id(headers: &HeaderMap, jwt_secret: &str) -> Result<Uuid, AppError> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized)?;
-
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized)?;
-
-    let claims = verify_token(token, jwt_secret).map_err(|_| AppError::Unauthorized)?;
-
-    // Platform operator only: `role == "admin"` is the tenant role every signup holds, so it is
-    // NOT an operator signal (same rule as tenant_scope::is_platform_operator).
-    if claims.role != "super_admin" {
-        return Err(AppError::Forbidden("Admin access required".to_string()));
-    }
-
-    Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)
-}
-
 /// Extract user/admin ID from JWT (any valid JWT). Useful when we check
 /// authorization in the handler rather than relying on role filters.
 fn extract_user_id(headers: &HeaderMap, jwt_secret: &str) -> Result<(Uuid, String), AppError> {

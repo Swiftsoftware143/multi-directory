@@ -150,12 +150,6 @@ pub struct LocationCount {
 }
 
 #[derive(Debug, Serialize)]
-pub struct DeviceCount {
-    pub name: String,
-    pub count: i64,
-}
-
-#[derive(Debug, Serialize)]
 pub struct DailyVisitorCount {
     pub date: String,
     pub count: i64,

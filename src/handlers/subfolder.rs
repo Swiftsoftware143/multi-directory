@@ -737,9 +737,6 @@ async fn list_businesses(
     limit: i64,
     offset: i64,
 ) -> Vec<BizCard> {
-    const COLS: &str = "b.id, b.name, b.slug, b.description, b.logo_url, b.rating, \
-                        b.review_count, b.address, b.city, b.state, dc.name AS category";
-
     /// Compile-time form of `COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
     /// const, so the same bytes are published as a macro and the statements that use it are
     /// assembled entirely at compile time (a run-time build is the defect the rule names).

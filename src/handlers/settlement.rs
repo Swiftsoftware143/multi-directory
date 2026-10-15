@@ -726,12 +726,6 @@ pub struct RunRow {
     pub statements_message: Option<String>,
 }
 
-const RUN_COLS: &str = "id, network_id, period_key, period_start, period_end, status, currency, \
-    rate_issue_per_point, rate_redeem_per_point, min_payout_cents, cycle_day, \
-    total_points_issued, total_points_redeemed, total_invoiced_cents, total_payout_cents, \
-    platform_spread_cents, provider, provider_ref, provider_message, notes, created_at, completed_at, \
-    triggered_by, statements_sent_at, statements_sent, statements_skipped, statements_message";
-
 /// Compile-time form of `RUN_COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
 /// const, so the same bytes are published as a macro and the statements that use it are
 /// assembled entirely at compile time (a run-time build is the defect the rule names).

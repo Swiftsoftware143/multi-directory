@@ -340,19 +340,6 @@ impl Default for TemplateEngine {
 
 // -- HTML sanitization ------------------------------------------------
 
-/// Escape HTML special characters to prevent XSS
-pub fn html_escape(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            '<' => "&lt;".to_string(),
-            '>' => "&gt;".to_string(),
-            '"' => "&quot;".to_string(),
-            '\'' => "&#x27;".to_string(),
-            _ => c.to_string(),
-        })
-        .collect()
-}
-
 /// Sanitize HTML by removing dangerous tags/attributes
 pub fn sanitize_html(input: &str) -> String {
     let mut output = input.to_string();

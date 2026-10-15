@@ -64,12 +64,6 @@ pub struct Transfer {
     pub decided_at: Option<DateTime<Utc>>,
 }
 
-const TRANSFER_COLUMNS: &str =
-    "t.id, t.business_id, b.name AS business_name, b.slug AS business_slug, \
-     b.directory_id, t.from_tenant_id, t.from_user_id, t.from_email, t.to_tenant_id, t.to_user_id, \
-     t.to_email, t.fee_cents, t.currency, t.fee_direction, t.host_stays, t.target_directory_id, \
-     t.status, t.notes, t.requested_by, t.created_at, t.updated_at, t.decided_at";
-
 /// Compile-time form of `TRANSFER_COLUMNS` for gate rule 5d: `concat!` needs a LITERAL, not a
 /// const, so the same bytes are published as a macro and the statements that use it are
 /// assembled entirely at compile time (a run-time build is the defect the rule names).

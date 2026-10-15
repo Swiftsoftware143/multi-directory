@@ -183,8 +183,6 @@ pub struct EmailSignature {
 
 // ==================== Template Handlers ====================
 
-const TEMPLATE_COLS: &str = "id, name, subject, body, body_text, variables, category, directory_id, network_id, event_key, is_active, created_at, updated_at";
-
 /// Compile-time form of `TEMPLATE_COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
 /// const, so the same bytes are published as a macro and the statements that use it are
 /// assembled entirely at compile time (a run-time build is the defect the rule names).
@@ -600,8 +598,6 @@ pub async fn resolve_system_template(
 }
 
 // ==================== Campaign Handlers ====================
-
-const CAMP_COLS: &str = "id, name, template_id, recipient_filter, sent_count, opened_count, status, scheduled_at, sent_at, directory_id, created_at, sequence_id, target_list, target_directory_id, network_id";
 
 /// Compile-time form of `CAMP_COLS` for gate rule 5d: `concat!` needs a LITERAL, not a
 /// const, so the same bytes are published as a macro and the statements that use it are

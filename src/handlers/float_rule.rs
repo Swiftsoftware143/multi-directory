@@ -111,12 +111,6 @@ pub fn parse_burn_months(raw: Option<&str>) -> Decimal {
         .unwrap_or_else(|| Decimal::from(DEFAULT_BURN_MONTHS))
 }
 
-pub fn parse_floor(raw: Option<&str>) -> Decimal {
-    raw.and_then(|s| Decimal::from_str(s.trim()).ok())
-        .filter(|v| *v >= Decimal::ZERO && *v <= Decimal::from(MAX_FLOAT_FLOOR))
-        .unwrap_or_else(|| Decimal::from(DEFAULT_FLOAT_FLOOR))
-}
-
 /// Build the rule from what is stored. `floor` arrives as a typed column (`minimum_float`); the
 /// other two are parsed from their stored text so a value written by hand in SQL still fails
 /// safe. A negative floor is treated as the default, not as "no floor".
