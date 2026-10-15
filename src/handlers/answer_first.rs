@@ -612,8 +612,19 @@ pub async fn suggest_competitors(
         .map_err(|e| AppError::Internal(format!("DB query failed: {}", e)))?
         .unwrap_or_else(|| "directory".to_string());
 
-    // Resolve category if we have the business name
+    // The caller's own listing is never suggested as its own competitor.
     let search_name = req.business_name.as_deref().unwrap_or("");
+
+    // The request carries a `category` and this handler's contract is "competitors from the same
+    // directory, category and city" — but the field used to be dropped on the floor, so an operator
+    // who asked for one category got every business in the directory back (the same
+    // accepted-and-ignored-filter class as the B2B list endpoints). A blank/whitespace value is no
+    // filter at all.
+    let want_category = req
+        .category
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty());
 
     for (id, name, city, state, cat_id) in same_dir {
         // Skip the business itself if name matches
@@ -630,6 +641,18 @@ pub async fn suggest_competitors(
         } else {
             None
         };
+
+        // Honour the category filter (see `want_category` above). A listing with no category can
+        // never match a category the caller asked for.
+        if let Some(want) = want_category {
+            let matches = cat_name
+                .as_deref()
+                .map(|cn| cn.trim().eq_ignore_ascii_case(want))
+                .unwrap_or(false);
+            if !matches {
+                continue;
+            }
+        }
 
         // Score relevance
         let city_match = req

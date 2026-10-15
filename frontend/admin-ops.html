@@ -544,6 +544,17 @@
         { k: 'mode', l: 'Mode', ty: 'select', o: ['append', 'replace'], d: 'append' } ] },
       { t: 'Expire stale redemptions', m: 'POST', p: '/deals/redemptions/expire', f: [
         { k: 'days', l: 'Older than (days)', ty: 'num', d: '30', q: true } ] }
+    ]},
+    /* The answer-first article helper had NO control here even though the operator guide
+       (guide.html) documents it, and the `category` it accepts was silently ignored — an
+       operator asking for one category got every business in the directory back. */
+    { g: 'Answer-First Articles', items: [
+      { t: 'Suggest competitors', m: 'POST', p: '/admin/articles/suggest-competitors', f: [
+        { k: 'directory_id', l: 'Directory', ty: 'dir' },
+        { k: 'business_name', l: 'Business name (optional)' },
+        { k: 'city', l: 'City (optional)' },
+        { k: 'state', l: 'State (optional)' },
+        { k: 'category', l: 'Only this category (optional)' } ] }
     ]}
   ];
 
