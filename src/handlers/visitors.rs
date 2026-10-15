@@ -116,7 +116,6 @@ pub struct TrackVisitorRequest {
 pub struct TrackPageViewRequest {
     pub session_id: Uuid,
     pub page_url: String,
-    pub referrer: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

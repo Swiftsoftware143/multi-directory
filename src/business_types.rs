@@ -62,24 +62,10 @@ pub fn normalize(business_type: &str) -> String {
     business_type.trim().to_ascii_lowercase()
 }
 
-/// `'a','b','c'` — for embedding in an `IN (...)` clause in a Rust raw string.
-///
-/// Never build `$N` placeholders out of this (this repo had 94 broken `\x24N`
-/// placeholders inside `r#"…"#` strings); these are literals from a compile-time
-/// constant, not user input.
-pub fn sql_in_list(types: &[&str]) -> String {
-    types
-        .iter()
-        .map(|t| format!("'{}'", t))
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
 /// `SUPPLIER_TYPES` as an owned vector, for `AND business_type = ANY($n)` binds.
 ///
-/// Prefer this over `sql_in_list` in query text: `= ANY($n)` needs no literal list in the
-/// SQL string at all, so a raw string cannot accidentally swallow a placeholder and the
-/// taxonomy lives in exactly one place.
+/// `= ANY($n)` needs no literal list in the SQL string at all, so a raw string cannot
+/// accidentally swallow a placeholder and the taxonomy lives in exactly one place.
 pub fn supplier_types_param() -> Vec<String> {
     SUPPLIER_TYPES.iter().map(|s| s.to_string()).collect()
 }
@@ -126,11 +112,5 @@ mod tests {
         assert!(is_valid("SUPPLIER"));
         assert_eq!(normalize("  Supplier "), "supplier");
         assert!(!is_valid("not-a-type"));
-
-        // The embedded SQL literal list must quote every value (an unquoted value would
-        // make the IN(...) clause a column reference instead of a literal).
-        let list = sql_in_list(SUPPLIER_TYPES);
-        assert_eq!(list.matches('\'').count(), SUPPLIER_TYPES.len() * 2);
-        assert!(list.starts_with("'supplier','distributor'"));
     }
 }

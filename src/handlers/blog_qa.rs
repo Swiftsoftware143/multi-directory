@@ -61,7 +61,6 @@ pub struct KeywordListResponse {
 pub struct GeneratePostsReq {
     pub directory_id: Uuid,
     pub count: Option<i32>,
-    pub template_id: Option<String>,
 }
 
 #[derive(Serialize)]

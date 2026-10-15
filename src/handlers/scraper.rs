@@ -19,7 +19,6 @@ use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct ScraperConfig {
-    pub source: String, // "nextdoor", "chamber", "yellowpages", "manta", "brightlocal", etc.
     pub directory_id: Option<String>,
     pub location: Option<String>, // city, state or zip
     pub query: Option<String>,    // category or keyword filter
