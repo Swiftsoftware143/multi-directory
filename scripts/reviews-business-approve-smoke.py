@@ -136,6 +136,16 @@ def main():
     created["business"] = bid
     check("disposable listing created", bool(bid))
 
+    # The listing carries an IMPORTED rating/count from public data (migration 171) and no rows of
+    # ours. Approving its first review must INCORPORATE that baseline (50 reviews @ 4.4), not replace
+    # it with our single 5-star row — that replacement destroyed the imported reputation of 3,914
+    # of 3,988 listings (measured 2026-10-15: 4.8/120 -> 5.0/1 on the first approval).
+    psql(f"UPDATE businesses SET imported_rating=4.4, imported_review_count=50 WHERE id='{bid}'")
+    baseline = psql(f"SELECT coalesce(imported_rating::text,'-')||'/'||coalesce(imported_review_count::text,'-') "
+                    f"FROM businesses WHERE id='{bid}'")
+    check("the disposable listing carries an imported baseline (4.4/50)", baseline == "4.4/50",
+          f"imported={baseline}")
+
     st, body = http("POST", f"/api/v1/businesses/{bid}/claim",
                     {"owner_email": owner_email, "owner_name": "ZZ Probe Owner",
                      "owner_phone": "4075550100"}, extra_headers=HARNESS)
@@ -208,8 +218,12 @@ def main():
     row = psql(f"SELECT status FROM reviews WHERE id='{rid}'")
     check("the database row is approved", row == "approved", f"row={row}")
 
-    agg = psql(f"SELECT review_count||'|'||(rating=5) FROM businesses WHERE id='{bid}'")
-    check("the business rating/review_count recomputed", agg == "1|true", f"agg={agg}")
+    agg = psql(f"SELECT review_count||'|'||round(rating::numeric,1) FROM businesses WHERE id='{bid}'")
+    check("the approval INCORPORATES the imported baseline (50+1=51), not replaces it",
+          agg == "51|4.4", f"agg={agg}")
+    imp = psql(f"SELECT coalesce(imported_rating::text,'-')||'/'||coalesce(imported_review_count::text,'-') "
+               f"FROM businesses WHERE id='{bid}'")
+    check("the listing's imported baseline survives the approval", imp == "4.4/50", f"imported={imp}")
 
     # ── 8. it is publicly visible ────────────────────────────────────────────────
     st, pub = http("GET", f"/api/v1/reviews?business_id={bid}")

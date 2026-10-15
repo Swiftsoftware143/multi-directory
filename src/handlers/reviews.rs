@@ -355,13 +355,25 @@ pub async fn delete_review(
     // rewriting the listing from ZaarHub's own reviews in that case DESTROYS the imported
     // rating/count a listing carries from public data (3,914 of 3,988 listings have one with zero
     // rows of ours behind them — measured 2026-10-15). A no-op removal must not touch the listing.
+    // The recompute below is the imported baseline (migration 171) PLUS our approved rows.
     if let (Some(bid), true) = (business_id, existing.status.as_deref() == Some("approved")) {
         sqlx::query(
-            r#"UPDATE businesses SET
-               rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE business_id = $1 AND status = 'approved'),
-               review_count = (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+            r#"UPDATE businesses b SET
+               rating = CASE
+                 WHEN COALESCE(b.imported_review_count, 0)
+                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved') = 0
+                   THEN NULL
+                 ELSE ROUND(
+                   (COALESCE(b.imported_rating, 0) * COALESCE(b.imported_review_count, 0)
+                     + COALESCE((SELECT SUM(rating) FROM reviews WHERE business_id = b.id AND status = 'approved'), 0))::numeric
+                   / (COALESCE(b.imported_review_count, 0)
+                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved')),
+                   1)
+               END,
+               review_count = COALESCE(b.imported_review_count, 0)
+                              + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved'),
                updated_at = NOW()
-               WHERE id = $1"#,
+               WHERE b.id = $1"#,
         )
         .bind(bid)
         .execute(&s.db)
@@ -786,13 +798,28 @@ async fn set_review_status_owned(
     // imported from public data has none (3,914 of 3,988 listings carry an imported rating/count
     // with zero rows of ours behind them; measured 2026-10-15: rejecting a pending review flipped a
     // listing from 4.8/120 to NULL/0). A no-op moderation must never destroy the imported numbers.
+    // When it DOES recompute, the aggregate is the listing's imported baseline
+    // (imported_rating/imported_review_count, migration 171) PLUS our approved rows — incorporating,
+    // never replacing: a listing with an imported 4.8/120 must read 4.8/121 after its first
+    // approval, not 5.0/1.
     if (review.status.as_deref() == Some("approved")) != (status == "approved") {
         sqlx::query(
-            r#"UPDATE businesses SET
-               rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE business_id = $1 AND status = 'approved'),
-               review_count = (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+            r#"UPDATE businesses b SET
+               rating = CASE
+                 WHEN COALESCE(b.imported_review_count, 0)
+                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved') = 0
+                   THEN NULL
+                 ELSE ROUND(
+                   (COALESCE(b.imported_rating, 0) * COALESCE(b.imported_review_count, 0)
+                     + COALESCE((SELECT SUM(rating) FROM reviews WHERE business_id = b.id AND status = 'approved'), 0))::numeric
+                   / (COALESCE(b.imported_review_count, 0)
+                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved')),
+                   1)
+               END,
+               review_count = COALESCE(b.imported_review_count, 0)
+                              + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved'),
                updated_at = NOW()
-               WHERE id = $1"#,
+               WHERE b.id = $1"#,
         )
         .bind(business_id)
         .execute(&s.db)
