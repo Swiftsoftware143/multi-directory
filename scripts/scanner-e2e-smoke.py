@@ -9,10 +9,14 @@ Drives the REAL scanner page in real headless Chromium and proves the whole chai
   QR read   the card is rendered by the app's OWN generator (/qrcode.min.js — the same library a
             member's wallet uses) and read back by the page's OWN decoder (jsQR), so the decode
             is not stubbed: the payload stored by handleQRCode() is compared byte-for-byte.
-  amount    a PURCHASE of a real amount is submitted from the page.
-  points    the page's success overlay shows the awarded points.
-  recorded  the award is verified in the database (member balance, the activity ledger, and the
-            scan record carrying the amount and the business).
+  modes     all THREE counter modes are driven from the page's own segment buttons and Process
+            button: a PURCHASE crediting a real amount, a CHECK-IN, and a REDEMPTION debiting
+            units off the balance. Each is submitted with the page's own fresh receipt id.
+  amount    the purchase amount (and the redemption's units) are typed into the page.
+  points    each success overlay shows the resulting units.
+  recorded  every mode is verified in the database: the member balance, the activity ledger
+            (purchase / checkin / redemption), the loyalty_checkins row, and one loyalty_scans
+            ledger row per mode carrying the amount, the resulting balance and the business.
 
 Run:  python3 scripts/scanner-e2e-smoke.py
 Exit: 0 = PASS, 1 = FAIL.  The probe fixture is disposable and torn down either way.
@@ -33,6 +37,7 @@ NODE_PATH = "/opt/swift/browser-run/node_modules"
 MINT = "/opt/swift/browser-run/md-mint-token.js"
 AUD = os.environ.get("AUD", f"/opt/swift/audits/zz-scanner-e2e-{time.strftime('%Y%m%d-%H%M%S')}")
 AMOUNT = "25.00"
+REDEEM = 10
 HARNESS = "scanner-e2e-probe"
 FAILS = []
 
@@ -103,12 +108,16 @@ def main():
         "SELECT id FROM loyalty_programs WHERE is_active AND network_id IS NOT NULL "
         "ORDER BY created_at LIMIT 1")
     earn_rate = float(one("SELECT earn_rate FROM loyalty_programs WHERE id='%s'" % program_id) or 1.0)
+    per_checkin = int(one("SELECT COALESCE(points_per_checkin, 0) FROM loyalty_programs WHERE id='%s'" % program_id) or 0)
+    min_redeem = int(one("SELECT COALESCE(min_redeem_balance, 0) FROM loyalty_programs WHERE id='%s'" % program_id) or 0)
     expected = int(math.floor(float(AMOUNT) * earn_rate))
+    start_balance = 150
     check("the live programme and directory resolve", bool(directory_id) and bool(program_id),
-          f"program={program_id[:8]} earn_rate={earn_rate}")
+          f"program={program_id[:8]} earn_rate={earn_rate} checkin={per_checkin} min_redeem={min_redeem}")
 
     before = {t: one(f"SELECT count(*) FROM {t}") for t in
-              ("visitor_accounts", "loyalty_members", "loyalty_activity", "loyalty_scans", "businesses")}
+              ("visitor_accounts", "loyalty_members", "loyalty_activity", "loyalty_scans",
+               "loyalty_checkins", "businesses")}
 
     slug = f"zz-scan-probe-{ts}"
     bid = one(
@@ -130,7 +139,7 @@ def main():
 
     env = dict(os.environ, MD_BASE=BASE, PAYLOAD=payload, BIZ_ID=bid,
                BIZ_NAME=f"ZZ Scanner Probe Co {ts}", BIZ_CAT="Home Services",
-               TOKEN=tok, AUD=AUD, AMOUNT=AMOUNT, NODE_PATH=NODE_PATH,
+               TOKEN=tok, AUD=AUD, AMOUNT=AMOUNT, REDEEM_POINTS=str(REDEEM), NODE_PATH=NODE_PATH,
                CHROME_PATH=chrome_path())
     check("a camera-capable browser is available", os.path.exists(env["CHROME_PATH"]),
           os.path.basename(env["CHROME_PATH"]))
@@ -160,46 +169,80 @@ def main():
     check("the decoded payload matches the card", proof.get("payloadMatches") is True,
           f"stored={(ds.get('storedQR') or '')[:24]}")
 
-    # ── amount + points on screen ───────────────────────────────────────────────
-    aw = proof.get("award", {})
-    check("the purchase amount was submitted from the page", aw.get("clicked") is True)
-    check("the page showed the award overlay", aw.get("shown") is True, f"title={aw.get('title')}")
-    check("the overlay reports a purchase credit", aw.get("title") == "Purchase Credited!",
-          f"title={aw.get('title')} label={aw.get('label')}")
-    check("the overlay shows the points earned", aw.get("points") == f"+{expected}",
-          f"points={aw.get('points')} expected=+{expected}")
+    # ── the three counter modes: on screen and on the wire ──────────────────────
+    modes = proof.get("modes", {})
+    pur, chi, red = modes.get("purchase", {}), modes.get("checkin", {}), modes.get("redemption", {})
+    finals = start_balance + expected + per_checkin - REDEEM
+
+    check("the purchase was submitted from the page", pur.get("clicked") is True)
+    check("the purchase overlay reports a credit", pur.get("title") == "Purchase Credited!",
+          f"title={pur.get('title')} label={pur.get('label')}")
+    check("the purchase overlay shows the points earned", pur.get("points") == f"+{expected}",
+          f"points={pur.get('points')} expected=+{expected}")
+    check("the check-in was submitted from the page", chi.get("clicked") is True)
+    check("the check-in overlay reports a check-in", chi.get("title") == "Checked In!",
+          f"title={chi.get('title')} label={chi.get('label')} details={chi.get('details')}")
+    check("the check-in overlay shows the check-in points", chi.get("points") == f"+{per_checkin}",
+          f"points={chi.get('points')} expected=+{per_checkin}")
+    check("the redemption was submitted from the page", red.get("clicked") is True)
+    check("the redemption overlay reports a redemption", red.get("title") == "Redeemed!",
+          f"title={red.get('title')} label={red.get('label')} details={red.get('details')}")
+    check("the redemption overlay shows the units taken off", red.get("points") == f"-{REDEEM}",
+          f"points={red.get('points')} expected=-{REDEEM}")
 
     scans = proof.get("scanReqs") or []
-    ok_api = bool(scans) and scans[0].get("status") == 200
-    body = {}
-    if ok_api:
+    bodies = {}
+    for s in scans:
         try:
-            body = json.loads(scans[0]["body"])
+            b = json.loads(s.get("body") or "{}")
         except Exception:
-            pass
-    check("the scan API answered 200", ok_api,
-          f"status={scans[0].get('status') if scans else None}")
-    check("the API awarded the expected points", body.get("points_awarded") == expected,
-          f"points_awarded={body.get('points_awarded')} expected={expected}")
+            b = {}
+        if b.get("status"):
+            bodies[b["status"]] = (s.get("status"), b)
+    check("the page made three real scan calls, all 200",
+          len(scans) == 3 and all(s.get("status") == 200 for s in scans),
+          f"calls={[s.get('status') for s in scans]}")
+    check("the API credited the expected purchase points",
+          bodies.get("credited", (None, {}))[1].get("points_awarded") == expected,
+          f"body={bodies.get('credited', (None, {}))[1]}")
+    check("the API awarded the programme's check-in points",
+          bodies.get("checked_in", (None, {}))[1].get("points_awarded") == per_checkin,
+          f"body={bodies.get('checked_in', (None, {}))[1]}")
+    check("the API redeemed exactly the units asked for",
+          bodies.get("redeemed", (None, {}))[1].get("points_redeemed") == REDEEM
+          and bodies.get("redeemed", (None, {}))[1].get("points_awarded") == -REDEEM,
+          f"body={bodies.get('redeemed', (None, {}))[1]}")
 
     # ── recorded in the database ────────────────────────────────────────────────
     bal = one(f"SELECT points_balance FROM loyalty_members WHERE id='{mem}'")
-    check("the member's balance grew by the award", bal == str(150 + expected),
-          f"balance={bal} expected={150 + expected}")
-    act = one("SELECT activity_type||'|'||points_earned FROM loyalty_activity "
-              f"WHERE member_id='{mem}' ORDER BY created_at DESC LIMIT 1")
-    check("the award is in the member's activity ledger", act == f"purchase|{expected}",
-          f"row={act}")
-    sc = one("SELECT scan_type||'|'||points_awarded||'|'||COALESCE(transaction_amount::text,'')"
-             f"||'|'||business_id FROM loyalty_scans WHERE member_id='{mem}' LIMIT 1")
-    check("the scan is recorded with the amount and the business",
-          sc == f"purchase|{expected}|{AMOUNT}|{bid}", f"row={sc}")
-    # The scanner page generates its own receipt id (`freshTxId()`) for every scan. It used to be
-    # dropped by the server; a real page-driven scan must now land it on the ledger row.
-    tx = one(f"SELECT COALESCE(transaction_id,'') FROM loyalty_scans WHERE member_id='{mem}' LIMIT 1")
-    check("the scan carries the scanner page's own receipt id", len(tx) >= 16, f"transaction_id={tx[:20]}")
+    check("the balance is start + purchase + check-in − redemption", bal == str(finals),
+          f"balance={bal} expected={finals} ({start_balance}+{expected}+{per_checkin}-{REDEEM})")
+    acts = psql("SELECT activity_type||'|'||points_earned FROM loyalty_activity "
+                f"WHERE member_id='{mem}' ORDER BY activity_type")
+    want = sorted([f"purchase|{expected}", f"checkin|{per_checkin}", f"redemption|{-REDEEM}"])
+    check("the activity ledger holds all three moves", acts == want, f"rows={acts}")
+    nci = one("SELECT COUNT(*) FROM loyalty_checkins "
+              f"WHERE member_id='{mem}' AND points_awarded={per_checkin} AND method='counter_scan'")
+    check("the check-in is recorded as a counter check-in", nci == "1", f"rows={nci}")
+    row_p = one("SELECT scan_type||'|'||points_awarded||'|'||COALESCE(transaction_amount::text,'')"
+                f"||'|'||business_id FROM loyalty_scans WHERE member_id='{mem}' AND scan_type='purchase'")
+    check("the purchase scan is recorded with its amount and the business",
+          row_p == f"purchase|{expected}|{AMOUNT}|{bid}", f"row={row_p}")
+    row_c = one("SELECT scan_type||'|'||points_awarded||'|'||business_id FROM loyalty_scans "
+                f"WHERE member_id='{mem}' AND scan_type='checkin'")
+    check("the check-in scan is recorded against the business",
+          row_c == f"checkin|{per_checkin}|{bid}", f"row={row_c}")
+    row_r = one("SELECT scan_type||'|'||points_awarded||'|'||points_balance||'|'||business_id "
+                f"FROM loyalty_scans WHERE member_id='{mem}' AND scan_type='redemption'")
+    check("the redemption scan is recorded (debit, resulting balance, the business)",
+          row_r == f"redemption|{-REDEEM}|{finals}|{bid}", f"row={row_r}")
+    nscan = one(f"SELECT COUNT(*) FROM loyalty_scans WHERE member_id='{mem}'")
+    check("all three scans are on the ledger", nscan == "3", f"rows={nscan}")
+    uniq = one(f"SELECT COUNT(DISTINCT transaction_id) FROM loyalty_scans WHERE member_id='{mem}'")
+    check("each page-driven scan carries its own receipt id", uniq == "3", f"distinct={uniq}")
 
     # ── teardown ────────────────────────────────────────────────────────────────
+    psql(f"DELETE FROM loyalty_checkins WHERE member_id='{mem}'")
     psql(f"DELETE FROM loyalty_scans WHERE member_id='{mem}'")
     psql(f"DELETE FROM loyalty_activity WHERE member_id='{mem}'")
     psql(f"DELETE FROM loyalty_members WHERE id='{mem}'")

@@ -9,10 +9,12 @@
  *      getUserMedia() hands the page real frames and videoWidth > 0;
  *   3. the page's OWN decoder (jsQR) reads the card out of the live frame and stores it
  *      as the scanned payload;
- *   4. a PURCHASE with a real amount is submitted and the page shows the awarded points.
+ *   4. all THREE counter modes (purchase, check-in, redemption) are submitted through the
+ *      page's own segment + Process controls and each success overlay shows its result.
  *
- * Env: MD_BASE, PAYLOAD, BIZ_ID, BIZ_NAME, BIZ_CAT, TOKEN, AUD, AMOUNT
- * Output: $AUD/browser-proof.json  (+ qr-probe.png, scanner-decoded.png, scanner-award.png)
+ * Env: MD_BASE, PAYLOAD, BIZ_ID, BIZ_NAME, BIZ_CAT, TOKEN, AUD, AMOUNT, REDEEM_POINTS
+ * Output: $AUD/browser-proof.json  (+ qr-probe.png, scanner-decoded.png, scanner-award.png,
+ *         scanner-checkin.png, scanner-redeem.png)
  */
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
@@ -26,6 +28,7 @@ const BIZ_CAT = process.env.BIZ_CAT || 'Home Services';
 const TOKEN = process.env.TOKEN;
 const AUD = process.env.AUD;
 const AMOUNT = process.env.AMOUNT || '25.00';
+const REDEEM_POINTS = process.env.REDEEM_POINTS || '10';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
@@ -119,29 +122,55 @@ async function scanAndAward(y4m) {
   }));
   await page.screenshot({ path: AUD + '/scanner-decoded.png' }).catch(() => {});
 
-  // amount arm: purchase
-  let award = { clicked: false };
-  if (decoded) {
-    await page.click('#segPurchase').catch(() => {});
-    await sleep(400);
-    await page.evaluate((a) => { document.getElementById('txAmount').value = a; }, AMOUNT);
+  // ── the three counter modes, driven from the page's own controls ─────────────
+  // A real counter does all three: credit a purchase, check a visitor in, and redeem
+  // units off their balance. Each arm closes the previous overlay, picks the segment
+  // button, mints a FRESH receipt id (the page's own freshTxId), fills the amount where
+  // the mode needs one, presses the page's Process button and reads what the overlay says.
+  async function runMode(seg, amount, shot) {
+    await page.evaluate(() => {
+      const o = document.getElementById('successOverlay');
+      if (o) o.classList.remove('show');
+    });
+    await sleep(250);
+    await page.click(seg).catch(() => {});
+    await sleep(250);
+    await page.evaluate((a) => {
+      const tid = document.getElementById('txId');
+      if (tid) tid.value = (typeof freshTxId === 'function') ? freshTxId() : tid.value;
+      if (a !== null) {
+        const el = document.getElementById('txAmount');
+        if (el) el.value = a;
+      }
+    }, amount);
     await page.click('#processBtn').catch(() => {});
     await page.waitForFunction(
       () => document.getElementById('successOverlay').classList.contains('show'),
       { timeout: 20000 }).catch(() => {});
-    award = await page.evaluate(() => ({
+    const st = await page.evaluate(() => ({
       clicked: true,
       shown: document.getElementById('successOverlay').classList.contains('show'),
+      icon: document.getElementById('successIcon').textContent.trim(),
       title: document.getElementById('successTitle').textContent.trim(),
       member: document.getElementById('successMemberName').textContent.trim(),
       points: document.getElementById('successPoints').textContent.trim(),
       label: document.getElementById('successPointsLabel').textContent.trim(),
+      details: document.getElementById('successDetails').textContent.trim(),
     }));
-    await page.screenshot({ path: AUD + '/scanner-award.png' }).catch(() => {});
+    await page.screenshot({ path: AUD + '/' + shot }).catch(() => {});
+    return st;
   }
 
+  const modes = {};
+  if (decoded) {
+    modes.purchase = await runMode('#segPurchase', AMOUNT, 'scanner-award.png');
+    modes.checkin = await runMode('#segCheckin', null, 'scanner-checkin.png');
+    modes.redemption = await runMode('#segRedeem', REDEEM_POINTS, 'scanner-redeem.png');
+  }
+  const award = modes.purchase || { clicked: false };
+
   const out = { httpStatus: resp.status(), pageErrors, consoleErrors,
-    decoded, payloadMatches: decodeState.storedQR === PAYLOAD, decodeState, award, scanReqs };
+    decoded, payloadMatches: decodeState.storedQR === PAYLOAD, decodeState, award, modes, scanReqs };
   await browser.close();
   return out;
 }
