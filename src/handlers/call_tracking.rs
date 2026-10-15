@@ -475,20 +475,6 @@ pub async fn update_phone_number(
     let _bind_values: Vec<serde_json::Value> = Vec::new();
     let _param_idx = 1;
 
-    macro_rules! push_update {
-        ($field:expr, $val:expr) => {
-            if $val.is_some() {
-                updates.push(format!("{} = ${}", $field, param_idx));
-                if let Some(v) = $val {
-                    // Use serde_json::Value for flexibility
-                    bind_values.push(serde_json::to_value(&v).unwrap_or(serde_json::Value::Null));
-                    params.push(format!("${}", param_idx));
-                    param_idx += 1;
-                }
-            }
-        };
-    }
-
     // Since sqlx doesn't do dynamic bind easily, use raw sql with explicit bind
     // We'll use a simpler approach with query builder
     let log = sqlx::query_as::<_, PhoneNumber>(

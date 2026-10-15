@@ -1065,8 +1065,6 @@ pub async fn execute_settlement(
         "pending_provider"
     } else if failed > 0 && paid == 0 {
         "failed"
-    } else if paid > 0 && failed == 0 {
-        "completed"
     } else if paid > 0 {
         "completed"
     } else {

@@ -603,13 +603,9 @@ fn normalize_answers(raw: &Value) -> Vec<Value> {
                     out.insert("tags".into(), json!(tags));
                     Some(Value::Object(out))
                 }
-                other => {
-                    if other.is_null() {
-                        None
-                    } else {
-                        None
-                    }
-                }
+                // Anything that is not a {question_id, value} object carries no
+                // question to attach an answer to, so it is dropped.
+                _ => None,
             })
             .collect(),
         Value::Object(o) => o

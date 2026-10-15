@@ -71,7 +71,7 @@ pub fn resolve_cta_url(cta_type: &str, business: &Value, meta_data: &Value) -> S
         "view_catalog" => "#catalog".to_string(),
         "join_rewards" => "#loyalty".to_string(),
         "rsvp" => "#events".to_string(),
-        "none" | _ => "#".to_string(),
+        _ => "#".to_string(),
     }
 }
 

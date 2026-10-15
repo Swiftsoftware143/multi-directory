@@ -276,32 +276,6 @@ pub async fn assert_submission_admin(
     }
 }
 
-/// Guard for a business transfer: the caller must be a party (either tenant side), unless
-/// they are the platform operator.
-pub async fn assert_transfer_party(
-    db: &PgPool,
-    claims: &Claims,
-    transfer_id: Uuid,
-) -> Result<(), AppError> {
-    if is_platform_operator(claims) {
-        return Ok(());
-    }
-    let tid = caller_tenant(claims)?;
-    let ok = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT 1 FROM business_transfers t \
-         WHERE t.id = $1 AND (t.from_tenant_id = $2 OR t.to_tenant_id = $2))",
-    )
-    .bind(transfer_id)
-    .bind(tid)
-    .fetch_one(db)
-    .await?;
-    if ok {
-        Ok(())
-    } else {
-        Err(AppError::NotFound("Transfer not found".into()))
-    }
-}
-
 /// Guard for a deal: the deal's business or directory must be one the caller administers.
 pub async fn assert_deal_admin(
     db: &PgPool,

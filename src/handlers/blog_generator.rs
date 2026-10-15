@@ -4,7 +4,7 @@
 //! multi-LLM provider selection (DeepSeek, OpenAI, Gemini), and image/video injection.
 
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json,

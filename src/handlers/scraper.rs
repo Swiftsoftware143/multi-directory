@@ -363,8 +363,6 @@ pub async fn populate_category(
     State(s): State<AppState>,
     Json(req): Json<PopulateCategoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    use sqlx::Row;
-
     // Resolve directory (UUID or slug)
     let dir_id: Uuid = if let Ok(u) = Uuid::parse_str(&req.directory_id) {
         u
