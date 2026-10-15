@@ -697,6 +697,42 @@ pub async fn visitor_profile(
             Vec::new()
         });
 
+    // The visitor's saved businesses. This used to be a hardcoded empty list, so the shopper's
+    // Favorites section and the Saved Places screen claimed they had saved nothing no matter how
+    // many businesses they bookmarked (measured 2026-10-15). Same shape as
+    // GET /api/v1/visitor/favorites so every screen reading either call agrees.
+    let favorites = sqlx::query_as::<_, crate::handlers::visitors::FavoriteBusinessRow>(
+        r#"SELECT
+            vf.id,
+            vf.created_at as saved_at,
+            b.id as business_id,
+            b.name as business_name,
+            b.slug as business_slug,
+            b.city,
+            b.state,
+            dc.name as category_name,
+            b.images,
+            b.rating,
+            b.review_count,
+            b.phone,
+            d.slug as directory_slug
+        FROM visitor_favorites vf
+        JOIN businesses b ON b.id = vf.business_id
+        LEFT JOIN directory_categories dc ON dc.id = b.category_id
+        JOIN directories d ON d.id = vf.directory_id
+        WHERE vf.visitor_account_id = $1
+        ORDER BY vf.created_at DESC"#,
+    )
+    .bind(visitor_id)
+    .fetch_all(&s.db)
+    .await
+    .unwrap_or_else(|e| {
+        // Never take the visitor dashboard down with a secondary read, but never swallow it
+        // silently either (same policy as the saved_deals read above).
+        eprintln!("portal favorites query failed: {e}");
+        Vec::new()
+    });
+
     Ok(Json(json!({
         "visitor": {
             "id": visitor.id,
@@ -716,7 +752,7 @@ pub async fn visitor_profile(
                 "image_url": img,
             })
         }).collect::<Vec<_>>(),
-        "favorites": [],
+        "favorites": favorites,
         "badges": [],
     })))
 }

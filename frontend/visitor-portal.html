@@ -159,7 +159,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <div class="user-info" id="userInfo">Community Visitor</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
-      <a href="/saved-places" style="color:var(--primary);font-size:.9rem;cursor:pointer;text-decoration:none;padding:4px 8px;border:1px solid var(--primary);border-radius:4px;" title="My Saved Places">⭐ Saved</a>
+      <a href="/user/saved" style="color:var(--primary);font-size:.9rem;cursor:pointer;text-decoration:none;padding:4px 8px;border:1px solid var(--primary);border-radius:4px;" title="My Saved Places">⭐ Saved</a>
       <a href="/guides/participant-guide.html" target="_blank" style="color:var(--primary);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="How it Works">❓</a>
       <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
     </div>
@@ -453,7 +453,12 @@ function renderFavorites(favorites) {
   if (!favorites || favorites.length === 0) return;
   var html = '<div class="card-grid">';
   for (var f of favorites) {
-    html += '<div class="card"><h4>' + esc(f.name || 'Business') + '</h4></div>';
+    // The profile API names these business_*: fall back to them or every saved card just says
+    // "Business" (2026-10-15).
+    var name = f.name || f.business_name || 'Business';
+    var where = [f.city, f.state].filter(Boolean).join(', ');
+    var href = f.business_id ? ('/biz/' + f.business_id + (f.directory_slug ? '?slug=' + encodeURIComponent(f.directory_slug) : '')) : '/user/saved';
+    html += '<div class="card"><a href="' + href + '" style="text-decoration:none;color:inherit"><h4>' + esc(name) + '</h4><div style="font-size:.82rem;color:var(--text-light)">' + esc(where) + '</div></a></div>';
   }
   html += '</div>';
   $('favoritesList').innerHTML = html;

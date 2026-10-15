@@ -200,7 +200,9 @@ let currentTab = 'saved';
 
 // ── Auth ──
 function getToken() {
-  return localStorage.getItem('zh_token');
+  // The main app signs in as 'zh_token'; the visitor portal signs in as 'visitorToken'. A shopper
+  // arriving from the portal used to be bounced back to sign-in (2026-10-15).
+  return localStorage.getItem('zh_token') || localStorage.getItem('visitorToken');
 }
 
 function checkAuth() {
@@ -215,6 +217,8 @@ function checkAuth() {
 function logout() {
   localStorage.removeItem('zh_token');
   localStorage.removeItem('zh_user');
+  localStorage.removeItem('visitorToken');
+  localStorage.removeItem('visitorInfo');
   window.location.href = '/zaarhub';
 }
 

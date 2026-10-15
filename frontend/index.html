@@ -896,6 +896,10 @@ function route(){
     }else{
       state.page='city';state.slug=parts[2];state.filterCategory='';state.filterNeighbourhood=''
     }
+  }else if(hash.startsWith('/saved')){
+    // The shopper's Saved Places screen. The view existed but nothing routed to it, so the
+    // heart/Save buttons collected bookmarks the shopper could never open (2026-10-15).
+    state.page='saved'
   }else if(hash.startsWith('/blog/')){
     var parts=hash.split('/')
     state.page='blog';state.slug=parts[2]||''
@@ -1137,6 +1141,7 @@ async function load(){
     else if(state.page==='events')await loadEventsPage()
     else if(state.page==='blog')await loadBlogPage()
     else if(state.page==='biz')await loadBizPage()
+    else if(state.page==='saved')await loadSavedPlaces()
     else if(state.page==='about')await loadAboutPage()
     else if(state.page==='notifications')await loadNotificationsPage()
   }catch(e){
@@ -1164,6 +1169,7 @@ function renderShell(){
     <div class="zh-nav-links" id="zh-desktop-nav">
       <a href="#/deals">🎁 Deals</a>
       <a href="#/events">📅 Events</a>
+      <a href="#/saved">❤️ Saved</a>
       <a href="#/about">ℹ️ About</a>
       <a href="/distributor" style="font-size:.78rem;padding:6px 10px;background:var(--primary-light);color:var(--primary-hover);border-radius:100px">📦 Supplier Login</a>
       <a href="/portal" class="zh-btn-primary">+ Add Business</a>
@@ -1206,6 +1212,7 @@ function renderShell(){
     <a href="#/cities" onclick="return navTo(event,'#/cities')"><span class="nav-icon">🏙️</span>Cities</a>
     <a href="#/deals" onclick="return navTo(event,'#/deals')"><span class="nav-icon">🎁</span>Deals</a>
     <a href="#/events" onclick="return navTo(event,'#/events')"><span class="nav-icon">📅</span>Events</a>
+    <a href="#/saved" onclick="return navTo(event,'#/saved')"><span class="nav-icon">❤️</span>Saved</a>
     <a href="/visitor" onclick="return navTo(event,'/visitor')"><span class="nav-icon">👤</span>Account</a>
     <a href="#/search/" onclick="return navTo(event,'#/search/')"><span class="nav-icon">🔍</span>Search</a>
   </div>
@@ -3527,9 +3534,19 @@ async function handleClaimBiz(bizId){
 async function loadSavedPlaces(){
   var el=document.getElementById('zh-content')
   el.innerHTML='<div class="zh-search-hero"><div class="zh-search-hero-inner"><h1>❤️ Saved Places</h1><p style="color:#94a3b8">Your favorited businesses and saved spots</p></div></div><div class="zh-section"><div class="zh-section-inner"><div class="zh-loading"><div class="zh-spinner"></div></div></div></div>'
+  if(!isLoggedIn()){
+    var lsec=el.querySelector('.zh-section .zh-section-inner')
+    if(lsec)lsec.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">\u2764\ufe0f</div><h3 style="margin-bottom:6px">Sign in to see your saved places</h3><p style="color:var(--text-light);margin-bottom:14px">Your bookmarks live in your account.</p><button class="btn btn-primary" onclick="showAuthModal(\'login\')">Sign in</button></div>'
+    return
+  }
   try{
-    var r=await g('/visitor/favorites')
-    renderSavedPlaces(r)
+    // /visitor/favorites answers { favorites:[...], count } and needs the shopper's own token.
+    // The screen used to hand the whole envelope (and no auth header) to the renderer, so a
+    // shopper WITH bookmarks was told "No saved places yet" (measured 2026-10-15).
+    var r=await fetch('/api/v1/visitor/favorites',{headers:{'Authorization':'Bearer '+authUser.token}})
+    var d=await r.json()
+    if(!r.ok)throw new Error(d.error||d.message||'Could not load your saved places')
+    renderSavedPlaces(Array.isArray(d)?d:(d.favorites||[]))
   }catch(e){
     var sec=el.querySelector('.zh-section .zh-section-inner')
     if(sec)sec.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-light)">'+esc(e.message)+'</div>'
@@ -3546,8 +3563,15 @@ function renderSavedPlaces(items){
   var html='<div class="zh-biz-grid">'
   for(var i=0;i<items.length;i++){
     var b=items[i]
+    // The favourites API names every field business_*: map it here instead of assuming the
+    // screen's own names, or the card renders the first letter of "undefined" (2026-10-15).
+    var bId=b.business_id||b.id
+    var bName=b.business_name||b.name||'Business'
+    var bSlug=b.directory_slug||b.slug||''
+    var bImg=b.image_url||(b.images&&b.images[0])||''
+    var bWhere=[b.city,b.state].filter(Boolean).join(', ')
     var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
-    html+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'"><div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="">':b.name[0])+'</div><div class="zh-biz-body"><h4>'+esc(b.name)+'</h4><div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div><div style="font-size:.78rem;color:var(--text-light)">'+esc(b.address||'')+'</div></div></div>'
+    html+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+bSlug+'/biz/'+bId+'\'"><div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(bImg?'<img src="'+esc(bImg)+'" alt="">':esc(bName.charAt(0)))+'</div><div class="zh-biz-body"><h4>'+esc(bName)+'</h4><div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div><div style="font-size:.78rem;color:var(--text-light)">'+esc(bWhere)+'</div></div></div>'
   }
   html+='</div>'
   el.innerHTML=html
@@ -3580,8 +3604,11 @@ async function toggleFavorite(bizId){
     var r=await fetch('/api/v1/visitor/favorites/'+bizId,{method:'POST',headers:{'Authorization':'Bearer '+authUser.token,'Content-Type':'application/json'}})
     var d=await r.json()
     if(!r.ok)throw new Error(d.error||'Failed')
-    renderBizFavBtn(bizId,d.favorited)
-    return d.favorited
+    // The API answers { saved: bool }; the screen used to read `favorited`, so the button kept
+    // showing "🤍 Save" after a successful save (2026-10-15).
+    var isFav=d.saved!==undefined?d.saved:!!d.favorited
+    renderBizFavBtn(bizId,isFav)
+    return isFav
   }catch(e){alert(e.message)}
 }
 
@@ -3590,7 +3617,7 @@ async function checkFavorite(bizId){
   try{
     var r=await fetch('/api/v1/visitor/favorites/check/'+bizId,{headers:{'Authorization':'Bearer '+authUser.token}})
     var d=await r.json()
-    return d.favorited
+    return d.saved!==undefined?d.saved:!!d.favorited
   }catch(e){return false}
 }
 
@@ -3683,10 +3710,30 @@ function updateWeatherDisplay(city, text) {
 }
 
 // ── Init ──
+// Shopper session. This app has no sign-in form of its own: shoppers sign in on the Visitor Portal
+// (/visitor → /portal), which stores 'visitorToken' / 'visitorInfo'. index.html referenced an
+// `authUser` global and a `showAuthModal()` that were never defined anywhere, so every action that
+// needs an account — save a business, post a review, open Saved Places — threw a ReferenceError and
+// silently did nothing (measured 2026-10-15). Both live here now.
+function currentShopper(){
+  try{
+    var t=localStorage.getItem('visitorToken')||localStorage.getItem('zh_token')
+    if(!t)return null
+    var info=null
+    try{info=JSON.parse(localStorage.getItem('visitorInfo')||localStorage.getItem('zh_user')||'null')}catch(e){}
+    var u=info||{}
+    u.token=t
+    if(!u.name)u.name=u.email||'My Account'
+    return u
+  }catch(e){return null}
+}
+function showAuthModal(){window.location.href='/visitor'}
+try{Object.defineProperty(window,'authUser',{get:currentShopper,configurable:true})}catch(e){}
 // Initialize role mode
 state.roleMode=getRoleMode()
-var _authUser=null
-try{var au=localStorage.getItem('authUser');if(au){_authUser=JSON.parse(au);state.authUser=_authUser}}catch(e){}
+var _authUser=currentShopper()
+try{var au=localStorage.getItem('authUser');if(au&&!_authUser){_authUser=JSON.parse(au)}}catch(e){}
+state.authUser=_authUser
 // Update header based on auth user
 setTimeout(function(){
   var signinBtn=document.getElementById('zh-signin-btn')
