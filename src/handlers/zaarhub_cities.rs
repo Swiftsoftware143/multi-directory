@@ -26,6 +26,13 @@ pub struct ListingQuery {
 pub struct SearchQuery {
     pub q: Option<String>,
     pub city: Option<String>,
+    /// Category name or slug — the search screen's category filter.
+    pub category: Option<String>,
+    /// Caller position for the "Near me" filter (decimal degrees).
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+    /// Search radius in METRES, exactly as the page's radius selector sends it (1000..25000).
+    pub radius: Option<i32>,
     pub page: Option<i32>,
     pub per_page: Option<i32>,
 }
@@ -75,6 +82,44 @@ fn listing_json(r: &sqlx::postgres::PgRow) -> Value {
         "display_order": r.try_get::<i32, _>("display_order").unwrap_or(0),
         "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
         "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
+    })
+}
+
+/// One public search result. The field names are what the search screen renders (`name`, `rating`,
+/// `review_count`, `latitude`, `longitude`, `image_url`, `directory_slug`); the `business_name` /
+/// `coordinates_lat` / `coordinates_lng` spellings are kept so older consumers of `/zaarhub/search`
+/// keep working.
+fn search_result_json(r: &sqlx::postgres::PgRow) -> Value {
+    let id = r
+        .try_get::<Uuid, _>("id")
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+    let name = r.try_get::<String, _>("name").unwrap_or_default();
+    let lat = r.try_get::<Option<f64>, _>("latitude").unwrap_or_default();
+    let lng = r.try_get::<Option<f64>, _>("longitude").unwrap_or_default();
+    json!({
+        "id": id,
+        "business_id": id,
+        "name": name,
+        "business_name": name,
+        "slug": r.try_get::<Option<String>, _>("slug").unwrap_or_default(),
+        "description": r.try_get::<Option<String>, _>("description").unwrap_or_default(),
+        "address": r.try_get::<Option<String>, _>("address").unwrap_or_default(),
+        "city": r.try_get::<Option<String>, _>("city").unwrap_or_default(),
+        "state": r.try_get::<Option<String>, _>("state").unwrap_or_default(),
+        "phone": r.try_get::<Option<String>, _>("phone").unwrap_or_default(),
+        "rating": r.try_get::<Option<f64>, _>("rating").unwrap_or_default(),
+        "review_count": r.try_get::<Option<i32>, _>("review_count").unwrap_or_default(),
+        "latitude": lat,
+        "longitude": lng,
+        "coordinates_lat": lat,
+        "coordinates_lng": lng,
+        "image_url": r.try_get::<Option<String>, _>("image_url").unwrap_or_default(),
+        "is_claimed": r.try_get::<Option<bool>, _>("claimed").unwrap_or_default().unwrap_or(false),
+        "category": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
+        "category_name": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
+        "category_slug": r.try_get::<Option<String>, _>("category_slug").unwrap_or_default(),
+        "directory_slug": r.try_get::<Option<String>, _>("directory_slug").unwrap_or_default(),
     })
 }
 
@@ -302,65 +347,166 @@ pub async fn list_categories(State(state): State<AppState>) -> ApiResult<Json<Va
     ))
 }
 
-/// Search listings across all cities
+/// Search businesses across all directories.
+///
+/// The public search screen (`frontend/index.html`, `frontend/zaarhub.html` and
+/// `frontend/claim.html`) renders its cards from `results` / `deals` / `total`, reading `name`,
+/// `rating`, `review_count`, `latitude`, `longitude`, `image_url` and `directory_slug`, and links
+/// each card to `#/city/<directory_slug>/biz/<id>` — the public business-detail route, which
+/// resolves the row in `businesses`. This handler therefore searches `businesses` (the same entity
+/// the detail page, the city grid and the favourites list use) and answers THAT shape.
+///
+/// It used to search `business_listings` (ids that mostly do not resolve on the detail page) and
+/// answer `{listings: [...]}`, so every search rendered "No results found" while the API answered
+/// 200 — and the `category` / `lat` / `lng` / `radius` parameters the screen sends were ignored
+/// entirely (measured 2026-10-15).
 pub async fn search_listings(
     State(state): State<AppState>,
     Query(params): Query<SearchQuery>,
 ) -> ApiResult<Json<Value>> {
     let page = default_page(params.page);
     let per_page = default_per_page(params.per_page);
-    let search_term = params.q.unwrap_or_default();
+    let search_term = params.q.unwrap_or_default().trim().to_string();
+    let category = params.category.unwrap_or_default().trim().to_string();
+    let city = params.city.unwrap_or_default().trim().to_string();
+    let (lat, lng, radius) = (params.lat, params.lng, params.radius);
 
-    if search_term.is_empty() {
-        return Ok(Json(
-            json!({"listings": [], "pagination": {"page": 1, "per_page": per_page, "total": 0, "total_pages": 0}}),
-        ));
+    // A blank box is not a filter: with nothing to search on, answer empty rather than list everything.
+    if search_term.is_empty() && category.is_empty() {
+        return Ok(Json(json!({
+            "results": [],
+            "deals": [],
+            "listings": [],
+            "total": 0,
+            "pagination": { "page": 1, "per_page": per_page, "total": 0, "total_pages": 0 }
+        })));
     }
 
-    let has_city = params.city.is_some();
+    // ONE filter shared by the count / page / deals queries so the three can never drift. Every
+    // optional filter is BOUND (never interpolated) and short-circuits on '' / NULL, so the SQL
+    // string is static and the bind order is identical in all three. It is spliced in at COMPILE
+    // time (concat! + macro), never assembled at run time.
+    // `radius` is metres, exactly as the page's radius selector sends it; the distance term is the
+    // haversine great-circle distance in metres.
+    macro_rules! search_filter {
+        () => {
+            "b.is_active = true \
+             AND (d.status = 'active' OR d.status IS NULL) \
+             AND ($1 = '' OR b.name ILIKE '%' || $1 || '%' \
+                  OR COALESCE(b.description, '') ILIKE '%' || $1 || '%' \
+                  OR COALESCE(dc.name, '') ILIKE '%' || $1 || '%') \
+             AND ($2 = '' OR lower(COALESCE(dc.name, '')) = lower($2) \
+                  OR lower(COALESCE(dc.slug, '')) = lower($2)) \
+             AND ($3 = '' OR d.slug = $3) \
+             AND ($4::double precision IS NULL OR $5::double precision IS NULL OR $6::integer IS NULL \
+                  OR (COALESCE(b.latitude, b.lat) IS NOT NULL AND COALESCE(b.longitude, b.lng) IS NOT NULL \
+                      AND 6371000 * 2 * asin(sqrt( \
+                            power(sin(radians((COALESCE(b.latitude, b.lat) - $4) / 2)), 2) \
+                          + cos(radians($4)) * cos(radians(COALESCE(b.latitude, b.lat))) \
+                            * power(sin(radians((COALESCE(b.longitude, b.lng) - $5) / 2)), 2) \
+                      )) <= $6))"
+        };
+    }
 
-    let (rows, total): (Vec<sqlx::postgres::PgRow>, i64) = if has_city {
-        let city = params.city.as_ref().unwrap();
-        let count = sqlx::query(
-            "SELECT COUNT(*) AS cnt FROM business_listings bl \
-             JOIN city_pages cp ON bl.city_page_id = cp.id \
-             WHERE cp.city_slug = $1 AND (bl.business_name ILIKE '%' || $2 || '%' OR bl.description ILIKE '%' || $2 || '%' OR bl.category ILIKE '%' || $2 || '%')"
-        ).bind(city).bind(&search_term)
-         .fetch_one(&state.db).await?;
-        let rows = sqlx::query(
-            "SELECT bl.* FROM business_listings bl \
-             JOIN city_pages cp ON bl.city_page_id = cp.id \
-             WHERE cp.city_slug = $1 AND (bl.business_name ILIKE '%' || $2 || '%' OR bl.description ILIKE '%' || $2 || '%' OR bl.category ILIKE '%' || $2 || '%') \
-             ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST LIMIT $3 OFFSET $4"
-        ).bind(city).bind(&search_term).bind(per_page as i64).bind(offset(page, per_page) as i64)
-         .fetch_all(&state.db).await?;
-        let total: i64 = count.get("cnt");
-        (rows, total)
-    } else {
-        let count = sqlx::query(
-            "SELECT COUNT(*) AS cnt FROM business_listings bl \
-             WHERE bl.business_name ILIKE '%' || $1 || '%' OR bl.description ILIKE '%' || $1 || '%' OR bl.category ILIKE '%' || $1 || '%'"
-        ).bind(&search_term)
-         .fetch_one(&state.db).await?;
-        let rows = sqlx::query(
-            "SELECT bl.* FROM business_listings bl \
-             WHERE bl.business_name ILIKE '%' || $1 || '%' OR bl.description ILIKE '%' || $1 || '%' OR bl.category ILIKE '%' || $1 || '%' \
-             ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST LIMIT $2 OFFSET $3"
-        ).bind(&search_term).bind(per_page as i64).bind(offset(page, per_page) as i64)
-         .fetch_all(&state.db).await?;
-        let total: i64 = count.get("cnt");
-        (rows, total)
-    };
+    let total: i64 = sqlx::query_scalar(concat!(
+        "SELECT COUNT(*) FROM businesses b \
+         JOIN directories d ON d.id = b.directory_id \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE ",
+        search_filter!()
+    ))
+    .bind(&search_term)
+    .bind(&category)
+    .bind(&city)
+    .bind(lat)
+    .bind(lng)
+    .bind(radius)
+    .fetch_one(&state.db)
+    .await?;
 
-    let listings: Vec<Value> = rows.iter().map(listing_json).collect();
+    let rows = sqlx::query(concat!(
+        "SELECT b.id, b.name, b.slug, b.description, b.address, b.city, b.state, b.phone, \
+                b.rating, b.review_count, b.claimed, \
+                COALESCE(b.latitude, b.lat)  AS latitude, \
+                COALESCE(b.longitude, b.lng) AS longitude, \
+                CASE WHEN COALESCE(b.logo_url, b.cover_url) LIKE 'http%' \
+                       OR COALESCE(b.logo_url, b.cover_url) LIKE '/%' \
+                     THEN COALESCE(b.logo_url, b.cover_url) END AS image_url, \
+                dc.name AS category, dc.slug AS category_slug, \
+                d.slug AS directory_slug \
+         FROM businesses b \
+         JOIN directories d ON d.id = b.directory_id \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE ",
+        search_filter!(),
+        " \
+         ORDER BY b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST, b.name ASC \
+         LIMIT $7 OFFSET $8"
+    ))
+    .bind(&search_term)
+    .bind(&category)
+    .bind(&city)
+    .bind(lat)
+    .bind(lng)
+    .bind(radius)
+    .bind(per_page as i64)
+    .bind(offset(page, per_page) as i64)
+    .fetch_all(&state.db)
+    .await?;
+
+    let results: Vec<Value> = rows.iter().map(search_result_json).collect();
+
+    // Deals attached to matching businesses — the screen renders a Deals strip under the businesses.
+    let deal_rows = sqlx::query(concat!(
+        "SELECT de.id, de.title, de.deal_price, b.id AS business_id, \
+                b.name AS business_name, d.slug AS directory_slug \
+         FROM deals de \
+         JOIN businesses b ON b.id = de.business_id \
+         JOIN directories d ON d.id = b.directory_id \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE de.is_active = true AND (",
+        search_filter!(),
+        ") \
+         ORDER BY de.featured DESC NULLS LAST, de.created_at DESC \
+         LIMIT 20"
+    ))
+    .bind(&search_term)
+    .bind(&category)
+    .bind(&city)
+    .bind(lat)
+    .bind(lng)
+    .bind(radius)
+    .fetch_all(&state.db)
+    .await?;
+
+    let deals: Vec<Value> = deal_rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
+                "title": r.try_get::<String, _>("title").unwrap_or_default(),
+                "deal_price": r.try_get::<Option<String>, _>("deal_price").unwrap_or_default(),
+                "business_id": r.try_get::<Uuid, _>("business_id").map(|v| v.to_string()).unwrap_or_default(),
+                "business_name": r.try_get::<String, _>("business_name").unwrap_or_default(),
+                "directory_slug": r.try_get::<String, _>("directory_slug").unwrap_or_default(),
+            })
+        })
+        .collect();
+
     let total_pages = if total == 0 {
         0
     } else {
         ((total as f64) / (per_page as f64)).ceil() as i32
     };
 
+    let results_json = Value::Array(results);
+
     Ok(Json(json!({
-        "listings": listings,
+        // `results` is the key the screen reads; `listings` is kept as the legacy alias.
+        "results": results_json.clone(),
+        "listings": results_json,
+        "deals": deals,
+        "total": total,
         "pagination": {
             "page": page,
             "per_page": per_page,
