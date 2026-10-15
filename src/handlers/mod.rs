@@ -107,6 +107,7 @@ pub mod prospecting;
 pub mod referral;
 pub mod service_catalog;
 pub mod sso;
+#[allow(dead_code)] // CRM-placeholder surface — owned by the CoreSwift lane (item 19).
 pub mod tag_automation;
 pub mod tag_sync;
 pub mod zaarhub;

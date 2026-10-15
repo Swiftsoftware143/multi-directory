@@ -1,6 +1,6 @@
 #![allow(clippy::all)]
-#![allow(unused)]
 #![recursion_limit = "256"]
+#[allow(dead_code)] // CoreSwift integration surface — owned by the CoreSwift lane (item 19).
 mod coreswift;
 mod email;
 mod entitlements;

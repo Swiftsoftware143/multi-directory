@@ -705,6 +705,7 @@ pub async fn suggest_competitors(
 
 #[derive(Debug, Deserialize)]
 pub struct SwiftSetupRequest {
+    #[allow(dead_code)] // accepted for wire compatibility; setup keys off directory_name/slug
     pub directory_id: Option<Uuid>,
     pub directory_slug: Option<String>,
     pub directory_name: Option<String>,
@@ -745,6 +746,7 @@ pub async fn setup_core_swift_tenant(
 #[derive(Debug, Deserialize)]
 pub struct SwiftTestRequest {
     pub url: Option<String>,
+    #[allow(dead_code)] // accepted for wire compatibility; the self-hosted probe needs only `url`
     pub token: Option<String>,
 }
 

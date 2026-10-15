@@ -30,6 +30,7 @@ pub struct ConnectServiceRequest {
     /// Retained for wire compatibility with the shipped portals, which still send
     /// an (ignored) `api_key`. CoreSwift needs no key.
     #[serde(default)]
+    #[allow(dead_code)]
     pub api_key: String,
 }
 
@@ -38,6 +39,7 @@ pub struct ConnectServiceRequest {
 pub struct VerifyKeyRequest {
     pub service: String,
     #[serde(default)]
+    #[allow(dead_code)] // wire-compat with the shipped portals; CoreSwift needs no key
     pub api_key: String,
 }
 

@@ -23,7 +23,15 @@ use uuid::Uuid;
 use crate::error::AppError;
 
 /// The effective limits of a business's active plan. Populated from the joined `plan_tiers` row.
+///
+/// `#[allow(dead_code)]`: this mirrors the `plan_tiers` row. The caps that ARE enforced are read
+/// through the `require_*` gate methods below; the members listed here are configured and shown by
+/// the plan editor but not yet consumed by any request path —
+/// `max_listings`, `max_industries`, `has_reviews`, `has_analytics`, `has_crm`, `has_email`,
+/// `has_call_tracking`, `has_import_export`, `has_api_access`, `allow_custom_branding`
+/// (see the item-10 gap note; enforce or drop them, but do not let new unwired members hide here).
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct PlanLimits {
     pub tier_name: Option<String>,
     pub max_listings: Option<i32>,
@@ -90,6 +98,13 @@ fn unlimited(value: Option<i32>) -> bool {
     }
 }
 
+/// `#[allow(dead_code)]`: the boolean capability gates below
+/// (`require_reviews`, `require_analytics`, `require_crm`, `require_email`, `require_call_tracking`,
+/// `require_import_export`, `require_api_access`, `require_custom_branding`) are written but not yet
+/// wired into any request path — see the item-10 gap note. The count gates (`require_new_deal`,
+/// `require_active_deal`, `require_photos`, `require_featured`, `require_scheduled_rotation`) ARE
+/// live (deals / businesses / category_system handlers).
+#[allow(dead_code)]
 impl PlanLimits {
     fn plan_name(&self) -> &str {
         self.tier_name.as_deref().unwrap_or("your plan")
