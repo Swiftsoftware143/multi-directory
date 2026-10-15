@@ -1363,7 +1363,6 @@ struct MarketplaceProductRow {
     unit: Option<String>,
     min_order: Option<i32>,
     delivery_areas: Option<Vec<String>>,
-    is_active: Option<bool>,
     created_at: Option<chrono::DateTime<chrono::Utc>>,
     business_name: Option<String>,
     #[sqlx(default)]

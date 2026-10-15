@@ -182,8 +182,6 @@ pub async fn internal_link_suggestions(
         id: Uuid,
         title: String,
         slug: Option<String>,
-        content: String,
-        directory_id: Option<Uuid>,
     }
 
     let posts = if let Some(did) = directory_id {

@@ -297,12 +297,5 @@ async fn count_trapdoor_mentions(
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ClaimedBusinessRow {
-    pub id: Uuid,
     pub business_id: Uuid,
-    pub owner_email: String,
-    pub owner_name: Option<String>,
-    pub owner_phone: Option<String>,
-    pub user_id: Option<Uuid>,
-    pub is_active: Option<bool>,
-    pub created_at: Option<chrono::DateTime<Utc>>,
 }

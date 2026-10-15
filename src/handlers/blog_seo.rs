@@ -76,7 +76,6 @@ struct NewsSitemapItem {
     title: String,
     slug: String,
     created_at: Option<DateTime<Utc>>,
-    source_type: String, // "blog" or "article"
 }
 
 /// GET /public/directories/{slug}/news-sitemap.xml

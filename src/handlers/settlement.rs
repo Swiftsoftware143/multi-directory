@@ -1393,7 +1393,6 @@ fn email_service_url() -> String {
 
 #[derive(Debug, sqlx::FromRow)]
 struct StatementRecipient {
-    business_id: Option<Uuid>,
     business_name: Option<String>,
     email: Option<String>,
     points_issued: i64,
