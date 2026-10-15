@@ -76,8 +76,6 @@ struct EventbriteAddress {
     localized_address_display: Option<String>,
     city: Option<String>,
     region: Option<String>,
-    postal_code: Option<String>,
-    country: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -284,8 +282,6 @@ mod tests {
                     localized_address_display: Some("123 Main St".into()),
                     city: Some("Melbourne".into()),
                     region: Some("FL".into()),
-                    postal_code: Some("32901".into()),
-                    country: Some("US".into()),
                 }),
             }),
             is_free: Some(false),

@@ -1349,10 +1349,9 @@ struct BizDetail {
     claimed: bool,
     verified: bool,
     /// Angie's List-style trust badges (card B90): operator-verified trade licence / insurance.
-    /// Both are public; license_number is operator-only and never rendered.
+    /// Both are public.
     licensed: bool,
     insured: bool,
-    license_number: Option<String>,
     /// Neighbourhood granularity (card B90, Nextdoor-style): operator-set suburb/community,
     /// public on the listing. None for `business_listings` rows (a different UUID space).
     neighbourhood: Option<String>,
@@ -1450,7 +1449,7 @@ pub async fn get_business_detail(
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
-                      b.licensed, b.insured, b.license_number, b.neighbourhood
+                      b.licensed, b.insured, b.neighbourhood
                FROM businesses b
                WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1466,7 +1465,7 @@ pub async fn get_business_detail(
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
-                      b.licensed, b.insured, b.license_number, b.neighbourhood
+                      b.licensed, b.insured, b.neighbourhood
                FROM businesses b
                WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#,
         )
@@ -1507,7 +1506,6 @@ pub async fn get_business_detail(
             verified: r.try_get::<Option<bool>, _>("verified")?.unwrap_or(false),
             licensed: r.try_get::<Option<bool>, _>("licensed")?.unwrap_or(false),
             insured: r.try_get::<Option<bool>, _>("insured")?.unwrap_or(false),
-            license_number: r.try_get("license_number")?,
             neighbourhood: r.try_get("neighbourhood")?,
             is_listing: false,
         }
@@ -1563,7 +1561,6 @@ pub async fn get_business_detail(
             verified: false,
             licensed: false,
             insured: false,
-            license_number: None,
             neighbourhood: None,
             is_listing: true,
         }

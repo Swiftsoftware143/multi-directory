@@ -314,7 +314,6 @@ async fn google_places_import(
                     } else {
                         None
                     },
-                    raw: None,
                 })
                 .collect(),
         };

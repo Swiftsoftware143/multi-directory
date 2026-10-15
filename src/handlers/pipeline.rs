@@ -48,8 +48,6 @@ pub struct IngestBusiness {
     pub review_count: Option<i32>,
     pub image_urls: Option<Vec<String>>,
     pub business_type: Option<String>,
-    /// Source-specific raw data preserved for enrichment later
-    pub raw: Option<Value>,
 }
 
 // ── Response ──

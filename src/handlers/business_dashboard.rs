@@ -7,7 +7,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use chrono::Utc;
 use serde::Serialize;
 use serde_json::json;
 use uuid::Uuid;
