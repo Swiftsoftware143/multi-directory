@@ -3639,6 +3639,16 @@
             emStatus('This email setup serves the whole network — every city sends with it ' +
                      '(password is stored and never returned).', true);
           }
+          // The row existing is NOT the same as mail working: transport=mailgun with no
+          // 'mailgun' key saved means every password reset, claim confirmation and admin
+          // notice is refused. Never show a plain "Saved" in that state.
+          if (s.mail_ready === false) {
+            badge.textContent = '⚠ Saved — but mail cannot send (transport: ' + (s.transport || 'smtp') + ')';
+            badge.classList.add('show');
+            emStatus('Saved, but mail is NOT leaving the box: ' +
+                     (s.mail_ready_reason || 'the chosen transport has no credentials saved') +
+                     ' — add the matching provider key, or switch the transport to SMTP and save its credentials.', false);
+          }
         })
         .catch(function (e) {
           // A real failure (network, auth, 5xx) still lands here — show it, don't hide it.

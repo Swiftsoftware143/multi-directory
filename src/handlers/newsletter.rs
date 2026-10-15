@@ -469,6 +469,14 @@ pub async fn get_email_settings(
     .fetch_optional(&s.db)
     .await?;
 
+    // Honesty flag (same question the forgot-password flow asks, same function):
+    // "can mail actually leave the box with the saved configuration?". A row existing
+    // is NOT the same as mail working — e.g. transport=mailgun with no 'mailgun' key
+    // saved means every system send is refused. Surface it instead of showing "Saved".
+    let mail_ready = crate::email::mail_transport_ready(&s.db).await;
+    let mail_ready_ok = mail_ready.is_ok();
+    let mail_ready_reason = mail_ready.err();
+
     match settings {
         Some(s) => {
             let mut resp = serde_json::to_value(&s).unwrap();
@@ -477,6 +485,11 @@ pub async fn get_email_settings(
                 // Round 14 (kanban t_6ef75a6a): say "is this directory set up?" out loud, so a
                 // caller never has to infer it from which branch answered.
                 obj.insert("configured".into(), serde_json::json!(true));
+                obj.insert("mail_ready".into(), serde_json::json!(mail_ready_ok));
+                obj.insert(
+                    "mail_ready_reason".into(),
+                    serde_json::json!(mail_ready_reason),
+                );
             }
             Ok(Json(resp).into_response())
         }
@@ -510,6 +523,11 @@ pub async fn get_email_settings(
                         obj.insert("smtp_password".into(), serde_json::json!("********"));
                         obj.insert("configured".into(), serde_json::json!(true));
                         obj.insert("own".into(), serde_json::json!(false));
+                        obj.insert("mail_ready".into(), serde_json::json!(mail_ready_ok));
+                        obj.insert(
+                            "mail_ready_reason".into(),
+                            serde_json::json!(mail_ready_reason),
+                        );
                         obj.insert(
                             "inherited_from".into(),
                             serde_json::json!(from_slug.unwrap_or_default()),
