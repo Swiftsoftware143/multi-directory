@@ -277,6 +277,22 @@ pub async fn assert_submission_admin(
 }
 
 /// Guard for a deal: the deal's business or directory must be one the caller administers.
+///
+/// A listing owner reaches their deals through the business portal, which signs them in as a
+/// `visitor` account (`handlers::portal::visitor_login` mints `sub = visitor_accounts.id`,
+/// `tid = nil`, `role = "visitor"`). The claim that links them to the listing is written by the
+/// supplier-register / invite / PUBLIC claim flows, and the public claim route runs before the
+/// claimant has any account, so it records `owner_email` only. The original arms matched
+/// `claimed_businesses.user_id` alone, so every self-serve owner — the common case — got a 404
+/// on their own deal: measured live 2026-10-15, the owner's Edit/Delete in the portal answered
+/// "Deal not found" while the same probe against a business-scoped route (which uses
+/// `can_admin_business`, i.e. the `visitor_account_id` branch) answered 200.
+///
+/// The business arm therefore applies the SAME ownership rule as `handlers::reviews::owned_by`
+/// and `assert_business_admin_or_claimant`: an outright owner, a claim by account id on EITHER
+/// account table, or an email-only claim. The email branch matches ONLY a claim that carries no
+/// account id, so a claim already linked to somebody else can never be shadowed by it. Failures
+/// stay 404 (never 403) so the endpoint cannot confirm the deal id exists.
 pub async fn assert_deal_admin(
     db: &PgPool,
     claims: &Claims,
@@ -296,7 +312,15 @@ pub async fn assert_deal_admin(
             UNION ALL \
             SELECT 1 FROM deals dl \
               JOIN claimed_businesses c ON c.business_id = dl.business_id \
-             WHERE dl.id = $1 AND c.user_id = $3 AND c.is_active \
+             WHERE dl.id = $1 AND c.is_active \
+               AND ( \
+                    c.user_id = $3 \
+                 OR c.visitor_account_id = $3 \
+                 OR (c.visitor_account_id IS NULL AND c.user_id IS NULL \
+                     AND lower(c.owner_email) = lower(COALESCE( \
+                           (SELECT email FROM visitor_accounts WHERE id = $3), \
+                           (SELECT email FROM users WHERE id = $3)))) \
+               ) \
             UNION ALL \
             SELECT 1 FROM deals dl \
               JOIN businesses b ON b.id = dl.business_id \
