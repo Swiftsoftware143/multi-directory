@@ -3,13 +3,13 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use chrono::{NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::error::ApiResult;
+use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
 /// Default pagination helpers
@@ -21,6 +21,52 @@ fn default_per_page(pp: Option<i32>) -> i32 {
 }
 fn offset(page: i32, per_page: i32) -> i32 {
     (page - 1) * per_page
+}
+
+/// Parse an optional `[start, end]` window from the query string. Accepts an RFC 3339
+/// timestamp or a `YYYY-MM-DD` date; a date-only `end` is inclusive of the whole day.
+/// Malformed input is refused (HTTP 400) rather than silently ignored.
+fn parse_range(
+    start: Option<&str>,
+    end: Option<&str>,
+) -> Result<(Option<DateTime<Utc>>, Option<DateTime<Utc>>), AppError> {
+    let s = parse_bound(start, false)?;
+    let e = parse_bound(end, true)?;
+    if let (Some(a), Some(b)) = (s, e) {
+        if a > b {
+            return Err(AppError::BadRequest(
+                "start must be on or before end".to_string(),
+            ));
+        }
+    }
+    Ok((s, e))
+}
+
+fn parse_bound(v: Option<&str>, end_of_day: bool) -> Result<Option<DateTime<Utc>>, AppError> {
+    let raw = match v {
+        Some(x) if !x.trim().is_empty() => x.trim(),
+        _ => return Ok(None),
+    };
+    if let Ok(dt) = DateTime::parse_from_rfc3339(raw) {
+        return Ok(Some(dt.with_timezone(&Utc)));
+    }
+    if let Ok(d) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+        let (h, mi, s) = if end_of_day { (23, 59, 59) } else { (0, 0, 0) };
+        if let Some(naive) = d.and_hms_opt(h, mi, s) {
+            return Ok(Some(Utc.from_utc_datetime(&naive)));
+        }
+    }
+    Err(AppError::BadRequest(format!(
+        "invalid date '{raw}' - use YYYY-MM-DD or an ISO timestamp"
+    )))
+}
+
+/// The applied window, echoed back so the UI can show what the numbers mean.
+fn range_echo(start: Option<&DateTime<Utc>>, end: Option<&DateTime<Utc>>) -> Value {
+    json!({
+        "start": start.map(|d| d.to_rfc3339()),
+        "end": end.map(|d| d.to_rfc3339()),
+    })
 }
 
 #[derive(Deserialize)]
@@ -143,6 +189,7 @@ pub async fn top_offers(
 ) -> ApiResult<Json<Value>> {
     let page = default_page(q.page);
     let per_page = default_per_page(q.per_page);
+    let (start, end) = parse_range(q.start.as_deref(), q.end.as_deref())?;
 
     let total_row = sqlx::query(
         "SELECT COUNT(*) AS cnt FROM claim_offers co \
@@ -161,11 +208,13 @@ pub async fn top_offers(
          FROM claim_offers co \
          JOIN business_listings bl ON co.listing_id = bl.id \
          LEFT JOIN offer_claims oc ON oc.offer_id = co.id \
+              AND ($1::timestamptz IS NULL OR oc.claimed_at >= $1) \
+              AND ($2::timestamptz IS NULL OR oc.claimed_at <= $2) \
          WHERE co.is_active = true \
          GROUP BY co.id, co.offer_title, co.offer_type, co.discount_value, bl.business_name, bl.category \
          ORDER BY total_claims DESC, total_redeemed DESC \
-         LIMIT $1 OFFSET $2"
-    ).bind(per_page as i64).bind(offset(page, per_page) as i64)
+         LIMIT $3 OFFSET $4"
+    ).bind(start).bind(end).bind(per_page as i64).bind(offset(page, per_page) as i64)
      .fetch_all(&state.db).await?;
 
     let total: i64 = total_row.try_get("cnt").unwrap_or(0);
@@ -198,6 +247,7 @@ pub async fn top_offers(
 
     Ok(Json(json!({
         "offers": offers,
+        "range": range_echo(start.as_ref(), end.as_ref()),
         "pagination": { "page": page, "per_page": per_page, "total": total, "total_pages": total_pages }
     })))
 }
@@ -209,10 +259,17 @@ pub async fn recent_claims(
 ) -> ApiResult<Json<Value>> {
     let page = default_page(q.page);
     let per_page = default_per_page(q.per_page);
+    let (start, end) = parse_range(q.start.as_deref(), q.end.as_deref())?;
 
-    let total_row = sqlx::query("SELECT COUNT(*) AS cnt FROM offer_claims")
-        .fetch_one(&state.db)
-        .await?;
+    let total_row = sqlx::query(
+        "SELECT COUNT(*) AS cnt FROM offer_claims oc \
+         WHERE ($1::timestamptz IS NULL OR oc.claimed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR oc.claimed_at <= $2)",
+    )
+    .bind(start)
+    .bind(end)
+    .fetch_one(&state.db)
+    .await?;
 
     let rows = sqlx::query(
         "SELECT oc.id, oc.visitor_id, oc.email, oc.phone, \
@@ -222,11 +279,15 @@ pub async fn recent_claims(
          FROM offer_claims oc \
          JOIN claim_offers co ON oc.offer_id = co.id \
          JOIN business_listings bl ON co.listing_id = bl.id \
+         WHERE ($3::timestamptz IS NULL OR oc.claimed_at >= $3) \
+           AND ($4::timestamptz IS NULL OR oc.claimed_at <= $4) \
          ORDER BY oc.claimed_at DESC \
          LIMIT $1 OFFSET $2",
     )
     .bind(per_page as i64)
     .bind(offset(page, per_page) as i64)
+    .bind(start)
+    .bind(end)
     .fetch_all(&state.db)
     .await?;
 
@@ -255,6 +316,7 @@ pub async fn recent_claims(
 
     Ok(Json(json!({
         "claims": claims,
+        "range": range_echo(start.as_ref(), end.as_ref()),
         "pagination": { "page": page, "per_page": per_page, "total": total, "total_pages": total_pages }
     })))
 }

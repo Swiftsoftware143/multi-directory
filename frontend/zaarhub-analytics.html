@@ -76,6 +76,21 @@ tr:hover td{background:var(--bg)}
     <div class="bar-chart" id="weekly-chart"><div class="loading">Loading...</div></div>
   </div>
 
+  <!-- Date range for the tables below -->
+  <div class="chart-section" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:16px 24px">
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--text-muted)">
+      From
+      <input type="date" id="rng-start" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font:inherit">
+    </label>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--text-muted)">
+      To
+      <input type="date" id="rng-end" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font:inherit">
+    </label>
+    <button onclick="applyRange()" style="padding:7px 16px;border:0;border-radius:8px;background:var(--brand);color:#fff;font-weight:700;cursor:pointer">Apply</button>
+    <button onclick="clearRange()" style="padding:7px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-weight:600;cursor:pointer">Clear</button>
+    <span id="rng-note" style="font-size:12px;color:var(--text-muted)">Applies to the Top Offers and Recent Claims tables.</span>
+  </div>
+
   <!-- Tabs: Offers, Claims, Cities, Categories -->
   <div class="tabs">
     <button class="tab active" onclick="switchTab(this,'offers')">Top Offers</button>
@@ -92,6 +107,34 @@ tr:hover td{background:var(--bg)}
 <script>
 const API = '/api/v1/zaarhub/analytics';
 let currentTab = 'offers';
+let rangeStart = '';
+let rangeEnd = '';
+
+function rangeQS() {
+  const p = new URLSearchParams();
+  if (rangeStart) p.set('start', rangeStart);
+  if (rangeEnd) p.set('end', rangeEnd);
+  return p.toString();
+}
+
+function applyRange() {
+  rangeStart = document.getElementById('rng-start').value;
+  rangeEnd = document.getElementById('rng-end').value;
+  if (rangeStart && rangeEnd && rangeStart > rangeEnd) {
+    document.getElementById('rng-note').textContent = 'The "From" date must be on or before the "To" date.';
+    return;
+  }
+  loadTab(currentTab);
+}
+
+function clearRange() {
+  document.getElementById('rng-start').value = '';
+  document.getElementById('rng-end').value = '';
+  rangeStart = '';
+  rangeEnd = '';
+  document.getElementById('rng-note').textContent = 'Applies to the Top Offers and Recent Claims tables.';
+  loadTab(currentTab);
+}
 
 async function init() {
   try {
@@ -128,12 +171,14 @@ async function loadTab(tab) {
 
   try {
     let url, headers, rows;
+    const qs = rangeQS();
+    const suffix = qs ? '&' + qs : '';
     switch(tab) {
       case 'offers':
-        url = `${API}/offers?per_page=50`;
+        url = `${API}/offers?per_page=50${suffix}`;
         break;
       case 'claims':
-        url = `${API}/claims?per_page=50`;
+        url = `${API}/claims?per_page=50${suffix}`;
         break;
       case 'cities':
         url = `${API}/cities`;
@@ -144,6 +189,18 @@ async function loadTab(tab) {
     }
     const res = await fetch(url);
     const d = await res.json();
+
+    if (!res.ok) {
+      el.innerHTML = '<div class="empty">⚠️ ' + esc(d.message || 'Failed to load data') + '</div>';
+      return;
+    }
+
+    const note = document.getElementById('rng-note');
+    if (note) {
+      note.textContent = (tab === 'offers' || tab === 'claims') && qs
+        ? 'Showing ' + (tab === 'offers' ? 'offers' : 'claims') + ' from ' + (d.range?.start || '…').slice(0, 10) + ' to ' + (d.range?.end || '…').slice(0, 10) + '.'
+        : 'Applies to the Top Offers and Recent Claims tables.';
+    }
 
     if (tab === 'offers') renderOffers(d.offers, el);
     else if (tab === 'claims') renderClaims(d.claims, el);
