@@ -191,8 +191,24 @@ pub async fn create_deal(
     )
     .await?;
 
+    // A deal saved from the business portal carries no directory_id in its body, and a deal with a
+    // NULL directory is unreachable in the product: GET /deals/:id/page INNER JOINs directories (404)
+    // and every city page / storefront list filters on directory_id (measured 2026-10-15 — a
+    // portal-created deal answered 404 on its own public page). A listing belongs to exactly one
+    // directory, so inherit the listing's own directory when the caller does not name one.
+    let directory_id: Option<Uuid> = match req.directory_id {
+        Some(d) => Some(d),
+        None => sqlx::query_scalar::<_, Option<Uuid>>(
+            "SELECT directory_id FROM businesses WHERE id = \x241",
+        )
+        .bind(req.business_id)
+        .fetch_optional(&s.db)
+        .await?
+        .flatten(),
+    };
+
     let deal = sqlx::query_as::<_, Deal>(
-        "INSERT INTO deals (title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, gallery_images, rotation_schedule) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417, \x2418, \x2419, \x2420, \x2421, \x2422, \x2423, \x2424, \x2425, \x2426, \x2427, \x2428, \x2429, \x2430, \x2431) RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
+        "INSERT INTO deals (title, description, original_price, deal_price, discount_percent, currency, image_url, terms, redemption_limit, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, gallery_images, rotation_schedule, fine_print) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411, \x2412, \x2413, \x2414, \x2415, \x2416, \x2417, \x2418, \x2419, \x2420, \x2421, \x2422, \x2423, \x2424, \x2425, \x2426, \x2427, \x2428, \x2429, \x2430, \x2431, \x2432) RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )
     .bind(&req.title)
     .bind(&req.description)
@@ -204,7 +220,7 @@ pub async fn create_deal(
     .bind(&req.terms)
     .bind(req.redemption_limit)
     .bind(req.status.as_deref().unwrap_or("active"))
-    .bind(req.directory_id)
+    .bind(directory_id)
     .bind(req.business_id)
     .bind(req.start_date)
     .bind(req.end_date)
@@ -227,6 +243,7 @@ pub async fn create_deal(
     .bind(serde_json::to_value(req.gallery_images.unwrap_or_default()).ok())
     // rotation_schedule: one of none|daily|weekly|biweekly|monthly (schema CHECK) or NULL.
     .bind(req.rotation_schedule.as_deref())
+    .bind(&req.fine_print)
     .fetch_one(&s.db)
     .await?;
 
@@ -274,6 +291,7 @@ pub async fn update_deal(
     let currency = req.currency.or(existing.currency);
     let image_url = req.image_url.or(existing.image_url);
     let terms = req.terms.or(existing.terms);
+    let fine_print = req.fine_print.or(existing.fine_print);
     let redemption_limit = req.redemption_limit.or(existing.redemption_limit);
     let status = req.status.or(existing.status);
     let directory_id = req.directory_id.or(existing.directory_id);
@@ -304,7 +322,7 @@ pub async fn update_deal(
     let rotation_order = req.rotation_order.or(existing.rotation_order);
 
     let deal = sqlx::query_as::<_, Deal>(
-        "UPDATE deals SET title = \x241, description = \x242, original_price = \x243, deal_price = \x244, discount_percent = \x245, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, zaarhub_featured = \x2416, deal_type = \x2417, coupon_code = \x2418, page_template = \x2419, accent_color = \x2420, cta_color = \x2421, cta_text = \x2422, show_timer = \x2423, premium_features = \x2424, redemption_type = \x2425, booking_url = \x2426, show_qr = \x2427, per_user_limit = \x2428, highlights = \x2429, rotation_schedule = \x2430, gallery_images = \x2431, rotation_order = \x2432, updated_at = NOW() WHERE id = \x2433 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
+        "UPDATE deals SET title = \x241, description = \x242, original_price = \x243, deal_price = \x244, discount_percent = \x245, currency = \x246, image_url = \x247, terms = \x248, redemption_limit = \x249, status = \x2410, directory_id = \x2411, business_id = \x2412, start_date = \x2413, end_date = \x2414, featured = \x2415, zaarhub_featured = \x2416, deal_type = \x2417, coupon_code = \x2418, page_template = \x2419, accent_color = \x2420, cta_color = \x2421, cta_text = \x2422, show_timer = \x2423, premium_features = \x2424, redemption_type = \x2425, booking_url = \x2426, show_qr = \x2427, per_user_limit = \x2428, highlights = \x2429, rotation_schedule = \x2430, gallery_images = \x2431, rotation_order = \x2432, fine_print = \x2433, updated_at = NOW() WHERE id = \x2434 RETURNING id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at "
     )
     .bind(&title)
     .bind(&description)
@@ -338,6 +356,7 @@ pub async fn update_deal(
     .bind(&rotation_schedule)
     .bind(gallery_images)
     .bind(rotation_order)
+    .bind(&fine_print)
     .bind(id)
     .fetch_one(&s.db)
     .await?;

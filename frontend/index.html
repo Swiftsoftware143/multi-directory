@@ -2643,7 +2643,10 @@ async function loadDealPage(){
   el.innerHTML='<div class="zh-loading"><div class="zh-spinner"></div></div>'
 
   try{
-    var d=await g('/api/v1/deals/'+state.dealId+'/page')
+    // g() already prefixes /api/v1 — the doubled prefix here made every public deal page answer
+    // "Deal Not Found" (the browser requested /api/v1/api/v1/deals/<id>/page -> 404, measured
+    // 2026-10-15). The deal page is a shareable link ("Copy Deal Link"), so this was the last mile.
+    var d=await g('/deals/'+state.dealId+'/page')
     renderDealDetail(d)
   }catch(e){
     el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🎁</div><h3>Deal Not Found</h3><p style="color:var(--text-light);margin-bottom:16px">'+esc(e.message)+'</p><a href="#/deals">← Back to Deals</a></div>'
