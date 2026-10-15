@@ -1149,6 +1149,11 @@ pub struct CounterScanInput {
     pub transaction_amount: Option<f64>,
     pub points: Option<i32>,
     pub transaction_id: Option<String>,
+    /// The scanner page already sends these two (`frontend/scanner.html`): the receipt's
+    /// free-text note and the business's category. Both used to be dropped — the note the
+    /// staff typed never reached the ledger.
+    pub notes: Option<String>,
+    pub business_category: Option<String>,
 }
 
 /// Record the scan itself in `loyalty_scans`.
@@ -1170,11 +1175,15 @@ async fn record_scan(
     points_awarded: i32,
     points_balance: i32,
     transaction_amount: Option<Decimal>,
+    transaction_id: Option<&str>,
+    business_category: Option<&str>,
+    notes: Option<&str>,
 ) -> Result<(), AppError> {
     sqlx::query(
         r#"INSERT INTO loyalty_scans (id, member_id, program_id, business_id, business_name,
-                                      scan_type, points_awarded, points_balance, transaction_amount)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
+                                      scan_type, points_awarded, points_balance, transaction_amount,
+                                      transaction_id, business_category, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"#,
     )
     .bind(Uuid::new_v4())
     .bind(member_id)
@@ -1185,6 +1194,9 @@ async fn record_scan(
     .bind(points_awarded)
     .bind(points_balance)
     .bind(transaction_amount)
+    .bind(transaction_id)
+    .bind(business_category)
+    .bind(notes)
     .execute(pool)
     .await?;
     Ok(())
@@ -1244,6 +1256,43 @@ pub async fn counter_scan(
         .clone()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or(db_business_name);
+
+    // The receipt the scanner already collects (frontend/scanner.html generates it and shows
+    // it to staff as the transaction id). It used to be discarded, so a resubmitted scan
+    // credited the member twice and a receipt could not be traced back to its ledger row.
+    let txn = body
+        .transaction_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let scan_category = body
+        .business_category
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let scan_notes = body
+        .notes
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    // Never credit the same receipt twice at one business. The browser hands each scan a fresh
+    // id, so this only fires on a genuine resubmission/retry — and it refuses rather than
+    // silently double-awarding.
+    if let Some(t) = txn {
+        let already: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM loyalty_scans WHERE business_id = $1 AND transaction_id = $2 LIMIT 1",
+        )
+        .bind(business_id)
+        .bind(t)
+        .fetch_optional(&state.db)
+        .await?;
+        if already.is_some() {
+            return Err(AppError::Conflict(format!(
+                "Receipt {t} was already recorded at this business — it is not credited twice."
+            )));
+        }
+    }
 
     let program = get_program(&state.db, &program_id).await?;
 
@@ -1311,6 +1360,9 @@ pub async fn counter_scan(
                     awarded,
                     balance,
                     Some(Decimal::new((amount * 100.0).round() as i64, 2)),
+                    txn,
+                    scan_category,
+                    scan_notes,
                 )
                 .await?;
             }
@@ -1409,8 +1461,9 @@ pub async fn counter_scan(
             // debit so the record and the balance can never disagree.
             sqlx::query(
                 r#"INSERT INTO loyalty_scans (id, member_id, program_id, business_id, business_name,
-                                              scan_type, points_awarded, points_balance, transaction_amount)
-                   VALUES ($1, $2, $3, $4, $5, 'redemption', $6, $7, $8)"#,
+                                              scan_type, points_awarded, points_balance, transaction_amount,
+                                              transaction_id, business_category, notes)
+                   VALUES ($1, $2, $3, $4, $5, 'redemption', $6, $7, $8, $9, $10, $11)"#,
             )
             .bind(Uuid::new_v4())
             .bind(member_id)
@@ -1420,6 +1473,9 @@ pub async fn counter_scan(
             .bind(-points)
             .bind(new_balance)
             .bind(body.transaction_amount.map(|v| Decimal::new((v * 100.0).round() as i64, 2)))
+            .bind(txn)
+            .bind(scan_category)
+            .bind(scan_notes)
             .execute(&mut *tx)
             .await?;
             tx.commit().await?;
@@ -1474,6 +1530,9 @@ pub async fn counter_scan(
                 awarded,
                 balance,
                 None,
+                txn,
+                scan_category,
+                scan_notes,
             )
             .await?;
             json!({
@@ -1495,6 +1554,10 @@ pub async fn counter_scan(
     if let Some((name, color, _multiplier)) = member_tier(&state.db, &member_id).await? {
         resp["member_tier"] = json!(name);
         resp["member_tier_color"] = json!(color);
+    }
+    // Echo the receipt back so the scanner's own transaction id can be confirmed/stored.
+    if let Some(t) = txn {
+        resp["transaction_id"] = json!(t);
     }
     Ok(Json(resp))
 }

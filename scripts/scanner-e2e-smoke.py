@@ -194,6 +194,10 @@ def main():
              f"||'|'||business_id FROM loyalty_scans WHERE member_id='{mem}' LIMIT 1")
     check("the scan is recorded with the amount and the business",
           sc == f"purchase|{expected}|{AMOUNT}|{bid}", f"row={sc}")
+    # The scanner page generates its own receipt id (`freshTxId()`) for every scan. It used to be
+    # dropped by the server; a real page-driven scan must now land it on the ledger row.
+    tx = one(f"SELECT COALESCE(transaction_id,'') FROM loyalty_scans WHERE member_id='{mem}' LIMIT 1")
+    check("the scan carries the scanner page's own receipt id", len(tx) >= 16, f"transaction_id={tx[:20]}")
 
     # ── teardown ────────────────────────────────────────────────────────────────
     psql(f"DELETE FROM loyalty_scans WHERE member_id='{mem}'")
