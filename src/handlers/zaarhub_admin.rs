@@ -442,6 +442,39 @@ pub async fn places_text_search(
         return Err(AppError::BadRequest("query is required".into()));
     }
 
+    // Geo bias: the Populate panel resolves the picked city's coordinates and the operator's
+    // Radius control and sends them as `lat`/`lng`/`radius` (metres). Before this the handler read
+    // only `query`/`city`, so the Radius box changed nothing — the silently-ignored-input class of
+    // item 18. Google's Text Search accepts `location` + `radius` (max 50 km), so a bad pair is
+    // refused here rather than silently degrading to a whole-city search.
+    let geo: Option<(f64, f64, i32)> = match (q.lat, q.lng) {
+        (None, None) => None,
+        (Some(lat), Some(lng)) => {
+            if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lng) {
+                return Err(AppError::BadRequest(
+                    "lat must be between -90 and 90, lng between -180 and 180".into(),
+                ));
+            }
+            let radius = q.radius.unwrap_or(10_000);
+            if radius <= 0 {
+                return Err(AppError::BadRequest(
+                    "radius must be a positive number of metres".into(),
+                ));
+            }
+            if radius > 50_000 {
+                return Err(AppError::BadRequest(format!(
+                    "radius {radius} m is over Google's 50 km (50000 m) limit - lower the radius"
+                )));
+            }
+            Some((lat, lng, radius))
+        }
+        _ => {
+            return Err(AppError::BadRequest(
+                "lat and lng must be supplied together".into(),
+            ))
+        }
+    };
+
     if q.mock == Some(true) {
         let out = mock_places_results();
         tracing::warn!("[places] STUB results returned (mock=true) - not live Google data");
@@ -449,7 +482,8 @@ pub async fn places_text_search(
             "status": "MOCK",
             "stub": true,
             "count": out.len(),
-            "results": out
+            "results": out,
+            "applied": geo.map(|(lat, lng, radius)| json!({"lat": lat, "lng": lng, "radius": radius}))
         })));
     }
 
@@ -479,17 +513,25 @@ pub async fn places_text_search(
     };
 
     let mut query = q.query.trim().to_string();
-    if let Some(city) = q.city.as_deref() {
-        if !city.is_empty() && !query.to_lowercase().contains(&city.to_lowercase()) {
-            query.push_str(" in ");
-            query.push_str(city);
+    // With a geo bias Google already limits the search to the radius, so the city text is not also
+    // appended (a city plus a radius around that same city double-constrains and reads as a bug).
+    if geo.is_none() {
+        if let Some(city) = q.city.as_deref() {
+            if !city.is_empty() && !query.to_lowercase().contains(&city.to_lowercase()) {
+                query.push_str(" in ");
+                query.push_str(city);
+            }
         }
     }
-    let url = format!(
+    let mut url = format!(
         "https://maps.googleapis.com/maps/api/place/textsearch/json?query={}&key={}",
         urlencoding(&query),
         key
     );
+    // Text Search geo bias: `location` + `radius` (metres, <= 50000 — enforced above).
+    if let Some((lat, lng, radius)) = geo {
+        url.push_str(&format!("&location={lat},{lng}&radius={radius}"));
+    }
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
@@ -528,9 +570,12 @@ pub async fn places_text_search(
         "types": r.get("types").and_then(|v| v.as_array()).cloned().unwrap_or_default(),
     })).collect();
 
-    Ok(Json(
-        json!({ "status": status, "count": out.len(), "results": out }),
-    ))
+    Ok(Json(json!({
+        "status": status,
+        "count": out.len(),
+        "results": out,
+        "applied": geo.map(|(lat, lng, radius)| json!({"lat": lat, "lng": lng, "radius": radius}))
+    })))
 }
 
 fn urlencoding(s: &str) -> String {

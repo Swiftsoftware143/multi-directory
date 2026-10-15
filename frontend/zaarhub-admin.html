@@ -737,6 +737,7 @@ async function runPopSearch(){
   const statusEl=document.getElementById('pop-status');
   if(!popDirectoryId){statusEl.textContent='Pick a directory first.';return;}
   if(!q){statusEl.textContent='Pick a category (or type a search query) first.';return;}
+  const radiusLabel=()=>{const v=parseFloat(document.getElementById('pop-radius').value)||10;const u=document.getElementById('pop-radius-unit').value;return v+(u==='mi'?' mi':' km');};
   statusEl.innerHTML='Searching Google Places…';
   const params=new URLSearchParams();
   params.set('query',q);
@@ -745,14 +746,19 @@ async function runPopSearch(){
   const ll=popCityLatLng[city];
   if(ll){params.set('lat',ll.lat);params.set('lng',ll.lng);params.set('radius',radiusMeters());}
   if(document.getElementById('pop-mock').checked)params.set('mock','true');
+  if(ll)statusEl.innerHTML='Searching Google Places within '+esc(radiusLabel())+' of '+esc(city)+'…';
+  // A city with no saved centre (migration 170) cannot be radius-searched — say so rather than
+  // silently widening the search, which is how the Radius box used to behave for every city.
+  const noGeo=(city&&!ll)?' <span style="color:#b45309">(no centre saved for this city — searching by name only)</span>':'';
   try{
     const r=await fetch('/api/v1/zaarhub/admin/places/search?'+params.toString());
-    if(!r.ok){statusEl.innerHTML=`<span style="color:#dc2626">Search failed (HTTP ${r.status})</span>`;return;}
+    if(!r.ok){let msg='Search failed (HTTP '+r.status+')';try{const e=await r.json();if(e&&e.error)msg=e.error;}catch(_){}statusEl.innerHTML=`<span style="color:#dc2626">${esc(msg)}</span>`;return;}
     const d=await r.json();
     const results=d.results||[];
     const stub=d.stub?' <b style="color:#b45309">(TEST FIXTURE — not live Google data)</b>':'';
-    if(!results.length){statusEl.innerHTML='No results for "'+esc(q)+'".'+stub;return;}
-    statusEl.innerHTML=`Found ${results.length} · pushing into the queue…${stub}`;
+    const applied=d.applied?' <span style="color:var(--text-muted)">(radius applied: '+d.applied.radius+' m)</span>':'';
+    if(!results.length){statusEl.innerHTML='No results for "'+esc(q)+'".'+applied+noGeo+stub;return;}
+    statusEl.innerHTML=`Found ${results.length} · pushing into the queue…${applied}${noGeo}${stub}`;
     const items=results.map(b=>({
       place_id:b.place_id,name:b.name,address:b.formatted_address,
       city:document.getElementById('pop-city').selectedOptions[0]?.text||'',

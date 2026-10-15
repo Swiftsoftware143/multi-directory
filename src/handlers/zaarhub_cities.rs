@@ -146,6 +146,10 @@ pub async fn list_cities(State(state): State<AppState>) -> ApiResult<Json<Value>
         "meta_description": r.try_get::<Option<String>, _>("meta_description").unwrap_or_default(),
         "is_active": r.try_get::<bool, _>("is_active").unwrap_or(false),
         "display_order": r.try_get::<i32, _>("display_order").unwrap_or(0),
+        // The city's own centre (migration 170). The Populate panel reads these to bias the
+        // Google Places search to the operator's Radius; without them the Radius box is inert.
+        "latitude": r.try_get::<Option<f64>, _>("latitude").unwrap_or_default(),
+        "longitude": r.try_get::<Option<f64>, _>("longitude").unwrap_or_default(),
         "listing_count": r.try_get::<i64, _>("listing_count").unwrap_or(0),
         "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
         "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
