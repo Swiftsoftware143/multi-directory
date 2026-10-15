@@ -84,10 +84,23 @@ pub struct ResearchResult {
 #[derive(Debug, Deserialize)]
 pub struct DraftPostRequest {
     pub question_id: Uuid,
+    /// Which configured AI provider to use. Omitted/blank = whichever is configured.
     pub content_provider: Option<String>,
+    /// One of `TONES`. Drives the brief, not a decoration: it is validated and reaches the prompt.
     pub tone: Option<String>,
+    /// Extra instructions from the operator, passed to the provider and kept on the draft.
     pub additional_prompt: Option<String>,
 }
+
+/// Tones the drafter accepts. Anything else is a 400 — a typo must never be silently ignored.
+const TONES: [&str; 6] = [
+    "professional",
+    "friendly",
+    "conversational",
+    "authoritative",
+    "expert",
+    "concise",
+];
 
 #[derive(Debug, Serialize)]
 pub struct DraftPostResult {
@@ -98,6 +111,10 @@ pub struct DraftPostResult {
     pub draft_excerpt: String,
     pub word_count: usize,
     pub business_relevance: String,
+    /// The AI provider that produced the draft (None when no provider is configured).
+    pub provider: Option<String>,
+    /// True only when an AI provider really wrote the text — never for the built-in outline.
+    pub used_ai: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -340,7 +357,32 @@ pub async fn draft_post_from_question(
         "SwiftSoftware Directory".into()
     };
 
-    let _tone = req.tone.unwrap_or_else(|| "professional".into());
+    // ── The caller's inputs are honoured here, never silently dropped ──
+    // `tone`, `additional_prompt` and `content_provider` used to be accepted and discarded.
+    let tone = req
+        .tone
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "professional".to_string());
+    if !TONES.contains(&tone.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "Unknown tone '{}'. Available: {}.",
+            tone,
+            TONES.join(", ")
+        )));
+    }
+    let provider_sel = req
+        .content_provider
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+    let extra = req
+        .additional_prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
     let clean_q = question
         .question
         .trim_end_matches(['?', '.', ' '])
@@ -350,11 +392,71 @@ pub async fn draft_post_from_question(
         "A comprehensive guide answering '{}', with key factors, options, and practical takeaways.",
         clean_q
     );
-    let content = format!(
-        "# {}\n\n## Quick Answer\n\n{}\n\n## Understanding the Options\n\nWhen it comes to {}, several factors matter: budget, scale, integration needs, and support. The right choice depends on your specific context.\n\n## Key Factors\n\n- **Budget** — What can you invest?\n- **Scale** — How much volume?\n- **Integration** — Works with your stack?\n- **Support** — What help is available?\n\n## How This Relates to {}\n\nFor {}, understanding {} directly impacts operations and growth. A methodical approach to evaluating options saves time and money.\n\n## Next Steps\n\n1. Define requirements\n2. Shortlist options\n3. Test before committing\n4. Plan training\n\n*Part of our {} content series — check back for updates.*",
-        title, format!("Answering '{}' depends on several factors. This guide breaks it down.", clean_q),
-        topic_name, business_context, business_context, topic_name, topic_name
+
+    // The real prompt sent to the provider — carries the operator's brief.
+    let prompt = format!(
+        "Write a thorough 800-word blog post answering: '{}'. \
+         Format with H2 and H3 headings. Short paragraphs. Include actionable advice. \
+         Write in a {} tone. \
+         The topic is {}. Business context: {}. {}\
+         At the end, add a section with the text '[INSERT_DIRECTORY_LINK]' \
+         as a placeholder for a relevant directory category link.",
+        clean_q,
+        tone,
+        topic_name,
+        business_context,
+        extra
+            .map(|e| format!("Additional instructions from the editor: {}. ", e))
+            .unwrap_or_default()
     );
+
+    // A named provider whose key is missing is an error, never a silent fallback.
+    let resolved = crate::handlers::blog_generator::resolve_ai_provider(
+        &s.db,
+        dir_id,
+        provider_sel.as_deref(),
+    )
+    .await
+    .map_err(AppError::BadRequest)?;
+
+    let (content, used_ai, provider_used) = match resolved {
+        Some((provider, _key)) => {
+            let drafted = crate::handlers::blog_generator::generate_with_provider(
+                &s.db, &prompt, dir_id, &provider,
+            )
+            .await
+            .map_err(|e| AppError::Internal(format!("AI drafting failed: {}", e)))?;
+            if drafted.trim().is_empty() {
+                // The provider answered with nothing: say so instead of dressing it up.
+                (
+                    outline_draft(
+                        &clean_q,
+                        &title,
+                        &tone,
+                        topic_name,
+                        &business_context,
+                        extra,
+                    ),
+                    false,
+                    None,
+                )
+            } else {
+                (drafted, true, Some(provider))
+            }
+        }
+        None => (
+            outline_draft(
+                &clean_q,
+                &title,
+                &tone,
+                topic_name,
+                &business_context,
+                extra,
+            ),
+            false,
+            None,
+        ),
+    };
     let relevance = format!(
         "For {}, understanding {} affects operations, customer experience, and growth.",
         business_context, topic_name
@@ -362,9 +464,16 @@ pub async fn draft_post_from_question(
     let word_count = content.split_whitespace().count();
     let slug = slugify(&title);
 
+    // Never attribute an un-assisted outline to "AI".
+    let author = if used_ai {
+        "AI Content Engine"
+    } else {
+        "Draft outline (no AI provider configured)"
+    };
+
     let draft_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO blog_posts (directory_id, title, content, excerpt, author_name, slug, published, created_at, updated_at) VALUES ($1, $2, $3, $4, 'AI Content Engine', $5, false, NOW(), NOW()) RETURNING id"
-    ).bind(dir_id).bind(&title).bind(&content).bind(&excerpt).bind(&slug).fetch_one(&s.db).await?;
+        "INSERT INTO blog_posts (directory_id, title, content, excerpt, author_name, slug, published, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, false, NOW(), NOW()) RETURNING id"
+    ).bind(dir_id).bind(&title).bind(&content).bind(&excerpt).bind(author).bind(&slug).fetch_one(&s.db).await?;
 
     sqlx::query("UPDATE content_research SET is_used = true, drafted_post_id = $1 WHERE id = $2")
         .bind(draft_id)
@@ -380,7 +489,54 @@ pub async fn draft_post_from_question(
         draft_excerpt: excerpt,
         word_count,
         business_relevance: relevance,
+        provider: provider_used,
+        used_ai,
     }))
+}
+
+/// Deterministic outline used when no AI provider is configured. It still carries the
+/// operator's brief — tone and extra instructions reach the saved draft instead of being
+/// dropped — and says plainly that no AI wrote it, rather than dressing it up as one.
+fn outline_draft(
+    clean_q: &str,
+    title: &str,
+    tone: &str,
+    topic_name: &str,
+    business_context: &str,
+    extra: Option<&str>,
+) -> String {
+    let opening = match tone {
+        "friendly" => "Here's the short version, in plain language.",
+        "conversational" => "Let's walk through it.",
+        "authoritative" => "The answer, and the reasoning behind it.",
+        "expert" => "A practitioner's breakdown of the trade-offs.",
+        "concise" => "Straight to the point.",
+        _ => "A clear, professional overview.",
+    };
+    let mut out = format!(
+        "# {}\n\n## Quick Answer\n\n{} {}\n\n## Understanding the Options\n\nWhen it comes to {}, several factors matter: budget, scale, integration needs, and support. The right choice depends on your specific context.\n\n## Key Factors\n\n- **Budget** — What can you invest?\n- **Scale** — How much volume?\n- **Integration** — Works with your stack?\n- **Support** — What help is available?\n\n## How This Relates to {}\n\nFor {}, understanding {} directly impacts operations and growth. A methodical approach to evaluating options saves time and money.\n\n## Next Steps\n\n1. Define requirements\n2. Shortlist options\n3. Test before committing\n4. Plan training\n\n*Part of our {} content series — check back for updates.*",
+        title,
+        opening,
+        format!(
+            "Answering '{}' depends on several factors. This guide breaks it down.",
+            clean_q
+        ),
+        topic_name,
+        business_context,
+        business_context,
+        topic_name,
+        topic_name
+    );
+    out.push_str(&format!(
+        "\n\n## Notes for the editor (not for publication)\n\n\
+         - No AI provider is configured, so this is the built-in outline, not an AI draft.\n\
+         - Tone requested: {}\n",
+        tone
+    ));
+    if let Some(e) = extra {
+        out.push_str(&format!("- Additional instructions: {}\n", e));
+    }
+    out
 }
 
 // Integrations

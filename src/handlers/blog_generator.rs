@@ -781,55 +781,88 @@ pub async fn call_llm_json(
     })
 }
 
-/// Generate blog content from a prompt. Used by blog_qa for post generation.
+/// The AI providers this build can actually call, in the order used when the caller does
+/// not name one. A provider is only usable when a key for it is configured (per-directory,
+/// per-network, or platform) — no key is ever baked into the code.
+pub const AI_PROVIDERS: [&str; 2] = ["deepseek", "openai"];
+
+/// Default model per supported provider. `call_llm` picks the matching endpoint and reads
+/// the key from the DB (per-directory → network → platform), so nothing is hardwired.
+fn ai_provider_model(provider: &str) -> &'static str {
+    match provider {
+        "openai" => "gpt-4o-mini",
+        _ => "deepseek-chat",
+    }
+}
+
+/// Resolve which AI provider (and key) a caller should use.
+/// `provider = Some(p)` asks for exactly `p`: an unknown name, or one with no key, is an
+/// error — never a silent fallback to a different provider. `None` picks the first
+/// configured provider in `AI_PROVIDERS` order, or `Ok(None)` when none is configured.
+pub async fn resolve_ai_provider(
+    db: &sqlx::PgPool,
+    directory_id: Option<Uuid>,
+    provider: Option<&str>,
+) -> Result<Option<(String, String)>, String> {
+    match provider {
+        Some(p) => {
+            if !AI_PROVIDERS.contains(&p) {
+                return Err(format!(
+                    "Unknown AI provider '{}'. Available: {}.",
+                    p,
+                    AI_PROVIDERS.join(", ")
+                ));
+            }
+            match fetch_provider_key(db, p, directory_id).await {
+                Some(k) => Ok(Some((p.to_string(), k))),
+                None => Err(format!(
+                    "The '{}' AI provider has no API key configured for this directory or its \
+                     network. Add one in Integrations, or leave the provider unset to use \
+                     whichever provider is configured.",
+                    p
+                )),
+            }
+        }
+        None => {
+            for p in AI_PROVIDERS {
+                if let Some(k) = fetch_provider_key(db, p, directory_id).await {
+                    return Ok(Some((p.to_string(), k)));
+                }
+            }
+            Ok(None)
+        }
+    }
+}
+
+/// Call `provider` (which must be one of `AI_PROVIDERS`) and return its completion text.
+/// Delegates to the module's single LLM dispatch so every provider path stays in one place.
+pub async fn generate_with_provider(
+    db: &sqlx::PgPool,
+    prompt: &str,
+    directory_id: Option<Uuid>,
+    provider: &str,
+) -> Result<String, String> {
+    call_llm(
+        db,
+        provider,
+        ai_provider_model(provider),
+        prompt,
+        directory_id,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Generate blog content with whichever provider is configured. Returns `Ok("")` when no
+/// provider is configured — existing callers rely on that.
 pub async fn generate_blog_content(
     db: &sqlx::PgPool,
     _config: &crate::config::AppConfig,
     prompt: &str,
     directory_id: Option<Uuid>,
 ) -> Result<String, String> {
-    let mut api_key = fetch_provider_key(db, "openai", directory_id).await;
-    if api_key.is_none() {
-        api_key = fetch_provider_key(db, "deepseek", directory_id).await;
+    match resolve_ai_provider(db, directory_id, None).await? {
+        Some((provider, _key)) => generate_with_provider(db, prompt, directory_id, &provider).await,
+        None => Ok(String::new()),
     }
-    let api_key = api_key.unwrap_or_default();
-    let model = "deepseek-chat".to_string();
-
-    let client = reqwest::Client::new();
-    let url = if model.contains("deepseek") {
-        "https://api.deepseek.com/chat/completions"
-    } else if model.contains("gemini") {
-        "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
-    } else {
-        "https://api.openai.com/v1/chat/completions"
-    };
-
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 4096
-    });
-
-    let resp = client
-        .post(url)
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Blog content request failed: {}", e))?;
-
-    let json: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse blog content response: {}", e))?;
-
-    let content = json
-        .pointer("/choices/0/message/content")
-        .or_else(|| json.pointer("/candidates/0/content/parts/0/text"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    Ok(content.to_string())
 }

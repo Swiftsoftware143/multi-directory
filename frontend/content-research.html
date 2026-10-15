@@ -173,6 +173,30 @@
         </div>
       </div>
       
+      <div class="card" id="draft-settings">
+        <h2>✍️ Draft settings</h2>
+        <p class="sub">Used by the “Draft AI” button on every question below</p>
+        <div class="form-row">
+          <select id="draft-tone" style="flex:1">
+            <option value="professional">Tone: Professional</option>
+            <option value="friendly">Tone: Friendly</option>
+            <option value="conversational">Tone: Conversational</option>
+            <option value="authoritative">Tone: Authoritative</option>
+            <option value="expert">Tone: Expert</option>
+            <option value="concise">Tone: Concise</option>
+          </select>
+          <select id="draft-provider" style="flex:1">
+            <option value="">AI: whichever is configured</option>
+            <option value="deepseek">AI: DeepSeek</option>
+            <option value="openai">AI: OpenAI</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Extra instructions for the draft (optional)</label>
+          <input type="text" id="draft-extra" placeholder="e.g. mention our Palm Bay location and the 2026 rebate">
+        </div>
+      </div>
+
       <div id="questions-container" class="empty">Run research on a topic to find questions</div>
     </div>
   </div>
@@ -315,11 +339,20 @@ async function useAsKeyword(id) {
 // ─── AI Drafting ───
 async function draftPost(id) {
   const btn = event.target;
+  const toneEl = document.getElementById('draft-tone');
+  const provEl = document.getElementById('draft-provider');
+  const extraEl = document.getElementById('draft-extra');
+  const tone = (toneEl && toneEl.value) || 'professional';
+  const provider = (provEl && provEl.value) || null;
+  const extra = extraEl && extraEl.value.trim() ? extraEl.value.trim() : null;
   btn.textContent = 'Drafting...'; btn.disabled = true;
   try {
-    const result = await api('POST', '/research/draft-post', { question_id: id, tone: 'professional' });
+    const result = await api('POST', '/research/draft-post', { question_id: id, tone, content_provider: provider, additional_prompt: extra });
     showDraftModal(result);
-    toast('Draft generated!', 'success');
+    toast(result.used_ai
+      ? 'Draft written by ' + (result.provider || 'the AI provider') + '!'
+      : 'No AI provider configured — a built-in outline was saved as a draft (your tone and notes are kept)',
+      result.used_ai ? 'success' : 'error');
     loadQuestions();
   } catch(e) { toast(e.message, 'error'); }
   btn.textContent = 'Draft AI'; btn.disabled = false;
@@ -327,7 +360,10 @@ async function draftPost(id) {
 
 function showDraftModal(result) {
   document.getElementById('draft-modal').style.display = 'flex';
-  document.getElementById('draft-meta').textContent = `${result.word_count} words · Business relevance: ${result.business_relevance.substring(0, 100)}...`;
+  const src = result.used_ai
+    ? 'AI draft via ' + (result.provider || 'provider')
+    : 'Built-in outline — no AI provider configured';
+  document.getElementById('draft-meta').textContent = `${src} · ${result.word_count} words · Business relevance: ${result.business_relevance.substring(0, 100)}...`;
   document.getElementById('draft-content').innerHTML = markedText(result.draft_content);
 }
 
