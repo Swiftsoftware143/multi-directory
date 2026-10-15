@@ -2234,17 +2234,40 @@ pub async fn request_city(
         .map(|e| e.trim())
         .filter(|e| !e.is_empty());
 
+    // The directory the request came from. `city_requests.directory_id` is exactly what
+    // `admin_get_city_requests` filters on (the operator console's "Requests for a directory"
+    // screen), and this handler used to accept the id from the caller and then throw it away —
+    // so that screen could never show a vote cast from a city page. Measured on the live build:
+    // the row landed with `directory_id` NULL and the directory-scoped list answered `[]`.
+    // An id that names no real directory is ignored rather than handed to the FK, so a stale
+    // link cannot turn a vote into a 500.
+    let directory_id: Option<Uuid> = match req.directory_id {
+        Some(d) => sqlx::query_scalar::<_, Uuid>("SELECT id FROM directories WHERE id = $1")
+            .bind(d)
+            .fetch_optional(&app_state.db)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?,
+        None => None,
+    };
+
     let result = sqlx::query_as::<_, (Uuid, i32)>(
-        r#"INSERT INTO city_requests (city_name, state, email, votes)
-           VALUES ($1, $2, $3, 1)
+        r#"INSERT INTO city_requests (city_name, state, email, votes, directory_id)
+           VALUES ($1, $2, $3, 1, $4)
            ON CONFLICT (city_name, state) DO UPDATE
            SET votes = city_requests.votes + 1,
+               directory_id = COALESCE(city_requests.directory_id, EXCLUDED.directory_id),
                updated_at = NOW()
            RETURNING id, votes"#,
     )
     .bind(city_name)
     .bind(state)
     .bind(email)
+    .bind(directory_id)
     .fetch_optional(&app_state.db)
     .await
     .map_err(|e| {
@@ -2254,9 +2277,9 @@ pub async fn request_city(
         )
     })?;
 
-    // If we have a directory_id and the INSERT path includes it, we need to handle the ON CONFLICT
-    // The query above doesn't use directory_id since it's simple upsert.
-    // The real directory_id scoping happens on the admin/managed side.
+    // The vote above is now attributed to `directory_id` on insert (and kept on the first
+    // attribution when an already-existing city+state row is voted again), which is what makes
+    // the directory-scoped operator screen show it.
 
     match result {
         Some((id, votes)) => Ok(Json(json!({
