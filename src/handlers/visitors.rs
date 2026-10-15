@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::auth::middleware::verify_token;
 use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
-use crate::handlers::provider_keys_handler::resolve_provider_key;
+use crate::handlers::provider_keys_handler::resolve_provider_key_for_directory;
 use crate::AppState;
 
 // ── Auth Helpers (used by handlers that are before the auth_guard middleware) ──
@@ -2022,7 +2022,18 @@ async fn fetch_business_images_on_claim(
     // DB only — Provider Keys > Google Places (provider = "google_places").
     // No env fallback: a server-wide GOOGLE_PLACES_API_KEY would silently
     // shadow the admin UI. Unconfigured → log and skip the enrichment.
-    let api_key = match resolve_provider_key(db, "google_places").await {
+    // Resolved the way THIS business's directory reads it: the directory's own key first, then
+    // its network's, then the platform key. A key belonging to another city is never used here.
+    let directory_id: Option<Uuid> =
+        sqlx::query_scalar::<_, Option<Uuid>>("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| format!("DB error: {e}"))?
+            .flatten();
+
+    let api_key = match resolve_provider_key_for_directory(db, directory_id, "google_places").await
+    {
         Some(k) if !k.trim().is_empty() => k,
         _ => {
             tracing::info!(

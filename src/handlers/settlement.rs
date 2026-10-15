@@ -373,13 +373,19 @@ pub async fn update_settlement_settings(
 /// Which provider will actually be used, and whether a key exists for it.
 /// Returns (name, key_present).
 async fn detect_provider(db: &PgPool, settings: &SettlementSettings) -> (Option<String>, bool) {
+    // Settlement runs for ONE network: resolve that network's own key, else the platform key.
+    // A key that belongs to another network (or to a single city) is never selected.
+    let network_id = settings.network_id;
     if let Some(named) = settings.payment_provider.as_ref().filter(|p| !p.is_empty()) {
-        let key = provider_keys_handler::resolve_provider_key(db, named).await;
+        let key =
+            provider_keys_handler::resolve_provider_key_for_network(db, network_id, named).await;
         let has = key.map(|k| !k.trim().is_empty()).unwrap_or(false);
         return (Some(named.clone()), has);
     }
     for candidate in KNOWN_PAYMENT_PROVIDERS {
-        if let Some(key) = provider_keys_handler::resolve_provider_key(db, candidate).await {
+        if let Some(key) =
+            provider_keys_handler::resolve_provider_key_for_network(db, network_id, candidate).await
+        {
             if !key.trim().is_empty() {
                 return (Some(candidate.to_string()), true);
             }
@@ -978,7 +984,9 @@ pub async fn execute_settlement(
     // minimum the row is still written (the ledger stays correct) but is not paid.
     let (provider, configured) = detect_provider(db, &settings).await;
     let provider_key = match (&provider, configured) {
-        (Some(p), true) => provider_keys_handler::resolve_provider_key(db, p).await,
+        (Some(p), true) => {
+            provider_keys_handler::resolve_provider_key_for_network(db, network_id, p).await
+        }
         _ => None,
     };
     let destination = platform_payout_destination(db, network_id, provider.as_deref()).await;

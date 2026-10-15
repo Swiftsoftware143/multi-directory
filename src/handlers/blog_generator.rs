@@ -208,8 +208,8 @@ pub async fn generate_blog_posts(
             &merge_fields_str,
         );
 
-        // Call LLM
-        match call_llm(&s.db, provider, model, &prompt).await {
+        // Call LLM — the key is the one THIS directory reads.
+        match call_llm(&s.db, provider, model, &prompt, Some(*dir_id)).await {
             Ok(generated) => {
                 // Parse title from generated content (first h1 or first line)
                 let (title, mut content) =
@@ -295,8 +295,8 @@ pub async fn regenerate_blog_post(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let post = sqlx::query_as::<_, (Uuid, Option<Uuid>, Option<serde_json::Value>)>(
-        "SELECT id, template_id, template_data FROM blog_posts WHERE id = $1",
+    let post = sqlx::query_as::<_, (Uuid, Option<Uuid>, Option<serde_json::Value>, Uuid)>(
+        "SELECT id, template_id, template_data, directory_id FROM blog_posts WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&s.db)
@@ -318,6 +318,8 @@ pub async fn regenerate_blog_post(
         .await?
         .ok_or_else(|| AppError::NotFound("template for this post not found".into()))?;
 
+    // The post's own directory: the regenerated key is the one that directory reads.
+    let dir_id = post.3;
     let template_data = post.2.unwrap_or(json!({}));
     let fields: HashMap<String, String> =
         serde_json::from_value(template_data.get("fields").cloned().unwrap_or(json!({})))
@@ -340,7 +342,7 @@ pub async fn regenerate_blog_post(
         "{}",
     );
 
-    match call_llm(&s.db, provider, model, &prompt).await {
+    match call_llm(&s.db, provider, model, &prompt, Some(dir_id)).await {
         Ok(generated) => {
             let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
 
@@ -493,21 +495,29 @@ async fn call_llm(
     provider: &str,
     model: &str,
     prompt: &str,
+    directory_id: Option<Uuid>,
 ) -> Result<String, AppError> {
     match provider {
-        "deepseek" => call_deepseek(db, model, prompt).await,
-        "openai" => call_openai(db, model, prompt).await,
-        "gemini" => call_gemini(db, model, prompt).await,
-        _ => call_deepseek(db, model, prompt).await,
+        "deepseek" => call_deepseek(db, model, prompt, directory_id).await,
+        "openai" => call_openai(db, model, prompt, directory_id).await,
+        "gemini" => call_gemini(db, model, prompt, directory_id).await,
+        _ => call_deepseek(db, model, prompt, directory_id).await,
     }
 }
 
-async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
+async fn call_deepseek(
+    db: &sqlx::PgPool,
+    model: &str,
+    prompt: &str,
+    directory_id: Option<Uuid>,
+) -> Result<String, AppError> {
     // DB only (provider_keys / Provider Keys UI). No env fallback: an env key
     // would silently shadow the admin UI.
-    let api_key = fetch_provider_key(db, "deepseek").await.ok_or_else(|| {
-        AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into())
-    })?;
+    let api_key = fetch_provider_key(db, "deepseek", directory_id)
+        .await
+        .ok_or_else(|| {
+            AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into())
+        })?;
     let url = "https://api.deepseek.com/v1/chat/completions";
 
     let body = json!({
@@ -540,11 +550,18 @@ async fn call_deepseek(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<S
     Ok(content)
 }
 
-async fn call_openai(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<String, AppError> {
+async fn call_openai(
+    db: &sqlx::PgPool,
+    model: &str,
+    prompt: &str,
+    directory_id: Option<Uuid>,
+) -> Result<String, AppError> {
     // DB only (provider_keys). No env fallback.
-    let api_key = fetch_provider_key(db, "openai").await.ok_or_else(|| {
-        AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into())
-    })?;
+    let api_key = fetch_provider_key(db, "openai", directory_id)
+        .await
+        .ok_or_else(|| {
+            AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into())
+        })?;
     let url = "https://api.openai.com/v1/chat/completions";
 
     let body = json!({
@@ -577,10 +594,15 @@ async fn call_openai(db: &sqlx::PgPool, model: &str, prompt: &str) -> Result<Str
     Ok(content)
 }
 
-async fn call_gemini(db: &sqlx::PgPool, _model: &str, _prompt: &str) -> Result<String, AppError> {
+async fn call_gemini(
+    db: &sqlx::PgPool,
+    _model: &str,
+    _prompt: &str,
+    directory_id: Option<Uuid>,
+) -> Result<String, AppError> {
     // Gemini integration placeholder — will use Google AI API
-    // For now, forward to DeepSeek as fallback
-    call_deepseek(db, "deepseek-chat", _prompt).await
+    // For now, forward to DeepSeek as fallback (with the same directory scope).
+    call_deepseek(db, "deepseek-chat", _prompt, directory_id).await
 }
 
 // ── Helpers ──
@@ -662,9 +684,20 @@ fn slugify(s: &str) -> String {
     result.trim_matches('-').to_string()
 }
 
-/// Fetch the API key for a provider — shared resolver (default key first, then most recent).
-async fn fetch_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<String> {
-    crate::handlers::provider_keys_handler::resolve_provider_key(db, provider).await
+/// Fetch the API key for a provider — ONE shared resolver. When the caller knows which directory
+/// it is generating for, the key is resolved the way that directory reads it (own key, else its
+/// network's, else the platform key); a key scoped to another city is never used.
+async fn fetch_provider_key(
+    db: &sqlx::PgPool,
+    provider: &str,
+    directory_id: Option<Uuid>,
+) -> Option<String> {
+    crate::handlers::provider_keys_handler::resolve_provider_key_for_directory(
+        db,
+        directory_id,
+        provider,
+    )
+    .await
 }
 
 // ── Shared public helpers used by blog_qa ──
@@ -675,6 +708,7 @@ pub async fn call_llm_json(
     _config: &crate::config::AppConfig,
     prompt: &str,
     provider_config: Option<&serde_json::Value>,
+    directory_id: Option<Uuid>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let (api_key, model) = if let Some(pc) = provider_config {
         let key = pc.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
@@ -684,9 +718,9 @@ pub async fn call_llm_json(
             .unwrap_or("gpt-4o-mini");
         (key.to_string(), mdl.to_string())
     } else {
-        let mut key = fetch_provider_key(db, "openai").await;
+        let mut key = fetch_provider_key(db, "openai", directory_id).await;
         if key.is_none() {
-            key = fetch_provider_key(db, "deepseek").await;
+            key = fetch_provider_key(db, "deepseek", directory_id).await;
         }
         let k = key.unwrap_or_default();
         let mdl = "deepseek-chat".to_string();
@@ -752,10 +786,11 @@ pub async fn generate_blog_content(
     db: &sqlx::PgPool,
     _config: &crate::config::AppConfig,
     prompt: &str,
+    directory_id: Option<Uuid>,
 ) -> Result<String, String> {
-    let mut api_key = fetch_provider_key(db, "openai").await;
+    let mut api_key = fetch_provider_key(db, "openai", directory_id).await;
     if api_key.is_none() {
-        api_key = fetch_provider_key(db, "deepseek").await;
+        api_key = fetch_provider_key(db, "deepseek", directory_id).await;
     }
     let api_key = api_key.unwrap_or_default();
     let model = "deepseek-chat".to_string();

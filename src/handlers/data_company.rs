@@ -501,9 +501,15 @@ pub(crate) async fn get_yelp_api_key(
         }
     }
 
-    // Fallback: named provider keys — default key first, then most recently updated.
+    // Fallback: named provider keys, resolved as THIS directory reads them (its own key, else its
+    // network's, else the platform key). A key stored for another city is never returned.
     let from_db: Option<String> =
-        crate::handlers::provider_keys_handler::resolve_provider_key(&state.db, "yelp").await;
+        crate::handlers::provider_keys_handler::resolve_provider_key_for_directory_ref(
+            &state.db,
+            directory_id,
+            "yelp",
+        )
+        .await;
 
     if let Some(ref key) = from_db {
         return Ok(key.clone());
@@ -549,10 +555,15 @@ pub(crate) async fn get_google_api_key(
         }
     }
 
-    // Fallback: named provider keys — default key first, then most recently updated.
+    // Fallback: named provider keys, resolved as THIS directory reads them (its own key, else its
+    // network's, else the platform key). A key stored for another city is never returned.
     let from_db: Option<String> =
-        crate::handlers::provider_keys_handler::resolve_provider_key(&state.db, "google_places")
-            .await;
+        crate::handlers::provider_keys_handler::resolve_provider_key_for_directory_ref(
+            &state.db,
+            directory_id,
+            "google_places",
+        )
+        .await;
 
     if let Some(ref key) = from_db {
         return Ok(key.clone());

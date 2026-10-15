@@ -3167,8 +3167,15 @@
     }
 
     function pkTest(provider) {
-      pkStatus('Testing the default ' + provider + ' key...', true);
-      apiGet('/provider-keys/' + encodeURIComponent(provider) + '/test')
+      // Test in the context of the directory picked in the scope-in-force card, so the answer is
+      // the key that directory's runtime reads (own -> network -> platform).
+      var testDirSel = document.getElementById('pk-effective-directory');
+      var testQ = (testDirSel && testDirSel.value)
+        ? ('?directory_id=' + encodeURIComponent(testDirSel.value))
+        : '';
+      pkStatus('Testing the ' + provider + ' key in force'
+        + (testQ ? ' for the selected directory' : '') + '...', true);
+      apiGet('/provider-keys/' + encodeURIComponent(provider) + '/test' + testQ)
         .then(function (r) { pkStatus(provider + ': ' + JSON.stringify(r).slice(0, 200), true); })
         .catch(function (e) { pkStatus(provider + ' test failed: ' + e.message, false); });
     }

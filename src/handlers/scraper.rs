@@ -12,7 +12,7 @@ use crate::error::{ApiResult, AppError};
 use crate::handlers::pipeline::{
     find_existing_by_phone, find_existing_by_website, pipeline_ingest,
 };
-use crate::handlers::provider_keys_handler::resolve_provider_key;
+use crate::handlers::provider_keys_handler::resolve_provider_key_for_directory_ref;
 use crate::AppState;
 
 // ── Scraper Configuration ──
@@ -129,10 +129,15 @@ async fn google_places_import(
     s: State<AppState>,
     req: DataImportRequest,
 ) -> ApiResult<impl IntoResponse> {
-    // Get Google Places API key
-    let api_key = resolve_provider_key(&s.db, "google_places")
-        .await
-        .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Paste it in the admin panel > Provider API Keys.".into()))?;
+    // The key is resolved as the TARGET directory reads it: its own key first, then its network's,
+    // then the platform key. A key belonging to another city is never used for this import.
+    let api_key = resolve_provider_key_for_directory_ref(
+        &s.db,
+        req.directory_id.as_deref(),
+        "google_places",
+    )
+    .await
+    .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Paste it in the admin panel > Provider API Keys.".into()))?;
 
     let query = match (&req.keyword, req.business_type.as_str()) {
         (Some(kw), _) if !kw.is_empty() => format!("{} in {}", kw, req.location),
@@ -574,10 +579,15 @@ pub async fn scrape_google_places(
     State(s): State<AppState>,
     Json(cfg): Json<ScraperConfig>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get Google Places API key
-    let api_key = resolve_provider_key(&s.db, "google_places")
-        .await
-        .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Paste it in the admin panel > Provider API Keys.".into()))?;
+    // The key is resolved as the TARGET directory reads it: its own key first, then its network's,
+    // then the platform key. A key belonging to another city is never used for this scrape.
+    let api_key = resolve_provider_key_for_directory_ref(
+        &s.db,
+        cfg.directory_id.as_deref(),
+        "google_places",
+    )
+    .await
+    .ok_or_else(|| AppError::BadRequest("Google Places API key not configured. Paste it in the admin panel > Provider API Keys.".into()))?;
 
     let location = cfg.location.as_deref().unwrap_or("Tampa, FL");
     let query = cfg.query.as_deref().unwrap_or("restaurants");

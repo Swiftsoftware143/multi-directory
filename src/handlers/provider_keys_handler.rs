@@ -15,16 +15,26 @@
 //! - GET    /api/v1/admin/provider-keys/:provider/test (verify the resolved key)
 //! - GET    /api/v1/available-providers               (public list)
 //!
-//! Any code that needs "the key for provider X" MUST call
-//! [`resolve_provider_key`] / [`resolve_provider_key_for_tenant`] — default row
-//! first, then the most recently updated active row. One resolver, no ad-hoc SQL.
+//! Any code that needs "the key for provider X" MUST call one of the resolvers below — one
+//! resolver per question, no ad-hoc SQL:
 //!
-//! Round 6 (B39): a key is now SCOPED — to the platform, to one NETWORK, or to one DIRECTORY.
+//! | caller knows | resolver | ladder |
+//! |---|---|---|
+//! | the directory | [`resolve_provider_key_scoped`] | directory -> its network -> platform |
+//! | the network only | [`resolve_provider_key_for_network`] | network -> platform |
+//! | a tenant/user | [`resolve_provider_key_for_tenant`] | that tenant's own -> system |
+//! | nothing | [`resolve_provider_key`] | default row first, then most recent active |
+//!
+//! The three scope-blind resolvers EXCLUDE directory-scoped rows (`directory_id IS NULL` in every
+//! one of them): a credential scoped to ONE city must never serve another city, a whole network or
+//! the platform by ordering luck. Callers that know their directory MUST use the scoped resolver.
+//!
+//! Round 6 (B39): a key is SCOPED — to the platform, to one NETWORK, or to one DIRECTORY.
 //! A directory with no key of its own inherits its network's key, which is what lets David set a
-//! Google Places key ONCE for the ZaarHub network and have all ten cities use it. The ONLY
-//! resolution path for a directory-scoped read is [`resolve_provider_key_scoped`]
-//! (directory -> network -> platform). Unconfigured returns `None`: callers log-and-skip.
-//! [`mask_key`] is the only representation of a credential that ever leaves this process.
+//! Google Places key ONCE for the ZaarHub network and have all ten cities use it. Every runtime
+//! read resolves through the ladder above (`?directory_id=` taking an id OR a slug). Unconfigured
+//! returns `None`: callers log-and-skip and never fabricate a success. [`mask_key`] is the only
+//! representation of a credential that leaves this process.
 
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -207,10 +217,15 @@ macro_rules! select_keys {
 /// Resolve "the key for provider X" for the SYSTEM tenant (platform-wide keys),
 /// falling back to any tenant that has an active key.
 /// Default row wins; otherwise the most recently updated active row.
+///
+/// Scope-blind by design: `directory_id IS NULL` excludes every directory-scoped row, so a key
+/// stored for ONE city can never be handed to a scope-blind caller. A caller that knows its
+/// directory must use [`resolve_provider_key_scoped`].
 pub async fn resolve_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<String> {
     let stored = sqlx::query_scalar::<_, String>(
         r#"SELECT api_key FROM provider_keys
            WHERE provider = $1 AND is_active = true
+             AND directory_id IS NULL
            ORDER BY (tenant_id = $2) DESC,
                     is_default DESC, updated_at DESC
            LIMIT 1"#,
@@ -227,6 +242,9 @@ pub async fn resolve_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<S
 
 /// Resolve "the key for provider X" for one tenant: the tenant's own keys first
 /// (default row, then most recent), then the system/global key.
+///
+/// `directory_id IS NULL` for the same reason as [`resolve_provider_key`]: a credential scoped to
+/// one directory is not a tenant-wide credential.
 pub async fn resolve_provider_key_for_tenant(
     db: &sqlx::PgPool,
     tenant_id: Uuid,
@@ -235,6 +253,7 @@ pub async fn resolve_provider_key_for_tenant(
     let stored = sqlx::query_scalar::<_, String>(
         r#"SELECT api_key FROM provider_keys
            WHERE provider = $1 AND is_active = true
+             AND directory_id IS NULL
              AND (tenant_id = $2 OR tenant_id = $3)
            ORDER BY (tenant_id = $2) DESC, is_default DESC, updated_at DESC
            LIMIT 1"#,
@@ -248,6 +267,89 @@ pub async fn resolve_provider_key_for_tenant(
     .flatten()?;
 
     keycrypto::decrypt_for_use(db, &stored, provider).await
+}
+
+/// Resolve "the key for provider X" for one NETWORK: the network's own key first, then the
+/// platform key. Never a directory-scoped row (one city's credential is not the network's) and
+/// never another network's key — a settlement run for one network can never be funded by a key
+/// that belongs to a different one.
+pub async fn resolve_provider_key_for_network(
+    db: &sqlx::PgPool,
+    network_id: Uuid,
+    provider: &str,
+) -> Option<String> {
+    let stored = sqlx::query_scalar::<_, String>(
+        r#"SELECT api_key FROM provider_keys
+           WHERE provider = $1 AND is_active = true
+             AND (network_id = $2
+                  OR (directory_id IS NULL AND network_id IS NULL))
+           ORDER BY CASE WHEN network_id = $2 THEN 0 ELSE 1 END,
+                    is_default DESC, updated_at DESC
+           LIMIT 1"#,
+    )
+    .bind(provider)
+    .bind(network_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()?;
+
+    keycrypto::decrypt_for_use(db, &stored, provider).await
+}
+
+/// The ONE way an optional directory id turns into a key: scoped (directory -> its network ->
+/// platform) when the caller knows its directory, the scope-blind platform ladder when it does
+/// not. Every call site uses this so no read re-implements the choice.
+pub async fn resolve_provider_key_for_directory(
+    db: &sqlx::PgPool,
+    directory_id: Option<Uuid>,
+    provider: &str,
+) -> Option<String> {
+    match directory_id {
+        Some(dir) => resolve_provider_key_scoped(db, dir, provider).await,
+        None => resolve_provider_key(db, provider).await,
+    }
+}
+
+/// The same ladder, for callers that may hold a directory ID **or its slug** (the scraper configs
+/// and the Data Company screens accept either). An unrecognised value falls back to the
+/// scope-blind ladder rather than guessing a directory.
+pub async fn resolve_provider_key_for_directory_ref(
+    db: &sqlx::PgPool,
+    directory: Option<&str>,
+    provider: &str,
+) -> Option<String> {
+    let id = resolve_directory_ref(db, directory).await;
+    resolve_provider_key_for_directory(db, id, provider).await
+}
+
+/// A directory ID **or its slug** -> the ID (the admin screens and both scraper configs accept
+/// either). An unrecognised value yields `None` rather than guessing a directory.
+pub async fn resolve_directory_ref(db: &sqlx::PgPool, directory: Option<&str>) -> Option<Uuid> {
+    match directory {
+        Some(d) if !d.trim().is_empty() => match Uuid::parse_str(d.trim()) {
+            Ok(u) => Some(u),
+            Err(_) => sqlx::query_scalar::<_, Uuid>("SELECT id FROM directories WHERE slug = $1")
+                .bind(d.trim())
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten(),
+        },
+        _ => None,
+    }
+}
+
+/// The scoped read WITH its provenance, for a caller that must SHOW which key is in force (the
+/// admin Test button). One lookup, so the value and the label it reports can never come from two
+/// different scopes.
+pub async fn resolve_provider_key_with_origin_ref(
+    db: &sqlx::PgPool,
+    directory: Option<&str>,
+    provider: &str,
+) -> Option<(String, KeyOrigin)> {
+    let id = resolve_directory_ref(db, directory).await?;
+    lookup_scoped(db, id, provider).await
 }
 
 async fn validate_provider_exists(db: &sqlx::PgPool, provider: &str) -> Result<(), AppError> {
@@ -609,34 +711,64 @@ pub async fn list_available_providers(State(s): State<AppState>) -> ApiResult<im
     })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TestKeyQuery {
+    /// Optional: test the key as ONE directory's runtime reads it (own -> its network ->
+    /// platform). The id or the slug — the panel sends the id, a probe may send either.
+    pub directory_id: Option<String>,
+}
+
 /// GET /api/v1/admin/provider-keys/:provider/test — check the RESOLVED key for a provider.
 pub async fn test_provider_key(
     Extension(claims): Extension<Claims>,
     State(s): State<AppState>,
     Path(provider): Path<String>,
+    Query(q): Query<TestKeyQuery>,
 ) -> ApiResult<impl IntoResponse> {
     let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
 
-    let key = resolve_provider_key_for_tenant(&s.db, tenant_id, &provider)
-        .await
-        .ok_or_else(|| {
-            AppError::NotFound(format!("No API key found for provider '{}'", provider))
-        })?;
-
-    let default_label = sqlx::query_scalar::<_, String>(
-        "SELECT label FROM provider_keys WHERE provider = $1 AND is_default = true LIMIT 1",
-    )
-    .bind(&provider)
-    .fetch_optional(&s.db)
-    .await?
-    .unwrap_or_else(|| DEFAULT_LABEL.to_string());
+    // With ?directory_id= this answers for exactly the key that directory will read at runtime,
+    // so the button can never report a key the feature does not use (and never hides one it does).
+    // The LABEL comes from the same row as the value: a scope-blind label query named one scope's
+    // key while showing another scope's preview (same defect family, found by the live probe).
+    let (key, label) = match q.directory_id.as_deref() {
+        Some(dir) => {
+            let (k, origin) = resolve_provider_key_with_origin_ref(&s.db, Some(dir), &provider)
+                .await
+                .ok_or_else(|| {
+                    AppError::NotFound(format!(
+                        "No API key found for provider '{}' in force for directory '{}'",
+                        provider, dir
+                    ))
+                })?;
+            (k, format!("{} ({})", origin.label, origin.source_name))
+        }
+        None => {
+            let k = resolve_provider_key_for_tenant(&s.db, tenant_id, &provider)
+                .await
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("No API key found for provider '{}'", provider))
+                })?;
+            let lbl = sqlx::query_scalar::<_, String>(
+                "SELECT label FROM provider_keys WHERE provider = $1 AND is_default = true \
+                   AND directory_id IS NULL \
+                 ORDER BY (tenant_id = $2) DESC, updated_at DESC LIMIT 1",
+            )
+            .bind(&provider)
+            .bind(tenant_id)
+            .fetch_optional(&s.db)
+            .await?
+            .unwrap_or_else(|| DEFAULT_LABEL.to_string());
+            (k, lbl)
+        }
+    };
 
     Ok(Json(json!({
         "provider": provider,
         "configured": true,
-        "resolved_label": default_label,
+        "resolved_label": label,
         "key_preview": mask_key(&key), // masked — never the raw credential
-        "message": format!("{} API key is configured (default: {})", provider, default_label)
+        "message": format!("{} API key is configured ({})", provider, label)
     })))
 }
 
@@ -1013,5 +1145,247 @@ mod tests {
         assert_eq!(mask_key("abcdefgh"), "********");
         assert_eq!(mask_key("abc"), "***");
         assert_eq!(mask_key(""), "");
+    }
+}
+
+/// Proof of the scoped read path (kanban t_7a7681d8): a key stored at DIRECTORY scope is used by
+/// that directory only, a key stored at NETWORK scope is inherited by that network's cities, and a
+/// scope-blind read can never be served by a directory-scoped credential.
+///
+/// DB-backed on purpose — the defect was SQL that had no scope predicate, so a mocked resolver
+/// would prove nothing. It needs `DATABASE_URL` and `PROVIDER_KEY_ENC_SECRET`; without them it
+/// SKIPS with a printed reason instead of reporting a green it did not measure. The probe provider
+/// name is synthetic (`_harness_scope_probe`) so no runtime path can ever read these rows, and the
+/// test deletes every row it writes and asserts the table is clean at the end.
+#[cfg(test)]
+mod scope_probe_tests {
+    use super::{
+        provider_key_origin_for_directory, resolve_provider_key,
+        resolve_provider_key_for_directory, resolve_provider_key_for_network,
+        resolve_provider_key_for_tenant, resolve_provider_key_scoped,
+    };
+    use sqlx::PgPool;
+    use uuid::Uuid;
+
+    /// A provider name that exists nowhere in the app: only this test reads it.
+    const PROBE_PROVIDER: &str = "_harness_scope_probe";
+    const KEY_PLATFORM: &str = "probe-key-platform-zzz1";
+    const KEY_NETWORK: &str = "probe-key-network-zzz2";
+    const KEY_DIRECTORY_A: &str = "probe-key-directory-a-zzz3";
+    const KEY_NETWORK_OTHER: &str = "probe-key-network-other-zzz4";
+
+    struct Probe {
+        platform: Uuid,
+        network: Uuid,
+        directory_a: Uuid,
+        network_other: Uuid,
+    }
+
+    async fn connect() -> Option<PgPool> {
+        let url = std::env::var("DATABASE_URL").ok()?;
+        if url.trim().is_empty() {
+            return None;
+        }
+        PgPool::connect(url.trim()).await.ok()
+    }
+
+    /// Delete every probe row. Safe to call at the start (idempotent) and at the end.
+    async fn purge(pool: &PgPool) {
+        sqlx::query("DELETE FROM provider_keys WHERE provider = $1")
+            .bind(PROBE_PROVIDER)
+            .execute(pool)
+            .await
+            .expect("purge probe rows");
+    }
+
+    /// Insert one probe row, stored exactly the way a real key is stored (encrypted, `enc:v1:`).
+    async fn insert_probe_row(
+        pool: &PgPool,
+        tenant_id: Uuid,
+        label: &str,
+        plain: &str,
+        scope: &str,
+        network_id: Option<Uuid>,
+        directory_id: Option<Uuid>,
+    ) -> Uuid {
+        let cipher = crate::security::provider_key_crypto::encrypt_for_storage(pool, plain)
+            .await
+            .expect("probe value must encrypt (PROVIDER_KEY_ENC_SECRET set)");
+        sqlx::query_scalar::<_, Uuid>(
+            r#"INSERT INTO provider_keys
+                 (tenant_id, provider, label, api_key, is_active, scope, is_default,
+                  network_id, directory_id)
+               VALUES ($1, $2, $3, $4, true, $5, false, $6, $7)
+               RETURNING id"#,
+        )
+        .bind(tenant_id)
+        .bind(PROBE_PROVIDER)
+        .bind(label)
+        .bind(cipher)
+        .bind(scope)
+        .bind(network_id)
+        .bind(directory_id)
+        .fetch_one(pool)
+        .await
+        .expect("insert probe row")
+    }
+
+    #[test]
+    fn scoped_reads_use_the_right_key() {
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let pool = match connect().await {
+                Some(p) => p,
+                None => {
+                    eprintln!("SKIP scope_probe_tests: DATABASE_URL is not set");
+                    return;
+                }
+            };
+            if crate::security::provider_key_crypto::master_key().is_none() {
+                eprintln!("SKIP scope_probe_tests: PROVIDER_KEY_ENC_SECRET is not set");
+                return;
+            }
+
+            // Two cities of the ONE network (so inheritance is measurable) plus a different
+            // network (so cross-network bleed is measurable).
+            let dir_a: Option<Uuid> = sqlx::query_scalar("SELECT id FROM directories WHERE slug = 'palm-bay'")
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
+            let dir_b: Option<Uuid> = sqlx::query_scalar("SELECT id FROM directories WHERE slug = 'apopka'")
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
+            let (dir_a, dir_b) = match (dir_a, dir_b) {
+                (Some(a), Some(b)) => (a, b),
+                _ => {
+                    eprintln!("SKIP scope_probe_tests: probe directories palm-bay/apopka absent");
+                    return;
+                }
+            };
+            let net_b: Option<Uuid> =
+                sqlx::query_scalar("SELECT network_id FROM directories WHERE id = $1")
+                    .bind(dir_b)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap();
+            let network: Uuid = sqlx::query_scalar("SELECT network_id FROM directories WHERE id = $1")
+                .bind(dir_a)
+                .fetch_one(&pool)
+                .await
+                .expect("palm-bay must belong to a network for this probe");
+            assert_eq!(
+                Some(network),
+                net_b,
+                "the two probe cities must share one network"
+            );
+            let network_other: Uuid =
+                sqlx::query_scalar("SELECT id FROM networks WHERE id <> $1 ORDER BY slug ASC LIMIT 1")
+                    .bind(network)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("a second network must exist for the non-bleed probe");
+            let tenant_id: Uuid = sqlx::query_scalar("SELECT tenant_id FROM provider_keys LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .unwrap()
+                .or(sqlx::query_scalar("SELECT id FROM tenants ORDER BY created_at ASC LIMIT 1")
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap())
+                .expect("a tenant must exist for the probe rows");
+
+            purge(&pool).await;
+            let probe = Probe {
+                platform: insert_probe_row(&pool, tenant_id, "probe-platform", KEY_PLATFORM, "tenant", None, None).await,
+                network: insert_probe_row(&pool, tenant_id, "probe-network", KEY_NETWORK, "network", Some(network), None).await,
+                directory_a: insert_probe_row(&pool, tenant_id, "probe-directory-a", KEY_DIRECTORY_A, "directory", None, Some(dir_a)).await,
+                network_other: insert_probe_row(&pool, tenant_id, "probe-network-other", KEY_NETWORK_OTHER, "network", Some(network_other), None).await,
+            };
+
+            // 1 + 2. The directory's own key wins for ITS directory; a sibling city of the same
+            // network inherits the network key and never sees the other city's key.
+            let got_a = resolve_provider_key_scoped(&pool, dir_a, PROBE_PROVIDER).await;
+            let got_b = resolve_provider_key_scoped(&pool, dir_b, PROBE_PROVIDER).await;
+            assert_eq!(got_a.as_deref(), Some(KEY_DIRECTORY_A), "directory A must read its OWN key");
+            assert_eq!(got_b.as_deref(), Some(KEY_NETWORK), "directory B must inherit the network key");
+            assert_ne!(got_b.as_deref(), Some(KEY_DIRECTORY_A), "directory B must NOT read directory A's key");
+
+            // 3 + 4. The same ladder through the optional-directory helper and the network resolver,
+            // including a second network, which must never be funded by the first network's key.
+            assert_eq!(
+                resolve_provider_key_for_directory(&pool, Some(dir_a), PROBE_PROVIDER).await.as_deref(),
+                Some(KEY_DIRECTORY_A)
+            );
+            assert_eq!(
+                resolve_provider_key_for_directory(&pool, Some(dir_b), PROBE_PROVIDER).await.as_deref(),
+                Some(KEY_NETWORK)
+            );
+            assert_eq!(
+                resolve_provider_key_for_network(&pool, network, PROBE_PROVIDER).await.as_deref(),
+                Some(KEY_NETWORK)
+            );
+            assert_eq!(
+                resolve_provider_key_for_network(&pool, network_other, PROBE_PROVIDER).await.as_deref(),
+                Some(KEY_NETWORK_OTHER),
+                "a second network must read its own key, not another network's"
+            );
+
+            // 5. The admin screen reports WHERE the key comes from (it shares this one lookup).
+            let origin_a = provider_key_origin_for_directory(&pool, dir_a, PROBE_PROVIDER)
+                .await
+                .expect("origin for directory A");
+            let origin_b = provider_key_origin_for_directory(&pool, dir_b, PROBE_PROVIDER)
+                .await
+                .expect("origin for directory B");
+            assert_eq!(origin_a.source, "directory");
+            assert_eq!(origin_b.source, "network");
+            assert_eq!(origin_a.key_id, probe.directory_a);
+            assert_eq!(origin_b.key_id, probe.network);
+
+            // 6. The middle rung is optional: without the network key the sibling city falls back to
+            // the platform key (today's single-network-key behaviour must survive).
+            sqlx::query("DELETE FROM provider_keys WHERE id = $1")
+                .bind(probe.network)
+                .execute(&pool)
+                .await
+                .unwrap();
+            assert_eq!(
+                resolve_provider_key_scoped(&pool, dir_b, PROBE_PROVIDER).await.as_deref(),
+                Some(KEY_PLATFORM),
+                "with no network key, a city must fall back to the platform key"
+            );
+
+            // 7. THE REGRESSION: with ONLY a directory-scoped row left, a scope-blind read finds
+            // NOTHING. Before this change that row was handed to every directory.
+            for id in [probe.platform, probe.network_other] {
+                sqlx::query("DELETE FROM provider_keys WHERE id = $1")
+                    .bind(id)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+            let blind = resolve_provider_key(&pool, PROBE_PROVIDER).await;
+            let tenant_wide = resolve_provider_key_for_tenant(&pool, tenant_id, PROBE_PROVIDER).await;
+            let still_scoped = resolve_provider_key_scoped(&pool, dir_a, PROBE_PROVIDER).await;
+            assert_eq!(blind, None, "a scope-blind read must not be served by a directory-scoped key");
+            assert_eq!(tenant_wide, None, "a tenant-wide read must not be served by a directory-scoped key");
+            assert_eq!(still_scoped.as_deref(), Some(KEY_DIRECTORY_A), "the directory still reads its own key");
+
+            // 8. Leave nothing behind.
+            purge(&pool).await;
+            let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM provider_keys WHERE provider = $1")
+                .bind(PROBE_PROVIDER)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(left, 0, "probe rows must be cleaned up");
+
+            println!(
+                "PROOF scoped_reads_use_the_right_key: dir(palm-bay)=directory key, \
+                 sibling(apopka)=network key, other network=its own key, no network key=platform key, \
+                 scope-blind read of a directory-only key=None, probe rows left=0"
+            );
+        });
     }
 }

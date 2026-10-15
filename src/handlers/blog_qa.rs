@@ -157,7 +157,7 @@ pub async fn fetch_keywords(
             .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let keywords_json: Vec<Value> = match req.source.as_str() {
-        "answer_the_public" => fetch_atp_keywords(&s, &req.seed_keywords).await?,
+        "answer_the_public" => fetch_atp_keywords(&s, &req.seed_keywords, req.directory_id).await?,
         "dataforseo" => fetch_dataforseo_keywords(&s, &req.seed_keywords, &directory_name).await?,
         _ => {
             // "ai_generated" — default
@@ -182,6 +182,7 @@ pub async fn fetch_keywords(
                 &s.config,
                 &ai_prompt,
                 config.as_ref(),
+                Some(req.directory_id),
             )
             .await
             .map_err(|e| AppError::Internal(format!("AI keyword generation failed: {}", e)))?
@@ -217,10 +218,16 @@ pub async fn fetch_keywords(
 }
 
 // ── AnswerThePublic Integration ──
-async fn fetch_atp_keywords(state: &AppState, seeds: &[String]) -> Result<Vec<Value>, AppError> {
-    // Get configured API key from integration_configs or provider_keys
-    let api_key = match crate::handlers::provider_keys_handler::resolve_provider_key(
+async fn fetch_atp_keywords(
+    state: &AppState,
+    seeds: &[String],
+    directory_id: Uuid,
+) -> Result<Vec<Value>, AppError> {
+    // Get configured API key from integration_configs or provider_keys — resolved for the directory
+    // being generated (its own key, else its network's, else the platform key).
+    let api_key = match crate::handlers::provider_keys_handler::resolve_provider_key_for_directory(
         &state.db,
+        Some(directory_id),
         "answer_the_public",
     )
     .await
@@ -504,10 +511,14 @@ pub async fn generate_posts(
         );
 
         // Generate content via blog_generator
-        let content =
-            crate::handlers::blog_generator::generate_blog_content(&s.db, &s.config, &prompt)
-                .await
-                .map_err(|e| AppError::Internal(format!("Blog generation failed: {}", e)))?;
+        let content = crate::handlers::blog_generator::generate_blog_content(
+            &s.db,
+            &s.config,
+            &prompt,
+            Some(req.directory_id),
+        )
+        .await
+        .map_err(|e| AppError::Internal(format!("Blog generation failed: {}", e)))?;
 
         // Replace placeholder with actual link if target category exists
         let final_content = if let Some(ref cat) = target_category {
