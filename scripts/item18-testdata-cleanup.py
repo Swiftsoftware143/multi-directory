@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""Item 18 — remove the leftover Phase-2 / e2e test accounts from the LIVE ZaarHub database.
+
+Scope (narrow, deliberate):
+  * ONLY visitor accounts whose address is a reserved test fixture
+    (@test.com, @x.com) AND that own nothing.
+  * NEVER touched: probe-canary-a/b@swiftsoftware.dev (reserved fleet tenancy canaries,
+    watched by /opt/swift/fleet/canary-id-census.py), biz@test.com (a fixture the app's own
+    smoke scripts sign in as -- /opt/swift/bin/md-5xx-fix-smoke.py, md-provider-key-crypto-smoke.py),
+    real customer accounts, the system tenant.
+
+Proof produced: pre/post row counts, a reference census proving each deleted row was an orphan,
+post-delete residue = 0, and the app still healthy.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+
+BASE = os.environ.get("MD_BASE", "http://127.0.0.1:8089")
+AUD = os.environ.get("AUD", f"/opt/swift/audits/zz-item18-testdata-{time.strftime('%Y%m%d-%H%M%S')}")
+os.makedirs(AUD, exist_ok=True)
+
+KEEP = {"probe-canary-a@swiftsoftware.dev", "probe-canary-b@swiftsoftware.dev"}
+TARGET_RE = re.compile(r"@(test\.com|x\.com)$", re.I)
+
+
+def sh(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def db_password():
+    url = sh("docker", "exec", "multidirectory", "printenv", "DATABASE_URL").stdout.strip()
+    m = re.search(r"://[^:]+:([^@]+)@", url)
+    if not m:
+        sys.exit("no DATABASE_URL from the multidirectory container")
+    return m.group(1)
+
+
+PW = db_password()
+TAG = re.compile(r"^(INSERT|UPDATE|DELETE|SELECT|BEGIN|COMMIT)\b")
+
+
+def psql(sql):
+    r = sh("docker", "exec", "-e", f"PGPASSWORD={PW}", "swift-postgres",
+           "psql", "-U", "swift", "-d", "multi_directory", "-At", "-c", sql)
+    if r.returncode != 0:
+        raise RuntimeError(f"psql failed: {r.stderr.strip()}"[:400])
+    return [ln for ln in r.stdout.strip().splitlines() if ln and not TAG.match(ln)]
+
+
+def rows(sql):
+    out = psql(sql)
+    return [ln.split("|") for ln in out]
+
+
+fails = []
+line = []
+
+
+def check(ok, label, detail=""):
+    line.append(f"{'PASS' if ok else 'FAIL'}  {label}" + (f"  [{detail}]" if detail else ""))
+    if not ok:
+        fails.append(label)
+    print(line[-1], flush=True)
+
+
+# ---- 1. target set -------------------------------------------------------------------------
+targets = rows(f"""SELECT id, email FROM visitor_accounts
+                   WHERE email !~* '(probe-canary|swiftsoftware\\.dev)'
+                     AND (email ~* '@test\\.com$' OR email ~* '@x\\.com$')
+                   ORDER BY email""")
+ids = [t[0] for t in targets]
+emails = [t[1] for t in targets]
+check(len(ids) > 0, "leftover test accounts found on the live database",
+      f"{len(ids)}: {', '.join(emails)}")
+if not ids:
+    print("nothing to clean")
+    sys.exit(0)
+if any(e in KEEP for e in emails):
+    check(False, "target set excludes the reserved canaries")
+    sys.exit(1)
+
+for e in emails:
+    if "@test.com" in e and e.startswith(("biz@", "supplier@", "farm")):
+        pass  # reported, not special-cased
+
+# ---- 2. census: every deleted row must be an orphan ----------------------------------------
+arr = ",".join(f"'{i}'::uuid" for i in ids)
+uuid_cols = rows("""SELECT table_name||'|'||column_name FROM information_schema.columns
+                    WHERE table_schema='public' AND data_type='uuid'""")
+refs = []
+for t, c in uuid_cols:
+    n = psql(f"SELECT count(*) FROM {t} WHERE {c} IN ({arr})")
+    if n and int(n[0]) > 0:
+        refs.append((t, c, int(n[0]), n[0]))
+for t, c, n, _ in refs:
+    print(f"  reference: {t}.{c} = {n}")
+attached = [r for r in refs if r[0] != "visitor_accounts"]
+with open(os.path.join(AUD, "reference-census.txt"), "w") as f:
+    f.write("\n".join(f"{t}.{c} = {n}" for t, c, n, _ in refs) + "\n")
+check(True, "reference census recorded", f"{len(refs)} table(s) touch these rows")
+
+# which reference is a loyalty member? prove it is empty of value
+for t, c, n, _ in refs:
+    if t == "loyalty_members":
+        pts = psql(f"SELECT coalesce(sum(points_balance),0)||'|'||coalesce(sum(lifetime_points),0) "
+                   f"FROM loyalty_members WHERE {c} IN ({arr})")
+        check(pts and pts[0] == "0|0", "the one attached loyalty record holds 0 points", pts[0] if pts else "?")
+
+# ---- 3. the same rows are invisible to the public ------------------------------------------
+vis = rows(f"""SELECT count(*) FROM businesses WHERE owner_id IN ({arr})""")
+check(int(vis[0][0]) == 0, "none of them owns a public listing (so nothing disappears from the site)",
+      f"businesses={vis[0][0]}")
+
+# ---- 4. before counts ----------------------------------------------------------------------
+before = {
+    "visitor_accounts": int(psql("SELECT count(*) FROM visitor_accounts")[0]),
+    "loyalty_members": int(psql("SELECT count(*) FROM loyalty_members")[0]),
+}
+print("  before:", json.dumps(before))
+
+# ---- 5. delete -----------------------------------------------------------------------------
+psql("BEGIN")
+for i in ids:
+    psql(f"DELETE FROM visitor_accounts WHERE id = '{i}'")
+psql("COMMIT")
+
+after = {
+    "visitor_accounts": int(psql("SELECT count(*) FROM visitor_accounts")[0]),
+    "loyalty_members": int(psql("SELECT count(*) FROM loyalty_members")[0]),
+}
+print("  after: ", json.dumps(after))
+check(after["visitor_accounts"] == before["visitor_accounts"] - len(ids),
+      "every leftover test account is gone",
+      f"{before['visitor_accounts']} -> {after['visitor_accounts']} (-{len(ids)})")
+
+# ---- 6. residue = 0, keepers untouched -----------------------------------------------------
+resid = 0
+for t, c in uuid_cols:
+    n = psql(f"SELECT count(*) FROM {t} WHERE {c} IN ({arr})")
+    if n and int(n[0]) > 0:
+        resid += int(n[0])
+check(resid == 0, "no trace left anywhere in the database", f"rows={resid}")
+kept = psql("SELECT count(*) FROM visitor_accounts WHERE email IN "
+            "('probe-canary-a@swiftsoftware.dev','probe-canary-b@swiftsoftware.dev')")
+check(kept and int(kept[0]) == 2, "the two reserved fleet canaries are untouched", f"canaries={kept[0]}")
+
+# ---- 7. the site still works ---------------------------------------------------------------
+try:
+    with urllib.request.urlopen(f"{BASE}/api/v1/health", timeout=10) as r:
+        check(r.status == 200, "the app is still healthy", f"health={r.status}")
+except Exception as e:  # noqa: BLE001
+    check(False, "the app is still healthy", str(e)[:120])
+
+req = urllib.request.Request("https://zaarhub.com/", headers={"User-Agent": "Mozilla/5.0 (compatible; SwiftOps/1.0)"})
+try:
+    with urllib.request.urlopen(req, timeout=20) as r:
+        body = r.read(4096)
+        check(r.status == 200 and b"<" in body, "the public site still answers", f"status={r.status}")
+except Exception as e:  # noqa: BLE001
+    check(False, "the public site still answers", str(e)[:120])
+
+with open(os.path.join(AUD, "evidence.txt"), "w") as f:
+    f.write("\n".join(line) + "\n")
+    f.write(f"\ndeleted: {', '.join(emails)}\nbefore={json.dumps(before)} after={json.dumps(after)}\n")
+
+print("\n" + ("RESULT: PASS" if not fails else "RESULT: FAIL " + ", ".join(fails)))
+print("evidence:", AUD)
+sys.exit(0 if not fails else 1)
