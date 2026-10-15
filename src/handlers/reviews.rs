@@ -614,6 +614,15 @@ pub async fn respond_to_review(
         ));
     }
 
+    // Plan gate (kanban B113): "Review responses" is a capability of the business's ACTIVE paid
+    // plan. `limits_for` returns None for a business with no active subscription, so the ~4,000
+    // unsubscribed listings are never limited and today's behaviour is unchanged. This is the one
+    // plan switch that has a real business action behind it (the other capability switches gate
+    // screens a business does not have yet — item-10 gap note in entitlements.rs).
+    if let Some(limits) = crate::entitlements::limits_for(&s.db, business_id).await? {
+        limits.require_reviews()?;
+    }
+
     let text = req.response.trim();
     if text.chars().count() > 4000 {
         return Err(AppError::Validation(
