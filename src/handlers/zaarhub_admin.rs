@@ -939,3 +939,83 @@ pub async fn activate_directory(
         "login_url": "/admin-panel.html",
     })))
 }
+
+// ── City centres (item 18 follow-on: the Radius control had no way to be given a centre) ──
+
+#[derive(Deserialize)]
+pub struct CityCoordinatesPayload {
+    /// Both null/absent = clear the city's centre. Never one without the other.
+    #[serde(default)]
+    pub latitude: Option<f64>,
+    #[serde(default)]
+    pub longitude: Option<f64>,
+}
+
+/// PUT /api/v1/zaarhub/admin/cities/:slug/coordinates — set (or clear) a city page's own centre.
+///
+/// Migration 170 gave the ten live cities a centre seeded from the app's own Google lookup, but a
+/// city created later had none and there was **no operator control to give it one** — so the
+/// Populate panel's Radius box was inert for that city with no way to fix it from the UI (the
+/// capability-without-a-control defect class in David's NOTHING HARDWIRED rule). This is the
+/// endpoint that control calls.
+pub async fn set_city_coordinates(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(payload): Json<CityCoordinatesPayload>,
+) -> ApiResult<Json<Value>> {
+    let centre: Option<(f64, f64)> = match (payload.latitude, payload.longitude) {
+        (None, None) => None,
+        (Some(lat), Some(lng)) => {
+            if !lat.is_finite() || !lng.is_finite() {
+                return Err(AppError::BadRequest(
+                    "latitude and longitude must be real numbers".into(),
+                ));
+            }
+            if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lng) {
+                return Err(AppError::BadRequest(
+                    "latitude must be between -90 and 90, longitude between -180 and 180".into(),
+                ));
+            }
+            Some((lat, lng))
+        }
+        _ => {
+            return Err(AppError::BadRequest(
+                "latitude and longitude must be supplied together, or both left blank to clear \
+                 the city's centre"
+                    .into(),
+            ))
+        }
+    };
+
+    let (lat, lng): (Option<f64>, Option<f64>) = match centre {
+        Some((a, b)) => (Some(a), Some(b)),
+        None => (None, None),
+    };
+
+    // B95: like every other page on this operator surface, only the platform's own (system)
+    // tenant's cities are editable here.
+    let tenant_id = crate::system_tenant::system_tenant_uuid();
+    let result = sqlx::query(
+        "UPDATE city_pages SET latitude = $1, longitude = $2, updated_at = now() \
+         WHERE city_slug = $3 AND tenant_id = $4",
+    )
+    .bind(lat)
+    .bind(lng)
+    .bind(&slug)
+    .bind(tenant_id)
+    .execute(&state.db)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound(format!(
+            "No city page with the address '{slug}'"
+        )));
+    }
+
+    Ok(Json(json!({
+        "city_slug": slug,
+        "latitude": lat,
+        "longitude": lng,
+        "saved": true,
+    })))
+}

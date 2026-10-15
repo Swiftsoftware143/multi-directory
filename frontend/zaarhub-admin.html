@@ -151,6 +151,19 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
           <span id="pop-fallback-note" style="font-size:13px;color:var(--text-muted)">Same as the category you pick above.</span>
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>City centre (the point the Radius above is measured from)</label>
+          <div style="display:flex;gap:8px">
+            <input id="pop-centre-lat" type="number" step="any" placeholder="latitude" style="flex:1">
+            <input id="pop-centre-lng" type="number" step="any" placeholder="longitude" style="flex:1">
+            <button class="btn secondary small" onclick="saveCityCentre()">Save centre</button>
+            <button class="btn secondary small" onclick="clearCityCentre()">Clear</button>
+          </div>
+        </div>
+        <div class="form-group"><label>&nbsp;</label>
+          <span id="pop-centre-note" style="font-size:13px;color:var(--text-muted)">Pick a city to set its centre.</span>
+        </div>
+      </div>
       <div class="actions" style="align-items:center;flex-wrap:wrap">
         <button class="btn primary" onclick="runPopSearch()">Search &amp; add to queue</button>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer">
@@ -587,6 +600,7 @@ async function loadPopCities(){
       const label=c.city_name||c.name||c.slug||'';
       return `<option value="${esc(c.city_slug||c.slug)}" data-lat="${lat||''}" data-lng="${lng||''}">${esc(label)}</option>`;
     }).join('')||'<option value="">No cities</option>';
+    refreshCityCentre();
   }catch(e){console.error(e);document.getElementById('pop-city').innerHTML='<option value="">Failed to load cities</option>';}
 }
 async function loadPopCategories(){
@@ -606,7 +620,7 @@ function onPopDirectoryChange(){
   try{localStorage.setItem('md_adm_pop_directory',popDirectoryId);}catch(e){}
   reloadQueue();
 }
-function onPopCityChange(){/* lat/lng resolved at search time via popCityLatLng */}
+function onPopCityChange(){refreshCityCentre();}
 function onPopCategoryChange(){
   // Category-driven search: the query is derived from category + city, still editable.
   const sel=document.getElementById('pop-category');
@@ -622,6 +636,56 @@ function radiusMeters(){
   const v=parseFloat(document.getElementById('pop-radius').value)||10;
   const unit=document.getElementById('pop-radius-unit').value;
   return unit==='mi'?Math.round(v*1609.34):Math.round(v*1000);
+}
+
+// ── City centre (the point the Radius above is measured from) ────────────────
+// Migration 170 seeded a centre for the ten live cities, but a city created later had none and
+// there was no control anywhere to give it one — the Radius box was silently inert for it. This
+// control pairs with PUT /api/v1/zaarhub/admin/cities/:slug/coordinates.
+function selectedCitySlug(){const el=document.getElementById('pop-city');return el&&el.value?el.value:'';}
+function refreshCityCentre(){
+  const slug=selectedCitySlug();
+  const note=document.getElementById('pop-centre-note');
+  const latEl=document.getElementById('pop-centre-lat'),lngEl=document.getElementById('pop-centre-lng');
+  if(!note||!latEl||!lngEl)return;
+  const c=slug?popCityLatLng[slug]:null;
+  if(!slug){latEl.value='';lngEl.value='';note.textContent='Pick a city to set its centre.';return;}
+  if(c&&c.lat!=null&&c.lng!=null){
+    latEl.value=c.lat;lngEl.value=c.lng;
+    note.innerHTML='<span style="color:var(--green)">✓ Centre saved: '+c.lat+', '+c.lng+' — the Radius above searches around this point.</span>';
+  }else{
+    latEl.value='';lngEl.value='';
+    note.innerHTML='<span style="color:#b45309">⚠ No centre saved for this city — the Radius above has no effect until you save one here.</span>';
+  }
+}
+async function saveCityCentre(){
+  const slug=selectedCitySlug();
+  if(!slug){showToast('Pick a city first',true);return;}
+  const lat=parseFloat(document.getElementById('pop-centre-lat').value);
+  const lng=parseFloat(document.getElementById('pop-centre-lng').value);
+  if(Number.isNaN(lat)||Number.isNaN(lng)){showToast('Enter both a latitude and a longitude',true);return;}
+  try{
+    const r=await fetch(`/api/v1/zaarhub/admin/cities/${encodeURIComponent(slug)}/coordinates`,{
+      method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({latitude:lat,longitude:lng})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){showToast(d.message||('Could not save the centre (HTTP '+r.status+')'),true);return;}
+    popCityLatLng[slug]={lat,lng};
+    refreshCityCentre();showToast('City centre saved ✔');
+  }catch(e){showToast('Could not save the centre',true);}
+}
+async function clearCityCentre(){
+  const slug=selectedCitySlug();
+  if(!slug){showToast('Pick a city first',true);return;}
+  try{
+    const r=await fetch(`/api/v1/zaarhub/admin/cities/${encodeURIComponent(slug)}/coordinates`,{
+      method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({latitude:null,longitude:null})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){showToast(d.message||('Could not clear the centre (HTTP '+r.status+')'),true);return;}
+    popCityLatLng[slug]=null;
+    refreshCityCentre();showToast('City centre cleared — the Radius above is off until you save one');
+  }catch(e){showToast('Could not clear the centre',true);}
 }
 
 // ── Discovery queue ─────────────────────────────────────────────────────────
@@ -749,7 +813,7 @@ async function runPopSearch(){
   if(ll)statusEl.innerHTML='Searching Google Places within '+esc(radiusLabel())+' of '+esc(city)+'…';
   // A city with no saved centre (migration 170) cannot be radius-searched — say so rather than
   // silently widening the search, which is how the Radius box used to behave for every city.
-  const noGeo=(city&&!ll)?' <span style="color:#b45309">(no centre saved for this city — searching by name only)</span>':'';
+  const noGeo=(city&&!ll)?' <span style="color:#b45309">(no centre saved for this city — searching by name only; save one in City centre above)</span>':'';
   try{
     const r=await fetch('/api/v1/zaarhub/admin/places/search?'+params.toString());
     if(!r.ok){let msg='Search failed (HTTP '+r.status+')';try{const e=await r.json();if(e&&e.error)msg=e.error;}catch(_){}statusEl.innerHTML=`<span style="color:#dc2626">${esc(msg)}</span>`;return;}
