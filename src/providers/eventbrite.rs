@@ -105,10 +105,6 @@ struct EventbriteOrganizer {
 
 #[async_trait]
 impl EventProvider for EventbriteProvider {
-    fn provider_type(&self) -> String {
-        "eventbrite".to_string()
-    }
-
     async fn test_connection(&self, api_key: &str) -> Result<bool, String> {
         let client = reqwest::Client::new();
         let resp = client

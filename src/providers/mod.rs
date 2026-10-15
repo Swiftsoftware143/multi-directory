@@ -42,9 +42,6 @@ pub struct RawEvent {
 /// Every event provider must implement this trait.
 #[async_trait]
 pub trait EventProvider: Send + Sync {
-    /// Returns a short string identifying the provider (e.g. "eventbrite").
-    fn provider_type(&self) -> String;
-
     /// Quick connectivity check using the provider's API key.
     async fn test_connection(&self, api_key: &str) -> Result<bool, String>;
 

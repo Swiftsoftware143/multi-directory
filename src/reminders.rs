@@ -46,12 +46,9 @@ struct SmtpRequest {
 
 #[derive(Debug, sqlx::FromRow)]
 struct EmailTemplate {
-    id: Uuid,
-    name: String,
     subject: String,
     body: String,
     body_text: Option<String>,
-    variables: Option<Vec<String>>,
 }
 
 /// Start the reminder cron — once per hour.

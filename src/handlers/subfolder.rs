@@ -725,9 +725,6 @@ struct BizCard {
     rating: f64,
     review_count: i32,
     address: Option<String>,
-    logo: Option<String>,
-    description: Option<String>,
-    id: Uuid,
 }
 
 async fn list_businesses(
@@ -784,10 +781,6 @@ async fn list_businesses(
 
     let mut out = Vec::new();
     for r in rows.unwrap_or_default() {
-        let id: Uuid = match r.try_get("id") {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
         let name: String = r.try_get("name").unwrap_or_default();
         let category: Option<String> = r.try_get("category").unwrap_or(None);
         out.push(BizCard {
@@ -803,9 +796,6 @@ async fn list_businesses(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
-            logo: r.try_get("logo_url").unwrap_or(None),
-            description: r.try_get("description").unwrap_or(None),
-            id,
         });
     }
     out
