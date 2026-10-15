@@ -100,16 +100,6 @@ impl From<User> for UserResponse {
     }
 }
 
-// ── Tenant ───────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tenant {
-    pub id: Uuid,
-    pub name: String,
-    pub slug: String,
-    pub is_active: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TenantResponse {
     pub id: Uuid,
@@ -135,9 +125,4 @@ pub struct ForgotPasswordRequest {
 pub struct ResetPasswordRequest {
     pub token: String,
     pub new_password: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct MessageResponse {
-    pub message: String,
 }

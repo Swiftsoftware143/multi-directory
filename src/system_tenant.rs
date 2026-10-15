@@ -14,9 +14,6 @@
 
 use uuid::Uuid;
 
-/// Slug of the platform's own tenant (seeded by migration 001).
-pub const SYSTEM_TENANT_SLUG: &str = "swiftsoftware";
-
 /// The `swiftsoftware` tenant id, seeded by migration 001.
 pub const SYSTEM_TENANT_ID: &str = "00000000-0000-0000-0000-000000000001";
 

@@ -569,41 +569,6 @@ pub async fn list_scraper_providers(State(s): State<AppState>) -> ApiResult<impl
     Ok(Json(json!({"providers": result, "total": result.len()})))
 }
 
-/// POST /api/v1/scraper/run — execute a scraper job (admin only)
-pub async fn run_scraper(
-    State(s): State<AppState>,
-    Json(cfg): Json<ScraperConfig>,
-) -> ApiResult<impl IntoResponse> {
-    // Validate source
-    let valid_sources = [
-        "google_places",
-        "brightlocal",
-        "nextdoor",
-        "chamber",
-        "yellowpages",
-        "manta",
-    ];
-    if !valid_sources.contains(&cfg.source.as_str()) {
-        return Err(AppError::BadRequest(format!(
-            "Unknown scraper source: {}",
-            cfg.source
-        )));
-    }
-
-    // Get API key for the source - shared resolver: default key first, then most recent.
-    let api_key: Option<String> = resolve_provider_key(&s.db, &cfg.source).await;
-
-    // For now, return available sources + key status
-    // Actual scraping logic is source-specific and will be added per-source
-    Ok(Json(json!({
-        "source": cfg.source,
-        "configured": api_key.is_some(),
-        "message": format!("Scraper '{}' is {}. Provide API key in Settings > API Keys.",
-            cfg.source, if api_key.is_some() { "configured" } else { "not configured" }),
-        "note": "Full scraping pipeline will stream results through /pipeline/ingest"
-    })))
-}
-
 /// POST /api/v1/scraper/google-places — run Google Places scraper
 pub async fn scrape_google_places(
     State(s): State<AppState>,

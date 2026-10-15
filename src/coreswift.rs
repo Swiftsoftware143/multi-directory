@@ -87,10 +87,6 @@ pub async fn resolve_config(
     ))
 }
 
-fn cs_url(path: &str) -> String {
-    format!("{}{}", coreswift_url(), path)
-}
-
 /// Provision a CoreSwift tenant for a new entity (network or standalone directory).
 /// Creates: tenant account, 3 lists (claimed, newsletter, sponsors), and city-prefixed tag groups.
 /// Stores the tenant + list IDs back in the database.
@@ -762,54 +758,6 @@ async fn assign_contact_tag_for_subscriber(
     Ok(())
 }
 
-/// Add a contact to the "Claimed Businesses" list in CoreSwift.
-pub async fn add_to_claimed_list(
-    db: &PgPool,
-    directory_id: Uuid,
-    contact_email: &str,
-) -> Result<(), String> {
-    let (tenant_id, claimed_list_id, _, _) = resolve_config(db, directory_id).await?;
-    let base = coreswift_url();
-    let key = internal_key();
-
-    let resp = HTTP
-        .get(format!("{base}/api/contacts/search?q={contact_email}"))
-        .header("x-internal-key", &key)
-        .send()
-        .await
-        .map_err(|e| format!("CoreSwift search failed: {e}"))?;
-
-    let body: Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("CoreSwift search response parse: {e}"))?;
-
-    if let Some(contacts) = body["contacts"].as_array() {
-        if let Some(contact) = contacts.first() {
-            if let Some(cid) = contact["id"].as_str() {
-                let resp = HTTP
-                    .post(format!(
-                        "{base}/api/internal/lists/{claimed_list_id}/members"
-                    ))
-                    .header("x-internal-key", &key)
-                    .json(&json!({
-                        "tenant_id": tenant_id.to_string(),
-                        "contact_id": cid,
-                    }))
-                    .send()
-                    .await
-                    .map_err(|e| format!("CoreSwift list add failed: {e}"))?;
-
-                if resp.status().is_success() {
-                    return Ok(());
-                }
-            }
-        }
-    }
-
-    Err(format!("Contact {contact_email} not found in CoreSwift"))
-}
-
 /// Assign a tag to a contact in CoreSwift by contact and tag ID.
 /// Uses the internal API (x-internal-key).
 pub async fn assign_contact_tag(
@@ -837,38 +785,6 @@ pub async fn assign_contact_tag(
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
         return Err(format!("CoreSwift tag assign returned {status}: {body}"));
-    }
-
-    Ok(())
-}
-
-/// Remove a tag from a contact in CoreSwift by contact and tag ID.
-/// Uses the internal API (x-internal-key).
-pub async fn remove_contact_tag(
-    tenant_id: Uuid,
-    contact_id: Uuid,
-    tag_id: Uuid,
-) -> Result<(), String> {
-    let base = coreswift_url();
-    let key = internal_key();
-
-    let resp = HTTP
-        .post(format!("{base}/api/internal/tags/delete"))
-        .header("x-internal-key", &key)
-        .json(&json!({
-            "tenant_id": tenant_id.to_string(),
-            "tag_id": tag_id.to_string(),
-            "entity_id": contact_id.to_string(),
-            "entity_type": "contact",
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("CoreSwift tag remove failed: {e}"))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("CoreSwift tag remove returned {status}: {body}"));
     }
 
     Ok(())
@@ -1370,82 +1286,6 @@ pub async fn push_loyalty_member(
 
     push_external_contact(&conn, serde_json::Value::Object(body)).await?;
     tracing::info!("[coreswift] Pushed loyalty member {member_id} ({name}) to CoreSwift");
-    Ok(())
-}
-
-/// Push a business loyalty participant into CoreSwift CRM.
-/// classification = Business (businesses list) + `company` + `title` + loyalty-side fields.
-pub async fn push_loyalty_business(
-    db: &PgPool,
-    directory_id: Uuid,
-    business_id: Uuid,
-) -> Result<(), String> {
-    let row = sqlx::query_as::<
-        _,
-        (
-            String,         // business name
-            Option<String>, // email
-            Option<String>, // phone
-            Option<String>, // website
-            Option<String>, // city
-            Option<String>, // state
-            Option<String>, // business_type
-            i64,            // deals count
-            i64,            // events count
-        ),
-    >(
-        r#"SELECT
-             b.name,
-             b.email,
-             b.phone,
-             b.website,
-             b.city,
-             b.state,
-             b.business_type,
-             (SELECT COUNT(*) FROM deals d WHERE d.business_id = b.id) AS deals_count,
-             (SELECT COUNT(*) FROM community_events e WHERE e.business_id = b.id) AS events_count
-           FROM businesses b
-           WHERE b.id = $1"#,
-    )
-    .bind(business_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| format!("DB error loading business: {e}"))?
-    .ok_or_else(|| format!("Business {business_id} not found"))?;
-
-    let (name, email, phone, website, city, state, business_type, deals_count, events_count) = row;
-
-    let conn = resolve_cs_conn(db, directory_id).await?;
-
-    let mut fields = serde_json::Map::new();
-    fields.insert("loyalty_deals_count".into(), serde_json::json!(deals_count));
-    fields.insert(
-        "loyalty_events_count".into(),
-        serde_json::json!(events_count),
-    );
-    fields.insert("loyalty_participant".into(), serde_json::json!("business"));
-    if let Some(bt) = &business_type {
-        fields.insert("business_type".into(), serde_json::json!(bt));
-    }
-
-    let mut body = build_contact_body(
-        &conn,
-        ParticipantType::Business,
-        &["loyalty-business".to_string()],
-    );
-    body.insert("first_name".into(), serde_json::json!(name));
-    body.insert("last_name".into(), serde_json::json!(""));
-    body.insert("email".into(), serde_json::json!(email));
-    body.insert("phone".into(), serde_json::json!(phone));
-    body.insert("company".into(), serde_json::json!(name));
-    body.insert("title".into(), serde_json::json!("Business"));
-    body.insert("city".into(), serde_json::json!(city));
-    body.insert("state".into(), serde_json::json!(state));
-    body.insert("notes".into(), serde_json::json!(website));
-    body.insert("fields".into(), serde_json::json!(fields));
-
-    push_external_contact(&conn, serde_json::Value::Object(body)).await?;
-    tracing::info!("[coreswift] Pushed loyalty business {business_id} ({name}) to CoreSwift");
     Ok(())
 }
 

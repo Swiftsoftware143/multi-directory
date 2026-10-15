@@ -84,14 +84,6 @@ pub fn supplier_types_param() -> Vec<String> {
     SUPPLIER_TYPES.iter().map(|s| s.to_string()).collect()
 }
 
-/// The canonical list as JSON, for the register UI.
-pub fn as_json() -> serde_json::Value {
-    serde_json::json!({
-        "business_types": BUSINESS_TYPES,
-        "supplier_types": SUPPLIER_TYPES,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

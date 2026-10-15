@@ -683,50 +683,7 @@ pub async fn dispatch_webhook_event(
     .await;
 }
 
-// ── Rate Limiter (in-memory, simple sliding window) ───────────────────────────
-
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
-
-lazy_static::lazy_static! {
-    static ref RATE_LIMITER: Mutex<HashMap<String, RateLimitState>> = Mutex::new(HashMap::new());
-}
-
-struct RateLimitState {
-    minute_window: Vec<Instant>,
-    hour_window: Vec<Instant>,
-}
-
-/// Check rate limit for a given API key. Returns (allowed, remaining_minute, remaining_hour)
-pub fn check_rate_limit(key_id: &str, rpm: i32, rph: i32) -> (bool, i32, i32) {
-    let now = Instant::now();
-    let mut limiter = RATE_LIMITER.lock().unwrap();
-    let state = limiter.entry(key_id.to_string()).or_insert(RateLimitState {
-        minute_window: Vec::new(),
-        hour_window: Vec::new(),
-    });
-
-    // Prune old entries
-    state
-        .minute_window
-        .retain(|t| now.duration_since(*t) < Duration::from_secs(60));
-    state
-        .hour_window
-        .retain(|t| now.duration_since(*t) < Duration::from_secs(3600));
-
-    let minute_count = state.minute_window.len() as i32;
-    let hour_count = state.hour_window.len() as i32;
-
-    if minute_count >= rpm || hour_count >= rph {
-        return (false, rpm - minute_count, rph - hour_count);
-    }
-
-    state.minute_window.push(now);
-    state.hour_window.push(now);
-
-    (true, rpm - minute_count - 1, rph - hour_count - 1)
-}
+use std::time::Duration;
 
 /// GET /api/v1/admin/api-keys/:id/usage — get usage stats for an API key
 pub async fn get_api_key_usage(
