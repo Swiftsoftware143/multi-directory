@@ -8,7 +8,9 @@ surface. The product's own business console (`frontend/business-portal.html`) al
 `POST /api/v1/reviews/:id/respond`. Neither had a durable end-to-end proof.
 
 This probe proves, with real API calls + real rows, that the listing owner can:
-  1. reject a pending review          -> row 'rejected', invisible publicly, aggregates 0
+  1. reject a pending review          -> row 'rejected', invisible publicly, aggregates UNCHANGED
+                                        (a reject that changes nothing visible must not recompute —
+                                         the guard that keeps an imported 4.8/120 listing intact)
   2. re-approve it (the reject is reversible) -> row 'approved', aggregate 1|5
   3. reject it again from the approved state (what the console offers) -> aggregates back to 0
   4. post a public reply              -> owner_response/owner_responded_at persisted, shown publicly
@@ -133,9 +135,13 @@ def main():
           f"found={len(created['visitors'])}")
 
     # ── disposable listing the owner claims ─────────────────────────────────────
+    # rating is NULL, not 0: the app's own recompute writes NULL for "no approved reviews"
+    # (see step 3 below), so NULL is how this schema represents "no rating". A no-op reject
+    # (step 1) no longer recomputes at all, so this listing must already start at the state
+    # the app would leave it in.
     bid = psql(
         "INSERT INTO businesses (directory_id, name, slug, city, state, status, rating, review_count, probe_harness) "
-        f"VALUES ('{directory_id}', 'ZZ Revmod Probe Co {ts}', '{slug}', 'Orlando', 'FL', 'active', 0, 0, "
+        f"VALUES ('{directory_id}', 'ZZ Revmod Probe Co {ts}', '{slug}', 'Orlando', 'FL', 'active', NULL, 0, "
         f"'{MARK}') RETURNING id")
     created["business"] = bid
     check("disposable listing created", bool(bid))
@@ -193,6 +199,33 @@ def main():
     pend_ids = [r.get("id") for r in ((pend or {}).get("data") or [])] if isinstance(pend, dict) else []
     check("a rejected review leaves the owner's 'awaiting reply' list", rid not in pend_ids,
           f"ids={len(pend_ids)}")
+
+    # ── 1b. a no-op reject must NOT destroy a listing's own (imported) rating ───
+    # An imported listing carries a rating/review_count of its own with zero rows of ours behind
+    # it (3,914 of 3,988 listings; measured 2026-10-15). Moderation that changes nothing visible
+    # must leave those numbers ALONE — recomputing from our own (empty) reviews flipped 4.8/120
+    # to NULL/0. This is the regression the step-1 rule above exists to prevent.
+    imp_slug = f"{slug}-imported"
+    imp_bid = psql(
+        "INSERT INTO businesses (directory_id, name, slug, city, state, status, rating, review_count, probe_harness) "
+        f"VALUES ('{directory_id}', 'ZZ Revmod Imported Co {ts}', '{imp_slug}', 'Orlando', 'FL', 'active', 4.8, 120, "
+        f"'{MARK}') RETURNING id")
+    check("an imported-style listing (its own 4.8 / 120) created", bool(imp_bid))
+    st, _ = http("POST", f"/api/v1/businesses/{imp_bid}/claim",
+                 {"owner_email": owner_email, "owner_name": "ZZ Revmod Owner",
+                  "owner_phone": "4075550101"}, extra_headers=HARNESS)
+    check("the owner can claim the imported listing", st in (200, 201), f"status={st}")
+    st, imp_rev = http("POST", "/api/v1/reviews",
+                       {"business_id": imp_bid, "rating": 2, "title": "Imported-listing probe",
+                        "content": "Left by the moderation probe customer."}, token=cust_token)
+    imp_rid = (imp_rev or {}).get("id") if isinstance(imp_rev, dict) else None
+    imp_status = imp_rev.get("status") if isinstance(imp_rev, dict) else None
+    check("a second review lands pending on the imported listing",
+          st in (200, 201) and imp_status == "pending", f"status={st}")
+    st, _ = http("POST", f"/api/v1/business/reviews/{imp_rid}/reject", {}, token=owner_token)
+    imp_agg = psql(f"SELECT review_count||'|'||rating FROM businesses WHERE id='{imp_bid}'")
+    check("a no-op reject leaves the imported rating untouched (4.8 / 120)",
+          st == 200 and imp_agg == "120|4.8", f"status={st} agg={imp_agg}")
 
     # ── 2. reject is reversible: the owner approves ─────────────────────────────
     st, appr = http("POST", f"/api/v1/business/reviews/{rid}/approve", {}, token=owner_token)
@@ -252,15 +285,21 @@ def main():
           st in (400, 422) and row == "NULL", f"status={st} row={row}")
 
     # ── teardown ────────────────────────────────────────────────────────────────
-    psql(f"DELETE FROM reviews WHERE business_id='{bid}'")
-    psql(f"DELETE FROM claimed_businesses WHERE business_id='{bid}'")
-    psql(f"DELETE FROM businesses WHERE id='{bid}'")
+    bids = [b for b in (bid, imp_bid) if b]
+    revs = [r for r in (rid, imp_rid) if r]
+    psql(f"DELETE FROM reviews WHERE business_id IN "
+         f"(SELECT id FROM businesses WHERE probe_harness='{MARK}')")
+    psql(f"DELETE FROM claimed_businesses WHERE business_id IN "
+         f"(SELECT id FROM businesses WHERE probe_harness='{MARK}')")
+    psql(f"DELETE FROM businesses WHERE probe_harness='{MARK}'")
     for vid in created["visitors"]:
         psql(f"DELETE FROM visitor_accounts WHERE id='{vid}'")
-    left = psql(f"SELECT (SELECT count(*) FROM businesses WHERE id='{bid}')"
+    bid_list = ",".join(f"'{b}'" for b in bids) or "NULL"
+    rev_list = ",".join(f"'{r}'" for r in revs) or "NULL"
+    left = psql(f"SELECT (SELECT count(*) FROM businesses WHERE probe_harness='{MARK}')"
                 f"+ (SELECT count(*) FROM visitor_accounts WHERE email IN ('{owner_email}','{cust_email}','{stranger_email}'))"
-                f"+ (SELECT count(*) FROM claimed_businesses WHERE business_id='{bid}')"
-                f"+ (SELECT count(*) FROM reviews WHERE id='{rid}')")
+                f"+ (SELECT count(*) FROM claimed_businesses WHERE business_id IN ({bid_list}))"
+                f"+ (SELECT count(*) FROM reviews WHERE id IN ({rev_list}))")
     check("probe data fully removed", left == "0", f"remaining={left}")
 
     print()
