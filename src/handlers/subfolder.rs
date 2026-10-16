@@ -1504,7 +1504,7 @@ pub async fn article_page(
     let row = sqlx::query(
         "SELECT id, title, slug, meta_description, content, keyword, business_id, created_at, updated_at \
          FROM business_articles WHERE directory_id = $1 AND slug = $2 \
-           AND status IN ('published','draft') LIMIT 1",
+           AND status = 'published' LIMIT 1",
     )
     .bind(dir.id)
     .bind(article_slug)

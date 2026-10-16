@@ -11213,8 +11213,16 @@
         rows.forEach(function (a) {
           var st = a.status || 'draft';
           var stColor = st === 'published' ? '#22c55e' : (st === 'archived' ? '#94a3b8' : '#eab308');
+          // Only a PUBLISHED article is public (the read routes require status='published'), so a
+          // draft/archived row must not offer a link the server would 404 — show the title plainly
+          // with the reason, exactly as the status column already says.
           h += '<tr style="border-top:1px solid var(--border)">'
-            + '<td style="padding:6px 4px;max-width:300px"><a href="/' + artEsc(artSlug()) + '/articles/' + artEsc(a.slug) + '" target="_blank" style="color:#0d9488">' + artEsc(a.title) + '</a><div style="font-size:.72rem;color:var(--text-secondary)">' + artEsc(a.keyword) + '</div></td>'
+            + '<td style="padding:6px 4px;max-width:300px">'
+            + (st === 'published'
+                ? '<a href="/' + artEsc(artSlug()) + '/articles/' + artEsc(a.slug) + '" target="_blank" style="color:#0d9488">' + artEsc(a.title) + '</a>'
+                : '<span style="color:var(--text-secondary)">' + artEsc(a.title) + '</span>')
+            + '<div style="font-size:.72rem;color:var(--text-secondary)">' + artEsc(a.keyword)
+            + (st === 'published' ? '' : ' · not public yet — publish to make it live') + '</div></td>'
             + '<td>' + (a.business_name ? artEsc(a.business_name) : (a.is_owner_article ? '<span style="color:var(--text-secondary)">owner SEO</span>' : '—')) + '</td>'
             + '<td><span style="color:' + stColor + '">' + artEsc(st) + '</span></td>'
             + '<td>' + (a.impressions || 0) + '</td>'

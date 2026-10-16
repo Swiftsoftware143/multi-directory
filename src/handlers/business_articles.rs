@@ -542,7 +542,7 @@ pub async fn serve_article(
          FROM business_articles ba \
          JOIN directories d ON d.id = ba.directory_id \
          LEFT JOIN businesses b ON b.id = ba.business_id \
-         WHERE ba.slug = $1 AND ba.status IN ('published', 'draft') \
+         WHERE ba.slug = $1 AND ba.status = 'published' \
          LIMIT 1",
     )
     .bind(&slug)
