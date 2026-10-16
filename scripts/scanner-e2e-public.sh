@@ -16,7 +16,10 @@ set -u
 cd "$(dirname "$0")/.." || exit 2
 
 BASE="${MD_PUBLIC_BASE:-https://zaarhub.com}"
-AUD="$(pwd)/../../audits/zz-item2-publichost-$(date +%Y%m%d-%H%M%S)"
+# AUD must be a clean absolute path (no ".."): Chromium's --use-file-for-fake-video-capture
+# fails to open a path that contains a parent-directory hop and the fake camera then reports
+# "Requested device not found".
+AUD="$(readlink -m "$(dirname "$0")/../../../audits")/zz-item2-publichost-$(date +%Y%m%d-%H%M%S)"
 
 if ! curl -s -o /dev/null -m 20 -A 'Mozilla/5.0 (compatible; SwiftOps/1.0)' -w '' "$BASE/scanner"; then
   echo "public scanner page unreachable at $BASE/scanner"
