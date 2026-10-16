@@ -188,6 +188,65 @@ if sub_ids:
 else:
     check(True, "no leftover test submissions", "0")
 
+# ---- 6c. fake test records left inside the customer-facing modules ---------------------------
+# The visitor-account sweep above only covered signups. The fleet's own probes also left records
+# INSIDE the product: fake "claimed" businesses in the CRM, fake newsletter signups, offer
+# claims, referrals, a fake missed-call lead, and probe traffic in the analytics tables. Every
+# predicate below is anchored on a marker only this fleet writes (the `ZZ … - Claimed (Orlando)`
+# CRM title shape, `@example.*` / `@invalid.test` addresses, `zz-sponsored-probe` URLs), and the
+# two reserved tenancy canaries plus the app's own `biz@test.com` login fixture are excluded
+# everywhere. Rows are backed up to the audit dir before deletion so the change is reversible.
+PROTECTED = r"biz@test\.com|probe-canary|swiftsoftware\.dev"
+ZZ_WHERE = r"title ~* '(probe|smoke|selftest|fixture|dummy)'" \
+           r" OR (title ~* '^ZZ ' AND title ~ ' - Claimed \(Orlando\)$')"
+V_URL = r"zzprobe|zz-sponsored-probe|zz-item6-debug"
+PROBE_RECORDS = [
+    ("crm_deal_records", ZZ_WHERE, ()),
+    ("business_messages", r"sender_email ~* '@(example\.(com|invalid)|invalid\.test|test\.com)$'",
+     ("sender_email",)),
+    ("newsletter_subscribers", r"email ~* '@(example\.(com|invalid)|invalid\.test)$'", ("email",)),
+    ("offer_claims", r"email ~* '@example\.(com|invalid)$'", ("email",)),
+    ("referrals", r"referrer_email ~* '@example\.invalid$' OR referee_email ~* '@example\.invalid$'",
+     ("referrer_email", "referee_email")),
+    ("call_logs", r"lead_email ~* '@example\.(com|invalid)$'", ("lead_email",)),
+]
+bk_dir = os.path.join(AUD, "fake-records-backup")
+os.makedirs(bk_dir, exist_ok=True)
+
+
+def backup_and_delete(table, where):
+    n_before = int(psql(f"SELECT count(*) FROM {table} WHERE {where}")[0])
+    if n_before:
+        r = sh("docker", "exec", "-e", f"PGPASSWORD={PW}", "swift-postgres", "psql", "-U", "swift",
+               "-d", "multi_directory", "-c",
+               f"COPY (SELECT * FROM {table} WHERE {where}) TO STDOUT WITH CSV HEADER")
+        with open(os.path.join(bk_dir, f"{table}.csv"), "w") as f:
+            f.write(r.stdout)
+        psql("BEGIN")
+        psql(f"DELETE FROM {table} WHERE {where}")
+        psql("COMMIT")
+    n_after = int(psql(f"SELECT count(*) FROM {table} WHERE {where}")[0])
+    check(n_after == 0, f"fake test records cleared from {table}",
+          f"{n_before} -> {n_after} (backup in fake-records-backup/{table}.csv)")
+    return n_before
+
+
+cleaned = 0
+for _t, _pred, _cols in PROBE_RECORDS:
+    _where = f"({_pred}) AND created_at < now() - interval '{MIN_AGE_SECONDS} seconds'"
+    for _c in _cols:
+        _where += f" AND coalesce({_c}::text,'') !~* '{PROTECTED}'"
+    cleaned += backup_and_delete(_t, _where)
+
+# probe TRAFFIC: the analytics rows the probe browsers wrote while walking the site
+_vs_where = (f"landing_page ~* '{V_URL}' OR entry_url ~* '{V_URL}'"
+             f" OR exit_page ~* '{V_URL}' OR exit_url ~* '{V_URL}'")
+_ve_where = (f"session_id IN (SELECT id FROM visitor_sessions WHERE {_vs_where})"
+             f" OR page_url ~* '{V_URL}' OR event_value ~* 'zz.*probe'")
+cleaned += backup_and_delete("visitor_events", _ve_where)
+cleaned += backup_and_delete("visitor_sessions", _vs_where)
+print(f"  fake test record sweep removed {cleaned} row(s) this run")
+
 # ---- 7. the site still works ---------------------------------------------------------------
 try:
     with urllib.request.urlopen(f"{BASE}/api/v1/health", timeout=10) as r:
