@@ -342,6 +342,43 @@ pub async fn update_review(
     Ok(Json(json!(review)))
 }
 
+/// Snapshot a listing's own (imported) reputation before a moderation recompute is allowed to
+/// rewrite it.
+///
+/// `set_review_status_owned` and `delete_review` recompute a listing as `imported_rating` /
+/// `imported_review_count` (migration 171) PLUS our approved rows. Migration 171's backfill is
+/// guarded by `NOT EXISTS (approved review of ours)`, so a listing that ALREADY had an approved
+/// review kept both imported_* NULL while still carrying its imported numbers in
+/// `businesses.rating` / `businesses.review_count`. For those the recompute's baseline is
+/// `COALESCE(imported_review_count, 0)` = 0, i.e. the moderation REPLACES the listing's reputation
+/// with our own rows only. Measured on the live database 2026-10-16: 24 listings were in exactly
+/// this state (e.g. `Miyako Japanese Buffet` 4.6 / 5238 reviews, `Cucina Dania Beach` 4.8 / 4090);
+/// approving one review left Miyako at 5.0 / 2 — a one-way loss, nothing re-imports it.
+///
+/// This captures the baseline as the listing's own count minus whatever of ours was already
+/// approved, and runs BEFORE the status flip / DELETE so the row being moderated is not counted
+/// twice. A listing whose stored count is already just our own approved rows is left untouched
+/// (no invented baseline), and a listing that already has a captured baseline is never overwritten.
+async fn capture_imported_baseline(db: &sqlx::PgPool, business_id: Uuid) -> Result<(), AppError> {
+    sqlx::query(
+        r#"UPDATE businesses b SET
+             imported_rating = b.rating,
+             imported_review_count = GREATEST(
+                 COALESCE(b.review_count, 0)
+                   - (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved'),
+                 0)
+           WHERE b.id = $1
+             AND b.imported_rating IS NULL
+             AND b.imported_review_count IS NULL
+             AND COALESCE(b.review_count, 0)
+                 > (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved')"#,
+    )
+    .bind(business_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 /// DELETE /api/v1/reviews/:id — delete a review (owner of the business, owner of its directory, or
 /// the platform `super_admin`).
 pub async fn delete_review(
@@ -367,6 +404,12 @@ pub async fn delete_review(
     }
 
     let business_id = existing.business_id;
+
+    // Capture the listing's own (imported) reputation BEFORE the row goes away: the recompute below
+    // must incorporate it, never replace it (see `capture_imported_baseline`).
+    if let (Some(bid), true) = (business_id, existing.status.as_deref() == Some("approved")) {
+        capture_imported_baseline(&s.db, bid).await?;
+    }
 
     let result = sqlx::query("DELETE FROM reviews WHERE id = $1")
         .bind(id)
@@ -815,6 +858,13 @@ async fn set_review_status_owned(
         return Err(AppError::Forbidden(
             "You can only moderate reviews of a business you own.".to_string(),
         ));
+    }
+
+    // Capture the listing's own (imported) reputation BEFORE the flip below, when this moderation
+    // will change which reviews are approved: the recompute at the end of this function must
+    // incorporate it, never replace it (see `capture_imported_baseline`).
+    if (review.status.as_deref() == Some("approved")) != (status == "approved") {
+        capture_imported_baseline(&s.db, business_id).await?;
     }
 
     // Moderation is orthogonal to the "verified customer" trust signal. `is_verified` means the
