@@ -228,10 +228,9 @@ function readRow(page, key) {
     // ── 5. a logged-out visitor SEES it on screen ──────────────────────────────────────────────
     const liveCode = await pvis.reload({ waitUntil: 'networkidle2', timeout: 60000 }).then((r) => r && r.status());
     const titleVisible = await pvis.evaluate((t) => {
-      const el = [...document.querySelectorAll('h1,h2,title')].find((n) => (n.textContent || '').includes(t));
-      if (!el) return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
+      // NB: the <title> in <head> has a zero-size box, so only look at laid-out body headings.
+      const els = [...document.querySelectorAll('h1,h2,h3')].filter((n) => (n.textContent || '').includes(t));
+      return els.some((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
     }, art.title || 'zzz-none');
     const bodyText = await pvis.evaluate(() => document.body.innerText || '');
     proof.steps.livePublic = { status: liveCode, url: draftUrl, titleVisible, chars: bodyText.length };
@@ -252,12 +251,18 @@ function readRow(page, key) {
       return true;
     }, art.id);
     check('the card offers an Archive control on the published row', arcClicked);
-    await page.waitForFunction((k) => {
-      const box = document.getElementById('art-list');
-      if (!box) return false;
-      return !box.textContent.includes(k);
-    }, { timeout: 30000 }, KEYWORD);
-    check('archiving removes the article from the console list', true);
+    await page.waitForFunction((id) => {
+      const tr = [...document.querySelectorAll('#art-list tbody tr')].find((t) => t.querySelector('button[data-aid="' + id + '"]'));
+      if (!tr) return false;
+      const tds = [...tr.querySelectorAll('td')];
+      return tds[2] && tds[2].textContent.trim() === 'archived';
+    }, { timeout: 30000 }, art.id);
+    const arcRow = await readRow(page, KEYWORD);
+    proof.steps.archivedRow = arcRow;
+    check('the console now shows the article as archived', !!arcRow && arcRow.status === 'archived',
+      arcRow && arcRow.status);
+    check('the archived row no longer offers a public link', !!arcRow && arcRow.link === null,
+      'link=' + (arcRow && arcRow.link));
     check('the console warned that archiving takes it off the public site',
       /disappears from the public site/.test(proof.steps.dialog || ''), proof.steps.dialog || '');
 

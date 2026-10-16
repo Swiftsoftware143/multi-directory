@@ -11222,7 +11222,7 @@
                 ? '<a href="/' + artEsc(artSlug()) + '/articles/' + artEsc(a.slug) + '" target="_blank" style="color:#0d9488">' + artEsc(a.title) + '</a>'
                 : '<span style="color:var(--text-secondary)">' + artEsc(a.title) + '</span>')
             + '<div style="font-size:.72rem;color:var(--text-secondary)">' + artEsc(a.keyword)
-            + (st === 'published' ? '' : ' · not public yet — publish to make it live') + '</div></td>'
+            + (st === 'published' ? '' : (st === 'archived' ? ' · archived — not on the public site' : ' · not public yet — publish to make it live')) + '</div></td>'
             + '<td>' + (a.business_name ? artEsc(a.business_name) : (a.is_owner_article ? '<span style="color:var(--text-secondary)">owner SEO</span>' : '—')) + '</td>'
             + '<td><span style="color:' + stColor + '">' + artEsc(st) + '</span></td>'
             + '<td>' + (a.impressions || 0) + '</td>'
