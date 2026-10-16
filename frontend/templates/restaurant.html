@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Restaurant Directory | Find Local Dining</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <meta name="description" content="Discover local restaurants, cafés, and dining near you. Browse menus, hours, and make reservations.">
   <meta property="og:title" content="Restaurant Directory">
   <meta property="og:description" content="Find the best local restaurants and dining experiences.">
@@ -74,11 +75,11 @@
     let allBiz = [], map;
 
     async function load() {
-      const [dir, biz] = await Promise.all([
-        fetch(`${API}/directories/${SLUG}`).then(r => r.json()),
+      const [brand, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}/branding`).then(r => r.json()),
         fetch(`${API}/directories/${SLUG}/businesses?page=1&per_page=50`).then(r => r.json())
       ]);
-      if (dir.branding) applyBranding(dir.branding);
+      if (brand && brand.primary_color) applyBranding(brand);
       allBiz = escDeep(biz.data || biz);
       renderFilters(allBiz);
       renderMap(allBiz);

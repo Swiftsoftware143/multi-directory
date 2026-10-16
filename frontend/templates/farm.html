@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Farm Directory | Find Local Farms & Produce</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <meta name="description" content="Discover local farms, farmers markets, CSA programs, and fresh produce near you. Support local agriculture.">
   <meta property="og:title" content="Farm Directory">
   <meta property="og:description" content="Find local farms, fresh produce, and farmers markets in your area.">
@@ -79,11 +80,11 @@
     let page = 1, map, markers = [], allBiz = [];
 
     async function load() {
-      const [dir, biz] = await Promise.all([
-        fetch(`${API}/directories/${SLUG}`).then(r => r.json()),
+      const [brand, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}/branding`).then(r => r.json()),
         fetch(`${API}/directories/${SLUG}/businesses?page=${page}&per_page=50`).then(r => r.json())
       ]);
-      if (dir.branding) applyBranding(dir.branding);
+      if (brand && brand.primary_color) applyBranding(brand);
       allBiz = escDeep(biz.data || biz);
       renderFilters(allBiz);
       renderMap(allBiz);

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Medical Directory | Find Doctors & Healthcare Providers</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <meta name="description" content="Find doctors, specialists, clinics, and healthcare providers near you. Book appointments, read reviews.">
   <meta property="og:title" content="Medical Directory">
   <meta property="og:description" content="Find healthcare providers and medical specialists in your area.">
@@ -64,11 +65,11 @@
     let allBiz = [], map, activeSpecialty = '';
 
     async function load() {
-      const [dir, biz] = await Promise.all([
-        fetch(`${API}/directories/${SLUG}`).then(r=>r.json()),
+      const [brand, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}/branding`).then(r=>r.json()),
         fetch(`${API}/directories/${SLUG}/businesses?page=1&per_page=50`).then(r=>r.json())
       ]);
-      if (dir.branding) applyBranding(dir.branding);
+      if (brand && brand.primary_color) applyBranding(brand);
       allBiz = escDeep(biz.data || biz);
       renderSpecialties(allBiz);
       renderMap(allBiz);

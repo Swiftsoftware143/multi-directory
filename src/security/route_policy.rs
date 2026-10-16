@@ -208,6 +208,19 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
         "newsletter-signup",
     ),
     ("POST", "/directories/newsletter", "newsletter-signup"),
+    // The branding row is public presentation data (colours, fonts, logo/favicon urls,
+    // meta templates) -- nothing an admin typed as a secret. It was already served to
+    // visitors: `branding_injector` writes these values into the HTML of every
+    // directory-scoped page. The sector landing pages (`/templates/<sector>.html?slug=…`)
+    // pick their directory from the QUERY string, so the path-based injector never fires
+    // for them; they fetch this endpoint instead and used to get 401 (dead call, brand
+    // colours silently never applied). The directory ROW (`GET /directories/:slug`, which
+    // carries `google_maps_api_key` and the AI/CoreSwift wiring) stays private.
+    (
+        "GET",
+        "/directories/:slug/branding",
+        "directory-branding-public",
+    ),
     // --- /directory --------------------------------------------------
     (
         "GET",
@@ -733,11 +746,14 @@ mod tests {
         // endpoint (POST /api-keys/verify, made callable), plus the pretty blog RSS
         // (GET /:slug/blog/feed.xml, so the feed's own advertised self url serves), plus
         // the public article read (GET /articles/:slug, the address the served help page
-        // promises); if this changes, the census wants a look.
+        // promises), plus the public directory branding read
+        // (GET /directories/:slug/branding, the sector landing pages' brand colours --
+        // presentation data only, the directory row itself stays private); if this
+        // changes, the census wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            162,
-            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read)"
+            163,
+            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding)"
         );
     }
 }

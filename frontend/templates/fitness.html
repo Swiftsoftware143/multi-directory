@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fitness Directory | Find Gyms, Studios & Trainers</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <meta name="description" content="Discover gyms, fitness studios, personal trainers, and wellness centers near you. Compare classes, pricing, and reviews.">
   <meta property="og:title" content="Fitness & Wellness Directory">
   <meta property="og:description" content="Find gyms, studios, trainers, and wellness centers in your area.">
@@ -98,11 +99,11 @@
 
     async function load() {
       document.getElementById('results').innerHTML = '<div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">'+Array(6).fill('<div class="skeleton skeleton-card"></div>').join('')+'</div>';
-      const [dir, biz] = await Promise.all([
-        fetch(`${API}/directories/${SLUG}`).then(r => r.json()).catch(() => ({})),
+      const [brand, biz] = await Promise.all([
+        fetch(`${API}/directories/${SLUG}/branding`).then(r => r.json()).catch(() => ({})),
         fetch(`${API}/directories/${SLUG}/businesses?page=${page}&per_page=50`).then(r => r.json()).catch(() => ({data: []}))
       ]);
-      if (dir.branding) applyBranding(dir.branding);
+      if (brand && brand.primary_color) applyBranding(brand);
       allBiz = escDeep(biz.data || biz || []);
       renderFilters(allBiz);
       renderClassFilters(allBiz);
