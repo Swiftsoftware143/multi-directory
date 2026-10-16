@@ -47,14 +47,6 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 /* Plan cards */
 .plan-card{border:2px solid var(--border);overflow:hidden}.plan-card.featured{border-color:var(--primary);box-shadow:0 4px 20px rgba(242,127,47,.15)}.plan-card .plan-header{text-align:center;padding:16px;border-bottom:1px solid var(--border)}.plan-card .plan-name{font-size:1rem;font-weight:700}.plan-card .plan-price{font-size:1.8rem;font-weight:800;color:var(--primary);margin:4px 0}.plan-card .plan-period{font-size:.78rem;color:var(--text-secondary)}.plan-card .plan-body{padding:16px}.plan-card .plan-features{list-style:none;padding:0;margin:0 0 12px}.plan-card .plan-features li{padding:6px 0;font-size:.82rem;color:var(--text);border-bottom:1px solid var(--border)}.plan-card .plan-features li:last-child{border-bottom:none}.plan-card .plan-features li .check{color:var(--success);font-weight:700;margin-right:6px}.plan-card .plan-subscribe{margin-top:8px}.plan-select{display:none}
 
-/* Coming soon */
-.coming-soon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:16px}
-.coming-soon-card{background:var(--card);border:1px dashed var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:all .2s}
-.coming-soon-card:hover{border-color:var(--primary);background:var(--primary-light)}
-.coming-soon-card .icon{font-size:2rem;margin-bottom:8px}
-.coming-soon-card h4{font-size:.9rem;margin-bottom:4px}
-.coming-soon-card p{font-size:.8rem;color:var(--text-secondary)}
-
 /* Scanner styles */
 #scannerVideo{transform:scaleX(-1)}
 
@@ -89,7 +81,6 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 @media(max-width:768px){
   .dashboard{padding:16px}
   .card-grid{grid-template-columns:1fr}
-  .coming-soon-grid{grid-template-columns:repeat(2,1fr)}
   .loyalty-tabs{flex-wrap:wrap}.loyalty-tabs .tab{flex:0 0 auto;padding:8px 14px;font-size:.8rem}
   .loy-stats-grid{grid-template-columns:repeat(2,1fr)}
 }
@@ -1144,16 +1135,6 @@ function renderBusinesses(businesses) {
   
   html += '</div>';
   $('businessList').innerHTML = html;
-}
-
-// ── Coming Soon ──
-function showComingSoon(feature) {
-  var msg = '🔜 ' + feature + ' is coming soon!';
-  var toast = document.createElement('div');
-  toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;font-size:.9rem;z-index:1000;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:fadeIn .3s';
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; setTimeout(function() { toast.remove(); }, 300); }, 3000);
 }
 
 // ── Plans / Upgrade ──
