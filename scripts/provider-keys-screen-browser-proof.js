@@ -2,17 +2,26 @@
  * Item 7 proof (browser arm) — the Provider API Keys screen in the LIVE admin panel.
  *
  * Proves the FRONT-END MANDATE, not just the API: an operator can open the Integration Center,
- * paste a provider key, watch it save and be reported as set, and delete it — on screen.
+ * paste a provider key, watch it save and be reported as set, run the screen's own Test control,
+ * and delete it again — all on screen.
  *
- * It also pins the link to item 3 (network email): with mailgun selected as the mail transport,
- * saving a mailgun key on THIS screen is exactly what stops the app refusing password resets.
- * So the run captures the live consequence before / while / after the key exists:
- *   - email service answers "provider_key_missing"  -> forgot-password answers 503 (honest)
- *   - key saved on screen                            -> the key is READ at call time, refusal lifts
- *   - key deleted on screen                          -> back to an honest 503
- * The fake key is removed at the end; residue is asserted zero.
+ * SAFETY (rewritten 2026-10-16, t_543d51d8 follow-up): the earlier version of this file targeted
+ * `mailgun` unconditionally, on the premise that the box had no mailgun key. When the operator
+ * configured a REAL network mail credential (2026-10-16 00:37, label
+ * "Network mail (updates.zaarhub.com)") the premise went stale, the probe added a second key beside
+ * the operator's, and its label-scoped exit sweep deleted the operator's row — the live credential
+ * was destroyed on 2026-10-16 14:09 and had to be restored out of the 02:30 nightly dump.
+ * This version NEVER touches a provider that already has a key:
+ *   - it picks the first provider on the catalogue that is marked "Not set", and FAILS if that
+ *     provider actually has rows in the database (a screen/DB disagreement is a bug, not a licence
+ *     to write);
+ *   - every write, test and delete is scoped to that one provider;
+ *   - the cleanup run on exit is scoped to that provider and to the probe's own label;
+ *   - it asserts, at the end, that the operator's live `mailgun` credential is byte-identical to
+ *     the start (row count + sha256 of the stored envelope), so this class of damage can never
+ *     pass silently again.
  *
- * Env: ADMIN_URL, SHOT_DIR, NODE_PATH. Exit 0 = all checks passed.
+ * Env: ADMIN_URL, SHOT_DIR, NODE_PATH, PK_PROVIDER (optional explicit target). Exit 0 = all passed.
  */
 const puppeteer = require('puppeteer-core');
 const { execSync } = require('child_process');
@@ -22,15 +31,18 @@ const crypto = require('crypto');
 const ADMIN = process.env.ADMIN_URL || 'http://127.0.0.1:8089/admin-panel.html';
 const SHOT = process.env.SHOT_DIR || '/tmp';
 const ENV_FILE = '/etc/swift/env/multi-directory.env';
-const PROVIDER = 'mailgun';
+const LIVE = 'mailgun';                       // the operator's real credential — never mutated here
 const FAKE = 'key-zzscreenproof-' + Date.now();
 const SQLQ = "'" + FAKE.replace(/'/g, "''") + "'";
-const EMAIL_SVC = 'http://127.0.0.1:3456';
+let PROVIDER = process.env.PK_PROVIDER || ''; // the probe's own target provider, chosen on screen
 
-// Whatever happens, never leave the temporary credential behind.
+// Whatever happens, never leave a row behind that THIS RUN created. Scoped to the probe's own
+// provider, so an operator credential can never be swept away by a cleanup.
 function sweep() {
   try {
-    psql(`DELETE FROM provider_keys WHERE provider='${PROVIDER}' AND label LIKE 'zz screen proof%'`);
+    if (PROVIDER) {
+      psql(`DELETE FROM provider_keys WHERE provider='${PROVIDER}' AND label LIKE 'zz screen proof%'`);
+    }
   } catch (e) {}
 }
 process.on('exit', sweep);
@@ -40,6 +52,7 @@ const check = (n, ok, d) => {
   console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${n}${d !== undefined ? ' :: ' + d : ''}`);
   if (!ok) fails++;
 };
+const observe = (n, d) => console.log(`  [obs ] ${n}${d !== undefined ? ' :: ' + d : ''}`);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function dbPass() {
@@ -50,6 +63,18 @@ const PW = dbPass();
 const psql = sql =>
   execSync(`docker exec -i -e PGPASSWORD=${PW} swift-postgres psql -U swift -d multi_directory -tAc ${JSON.stringify(sql)}`)
     .toString().trim();
+
+const rows = p => parseInt(psql(`SELECT COUNT(*) FROM provider_keys WHERE provider='${p}'`) || '0', 10);
+// sha256 of the stored envelope: the value itself is never read out or printed.
+const digest = p => psql(
+  `SELECT COALESCE(encode(digest(api_key,'sha256'),'hex'),'') FROM provider_keys ` +
+  `WHERE provider='${p}' ORDER BY created_at LIMIT 1`);
+const shape = p => psql(
+  `SELECT is_active::text||'|'||(api_key LIKE 'enc:v1:%')::text||'|'||` +
+  `COALESCE(octet_length(api_key_encrypted),0)::text||'|'||length(api_key)::text||'|'||` +
+  `(api_key = ${SQLQ})::text||'|'||` +
+  `(COALESCE(encode(api_key_encrypted,'escape'),'') LIKE '%'||${SQLQ}||'%')::text ` +
+  `FROM provider_keys WHERE provider='${p}' ORDER BY created_at DESC LIMIT 1`);
 
 function findChrome() {
   const base = '/root/.cache/ms-playwright';
@@ -82,38 +107,14 @@ function mintToken() {
   return `${msg}.${sig}`;
 }
 
-const mailgunRows = () =>
-  parseInt(psql(`SELECT COUNT(*) FROM provider_keys WHERE provider='${PROVIDER}'`) || '0', 10);
-const mailgunShape = () =>
-  psql(`SELECT is_active::text||'|'||(api_key LIKE 'enc:v1:%')::text||'|'||COALESCE(octet_length(api_key_encrypted),0)::text ` +
-       `||'|'||length(api_key)::text||'|'||(api_key = ${SQLQ})::text||'|'||` +
-       `(COALESCE(encode(api_key_encrypted,'escape'),'') LIKE '%'||${SQLQ}||'%')::text ` +
-       `FROM provider_keys WHERE provider='${PROVIDER}' ORDER BY created_at DESC LIMIT 1`);
-
-async function emailProbeDetail() {
-  const r = await fetch(`${EMAIL_SVC}/send`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to: 'zz-screen-proof@probe.invalid', subject: 'p', html: 'x', text: 'x' }),
-  });
-  const j = await r.json();
-  return j;
-}
-async function forgotStatus() {
-  const r = await fetch('http://127.0.0.1:8089/api/v1/auth/forgot-password', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'zz-screen-proof@probe.invalid' }),
-  });
-  return r.status;
-}
-
 (async () => {
-  const before = mailgunRows();
-  console.log(`mailgun keys before: ${before}`);
-  check('the probe starts with NO mailgun key (so the run cannot shadow a real credential)', before === 0, `rows=${before}`);
-  const svcBefore = await emailProbeDetail();
-  check('with no mailgun key the mail service says so plainly', /provider_key_missing|skipped/.test(svcBefore.status + svcBefore.detail), `${svcBefore.status} / ${svcBefore.detail}`);
-  const fpBefore = await forgotStatus();
-  check('a locked-out user is refused HONESTLY today (mail cannot be sent)', fpBefore === 503, `HTTP ${fpBefore}`);
+  // ---- 0. record the operator's live credential BEFORE anything ---------------------
+  const liveRowsBefore = rows(LIVE);
+  const liveDigestBefore = digest(LIVE);
+  console.log(`operator's live ${LIVE} keys before: ${liveRowsBefore} (sha256 ${liveDigestBefore.slice(0, 12) || '-'})`);
+  if (liveRowsBefore > 0 && !liveDigestBefore) {
+    check('the operator credential can be fingerprinted (so the run can prove it is untouched)', false, 'no digest');
+  }
 
   const chrome = findChrome();
   if (!chrome) { console.log('FAIL no chromium'); process.exit(1); }
@@ -133,118 +134,139 @@ async function forgotStatus() {
 
   await page.goto(ADMIN, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await sleep(1500);
-  // The card's own loader, the panel's own nav.
   await page.evaluate(() => { if (typeof loadProviderKeys === 'function') loadProviderKeys(); });
   await page.waitForFunction(
-    () => !!document.querySelector('[data-pk-row="mailgun"]'), { timeout: 30000 });
+    () => document.querySelectorAll('[data-pk-row]').length > 0, { timeout: 30000 });
 
+  // ---- 1. the card renders, generically --------------------------------------------
   const cardOk = await page.evaluate(() => {
     const c = document.getElementById('provider-keys-section');
     if (!c) return { present: false };
     const r = c.getBoundingClientRect();
-    const row = c.querySelector('[data-pk-row="mailgun"]');
     return {
       present: true,
       visible: c.style.display !== 'none' && r.height > 0,
       title: (c.querySelector('.feature-title, h2, h3') || {}).textContent || '',
-      badge: row ? (row.querySelector('.pk-badge') || {}).textContent : null,
-      hasInput: !!document.getElementById('pk-key-mailgun'),
-      hasSave: !!row && !!row.querySelector('[data-pk-action="save"]'),
-      hasTest: !!row && !!row.querySelector('[data-pk-action="test"]'),
       providerRows: c.querySelectorAll('[data-pk-row]').length,
+      hasSave: !!c.querySelector('[data-pk-action="save"]'),
+      hasTest: !!c.querySelector('[data-pk-action="test"]'),
+      hasDelete: !!c.querySelector('[data-pk-action="delete"]'),
     };
   });
   check('the admin panel serves the Provider API Keys card on screen', cardOk.present && cardOk.visible, cardOk.title);
   check('the card lists the provider catalogue', cardOk.providerRows > 20, `rows=${cardOk.providerRows}`);
-  check('mailgun is one of the offered providers, marked Not set', /Not set/.test(cardOk.badge || ''), cardOk.badge);
-  check('it has a paste field and an Add key control', cardOk.hasInput && cardOk.hasSave);
-  await page.screenshot({ path: `${SHOT}/screen-1-before.png` });
+  check('it renders a paste field and a save control', cardOk.hasSave);
+  check('a configured key offers Test and delete controls on screen', cardOk.hasTest && cardOk.hasDelete);
+  const liveBadge = await page.evaluate(p => {
+    const row = document.querySelector(`[data-pk-row="${p}"]`);
+    return row ? (row.querySelector('.pk-badge') || {}).textContent : null;
+  }, LIVE);
+  observe(`the operator's live ${LIVE} credential on screen`, liveBadge);
 
-  // --- save a (fake) mailgun key through the screen ---
-  await page.evaluate(v => {
-    document.getElementById('pk-label-mailgun').value = 'zz screen proof (temporary)';
-    document.getElementById('pk-key-mailgun').value = v;
-    const nav = document.querySelector('a[href="#provider-keys-section"]');
-    if (nav) nav.click();
-  }, FAKE);
-  await page.evaluate(() => {
-    const row = document.querySelector('[data-pk-row="mailgun"]');
-    row.querySelector('[data-pk-action="save"]').click();
-  });
+  // ---- 2. choose a provider that has NO key (never touch a live credential) --------
+  if (!PROVIDER) {
+    const picked = await page.evaluate(() => {
+      const out = [];
+      for (const r of document.querySelectorAll('[data-pk-row]')) {
+        const id = r.getAttribute('data-pk-row');
+        const badge = (r.querySelector('.pk-badge') || {}).textContent || '';
+        if (/Not set/i.test(badge) && document.getElementById('pk-key-' + id)) out.push(id);
+      }
+      return out;
+    });
+    if (!picked.length) { check('the catalogue offers a provider with no key to test against', false, 'none "Not set"'); await browser.close(); process.exit(1); }
+    PROVIDER = picked[0];
+    console.log(`probe target (a provider with no key): ${PROVIDER}  [${picked.length} unset providers available]`);
+  }
+  check('the probe target is not the operator\'s live provider', PROVIDER !== LIVE || rows(LIVE) === 0, PROVIDER);
+  const targetRowsBefore = rows(PROVIDER);
+  check('the target provider really has no key in the database (screen and DB agree)',
+    targetRowsBefore === 0, `${PROVIDER} rows=${targetRowsBefore}`);
+
+  // ---- 3. add a key through the screen --------------------------------------------
+  await page.evaluate((prov, v) => {
+    document.getElementById('pk-label-' + prov).value = 'zz screen proof (temporary)';
+    document.getElementById('pk-key-' + prov).value = v;
+  }, PROVIDER, FAKE);
+  await page.evaluate(prov => {
+    document.querySelector(`[data-pk-row="${prov}"] [data-pk-action="save"]`).click();
+  }, PROVIDER);
   await page.waitForFunction(
     () => { const s = document.getElementById('pk-status'); return s && /saved/i.test(s.textContent); },
     { timeout: 20000 }).catch(() => {});
   const savedMsg = await page.evaluate(() => (document.getElementById('pk-status') || {}).textContent || '');
   check('the screen reports the key saved', /saved/i.test(savedMsg), savedMsg.trim().slice(0, 120));
 
-  await page.waitForFunction(
-    () => { const row = document.querySelector('[data-pk-row="mailgun"]'); return row && /1 key/.test(row.textContent); },
-    { timeout: 20000 }).catch(() => {});
-  const afterBadge = await page.evaluate(() => {
-    const row = document.querySelector('[data-pk-row="mailgun"]');
-    return { badge: row ? (row.querySelector('.pk-badge') || {}).textContent : null, preview: row ? row.textContent.match(/[a-z0-9•]{4,}•+/i) : null };
-  });
-  check('the row now shows the key as SET, with a masked preview (never the raw value)', /1 key/.test(afterBadge.badge || ''), `${afterBadge.badge} ${afterBadge.preview ? JSON.stringify(afterBadge.preview[0]) : ''}`);
-  const hasTest = await page.evaluate(() => {
-    const row = document.querySelector('[data-pk-row="mailgun"]');
-    return !!row && !!row.querySelector('[data-pk-action="test"]');
-  });
-  check('a saved key gets a Test control (the capability has a UI, not just an endpoint)', hasTest);
+  await page.waitForFunction(prov => {
+    const row = document.querySelector(`[data-pk-row="${prov}"]`);
+    return row && /1 key/.test(row.textContent);
+  }, { timeout: 20000 }, PROVIDER).catch(() => {});
+  const afterBadge = await page.evaluate(prov => {
+    const row = document.querySelector(`[data-pk-row="${prov}"]`);
+    return {
+      badge: row ? (row.querySelector('.pk-badge') || {}).textContent : null,
+      preview: row ? row.textContent.match(/[a-z0-9•]{4,}•+/i) : null,
+    };
+  }, PROVIDER);
+  check('the row now shows the key as SET, with a masked preview (never the raw value)',
+    /1 key/.test(afterBadge.badge || ''), `${afterBadge.badge} ${afterBadge.preview ? JSON.stringify(afterBadge.preview[0]) : ''}`);
   const rawLeaked = await page.evaluate(v => document.body.innerHTML.includes(v), FAKE);
   check('the raw key is never rendered back into the page', !rawLeaked);
   await page.screenshot({ path: `${SHOT}/screen-2-saved.png` });
 
-  const shape = mailgunShape();
-  const [active, encPrefixed, encBytes, storedLen, isRawInText, isRawInBytea] = shape.split('|');
+  const sh = shape(PROVIDER);
+  const [active, encPrefixed, encBytes, storedLen, isRawInText, isRawInBytea] = sh.split('|');
   const encryptedSomewhere = encPrefixed === 'true' || parseInt(encBytes, 10) > 0;
   check('the key is stored ENCRYPTED (enc:v1: envelope), never as the raw value',
     encryptedSomewhere && isRawInText === 'false' && isRawInBytea === 'false',
     `active=${active} encEnvelope=${encPrefixed} ciphertextBytes=${encBytes} lenOnFile=${storedLen} rawInText=${isRawInText} rawInBytea=${isRawInBytea}`);
   check('the stored key is active', active === 'true');
 
-  // --- the live consequence: the key saved on this screen is what the mail path reads ---
-  const svcAfter = await emailProbeDetail();
-  check('the mail service now finds the key at send time (no longer "missing")',
-    !/provider_key_missing/.test(JSON.stringify(svcAfter)), `${svcAfter.status} / ${String(svcAfter.detail).slice(0, 90)}`);
-  const fpAfter = await forgotStatus();
-  check('the honest refusal lifts once the key exists (a reset is now attempted)', fpAfter !== 503, `HTTP ${fpAfter}`);
-
-  // --- the screen's own Test control ---
-  await page.evaluate(() => document.querySelector('[data-pk-row="mailgun"] [data-pk-action="test"]').click());
+  // ---- 4. the screen's own Test control -------------------------------------------
+  await page.evaluate(prov => {
+    document.querySelector(`[data-pk-row="${prov}"] [data-pk-action="test"]`).click();
+  }, PROVIDER);
   await sleep(2500);
   const testMsg = await page.evaluate(() => (document.getElementById('pk-status') || {}).textContent || '');
-  check('the Test control answers on screen', /mailgun:/i.test(testMsg), testMsg.trim().slice(0, 140));
+  check('the Test control answers on screen', new RegExp(PROVIDER + ':', 'i').test(testMsg), testMsg.trim().slice(0, 140));
   await page.screenshot({ path: `${SHOT}/screen-3-tested.png` });
 
-  // --- delete it again, from the screen ---
-  await page.evaluate(() => {
-    const row = document.querySelector('[data-pk-row="mailgun"]');
-    const del = row.querySelector('[data-pk-action="delete"]');
+  // ---- 5. delete it again, from the screen ----------------------------------------
+  await page.evaluate(prov => {
+    const del = document.querySelector(`[data-pk-row="${prov}"] [data-pk-action="delete"]`);
     if (del) del.click();
-  });
-  await page.waitForFunction(
-    () => { const row = document.querySelector('[data-pk-row="mailgun"]'); return row && /Not set/.test(row.textContent); },
-    { timeout: 20000 }).catch(() => {});
+  }, PROVIDER);
+  await page.waitForFunction(prov => {
+    const row = document.querySelector(`[data-pk-row="${prov}"]`);
+    return row && /Not set/.test(row.textContent);
+  }, { timeout: 20000 }, PROVIDER).catch(() => {});
   await sleep(800);
-  const afterDelete = await page.evaluate(() => {
-    const row = document.querySelector('[data-pk-row="mailgun"]');
+  const afterDelete = await page.evaluate(prov => {
+    const row = document.querySelector(`[data-pk-row="${prov}"]`);
     return { badge: row ? (row.querySelector('.pk-badge') || {}).textContent : null };
-  });
+  }, PROVIDER);
   check('the screen shows the key gone again (Not set)', /Not set/.test(afterDelete.badge || ''), afterDelete.badge);
-  check('residue: no mailgun key row is left behind', mailgunRows() === 0, `rows=${mailgunRows()}`);
-  const svcRestored = await emailProbeDetail();
-  check('the mail service is back to reporting the key missing', /provider_key_missing/.test(JSON.stringify(svcRestored)), svcRestored.status);
-  const fpRestored = await forgotStatus();
-  check('a locked-out user is refused honestly again', fpRestored === 503, `HTTP ${fpRestored}`);
+  check('residue: no key row is left behind for the probe provider', rows(PROVIDER) === 0, `rows=${rows(PROVIDER)}`);
+
+  // ---- 6. the operator's live credential is byte-identical ------------------------
+  const liveRowsAfter = rows(LIVE);
+  const liveDigestAfter = digest(LIVE);
+  check("the operator's live credential is UNTOUCHED by this proof (rows + sha256 identical)",
+    liveRowsAfter === liveRowsBefore && liveDigestAfter === liveDigestBefore,
+    `${LIVE} rows ${liveRowsBefore}->${liveRowsAfter}, sha256 ${liveDigestBefore.slice(0, 12)} -> ${liveDigestAfter.slice(0, 12)}`);
   check('no JavaScript errors during the flow', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '));
   await page.screenshot({ path: `${SHOT}/screen-4-deleted.png` });
 
   fs.writeFileSync(`${SHOT}/screen-proof.json`, JSON.stringify({
-    card: cardOk, saved_msg: savedMsg.trim(), badge_after_save: afterBadge.badge,
+    provider_used: PROVIDER,
+    card: cardOk,
+    saved_msg: savedMsg.trim(),
+    badge_after_save: afterBadge.badge,
     stored: { active, enc_envelope: encPrefixed, ciphertext_bytes: encBytes, len_on_file: storedLen, raw_in_text: isRawInText, raw_in_bytea: isRawInBytea },
-    email_service_before: svcBefore, email_service_after_save: svcAfter, email_service_restored: svcRestored,
-    forgot_before: fpBefore, forgot_after_save: fpAfter, forgot_restored: fpRestored,
-    console_errors: consoleErrors, residue_rows: mailgunRows(),
+    test_message: testMsg.trim(),
+    live_provider: { name: LIVE, rows_before: liveRowsBefore, rows_after: liveRowsAfter, digest_before: liveDigestBefore, digest_after: liveDigestAfter, badge: liveBadge },
+    console_errors: consoleErrors,
+    residue_rows: rows(PROVIDER),
   }, null, 2));
 
   await browser.close();

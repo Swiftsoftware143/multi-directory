@@ -40,7 +40,10 @@ import urllib.request
 
 BASE = os.environ.get("MD_BASE", "http://127.0.0.1:8089")
 ENV_FILE = "/opt/swift/apps/multi-directory/.env"
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANEL_URL = BASE + "/admin-panel.html"
+NODE_PATH = os.environ.get("NODE_PATH", "/opt/swift/browser-run/node_modules")
+SCREEN = os.path.join(APP_DIR, "scripts", "provider-keys-screen-browser-proof.js")
 TS = int(time.time())
 EMAIL = f"probe-apikeys-{TS}@example.invalid"
 PASSWORD = "Probe!apikeys1"
@@ -243,6 +246,25 @@ def main():
                   "apiFetch('DELETE', '/api-keys/'" in html)
             check("the list shows a Last-used column (the usage proof is visible)",
                   "last_used_at" in html)
+
+        # ---- the Provider API Keys screen, driven in a REAL browser ----------
+        # Item 7's screen half (scripts/provider-keys-screen-browser-proof.js): an operator pastes
+        # a provider key, sees it reported as set, runs the screen's own Test control and deletes
+        # it — on screen, in a logged-in console. The arm never touches a provider that already
+        # has a key and asserts the operator's live credential is untouched, so it can run on a
+        # live box without any risk to a real credential.
+        env = dict(os.environ, NODE_PATH=NODE_PATH, ADMIN_URL=PANEL_URL, MD_BASE=BASE,
+                   SHOT_DIR=os.environ.get(
+                       "SHOT_DIR", f"/opt/swift/audits/zz-item7-provkeys-screen-{TS}"))
+        r = subprocess.run(["node", SCREEN], capture_output=True, text=True, env=env)
+        out = r.stdout + r.stderr
+        for line in out.splitlines():
+            if "[PASS]" in line or "[FAIL]" in line or "[obs ]" in line:
+                print("    " + line.strip())
+        check("the Provider API Keys screen drives save → set → Test → delete in a real browser",
+              r.returncode == 0 and "all passed" in out, f"rc={r.returncode}")
+        check("the browser flow left the operator's live credential untouched",
+              "[FAIL]" not in out and "UNTOUCHED" in out)
         return 1 if FAILS else 0
     finally:
         for kid in keystore["ids"]:
