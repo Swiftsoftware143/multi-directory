@@ -273,6 +273,51 @@ pub async fn send_claim_review_notice(
     send_rendered_email(admin_email, &subject, &html, Some(&text)).await
 }
 
+/// Is `email` an address that can never receive mail? `ADMIN_EMAIL` ships with the placeholder
+/// default `admin@example.com`; the reserved `example.*` / `.invalid` domains have no MX record at
+/// all, so mailing one is a guaranteed hard bounce (measured 2026-10-16: every "Claim needs review"
+/// notice answered "No MX for example.com, domain accepts no mail", so the notice was lost AND the
+/// shared sending domain collected the failure).
+fn is_unreachable_placeholder(email: &str) -> bool {
+    let domain = match email.rsplit_once('@') {
+        Some((_, d)) => d.trim().trim_end_matches('.').to_ascii_lowercase(),
+        None => return true,
+    };
+    domain.is_empty()
+        || domain == "example.com"
+        || domain == "example.org"
+        || domain == "example.net"
+        || domain.ends_with(".example.com")
+        || domain.ends_with(".example.org")
+        || domain.ends_with(".example.net")
+        || domain.ends_with(".invalid")
+        || domain.ends_with(".test")
+}
+
+/// The address the platform operator's own notices go to.
+///
+/// `ADMIN_EMAIL` is the configured value, but its shipped default is a placeholder that can never
+/// receive mail, so an unreachable value falls back to the platform operator's own login (the
+/// earliest active `super_admin` account, which the admin panel manages). `Ok(None)` means no
+/// reachable address exists — the caller must log and SKIP rather than mail a domain that cannot
+/// accept, which is what "fail gracefully when unconfigured" means here.
+pub async fn platform_notice_email(
+    db: &PgPool,
+    configured: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    let configured = configured.trim();
+    if !configured.is_empty() && !is_unreachable_placeholder(configured) {
+        return Ok(Some(configured.to_string()));
+    }
+    sqlx::query_scalar::<_, String>(
+        "SELECT email FROM users \
+         WHERE role = 'super_admin' AND is_active \
+         ORDER BY created_at, email LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+}
+
 /// Send an already-rendered message through the in-house email service. Returns Err with the
 /// service's own words on failure; a "skipped" (unconfigured transport) is an Err because the
 /// caller asked for mail and it was not delivered — it must never look like a success.

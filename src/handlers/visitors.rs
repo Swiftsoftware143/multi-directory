@@ -1804,15 +1804,36 @@ pub async fn claim_business(
     }
 
     // A claim the domain could not auto-accept needs a human — tell the platform admin (B76).
+    // `config.admin_email` ships with the placeholder `admin@example.com`, which accepts no mail:
+    // every manual-review notice was hard-bounced while the operator was never told and the shared
+    // sending domain collected the failure. Resolve a REACHABLE address (the operator's own login)
+    // and skip with a log when there is none — never mail a domain that cannot receive.
     if !auto_approved {
-        let admin = s.config.admin_email.clone();
+        let configured = s.config.admin_email.clone();
+        let notice_db = s.db.clone();
         let bn = biz_name_final.clone();
         let claimant = owner_email.clone();
         let link = admin_link.clone();
         tokio::spawn(async move {
-            match crate::email::send_claim_review_notice(&admin, &bn, &claimant, &link).await {
-                Ok(()) => tracing::info!("[claim] manual-review notice sent to the admin"),
-                Err(e) => tracing::warn!("[claim] manual-review notice NOT sent to the admin: {e}"),
+            match crate::email::platform_notice_email(&notice_db, &configured).await {
+                Ok(Some(admin)) => {
+                    match crate::email::send_claim_review_notice(&admin, &bn, &claimant, &link)
+                        .await
+                    {
+                        Ok(()) => tracing::info!("[claim] manual-review notice sent to {admin}"),
+                        Err(e) => {
+                            tracing::warn!("[claim] manual-review notice NOT sent to {admin}: {e}")
+                        }
+                    }
+                }
+                Ok(None) => tracing::warn!(
+                    "[claim] manual-review notice skipped: no reachable platform-admin address \
+                     (ADMIN_EMAIL='{configured}')"
+                ),
+                Err(e) => tracing::warn!(
+                    "[claim] manual-review notice skipped: could not resolve the platform-admin \
+                     address: {e}"
+                ),
             }
         });
     }
