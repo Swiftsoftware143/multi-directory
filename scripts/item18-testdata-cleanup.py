@@ -3,7 +3,9 @@
 
 Scope (narrow, deliberate):
   * ONLY visitor accounts whose address is a reserved test fixture
-    (@test.com, @x.com) AND that own nothing.
+    (@test.com, @x.com, @example.com) AND that own nothing, and that are at
+    least 2 minutes old (so a fixture created by a smoke run still in flight is
+    never yanked out from under it).
   * NEVER touched: probe-canary-a/b@swiftsoftware.dev (reserved fleet tenancy canaries,
     watched by /opt/swift/fleet/canary-id-census.py), biz@test.com (a fixture the app's own
     smoke scripts sign in as -- /opt/swift/bin/md-5xx-fix-smoke.py, md-provider-key-crypto-smoke.py),
@@ -25,7 +27,9 @@ AUD = os.environ.get("AUD", f"/opt/swift/audits/zz-item18-testdata-{time.strftim
 os.makedirs(AUD, exist_ok=True)
 
 KEEP = {"probe-canary-a@swiftsoftware.dev", "probe-canary-b@swiftsoftware.dev"}
-TARGET_RE = re.compile(r"@(test\.com|x\.com)$", re.I)
+TARGET_RE = re.compile(r"@(test\.com|x\.com|example\.com)$", re.I)
+# A fixture younger than this is presumed to belong to a smoke run still in flight.
+MIN_AGE_SECONDS = 120
 
 
 def sh(*cmd):
@@ -71,83 +75,118 @@ def check(ok, label, detail=""):
 # ---- 1. target set -------------------------------------------------------------------------
 targets = rows(f"""SELECT id, email FROM visitor_accounts
                    WHERE email !~* '(probe-canary|swiftsoftware\\.dev)'
-                     AND (email ~* '@test\\.com$' OR email ~* '@x\\.com$')
+                     AND email ~* '@(test\\.com|x\\.com|example\\.com)$'
+                     AND created_at < now() - interval '{MIN_AGE_SECONDS} seconds'
                    ORDER BY email""")
 ids = [t[0] for t in targets]
 emails = [t[1] for t in targets]
-check(len(ids) > 0, "leftover test accounts found on the live database",
-      f"{len(ids)}: {', '.join(emails)}")
-if not ids:
-    print("nothing to clean")
-    sys.exit(0)
+print(f"  leftover test accounts: {len(ids)} :: {', '.join(emails) if emails else '-'}")
 if any(e in KEEP for e in emails):
     check(False, "target set excludes the reserved canaries")
     sys.exit(1)
 
-for e in emails:
-    if "@test.com" in e and e.startswith(("biz@", "supplier@", "farm")):
-        pass  # reported, not special-cased
+# ---- 1b. scan: leftover test SUBMISSIONS (the same fixtures' business-enquiry rows) ---------
+sub_targets = rows(f"""SELECT id, submitter_email FROM submissions
+                       WHERE submitter_email ~* '@(test\\.com|x\\.com|example\\.com)$'
+                         AND submitter_email !~* '(probe-canary|swiftsoftware\\.dev)'
+                         AND created_at < now() - interval '{MIN_AGE_SECONDS} seconds'
+                       ORDER BY created_at""")
+sub_ids = [s[0] for s in sub_targets]
+sub_emails = [s[1] for s in sub_targets]
+print(f"  leftover test submissions: {len(sub_ids)} :: {', '.join(sub_emails) if sub_emails else '-'}")
+
+if not ids and not sub_ids:
+    check(True, "no leftover test data on the live database", "0 accounts, 0 submissions")
+else:
+    check(True, "leftover test data found on the live database",
+          f"{len(ids)} account(s), {len(sub_ids)} submission(s)")
 
 # ---- 2. census: every deleted row must be an orphan ----------------------------------------
-arr = ",".join(f"'{i}'::uuid" for i in ids)
 uuid_cols = rows("""SELECT table_name||'|'||column_name FROM information_schema.columns
                     WHERE table_schema='public' AND data_type='uuid'""")
-refs = []
-for t, c in uuid_cols:
-    n = psql(f"SELECT count(*) FROM {t} WHERE {c} IN ({arr})")
-    if n and int(n[0]) > 0:
-        refs.append((t, c, int(n[0]), n[0]))
-for t, c, n, _ in refs:
-    print(f"  reference: {t}.{c} = {n}")
-attached = [r for r in refs if r[0] != "visitor_accounts"]
-with open(os.path.join(AUD, "reference-census.txt"), "w") as f:
-    f.write("\n".join(f"{t}.{c} = {n}" for t, c, n, _ in refs) + "\n")
-check(True, "reference census recorded", f"{len(refs)} table(s) touch these rows")
+before, after = {}, {}
 
-# which reference is a loyalty member? prove it is empty of value
-for t, c, n, _ in refs:
-    if t == "loyalty_members":
-        pts = psql(f"SELECT coalesce(sum(points_balance),0)||'|'||coalesce(sum(lifetime_points),0) "
-                   f"FROM loyalty_members WHERE {c} IN ({arr})")
-        check(pts and pts[0] == "0|0", "the one attached loyalty record holds 0 points", pts[0] if pts else "?")
+if ids:
+    arr = ",".join(f"'{i}'::uuid" for i in ids)
+    refs = []
+    for t, c in uuid_cols:
+        n = psql(f"SELECT count(*) FROM {t} WHERE {c} IN ({arr})")
+        if n and int(n[0]) > 0:
+            refs.append((t, c, int(n[0]), n[0]))
+    for t, c, n, _ in refs:
+        print(f"  reference: {t}.{c} = {n}")
+    with open(os.path.join(AUD, "reference-census.txt"), "w") as f:
+        f.write("\n".join(f"{t}.{c} = {n}" for t, c, n, _ in refs) + "\n")
+    check(True, "reference census recorded", f"{len(refs)} table(s) touch these rows")
 
-# ---- 3. the same rows are invisible to the public ------------------------------------------
-vis = rows(f"""SELECT count(*) FROM businesses WHERE owner_id IN ({arr})""")
-check(int(vis[0][0]) == 0, "none of them owns a public listing (so nothing disappears from the site)",
-      f"businesses={vis[0][0]}")
+    # which reference is a loyalty member? prove it is empty of value
+    for t, c, n, _ in refs:
+        if t == "loyalty_members":
+            pts = psql(f"SELECT coalesce(sum(points_balance),0)||'|'||coalesce(sum(lifetime_points),0) "
+                       f"FROM loyalty_members WHERE {c} IN ({arr})")
+            check(pts and pts[0] == "0|0", "the one attached loyalty record holds 0 points", pts[0] if pts else "?")
 
-# ---- 4. before counts ----------------------------------------------------------------------
-before = {
-    "visitor_accounts": int(psql("SELECT count(*) FROM visitor_accounts")[0]),
-    "loyalty_members": int(psql("SELECT count(*) FROM loyalty_members")[0]),
-}
-print("  before:", json.dumps(before))
+    # ---- 3. the same rows are invisible to the public --------------------------------------
+    vis = rows(f"""SELECT count(*) FROM businesses WHERE owner_id IN ({arr})""")
+    check(int(vis[0][0]) == 0, "none of them owns a public listing (so nothing disappears from the site)",
+          f"businesses={vis[0][0]}")
 
-# ---- 5. delete -----------------------------------------------------------------------------
-psql("BEGIN")
-for i in ids:
-    psql(f"DELETE FROM visitor_accounts WHERE id = '{i}'")
-psql("COMMIT")
+    # ---- 4. before counts ------------------------------------------------------------------
+    before = {
+        "visitor_accounts": int(psql("SELECT count(*) FROM visitor_accounts")[0]),
+        "loyalty_members": int(psql("SELECT count(*) FROM loyalty_members")[0]),
+    }
+    print("  before:", json.dumps(before))
 
-after = {
-    "visitor_accounts": int(psql("SELECT count(*) FROM visitor_accounts")[0]),
-    "loyalty_members": int(psql("SELECT count(*) FROM loyalty_members")[0]),
-}
-print("  after: ", json.dumps(after))
-check(after["visitor_accounts"] == before["visitor_accounts"] - len(ids),
-      "every leftover test account is gone",
-      f"{before['visitor_accounts']} -> {after['visitor_accounts']} (-{len(ids)})")
+    # ---- 5. delete -------------------------------------------------------------------------
+    psql("BEGIN")
+    for i in ids:
+        psql(f"DELETE FROM visitor_accounts WHERE id = '{i}'")
+    psql("COMMIT")
 
-# ---- 6. residue = 0, keepers untouched -----------------------------------------------------
-resid = 0
-for t, c in uuid_cols:
-    n = psql(f"SELECT count(*) FROM {t} WHERE {c} IN ({arr})")
-    if n and int(n[0]) > 0:
-        resid += int(n[0])
-check(resid == 0, "no trace left anywhere in the database", f"rows={resid}")
+    after = {
+        "visitor_accounts": int(psql("SELECT count(*) FROM visitor_accounts")[0]),
+        "loyalty_members": int(psql("SELECT count(*) FROM loyalty_members")[0]),
+    }
+    print("  after: ", json.dumps(after))
+    check(after["visitor_accounts"] == before["visitor_accounts"] - len(ids),
+          "every leftover test account is gone",
+          f"{before['visitor_accounts']} -> {after['visitor_accounts']} (-{len(ids)})")
+
+    # ---- 6. residue = 0 --------------------------------------------------------------------
+    resid = 0
+    for t, c in uuid_cols:
+        n = psql(f"SELECT count(*) FROM {t} WHERE {c} IN ({arr})")
+        if n and int(n[0]) > 0:
+            resid += int(n[0])
+    check(resid == 0, "no trace left anywhere in the database", f"rows={resid}")
+else:
+    check(True, "no leftover test visitor accounts to trace", "0")
+
 kept = psql("SELECT count(*) FROM visitor_accounts WHERE email IN "
             "('probe-canary-a@swiftsoftware.dev','probe-canary-b@swiftsoftware.dev')")
 check(kept and int(kept[0]) == 2, "the two reserved fleet canaries are untouched", f"canaries={kept[0]}")
+
+# ---- 6b. delete the leftover test SUBMISSIONS (scanned at 1b) -------------------------------
+if sub_ids:
+    print(f"  leftover test submissions: {len(sub_ids)} :: {', '.join(sub_emails)}")
+    sarr = ",".join(f"'{i}'::uuid" for i in sub_ids)
+    sub_before = int(psql("SELECT count(*) FROM submissions")[0])
+    psql("BEGIN")
+    psql(f"DELETE FROM submissions WHERE id IN ({sarr})")
+    psql("COMMIT")
+    sub_after = int(psql("SELECT count(*) FROM submissions")[0])
+    check(sub_after == sub_before - len(sub_ids),
+          "every leftover test submission is gone",
+          f"{sub_before} -> {sub_after} (-{len(sub_ids)})")
+    sub_resid = 0
+    for t, c in uuid_cols:
+        n = psql(f"SELECT count(*) FROM {t} WHERE {c} IN ({sarr})")
+        if n and int(n[0]) > 0:
+            sub_resid += int(n[0])
+    check(sub_resid == 0, "no trace of the test submissions left anywhere", f"rows={sub_resid}")
+else:
+    check(True, "no leftover test submissions", "0")
 
 # ---- 7. the site still works ---------------------------------------------------------------
 try:
