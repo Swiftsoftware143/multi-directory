@@ -233,6 +233,17 @@ function switchTab(tab) {
   document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
 }
 
+// ── Escape ──
+// Business names, categories, perk text and review bodies are entered by other people, and this
+// page renders them with innerHTML. Interpolating them raw made any of them a live <script> on
+// the saved/following/recommended/reviews/perks tabs (the same defect class as the /biz/:id
+// review XSS, 1b8e7c2). Escape every one of them.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
 // ── Render Stars ──
 function renderStars(rating) {
   const full = Math.floor(rating);
@@ -291,9 +302,9 @@ async function renderFavorites() {
     return `
       <div class="saved-card" onclick="location.href='/biz/${id}${slug ? '?slug='+slug : ''}'">
         <div class="card-icon">🏪</div>
-        <h4>${name}</h4>
-        <div class="card-sub">${[city, state].filter(Boolean).join(', ') || 'Local'}</div>
-        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${category}</div>
+        <h4>${esc(name)}</h4>
+        <div class="card-sub">${esc([city, state].filter(Boolean).join(', ') || 'Local')}</div>
+        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${esc(category)}</div>
         <div class="card-stars">${rating > 0 ? renderStars(rating) + ' ' + rating.toFixed(1) : ''}</div>
         <button class="remove-btn" onclick="event.stopPropagation();removeFavorite('${id}')">Remove</button>
       </div>
@@ -358,9 +369,9 @@ function renderFollowing() {
     return `
       <div class="saved-card" onclick="location.href='/biz/${id}${slug ? '?slug='+slug : ''}'">
         <div class="card-icon">🔔</div>
-        <h4>${name}</h4>
-        <div class="card-sub">${[city, state].filter(Boolean).join(', ') || 'Local'}</div>
-        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${category}</div>
+        <h4>${esc(name)}</h4>
+        <div class="card-sub">${esc([city, state].filter(Boolean).join(', ') || 'Local')}</div>
+        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${esc(category)}</div>
         <div class="card-stars">${rating > 0 ? renderStars(rating) + ' ' + rating.toFixed(1) : ''}</div>
         <button class="remove-btn" onclick="event.stopPropagation();unfollowBusiness('${id}')">Unfollow</button>
       </div>
@@ -422,9 +433,9 @@ function renderRecommended() {
     return `
       <div class="saved-card" onclick="location.href='/biz/${id}${slug ? '?slug='+slug : ''}'">
         <div class="card-icon">🤝</div>
-        <h4>${name}</h4>
-        <div class="card-sub">${[city, state].filter(Boolean).join(', ') || 'Local'}</div>
-        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${category}</div>
+        <h4>${esc(name)}</h4>
+        <div class="card-sub">${esc([city, state].filter(Boolean).join(', ') || 'Local')}</div>
+        <div class="card-sub" style="color:var(--teal-dark);font-size:.72rem;font-weight:600">${esc(category)}</div>
         <div class="card-stars">${rating > 0 ? renderStars(rating) + ' ' + rating.toFixed(1) : ''}</div>
         <button class="remove-btn" onclick="event.stopPropagation();unrecommendBusiness('${id}')">Remove</button>
       </div>
@@ -476,12 +487,12 @@ async function renderMyReviews() {
     <div class="review-card">
       <div class="rev-header">
         <div>
-          <div class="rev-biz-name">${r.business_name || r.business_id || 'Business'}</div>
+          <div class="rev-biz-name">${esc(r.business_name || r.business_id || 'Business')}</div>
           <div class="rev-stars">${renderStars(r.rating || 5)}</div>
         </div>
         <div class="rev-date">${formatDate(r.created_at)}</div>
       </div>
-      <div class="rev-content">${r.content || ''}</div>
+      <div class="rev-content">${esc(r.content || '')}</div>
       <div class="rev-actions">
         <button class="edit-btn" onclick="editReview('${r.id}')">✏️ Edit</button>
         <button class="del-btn" onclick="deleteReview('${r.id}')">🗑️ Delete</button>
@@ -528,8 +539,8 @@ async function loadPerks() {
       if (data && data.length > 0) {
         container.innerHTML = `<div class="perks-grid">${data.map(p => `
           <div class="perk-card">
-            <h4>${p.title || 'Perk'}</h4>
-            <p>${p.description || ''}</p>
+            <h4>${esc(p.title || 'Perk')}</h4>
+            <p>${esc(p.description || '')}</p>
             <div class="perk-meta">Redeemed: ${p.redeemed_at ? formatDate(p.redeemed_at) : 'N/A'}</div>
           </div>
         `).join('')}</div>`;
