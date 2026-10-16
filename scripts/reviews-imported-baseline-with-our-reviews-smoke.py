@@ -197,6 +197,16 @@ def main():
     check("the listing's approved reviews are still shown publicly", st == 200 and shown >= 2,
           f"status={st} shown={shown}")
 
+    # deleting one of ours must also fall back to the captured baseline, not to zero (the DELETE arm
+    # of the same recompute)
+    st, _ = http("DELETE", f"/api/v1/reviews/{rid}", token=owner_token)
+    check("the owner can delete one of the listing's reviews (200)", st in (200, 204), f"status={st}")
+    agg3 = psql(f"SELECT review_count||'|'||COALESCE(round(rating::numeric,2)::text,'NULL') "
+                f"FROM businesses WHERE id='{bid}'")
+    check("deleting it falls back to the imported baseline too (5237 + 1 = 5238, ~4.6)",
+          agg3.split("|")[0] == "5238" and 4.55 <= float(agg3.split("|")[1] or 0) <= 4.65,
+          f"agg={agg3}")
+
     # ── a listing with no imported reputation of its own keeps its plain semantics ──
     plain = psql(
         "INSERT INTO businesses (directory_id, name, slug, city, state, status, rating, review_count, probe_harness) "
