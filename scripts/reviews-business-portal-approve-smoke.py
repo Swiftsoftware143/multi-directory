@@ -105,6 +105,9 @@ def sweep_stale_probe_rows():
          f"(SELECT id FROM businesses WHERE probe_harness='{MARK}')")
     psql(f"DELETE FROM businesses WHERE probe_harness='{MARK}'")
     psql("DELETE FROM visitor_accounts WHERE email LIKE 'zz-review-portal-%@swiftsoftware.dev'")
+    # Belt and braces for a run against a binary older than the no-harness-deal guard: this fixture
+    # names its claim deal exactly, so it can be traced back and removed.
+    psql("DELETE FROM crm_deal_records WHERE title ~ '^ZZ Portal Review Probe Co [0-9]+ - Claimed'")
 
 
 def main():
@@ -133,6 +136,7 @@ def main():
 
     directory_id = psql("SELECT id FROM directories ORDER BY name LIMIT 1")
     slug = f"zz-review-portal-probe-{ts}"
+    deals_before = int(psql("SELECT count(*) FROM crm_deal_records") or 0)
     bid = psql(
         "INSERT INTO businesses (directory_id, name, slug, city, state, status, rating, review_count, probe_harness) "
         f"VALUES ('{directory_id}', 'ZZ Portal Review Probe Co {ts}', '{slug}', 'Orlando', 'FL', 'active', 0, 0, "
@@ -143,6 +147,13 @@ def main():
                  {"owner_email": owner_email, "owner_name": "ZZ Portal Owner",
                   "owner_phone": "4075550100"}, extra_headers=HARNESS)
     check("the owner can claim the listing (POST /businesses/:id/claim)", st in (200, 201), f"status={st}")
+
+    # A harness claim must not deposit a row into the operator's real CRM pipeline: crm_deal_records
+    # carries no business id, so a fake "… - Claimed (City)" deal is untraceable once written
+    # (item 18 swept 14 of them on 2026-10-16). This is the regression test for that guard.
+    deals_now = int(psql("SELECT count(*) FROM crm_deal_records") or 0)
+    check("the harness claim wrote no row into the operator's CRM pipeline",
+          deals_now == deals_before, f"{deals_before} -> {deals_now}")
 
     st, tok_cust = http("POST", "/api/v1/auth/login", {"email": cust_email, "password": pw})
     cust_token = (tok_cust or {}).get("access_token") if isinstance(tok_cust, dict) else None
@@ -183,6 +194,7 @@ def main():
     psql(f"DELETE FROM reviews WHERE business_id='{bid}'")
     psql(f"DELETE FROM claimed_businesses WHERE business_id='{bid}'")
     psql(f"DELETE FROM businesses WHERE id='{bid}'")
+    psql("DELETE FROM crm_deal_records WHERE title ~ '^ZZ Portal Review Probe Co [0-9]+ - Claimed'")
     for vid in (owner_vid, cust_vid):
         if vid:
             psql(f"DELETE FROM visitor_accounts WHERE id='{vid}'")

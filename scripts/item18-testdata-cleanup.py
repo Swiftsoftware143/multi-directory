@@ -197,8 +197,15 @@ else:
 # two reserved tenancy canaries plus the app's own `biz@test.com` login fixture are excluded
 # everywhere. Rows are backed up to the audit dir before deletion so the change is reversible.
 PROTECTED = r"biz@test\.com|probe-canary|swiftsoftware\.dev"
+# The fixture arms, deliberately narrow. The third arm is the numeric-suffix shape every harness
+# fixture names itself with — `NAME <epoch> - Claimed (City)` (e.g. "HV Plain 1792148978 - …",
+# "ZZ Portal Review Probe Co 1792163296 - …") — which the word list above missed entirely when the
+# fixture name carried no probe/smoke word; the fourth is a single July 2026 fixture that predates
+# the word list ("Test ON CONFLICT"). A real business title has neither shape.
 ZZ_WHERE = r"title ~* '(probe|smoke|selftest|fixture|dummy)'" \
-           r" OR (title ~* '^ZZ ' AND title ~ ' - Claimed \(Orlando\)$')"
+           r" OR (title ~* '^ZZ ' AND title ~ ' - Claimed \(Orlando\)$')" \
+           r" OR title ~ ' [0-9]{10} - Claimed \('" \
+           r" OR title ~ '^Test ON CONFLICT - Claimed'"
 V_URL = r"zzprobe|zz-sponsored-probe|zz-item6-debug"
 PROBE_RECORDS = [
     ("crm_deal_records", ZZ_WHERE, ()),

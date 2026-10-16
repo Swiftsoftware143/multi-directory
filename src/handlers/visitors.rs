@@ -1509,15 +1509,23 @@ pub async fn claim_business(
     // Business claim only creates the claim record; loyalty is opt-in via the portal.
     // Loyalty auto-registration was removed per owner directive (July 25, 2026).
 
-    // Create a CRM deal record in the default pipeline
-    let _ = create_claim_deal(
-        &s.db,
-        business_id,
-        &req.owner_name,
-        &owner_email,
-        &req.owner_phone,
-    )
-    .await;
+    // Create a CRM deal record in the default pipeline — but NEVER for a fleet-harness claim.
+    // crm_deal_records is the operator's real sales pipeline and a deal row carries no business id,
+    // so a probe that claims a listing used to deposit a permanent "… - Claimed (City)" row that
+    // nothing could trace back to its fixture (item 18 swept 14 on 2026-10-16, 5 more the same
+    // afternoon). The claim row already carries the harness marker (`probe`, from
+    // `X-Swift-Harness`), so skip the mirror for it — the same way demand_analytics keeps harness
+    // traffic out of the operator's figures. A real claim (`probe` is None) is unchanged.
+    if probe.is_none() {
+        let _ = create_claim_deal(
+            &s.db,
+            business_id,
+            &req.owner_name,
+            &owner_email,
+            &req.owner_phone,
+        )
+        .await;
+    }
 
     // Auto-fetch business images from Google Places (fire-and-forget)
     let db_fetch = s.db.clone();
