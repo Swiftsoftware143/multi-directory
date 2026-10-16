@@ -269,7 +269,12 @@ process.on('exit', sweep);
     const btn = document.querySelector('#wh-list button[onclick*="__whDeliveries"]');
     if (btn) btn.click();
   });
-  await page.waitForFunction(() => /deliveries/i.test((document.getElementById('wh-deliveries') || {}).innerHTML || ''), { timeout: 20000 }).catch(() => {});
+  // Wait for the async fetch to RENDER (the loading text also matches /deliveries/i, so require a
+  // resolved state: a delivered row, an explicit empty list, or an error — never "Loading…").
+  await page.waitForFunction(() => {
+    const h = (document.getElementById('wh-deliveries') || {}).innerHTML || '';
+    return /delivered|No deliveries|Could not load/i.test(h) && !/Loading deliveries/i.test(h);
+  }, { timeout: 20000 }).catch(() => {});
   const delivHtml = await page.evaluate(() => (document.getElementById('wh-deliveries') || {}).innerHTML || '');
   check('the screen\'s Deliveries control renders the delivered row ON SCREEN', /delivered/i.test(delivHtml), delivHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120));
   await page.screenshot({ path: `${SHOT}/admin-webhooks-deliveries.png` });
