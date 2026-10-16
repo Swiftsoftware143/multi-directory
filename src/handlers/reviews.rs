@@ -313,6 +313,19 @@ pub async fn update_review(
         ));
     }
 
+    // A rating edit on an APPROVED review changes the listing's public average. Capture the
+    // listing's imported baseline first and recompute after the write — the same rule the
+    // approve/reject/delete paths follow — or the listing keeps advertising a number no approved
+    // row backs any more (measured 2026-10-16: approving a 5-star review and then editing it to
+    // 1 star left the listing reading 5).
+    let rating_moved = req.rating.map(|r| r != existing.rating).unwrap_or(false);
+    let was_approved = existing.status.as_deref() == Some("approved");
+    if was_approved && rating_moved {
+        if let Some(bid) = existing.business_id {
+            capture_imported_baseline(&s.db, bid).await?;
+        }
+    }
+
     let review = sqlx::query_as::<_, Review>(
         r#"UPDATE reviews SET
            rating = COALESCE($1, rating),
@@ -338,6 +351,12 @@ pub async fn update_review(
     .fetch_optional(&s.db)
     .await?
     .ok_or(AppError::NotFound("Review not found".to_string()))?;
+
+    if was_approved && rating_moved {
+        if let Some(bid) = existing.business_id {
+            recompute_listing_aggregate(&s.db, bid).await?;
+        }
+    }
 
     Ok(Json(json!(review)))
 }
@@ -372,6 +391,37 @@ async fn capture_imported_baseline(db: &sqlx::PgPool, business_id: Uuid) -> Resu
              AND b.imported_review_count IS NULL
              AND COALESCE(b.review_count, 0)
                  > (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved')"#,
+    )
+    .bind(business_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Rewrite a listing's public average as its imported baseline (`imported_rating` /
+/// `imported_review_count`, migration 171) PLUS our own approved rows — incorporating, never
+/// replacing: a listing with an imported 4.8/120 must read 4.8/121 after its first approval,
+/// not 5.0/1. Call `capture_imported_baseline` first whenever the change alters which of our rows
+/// are approved (or, as in `update_review`, alters an approved row's rating). All three moderation
+/// surfaces use this one body so they can never drift apart again.
+async fn recompute_listing_aggregate(db: &sqlx::PgPool, business_id: Uuid) -> Result<(), AppError> {
+    sqlx::query(
+        r#"UPDATE businesses b SET
+           rating = CASE
+             WHEN COALESCE(b.imported_review_count, 0)
+                  + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved') = 0
+               THEN NULL
+             ELSE ROUND(
+               (COALESCE(b.imported_rating, 0) * COALESCE(b.imported_review_count, 0)
+                 + COALESCE((SELECT SUM(rating) FROM reviews WHERE business_id = b.id AND status = 'approved'), 0))::numeric
+               / (COALESCE(b.imported_review_count, 0)
+                  + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved')),
+               1)
+           END,
+           review_count = COALESCE(b.imported_review_count, 0)
+                          + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved'),
+           updated_at = NOW()
+           WHERE b.id = $1"#,
     )
     .bind(business_id)
     .execute(db)
@@ -427,27 +477,7 @@ pub async fn delete_review(
     // rows of ours behind them — measured 2026-10-15). A no-op removal must not touch the listing.
     // The recompute below is the imported baseline (migration 171) PLUS our approved rows.
     if let (Some(bid), true) = (business_id, existing.status.as_deref() == Some("approved")) {
-        sqlx::query(
-            r#"UPDATE businesses b SET
-               rating = CASE
-                 WHEN COALESCE(b.imported_review_count, 0)
-                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved') = 0
-                   THEN NULL
-                 ELSE ROUND(
-                   (COALESCE(b.imported_rating, 0) * COALESCE(b.imported_review_count, 0)
-                     + COALESCE((SELECT SUM(rating) FROM reviews WHERE business_id = b.id AND status = 'approved'), 0))::numeric
-                   / (COALESCE(b.imported_review_count, 0)
-                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved')),
-                   1)
-               END,
-               review_count = COALESCE(b.imported_review_count, 0)
-                              + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved'),
-               updated_at = NOW()
-               WHERE b.id = $1"#,
-        )
-        .bind(bid)
-        .execute(&s.db)
-        .await?;
+        recompute_listing_aggregate(&s.db, bid).await?;
     }
 
     Ok(Json(json!({"message": "Review deleted successfully"})))
@@ -893,27 +923,7 @@ async fn set_review_status_owned(
     // never replacing: a listing with an imported 4.8/120 must read 4.8/121 after its first
     // approval, not 5.0/1.
     if (review.status.as_deref() == Some("approved")) != (status == "approved") {
-        sqlx::query(
-            r#"UPDATE businesses b SET
-               rating = CASE
-                 WHEN COALESCE(b.imported_review_count, 0)
-                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved') = 0
-                   THEN NULL
-                 ELSE ROUND(
-                   (COALESCE(b.imported_rating, 0) * COALESCE(b.imported_review_count, 0)
-                     + COALESCE((SELECT SUM(rating) FROM reviews WHERE business_id = b.id AND status = 'approved'), 0))::numeric
-                   / (COALESCE(b.imported_review_count, 0)
-                      + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved')),
-                   1)
-               END,
-               review_count = COALESCE(b.imported_review_count, 0)
-                              + (SELECT COUNT(*) FROM reviews WHERE business_id = b.id AND status = 'approved'),
-               updated_at = NOW()
-               WHERE b.id = $1"#,
-        )
-        .bind(business_id)
-        .execute(&s.db)
-        .await?;
+        recompute_listing_aggregate(&s.db, business_id).await?;
     }
 
     Ok(updated)
