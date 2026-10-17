@@ -613,7 +613,110 @@ pub async fn update_directory(
     Ok(Json(json!(directory)))
 }
 
+/// Child records whose loss the operator would NOT expect from "delete this directory", so the
+/// door REFUSES while any of them still holds a row, names it in plain English and how many
+/// (`(table, one, many)`). Two classes, both real:
+///   * a record that lives on in ANOTHER system — a row mirrored into the operator's CRM, a
+///     recorded call, or a phone number rented from Twilio that goes on being billed after the
+///     directory is gone and must be released deliberately;
+///   * a money trail (`ad_earnings`) — the ADASwift-lane rule: never cascade financial records
+///     away silently.
+/// This is the app's own convention for a refused destroy — see `delete_network` below.
+const DELETE_BLOCKERS: &[(&str, &str, &str)] = &[
+    ("call_logs", "call log", "call logs"),
+    ("crm_contacts", "CRM contact", "CRM contacts"),
+    ("crm_deal_records", "CRM deal record", "CRM deal records"),
+    ("crm_pipelines", "CRM pipeline", "CRM pipelines"),
+    (
+        "twilio_numbers",
+        "rented phone number",
+        "rented phone numbers",
+    ),
+    (
+        "ad_earnings",
+        "recorded ad-earnings entry",
+        "recorded ad-earnings entries",
+    ),
+];
+
+/// Child tables the directory OWNS outright: every row exists only to serve this directory (the
+/// defaults `provision_directory_defaults` seeds, its settings, its claims' ownership proofs, its
+/// own event / import / enrichment logs) and means nothing once the directory is gone. They are
+/// removed in the SAME transaction as the parent row, which is what makes deleting a directory one
+/// honest operation instead of a 500. Measured on a freshly created directory (kanban t_e6f4e0aa):
+/// `ad_zones` = 12 rows, `email_templates` = 10 rows, both `NO ACTION` — the previous bare
+/// `DELETE FROM directories` failed with `ad_zones_directory_id_fkey` before any user data existed
+/// at all. Together with `DELETE_BLOCKERS` this list covers EVERY `NO ACTION` child of
+/// `directories` (18 of them, read from `pg_constraint`), and the listings themselves
+/// (`businesses`) cascade the way the schema and the operator guide ("delete directory and all
+/// data") already say they do — the `23503` branch below is the net for anything added later.
+const DELETE_OWNED_CHILD_TABLES: &[&str] = &[
+    "ad_zones",
+    "email_templates",
+    "business_verifications",
+    "directory_events",
+    "data_enrichment_logs",
+    "import_logs",
+    "_city_tags",
+    "search_config",
+    "public_themes",
+    "landing_pages",
+    "export_templates",
+    "webhooks",
+    "email_campaigns",
+];
+
+/// `12 business listings, 1 rented phone number and 3 CRM contacts` — plain English, never a
+/// serial comma, never a raw table name.
+fn human_list(items: &[String]) -> String {
+    match items.len() {
+        0 => String::new(),
+        1 => items[0].clone(),
+        _ => format!(
+            "{} and {}",
+            items[..items.len() - 1].join(", "),
+            items[items.len() - 1]
+        ),
+    }
+}
+
+/// Rows in `table` that belong to `directory_id`. `table` is always one of the literals above —
+/// never caller input — so interpolating the name is safe; the value is still bound.
+async fn child_rows(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    table: &str,
+    directory_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(&format!(
+        "SELECT COUNT(*) FROM \"{table}\" WHERE directory_id = $1"
+    ))
+    .bind(directory_id)
+    .fetch_one(&mut **tx)
+    .await
+}
+
+/// A `23503` (foreign key violation) names itself, so the door can report an unknown child table
+/// instead of a bare "Database error". Returns the table in plain words, e.g. `ad zones`.
+fn foreign_key_violation(err: &sqlx::Error) -> Option<String> {
+    let db_err = match err {
+        sqlx::Error::Database(e) if e.code().as_deref() == Some("23503") => e,
+        _ => return None,
+    };
+    Some(
+        db_err
+            .constraint()
+            .map(|c| c.trim_end_matches("_fkey").replace("_directory_id", ""))
+            .unwrap_or_else(|| "an unnamed constraint".to_string())
+            .replace('_', " "),
+    )
+}
+
 /// DELETE /api/v1/directories/:slug
+///
+/// Deleting a directory removes it completely — or changes nothing at all. One transaction:
+/// refuse first (naming what still hangs off it), then sweep the directory's own rows, then the
+/// directory. Never a 500 for a state the operator can reach through the product (kanban
+/// t_e6f4e0aa).
 pub async fn delete_directory(
     State(s): State<AppState>,
     headers: HeaderMap,
@@ -628,21 +731,89 @@ pub async fn delete_directory(
         )));
     }
 
-    let result = sqlx::query("DELETE FROM directories WHERE slug = \x241")
-        .bind(&slug)
-        .execute(&s.db)
-        .await?;
+    let mut tx = s.db.begin().await?;
 
-    if result.rows_affected() == 0 {
+    let id: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1 FOR UPDATE")
+            .bind(&slug)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(id) = id else {
+        tx.rollback().await.ok();
         return Err(AppError::NotFound(format!(
             "Directory '{}' not found",
             slug
         )));
+    };
+
+    // Refuse while a record that is NOT the directory's own plumbing still points at it, naming
+    // the kinds and how many. Nothing has been deleted at this point.
+    let mut blocked: Vec<String> = Vec::new();
+    for (table, one, many) in DELETE_BLOCKERS {
+        let held = child_rows(&mut tx, table, id).await?;
+        if held > 0 {
+            blocked.push(format!("{} {}", held, if held == 1 { one } else { many }));
+        }
     }
+    if !blocked.is_empty() {
+        tx.rollback().await.ok();
+        return Err(AppError::Conflict(format!(
+            "This directory still holds {}, so nothing was deleted — removing the directory would \
+             destroy them. Delete or move those records first, then delete the directory.",
+            human_list(&blocked)
+        )));
+    }
+
+    let mut swept: Vec<serde_json::Value> = Vec::new();
+    for table in DELETE_OWNED_CHILD_TABLES {
+        let removed = sqlx::query(&format!("DELETE FROM \"{table}\" WHERE directory_id = $1"))
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        if removed.rows_affected() > 0 {
+            swept.push(json!({"table": table, "rows": removed.rows_affected()}));
+        }
+    }
+
+    let outcome = sqlx::query("DELETE FROM directories WHERE id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await;
+
+    match outcome {
+        Ok(r) if r.rows_affected() == 1 => {}
+        Ok(_) => {
+            tx.rollback().await.ok();
+            return Err(AppError::NotFound(format!(
+                "Directory '{}' not found",
+                slug
+            )));
+        }
+        // A child table this handler does not know about still hangs off the directory. Roll
+        // everything back and SAY SO — a bare 500 would tell the operator nothing and would look
+        // like the app is broken.
+        Err(e) => {
+            tx.rollback().await.ok();
+            if let Some(unknown) = foreign_key_violation(&e) {
+                return Err(AppError::Conflict(format!(
+                    "A record type this app does not know how to clear still points at '{}' ({}), \
+                     so nothing was deleted and the directory is unchanged. Please report this.",
+                    slug, unknown
+                )));
+            }
+            return Err(AppError::Database(e));
+        }
+    }
+
+    tx.commit().await?;
 
     Ok((
         StatusCode::OK,
-        Json(json!({"message": "Directory deleted successfully"})),
+        Json(json!({
+            "message": "Directory deleted successfully",
+            "slug": slug,
+            "children_removed": swept,
+        })),
     ))
 }
 
