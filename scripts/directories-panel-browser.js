@@ -23,7 +23,7 @@
  * "edited" are proven against Postgres and "deleted" is proven against Postgres afterwards —
  * an HTTP 200 from the panel is never the evidence.
  *
- * Env: MD_BASE, TOKEN, AUD, PHASE (create|delete), PROBE_NAME, PROBE_SLUG, PROBE_RENAMED,
+ * Env: MD_BASE, TOKEN, AUD, PHASE (create|delete_refused|delete), PROBE_NAME, PROBE_SLUG, PROBE_RENAMED,
  *      NETWORK_ID, NETWORK_NAME, EXISTING_SLUG, CHROME_PATH, MD_HARNESS
  * Output: $AUD/directories-proof-<phase>.json (+ directories-<phase>.png)
  */
@@ -270,7 +270,9 @@ async function apiDirs() {
       await page.evaluate(() => document.getElementById('directories-section').scrollIntoView());
       await page.screenshot({ path: path.join(AUD, 'directories-create.png') });
     } else {
-      /* ── F. the row's own Delete removes the directory ────────────────────── */
+      /* ── F/G. the row's own Delete: refused while a customer record holds it,
+         then succeeds once that record is gone (the refusal is a door, not a wall) ────── */
+      const expectRefused = PHASE === 'delete_refused';
       await page.waitForFunction((s) => !!document.querySelector('#dr-rows [data-dr-row="' + s + '"]'),
         { timeout: 20000 }, PROBE_SLUG).catch(() => {});
       const present = await page.evaluate((s) => !!document.querySelector('#dr-rows [data-dr-row="' + s + '"]'), PROBE_SLUG);
@@ -282,18 +284,32 @@ async function apiDirs() {
       }, PROBE_SLUG);
       await sleep(4000);
       const delMsg = await page.evaluate(() => (document.getElementById('dr-status') || {}).textContent || '');
-      rec(/^Deleted /i.test(delMsg) && delMsg.indexOf(PROBE_SLUG) !== -1,
-        'delete_reported_success_on_screen', delMsg);
-      const afterDel = await apiDirs();
-      rec(!afterDel.some((d) => d.slug === PROBE_SLUG), 'delete_removed_the_directory_from_the_api',
-        'slug absent');
-      const goneOnScreen = await page.evaluate((s) => !document.querySelector('#dr-rows [data-dr-row="' + s + '"]'), PROBE_SLUG);
-      rec(goneOnScreen, 'deleted_directory_left_the_table', 'absent');
-      await page.evaluate(() => document.getElementById('directories-section').scrollIntoView());
-      await page.screenshot({ path: path.join(AUD, 'directories-delete.png') });
+
+      if (expectRefused) {
+        rec(/^Refused:/i.test(delMsg) && /CRM contact/i.test(delMsg) && /nothing was deleted/i.test(delMsg),
+          'a_directory_holding_a_crm_contact_is_refused_on_screen', delMsg);
+        const stillApi = (await apiDirs()).some((d) => d.slug === PROBE_SLUG);
+        rec(stillApi, 'the_refused_delete_left_the_directory_in_the_api', 'present');
+        const stillRow = await page.evaluate((s) => !!document.querySelector('#dr-rows [data-dr-row="' + s + '"]'), PROBE_SLUG);
+        rec(stillRow, 'the_refused_delete_left_the_row_in_the_table', 'present');
+        await page.evaluate(() => document.getElementById('directories-section').scrollIntoView());
+        await page.screenshot({ path: path.join(AUD, 'directories-refused.png') });
+      } else {
+        rec(/^Deleted /i.test(delMsg) && delMsg.indexOf(PROBE_SLUG) !== -1,
+          'delete_reported_success_on_screen', delMsg);
+        rec(/Cleared \d+ ad zone/i.test(delMsg), 'delete_reports_what_it_cleared', delMsg);
+        const afterDel = await apiDirs();
+        rec(!afterDel.some((d) => d.slug === PROBE_SLUG), 'delete_removed_the_directory_from_the_api',
+          'slug absent');
+        const goneOnScreen = await page.evaluate((s) => !document.querySelector('#dr-rows [data-dr-row="' + s + '"]'), PROBE_SLUG);
+        rec(goneOnScreen, 'deleted_directory_left_the_table', 'absent');
+        await page.evaluate(() => document.getElementById('directories-section').scrollIntoView());
+        await page.screenshot({ path: path.join(AUD, 'directories-delete.png') });
+      }
     }
 
-    // the only 4xx the page may have seen is the duplicate-slug POST this walk provoked
+    // the only 4xx the page may have seen are the two refusals this walk PROVOKED on the
+    // directories endpoint: the duplicate-slug create and the delete blocked by a CRM row.
     for (const r of refused4xx) {
       if (!(r.startsWith('409 ') && r.indexOf('/api/v1/directories') !== -1)) unexpected4xx.push(r);
     }

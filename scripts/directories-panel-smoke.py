@@ -201,6 +201,9 @@ def delete_cs_workspaces(slugs, tries=10):
 
 def purge_probe_dirs(token, keep=None):
     """Delete every probe directory still in the database (the API sweeps its children)."""
+    # the blocker fixture would make the delete refuse (that is the point of it), so it goes first —
+    # a probe that dies mid-walk must still leave nothing behind.
+    psql("DELETE FROM crm_contacts WHERE source = 'zz-directories-panel-probe'")
     left = [s for s in psql(f"SELECT slug FROM directories WHERE slug LIKE '{SLUG_PREFIX}%'") if s != keep]
     for slug in left:
         call("DELETE", "/directories/" + slug, token)
@@ -318,7 +321,27 @@ def main():
         check("the new directory was created complete (its ad zones are seeded, no manual step)",
               zones.isdigit() and int(zones) >= 6, f"ad_zones={zones}")
 
-        # ---- 5/6b. delete on the screen, then read Postgres ------------------
+        # ---- 5a. delete on the screen while a CUSTOMER RECORD holds it: refused, nothing
+        #          destroyed, the server's own plain-English 409 shown on screen ------------
+        if probe_id:
+            psql("INSERT INTO crm_contacts (directory_id, first_name, last_name, email, source) "
+                 f"VALUES ('{probe_id}', 'ZZ', 'DirectoriesPanelProbe', "
+                 f"'zz-dr-probe@example.invalid', 'zz-directories-panel-probe')")
+            zones_before_refusal = one(
+                f"SELECT count(*) FROM ad_zones WHERE directory_id = '{probe_id}'")
+            run_browser("delete_refused", tok, extra)
+            check("the refused delete left the directory in the database",
+                  one(f"SELECT count(*) FROM directories WHERE slug = '{probe_slug}'") == "1", probe_slug)
+            check("the refused delete left the CRM record in the database",
+                  one(f"SELECT count(*) FROM crm_contacts WHERE directory_id = '{probe_id}'") == "1",
+                  "crm_contacts=1")
+            check("the refused delete swept nothing (its ad zones are untouched)",
+                  one(f"SELECT count(*) FROM ad_zones WHERE directory_id = '{probe_id}'")
+                  == zones_before_refusal, f"ad_zones={zones_before_refusal}")
+            # the blocker goes, and the SAME door must now succeed on screen
+            psql(f"DELETE FROM crm_contacts WHERE directory_id = '{probe_id}'")
+
+        # ---- 5b/6b. delete on the screen, then read Postgres ------------------
         run_browser("delete", tok, extra)
         check("the directory the panel deleted is gone from the database",
               one(f"SELECT count(*) FROM directories WHERE slug = '{probe_slug}'") == "0", probe_slug)
@@ -362,6 +385,8 @@ def main():
         purge_probe_dirs(tok)
         left = int(one(f"SELECT count(*) FROM directories WHERE slug LIKE '{SLUG_PREFIX}%'"))
         check("no probe directory remains in the database", left == 0, f"remaining={left}")
+        fixture = one("SELECT count(*) FROM crm_contacts WHERE source = 'zz-directories-panel-probe'")
+        check("no probe CRM fixture remains in the database", fixture == "0", f"crm_contacts={fixture}")
         check("the live directories are back to their before state after cleanup",
               db_dirs() == before, f"now={len(db_dirs())} before={len(before)}")
         deleted, detail = delete_cs_workspaces([standalone_slug, probe_slug])

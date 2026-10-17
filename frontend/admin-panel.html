@@ -11564,6 +11564,19 @@
       return d.custom_domain ? 'Own domain — ' + esc(d.custom_domain) : 'Standalone — no domain set';
     }
 
+    // "6 ad zones, 5 email templates" — what the delete cleared, from the server's own report.
+    function sweptText(res) {
+      var rows = (res && Array.isArray(res.children_removed)) ? res.children_removed : [];
+      var parts = [];
+      rows.forEach(function (c) {
+        var n = Number(c.rows) || 0;
+        if (!n) return;
+        var label = String(c.table || 'record').replace(/_/g, ' ').replace(/s$/, '');
+        parts.push(n + ' ' + label + (n === 1 ? '' : 's'));
+      });
+      return parts.length ? 'Cleared ' + parts.join(', ') + '.' : 'Nothing else pointed at it.';
+    }
+
     function load(keepStatus) {
       if (!keepStatus) txt('dr-status', 'Loading…');
       Promise.all([
@@ -11727,8 +11740,10 @@
       var d = find(slug);
       if (!window.confirm('Delete the directory "' + (d ? d.name : slug) + '"? This cannot be undone.')) return;
       txt('dr-status', 'Deleting…');
-      api('DELETE', '/directories/' + encodeURIComponent(slug)).then(function () {
-        txt('dr-status', 'Deleted ' + slug + '.');
+      api('DELETE', '/directories/' + encodeURIComponent(slug)).then(function (res) {
+        // say what the delete actually cleared, in plain English (the server reports every child
+        // row it swept); "nothing else pointed at it" is said out loud rather than left implied.
+        txt('dr-status', 'Deleted ' + slug + '. ' + sweptText(res));
         load(true);
       }).catch(function (e) {
         // a directory that still holds records is REFUSED and the server says what holds it
