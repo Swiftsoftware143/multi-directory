@@ -615,6 +615,61 @@
         </div>
       </div>
 
+      <!-- ===== Directories: create and manage every directory (kanban t_26639554) =====
+           MD's only job is to CREATE directories and decide, for each one, whether it is a CITY
+           inside a network (a folder on the network's own domain, e.g. zaarhub.com/palm-bay) or a
+           STANDALONE directory on its own domain. The API could do all of it — POST/PUT/DELETE
+           /api/v1/directories — but the console had no control, so a directory could only be made
+           with SQL: a capability that exists only as an endpoint is a defect (David's rule).
+           Every call is operator-scoped server-side: create and delete are the platform
+           operator's alone, edit is the operator or the directory's owning tenant. A refused call
+           shows the server's own words — never a fabricated success. -->
+      <div class="feature-card" id="directories-section">
+        <h3>📁 Directories</h3>
+        <p class="feature-subtitle">Every directory in one list. Create one and choose where it lives: <b>inside a network</b> — a city at <code>network-domain/city</code> — or <b>standalone</b> on its own domain. Edit its name, status and contact details here; a directory that still holds records refuses to be deleted and says what is holding it.</p>
+        <div class="pk-controls" style="margin:10px 0">
+          <button class="btn btn-accent btn-sm" type="button" id="dr-new">＋ New directory</button>
+          <button class="btn btn-sm" type="button" id="dr-refresh">Refresh</button>
+          <span class="feature-status" id="dr-status"></span>
+        </div>
+        <p class="feature-subtitle" id="dr-summary" style="margin:0 0 8px;opacity:.8">—</p>
+        <div id="dr-rows" style="overflow:auto"></div>
+
+        <div id="dr-editor" style="display:none;margin-top:14px;border-top:1px dashed var(--border,#1e3a5f);padding-top:12px">
+          <h4 id="dr-editor-title" style="margin:0 0 8px">New directory</h4>
+          <div class="em-grid">
+            <div class="em-field"><label>Name</label><input id="dr-name" placeholder="Palm Bay Bazaar"></div>
+            <div class="em-field"><label>Slug</label><input id="dr-slug" placeholder="palm-bay"><span class="pg-field-help">lower-case, unique; this is the city URL inside a network. Blank = derived from the name.</span></div>
+            <div id="dr-place-fields">
+              <div class="em-field"><label>Where it lives</label>
+                <select id="dr-mode">
+                  <option value="connect">Inside a network — a city at network-domain/city</option>
+                  <option value="standalone">Standalone — its own domain</option>
+                </select>
+              </div>
+              <div class="em-field"><label>Network</label><select id="dr-network"><option value="">— pick a network —</option></select></div>
+              <div class="em-field"><label>Own domain (standalone only)</label><input id="dr-domain" placeholder="example.com"><span class="pg-field-help">Bare domain, no scheme and no path. Ignored when the directory joins a network.</span></div>
+            </div>
+            <div class="em-field" id="dr-place-note" style="display:none;grid-column:1/-1">
+              <label>Where it lives</label>
+              <div class="pg-field-help" id="dr-place-text" style="padding:6px 0">—</div>
+            </div>
+            <div class="em-field"><label>Status</label>
+              <select id="dr-status-sel"><option value="draft">draft — hidden from the public</option><option value="active">active — live</option><option value="inactive">inactive</option><option value="suspended">suspended</option></select>
+            </div>
+            <div class="em-field"><label>City</label><input id="dr-city" placeholder="Palm Bay"></div>
+            <div class="em-field"><label>State</label><input id="dr-state" placeholder="FL"></div>
+            <div class="em-field"><label>Support email</label><input id="dr-support" placeholder="support@…"></div>
+            <div class="em-field" style="grid-column:1/-1"><label>Description</label><input id="dr-desc" placeholder="What this directory is about"></div>
+          </div>
+          <div class="pk-controls" style="margin-top:10px">
+            <button class="btn btn-accent btn-sm" type="button" id="dr-save">Save directory</button>
+            <button class="btn btn-sm" type="button" id="dr-cancel">Cancel</button>
+            <span class="feature-status" id="dr-editor-status"></span>
+          </div>
+        </div>
+      </div>
+
       <!-- B2B Feature Toggles -->
       <div class="feature-card" id="b2b-features-section">
         <h3>B2B Feature Toggles</h3>
@@ -11447,6 +11502,255 @@
       setTimeout(nmReload, 500); // after MDContextBar has loaded directories
     });
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(nmReload, 500);
+  })();
+  </script>
+  <script>
+  /* ============================================================
+     Directories card (kanban t_26639554) — create, edit and delete a
+     directory from the console, and decide where each one lives: a CITY
+     inside a network (network-domain/city) or STANDALONE on its own
+     domain. The API existed (POST/PUT/DELETE /api/v1/directories) but the
+     console had no control, so a directory could only be created with SQL.
+     Server-side scoping: create + delete are the platform operator's alone,
+     edit is the operator or the directory's owning tenant. A refusal is
+     shown with the server's own words, never a fabricated success.
+     ============================================================ */
+  (function () {
+    var API = '/api/v1';
+    var dirs = [];
+    var nets = [];
+    var editingSlug = null;
+
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function api(method, path, body) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      var opts = { method: method, headers: h };
+      if (body) opts.body = JSON.stringify(body);
+      return fetch(API + path, opts).then(function (r) {
+        return r.text().then(function (txt) {
+          var d = null;
+          try { d = txt ? JSON.parse(txt) : null; } catch (e) { /* non-JSON */ }
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function setv(el, v) { var e = document.getElementById(el); if (e) e.value = (v == null ? '' : v); }
+    function val(el) { var e = document.getElementById(el); return e ? String(e.value).trim() : ''; }
+    function txt(el, s) { var e = document.getElementById(el); if (e) e.textContent = s; }
+    function shows(el, on) { var e = document.getElementById(el); if (e) e.style.display = on ? '' : 'none'; }
+
+    function netOf(d) {
+      if (!d.network_id) return null;
+      for (var i = 0; i < nets.length; i++) { if (nets[i].id === d.network_id) return nets[i]; }
+      return null;
+    }
+
+    /** Where this directory is reachable — the network's own domain + the city folder, or the
+     *  directory's own domain. Never invented: an unset root domain / custom domain reads "—". */
+    function whereText(d) {
+      var n = netOf(d);
+      if (d.network_id) {
+        var folder = d.url_value || d.slug;
+        var root = n && n.root_domain ? String(n.root_domain).replace(/\/+$/, '') + '/' : '';
+        return (n ? n.name : 'Network') + ' — ' + (root ? esc(root) + esc(folder) : '/' + esc(folder));
+      }
+      return d.custom_domain ? 'Own domain — ' + esc(d.custom_domain) : 'Standalone — no domain set';
+    }
+
+    function load(keepStatus) {
+      if (!keepStatus) txt('dr-status', 'Loading…');
+      Promise.all([
+        api('GET', '/directories?per_page=200'),
+        api('GET', '/networks').catch(function () { return []; })
+      ]).then(function (res) {
+        var list = res[0];
+        dirs = (list && Array.isArray(list.data)) ? list.data : [];
+        nets = Array.isArray(res[1]) ? res[1] : [];
+        fillNetworks();
+        render(list);
+        if (!keepStatus) txt('dr-status', '');
+      }).catch(function (e) { txt('dr-status', 'Failed: ' + e.message); });
+    }
+
+    function fillNetworks() {
+      var sel = document.getElementById('dr-network');
+      if (!sel) return;
+      var keep = sel.value;
+      sel.innerHTML = '<option value="">— pick a network —</option>' + nets.map(function (n) {
+        return '<option value="' + esc(n.id) + '">' + esc(n.name) + (n.root_domain ? ' (' + esc(n.root_domain) + ')' : '') + '</option>';
+      }).join('');
+      if (keep) sel.value = keep;
+    }
+
+    function render(list) {
+      var host = document.getElementById('dr-rows');
+      if (!host) return;
+      var total = (list && typeof list.total === 'number') ? list.total : dirs.length;
+      var active = dirs.filter(function (d) { return d.status === 'active'; }).length;
+      txt('dr-summary', dirs.length + ' of ' + total + ' directories shown — ' + active +
+        ' active, ' + (dirs.length - active) + ' not active.');
+      if (!dirs.length) {
+        host.innerHTML = '<p class="feature-subtitle" style="opacity:.7">No directories yet — create one above.</p>';
+        return;
+      }
+      var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+        '<thead><tr><th>Name</th><th>Slug</th><th>Where it lives</th><th>Status</th>' +
+        '<th>Created</th><th></th></tr></thead><tbody>';
+      dirs.forEach(function (d) {
+        var sub = [d.city, d.state].filter(Boolean).join(', ');
+        html += '<tr data-dr-row="' + esc(d.slug) + '" data-dr-id="' + esc(d.id) + '">' +
+          '<td><b>' + esc(d.name) + '</b>' +
+            (sub ? '<div style="opacity:.6;font-size:.75rem">' + esc(sub) + '</div>' : '') +
+            (d.description ? '<div style="opacity:.6;font-size:.75rem">' + esc(d.description) + '</div>' : '') +
+          '</td>' +
+          '<td><code>' + esc(d.slug) + '</code></td>' +
+          '<td>' + whereText(d) + '</td>' +
+          '<td>' + esc(d.status || 'draft') + '</td>' +
+          '<td>' + esc(String(d.created_at || '').slice(0, 10)) + '</td>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="btn btn-sm" type="button" data-dr-edit="' + esc(d.slug) + '">Edit</button> ' +
+            '<button class="btn btn-sm" type="button" data-dr-del="' + esc(d.slug) + '">Delete</button>' +
+          '</td></tr>';
+      });
+      html += '</tbody></table>';
+      host.innerHTML = html;
+      host.querySelectorAll('[data-dr-edit]').forEach(function (b) {
+        b.addEventListener('click', function () { openEditor(b.getAttribute('data-dr-edit')); });
+      });
+      host.querySelectorAll('[data-dr-del]').forEach(function (b) {
+        b.addEventListener('click', function () { removeDir(b.getAttribute('data-dr-del')); });
+      });
+    }
+
+    function find(slug) {
+      for (var i = 0; i < dirs.length; i++) { if (dirs[i].slug === slug) return dirs[i]; }
+      return null;
+    }
+
+    function openEditor(slug) {
+      editingSlug = slug || null;
+      var d = slug ? find(slug) : null;
+      txt('dr-editor-title', d ? ('Edit — ' + d.name) : 'New directory');
+      setv('dr-name', d ? d.name : '');
+      setv('dr-slug', d ? d.slug : '');
+      setv('dr-city', d ? d.city : '');
+      setv('dr-state', d ? d.state : '');
+      setv('dr-support', d ? d.support_email : '');
+      setv('dr-desc', d ? d.description : '');
+      setv('dr-domain', d ? d.custom_domain : '');
+      var st = document.getElementById('dr-status-sel');
+      if (st) st.value = (d && d.status) ? d.status : 'draft';
+      var mode = document.getElementById('dr-mode');
+      if (mode) mode.value = (d && d.network_id) ? 'connect' : (d ? 'standalone' : 'connect');
+      var netsel = document.getElementById('dr-network');
+      if (netsel) netsel.value = (d && d.network_id) ? d.network_id : '';
+      if (d) {
+        // placement is not editable here: moving a directory changes every URL it serves, which
+        // is a separate operation. Show where it lives instead of offering a control that lies.
+        shows('dr-place-fields', false);
+        shows('dr-place-note', true);
+        txt('dr-place-text', whereText(d));
+        var slugEl = document.getElementById('dr-slug');
+        if (slugEl) slugEl.setAttribute('readonly', 'readonly');
+      } else {
+        shows('dr-place-fields', true);
+        shows('dr-place-note', false);
+        var slugEl2 = document.getElementById('dr-slug');
+        if (slugEl2) slugEl2.removeAttribute('readonly');
+      }
+      syncMode();
+      txt('dr-editor-status', '');
+      shows('dr-editor', true);
+      var f = document.getElementById('dr-name'); if (f) f.focus();
+    }
+
+    function syncMode() {
+      var mode = document.getElementById('dr-mode');
+      var m = mode ? mode.value : 'connect';
+      var netsel = document.getElementById('dr-network');
+      var dom = document.getElementById('dr-domain');
+      if (netsel) netsel.disabled = (m !== 'connect');
+      if (dom) dom.disabled = (m === 'connect');
+    }
+
+    function save() {
+      var name = val('dr-name');
+      if (!name) { txt('dr-editor-status', 'Name is required.'); return; }
+      txt('dr-editor-status', 'Saving…');
+      if (editingSlug) {
+        var body = { name: name, city: val('dr-city'), state: val('dr-state'),
+                     support_email: val('dr-support'), description: val('dr-desc'),
+                     status: document.getElementById('dr-status-sel').value };
+        api('PUT', '/directories/' + encodeURIComponent(editingSlug), body).then(function () {
+          txt('dr-editor-status', 'Saved.');
+          shows('dr-editor', false);
+          load();
+        }).catch(function (e) { txt('dr-editor-status', 'Failed: ' + e.message); });
+        return;
+      }
+      var m = document.getElementById('dr-mode').value;
+      var payload = { name: name, description: val('dr-desc'),
+                      status: document.getElementById('dr-status-sel').value,
+                      city: val('dr-city'), state: val('dr-state'),
+                      support_email: val('dr-support'), network_mode: m };
+      var slug = val('dr-slug');
+      if (slug) payload.slug = slug;
+      if (m === 'connect') {
+        var nid = val('dr-network');
+        if (!nid) { txt('dr-editor-status', 'Pick the network this city belongs to.'); return; }
+        payload.parent_network_id = nid;
+        payload.url_type = 'subfolder';
+        if (slug) payload.url_value = slug;
+      } else {
+        var dom = val('dr-domain');
+        if (dom) payload.custom_domain = dom;
+      }
+      api('POST', '/directories', payload).then(function (d) {
+        txt('dr-editor-status', 'Created.');
+        shows('dr-editor', false);
+        txt('dr-status', 'Created ' + ((d && d.slug) || name) + '.');
+        load(true);
+      }).catch(function (e) {
+        // the server's own words: a duplicate slug, an unknown network, a bad domain
+        txt('dr-editor-status', 'Failed: ' + e.message);
+      });
+    }
+
+    function removeDir(slug) {
+      var d = find(slug);
+      if (!window.confirm('Delete the directory "' + (d ? d.name : slug) + '"? This cannot be undone.')) return;
+      txt('dr-status', 'Deleting…');
+      api('DELETE', '/directories/' + encodeURIComponent(slug)).then(function () {
+        txt('dr-status', 'Deleted ' + slug + '.');
+        load(true);
+      }).catch(function (e) {
+        // a directory that still holds records is REFUSED and the server says what holds it
+        txt('dr-status', 'Refused: ' + e.message);
+      });
+    }
+
+    var initialized = false;
+    function init() {
+      if (initialized) return;
+      if (!document.getElementById('directories-section')) return;
+      initialized = true;
+      document.getElementById('dr-new').addEventListener('click', function () { openEditor(null); });
+      document.getElementById('dr-refresh').addEventListener('click', load);
+      document.getElementById('dr-cancel').addEventListener('click', function () { shows('dr-editor', false); });
+      document.getElementById('dr-save').addEventListener('click', save);
+      var mode = document.getElementById('dr-mode');
+      if (mode) mode.addEventListener('change', syncMode);
+      setTimeout(load, 600); // after the panel token + other sections settle
+    }
+    document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 600);
   })();
   </script>
   <script>

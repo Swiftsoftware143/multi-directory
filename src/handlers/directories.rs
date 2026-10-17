@@ -151,6 +151,21 @@ pub async fn create_directory(
     headers: HeaderMap,
     Json(req): Json<CreateDirectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // Creating a directory is a PLATFORM operation — MD's only job is to create directories, and
+    // the operator is its only user (David's rule, 2026-10-01). The route lives in the
+    // auth-guarded group, which only proves the caller is signed in: measured 2026-10-17, a
+    // `business_owner` token created a directory with HTTP 201, and in `standalone` /
+    // `new_network` mode a create also mints a CoreSwift workspace and a public city page.
+    // Update already defers to the platform operator or the directory's owning tenant, and
+    // delete is the operator's alone; a directory being CREATED has no owner to defer to, so it
+    // is the operator's alone too (kanban t_26639554).
+    let claims = tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    if !tenant_scope::is_platform_operator(&claims) {
+        return Err(AppError::Forbidden(
+            "Only the platform operator can create a directory".to_string(),
+        ));
+    }
+
     if req.name.is_empty() {
         return Err(AppError::Validation(
             "Directory name is required".to_string(),
