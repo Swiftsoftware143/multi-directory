@@ -28,9 +28,14 @@ Proves, against the RUNNING app and the live database:
  11. the NETWORK door does the same: `DELETE /api/v1/networks/:id` deprovisions the network's own
      workspace, while deleting a CITY that lives inside a network leaves the network's workspace
      alone (a city has no workspace of its own — the network's is not the city's to destroy);
- 12. the doors leave ZERO cross-app residue ON THEIR OWN, before any cleanup script runs;
- 13. cleanup is net zero: the sweep by reserved address is still run as the safety net, no probe
-     directory/network/CRM fixture is left, and the live rows are back to their before state.
+ 12. a workspace CoreSwift REFUSES to remove (a real person signs in to it, so it is somebody's
+     CRM) still lets the directory delete go through, and the answer reports
+     `coreswift_workspace.status = "still_live"` + `clean = false` with CoreSwift's own reason —
+     never a clean sweep that was not got;
+ 13. the doors leave ZERO cross-app residue ON THEIR OWN, before any cleanup script runs;
+ 14. cleanup is net zero: the sweep by reserved address is kept as the safety net (it must have
+     nothing to do), no probe directory/network/CRM fixture is left, and the live rows are back to
+     their before state.
 
 
 Run:  python3 scripts/delete-directory-smoke.py
@@ -479,10 +484,53 @@ def main():
     check("the delete doors left ZERO CoreSwift residue ON THEIR OWN (no sweep yet)",
           users == "0" and tenants == "0", f"users={users} tenants={tenants}")
 
+    # -- 10b. the HONEST refusal: a workspace a real person signs in to stays live (t_d4b8aad7) --
+    #       CoreSwift's fleet door refuses a workspace holding a human login (their CRM would go
+    #       with it), so the directory delete must still succeed AND the answer must say so. This
+    #       is the leg that proves the panel can never report a clean sweep it did not get.
+    live_slug = f"{SLUG_PREFIX}-live-{stamp}"
+    s, _ = call("POST", "/directories", tok,
+                {"name": "zz delete door live user", "slug": live_slug})
+    check("the live-user probe directory created", s in (200, 201), f"status={s}")
+    minted.append(live_slug)
+    lv_tid = wait_workspace_id(
+        f"SELECT coreswift_tenant_id FROM directories WHERE slug='{live_slug}'")
+    check("the live-user probe owns a CoreSwift workspace", bool(lv_tid), lv_tid or "none after 30s")
+    # NOTE the address: `example.invalid`/`test`/`local.coreswift` are FLEET-HARNESS domains in
+    # CoreSwift's own classifier (security/probe_addr.rs), so they count as MACHINE and would not
+    # trip the real-user guard at all. A domain outside that list is what a human login looks like.
+    cs_q(f"INSERT INTO users (tenant_id, email, password_hash, name) VALUES "
+         f"('{lv_tid}', 'zz-real-person@md-probe-human-holder.dev', 'x', 'ZZ Real Person')")
+    check("a REAL user now signs in to that workspace",
+          cs_q(f"SELECT count(*) FROM users WHERE tenant_id='{lv_tid}'") == "2")
+    s, lvbody = call("DELETE", f"/directories/{live_slug}", tok)
+    check("the directory still deletes (a CoreSwift refusal must not block the operator)",
+          s == 200, f"status={s} body={lvbody[:160]}")
+    lws = swept_cs(lvbody)
+    check("the answer reports that workspace as NOT deprovisioned",
+          lws.get("status") == "still_live", str(lws.get("status")))
+    check("the answer says the cross-app side is NOT clean", lws.get("clean") is False)
+    check("the workspace CoreSwift refused really is still live",
+          cs_q(f"SELECT count(*) FROM tenants WHERE id='{lv_tid}'") == "1", lv_tid)
+    check("CoreSwift's own reason is carried into the answer, not swallowed",
+          "real user" in str(lws.get("detail")), str(lws.get("detail"))[:200])
+    # the probe's own leftover: drop the human login it planted, then the fleet door can sweep it
+    cs_q(f"DELETE FROM users WHERE tenant_id='{lv_tid}' AND email='zz-real-person@md-probe-human-holder.dev'")
+    lv_swept, lv_detail = sweep_cs_workspaces([live_slug])
+    check("the probe's leftover workspace was swept once its human login was removed",
+          lv_swept and cs_q(f"SELECT count(*) FROM tenants WHERE id='{lv_tid}'") == "0", lv_detail)
+
     # -- 11. the cross-app workspace (CoreSwift) -----------------------------
-    deleted, detail = sweep_cs_workspaces(minted)
+    #       The product path already proved itself above (check 10). This is the SAFETY NET: if a
+    #       door ever leaves something behind again, the sweep by reserved address must still find
+    #       it — and it must find nothing to do today.
     users, tenants = cs_residue()
-    check("every CoreSwift workspace this probe minted was swept by address", deleted, detail)
+    if users != "0" or tenants != "0":
+        deleted, detail = sweep_cs_workspaces(minted)
+        check("anything the doors missed was swept by reserved address", deleted, detail)
+    else:
+        check("the cleanup script had nothing to sweep — the doors left no residue", True, "users=0 tenants=0")
+    users, tenants = cs_residue()
     check("no md-zz-del-door residue is left in CoreSwift",
           users == "0" and tenants == "0", f"users={users} tenants={tenants}")
 
