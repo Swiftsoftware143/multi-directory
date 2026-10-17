@@ -284,6 +284,13 @@ async function apiDirs() {
       }, PROBE_SLUG);
       await sleep(4000);
       const delMsg = await page.evaluate(() => (document.getElementById('dr-status') || {}).textContent || '');
+      // the card line alone can sit above the viewport in a long list: the outcome must also be
+      // raised as a fixed toast, which is what the operator actually sees.
+      const toast = await page.evaluate(() => {
+        const t = document.getElementById('dr-toast');
+        return t && t.style.display !== 'none' ? t.textContent : '';
+      });
+      rec(/^(Refused|Deleted)/.test(toast), 'the_outcome_is_raised_as_a_visible_toast', toast.slice(0, 120));
 
       if (expectRefused) {
         rec(/^Refused:/i.test(delMsg) && /CRM contact/i.test(delMsg) && /nothing was deleted/i.test(delMsg),
@@ -292,7 +299,8 @@ async function apiDirs() {
         rec(stillApi, 'the_refused_delete_left_the_directory_in_the_api', 'present');
         const stillRow = await page.evaluate((s) => !!document.querySelector('#dr-rows [data-dr-row="' + s + '"]'), PROBE_SLUG);
         rec(stillRow, 'the_refused_delete_left_the_row_in_the_table', 'present');
-        await page.evaluate(() => document.getElementById('directories-section').scrollIntoView());
+        // no re-scroll: the panel itself scrolled the status into view, so the shot is exactly
+        // what the operator sees after pressing Delete.
         await page.screenshot({ path: path.join(AUD, 'directories-refused.png') });
       } else {
         rec(/^Deleted /i.test(delMsg) && delMsg.indexOf(PROBE_SLUG) !== -1,
@@ -303,7 +311,6 @@ async function apiDirs() {
           'slug absent');
         const goneOnScreen = await page.evaluate((s) => !document.querySelector('#dr-rows [data-dr-row="' + s + '"]'), PROBE_SLUG);
         rec(goneOnScreen, 'deleted_directory_left_the_table', 'absent');
-        await page.evaluate(() => document.getElementById('directories-section').scrollIntoView());
         await page.screenshot({ path: path.join(AUD, 'directories-delete.png') });
       }
     }
