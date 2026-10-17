@@ -99,7 +99,13 @@ pub async fn create_network(
     headers: HeaderMap,
     Json(req): Json<CreateNetworkRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if req.name.is_empty() || req.slug.is_empty() {
+    // ONE slug rule (`crate::utils::slug`), the same one the directory doors use, so the slug md
+    // stores is the slug md renders into a URL. A supplied slug that normalises away to nothing
+    // (blank / whitespace-only / punctuation-only) is NOT a slug we can store — there is no name
+    // to fall back to, so it stays a validation error.
+    let slug = crate::utils::slug::supplied(Some(req.slug.as_str()))
+        .ok_or_else(|| AppError::Validation("Name and slug are required".to_string()))?;
+    if req.name.is_empty() {
         return Err(AppError::Validation(
             "Name and slug are required".to_string(),
         ));
@@ -109,14 +115,14 @@ pub async fn create_network(
 
     // Check slug uniqueness
     let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM networks WHERE slug = $1")
-        .bind(&req.slug)
+        .bind(&slug)
         .fetch_one(&s.db)
         .await?;
 
     if existing > 0 {
         return Err(AppError::Duplicate(format!(
             "Network slug '{}' already exists",
-            req.slug
+            slug
         )));
     }
 
@@ -126,7 +132,7 @@ pub async fn create_network(
            RETURNING *"#,
     )
     .bind(&req.name)
-    .bind(&req.slug)
+    .bind(&slug)
     .bind(&req.description)
     .bind(&root_domain)
     .bind(req.status.unwrap_or_else(|| "active".to_string()))
@@ -147,7 +153,11 @@ pub async fn create_network(
     let db = s.db.clone();
     let net_id = network.id;
     let net_name = req.name.clone();
-    let net_slug = req.slug.clone();
+    // The CANONICAL slug, never the raw request value: CoreSwift builds the workspace address as
+    // `md-<slug>@local.coreswift` and rejects whitespace (422 "must not contain whitespace or
+    // control characters"), so a padded slug here silently failed to provision the workspace while
+    // md stored the canonical one. Local probe t_bf740579 caught exactly that in the container log.
+    let net_slug = slug.clone();
     // Fleet probe attribution (kanban t_8bea040a). The row an automated harness leaves behind is
     // the CORE SWIFT WORKSPACE minted by the spawn below, so the marker has to ride the cross-app
     // register call — carrying it only on the harness's call into this route would tag nothing.
@@ -185,7 +195,10 @@ pub async fn update_network(
         .ok_or(AppError::NotFound(format!("Network '{}' not found", id)))?;
 
     let new_name = req.name.unwrap_or(existing.name.clone());
-    let new_slug = req.slug.unwrap_or(existing.slug.clone());
+    // Same ONE slug rule as create. A blank/whitespace-only slug in the body means "no
+    // preference", not "blank my URL": keep the slug the network already has.
+    let new_slug =
+        crate::utils::slug::supplied(req.slug.as_deref()).unwrap_or_else(|| existing.slug.clone());
     let new_description = req.description.or(existing.description);
     let new_root_domain = match req.root_domain {
         Some(raw) => normalize_root_domain(Some(raw))?,

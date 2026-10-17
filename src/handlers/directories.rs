@@ -163,18 +163,13 @@ pub async fn create_directory(
     // register call. Absent header => None => byte-identical to a customer's create.
     let probe_harness = crate::probe_harness::from_headers(&headers);
 
-    // Auto-generate slug if not provided
-    let slug = match &req.slug {
-        Some(s) if !s.is_empty() => s.clone(),
-        _ => req
-            .name
-            .to_lowercase()
-            .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-            .replace(' ', "-")
-            .chars()
-            .take(80)
-            .collect::<String>(),
-    };
+    // Auto-generate slug if not provided. Both halves go through the ONE slug rule
+    // (`crate::utils::slug`), so a supplied slug and a derived one are the same kind of string —
+    // and a whitespace-only supplied slug counts as NOT SUPPLIED (CoreSwift applies the mirror of
+    // this rule to the same field; see `provision_tenant`). Whatever lands here is what md stores,
+    // what md sends as CoreSwift's `account_slug`, and what md renders into the city URL.
+    let slug = crate::utils::slug::supplied(req.slug.as_deref())
+        .unwrap_or_else(|| crate::utils::slug::slugify_max(&req.name, 80));
 
     if slug.is_empty() {
         return Err(AppError::Validation(
@@ -515,7 +510,10 @@ pub async fn update_directory(
         )))?;
 
     let new_name = req.name.unwrap_or(existing.name);
-    let new_slug = req.slug.unwrap_or(existing.slug.clone());
+    // Same ONE slug rule as create. A blank/whitespace-only slug in the body means "no
+    // preference", not "blank my URL": keep the slug the directory already has.
+    let new_slug =
+        crate::utils::slug::supplied(req.slug.as_deref()).unwrap_or_else(|| existing.slug.clone());
     let new_description = req.description.or(existing.description);
     let new_status = req.status.or(existing.status);
     let new_template = req.template.unwrap_or(
