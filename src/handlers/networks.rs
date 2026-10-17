@@ -251,6 +251,18 @@ pub async fn delete_network(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // The network's OWN workspace id and slug, read before the row goes (kanban t_d4b8aad7): a
+    // network provisions a CoreSwift tenant of its own, and deleting the network without it left a
+    // live workspace behind for ever.
+    let held: Option<(String, Option<Uuid>)> =
+        sqlx::query_as("SELECT slug, coreswift_tenant_id FROM networks WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?;
+    let Some((own_slug, workspace_id)) = held else {
+        return Err(AppError::NotFound(format!("Network '{}' not found", id)));
+    };
+
     let attached =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM directories WHERE network_id = $1")
             .bind(id)
@@ -273,7 +285,26 @@ pub async fn delete_network(
         return Err(AppError::NotFound(format!("Network '{}' not found", id)));
     }
 
-    Ok(Json(json!({"deleted": true})))
+    // Same rule as the directory door: the network is gone, so the delete has happened. A workspace
+    // call that fails is reported in the answer, never turned into an error for a delete that
+    // already committed.
+    let workspace = match workspace_id {
+        Some(tenant_id) => crate::coreswift::deprovision_tenant(tenant_id, &own_slug).await,
+        None => crate::coreswift::WorkspaceDeprovision::NotProvisioned,
+    };
+    if !workspace.is_clean() {
+        tracing::error!(
+            "[network] '{}' deleted but its CoreSwift workspace was NOT removed: {:?}",
+            own_slug,
+            workspace
+        );
+    }
+
+    Ok(Json(json!({
+        "deleted": true,
+        "slug": own_slug,
+        "coreswift_workspace": workspace.to_json(),
+    })))
 }
 
 /// GET /api/v1/networks/:id/directories

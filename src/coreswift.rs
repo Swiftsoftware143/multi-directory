@@ -186,6 +186,160 @@ pub async fn provision_tenant(
     Ok(())
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Deprovision — the other half of `provision_tenant`
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/// The header CoreSwift's fleet door reads (`require_internal_key`).
+const INTERNAL_KEY_HEADER: &str = "x-internal-key";
+
+/// What became of the CoreSwift workspace behind a directory or network that has just been deleted.
+///
+/// Provisioning used to be one-way: MD minted `md-<slug>@local.coreswift`, a tenant, 3 lists and
+/// the city tag groups, and deleting the product row left ALL of it behind for ever — a live
+/// workspace with a real email address, still counted by every CoreSwift read and still costing
+/// money (kanban t_d4b8aad7). `deprovision_tenant` is the missing half.
+///
+/// It NEVER fails the delete it belongs to: the MD row is already gone by the time it runs, so a
+/// 5xx here would tell the operator "the delete failed" when it did not. Every outcome is a value
+/// the answer carries and the panel says out loud.
+#[derive(Debug, Clone)]
+pub enum WorkspaceDeprovision {
+    /// The row carried no `coreswift_tenant_id`: provisioning never landed (CoreSwift was down at
+    /// create time, or the row predates the integration). There is nothing to remove.
+    NotProvisioned,
+    /// CoreSwift confirmed the workspace and everything hanging off it is gone.
+    Deprovisioned {
+        tenant_id: Uuid,
+        users_removed: i64,
+        contacts_removed: i64,
+        lists_removed: i64,
+    },
+    /// CoreSwift answered 404 — already gone (a re-run, or an earlier partial purge). Also clean.
+    AlreadyGone { tenant_id: Uuid },
+    /// CoreSwift REFUSED or was unreachable. The orphan is real, and must never be silent.
+    StillLive { tenant_id: Uuid, reason: String },
+}
+
+impl WorkspaceDeprovision {
+    /// True when nothing of this entity's workspace is left anywhere — the only thing a caller may
+    /// report as a clean sweep.
+    pub fn is_clean(&self) -> bool {
+        !matches!(self, WorkspaceDeprovision::StillLive { .. })
+    }
+
+    /// The `coreswift_workspace` object the delete handlers return (and the panel reads).
+    pub fn to_json(&self) -> Value {
+        match self {
+            WorkspaceDeprovision::NotProvisioned => json!({
+                "status": "not_provisioned",
+                "clean": true,
+                "detail": "It never had a CoreSwift workspace, so there was nothing to remove there.",
+            }),
+            WorkspaceDeprovision::Deprovisioned {
+                tenant_id,
+                users_removed,
+                contacts_removed,
+                lists_removed,
+            } => json!({
+                "status": "deprovisioned",
+                "clean": true,
+                "tenant_id": tenant_id.to_string(),
+                "users_removed": users_removed,
+                "contacts_removed": contacts_removed,
+                "lists_removed": lists_removed,
+                "detail": "Its CoreSwift workspace was removed with it.",
+            }),
+            WorkspaceDeprovision::AlreadyGone { tenant_id } => json!({
+                "status": "already_gone",
+                "clean": true,
+                "tenant_id": tenant_id.to_string(),
+                "detail": "Its CoreSwift workspace was already gone, so nothing was left behind.",
+            }),
+            WorkspaceDeprovision::StillLive { tenant_id, reason } => json!({
+                "status": "still_live",
+                "clean": false,
+                "tenant_id": tenant_id.to_string(),
+                "detail": format!(
+                    "The records here are deleted, but the CoreSwift workspace behind this one was \
+                     NOT removed — CoreSwift said: {reason}. It is still live under that id and \
+                     needs removing at CoreSwift. Nothing in Multi-Directory was affected."
+                ),
+            }),
+        }
+    }
+}
+
+/// Deprovision the CoreSwift workspace behind a directory or network that has just been deleted.
+///
+/// Call it AFTER the product transaction commits, passing the `coreswift_tenant_id` and the row's
+/// OWN slug read from that row BEFORE it was deleted (it does not exist by now). CoreSwift's door
+/// requires the caller to name the workspace it means (`?slug=`), so a stale or wrong id can never
+/// destroy a different tenant — a slug mismatch is a 409 refusal, never a delete.
+///
+/// `is_network` is expressed by WHICH caller reads the id: a network's workspace lives in
+/// `networks.coreswift_tenant_id`, a standalone directory's in `directories.coreswift_tenant_id`.
+/// A CITY inside a network has no workspace of its own (it inherits the network's), so deleting a
+/// city must never reach this function — the network's workspace keeps every other city's lists.
+pub async fn deprovision_tenant(tenant_id: Uuid, slug: &str) -> WorkspaceDeprovision {
+    let Some(key) = internal_key_opt() else {
+        tracing::error!(
+            "[coreswift] cannot deprovision workspace {tenant_id} ({slug}): CORESWIFT_INTERNAL_KEY is not set"
+        );
+        return WorkspaceDeprovision::StillLive {
+            tenant_id,
+            reason:
+                "this app has no CoreSwift internal key configured, so the call could not be made"
+                    .to_string(),
+        };
+    };
+
+    let url = format!("{}/api/internal/tenants/{}", coreswift_url(), tenant_id);
+    let sent = HTTP
+        .delete(&url)
+        .query(&[("slug", slug)])
+        .header(INTERNAL_KEY_HEADER, key)
+        .send()
+        .await;
+
+    let resp = match sent {
+        Ok(r) => r,
+        Err(e) => {
+            let reason = format!("CoreSwift could not be reached ({e})");
+            tracing::error!("[coreswift] deprovision {tenant_id} ({slug}) failed: {reason}");
+            return WorkspaceDeprovision::StillLive { tenant_id, reason };
+        }
+    };
+
+    let status = resp.status();
+    let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+    if status.is_success() {
+        let n = |k: &str| body[k].as_i64().unwrap_or(0);
+        tracing::info!("[coreswift] Deprovisioned workspace {tenant_id} ({slug}): {body}");
+        return WorkspaceDeprovision::Deprovisioned {
+            tenant_id,
+            users_removed: n("users_removed"),
+            contacts_removed: n("contacts_removed"),
+            lists_removed: n("lists_removed"),
+        };
+    }
+
+    if status == reqwest::StatusCode::NOT_FOUND {
+        tracing::info!("[coreswift] workspace {tenant_id} ({slug}) was already gone");
+        return WorkspaceDeprovision::AlreadyGone { tenant_id };
+    }
+
+    // CoreSwift's own words, never a paraphrase: the operator has to be able to act on them
+    // (a 409 means a real human signs in to that workspace, so a person must decide).
+    let reason = body["message"]
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("CoreSwift answered HTTP {}", status.as_u16()));
+    tracing::error!("[coreswift] deprovision {tenant_id} ({slug}) refused: {reason}");
+    WorkspaceDeprovision::StillLive { tenant_id, reason }
+}
+
 /// Create a static list in CoreSwift, return its UUID.
 async fn create_list(token: &str, _name: &str, list_name: &str) -> Result<Uuid, String> {
     let base = coreswift_url();

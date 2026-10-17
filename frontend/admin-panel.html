@@ -11577,6 +11577,15 @@
       return parts.length ? 'Cleared ' + parts.join(', ') + '.' : 'Nothing else pointed at it.';
     }
 
+    // What the delete did to the CoreSwift workspace behind the directory (kanban t_d4b8aad7).
+    // The server reports one of: removed with it / already gone / never had one / STILL LIVE.
+    // Only the last one needs a person, so only that one is spoken as a warning.
+    function workspaceText(res) {
+      var w = res && res.coreswift_workspace;
+      if (!w || !w.detail) return '';
+      return ' ' + String(w.detail);
+    }
+
     function load(keepStatus) {
       if (!keepStatus) txt('dr-status', 'Loading…');
       Promise.all([
@@ -11740,7 +11749,7 @@
     // operator never sees: every outcome is written into the card AND raised as a fixed toast, so
     // "refused" and "cleared 6 ad zones" are visible wherever the page happens to be scrolled.
     var toastTimer = null;
-    function showStatus(s, bad) {
+    function showStatus(s, bad, sticky) {
       txt('dr-status', s);
       var t = document.getElementById('dr-toast');
       if (!t) {
@@ -11758,6 +11767,8 @@
       t.style.color = '#fff';
       t.style.display = 'block';
       if (toastTimer) clearTimeout(toastTimer);
+      // `sticky` = an outcome the operator has to act on; it stays up until the next message.
+      if (sticky) { t.style.display = 'block'; return; }
       toastTimer = setTimeout(function () { t.style.display = 'none'; }, 9000);
     }
 
@@ -11768,7 +11779,11 @@
       api('DELETE', '/directories/' + encodeURIComponent(slug)).then(function (res) {
         // say what the delete actually cleared, in plain English (the server reports every child
         // row it swept); "nothing else pointed at it" is said out loud rather than left implied.
-        showStatus('Deleted ' + slug + '. ' + sweptText(res));
+        // Then what happened to its CoreSwift workspace — a workspace left live is a real thing the
+        // operator has to act on, so it is raised in the warning colour and stays on screen
+        // instead of fading out with the good news (kanban t_d4b8aad7).
+        var live = !!(res && res.coreswift_workspace && res.coreswift_workspace.clean === false);
+        showStatus('Deleted ' + slug + '. ' + sweptText(res) + workspaceText(res), live, live);
         load(true);
       }).catch(function (e) {
         // a directory that still holds records is REFUSED and the server says what holds it

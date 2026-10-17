@@ -333,6 +333,11 @@ pub async fn create_directory(
         // For new networks, provision the network tenant + directory resources
         let db2 = s.db.clone();
         let dir_id2 = directory.id;
+        // is_network=true, so `provision_tenant` writes the workspace id onto `networks` — the id
+        // must therefore be the NETWORK's (kanban t_d4b8aad7). It used to be the directory's, so
+        // the UPDATE matched no row and the freshly minted workspace was recorded NOWHERE: no
+        // delete door could ever deprovision it. Same slug, same name, correct row.
+        let net_id2 = network.id;
         let dir_name2 = req.name.clone();
         let dir_slug2 = slug.clone();
         let probe2 = probe_harness.clone();
@@ -340,7 +345,7 @@ pub async fn create_directory(
             // First provision the network tenant
             match crate::coreswift::provision_tenant(
                 &db2,
-                dir_id2,
+                net_id2,
                 &dir_name2,
                 &dir_slug2,
                 true,
@@ -748,12 +753,17 @@ pub async fn delete_directory(
 
     let mut tx = s.db.begin().await?;
 
-    let id: Option<Uuid> =
-        sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1 FOR UPDATE")
-            .bind(&slug)
-            .fetch_optional(&mut *tx)
-            .await?;
-    let Some(id) = id else {
+    // Read the row's OWN slug (never the path value) and the CoreSwift workspace it holds in the
+    // SAME locked read: by the time this door commits the row is gone, and the workspace can no
+    // longer be found from it. A city inside a network has no workspace of its own — it inherits
+    // the network's — so its `coreswift_tenant_id` is NULL and the network's stays untouched.
+    let held: Option<(Uuid, String, Option<Uuid>)> = sqlx::query_as(
+        "SELECT id, slug, coreswift_tenant_id FROM directories WHERE slug = $1 FOR UPDATE",
+    )
+    .bind(&slug)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((id, own_slug, workspace_id)) = held else {
         tx.rollback().await.ok();
         return Err(AppError::NotFound(format!(
             "Directory '{}' not found",
@@ -822,12 +832,29 @@ pub async fn delete_directory(
 
     tx.commit().await?;
 
+    // The directory is gone — the CoreSwift workspace behind it is not (kanban t_d4b8aad7).
+    // Deprovision it AFTER the commit: a workspace call that fails or is refused must never roll
+    // back, or 500, a delete that has already happened. It is returned in the answer instead, and
+    // the panel raises it as a visible warning.
+    let workspace = match workspace_id {
+        Some(tenant_id) => crate::coreswift::deprovision_tenant(tenant_id, &own_slug).await,
+        None => crate::coreswift::WorkspaceDeprovision::NotProvisioned,
+    };
+    if !workspace.is_clean() {
+        tracing::error!(
+            "[directory] '{}' deleted but its CoreSwift workspace was NOT removed: {:?}",
+            own_slug,
+            workspace
+        );
+    }
+
     Ok((
         StatusCode::OK,
         Json(json!({
             "message": "Directory deleted successfully",
-            "slug": slug,
+            "slug": own_slug,
             "children_removed": swept,
+            "coreswift_workspace": workspace.to_json(),
         })),
     ))
 }
