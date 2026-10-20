@@ -3531,6 +3531,19 @@ async fn auth_guard(
 
     let claims = verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
+    // Kanban t_fb37dfc0 — the signature only proves the token was MINTED by us; it says nothing
+    // about whether the account it names still exists. Re-read the principal here, at the one
+    // boundary every private route passes through, so a deleted or disabled account's bearer is
+    // refused with 401 (exactly like an expired token) on every method, for handlers that never
+    // touch `users` themselves. A database that cannot answer is a 500 from `?`, never a pass.
+    if !crate::auth::middleware::principal_is_live(&s.db, &claims.sub).await? {
+        warn!(
+            "AUTH_GUARD: refused path={} for deleted/disabled principal sub={}",
+            path, claims.sub
+        );
+        return Err(AppError::Unauthorized);
+    }
+
     // Insert claims into request extensions for handlers that need them
     req.extensions_mut().insert(claims);
 

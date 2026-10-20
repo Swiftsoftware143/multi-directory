@@ -1,4 +1,5 @@
 use super::models::Claims;
+use crate::error::AppError;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -21,6 +22,72 @@ pub fn create_token(claims: &Claims, secret: &str) -> Result<String, jsonwebtoke
 
     let encoding_key = EncodingKey::from_secret(secret.as_bytes());
     encode(&Header::default(), claims, &encoding_key)
+}
+
+/// Is the principal named by a token's `sub` claim still a live account?
+///
+/// Kanban t_fb37dfc0 (the fleet class fixed on the sibling apps by t_53fcb666). A JWT is a
+/// bearer credential that `verify_token` accepts for its whole 24 h life on signature, `exp`,
+/// `iss` and `aud` alone — it never looks at the row it names. So deleting (or disabling) an
+/// account left its token working: measured 2026-10-20 on this app, `delete from users` and the
+/// same bearer still collected 200 from `/my-reviews`, `/admin/reports`, `/admin/reports/stats`,
+/// `/templates`, `/directories`, `/deals`, `/crm/deals` and `/admin/audience/overview` (only
+/// `/auth/me` noticed, because that handler re-reads the user itself).
+///
+/// This is the ONE primary-key read that closes it, called from `routes::auth_guard` — the single
+/// boundary every private route already passes through — so the refusal lands on every method and
+/// on handlers that never touch `users` themselves.
+///
+/// TWO identity tables, because this app mints two shapes of session: staff/business/directory
+/// accounts are rows in `users`, while the business portal and the public entry points sign a
+/// shopper in as a `visitor` (`POST /visitor/login`, `sub = visitor_accounts.id`, `tid = nil`).
+/// Both are checked against `sub` so neither kind of sign-in is broken; a `sub` that names no row
+/// in either table is dead. `is_active` defaults to true and is nullable on `visitor_accounts`,
+/// so only an explicit `false` disables an account.
+///
+/// A `sub` that is not a uuid names no row (`Ok(false)`); a database that cannot answer is
+/// `Err(AppError::Database)` — 500, never a silent pass.
+pub async fn principal_is_live(db: &PgPool, sub: &str) -> Result<bool, AppError> {
+    let Ok(id) = Uuid::parse_str(sub) else {
+        return Ok(false);
+    };
+
+    let live: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM users            WHERE id = $1 AND COALESCE(is_active, true)
+             UNION ALL
+             SELECT 1 FROM visitor_accounts WHERE id = $1 AND COALESCE(is_active, true)
+         )",
+    )
+    .bind(id)
+    .fetch_one(db)
+    .await?;
+
+    Ok(live)
+}
+
+#[cfg(test)]
+mod principal_liveness_tests {
+    use super::principal_is_live;
+
+    /// A `sub` that is not a uuid names no row — refused before any query is issued, so a
+    /// hand-crafted/garbage claim costs no database round trip. `connect_lazy` never dials.
+    #[tokio::test]
+    async fn a_non_uuid_subject_names_no_account() {
+        let db =
+            sqlx::PgPool::connect_lazy("postgres://user:pw@127.0.0.1:1/none").expect("lazy pool");
+        for sub in [
+            "",
+            "system",
+            "not-a-uuid",
+            "00000000-0000-0000-0000-00000000000",
+        ] {
+            assert!(
+                !principal_is_live(&db, sub).await.unwrap_or(false),
+                "{sub:?} must not resolve to an account"
+            );
+        }
+    }
 }
 
 /// Is the caller the platform operator?
