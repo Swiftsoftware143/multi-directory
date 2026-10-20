@@ -127,6 +127,95 @@ pub fn platform_claim_outranks_row(claim_role: &str, row_role: &str) -> bool {
     claim_role == "super_admin" && row_role != "super_admin"
 }
 
+// ── operator support sessions (kanban t_a9c33fea) ───────────────────────────────────────────────
+//
+// `handlers::impersonate` mints a 1-hour token that signs in AS a tenant account, with the
+// operator's id in the `impersonating` claim. Ending that session used to be a client-side
+// gesture only (swap localStorage back), so the support bearer kept answering 200 on every route
+// for the rest of its hour — from any tab that still held it. `impersonation_sessions` is the
+// durable record that makes "ended" mean something; this is the read behind it.
+
+/// The ONE admin path an impersonation session may reach: the one that ends it.
+///
+/// `operator_guard` refuses the whole operator surface to a support session (its role claim is the
+/// TENANT's, never the operator's), and that refusal is correct — with exactly one exception, the
+/// route whose whole purpose is to end the session. Without the exception the operator could only
+/// escape by logging out, and the token they were trying to kill would outlive the attempt.
+pub const ADMIN_STOP_IMPERSONATION: &str = "/api/v1/admin/stop-impersonation";
+
+/// The same route as a `route_layer` INSIDE the `/api/v1` router sees it: axum rewrites
+/// `req.uri()` when a request enters a nested router (the un-nested original is kept separately in
+/// `OriginalUri`), so `operator_guard` — which is a route_layer on this route — is handed the path
+/// without the nest prefix. Measured the hard way: with only the absolute spelling, the guard
+/// refused the support session on this route with 403 and the stop never reached its handler.
+pub const ADMIN_STOP_IMPERSONATION_NESTED: &str = "/admin/stop-impersonation";
+
+/// True when `path` is the one admin route a support session must be able to call. Compared
+/// exactly against the two spellings this app can hand a guard (absolute at the app boundary, nest
+/// relative inside it), never by prefix: `/stop-impersonation/`, `/stop-impersonations` and
+/// `/impersonate` are DIFFERENT routes and must stay refused.
+pub fn is_stop_impersonation(path: &str) -> bool {
+    path == ADMIN_STOP_IMPERSONATION || path == ADMIN_STOP_IMPERSONATION_NESTED
+}
+
+/// The operator-surface decision for one request: `true` means answer 403.
+///
+/// Pure, so the single carve-out is unit-tested: the exception requires BOTH the exact path AND an
+/// `impersonating` claim, and only the impersonate handler ever sets that claim. A tenant's own
+/// token therefore still cannot reach this route, and a support session still reaches nothing else
+/// on the admin surface.
+pub fn operator_surface_denied(path: &str, claims: &Claims) -> bool {
+    if claims.impersonating.is_some() && is_stop_impersonation(path) {
+        return false;
+    }
+    !is_super_admin(claims)
+}
+
+/// The durable identity of a support session: the account it signs in as, the operator who minted
+/// it, and the token's own `iat`.
+///
+/// `iat` is second-granularity and the only claim that differs between two mints for the same pair,
+/// so it names exactly one mint without adding a `jti` to [`Claims`] (a field added now would be
+/// absent from every token already in the wild). `None` = not a support session at all, which is
+/// why an ordinary sign-in pays no query for this check.
+pub fn impersonation_session_key(claims: &Claims) -> Option<(Uuid, Uuid, i64)> {
+    let operator = Uuid::parse_str(claims.impersonating.as_deref()?).ok()?;
+    let target = Uuid::parse_str(&claims.sub).ok()?;
+    Some((target, operator, claims.iat as i64))
+}
+
+/// Has the support session this token belongs to been ENDED?
+///
+/// `Ok(false)` for an ordinary sign-in (no query) and for a support session this app has no record
+/// of — a token minted before `impersonation_sessions` existed, i.e. the deploy window. The
+/// signature is the trust anchor either way; the row exists to make ENDING enforceable, and
+/// `stop_impersonation` writes a tombstone even for a session it has no row for, so the first
+/// attempt to end one is enough.
+///
+/// `Ok(true)` also for an `impersonating` claim whose pair is not addressable: a token naming no
+/// real (account, operator) pair cannot be one of this app's mints, and a credential that cannot be
+/// proven live is refused.
+pub async fn impersonation_session_ended(db: &PgPool, claims: &Claims) -> Result<bool, AppError> {
+    if claims.impersonating.is_none() {
+        return Ok(false);
+    }
+    let Some((target_user_id, operator_id, token_iat)) = impersonation_session_key(claims) else {
+        return Ok(true);
+    };
+
+    let stopped: Option<bool> = sqlx::query_scalar(
+        "SELECT stopped_at IS NOT NULL FROM impersonation_sessions \
+          WHERE target_user_id = $1 AND operator_id = $2 AND token_iat = $3 LIMIT 1",
+    )
+    .bind(target_user_id)
+    .bind(operator_id)
+    .bind(token_iat)
+    .fetch_optional(db)
+    .await?;
+
+    Ok(stopped.unwrap_or(false))
+}
+
 /// What a presented bearer token is worth right now.
 pub enum SessionVerdict {
     /// The token is ours, it names a live account, and it was minted after that account's last
@@ -169,12 +258,129 @@ pub async fn session_verdict(db: &PgPool, token: &str, secret: &str) -> SessionV
     };
 
     match session_state(db, &claims.sub).await {
-        Ok(Some(state)) if session_is_acceptable(&state, &claims) => SessionVerdict::Live(claims),
+        Ok(Some(state)) if session_is_acceptable(&state, &claims) => {
+            // kanban t_a9c33fea — the FOURTH arm: a support session the operator has ENDED is dead
+            // even though its account is live and its signature is fine. Only tokens carrying an
+            // `impersonating` claim reach the lookup, so an ordinary sign-in pays nothing for it.
+            match impersonation_session_ended(db, &claims).await {
+                Ok(false) => SessionVerdict::Live(claims),
+                Ok(true) => {
+                    tracing::warn!(
+                        "support session already ended for sub={} operator={:?}",
+                        claims.sub,
+                        claims.impersonating
+                    );
+                    SessionVerdict::Dead
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "support-session state lookup failed for {}: {e}",
+                        claims.sub
+                    );
+                    SessionVerdict::Unknown
+                }
+            }
+        }
         Ok(_) => SessionVerdict::Dead,
         Err(e) => {
             tracing::error!("session state lookup failed for {}: {e}", claims.sub);
             SessionVerdict::Unknown
         }
+    }
+}
+
+#[cfg(test)]
+mod support_session_tests {
+    use super::{
+        impersonation_session_key, is_stop_impersonation, operator_surface_denied,
+        ADMIN_STOP_IMPERSONATION,
+    };
+    use crate::auth::models::Claims;
+
+    fn claims(role: &str, sub: &str, impersonating: Option<&str>) -> Claims {
+        Claims {
+            sub: sub.to_string(),
+            tid: "11111111-1111-1111-1111-111111111111".to_string(),
+            role: role.to_string(),
+            exp: 2_000_000_000,
+            iat: 1_700_000_000,
+            aud: Some("multidirectory-api".to_string()),
+            iss: Some("multidirectory".to_string()),
+            impersonating: impersonating.map(str::to_string),
+        }
+    }
+
+    const TARGET: &str = "22222222-2222-2222-2222-222222222222";
+    const OPERATOR: &str = "33333333-3333-3333-3333-333333333333";
+
+    /// The carve-out is ONE path, spelled exactly, and only for a support session. Everything else
+    /// on the admin surface stays refused to a tenant-role claim — including the near-misses, so a
+    /// later route named `/stop-impersonations` is not silently admitted.
+    #[test]
+    fn a_support_session_may_reach_the_route_that_ends_it_and_nothing_else() {
+        let support = claims("admin", TARGET, Some(OPERATOR));
+        assert!(
+            !operator_surface_denied(ADMIN_STOP_IMPERSONATION, &support),
+            "a support session must be able to end itself"
+        );
+        assert!(is_stop_impersonation(ADMIN_STOP_IMPERSONATION));
+        // Both spellings a guard can be handed: absolute at the app boundary, nest-relative inside
+        // the `/api/v1` router.
+        assert!(is_stop_impersonation("/admin/stop-impersonation"));
+        for near in [
+            "/api/v1/admin/stop-impersonation/",
+            "/api/v1/admin/stop-impersonation/anything",
+            "/admin/stop-impersonation/",
+            "/admin/stop-impersonations",
+            "/api/v1/admin/stop-impersonate",
+            "/api/v1/admin/stop-impersonations",
+            "/api/v1/admin/impersonate",
+            "/api/v1/admin/tenants",
+            "/api/v1/admin",
+        ] {
+            assert!(
+                !is_stop_impersonation(near),
+                "{near} must not be treated as the stop route"
+            );
+            assert!(
+                operator_surface_denied(near, &support),
+                "{near} must stay refused to a support session"
+            );
+        }
+    }
+
+    /// A tenant's own token cannot use the carve-out: it carries no `impersonating` claim, so even
+    /// the exact stop path is refused to it before the handler runs.
+    #[test]
+    fn a_real_tenant_session_is_still_refused_the_operator_surface() {
+        let tenant = claims("admin", TARGET, None);
+        assert!(operator_surface_denied(ADMIN_STOP_IMPERSONATION, &tenant));
+        assert!(operator_surface_denied("/api/v1/admin/tenants", &tenant));
+        // …and an operator is admitted everywhere, which is what the guard did before the carve-out.
+        let operator = claims("super_admin", OPERATOR, None);
+        assert!(!operator_surface_denied(
+            ADMIN_STOP_IMPERSONATION,
+            &operator
+        ));
+        assert!(!operator_surface_denied("/api/v1/admin/tenants", &operator));
+    }
+
+    /// The durable key names one mint: (account, operator, token iat). An ordinary sign-in has no
+    /// key at all, so the revocation read is skipped for it, and a claim whose pair is not
+    /// addressable cannot produce a spurious match.
+    #[test]
+    fn the_support_session_key_is_the_mint_triple() {
+        let support = claims("admin", TARGET, Some(OPERATOR));
+        let key = impersonation_session_key(&support).expect("a support session has a key");
+        assert_eq!(key.0.to_string(), TARGET);
+        assert_eq!(key.1.to_string(), OPERATOR);
+        assert_eq!(key.2, 1_700_000_000);
+
+        assert!(impersonation_session_key(&claims("admin", TARGET, None)).is_none());
+        assert!(
+            impersonation_session_key(&claims("admin", "not-a-uuid", Some(OPERATOR))).is_none()
+        );
+        assert!(impersonation_session_key(&claims("admin", TARGET, Some("nope"))).is_none());
     }
 }
 

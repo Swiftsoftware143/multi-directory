@@ -2179,6 +2179,15 @@ pub fn create_router(s: AppState) -> Router {
             post(impersonate::impersonate)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // kanban t_a9c33fea — the ONE admin path a support session may call: the one that ends it.
+        // It sits behind the same guard as every sibling (`operator_guard` admits exactly this path
+        // for a session carrying the `impersonating` claim), and the handler does the durable stop
+        // and hands back the operator's own fresh session.
+        .route(
+            "/admin/stop-impersonation",
+            post(impersonate::stop_impersonation)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         .route(
             "/admin/tenants",
             get(impersonate::list_tenants)
@@ -3572,6 +3581,19 @@ async fn auth_guard(
         }
     }
 
+    // kanban t_a9c33fea — an ENDED operator support session must not keep working for the rest of
+    // its hour. `session_gate` already reached this verdict for every request that carried the
+    // bearer (and stripped the header), so this is the same rule at the private-route boundary:
+    // defence in depth for any path that arrives here without the marker, and the 401 the console
+    // needs when a stale tab replays a token the operator already killed.
+    if crate::auth::middleware::impersonation_session_ended(&s.db, &claims).await? {
+        warn!(
+            "AUTH_GUARD: refused path={} for an ENDED support session sub={} operator={:?}",
+            path, claims.sub, claims.impersonating
+        );
+        return Err(AppError::Unauthorized);
+    }
+
     // Insert claims into request extensions for handlers that need them
     req.extensions_mut().insert(claims);
 
@@ -3670,7 +3692,11 @@ async fn operator_guard(
 ) -> Result<Response, AppError> {
     let claims =
         crate::handlers::tenant_scope::claims_from_headers(req.headers(), &s.config.jwt_secret)?;
-    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+    // kanban t_a9c33fea — ONE carve-out, in the pure predicate so it is unit-tested: a session
+    // that carries an `impersonating` claim may reach the single admin path that ENDS it, and
+    // nothing else on this surface. `handlers::impersonate::stop_impersonation` re-checks and does
+    // the actual work; this guard only decides whether the route may run at all.
+    if crate::auth::middleware::operator_surface_denied(req.uri().path(), &claims) {
         return Err(AppError::Forbidden(
             "Platform operator access required".to_string(),
         ));

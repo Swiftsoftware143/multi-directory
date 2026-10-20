@@ -13041,13 +13041,29 @@
       document.body.style.paddingTop = '42px';
     }
 
+    // Ends the support session on the SERVER (kanban t_a9c33fea): the tenant token is stamped dead
+    // in `impersonation_sessions`, and the response carries the operator's own fresh session — which
+    // is what lets this device get home even when no saved operator token exists here (another tab,
+    // another machine, or a cleared storage). The locally saved operator token stays as the fallback
+    // for an older backend that has no stop route.
     function returnToOperator() {
-      var t = ls(OP_TOKEN);
-      if (!t) { status('No saved operator session on this device — sign in again.', true); return; }
-      lsSet('md_admin_token', t);
-      lsSet('md_admin_user', ls(OP_USER) || 'null');
-      lsDel(OP_TOKEN); lsDel(OP_USER); lsDel(SUPPORT_KEY);
-      location.reload();
+      var support = tok();
+      if (!support) { status('No session to end — sign in again.', true); return; }
+      status('Ending the support session…');
+      fetchJson('POST', '/admin/stop-impersonation', {}).then(function (r) {
+        if (!r || !r.token) throw new Error('The server did not return your operator session.');
+        lsSet('md_admin_token', r.token);
+        lsSet('md_admin_user', JSON.stringify(r.operator || {}));
+        lsDel(OP_TOKEN); lsDel(OP_USER); lsDel(SUPPORT_KEY);
+        location.reload();
+      }).catch(function (e) {
+        var t = ls(OP_TOKEN);
+        if (!t) { status(e.message || 'Could not end the support session — sign in again.', true); return; }
+        lsSet('md_admin_token', t);
+        lsSet('md_admin_user', ls(OP_USER) || 'null');
+        lsDel(OP_TOKEN); lsDel(OP_USER); lsDel(SUPPORT_KEY);
+        location.reload();
+      });
     }
 
     function switchTo(tenantId, tenantName, btn) {
