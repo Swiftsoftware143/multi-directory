@@ -3550,19 +3550,15 @@ async fn auth_guard(
     // duplicate primary-key read when that marker is present.
     if !req.extensions().get::<SessionValidated>().is_some() {
         match crate::auth::middleware::session_state(&s.db, &claims.sub).await? {
-            Some(state)
-                if state.is_active
-                    && !crate::auth::middleware::session_predates_password_change(
-                        Some(claims.iat as i64),
-                        state.valid_from,
-                    ) => {}
+            Some(state) if crate::auth::middleware::session_is_acceptable(&state, &claims) => {}
             Some(state) => {
                 warn!(
-                    "AUTH_GUARD: refused path={} for dead/revoked session sub={} (active={} rotated={})",
+                    "AUTH_GUARD: refused path={} for dead/revoked session sub={} (active={} rotated={} row_role={})",
                     path,
                     claims.sub,
                     state.is_active,
-                    state.valid_from.is_some()
+                    state.valid_from.is_some(),
+                    state.role
                 );
                 return Err(AppError::Unauthorized);
             }

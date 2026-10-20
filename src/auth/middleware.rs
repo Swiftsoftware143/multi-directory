@@ -33,6 +33,10 @@ pub struct SessionState {
     /// `users.sessions_valid_from` as a unix epoch: the instant this account last changed or reset
     /// its password. `None` = never rotated, which is every account until it rotates once.
     pub valid_from: Option<i64>,
+    /// The role the row grants RIGHT NOW. A token carries the role it was minted with, so a
+    /// demoted operator's 24 h token must be compared against this — `operator_guard` reads the
+    /// claim, and without this arm a demotion revoked nothing.
+    pub role: String,
 }
 
 /// Read the identity row a token's `sub` claim names.
@@ -53,21 +57,23 @@ pub async fn session_state(db: &PgPool, sub: &str) -> Result<Option<SessionState
         return Ok(None);
     };
 
-    let row: Option<(bool, Option<i64>)> = sqlx::query_as(
+    let row: Option<(bool, Option<i64>, String)> = sqlx::query_as(
         "SELECT COALESCE(is_active, true),
-                floor(EXTRACT(EPOCH FROM sessions_valid_from))::bigint
+                floor(EXTRACT(EPOCH FROM sessions_valid_from))::bigint,
+                COALESCE(role, '')
            FROM users            WHERE id = $1
          UNION ALL
-         SELECT COALESCE(is_active, true), NULL::bigint
+         SELECT COALESCE(is_active, true), NULL::bigint, 'visitor'::text
            FROM visitor_accounts WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|(is_active, valid_from)| SessionState {
+    Ok(row.map(|(is_active, valid_from, role)| SessionState {
         is_active,
         valid_from,
+        role,
     }))
 }
 
@@ -109,6 +115,18 @@ pub fn session_predates_password_change(jwt_iat: Option<i64>, valid_from: Option
     }
 }
 
+/// Does a token's role CLAIM exceed the authority its row still grants? (kanban t_dd9d99c9, the
+/// sibling of the fleet's t_28184826 demotion arm)
+///
+/// `super_admin` is this app's platform operator (`tenant_scope::is_platform_operator`) and
+/// `operator_guard` decides from `claims.role` alone, so a demoted operator's token kept the
+/// operator surface (`GET /admin/network/counts` answered 200 for a row that had been set back to
+/// `user` — measured 2026-10-20). Pure, so both arms are unit-tested; only a claim that reaches
+/// HIGHER than the row is a violation — a promotion mid-session is not.
+pub fn platform_claim_outranks_row(claim_role: &str, row_role: &str) -> bool {
+    claim_role == "super_admin" && row_role != "super_admin"
+}
+
 /// What a presented bearer token is worth right now.
 pub enum SessionVerdict {
     /// The token is ours, it names a live account, and it was minted after that account's last
@@ -120,6 +138,19 @@ pub enum SessionVerdict {
     /// The identity row could not be read (database unavailable). Never a pass, but not proof of
     /// a dead session either — the caller must not mistake an outage for a revocation.
     Unknown,
+}
+
+/// Is this token acceptable for this row right now? The ONE rule, shared by
+/// [`crate::routes::session_gate`] (via [`session_verdict`]) and [`crate::routes::auth_guard`], so
+/// the two boundaries can never disagree about what a live session is.
+///
+/// Three arms, all measured on this app: the row must still exist and be enabled (t_fb37dfc0), the
+/// token must not predate the row's last password change (t_dd9d99c9), and its role claim must not
+/// reach above what the row still grants (t_28184826 class).
+pub fn session_is_acceptable(state: &SessionState, claims: &Claims) -> bool {
+    state.is_active
+        && !session_predates_password_change(Some(claims.iat as i64), state.valid_from)
+        && !platform_claim_outranks_row(&claims.role, &state.role)
 }
 
 /// Verify a bearer token AND the session behind it.
@@ -138,12 +169,7 @@ pub async fn session_verdict(db: &PgPool, token: &str, secret: &str) -> SessionV
     };
 
     match session_state(db, &claims.sub).await {
-        Ok(Some(state))
-            if state.is_active
-                && !session_predates_password_change(Some(claims.iat as i64), state.valid_from) =>
-        {
-            SessionVerdict::Live(claims)
-        }
+        Ok(Some(state)) if session_is_acceptable(&state, &claims) => SessionVerdict::Live(claims),
         Ok(_) => SessionVerdict::Dead,
         Err(e) => {
             tracing::error!("session state lookup failed for {}: {e}", claims.sub);
@@ -154,7 +180,7 @@ pub async fn session_verdict(db: &PgPool, token: &str, secret: &str) -> SessionV
 
 #[cfg(test)]
 mod principal_liveness_tests {
-    use super::{principal_is_live, session_predates_password_change};
+    use super::{platform_claim_outranks_row, principal_is_live, session_predates_password_change};
 
     /// A `sub` that is not a uuid names no row — refused before any query is issued, so a
     /// hand-crafted/garbage claim costs no database round trip. `connect_lazy` never dials.
@@ -191,6 +217,19 @@ mod principal_liveness_tests {
         assert!(session_predates_password_change(None, Some(2_000)));
         // …and is harmless when it never has.
         assert!(!session_predates_password_change(None, None));
+    }
+
+    /// kanban t_dd9d99c9 — a role CLAIM may not reach above the row.
+    #[test]
+    fn a_role_claim_above_the_row_is_refused() {
+        // The demotion this arm exists for: minted as the operator, row set back to `user`.
+        assert!(platform_claim_outranks_row("super_admin", "user"));
+        assert!(platform_claim_outranks_row("super_admin", "admin"));
+        // …and the honest cases: unchanged, promoted mid-session, or an ordinary account.
+        assert!(!platform_claim_outranks_row("super_admin", "super_admin"));
+        assert!(!platform_claim_outranks_row("user", "user"));
+        assert!(!platform_claim_outranks_row("visitor", "visitor"));
+        assert!(!platform_claim_outranks_row("user", "super_admin"));
     }
 }
 
