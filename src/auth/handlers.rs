@@ -457,11 +457,20 @@ pub async fn change_password(
         .map_err(|e| AppError::Hash(e.to_string()))?
         .to_string();
 
-    sqlx::query("UPDATE users SET password_hash = \x241, updated_at = NOW() WHERE id = \x242")
-        .bind(&new_hash)
-        .bind(user_id)
-        .execute(&s.db)
-        .await?;
+    // kanban t_dd9d99c9 — a password CHANGE must end the sessions that predate it. `NOW()` lands
+    // in `users.sessions_valid_from`, which `routes::session_gate` / `routes::auth_guard` compare
+    // against every token's `iat`; without this stamp the old bearer kept working for its full
+    // 24 h life, which is exactly the "I changed my password because I thought I was compromised"
+    // case. A session minted in this same second still works on purpose (`iat` is
+    // second-granularity, so it cannot be told apart from the re-login that follows).
+    sqlx::query(
+        "UPDATE users SET password_hash = \x241, sessions_valid_from = NOW(), updated_at = NOW() \
+         WHERE id = \x242",
+    )
+    .bind(&new_hash)
+    .bind(user_id)
+    .execute(&s.db)
+    .await?;
 
     Ok((
         StatusCode::OK,
@@ -576,11 +585,17 @@ pub async fn reset_password(
         .map_err(|e| AppError::Hash(e.to_string()))?
         .to_string();
 
-    sqlx::query("UPDATE users SET password_hash = \x241, updated_at = NOW() WHERE id = \x242")
-        .bind(&new_hash)
-        .bind(reset_user_id)
-        .execute(&s.db)
-        .await?;
+    // kanban t_dd9d99c9 — a RESET is a password change too: it is the door a user takes when they
+    // believe the account is compromised, so the sessions that existed before it must die with it.
+    // Same stamp, same comparison (`iat` vs `sessions_valid_from`) as the change arm above.
+    sqlx::query(
+        "UPDATE users SET password_hash = \x241, sessions_valid_from = NOW(), updated_at = NOW() \
+         WHERE id = \x242",
+    )
+    .bind(&new_hash)
+    .bind(reset_user_id)
+    .execute(&s.db)
+    .await?;
 
     sqlx::query("UPDATE password_resets SET used = true WHERE id = \x241")
         .bind(reset_id)

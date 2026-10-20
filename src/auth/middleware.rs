@@ -24,58 +24,144 @@ pub fn create_token(claims: &Claims, secret: &str) -> Result<String, jsonwebtoke
     encode(&Header::default(), claims, &encoding_key)
 }
 
+/// The state of the identity row a token's `sub` names — the ONE read behind every session check
+/// on this app (kanban t_fb37dfc0 deleted/disabled accounts, t_dd9d99c9 password rotation).
+pub struct SessionState {
+    /// The row exists and is enabled. `is_active` defaults to true and is nullable on
+    /// `visitor_accounts`, so only an explicit `false` disables an account.
+    pub is_active: bool,
+    /// `users.sessions_valid_from` as a unix epoch: the instant this account last changed or reset
+    /// its password. `None` = never rotated, which is every account until it rotates once.
+    pub valid_from: Option<i64>,
+}
+
+/// Read the identity row a token's `sub` claim names.
+///
+/// TWO identity tables, because this app mints two shapes of session: staff/business/directory
+/// accounts are rows in `users`, while the business portal and the public entry points sign a
+/// shopper in as a `visitor` (`POST /visitor/login`, `sub = visitor_accounts.id`, `tid = nil`).
+/// Both are read here so neither kind of sign-in is broken; a `sub` that names no row in either
+/// table is `Ok(None)` — dead.
+///
+/// A `sub` that is not a uuid names no row, answered without a database round trip (`Ok(None)`).
+/// A database that cannot answer is `Err(AppError::Database)` — 500, never a silent pass.
+///
+/// Only `users` carries `sessions_valid_from`: `visitor_accounts` has no password writer (its hash
+/// is set once by INSERT at registration and never updated), so its arm contributes NULL.
+pub async fn session_state(db: &PgPool, sub: &str) -> Result<Option<SessionState>, AppError> {
+    let Ok(id) = Uuid::parse_str(sub) else {
+        return Ok(None);
+    };
+
+    let row: Option<(bool, Option<i64>)> = sqlx::query_as(
+        "SELECT COALESCE(is_active, true),
+                floor(EXTRACT(EPOCH FROM sessions_valid_from))::bigint
+           FROM users            WHERE id = $1
+         UNION ALL
+         SELECT COALESCE(is_active, true), NULL::bigint
+           FROM visitor_accounts WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+
+    Ok(row.map(|(is_active, valid_from)| SessionState {
+        is_active,
+        valid_from,
+    }))
+}
+
 /// Is the principal named by a token's `sub` claim still a live account?
 ///
-/// Kanban t_fb37dfc0 (the fleet class fixed on the sibling apps by t_53fcb666). A JWT is a
-/// bearer credential that `verify_token` accepts for its whole 24 h life on signature, `exp`,
-/// `iss` and `aud` alone — it never looks at the row it names. So deleting (or disabling) an
+/// A JWT is a bearer credential that `verify_token` accepts for its whole 24 h life on signature,
+/// `exp`, `iss` and `aud` alone — it never looks at the row it names. So deleting (or disabling) an
 /// account left its token working: measured 2026-10-20 on this app, `delete from users` and the
 /// same bearer still collected 200 from `/my-reviews`, `/admin/reports`, `/admin/reports/stats`,
 /// `/templates`, `/directories`, `/deals`, `/crm/deals` and `/admin/audience/overview` (only
 /// `/auth/me` noticed, because that handler re-reads the user itself).
 ///
-/// This is the ONE primary-key read that closes it, called from `routes::auth_guard` — the single
-/// boundary every private route already passes through — so the refusal lands on every method and
-/// on handlers that never touch `users` themselves.
-///
-/// TWO identity tables, because this app mints two shapes of session: staff/business/directory
-/// accounts are rows in `users`, while the business portal and the public entry points sign a
-/// shopper in as a `visitor` (`POST /visitor/login`, `sub = visitor_accounts.id`, `tid = nil`).
-/// Both are checked against `sub` so neither kind of sign-in is broken; a `sub` that names no row
-/// in either table is dead. `is_active` defaults to true and is nullable on `visitor_accounts`,
-/// so only an explicit `false` disables an account.
-///
-/// A `sub` that is not a uuid names no row (`Ok(false)`); a database that cannot answer is
-/// `Err(AppError::Database)` — 500, never a silent pass.
+/// (kanban t_fb37dfc0 — the liveness half of [`session_state`], which is what the boundaries read;
+/// this predicate survives only as the readable name for "does the row still exist".)
+#[cfg(test)]
 pub async fn principal_is_live(db: &PgPool, sub: &str) -> Result<bool, AppError> {
-    let Ok(id) = Uuid::parse_str(sub) else {
-        return Ok(false);
+    Ok(session_state(db, sub)
+        .await?
+        .map(|s| s.is_active)
+        .unwrap_or(false))
+}
+
+/// Does a session minted at `jwt_iat` predate the instant its account last changed or reset its
+/// password? (kanban t_dd9d99c9)
+///
+/// Pure, so both arms are unit-tested. `valid_from` is `users.sessions_valid_from` as a unix epoch
+/// (`None` = never restricted, so every token already in the wild keeps working). A session with no
+/// `iat` cannot prove it is newer than the change, and the safe answer for a credential is "cannot
+/// prove → refuse". `iat` is second-granularity (and the change's own timestamp is floored to a
+/// second for this reason), so a session minted in the SAME second as the change cannot be told
+/// apart from a re-login and is allowed.
+pub fn session_predates_password_change(jwt_iat: Option<i64>, valid_from: Option<i64>) -> bool {
+    match valid_from {
+        None => false,
+        Some(v) => match jwt_iat {
+            None => true,
+            Some(iat) => iat < v,
+        },
+    }
+}
+
+/// What a presented bearer token is worth right now.
+pub enum SessionVerdict {
+    /// The token is ours, it names a live account, and it was minted after that account's last
+    /// password change.
+    Live(Claims),
+    /// Refuse: bad signature/claims, no such account, disabled account, or a session minted
+    /// before the account's password change.
+    Dead,
+    /// The identity row could not be read (database unavailable). Never a pass, but not proof of
+    /// a dead session either — the caller must not mistake an outage for a revocation.
+    Unknown,
+}
+
+/// Verify a bearer token AND the session behind it.
+///
+/// This is the credential check used by [`crate::routes::session_gate`], which sits outside every
+/// route — the handlers on this app's public-but-personalising surface (`GET /reviews`,
+/// `GET /feed`, `/visitor/*`, `/bookmarks`, `/saved-places`, the RFQ/`/b2b` readers …) parse the
+/// `Authorization` header themselves and never pass through `auth_guard`, so a revocation checked
+/// only at that middleware would be a second door left open.
+///
+/// An API key (`md_…`) is NOT a session and must never be measured against `sessions_valid_from`;
+/// the gate skips those before calling this.
+pub async fn session_verdict(db: &PgPool, token: &str, secret: &str) -> SessionVerdict {
+    let Ok(claims) = verify_token(token, secret) else {
+        return SessionVerdict::Dead;
     };
 
-    let live: bool = sqlx::query_scalar(
-        "SELECT EXISTS (
-             SELECT 1 FROM users            WHERE id = $1 AND COALESCE(is_active, true)
-             UNION ALL
-             SELECT 1 FROM visitor_accounts WHERE id = $1 AND COALESCE(is_active, true)
-         )",
-    )
-    .bind(id)
-    .fetch_one(db)
-    .await?;
-
-    Ok(live)
+    match session_state(db, &claims.sub).await {
+        Ok(Some(state))
+            if state.is_active
+                && !session_predates_password_change(Some(claims.iat as i64), state.valid_from) =>
+        {
+            SessionVerdict::Live(claims)
+        }
+        Ok(_) => SessionVerdict::Dead,
+        Err(e) => {
+            tracing::error!("session state lookup failed for {}: {e}", claims.sub);
+            SessionVerdict::Unknown
+        }
+    }
 }
 
 #[cfg(test)]
 mod principal_liveness_tests {
-    use super::principal_is_live;
+    use super::{principal_is_live, session_predates_password_change};
 
     /// A `sub` that is not a uuid names no row — refused before any query is issued, so a
     /// hand-crafted/garbage claim costs no database round trip. `connect_lazy` never dials.
     #[tokio::test]
     async fn a_non_uuid_subject_names_no_account() {
         let db =
-            sqlx::PgPool::connect_lazy("postgres://user:pw@127.0.0.1:1/none").expect("lazy pool");
+            sqlx::PgPool::connect_lazy("postgres://user:***@127.0.0.1:1/none").expect("lazy pool");
         for sub in [
             "",
             "system",
@@ -87,6 +173,24 @@ mod principal_liveness_tests {
                 "{sub:?} must not resolve to an account"
             );
         }
+    }
+
+    /// kanban t_dd9d99c9 — both arms of the session-revocation predicate.
+    #[test]
+    fn a_session_is_refused_only_when_it_predates_the_password_change() {
+        // Never rotated: every token in the wild keeps working (additive change).
+        assert!(!session_predates_password_change(Some(1_000), None));
+        // Minted before the change: refused.
+        assert!(session_predates_password_change(Some(1_000), Some(2_000)));
+        // Minted in the SAME second as the change: allowed — `iat` is second-granularity, so a
+        // re-login and a pre-change session cannot be told apart.
+        assert!(!session_predates_password_change(Some(2_000), Some(2_000)));
+        // Minted after the change: allowed.
+        assert!(!session_predates_password_change(Some(3_000), Some(2_000)));
+        // A session that cannot prove when it was minted is refused when the account HAS rotated.
+        assert!(session_predates_password_change(None, Some(2_000)));
+        // …and is harmless when it never has.
+        assert!(!session_predates_password_change(None, None));
     }
 }
 

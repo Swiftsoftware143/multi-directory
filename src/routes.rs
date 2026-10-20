@@ -3411,13 +3411,17 @@ pub fn create_router(s: AppState) -> Router {
         // SPA fallback below is untouched -- it serves the SPA shell for every unmatched path,
         // which is this app's deliberate public surface.
         .route_layer(middleware::from_fn_with_state(s.clone(), auth_guard))
-        .with_state(s)
+        .with_state(s.clone())
         // Instrument every public HTML page (static pages, SPA fallback, renders) with the
         // visitor-tracking script. Blog and directory pages already do this themselves; this
         // covers everything else so a new page cannot ship untracked.
         .layer(axum::middleware::from_fn(
             crate::beacon_middleware::inject_tracking_beacon,
-        ));
+        ))
+        // kanban t_dd9d99c9 — OUTERMOST, so it sees every request before routing: the session
+        // behind a presented bearer token is verified once, here, instead of at each of the 28
+        // handlers that parse the header themselves (see `session_gate`).
+        .layer(middleware::from_fn_with_state(s, session_gate));
 
     app
 }
@@ -3536,18 +3540,120 @@ async fn auth_guard(
     // boundary every private route passes through, so a deleted or disabled account's bearer is
     // refused with 401 (exactly like an expired token) on every method, for handlers that never
     // touch `users` themselves. A database that cannot answer is a 500 from `?`, never a pass.
-    if !crate::auth::middleware::principal_is_live(&s.db, &claims.sub).await? {
-        warn!(
-            "AUTH_GUARD: refused path={} for deleted/disabled principal sub={}",
-            path, claims.sub
-        );
-        return Err(AppError::Unauthorized);
+    //
+    // Kanban t_dd9d99c9 — the SAME read now also returns the instant the account last changed or
+    // reset its password, so a session minted BEFORE that instant is refused here too. A password
+    // change used to revoke nothing: the token kept working for the rest of its 24 h.
+    //
+    // `session_gate` (the outermost layer, see below) already performed exactly this check for
+    // every request that carried a bearer token, and marked the request it validated — skip the
+    // duplicate primary-key read when that marker is present.
+    if !req.extensions().get::<SessionValidated>().is_some() {
+        match crate::auth::middleware::session_state(&s.db, &claims.sub).await? {
+            Some(state)
+                if state.is_active
+                    && !crate::auth::middleware::session_predates_password_change(
+                        Some(claims.iat as i64),
+                        state.valid_from,
+                    ) => {}
+            Some(state) => {
+                warn!(
+                    "AUTH_GUARD: refused path={} for dead/revoked session sub={} (active={} rotated={})",
+                    path,
+                    claims.sub,
+                    state.is_active,
+                    state.valid_from.is_some()
+                );
+                return Err(AppError::Unauthorized);
+            }
+            None => {
+                warn!(
+                    "AUTH_GUARD: refused path={} for deleted/disabled principal sub={}",
+                    path, claims.sub
+                );
+                return Err(AppError::Unauthorized);
+            }
+        }
     }
 
     // Insert claims into request extensions for handlers that need them
     req.extensions_mut().insert(claims);
 
     Ok(next.run(req).await)
+}
+
+/// Marker: [`session_gate`] already proved this request's bearer token names a live account whose
+/// password has not rotated since the token was minted. Set on the request's extensions; lets
+/// [`auth_guard`] skip the duplicate read. Never trusted from outside — it can only be inserted by
+/// a middleware in this process.
+#[derive(Clone, Copy, Debug)]
+pub struct SessionValidated;
+
+/// The OUTERMOST layer: verify the session behind ANY bearer token this request carries.
+///
+/// kanban t_dd9d99c9 — "second doors". `auth_guard` is a `route_layer`, so it only runs for routes
+/// that are NOT on the committed public allowlist (`security::route_policy`). But a large part of
+/// this app's surface is deliberately public *and* personalising: `GET /reviews` (a moderator's
+/// pending queue), `GET /feed`, `/visitor/favorites|follows|recommendations`, `/bookmarks`,
+/// `/saved-places`, `/my-bookings`, the `/b2b` and RFQ readers, `/quotes/broadcast` … Those
+/// handlers parse `Authorization` themselves with `verify_token` and ask only "is the signature
+/// good", so a revoked, deleted or disabled session would still collect 200 from them — and for
+/// `GET /reviews?status=pending` that is a moderator capability.
+///
+/// Census: `grep -rn 'verify_token(' src/` — 28 call sites outside `auth/middleware.rs`, across
+/// `handlers/{visitors,polls,feed,events,reviews,b2b,rfq,supplier,lead_sharing,coop,portal,public,
+/// bookings,sso,tenant_scope,onboarding_survey,listing_invite}.rs`. Rather than teach 28 handlers a
+/// new check (and leave the 29th to be written later), the check runs ONCE, outside every route:
+///
+///   * token is live  → keep the header, mark the request [`SessionValidated`];
+///   * token is dead  → REMOVE the `Authorization` header. Private routes then refuse 401 from
+///     `auth_guard` exactly as if no token had been sent, and public handlers simply read the
+///     request as anonymous — which is what a revoked session is. Their public behaviour (a
+///     listing page still renders) is preserved; only the personalisation/privilege is gone.
+///   * row unreadable → leave the header alone (an outage is not a revocation); the route's own
+///     `auth_guard`/handler surfaces the error.
+///
+/// An API key (`md_…`) is NOT a session: it is validated against its own row in `auth_guard` and
+/// must keep working after a password change, so it is skipped here.
+async fn session_gate(
+    State(s): State<AppState>,
+    mut req: axum::extract::Request,
+    next: middleware::Next,
+) -> axum::response::Response {
+    let presented = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
+    if let Some(raw) = presented {
+        let token = raw
+            .strip_prefix("Bearer ")
+            .unwrap_or(&raw)
+            .trim()
+            .to_string();
+        if !token.is_empty() && !token.starts_with("md_") {
+            match crate::auth::middleware::session_verdict(&s.db, &token, &s.config.jwt_secret)
+                .await
+            {
+                crate::auth::middleware::SessionVerdict::Live(claims) => {
+                    req.extensions_mut().insert(SessionValidated);
+                    req.extensions_mut().insert(claims);
+                }
+                crate::auth::middleware::SessionVerdict::Dead => {
+                    warn!(
+                        "SESSION_GATE: stripped a dead/revoked bearer on {} {}",
+                        req.method(),
+                        req.uri().path()
+                    );
+                    req.headers_mut().remove(axum::http::header::AUTHORIZATION);
+                }
+                crate::auth::middleware::SessionVerdict::Unknown => {}
+            }
+        }
+    }
+
+    next.run(req).await
 }
 
 /// Card B52 — role gate for PLATFORM-OPERATOR-ONLY routes.
