@@ -206,6 +206,17 @@ def main():
         st, _ = call("GET", path, tok_b)
         check(f"second live account GET {path} -> 200", st == 200, f"got {st}")
 
+    # ---- 3b. DISABLED (not deleted) is refused the same way ----
+    tok_d, uid_d, tid_d = register_user("-d", "Deleted Credential Probe D")
+    made_users.append(uid_d)
+    made_tenants.append(tid_d)
+    st, _ = call("GET", READS[0], tok_d)
+    check(f"live-but-doomed account GET {READS[0]} -> 200", st == 200, f"got {st}")
+    psql(f"update users set is_active = false where id = '{uid_d}'")
+    for path in READS[:3]:
+        st, _ = call("GET", path, tok_d)
+        check(f"disabled account GET {path} -> 401", st == 401, f"got {st}")
+
     # ---- 4. The other identity table: a visitor session is live, then deleted ----
     vt, vid = register_visitor("-v", "Deleted Credential Visitor")
     for path in READS[:3]:
