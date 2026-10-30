@@ -433,7 +433,7 @@ async function submitClaim() {
       let errMsg = 'Failed to submit claim. Please try again.';
       try {
         const errData = await resp.json();
-        errMsg = errData.error || errData.message || errMsg;
+        errMsg = errData.message || (typeof errData.error === 'string' ? errData.error : '') || errMsg;
       } catch(e) {}
       feedbackEl.innerHTML = `<p style="color:var(--orange);font-size:.82rem;margin-top:8px">❌ ${errMsg}</p>`;
     }

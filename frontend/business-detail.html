@@ -556,7 +556,7 @@ async function submitReport(e) {
       fb.innerHTML = '<div class="msg-success">✅ ' + esc(data.message || 'Thanks — a moderator will review this listing.') + '</div>';
       document.getElementById('reportForm').reset();
     } else {
-      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.error || data.message || 'Could not send the report — please try again.') + '</div>';
+      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.message || (typeof data.error === 'string' ? data.error : '') || 'Could not send the report — please try again.') + '</div>';
     }
   } catch (err) {
     fb.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
@@ -621,7 +621,7 @@ async function submitQuestion(e) {
       document.getElementById('qaForm').reset();
       loadQuestions(id);
     } else {
-      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.error || data.message || 'Could not post the question — please try again.') + '</div>';
+      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.message || (typeof data.error === 'string' ? data.error : '') || 'Could not post the question — please try again.') + '</div>';
     }
   } catch (err) {
     fb.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';
@@ -1379,7 +1379,7 @@ async function submitAppointment(e) {
       fb.innerHTML = '<div class="msg-success">✅ Appointment requested! The business will confirm it.</div>';
       document.getElementById('bookForm').reset();
     } else {
-      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.error || data.message || 'Could not send the request — please try again.') + '</div>';
+      fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.message || (typeof data.error === 'string' ? data.error : '') || 'Could not send the request — please try again.') + '</div>';
     }
   } catch (err) {
     fb.innerHTML = '<div class="msg-error">❌ Network error. Please try again.</div>';

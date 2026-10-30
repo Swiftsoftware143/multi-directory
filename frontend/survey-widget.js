@@ -369,7 +369,7 @@
         return;
       }
       // A rejection must be visible — silently closing would look like success.
-      var msg = (r.body && (r.body.error || r.body.message)) || ('Could not submit (' + r.status + ')');
+      var msg = (r.body && (r.body.message || (typeof r.body.error === 'string' ? r.body.error : ''))) || ('Could not submit (' + r.status + ')');
       errorBox.textContent = msg;
       errorBox.style.display = 'block';
       submitBtn.disabled = false;

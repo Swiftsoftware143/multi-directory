@@ -1068,7 +1068,7 @@ async function resolveReport(id,status){
   try{
     const r=await fetch('/api/v1/admin/reports/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:status,resolution_note:note})});
     const d=await r.json().catch(function(){return{};});
-    if(!r.ok){showToast((d&&(d.error||d.message))||'Could not update the report',true);return;}
+    if(!r.ok){showToast((d&&(d.message||(typeof d.error==='string'?d.error:'')))||'Could not update the report',true);return;}
     showToast('Report marked '+status);
     loadReports();
   }catch(e){showToast('Could not update the report',true);console.error(e);}
@@ -1116,7 +1116,7 @@ async function answerQuestionAdmin(id,action){
   try{
     const r=await fetch('/api/v1/admin/questions/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json().catch(function(){return{};});
-    if(!r.ok){showToast((d&&(d.error||d.message))||'Could not update the question',true);return;}
+    if(!r.ok){showToast((d&&(d.message||(typeof d.error==='string'?d.error:'')))||'Could not update the question',true);return;}
     showToast(action==='answer'?'Answer saved':('Question '+action));
     loadQuestionsAdmin();
   }catch(e){showToast('Could not update the question',true);console.error(e);}
@@ -1126,7 +1126,7 @@ async function deleteQuestionAdmin(id){
   try{
     const r=await fetch('/api/v1/admin/questions/'+encodeURIComponent(id),{method:'DELETE'});
     const d=await r.json().catch(function(){return{};});
-    if(!r.ok){showToast((d&&(d.error||d.message))||'Could not delete the question',true);return;}
+    if(!r.ok){showToast((d&&(d.message||(typeof d.error==='string'?d.error:'')))||'Could not delete the question',true);return;}
     showToast('Question deleted');
     loadQuestionsAdmin();
   }catch(e){showToast('Could not delete the question',true);console.error(e);}

@@ -507,7 +507,7 @@ async function processTransaction() {
       body:JSON.stringify(body)
     });
     var d = await r.json();
-    if(!r.ok) throw new Error(d.error||d.message||'Transaction failed');
+    if(!r.ok) throw new Error(d.message||(typeof d.error==='string'?d.error:'')||'Transaction failed');
 
     showSuccess(d);
   }catch(e){

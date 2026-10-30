@@ -121,7 +121,7 @@ password: document.getElementById('login-password').value
 })
 });
 var data = await res.json();
-if(!res.ok) throw new Error(data.error || data.message || 'Login failed');
+if(!res.ok) throw new Error(data.message || (typeof data.error === 'string' ? data.error : '') || 'Login failed');
 var token = data.access_token || data.token;
 if(token) localStorage.setItem('ws_dir_token', token);
 if(data.user) localStorage.setItem('ws_dir_user', JSON.stringify(data.user));
@@ -157,7 +157,7 @@ headers: {'Content-Type': 'application/json'},
 body: JSON.stringify(regBody)
 });
 var data = await res.json();
-if(!res.ok) throw new Error(data.error || data.message || 'Registration failed');
+if(!res.ok) throw new Error(data.message || (typeof data.error === 'string' ? data.error : '') || 'Registration failed');
 var token = data.access_token || data.token;
 if(token) localStorage.setItem('ws_dir_token', token);
 if(data.user) localStorage.setItem('ws_dir_user', JSON.stringify(data.user));
