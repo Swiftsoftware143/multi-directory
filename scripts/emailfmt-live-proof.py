@@ -91,10 +91,16 @@ ctrl_ok = st in (200, 201)
 st2, body2 = post("/api/v1/auth/login", {"email": CONTROL, "password": "ProbePass123!"})
 print(f"login    {CONTROL!r} -> {st2}  {body2[:60]}")
 
-# A stored account created long before this change must still RESOLVE (401 = the row was found and
-# the password check ran; the password itself is not known to this script).
-s, b = post("/api/v1/auth/login", {"email": "swiftsoftware143@yahoo.com", "password": "ProbePass123!"})
-print(f"pre-existing login swiftsoftware143@yahoo.com -> {s} (row found, wrong password)")
+# A stored account created long before this change must still LOG IN. `biz@test.com` is the app's own
+# demo login fixture (test data, not a customer credential; scripts/item18-testdata-cleanup.py reserves
+# it for exactly this), and its argon2 hash predates this change. Also assert that the OWNER account
+# still RESOLVES: without its password the best available proof is 401 (row found, password check ran)
+# rather than a 422/404 that would mean the address itself was refused.
+s, b = post("/api/v1/auth/login", {"email": "biz@test.com", "password": "test123"})
+print(f"pre-existing login biz@test.com -> {s} ({'logged in' if s == 200 else 'FAILED'})")
+s2, b2 = post("/api/v1/auth/login", {"email": "swiftsoftware143@yahoo.com", "password": "ProbePass123!"})
+print(f"owner row resolves swiftsoftware143@yahoo.com -> {s2} (401 = found, password unknown to this script)")
+pre_existing_ok = s == 200 and s2 == 401
 
 # The fleet canary rows carry a sentinel, unparseable password_hash. They used to answer 500
 # "Password hashing error" here — an anonymous caller learned which accounts were damaged.
@@ -128,6 +134,7 @@ ok = (
     all(results[a] == 422 for a in BAD)
     and ctrl_ok
     and st2 == 200
+    and pre_existing_ok
     and all(s == 401 for s in damaged.values())
     and u1 == u0 and v1 == v0 and t1 == t0
 )
