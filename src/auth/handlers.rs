@@ -196,8 +196,6 @@ pub async fn login(
     State(s): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    use argon2::{Argon2, PasswordHash, PasswordVerifier};
-
     // Try users table first, then fall back to visitor_accounts
     use sqlx::Row;
 
@@ -270,13 +268,13 @@ pub async fn login(
         return Err(AppError::Forbidden("Account is deactivated".to_string()));
     }
 
-    // Verify password
-    let parsed_hash =
-        PasswordHash::new(&user.password_hash).map_err(|e| AppError::Hash(e.to_string()))?;
-    let argon2 = Argon2::default();
-    argon2
-        .verify_password(req.password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::InvalidCredentials)?;
+    // Verify password. ONE failure mode: a wrong password AND a stored hash that cannot be parsed
+    // both answer "invalid credentials". This line used to map a parse failure to
+    // `AppError::Hash`, so a damaged row answered `500 Password hashing error` to an anonymous
+    // caller and told it which accounts were broken (measured live 2026-10-30).
+    if !crate::security::password_check::matches(&user.password_hash, &req.password) {
+        return Err(AppError::InvalidCredentials);
+    }
 
     // Update last_login. `table` is one of two hardcoded names, so the statement is one of two
     // COMPLETE compile-time literals — no statement text is built at run time (gate rule 5d).
@@ -422,7 +420,7 @@ pub async fn change_password(
 ) -> ApiResult<impl IntoResponse> {
     use argon2::{
         password_hash::{rand_core::OsRng, SaltString},
-        Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
+        Argon2, PasswordHasher,
     };
 
     if req.new_password.len() < 6 {
@@ -442,13 +440,10 @@ pub async fn change_password(
     use sqlx::Row;
     let password_hash: String = row.try_get("password_hash")?;
 
-    // Verify current password
-    let parsed_hash =
-        PasswordHash::new(&password_hash).map_err(|e| AppError::Hash(e.to_string()))?;
-    let argon2 = Argon2::default();
-    argon2
-        .verify_password(req.current_password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::InvalidCredentials)?;
+    // Verify current password. A stored hash that cannot be parsed is a refusal, not a 500.
+    if !crate::security::password_check::matches(&password_hash, &req.current_password) {
+        return Err(AppError::InvalidCredentials);
+    }
 
     // Hash new password
     let salt = SaltString::generate(&mut OsRng);

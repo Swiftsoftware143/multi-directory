@@ -575,8 +575,6 @@ pub async fn visitor_login(
     State(s): State<AppState>,
     Json(req): Json<VisitorLoginRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    use argon2::{Argon2, PasswordHash, PasswordVerifier};
-
     if req.email.is_empty() || req.password.is_empty() {
         return Err(AppError::Validation(
             "Email and password are required".to_string(),
@@ -602,13 +600,11 @@ pub async fn visitor_login(
         return Err(AppError::Forbidden("Account is deactivated".to_string()));
     }
 
-    // Verify password
-    let parsed_hash =
-        PasswordHash::new(&visitor.password_hash).map_err(|e| AppError::Hash(e.to_string()))?;
-    let argon2 = Argon2::default();
-    argon2
-        .verify_password(req.password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::InvalidCredentials)?;
+    // Verify password. A stored hash that cannot be parsed is a refusal, not a 500 (measured live
+    // 2026-10-30: a visitor row with a sentinel hash answered 500 at this endpoint).
+    if !crate::security::password_check::matches(&visitor.password_hash, &req.password) {
+        return Err(AppError::InvalidCredentials);
+    }
 
     // Update last_login
     sqlx::query("UPDATE visitor_accounts SET last_login_at = NOW() WHERE id = $1")

@@ -91,10 +91,21 @@ ctrl_ok = st in (200, 201)
 st2, body2 = post("/api/v1/auth/login", {"email": CONTROL, "password": "ProbePass123!"})
 print(f"login    {CONTROL!r} -> {st2}  {body2[:60]}")
 
-# Pre-existing account (created 2026-08-11, long before this change) must still log in.
-for pre in ("swiftsoftware143@yahoo.com", "probe-canary-a@swiftsoftware.dev"):
-    s, b = post("/api/v1/auth/login", {"email": pre, "password": "ProbePass123!"})
-    print(f"pre-existing login {pre} -> {s} {'OK' if s == 200 else 'no-known-pw'}")
+# A stored account created long before this change must still RESOLVE (401 = the row was found and
+# the password check ran; the password itself is not known to this script).
+s, b = post("/api/v1/auth/login", {"email": "swiftsoftware143@yahoo.com", "password": "ProbePass123!"})
+print(f"pre-existing login swiftsoftware143@yahoo.com -> {s} (row found, wrong password)")
+
+# The fleet canary rows carry a sentinel, unparseable password_hash. They used to answer 500
+# "Password hashing error" here — an anonymous caller learned which accounts were damaged.
+damaged = {}
+for path, addr in (
+    ("/api/v1/auth/login", "probe-canary-a@swiftsoftware.dev"),
+    ("/api/v1/visitor/login", "probe-canary-b@swiftsoftware.dev"),
+):
+    s, b = post(path, {"email": addr, "password": "ProbePass123!"})
+    damaged[path] = s
+    print(f"damaged-hash login {path} {addr} -> {s} (must be 401, never 500)")
 
 # The visitor boundary shares the module.
 st, body = post("/api/v1/visitor/register",
@@ -117,6 +128,7 @@ ok = (
     all(results[a] == 422 for a in BAD)
     and ctrl_ok
     and st2 == 200
+    and all(s == 401 for s in damaged.values())
     and u1 == u0 and v1 == v0 and t1 == t0
 )
 print("VERDICT:", "PASS" if ok else "FAIL")
