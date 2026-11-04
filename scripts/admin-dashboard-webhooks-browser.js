@@ -33,6 +33,11 @@ const TS = Date.now();
 const TAG = 'zz-wh-screen-' + TS;
 const SECRET = 'wh-screen-secret-' + TS;
 
+// The screenshot directory may not exist on a fresh run; Chrome refuses to write into a missing
+// path and the throw aborts the WHOLE proof (item 9 passes, then item 8 is never reached).
+// Create it up front — same defect already fixed for the item-7 screen proof.
+fs.mkdirSync(SHOT, { recursive: true });
+
 let fails = 0;
 const check = (n, ok, d) => {
   console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${n}${d !== undefined ? ' :: ' + d : ''}`);
