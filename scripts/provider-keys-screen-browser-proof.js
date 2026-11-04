@@ -30,6 +30,11 @@ const crypto = require('crypto');
 
 const ADMIN = process.env.ADMIN_URL || 'http://127.0.0.1:8089/admin-panel.html';
 const SHOT = process.env.SHOT_DIR || '/tmp';
+// The proof screenshots its own steps; a caller-supplied SHOT_DIR (e.g. /opt/swift/audits/<card>)
+// may not exist yet, and page.screenshot() does not create parents — it throws ENOENT mid-flow
+// and the whole run reports FAIL after the checks it had already passed (measured 2026-11-04).
+fs.mkdirSync(SHOT, { recursive: true });
+
 const ENV_FILE = '/etc/swift/env/multi-directory.env';
 const LIVE = 'mailgun';                       // the operator's real credential — never mutated here
 const FAKE = 'key-zzscreenproof-' + Date.now();
