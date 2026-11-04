@@ -88,9 +88,14 @@ def json_of(txt):
         return None
 
 
-def run_browser(cities, expected):
+def run_browser(cities, expected, tag=None):
+    """Run the browser arm. Each invocation writes browser-proof.json + screenshots into its
+    OWN directory, so the later single-city probes cannot overwrite the full 10-city evidence."""
+    run_aud = os.path.join(AUD, tag) if tag else AUD
+    if run_aud != AUD:
+        os.makedirs(run_aud, exist_ok=True)
     env = dict(os.environ, MD_BASE=BASE, CITIES=json.dumps(cities), HQ=expected,
-               AUD=AUD, NODE_PATH=NODE_PATH)
+               AUD=run_aud, NODE_PATH=NODE_PATH)
     r = sh("node", BROWSER, env=env)
     return json_of(r.stdout)
 
@@ -122,7 +127,7 @@ def main():
           not api_bad, f"{len(cities)} cities" + (f" WRONG: {api_bad}" if api_bad else ""))
 
     # ── Browser arm: every city page shows it on screen ──
-    out = run_browser(cities, original)
+    out = run_browser(cities, original, tag="all-cities")
     check("the real city pages answered", bool(out), "")
     if not out:
         return finish()
@@ -150,7 +155,7 @@ def main():
         check("a NEW Headquarters value is accepted by the admin endpoint",
               after.get("headquarters") == probe, repr(after.get("headquarters")))
 
-        pout = run_browser([cities[0]], probe)
+        pout = run_browser([cities[0]], probe, tag="probe-new-value")
         ptext = ((pout or {}).get("cities", {}).get(cities[0], {}) or {}).get("text", "")
         check("the city page shows the NEW value (so it is NOT hardcoded)",
               probe in ptext, f"{cities[0]} -> {ptext!r}")
@@ -162,7 +167,7 @@ def main():
         check("the original Headquarters value is restored",
               back.get("headquarters") == original, repr(back.get("headquarters")))
 
-    rout = run_browser([cities[0]], original)
+    rout = run_browser([cities[0]], original, tag="restored-original")
     rtext = ((rout or {}).get("cities", {}).get(cities[0], {}) or {}).get("text", "")
     check("the city page shows the ORIGINAL value again", original in rtext, repr(rtext))
 
@@ -181,7 +186,11 @@ def main():
             "3. NOT hardcoded — writing `HQ Probe City, TS` through the real admin endpoint\n"
             "   (`PATCH /api/v1/zaarhub/admin/config`) changed what the city page showed, and\n"
             "   restoring the stored value brought the original back.\n\n"
-            f"RESULTS: {'PASS' if not FAILS else 'FAIL ' + str(FAILS)}\n")
+            f"RESULTS: {'PASS' if not FAILS else 'FAIL ' + str(FAILS)}\n\n"
+            "Evidence files (each browser arm has its own directory so nothing is overwritten):\n"
+            f"- all {len(cities)} city pages: `all-cities/browser-proof.json` + `all-cities/city-*.png`\n"
+            "- the not-hardcoded probe: `probe-new-value/browser-proof.json`\n"
+            "- the restored value: `restored-original/browser-proof.json`\n")
     return finish()
 
 
