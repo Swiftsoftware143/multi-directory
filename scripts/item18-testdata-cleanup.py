@@ -228,20 +228,23 @@ bk_dir = os.path.join(AUD, "fake-records-backup")
 os.makedirs(bk_dir, exist_ok=True)
 
 
-def backup_and_delete(table, where):
+def backup_and_delete(table, where, tag=""):
     n_before = int(psql(f"SELECT count(*) FROM {table} WHERE {where}")[0])
+    fname = ""
     if n_before:
         r = sh("docker", "exec", "-e", f"PGPASSWORD={PW}", "swift-postgres", "psql", "-U", "swift",
                "-d", "multi_directory", "-c",
                f"COPY (SELECT * FROM {table} WHERE {where}) TO STDOUT WITH CSV HEADER")
-        with open(os.path.join(bk_dir, f"{table}.csv"), "w") as f:
+        # `tag` keeps a loop over N targets from overwriting the previous target's backup.
+        fname = f"{table}{'-' + tag if tag else ''}.csv"
+        with open(os.path.join(bk_dir, fname), "w") as f:
             f.write(r.stdout)
         psql("BEGIN")
         psql(f"DELETE FROM {table} WHERE {where}")
         psql("COMMIT")
     n_after = int(psql(f"SELECT count(*) FROM {table} WHERE {where}")[0])
     check(n_after == 0, f"fake test records cleared from {table}",
-          f"{n_before} -> {n_after} (backup in fake-records-backup/{table}.csv)")
+          f"{n_before} -> {n_after} (backup in fake-records-backup/{fname if n_before else '-'})")
     return n_before
 
 
@@ -251,6 +254,60 @@ for _t, _pred, _cols in PROBE_RECORDS:
     for _c in _cols:
         _where += f" AND coalesce({_c}::text,'') !~* '{PROTECTED}'"
     cleaned += backup_and_delete(_t, _where)
+
+# ---- 6d. admin SIGNUP fixtures: a leftover tenant and its admin user -------------------------
+# The sweep in section 1 only covers `visitor_accounts`. A probe that drives the ADMIN signup
+# form leaves a full admin identity PLUS its own tenant on the live database, which no arm above
+# touched (measured 2026-11-04: t1@example.com and t2@example.com, tenants "T's Directory"
+# slug `t` / `t-2`, created by a harness run after the previous sweep). An account is removed
+# ONLY when it owns nothing anywhere AND its tenant holds exactly one user and zero
+# tenant-scoped rows. biz@test.com is the app's own smoke fixture and stays out of scope.
+ADMIN_KEEP = {"biz@test.com"} | KEEP
+USER_REFS = [
+    ("account_links", "user_id"), ("ad_schedules", "created_by"), ("api_keys", "user_id"),
+    ("author_profiles", "user_id"), ("businesses", "owner_id"),
+    ("claimed_businesses", "user_id"), ("community_events", "created_by"),
+    ("connected_services", "user_id"), ("directories", "owner_id"),
+    ("listing_invites", "created_by"), ("networks", "owner_id"),
+    ("password_resets", "user_id"), ("polls", "created_by"), ("reviews", "user_id"),
+    ("settlement_runs", "created_by"), ("supplier_prospect_outreach", "created_by"),
+    ("supplier_prospects", "created_by"), ("webhooks", "user_id"),
+]
+TENANT_SCOPED = [
+    "api_keys", "directory_events", "provider_keys", "tag_rules", "tracked_links",
+    "webhooks", "city_pages", "zaarhub_legal_pages", "zaarhub_site_config",
+]
+
+_admin_cand = rows(f"""SELECT id, email, coalesce(tenant_id::text,'') FROM users
+                       WHERE email ~* '@(test\\.com|x\\.com|example\\.com)$'
+                         AND created_at < now() - interval '{MIN_AGE_SECONDS} seconds'
+                       ORDER BY email""")
+adm_targets = []
+for _uid, _email, _tid in _admin_cand:
+    if _email.lower() in ADMIN_KEEP or not _tid:
+        continue
+    _owns = sum(int(psql(f"SELECT count(*) FROM {t} WHERE {c} = '{_uid}'::uuid")[0] or 0)
+                for t, c in USER_REFS)
+    _others = int(psql(f"SELECT count(*) FROM users WHERE tenant_id = '{_tid}'::uuid "
+                       f"AND id <> '{_uid}'::uuid")[0] or 0)
+    _tdata = sum(int(psql(f"SELECT count(*) FROM {t} WHERE tenant_id = '{_tid}'::uuid")[0] or 0)
+                 for t in TENANT_SCOPED)
+    if _owns == 0 and _others == 0 and _tdata == 0:
+        adm_targets.append((_uid, _email, _tid))
+
+print(f"  leftover admin signup fixtures: {len(adm_targets)} :: "
+      f"{', '.join(e for _, e, _ in adm_targets) if adm_targets else '-'}")
+for _uid, _email, _tid in adm_targets:
+    _tag = _email.split("@")[0].replace("/", "_")
+    backup_and_delete("users", f"id = '{_uid}'::uuid", _tag)
+    backup_and_delete("tenants", f"id = '{_tid}'::uuid", _tag)
+    _resid = (int(psql(f"SELECT count(*) FROM users WHERE id = '{_uid}'::uuid")[0])
+              + int(psql(f"SELECT count(*) FROM tenants WHERE id = '{_tid}'::uuid")[0]))
+    check(_resid == 0, f"leftover admin fixture removed ({_email})", f"rows={_resid}")
+if not adm_targets:
+    check(True, "no leftover admin signup fixtures on the live database", "0")
+_kept_fixture = int(psql("SELECT count(*) FROM users WHERE email = 'biz@test.com'")[0] or 0)
+check(_kept_fixture == 1, "the app's own smoke fixture is untouched", f"biz@test.com={_kept_fixture}")
 
 # probe TRAFFIC: the analytics rows the probe browsers wrote while walking the site
 _vs_where = (f"landing_page ~* '{V_URL}' OR entry_url ~* '{V_URL}'"
