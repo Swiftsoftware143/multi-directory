@@ -184,6 +184,11 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ),
     (
         "GET",
+        "/directories/:slug/businesses/:business_id/reviews",
+        "public-business-reviews",
+    ),
+    (
+        "GET",
         "/directories/:slug/businesses/:business_id/available-slots",
         "available-slots",
     ),
@@ -558,6 +563,7 @@ mod tests {
             "/p/trap-door",
             "/l/abc123",
             "/zaarhub-sitemap.xml",
+            "/directories/palm-bay/businesses/12345678-1234-1234-1234-123456789012/reviews",
         ] {
             assert!(pub_route("GET", p), "{} must be public", p);
         }
@@ -575,6 +581,11 @@ mod tests {
         // A guarded router must not be widened by the prefix form.
         assert!(!pub_route("GET", "/api/v1/admin/members"));
         assert!(!pub_route("POST", "/api/v1/pipeline/ingest"));
+        // ...and the moderated review queue must stay private while the public listing route
+        // (approved reviews only, reviewer email stripped) is readable by a signed-out visitor.
+        // `GET /reviews` itself stays public, but the handler forces status=approved for an
+        // untrusted caller (see list_reviews), so a pending queue is never served anonymously.
+        assert!(!pub_route("POST", "/reviews"));
     }
 
     #[test]
@@ -750,10 +761,13 @@ mod tests {
         // (GET /directories/:slug/branding, the sector landing pages' brand colours --
         // presentation data only, the directory row itself stays private); if this
         // changes, the census wants a look.
+        // plus the public business review list (GET /directories/:slug/businesses/:id/reviews —
+        // the endpoint guide.html documents; approved rows only, reviewer address stripped);
+        // if this changes, the census wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            163,
-            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding)"
+            164,
+            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews)"
         );
     }
 }

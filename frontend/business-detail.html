@@ -687,10 +687,17 @@ async function loadBusiness() {
     if (!bizResp.ok) throw new Error('Not found');
     bizData = await bizResp.json();
 
-    // Fetch this business's approved reviews. The public GET /api/v1/reviews is
-    // paginated ({data:[...]}) and now honours a business_id + status filter.
+    // Fetch this business's approved reviews. Preferred: the dedicated public route (approved
+    // reviews only, reviewer address stripped) that guide.html documents. Fall back to the
+    // business-scoped filter on /reviews, which forces status=approved for a signed-out caller.
     try {
-      const revResp = await fetch(`/api/v1/reviews?status=approved&business_id=${encodeURIComponent(id)}&per_page=50`);
+      const dirSlug = (bizData && bizData.directory_slug) || slug || 'z';
+      let revResp = await fetch('/api/v1/directories/' + encodeURIComponent(dirSlug) +
+        '/businesses/' + encodeURIComponent(id) + '/reviews?per_page=50');
+      if (!revResp.ok) {
+        revResp = await fetch('/api/v1/reviews?status=approved&business_id=' +
+          encodeURIComponent(id) + '&per_page=50');
+      }
       if (revResp.ok) {
         const rd = await revResp.json();
         reviews = Array.isArray(rd) ? rd : (rd && Array.isArray(rd.data) ? rd.data : []);

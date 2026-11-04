@@ -188,19 +188,17 @@ pub async fn business_profile(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // Find claimed businesses for this user_id OR owner_email
-    // We need the user's email from the claims (or from visitor_accounts lookup)
-    let visitor_email: Option<String> =
-        sqlx::query_scalar("SELECT email FROM visitor_accounts WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(&s.db)
-            .await?
-            .flatten();
+    // The public claim route records the owner's EMAIL only, so the email is the link between a
+    // claimed listing and its owner. Resolve it from whichever identity table holds the account:
+    // `/auth/login` prefers `users` (where every business-portal signup lands), so reading
+    // `visitor_accounts` alone hid the listing from exactly the owners this portal creates.
+    let visitor_email: Option<String> = crate::owner_identity::caller_email(&s.db, user_id).await?;
 
     let claims_rows = sqlx::query_as::<_, ClaimedBusinessRow>(
         r#"SELECT id, business_id, owner_email, owner_name, owner_phone, user_id, is_active, created_at
            FROM claimed_businesses
            WHERE user_id = $1
-              OR ($2 IS NOT NULL AND owner_email = $2)
+              OR ($2 IS NOT NULL AND lower(owner_email) = lower($2))
            ORDER BY created_at DESC"#
     )
     .bind(user_id)

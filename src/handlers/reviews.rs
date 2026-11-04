@@ -752,7 +752,11 @@ pub async fn respond_to_review(
 /// "You can only moderate reviews of a business you own." (403) — measured 2026-10-14 with a claim
 /// minted by the real claim route. The email branch therefore matches ONLY a claim that carries no
 /// account id, so a claim already linked to somebody else can never be shadowed by an email match.
+/// The email is resolved through `owner_identity::caller_email`, not from `visitor_accounts`
+/// alone: `/auth/login` prefers `users`, which is where a business-portal signup lands, so the
+/// single-table lookup denied ownership to the very accounts the portal creates (2026-11-04).
 async fn owned_by(db: &sqlx::PgPool, business_id: Uuid, uid: Uuid) -> Result<i64, AppError> {
+    let email = crate::owner_identity::caller_email(db, uid).await?;
     let owns: i64 = sqlx::query_scalar(
         r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
                 + (SELECT COUNT(*) FROM claimed_businesses c
@@ -761,11 +765,12 @@ async fn owned_by(db: &sqlx::PgPool, business_id: Uuid, uid: Uuid) -> Result<i64
                            c.visitor_account_id = $2
                         OR c.user_id = $2
                         OR (c.visitor_account_id IS NULL AND c.user_id IS NULL
-                            AND lower(c.owner_email) = (SELECT lower(email) FROM visitor_accounts WHERE id = $2))
+                            AND lower(c.owner_email) = lower($3))
                       ))"#,
     )
     .bind(business_id)
     .bind(uid)
+    .bind(email)
     .fetch_one(db)
     .await?;
     Ok(owns)
@@ -834,6 +839,7 @@ pub async fn business_pending_reviews(
 ) -> ApiResult<impl IntoResponse> {
     let uid = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::Forbidden("Sign in to see pending reviews".to_string()))?;
+    let email = crate::owner_identity::caller_email(&s.db, uid).await?;
 
     let rows = sqlx::query_as::<_, Review>(
         r#"SELECT r.* FROM reviews r
@@ -851,15 +857,18 @@ pub async fn business_pending_reviews(
                                 -- so it records the owner's EMAIL only. Same email branch (and the
                                 -- same "no account id" guard) as `owned_by`, or this counter reports
                                 -- "No reviews awaiting a reply" while the owner's list shows the
-                                -- review (measured 2026-10-14).
+                                -- review (measured 2026-10-14). Resolved through
+                                -- `owner_identity::caller_email` so `users`-table accounts (every
+                                -- business-portal signup) match too (2026-11-04).
                                 OR (c.visitor_account_id IS NULL AND c.user_id IS NULL
-                                    AND lower(c.owner_email) = (SELECT lower(email) FROM visitor_accounts WHERE id = $1))
+                                    AND lower(c.owner_email) = lower($2))
                               ))
              )
            ORDER BY r.created_at DESC
            LIMIT 200"#,
     )
     .bind(uid)
+    .bind(email)
     .fetch_all(&s.db)
     .await?;
 
