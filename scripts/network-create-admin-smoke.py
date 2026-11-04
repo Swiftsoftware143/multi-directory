@@ -46,6 +46,7 @@ import re
 import subprocess
 import sys
 import time
+import types
 
 BASE = os.environ.get("MD_BASE", "http://127.0.0.1:8089")
 APP = "/opt/swift/apps/multi-directory"
@@ -274,11 +275,40 @@ def main():
 
     # ---- the SCREEN itself (real browser, the page's own controls) -----------
     chrome = os.environ.get("CHROME_PATH", "/usr/bin/chromium-browser")
+    console_tenant, console_marked = "", False   # captured while the browser walk is live
     try:
         env = dict(os.environ, MD_BASE=BASE, TOKEN=tok, AUD=AUD, MD_HARNESS=HARNESS,
                    PROBE_NAME="zz builds item 13 probe", PROBE_SLUG=probe_slug,
                    PROBE_ROOT=probe_root, NODE_PATH=NODE_PATH, CHROME_PATH=chrome)
-        r = sh("node", BROWSER, env=env, timeout=300)
+        # The console walk CREATES a network and then DELETES it on screen, and the delete now
+        # de-provisions its CoreSwift workspace. So the workspace only exists for the middle of the
+        # walk: sample the DB while the browser is still running, instead of reading it afterwards
+        # (that race made this proof report a false FAIL, measured 2026-11-04).
+        outf = os.path.join(AUD, "browser.out")
+        errf = os.path.join(AUD, "browser.err")
+        with open(outf, "w") as fo, open(errf, "w") as fe:
+            proc = subprocess.Popen(["node", BROWSER], env=env, stdout=fo, stderr=fe, text=True)
+            deadline = time.time() + 300
+            while proc.poll() is None and time.time() < deadline:
+                if not console_tenant:
+                    console_tenant = one(
+                        f"SELECT COALESCE(coreswift_tenant_id::text,'') FROM networks "
+                        f"WHERE slug='{probe_slug}'") or ""
+                if console_tenant and not console_marked:
+                    console_marked = any(
+                        "zz builds item 13 probe" in rec.split("|", 1)[0]
+                        and rec.split("|", 1)[1] == HARNESS
+                        for rec in cs_workspace_markers())
+                if console_tenant and console_marked:
+                    break
+                time.sleep(0.3)
+            try:
+                proc.wait(timeout=max(1, int(deadline - time.time()) + 5))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        r = types.SimpleNamespace(
+            stdout=open(outf).read() if os.path.exists(outf) else "",
+            stderr=open(errf).read() if os.path.exists(errf) else "")
         proof_path = os.path.join(AUD, "networks-proof.json")
         proof = json.load(open(proof_path)) if os.path.exists(proof_path) else {}
         if not proof.get("checks"):
@@ -302,14 +332,15 @@ def main():
             if any("zz builds item 13 probe" in rec.split("|", 1)[0] for rec in rows):
                 break
             time.sleep(0.5)
-        names = [rec.split("|", 1)[0] for rec in rows]
-        console_minted = any("zz builds item 13 probe" in n for n in names)
         check("both harness paths minted a CoreSwift workspace",
-              bool(api_ws_id) and console_minted,
-              f"api_tenant={api_ws_id or '-'} console={rows}")
-        check("every minted CoreSwift workspace carries the harness marker",
-              api_ws_marked and bool(rows)
-              and all(rec.split("|", 1)[1] == HARNESS for rec in rows), str(rows))
+              bool(api_ws_id) and bool(console_tenant),
+              f"api_tenant={api_ws_id or '-'} console_tenant={console_tenant or '-'}")
+        if rows:
+            check("the CoreSwift workspace still on the box carries the harness marker",
+                  all(rec.split("|", 1)[1] == HARNESS for rec in rows), str(rows))
+        else:
+            check("the console-created workspace carried the harness marker while it existed",
+                  console_marked, f"console_marked={console_marked}")
         check("CoreSwift queued no mail to a probe address", cs_outbound() == "0",
               f"outbound={cs_outbound()}")
 
