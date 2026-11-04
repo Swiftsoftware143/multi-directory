@@ -1234,7 +1234,7 @@ async fn build_newsletter_render(
     let deals_included = n.include_deals.unwrap_or(true);
     if deals_included {
         let deals: Vec<(Uuid, String, Option<String>, Option<String>, Option<i32>, String, bool)> = sqlx::query_as(
-            "SELECT id, title, description, deal_price, discount_percent, status, featured FROM deals WHERE directory_id = $1 AND status = 'active' ORDER BY featured DESC, created_at DESC LIMIT 5"
+            "SELECT id, title, description, deal_price, discount_percent, status, featured FROM deals WHERE directory_id = $1 AND status = 'active' AND (start_date IS NULL OR start_date <= NOW()) AND (end_date IS NULL OR end_date >= NOW()) ORDER BY featured DESC, created_at DESC LIMIT 5"
         )
         .bind(n.directory_id)
         .fetch_all(&s.db)

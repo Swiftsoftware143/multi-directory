@@ -163,7 +163,7 @@ pub async fn list_deals(
 /// GET /api/v1/deals/featured — featured deals across all directories
 pub async fn list_featured_deals(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE featured = true AND status = 'active' ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE featured = true AND status = 'active' AND (start_date IS NULL OR start_date <= NOW()) AND (end_date IS NULL OR end_date >= NOW()) ORDER BY created_at DESC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -397,6 +397,27 @@ pub async fn claim_deal(
     .await?
     .ok_or_else(|| AppError::NotFound("Deal not found".into()))?;
 
+    if deal.status.as_deref() != Some("active") {
+        return Err(AppError::BadRequest(
+            "This deal is no longer available".into(),
+        ));
+    }
+
+    // A deal is only claimable inside its own validity window. The public listings hide ended
+    // deals, but the id is public, so without this check an expired coupon could still be
+    // claimed (and its redemption counter bumped) straight from the API.
+    let now = Utc::now();
+    if let Some(start) = deal.start_date {
+        if start > now {
+            return Err(AppError::BadRequest("This deal has not started yet".into()));
+        }
+    }
+    if let Some(end) = deal.end_date {
+        if end < now {
+            return Err(AppError::BadRequest("This deal has expired".into()));
+        }
+    }
+
     if let Some(limit) = deal.redemption_limit {
         let count = deal.redemption_count.unwrap_or(0);
         if count >= limit {
@@ -444,7 +465,7 @@ pub async fn list_directory_deals(
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
     let deals = sqlx::query_as::<_, Deal>(
-        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE directory_id = \x241 ORDER BY created_at DESC "
+        "SELECT id, title, description, original_price, deal_price, discount_percent, currency, image_url, terms, fine_print, redemption_limit, redemption_count, status, directory_id, business_id, start_date, end_date, featured, zaarhub_featured, deal_type, coupon_code, page_template, accent_color, cta_color, cta_text, show_timer, gallery_images, rotation_schedule, rotation_order, premium_features, redemption_type, booking_url, show_qr, per_user_limit, highlights, created_at, updated_at FROM deals WHERE directory_id = \x241 AND status = 'active' AND (start_date IS NULL OR start_date <= NOW()) AND (end_date IS NULL OR end_date >= NOW()) ORDER BY created_at DESC "
     )
     .bind(dir.0)
     .fetch_all(&s.db)
@@ -495,12 +516,37 @@ pub async fn redeem_deal(
     // redemptions remain allowed: this endpoint is public by design.
     let visitor_id =
         crate::handlers::visitors::extract_visitor_id_optional(&headers, &s.config.jwt_secret);
-    let business_id: Option<Uuid> =
-        sqlx::query_scalar::<_, Option<Uuid>>("SELECT business_id FROM deals WHERE id = $1")
+    // The redemption id is public, so the deal's own validity has to be checked here as well as
+    // in the listings: an ended (or not-yet-started) deal must never mint a redemption code, and
+    // a bogus id must not create a redemption row with a NULL business.
+    let deal_state: Option<(
+        Option<String>,
+        Option<DateTime<Utc>>,
+        Option<DateTime<Utc>>,
+        Uuid,
+    )> =
+        sqlx::query_as("SELECT status, start_date, end_date, business_id FROM deals WHERE id = $1")
             .bind(id)
             .fetch_optional(&s.db)
-            .await?
-            .flatten();
+            .await?;
+    let (status, start_date, end_date, business_id) =
+        deal_state.ok_or_else(|| AppError::NotFound("Deal not found".into()))?;
+    if status.as_deref() != Some("active") {
+        return Err(AppError::BadRequest(
+            "This deal is no longer available".into(),
+        ));
+    }
+    let now = Utc::now();
+    if let Some(start) = start_date {
+        if start > now {
+            return Err(AppError::BadRequest("This deal has not started yet".into()));
+        }
+    }
+    if let Some(end) = end_date {
+        if end < now {
+            return Err(AppError::BadRequest("This deal has expired".into()));
+        }
+    }
 
     let redemption = sqlx::query_as::<_, (Uuid, String)>(
         "INSERT INTO deal_redemptions (id, deal_id, visitor_id, business_id, redemption_code, status)

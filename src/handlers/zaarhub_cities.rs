@@ -468,7 +468,9 @@ pub async fn search_listings(
          JOIN businesses b ON b.id = de.business_id \
          JOIN directories d ON d.id = b.directory_id \
          LEFT JOIN directory_categories dc ON dc.id = b.category_id \
-         WHERE de.is_active = true AND (",
+         WHERE de.is_active = true AND de.status = 'active' \
+                AND (de.start_date IS NULL OR de.start_date <= NOW()) \
+                AND (de.end_date IS NULL OR de.end_date >= NOW()) AND (",
         search_filter!(),
         ") \
          ORDER BY de.featured DESC NULLS LAST, de.created_at DESC \

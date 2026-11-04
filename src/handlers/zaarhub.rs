@@ -403,6 +403,8 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
+             AND (de.start_date IS NULL OR de.start_date <= NOW())
+             AND (de.end_date IS NULL OR de.end_date >= NOW())
              AND COALESCE((d.zaarhub_config->>'show_deals')::boolean, true) = true
              AND (d.zaarhub_config->>'network_visible')::boolean = true
            ORDER BY de.created_at DESC
@@ -998,6 +1000,8 @@ pub async fn get_city_page(
            JOIN businesses b ON b.id = de.business_id
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND de.status = 'active'
+             AND (de.start_date IS NULL OR de.start_date <= NOW())
+             AND (de.end_date IS NULL OR de.end_date >= NOW())
            ORDER BY de.created_at DESC
            LIMIT 8"#
     )
@@ -1641,6 +1645,8 @@ pub async fn get_business_detail(
         r#"SELECT id, title, description, deal_price, original_price, discount_percent, end_date
            FROM deals
            WHERE business_id = $1 AND status = 'active'
+             AND (start_date IS NULL OR start_date <= NOW())
+             AND (end_date IS NULL OR end_date >= NOW())
            ORDER BY created_at DESC"#,
     )
     .bind(biz.id)
@@ -1826,6 +1832,8 @@ pub async fn list_featured_deals(
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE de.status = 'active'
              AND de.zaarhub_featured = true
+             AND (de.start_date IS NULL OR de.start_date <= NOW())
+             AND (de.end_date IS NULL OR de.end_date >= NOW())
              AND COALESCE((d.zaarhub_config->>'show_deals')::boolean, true) = true
              AND (d.zaarhub_config->>'network_visible')::boolean = true"#;
     const DEALS_COLUMNS: &str = r#"SELECT de.id, de.title, de.description, de.deal_price, de.original_price,

@@ -2186,6 +2186,8 @@ pub async fn deals_page(
                 b.name AS business_name, b.slug AS business_slug \
          FROM deals de JOIN businesses b ON b.id = de.business_id \
          WHERE b.directory_id = $1 AND de.status = 'active' \
+                AND (de.start_date IS NULL OR de.start_date <= NOW()) \
+                AND (de.end_date IS NULL OR de.end_date >= NOW()) \
          ORDER BY de.featured DESC NULLS LAST, de.created_at DESC LIMIT 60",
     )
     .bind(dir.id)
