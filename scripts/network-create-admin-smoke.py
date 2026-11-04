@@ -251,6 +251,24 @@ def main():
     stored = one(f"SELECT COALESCE(root_domain,'') FROM networks WHERE slug='{api_slug}'")
     check("a scheme-bearing root domain is stored bare", stored == "zznetprobe.example", stored)
     api_id = one(f"SELECT id FROM networks WHERE slug='{api_slug}'")
+
+    # The workspace is provisioned by a DETACHED task (networks.rs `tokio::spawn`), and deleting
+    # the network now DE-provisions that workspace (t_d4b8aad7). So the cross-app evidence has to
+    # be captured while the network still exists, never after the delete — otherwise this proof
+    # looked for a workspace the (correct) delete had already removed and reported a false FAIL
+    # (measured 2026-11-04).
+    api_ws_id, api_ws_marked = "", False
+    for _ in range(40):
+        api_ws_id = one(
+            f"SELECT COALESCE(coreswift_tenant_id::text,'') FROM networks WHERE id='{api_id}'") \
+            if api_id else ""
+        if api_ws_id:
+            api_ws_marked = any(
+                "zz api probe" in rec.split("|", 1)[0] and rec.split("|", 1)[1] == HARNESS
+                for rec in cs_workspace_markers())
+            break
+        time.sleep(0.5)
+
     ds, _ = call("DELETE", "/networks/" + api_id, tok) if api_id else (0, "")
     check("the disposable API network was removed", bool(api_id) and ds in (200, 204), f"status={ds}")
 
@@ -275,15 +293,23 @@ def main():
     finally:
         # ---- the freed row was never the whole residue (kanban t_8bea040a) -------------------
         # Both creates above provisioned a CORE SWIFT WORKSPACE (the API create and the console
-        # create), and deleting the MD network does not touch it — so read the marker and the
-        # cross-app residue while the workspaces still exist, then delete them.
-        rows = cs_workspace_markers()
+        # create). The API one is de-provisioned by its network delete, so its evidence is captured
+        # at create time; the console one outlives its network until this block removes it. Read the
+        # marker and residue here, then delete.
+        rows = []
+        for _ in range(40):
+            rows = cs_workspace_markers()
+            if any("zz builds item 13 probe" in rec.split("|", 1)[0] for rec in rows):
+                break
+            time.sleep(0.5)
         names = [rec.split("|", 1)[0] for rec in rows]
+        console_minted = any("zz builds item 13 probe" in n for n in names)
         check("both harness paths minted a CoreSwift workspace",
-              any("zz api probe" in n for n in names)
-              and any("zz builds item 13 probe" in n for n in names), str(rows))
+              bool(api_ws_id) and console_minted,
+              f"api_tenant={api_ws_id or '-'} console={rows}")
         check("every minted CoreSwift workspace carries the harness marker",
-              bool(rows) and all(rec.split("|", 1)[1] == HARNESS for rec in rows), str(rows))
+              api_ws_marked and bool(rows)
+              and all(rec.split("|", 1)[1] == HARNESS for rec in rows), str(rows))
         check("CoreSwift queued no mail to a probe address", cs_outbound() == "0",
               f"outbound={cs_outbound()}")
 

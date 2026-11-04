@@ -89,10 +89,16 @@ def b64(b):
 
 def operator_token():
     secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
-    uid = one("SELECT id FROM users LIMIT 1")
-    tid = one("SELECT id FROM tenants LIMIT 1")
-    if not (secret and uid and tid):
-        sys.exit("could not resolve JWT_SECRET / a user / a tenant")
+    # The claim set must describe a REAL operator: the API re-checks the account behind `sub`
+    # (its role and tenant), so an un-ordered `SELECT id FROM users LIMIT 1` could mint a token
+    # for an ordinary customer and every authenticated call 401'd (measured 2026-11-04).
+    row = one(
+        "SELECT id || '|' || tenant_id FROM users WHERE role = 'super_admin' "
+        "ORDER BY created_at LIMIT 1"
+    )
+    if not (secret and row and "|" in row):
+        sys.exit("could not resolve JWT_SECRET / a super_admin user")
+    uid, tid = row.split("|", 1)
     now = int(time.time())
     hh = b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     pp = b64(json.dumps({"sub": uid, "tid": tid, "role": "super_admin", "exp": now + 1800,
