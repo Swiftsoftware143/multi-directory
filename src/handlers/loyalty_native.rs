@@ -1143,7 +1143,6 @@ pub async fn get_member(
 pub struct CounterScanInput {
     pub qr_code: Option<String>,
     pub business_id: Option<String>,
-    pub business_name: Option<String>,
     pub scan_type: Option<String>,
     pub purchase_amount: Option<f64>,
     pub transaction_amount: Option<f64>,
@@ -1251,11 +1250,12 @@ pub async fn counter_scan(
     .await?
     .ok_or_else(|| AppError::NotFound("business not found".into()))?;
 
-    let business_name = body
-        .business_name
-        .clone()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or(db_business_name);
+    // The display name is ALWAYS the one on the business row. The page used to send its own
+    // (the signed-in account's email prefix, because it never learned the business name), and
+    // that string was recorded on every scan — so the customer's scan history, the business
+    // export and the review badge all named the wrong business. A caller-supplied label must
+    // never overwrite the row the scan is filed under.
+    let business_name = db_business_name;
 
     // The receipt the scanner already collects (frontend/scanner.html generates it and shows
     // it to staff as the transaction id). It used to be discarded, so a resubmitted scan

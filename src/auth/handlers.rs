@@ -16,6 +16,47 @@ use super::models::*;
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
+/// The business a counter/portal caller administers, in the shape `/auth/me` reports it.
+///
+/// The scanner page holds nothing but a bearer token. It used to display the caller's email
+/// prefix as the business name (its login response is nested, so every top-level `name` lookup
+/// missed), and it posted that string with each scan — which the scan ledger then recorded as the
+/// business name. The claim is the only ownership link both account tables share, so resolve the
+/// business from it once here and let the page show and post the real thing.
+pub(crate) async fn claimed_business_for(
+    db: &sqlx::PgPool,
+    account_id: Uuid,
+) -> Option<(Uuid, String)> {
+    sqlx::query_as::<_, (Uuid, String)>(
+        r#"SELECT b.id, b.name
+             FROM claimed_businesses c
+             JOIN businesses b ON b.id = c.business_id
+            WHERE c.is_active
+              AND (c.user_id = $1 OR c.visitor_account_id = $1)
+            ORDER BY c.created_at DESC
+            LIMIT 1"#,
+    )
+    .bind(account_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+}
+
+/// `/auth/me` body: the account itself plus, when it administers a business, that business's
+/// id and name at the TOP level — the shape the counter scanner reads.
+fn me_payload(user: User, business: Option<(Uuid, String)>) -> serde_json::Value {
+    let (business_id, business_name) = match business {
+        Some((id, name)) => (Some(id.to_string()), Some(name)),
+        None => (None, None),
+    };
+    json!({
+        "user": UserResponse::from(user),
+        "business_id": business_id,
+        "business_name": business_name,
+    })
+}
+
 /// POST /api/v1/auth/register
 pub async fn register(
     State(s): State<AppState>,
@@ -377,7 +418,8 @@ pub async fn me(
             updated_at: row.try_get("updated_at")?,
         };
 
-        return Ok(Json(json!({ "user": UserResponse::from(user) })));
+        let business = claimed_business_for(&s.db, user.id).await;
+        return Ok(Json(me_payload(user, business)));
     }
 
     // Fall back to visitor_accounts (ZaarHub business-portal and counter-scanner accounts),
@@ -409,7 +451,8 @@ pub async fn me(
         updated_at: vrow.try_get("updated_at")?,
     };
 
-    Ok(Json(json!({ "user": UserResponse::from(user) })))
+    let business = claimed_business_for(&s.db, user_id).await;
+    Ok(Json(me_payload(user, business)))
 }
 
 /// PUT /api/v1/auth/password

@@ -348,8 +348,13 @@ async function loadBizProfile() {
     var r=await fetch(API+'/auth/me',{headers:{'Authorization':'Bearer '+_token}});
     if(r.ok){
       var d=await r.json();
-      _bizId=_bizId||d.business_id||d.id||'';
-      _bizName=_bizName||d.name||d.business_name||'Business';
+      // /auth/me answers with the business the account administers at the top level. It is
+      // authoritative: doLogin had nothing but the sign-in response (which nests the account
+      // under `user`), so it fell back to the email prefix — never show or file that as the
+      // business name.
+      _bizId=d.business_id||_bizId||'';
+      _bizName=d.business_name||_bizName||'Business';
+      $('bizNameDisplay').textContent=_bizName;
       _bizCategory=_bizCategory||d.category||d.business_category||'';
     }
   }catch(e){}
@@ -489,7 +494,6 @@ async function processTransaction() {
   var body = {
     qr_code: qrCode,
     business_id: _bizId,
-    business_name: _bizName,
     scan_type: _scanType,
     business_category: _bizCategory,
     transaction_id: $('txId').value,
