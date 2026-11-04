@@ -206,7 +206,14 @@ ZZ_WHERE = r"title ~* '(probe|smoke|selftest|fixture|dummy)'" \
            r" OR (title ~* '^ZZ ' AND title ~ ' - Claimed \(Orlando\)$')" \
            r" OR title ~ ' [0-9]{10} - Claimed \('" \
            r" OR title ~ '^Test ON CONFLICT - Claimed'"
-V_URL = r"zzprobe|zz-sponsored-probe|zz-item6-debug"
+# Probe-traffic URL shapes actually observed in the live analytics tables. The old list
+# (`zzprobe|zz-sponsored-probe|zz-item6-debug`) missed two real families that each left sessions
+# behind: the item-6/7 lifecycle probes (`/palm-bay/articles/zz-lifecycle-probe-<epoch>-…`), the
+# XSS fixtures (`/templates/farm.html?slug=zz-xss-probe-<epoch>`) and the B6 sponsored-article
+# probe (`/palm-bay/articles/b6-probe-sponsored-article-4713`). Generalising the `zz…probe` arm
+# covers every harness name of that family; `b6-probe` is the one fixture without the `zz` prefix.
+# A real article/business slug has neither shape.
+V_URL = r"zz[a-z0-9-]*probe|b6-probe|zz-item6-debug"
 PROBE_RECORDS = [
     ("crm_deal_records", ZZ_WHERE, ()),
     ("business_messages", r"sender_email ~* '@(example\.(com|invalid)|invalid\.test|test\.com)$'",
