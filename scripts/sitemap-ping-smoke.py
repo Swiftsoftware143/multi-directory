@@ -142,6 +142,26 @@ def main():
     check("an IndexNow key is configured (the live 2026 ping path)",
           bool((st.get("indexnow_key") or "").strip()), f"len={len((st.get('indexnow_key') or ''))}")
 
+    # 2b) A genuinely NEW url must be what goes on the wire. The run used to resubmit the whole
+    # ~4 030-url sitemap on every press; IndexNow answered 429 TooManyRequests (2026-11-05 19:30)
+    # and the operator's card showed a failed run. The fix remembers submitted urls and sends the
+    # delta, so this probe adds one listing and expects a ONE-url submission.
+    ts = str(int(time.time()))
+    dslug = one("SELECT slug FROM directories WHERE status = 'active' ORDER BY slug LIMIT 1")
+    did = one(f"SELECT id FROM directories WHERE slug = '{dslug}'")
+    probe_slug = f"zz-sitemap-probe-{ts}"
+    probe_url = f"https://zaarhub.com/{dslug}/businesses/{probe_slug}"
+    bid = one(
+        "INSERT INTO businesses (directory_id, name, slug, city, state, status, is_active, rating, "
+        "review_count, probe_harness) "
+        f"VALUES ('{did}', 'ZZ Sitemap Probe {ts}', '{probe_slug}', 'Orlando', 'FL', 'active', true, 0, 0, "
+        "'sitemap-ping-probe') RETURNING id"
+    )
+    check("a disposable listing was created (one new url)", bool(bid), probe_url)
+    code, sm = http("GET", f"{BASE}/sitemap.xml", token=tok)
+    check("the new listing's url is in the live sitemap",
+          f"/{dslug}/businesses/{probe_slug}" in sm, f"status={code}")
+
     # 3) a real run: does it actually submit, and log it?
     before = int(one("SELECT count(*) FROM seo_submission_log") or "0")
     code, body = http("POST", f"{BASE}/api/v1/seo/run-submission", token=tok, data="{}")
@@ -158,6 +178,12 @@ def main():
     oks = [r for r in (run.get("results") or []) if r.get("ok")]
     check("at least one target answered OK", len(oks) >= 1,
           "targets=" + ",".join(str(r.get("target")) for r in (run.get("results") or [])))
+    idx = next((r for r in (run.get("results") or []) if r.get("target") == "IndexNow"), {})
+    check("only the NEW url went on the wire (not the whole sitemap again)",
+          1 <= int(idx.get("urls_submitted") or 0) <= 5, f"urls={idx.get('urls_submitted')}")
+    check("IndexNow accepted the submission",
+          idx.get("ok") is True and 200 <= int(idx.get("status_code") or 0) < 300,
+          f"code={idx.get('status_code')}")
 
     after = int(one("SELECT count(*) FROM seo_submission_log") or "0")
     check("the run appended a real submission row", after > before, f"{before} -> {after}")
@@ -186,6 +212,15 @@ def main():
           json.dumps(proof.get("console_errors"))[:200])
     check("the console made no failing API call", proof.get("failing_api") == [],
           json.dumps(proof.get("failing_api"))[:200])
+
+    # 5) the new url is remembered, so a later press submits nothing, and the probe is removed.
+    stored = one(f"SELECT count(*) FROM seo_submission_urls WHERE url LIKE '%{probe_slug}'")
+    check("the submitted url was remembered (a re-press sends nothing)", stored == "1",
+          f"rows={stored}")
+    psql(f"DELETE FROM seo_submission_urls WHERE url LIKE '%{probe_slug}%'")
+    psql(f"DELETE FROM businesses WHERE id = '{bid}'")
+    left = one(f"SELECT count(*) FROM businesses WHERE slug = '{probe_slug}'")
+    check("probe listing and its url row fully removed", left == "0", f"remaining={left}")
 
     return finish(run, proof, newest)
 
