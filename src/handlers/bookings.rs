@@ -1026,17 +1026,34 @@ pub async fn cancel_booking(
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Check if a user owns/claims a business
+/// Is `user_id` the owner of `business_id`?
+///
+/// Email-only claims are the NORMAL public path: `POST /businesses/:id/claim` records the
+/// claimant's email in `claimed_businesses.owner_email` and leaves both id columns NULL until a
+/// transfer links an account. Matching `user_id` alone therefore answered 403 for the real owner
+/// of a listing they had just claimed — their bookings panel said they were not authorized for
+/// their own business. Resolve the caller's email (either identity table) and accept an
+/// unlinked email claim, exactly like the review moderation check does.
 async fn is_business_claimed_by_user(
     db: &sqlx::PgPool,
     business_id: Uuid,
     user_id: Uuid,
 ) -> Result<bool, AppError> {
+    let email = crate::owner_identity::caller_email(db, user_id).await?;
     let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM claimed_businesses WHERE business_id = $1 AND user_id = $2 AND is_active = true"
+        r#"SELECT (SELECT COUNT(*) FROM businesses WHERE id = $1 AND owner_id = $2)
+                + (SELECT COUNT(*) FROM claimed_businesses c
+                    WHERE c.business_id = $1 AND c.is_active
+                      AND (
+                           c.visitor_account_id = $2
+                        OR c.user_id = $2
+                        OR (c.visitor_account_id IS NULL AND c.user_id IS NULL
+                            AND lower(c.owner_email) = lower($3))
+                      ))"#,
     )
     .bind(business_id)
     .bind(user_id)
+    .bind(email)
     .fetch_one(db)
     .await?;
     Ok(count > 0)
