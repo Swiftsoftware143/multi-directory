@@ -41,8 +41,13 @@ if [ -z "${MD_LIVE_URL:-}" ]; then
   ENVF="${MD_ENV:-/etc/swift/env/multi-directory.env}"
   [ -f "$ENVF" ] || { echo "ABORT: no live DATABASE_URL (\$MD_LIVE_URL unset and $ENVF missing)"; echo "RESULT: ABORT"; exit 2; }
   set -a; . "$ENVF"; set +a
+else
+  # $MD_LIVE_URL is the documented "pass it straight in" path (the header above). It used to be
+  # read only to decide whether to source the env file, never copied into DATABASE_URL — so with
+  # `set -u` the next line died on an unbound ENVF and the check could not run at all.
+  DATABASE_URL="${DATABASE_URL:-$MD_LIVE_URL}"
 fi
-[ -n "${DATABASE_URL:-}" ] || { echo "ABORT: $ENVF sets no DATABASE_URL"; echo "RESULT: ABORT"; exit 2; }
+[ -n "${DATABASE_URL:-}" ] || { echo "ABORT: ${ENVF:-$MD_LIVE_URL} sets no DATABASE_URL"; echo "RESULT: ABORT"; exit 2; }
 BASEURL="${DATABASE_URL%/*}"                 # postgres://user:***@host:port
 LIVE="${DATABASE_URL##*/}"; LIVE="${LIVE%%\?*}"
 url() { printf '%s/%s' "$BASEURL" "$1"; }
