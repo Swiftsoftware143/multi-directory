@@ -70,6 +70,11 @@ def call(method, path, token=None, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(BASE + "/api/v1" + path, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    # MD_BASE is often the PUBLIC host (https://zaarhub.com) in the cron environment.
+    # Cloudflare answers a bare `Python-urllib/3.12` Agent with 403 "error code: 1010",
+    # which reads as an app 403 and made every API arm of this proof fail (measured
+    # 2026-11-05). A browser Agent is the fleet rule for public-URL checks.
+    req.add_header("User-Agent", "Mozilla/5.0 (compatible; SwiftOps/1.0)")
     if token:
         req.add_header("Authorization", "Bearer " + token)
     try:
