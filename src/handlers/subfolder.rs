@@ -2484,10 +2484,14 @@ pub async fn sitemap(
             ));
         }
 
-        // Articles (business_articles — the SEO article system).
+        // Articles (business_articles — the SEO article system). Only PUBLISHED rows: the page
+        // route (article_page) serves `status='published'` alone, so an archived or draft slug
+        // listed here advertises a URL that renders nothing to a crawler. Archived probe copy
+        // reached the live sitemap this way.
         let arts = sqlx::query(
             "SELECT slug FROM business_articles WHERE directory_id = $1 \
-             AND coalesce(slug,'') <> '' ORDER BY created_at DESC LIMIT 5000",
+             AND status = 'published' AND coalesce(slug,'') <> '' \
+             ORDER BY created_at DESC LIMIT 5000",
         )
         .bind(dir_id)
         .fetch_all(pool)
