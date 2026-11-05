@@ -1127,8 +1127,11 @@ pub async fn monetization_dashboard(State(s): State<AppState>) -> ApiResult<impl
 
 /// GET /api/v1/subscriptions/plans — list available plan tiers with feature access
 pub async fn list_plans(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let plans = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, rust_decimal::Decimal, Option<String>, Option<serde_json::Value>, Option<i32>, Option<i32>)>(
-        "SELECT id, name, price_monthly, price_yearly, description, feature_access, max_listings, monthly_point_allowance FROM plan_tiers ORDER BY price_monthly ASC"
+    // The public plan list is what a business with no subscription sees, so it must carry the
+    // operator's own payment-page link (plan_sales_page_url). Without it the screen could only
+    // say "contact admin", even when the operator had pasted an NMI/EPD hosted payment page.
+    let plans = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, rust_decimal::Decimal, Option<String>, Option<serde_json::Value>, Option<i32>, Option<i32>, String, Option<String>, Option<String>)>(
+        "SELECT id, name, price_monthly, price_yearly, description, feature_access, max_listings, monthly_point_allowance, slug, plan_sales_page_url, payment_provider FROM plan_tiers ORDER BY price_monthly ASC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -1139,12 +1142,13 @@ pub async fn list_plans(State(s): State<AppState>) -> ApiResult<impl IntoRespons
             json!({
                 "id": p.0, "name": p.1, "price_monthly": p.2, "price_yearly": p.3,
                 "description": p.4, "features": p.5, "max_listings": p.6,
-                "monthly_point_allowance": p.7
+                "monthly_point_allowance": p.7, "slug": p.8,
+                "plan_sales_page_url": p.9, "payment_provider": p.10
             })
         })
         .collect();
 
-    Ok(Json(json!({"plans": result})))
+    Ok(Json(json!({ "plans": result })))
 }
 
 /// POST /api/v1/subscriptions/upgrade — upgrade a business subscription (self-serve)

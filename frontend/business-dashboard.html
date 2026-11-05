@@ -134,6 +134,15 @@ async function loadBusinessDashboard() {
         planInfo = await fetch("/api/v1/tiers/" + subData.tier_id, { headers: authHeaders() }).then(function(r){ return r.ok ? r.json() : null; });
       } catch(e) {}
     }
+    // A business with no subscription row still needs a way in: fetch the operator's published
+    // plans so the card can show real choices (each plan carries the payment-page link the
+    // operator pasted in the console) instead of a dead "contact admin" sentence.
+    var plans = null;
+    if (!subData || subData.status !== "active") {
+      try {
+        plans = await fetch("/api/v1/subscriptions/plans").then(function(r){ return r.ok ? r.json() : null; });
+      } catch(e) {}
+    }
     if (!data || data.total_views === undefined) {
       el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>No data yet</h3><p>We haven\'t collected enough visitor data for your business yet. Check back after customers start finding your listing.</p></div>';
       return;
@@ -155,7 +164,7 @@ async function loadBusinessDashboard() {
     h += '<div class="card"><h3>🔗 Quick Actions</h3><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><a href="/supplier-directory" class="btn btn-primary">📦 Find Suppliers</a><a href="/zaarhub" class="btn btn-secondary">🌐 Community Directory</a></div></div>';
 
     // Subscription & Plan section - render inline directly
-    h += renderSubscriptionSection(subData, planInfo);
+    h += renderSubscriptionSection(subData, planInfo, plans);
     
     // Visitor locations
     h += '<div class="card"><h3>📍 Where Your Viewers Come From</h3><div class="visitor-location">';
@@ -196,9 +205,30 @@ async function loadBusinessDashboard() {
   }
 }
 
-function renderSubscriptionSection(subData, planInfo){
+function renderSubscriptionSection(subData, planInfo, plans){
+  var list = (plans && plans.plans) ? plans.plans : [];
   if (!subData) {
-    return '<div class="card"><h3>💳 Subscription & Plan</h3><p style="color:var(--text-secondary);font-size:.85rem">No active subscription. <a href="#" onclick="alert(\'Contact admin to upgrade or use the checkout link from your plan.\')">Upgrade your plan</a> to unlock more features.</p></div>';
+    var h = '<div class="card"><h3>💳 Subscription & Plan</h3><p style="color:var(--text-secondary);font-size:.85rem;margin-bottom:12px">You are on the free listing. Pick a plan to unlock more.</p>';
+    if (!list.length) {
+      h += '<p style="font-size:.85rem;color:var(--text-secondary)">No plans are published yet — please contact us.</p>';
+    } else {
+      h += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
+      for (var i = 0; i < list.length; i++) {
+        var p = list[i];
+        var price = parseFloat(p.price_monthly || 0);
+        h += '<div style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:10px;padding:12px">' +
+             '<div style="font-weight:700">' + esc(p.name) + '</div>' +
+             '<div style="font-size:1.3rem;margin:4px 0">' + (price > 0 ? ('$' + price.toFixed(2) + '/mo') : 'Free') + '</div>' +
+             (p.description ? '<div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:8px">' + esc(p.description) + '</div>' : '') +
+             (p.plan_sales_page_url
+               ? '<a class="btn btn-primary" style="display:inline-block;text-decoration:none" href="' + esc(p.plan_sales_page_url) + '" target="_blank" rel="noopener" data-plan="' + esc(p.slug || p.id) + '">Choose this plan</a>'
+               : '<span style="font-size:.78rem;color:var(--text-secondary)">Ask us to switch this plan on</span>') +
+             '</div>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+    return h;
   }
   var statusBadge = subData.status;
   var statusClass = subData.status === "active" || subData.status === "trial" ? "up" : "down";
