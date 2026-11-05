@@ -3027,24 +3027,43 @@ async fn apply_code_injection(
     };
     let mut html = String::from_utf8_lossy(&bytes).to_string();
 
-    if let Some(h) = head.as_deref() {
-        if let Some(pos) = find_ci(&html, "</head>", 0) {
-            html.insert_str(pos, &format!("\n{h}\n"));
-        }
-    }
-    if let Some(b) = body.as_deref() {
-        if let Some(pos) = body_open_end(&html) {
-            html.insert_str(pos, &format!("\n{b}\n"));
-        }
-    }
-    if let Some(f) = footer.as_deref() {
-        if let Some(pos) = rfind_ci(&html, "</body>") {
-            html.insert_str(pos, &format!("\n{f}\n"));
-        }
-    }
+    inject_code_into_html(
+        &mut html,
+        head.as_deref(),
+        body.as_deref(),
+        footer.as_deref(),
+    );
 
     parts.headers.remove(header::CONTENT_LENGTH);
     Some(Response::from_parts(parts, Body::from(html)))
+}
+
+/// Insert a directory's admin-authored head/body/footer code into an HTML document.
+///
+/// Shared by the SSR dispatcher above and the SPA shell: a visitor loading `/city/<slug>`
+/// gets the cached `index.html` shell, not the server-rendered page, so without this the
+/// owner's analytics/verification tags would only ever run for crawlers.
+pub fn inject_code_into_html(
+    html: &mut String,
+    head: Option<&str>,
+    body: Option<&str>,
+    footer: Option<&str>,
+) {
+    if let Some(h) = head.filter(|v| !v.trim().is_empty()) {
+        if let Some(pos) = find_ci(html, "</head>", 0) {
+            html.insert_str(pos, &format!("\n{h}\n"));
+        }
+    }
+    if let Some(b) = body.filter(|v| !v.trim().is_empty()) {
+        if let Some(pos) = body_open_end(html) {
+            html.insert_str(pos, &format!("\n{b}\n"));
+        }
+    }
+    if let Some(f) = footer.filter(|v| !v.trim().is_empty()) {
+        if let Some(pos) = rfind_ci(html, "</body>") {
+            html.insert_str(pos, &format!("\n{f}\n"));
+        }
+    }
 }
 
 /// Same dispatcher but with the raw query string (so `/<slug>/businesses?page=2`

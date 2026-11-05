@@ -3362,8 +3362,19 @@ pub fn create_router(s: AppState) -> Router {
                         // the session. Deferred scripts (the beacon) run before window 'load',
                         // and the SPA only sets that global on 'load', so the value survives.
                         if let Some(entry) = spa_entry_slug(path) {
-                            let dir_row: Option<(uuid::Uuid,)> = match sqlx::query_as(
-                                "SELECT id FROM directories WHERE slug = $1 AND status = 'active' LIMIT 1",
+                            // The owner's custom head/body/footer code has to reach the page a
+                            // VISITOR loads, not only the crawler render: /city/<slug> is answered
+                            // by this cached SPA shell. Fetch the same three fields here and insert
+                            // them, so an analytics/verification tag saved in the portal actually
+                            // runs in the browser (item 11).
+                            let dir_row: Option<(
+                                uuid::Uuid,
+                                Option<String>,
+                                Option<String>,
+                                Option<String>,
+                            )> = match sqlx::query_as(
+                                "SELECT id, head_injection, body_injection, footer_injection \
+                                 FROM directories WHERE slug = $1 AND status = 'active' LIMIT 1",
                             )
                             .bind(&entry)
                             .fetch_optional(&_pool_for_host)
@@ -3375,13 +3386,19 @@ pub fn create_router(s: AppState) -> Router {
                                     None
                                 }
                             };
-                            if let Some((dir_id,)) = dir_row {
+                            if let Some((dir_id, head_inj, body_inj, foot_inj)) = dir_row {
                                 let tag = format!(
                                     "<script>window.__dir_id=\"{dir_id}\";window.__ssr_dir=\"{dir_id}\";</script>"
                                 );
                                 if let Some(pos) = html.find("<head>") {
                                     html.insert_str(pos + "<head>".len(), &tag);
                                 }
+                                crate::handlers::subfolder::inject_code_into_html(
+                                    &mut html,
+                                    head_inj.as_deref(),
+                                    body_inj.as_deref(),
+                                    foot_inj.as_deref(),
+                                );
                             }
                         }
                         let slug = crate::branding_injector::slug_from_dir_path(path);
