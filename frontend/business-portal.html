@@ -2108,6 +2108,14 @@ function fillBizSelect(id) {
   sel.innerHTML = _myBiz.map(function (b) {
     return '<option value="' + b.id + '">' + esc(b.name) + '</option>';
   }).join('') || '<option value="">No claimed business</option>';
+  // Re-fire the select's own change handler now that it has a value. The section loaders run
+  // from the nav click, which can land BEFORE `/portal/business/profile` resolves (slow login,
+  // or a click straight after the page paints): the panel then read an empty select and painted
+  // "No claimed business on this account." — and nothing re-ran it once the businesses arrived,
+  // so the owner saw an empty review queue on a listing they demonstrably own until they
+  // re-clicked the tab (measured 2026-11-05 in a real browser). Only `rvBiz` carries an inline
+  // onchange today, so this costs one reviews fetch per sign-in and nothing for the other tabs.
+  if (typeof sel.onchange === 'function') sel.onchange();
 }
 
 function bizOf(id) { var s = document.getElementById(id); return s ? s.value : ''; }
