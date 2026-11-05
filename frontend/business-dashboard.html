@@ -144,7 +144,10 @@ async function loadBusinessDashboard() {
       } catch(e) {}
     }
     if (!data || data.total_views === undefined) {
-      el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>No data yet</h3><p>We haven\'t collected enough visitor data for your business yet. Check back after customers start finding your listing.</p></div>';
+      // No traffic yet is not a reason to hide the way to a paid plan: render the empty analytics
+      // notice AND the plan card, so a brand-new listing can still upgrade from here.
+      el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>No data yet</h3><p>We haven\'t collected enough visitor data for your business yet. Check back after customers start finding your listing.</p></div>'
+        + renderSubscriptionSection(subData, planInfo, plans);
       return;
     }
     

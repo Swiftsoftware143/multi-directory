@@ -1237,6 +1237,18 @@ async function buyPlan(plan, bid, cycle) {
     var r = await po('/subscriptions/upgrade', { business_id: bid, plan_id: plan.id, billing_cycle: cycle });
     return { ok: true, message: 'Plan changed to ' + (r.plan || name) + '.' };
   }
+  // A tier can carry the operator's own hosted payment-page link (the NMI/EPD payment page, or any
+  // external sales page). That IS a real way to buy the plan even before an API receiver exists:
+  // send the business to the provider's page and let the gateway take the card. The console's
+  // Plan Tiers form is where the operator pastes that link.
+  if (plan.plan_sales_page_url) {
+    return {
+      ok: true,
+      checkout_url: plan.plan_sales_page_url,
+      message: 'Open the payment page for ' + name + ' ($' + money(price) + (cycle === 'yearly' ? '/yr' : '/mo') +
+        '). Your plan is switched on once the payment is confirmed.'
+    };
+  }
   var d = await g('/payment-providers');
   var list = (d && (d.providers || d)) || [];
   var active = list.filter(function (p) { return p.is_active && p.key_status !== 'not_configured'; });

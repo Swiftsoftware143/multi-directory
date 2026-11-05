@@ -221,6 +221,16 @@ pub async fn update_tier(
         _ => existing.payment_provider.clone(),
     };
 
+    // Same rule for the payment-page link: an explicit null or empty string CLEARS it, omitting
+    // the field keeps it. Without this an operator could set a link once and never remove it —
+    // the screen's "clear the box and save" would silently keep the old URL.
+    let plan_sales_page_url: Option<String> = match body.get("plan_sales_page_url") {
+        Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(v)) if v.trim().is_empty() => None,
+        Some(serde_json::Value::String(v)) => Some(v.trim().to_string()),
+        _ => existing.plan_sales_page_url.clone(),
+    };
+
     let tier = sqlx::query_as::<_, PlanTier>(
         r#"UPDATE plan_tiers SET
             name = $1, slug = $2,
@@ -259,7 +269,7 @@ pub async fn update_tier(
     .bind(body.get("has_api_access").and_then(|v| v.as_bool()).or(existing.has_api_access))
     .bind(body.get("featured_listing").and_then(|v| v.as_bool()).or(existing.featured_listing))
     .bind(body.get("description").and_then(|v| v.as_str()).or(existing.description.as_deref()))
-    .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()).or(existing.plan_sales_page_url.as_deref()))
+    .bind(plan_sales_page_url.as_deref())
     .bind(payment_provider.as_deref())
     .bind(body.get("monthly_point_allowance").and_then(|v| v.as_i64()).map(|v| v as i32).or(existing.monthly_point_allowance))
     .bind(id)

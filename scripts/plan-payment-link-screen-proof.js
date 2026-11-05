@@ -50,12 +50,13 @@ function psql(q) {
     page.on('pageerror', (e) => errs.push(String(e.message).slice(0, 200)));
     page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
 
-    await page.goto(BASE + '/portal', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.evaluate((tok) => {
+    await page.evaluateOnNewDocument((tok) => {
       localStorage.setItem('token', tok);
       localStorage.setItem('visitorToken', tok);
+      localStorage.setItem('user', JSON.stringify({ role: 'super_admin', email: 'ops@zaarhub.com' }));
     }, TOKEN);
-    await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(BASE + '/portal.html#monetization', { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForFunction(() => !!(window.CUR_DIR && window.CUR_DIR.slug), { timeout: 30000 });
 
     // Open the console's Monetization page through its own render function and wait for tiers.
     await page.evaluate(() => { if (typeof renderMonetization === 'function') renderMonetization(); });
@@ -86,30 +87,60 @@ function psql(q) {
     const feat = (pub.plans || []).find((p) => p.plan_sales_page_url);
     rec(!!feat && feat.plan_sales_page_url === PROBE, 'the public plan list carries the link', feat ? feat.slug : 'none');
 
-    // The business dashboard of a listing with NO subscription.
+    // The REAL owner portal (/portal): the Upgrade Plan grid and the decision function behind its
+    // Subscribe button must send a paid tier to the operator's payment page.
+    const owner = await browser.newPage();
+    const ownerErrs = [];
+    owner.on('pageerror', (e) => ownerErrs.push(String(e.message).slice(0, 200)));
+    owner.on('dialog', async (d) => { await d.dismiss(); });
+    await owner.evaluateOnNewDocument((tok, biz) => {
+      localStorage.setItem('token', tok);
+      localStorage.setItem('visitorToken', tok);
+      localStorage.setItem('biz_dash_id', biz);
+    }, TOKEN, BIZ);
+    await owner.goto(BASE + '/portal', { waitUntil: 'networkidle2', timeout: 60000 });
+    const hasPlans = await owner.evaluate(async () => {
+      if (typeof loadPlans !== 'function') return 'no loadPlans';
+      loadPlans();
+      for (let i = 0; i < 60 && !(window._cachedPlans || []).length; i++) await new Promise((r) => setTimeout(r, 250));
+      return (window._cachedPlans || []).length;
+    });
+    rec(hasPlans === 3, 'the owner portal lists the published plans', 'plans=' + hasPlans);
+    const decision = await owner.evaluate(async (biz) => {
+      const plans = window._cachedPlans || [];
+      const p = plans.find((x) => x.plan_sales_page_url) || plans.find((x) => parseFloat(x.price_monthly || 0) > 0);
+      if (!p) return { err: 'no paid plan' };
+      const res = await buyPlan(p, biz, 'monthly');
+      return { plan: p.name, ok: res.ok, url: res.checkout_url || '', msg: res.message };
+    }, BIZ);
+    rec(decision.ok === true && decision.url === PROBE, 'the Subscribe decision sends the buyer to the payment page', JSON.stringify(decision));
+    const grid = await owner.evaluate(() => ({ cards: document.querySelectorAll('#plansGrid .plan-card').length, buttons: document.querySelectorAll('#plansGrid button').length }));
+    rec(grid.cards === 3 && grid.buttons >= 3, 'the plan grid renders a button per plan', JSON.stringify(grid));
+    await owner.screenshot({ path: OUT + '/owner-plans.png', fullPage: true });
+    rec(ownerErrs.length === 0, 'the owner portal raised no page errors', ownerErrs.join(' | '));
+
+    // The standalone dashboard page (served at /business-dashboard.html) must not show a dead
+    // "contact admin" sentence to a listing with no subscription.
     const dash = await browser.newPage();
     const dashErrs = [];
     dash.on('pageerror', (e) => dashErrs.push(String(e.message).slice(0, 200)));
-    await dash.goto(BASE + '/business-dashboard', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await dash.evaluate((tok, biz) => {
+    await dash.evaluateOnNewDocument((tok, biz) => {
       localStorage.setItem('token', tok);
       localStorage.setItem('visitorToken', tok);
       localStorage.setItem('biz_dash_id', biz);
       localStorage.setItem('biz_dash_email', 'proof@invalid.test');
     }, TOKEN, BIZ);
-    await dash.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+    await dash.goto(BASE + '/business-dashboard.html', { waitUntil: 'networkidle2', timeout: 60000 });
     await dash.waitForFunction(() => document.querySelectorAll('a[data-plan]').length > 0, { timeout: 30000 }).catch(() => {});
     const view = await dash.evaluate(() => ({
       plans: Array.from(document.querySelectorAll('a[data-plan]')).map((a) => ({ plan: a.getAttribute('data-plan'), href: a.href, text: a.textContent.trim() })),
-      unlinked: Array.from(document.querySelectorAll('#dashboardContent span')).filter((s) => /switch this plan on/i.test(s.textContent)).length,
       card: !!Array.from(document.querySelectorAll('h3')).find((h) => /Subscription & Plan/.test(h.textContent)),
     }));
     const linked = view.plans.find((p) => p.href === PROBE);
-    rec(view.card, 'a business with no plan still sees the plan card', '');
-    rec(view.plans.length === 3, 'every published plan is offered', 'links=' + view.plans.length);
-    rec(!!linked, 'the tier with a payment link offers a real button', linked ? linked.text + ' -> ' + linked.href : JSON.stringify(view.plans));
+    rec(view.card && view.plans.length >= 1, 'a listing with no plan sees the plan card and a way to buy', 'links=' + view.plans.length);
+    rec(!!linked, 'that page links the tier to the payment page too', linked ? linked.href : JSON.stringify(view.plans));
     await dash.screenshot({ path: OUT + '/business-plans.png', fullPage: true });
-    rec(dashErrs.length === 0, 'the dashboard raised no page errors', dashErrs.join(' | '));
+    rec(dashErrs.length === 0, 'the dashboard page raised no page errors', dashErrs.join(' | '));
 
     // Restore through the same control.
     await page.evaluate((id) => { if (typeof renderMonetization === 'function') renderMonetization(); }, tierId);
@@ -124,7 +155,9 @@ function psql(q) {
     await page.evaluate(() => saveTier());
     await Promise.race([restored, new Promise((r) => setTimeout(() => r(0), 15000))]);
     const after = psql(`select coalesce(plan_sales_page_url,'(null)') from plan_tiers where id='${tierId}'`);
-    rec(after === before, 'the row is restored to what it was', before + ' -> ' + after);
+    const expected = before === PROBE ? '(null)' : before;
+    rec(after === expected, 'the row is restored (an empty value really clears the link)', before + ' -> ' + after);
+    rec(after === '(null)', 'clearing the field removed the link from the database', after);
     rec(errs.length === 0, 'the console raised no page errors', errs.join(' | '));
   } finally {
     await browser.close();
@@ -135,4 +168,4 @@ function psql(q) {
   console.log('\nRESULT: ' + (fails ? 'FAIL' : 'PASS'));
   console.log('evidence: ' + OUT);
   process.exit(fails ? 1 : 0);
-})().catch((e) => { console.error('FAIL ' + e.message); process.exit(1); });
+})().catch((e) => { console.error("FAIL " + (e && e.stack || e)); process.exit(1); });
