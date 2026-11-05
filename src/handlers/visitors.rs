@@ -2165,24 +2165,51 @@ async fn fetch_business_images_on_claim(
     }
 
     let count = photos.len();
-    let photos_json = serde_json::to_value(&photos).unwrap_or_default();
 
-    // Get existing images and merge
-    let _existing: serde_json::Value =
-        sqlx::query_scalar(r#"SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"#)
-            .bind(business_id)
-            .fetch_one(db)
-            .await
-            .map_err(|e| format!("DB error reading existing images: {e}"))?;
+    // Read what the listing already carries, then APPEND the fetched photos. This used to
+    // overwrite the whole array, so claiming a listing threw away every image it already had
+    // (owner uploads included). The business may also disappear between the lookup above and
+    // this read (the claim is fire-and-forget), so a missing row means "nothing to preserve",
+    // not an error.
+    let existing: Vec<String> = sqlx::query_scalar::<_, serde_json::Value>(
+        r#"SELECT COALESCE(images, '[]'::jsonb) FROM businesses WHERE id = $1"#,
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("DB error reading existing images: {e}"))?
+    .and_then(|v| v.as_array().cloned())
+    .map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect()
+    })
+    .unwrap_or_default();
+
+    let merged_json = serde_json::to_value(merge_claim_images(existing, &photos))
+        .map_err(|e| format!("encode merged images: {e}"))?;
 
     sqlx::query(r#"UPDATE businesses SET images = $1, updated_at = NOW() WHERE id = $2"#)
-        .bind(&photos_json)
+        .bind(&merged_json)
         .bind(business_id)
         .execute(db)
         .await
         .map_err(|e| format!("DB error updating images: {e}"))?;
 
     Ok(count)
+}
+
+/// Existing images first (so owner uploads survive a claim), then the newly fetched ones,
+/// de-duplicated by URL, blanks dropped. Pure so the rule can be unit-tested.
+fn merge_claim_images(existing: Vec<String>, fetched: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut merged = Vec::with_capacity(existing.len() + fetched.len());
+    for img in existing.into_iter().chain(fetched.iter().cloned()) {
+        if !img.trim().is_empty() && seen.insert(img.clone()) {
+            merged.push(img);
+        }
+    }
+    merged
 }
 
 // ── City Request / Poll Feature ──
@@ -2537,4 +2564,42 @@ pub async fn my_redeemed_perks(
         .collect();
 
     Ok(Json(json!(perks)))
+}
+
+#[cfg(test)]
+mod claim_image_tests {
+    use super::merge_claim_images;
+
+    #[test]
+    fn keeps_existing_images_and_appends_new_ones() {
+        let existing = vec!["/uploads/businesses/a/owner.jpg".to_string()];
+        let fetched = vec!["https://maps.googleapis.com/p1".to_string()];
+        assert_eq!(
+            merge_claim_images(existing, &fetched),
+            vec![
+                "/uploads/businesses/a/owner.jpg".to_string(),
+                "https://maps.googleapis.com/p1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn dedupes_an_already_present_photo() {
+        let existing = vec!["https://maps.googleapis.com/p1".to_string()];
+        let fetched = vec!["https://maps.googleapis.com/p1".to_string()];
+        assert_eq!(merge_claim_images(existing, &fetched).len(), 1);
+    }
+
+    #[test]
+    fn drops_blank_entries() {
+        let existing = vec![
+            "".to_string(),
+            "   ".to_string(),
+            "/uploads/x.jpg".to_string(),
+        ];
+        assert_eq!(
+            merge_claim_images(existing, &[]),
+            vec!["/uploads/x.jpg".to_string()]
+        );
+    }
 }
