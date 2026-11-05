@@ -76,6 +76,19 @@ const TEXT = process.env.REVIEW_TEXT || 'Probe review typed by a customer in the
     if (form.stars === 5) ok('the form offers five star controls');
     else bad('expected 5 star controls, saw ' + form.stars);
 
+    // Regression guard for a real defect found while building this form: the photo lightbox is
+    // `position:fixed` over the whole viewport and, with only `opacity:0`, it stayed clickable —
+    // so EVERY control on the business page (Save, Follow, the review form) silently ate clicks.
+    // A click must land on the star itself, not on an invisible overlay.
+    const clickable = await page.evaluate(() => {
+      const s = document.querySelector('#reviewStars span[data-star="5"]');
+      s.scrollIntoView({ block: 'center' });
+      const r = s.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === s;
+    });
+    if (clickable) ok('nothing invisible covers the page (the photo lightbox no longer swallows clicks)');
+    else bad('an invisible overlay is intercepting clicks on the review form');
+
     await page.click('#reviewStars span[data-star="5"]');
     const hint = await page.$eval('#reviewStarsHint', (el) => el.innerText.trim());
     if (/5 of 5/.test(hint)) ok('picking the 5th star is reflected on screen');
