@@ -58,13 +58,28 @@ pub async fn business_dashboard(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     // ── Find claimed businesses for this user ──
+    // The public claim route records the owner's EMAIL only (it runs before the claimant has an
+    // account), and `/auth/login` resolves every business-portal signup from the `users` table —
+    // so this query matching `user_id` alone returned an empty list for exactly those owners: the
+    // portal then rendered "No claimed business on this account", the business picker stayed
+    // empty, and the review Approve/Reject buttons were unreachable even though
+    // `/business/reviews/pending` (which resolves ownership by email) listed the reviews.
+    // Measured 2026-11-05: a freshly registered owner who claimed a listing saw
+    // `{"claimed_businesses":[]}` while the same token could approve a review over the API.
+    // Same three ownership branches as `can_moderate`/`owned_by` in handlers/reviews.rs.
+    let caller_email: Option<String> = crate::owner_identity::caller_email(&s.db, user_id).await?;
+
     let claims_rows = sqlx::query_as::<_, ClaimedBusinessRow>(
         r#"SELECT id, business_id, owner_email, owner_name, owner_phone, user_id, is_active, created_at
            FROM claimed_businesses
            WHERE user_id = $1
-           ORDER BY created_at DESC"#
+              OR (is_active AND visitor_account_id = $1)
+              OR (is_active AND visitor_account_id IS NULL AND user_id IS NULL
+                  AND $2 IS NOT NULL AND lower(owner_email) = lower($2))
+           ORDER BY created_at DESC"#,
     )
     .bind(user_id)
+    .bind(&caller_email)
     .fetch_all(&s.db)
     .await?;
 
