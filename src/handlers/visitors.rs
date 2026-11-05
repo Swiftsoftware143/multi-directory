@@ -1516,7 +1516,23 @@ pub async fn claim_business(
     // afternoon). The claim row already carries the harness marker (`probe`, from
     // `X-Swift-Harness`), so skip the mirror for it — the same way demand_analytics keeps harness
     // traffic out of the operator's figures. A real claim (`probe` is None) is unchanged.
-    if probe.is_none() {
+    // A browser-driven proof cannot set the `X-Swift-Harness` header, so its claim arrives looking
+    // exactly like a real owner's. Every fleet fixture signs up with one of the reserved domains
+    // below (nobody else can receive mail there), so a claim from one also skips the operator's
+    // sales pipeline. Measured 2026-11-05: browser claim proofs had left 6 real-looking
+    // "<business> - Claimed (<city>)" leads in crm_deal_records (item 18 swept them).
+    let fixture_domain = {
+        let d = owner_email
+            .split('@')
+            .nth(1)
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        matches!(
+            d.as_str(),
+            "swiftsoftware.dev" | "test.com" | "example.com" | "x.com" | "invalid.test"
+        )
+    };
+    if probe.is_none() && !fixture_domain {
         let _ = create_claim_deal(
             &s.db,
             business_id,

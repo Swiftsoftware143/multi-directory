@@ -214,8 +214,16 @@ ZZ_WHERE = r"title ~* '(probe|smoke|selftest|fixture|dummy)'" \
 # covers every harness name of that family; `b6-probe` is the one fixture without the `zz` prefix.
 # A real article/business slug has neither shape.
 V_URL = r"zz[a-z0-9-]*probe|b6-probe|zz-item6-debug"
+# Orphan claim leads: a browser-driven claim proof cannot send `X-Swift-Harness`, so it mints the
+# same "<real business name> - Claimed (<city>)" lead a genuine owner would. The pair is fake when
+# the named business has NO live claim row left — i.e. the proof's teardown removed its claim and
+# left the lead behind. Measured 2026-11-05: 27 such duplicates were sitting in the pipeline.
+ZZ_ORPHAN_DEAL = r"title LIKE '% - Claimed (%' AND NOT EXISTS (" \
+    r"SELECT 1 FROM claimed_businesses cb JOIN businesses b ON b.id = cb.business_id " \
+    r"WHERE crm_deal_records.title LIKE b.name || ' - Claimed (%')"
 PROBE_RECORDS = [
     ("crm_deal_records", ZZ_WHERE, ()),
+    ("crm_deal_records", ZZ_ORPHAN_DEAL, ()),
     ("business_messages", r"sender_email ~* '@(example\.(com|invalid)|invalid\.test|test\.com)$'",
      ("sender_email",)),
     ("newsletter_subscribers", r"email ~* '@(example\.(com|invalid)|invalid\.test)$'", ("email",)),
