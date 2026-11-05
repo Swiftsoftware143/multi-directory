@@ -2323,6 +2323,7 @@ function renderCityPage(d){
       <a class="zh-hero-cat" href="javascript:void(0)" onclick="filterCity('',this)"${state.filterCategory?'':_pillActive}>🔍 All${bizCount?' ('+bizCount+')':''}</a>
       ${heroPills}
       <a class="zh-hero-cat" href="javascript:void(0)" onclick="requestNearMe()">📍 Near Me</a>
+      <a class="zh-hero-cat" href="#/blog/${encodeURIComponent(state.slug)}">📝 Local Blog</a>
     </div>
     <div class="zh-hero-stats">
       <div class="zh-hero-stat"><span class="num">${(bizCount||0).toLocaleString()}</span><span class="label">Businesses in ${cityName}</span></div>
