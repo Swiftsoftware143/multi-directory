@@ -75,6 +75,11 @@ def http(method, path, body=None, token=None, extra_headers=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(BASE + path, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    # Cloudflare in front of the public hostnames answers a bare urllib client with
+    # `403 error code: 1010` (unrecognised User-Agent) — and every POST then dies with it.
+    # The proof must present the same browser identity a real user does, so it can run
+    # against either the local app or the public host it is normally invoked on.
+    req.add_header("User-Agent", "Mozilla/5.0 (compatible; SwiftOps/1.0)")
     if token:
         req.add_header("Authorization", "Bearer " + token)
     for k, v in (extra_headers or {}).items():
@@ -196,9 +201,16 @@ def main():
           f"status={st} ids={len(leak_ids)}")
 
     st, leak2 = http("GET", "/api/v1/reviews?status=pending&per_page=50", token=stranger_token)
-    leak2_ids = [r.get("id") for r in ((leak2 or {}).get("data") or [])] if isinstance(leak2, dict) else []
-    check("a stranger CANNOT read the platform-wide pending queue", rid not in leak2_ids,
-          f"status={st} ids={len(leak2_ids)}")
+    leak2_rows = (leak2 or {}).get("data") or [] if isinstance(leak2, dict) else []
+    leak2_ids = [r.get("id") for r in leak2_rows]
+    # The queue is forced to APPROVED for a stranger, so it comes back non-empty; assert that
+    # positively, otherwise "id not in []" would pass on a totally broken feed too.
+    leak2_statuses = {r.get("status") for r in leak2_rows}
+    check(
+        "a stranger asking for pending gets ONLY approved rows (no platform-wide pending queue)",
+        rid not in leak2_ids and leak2_statuses <= {"approved"},
+        f"status={st} ids={len(leak2_ids)} statuses={sorted(leak2_statuses)}",
+    )
     st, leak3 = http("GET", f"/api/v1/reviews?business_id={bid}&status=pending")
     anon_ids = [r.get("id") for r in ((leak3 or {}).get("data") or [])] if isinstance(leak3, dict) else []
     check("a logged-out visitor CANNOT read it either", rid not in anon_ids,
