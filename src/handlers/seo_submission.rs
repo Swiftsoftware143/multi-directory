@@ -213,6 +213,8 @@ async fn read_sitemap(
 /// failure. When the public read fails, the same path is read from `local_origin`.
 async fn submit_indexnow(
     client: &reqwest::Client,
+    db: &PgPool,
+    scope: &str,
     sitemap_url: &str,
     key: &str,
     local_origin: &str,
@@ -242,16 +244,49 @@ async fn submit_indexnow(
         .nth(1)
         .unwrap_or(origin.as_str())
         .to_string();
-    if locs.len() > INDEXNOW_MAX_URLS {
-        locs.truncate(INDEXNOW_MAX_URLS);
+    // A sitemap can repeat a loc across sections; submit each url once.
+    let mut seen = std::collections::HashSet::new();
+    locs.retain(|u| seen.insert(u.clone()));
+
+    // Only urls the engine has not been given yet. Resubmitting the whole sitemap on every
+    // run is what earned the live 429 (measured 2026-11-05 19:30) — IndexNow asks for
+    // NEW/CHANGED urls only. A missing table (pre-migration boot) is treated as "nothing
+    // known", so the first run after the migration submits the full set exactly once.
+    let known: std::collections::HashSet<String> =
+        sqlx::query_scalar::<_, String>("SELECT url FROM seo_submission_urls WHERE scope = $1")
+            .bind(scope)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+
+    let mut delta: Vec<String> = locs
+        .iter()
+        .filter(|u| !known.contains(*u))
+        .cloned()
+        .collect();
+    if delta.len() > INDEXNOW_MAX_URLS {
+        delta.truncate(INDEXNOW_MAX_URLS);
     }
-    let n = locs.len();
+    if delta.is_empty() {
+        return (
+            None,
+            true,
+            Some(format!(
+                "unchanged — all {} urls already submitted",
+                locs.len()
+            )),
+            0,
+        );
+    }
+    let n = delta.len();
 
     let body = json!({
         "host": host,
         "key": key,
         "keyLocation": format!("{origin}/indexnow-key.txt"),
-        "urlList": locs,
+        "urlList": &delta,
     });
 
     match client
@@ -264,6 +299,18 @@ async fn submit_indexnow(
         Ok(resp) => {
             let code = resp.status().as_u16() as i32;
             let ok = resp.status().is_success();
+            // Remember exactly the urls that were accepted, so the next run submits only what is
+            // new. A failed/throttled answer records nothing, so those urls are retried later.
+            if ok {
+                let _ = sqlx::query(
+                    "INSERT INTO seo_submission_urls (scope, url) \
+                     SELECT $1, u FROM unnest($2::text[]) AS u ON CONFLICT DO NOTHING",
+                )
+                .bind(scope)
+                .bind(&delta)
+                .execute(db)
+                .await;
+            }
             let detail = if ok {
                 None
             } else {
@@ -394,8 +441,12 @@ pub async fn run_submission(
         .filter(|k| !k.is_empty())
     {
         enabled_count += 1;
+        let scope = row
+            .directory_id
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "platform".to_string());
         let (status_code, ok, detail, url_count) =
-            submit_indexnow(&client, &sitemap, key, local_origin).await;
+            submit_indexnow(&client, db, &scope, &sitemap, key, local_origin).await;
         any_ok = any_ok || ok;
 
         sqlx::query(
