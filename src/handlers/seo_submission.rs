@@ -150,28 +150,76 @@ fn origin_of(url: &str) -> Option<String> {
     Some(format!("{scheme}://{authority}"))
 }
 
+/// The path+query of an absolute URL, for re-reading the same document from the
+/// server's own loopback address (`/sitemap.xml` when there is no path).
+fn path_of(url: &str) -> String {
+    let after_scheme = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
+    match after_scheme.find('/') {
+        Some(i) => after_scheme[i..].to_string(),
+        None => "/".to_string(),
+    }
+}
+
+/// Read the sitemap XML: the public URL first, then — only if that fails — the same
+/// path from the app's own loopback origin. The fallback never changes what is
+/// submitted (the `<loc>` values are absolute public URLs); it only removes a CDN /
+/// edge hiccup from the critical path of a nightly run.
+async fn read_sitemap(
+    client: &reqwest::Client,
+    sitemap_url: &str,
+    local_origin: &str,
+) -> Result<String, String> {
+    let public = match client.get(sitemap_url).send().await {
+        Ok(r) if r.status().is_success() => match r.text().await {
+            Ok(t) => return Ok(t),
+            Err(e) => format!("sitemap read: {e}"),
+        },
+        Ok(r) => format!("sitemap HTTP {}", r.status().as_u16()),
+        Err(e) => format!("sitemap fetch: {e}"),
+    };
+
+    if local_origin.trim().is_empty() {
+        return Err(public);
+    }
+    let local_url = format!(
+        "{}{}",
+        local_origin.trim_end_matches('/'),
+        path_of(sitemap_url)
+    );
+    match client.get(&local_url).send().await {
+        Ok(r) if r.status().is_success() => match r.text().await {
+            Ok(t) => {
+                tracing::warn!(
+                    "[seo-submit] public sitemap read failed ({public}); served the same path locally"
+                );
+                Ok(t)
+            }
+            Err(e) => Err(format!("{public}; local read: {e}")),
+        },
+        Ok(r) => Err(format!("{public}; local HTTP {}", r.status().as_u16())),
+        Err(e) => Err(format!("{public}; local fetch: {e}")),
+    }
+}
+
 /// Fetch the sitemap, take its URLs, and submit them to IndexNow.
+///
 /// Returns `(status_code, ok, detail, url_count)` — never panics on a bad engine
 /// answer, so a submission failure is recorded rather than propagated.
+///
+/// The sitemap is read over HTTPS from the PUBLIC host (so the discovery is honest),
+/// but the server also knows its own loopback address: an intermittent CDN/edge stall
+/// on the 600 KB XML (observed 2026-11-05: a run recorded `status=failed`, then the
+/// identical request answered in 0.09 s) must not turn a nightly submission into a
+/// failure. When the public read fails, the same path is read from `local_origin`.
 async fn submit_indexnow(
     client: &reqwest::Client,
     sitemap_url: &str,
     key: &str,
+    local_origin: &str,
 ) -> (Option<i32>, bool, Option<String>, usize) {
-    let xml = match client.get(sitemap_url).send().await {
-        Ok(r) if r.status().is_success() => match r.text().await {
-            Ok(t) => t,
-            Err(e) => return (None, false, Some(format!("sitemap read: {e}")), 0),
-        },
-        Ok(r) => {
-            return (
-                None,
-                false,
-                Some(format!("sitemap HTTP {}", r.status().as_u16())),
-                0,
-            )
-        }
-        Err(e) => return (None, false, Some(format!("sitemap fetch: {e}")), 0),
+    let xml = match read_sitemap(client, sitemap_url, local_origin).await {
+        Ok(t) => t,
+        Err(e) => return (None, false, Some(e), 0),
     };
 
     let mut locs = parse_locs(&xml);
@@ -272,6 +320,7 @@ pub async fn run_submission(
     db: &PgPool,
     row: &SubmissionSettings,
     base_domain: &str,
+    local_origin: &str,
 ) -> Result<Value, AppError> {
     let sitemap = resolve_sitemap(row.sitemap_url.as_deref(), base_domain);
     let encoded = encode_component(&sitemap);
@@ -345,7 +394,8 @@ pub async fn run_submission(
         .filter(|k| !k.is_empty())
     {
         enabled_count += 1;
-        let (status_code, ok, detail, url_count) = submit_indexnow(&client, &sitemap, key).await;
+        let (status_code, ok, detail, url_count) =
+            submit_indexnow(&client, &sitemap, key, local_origin).await;
         any_ok = any_ok || ok;
 
         sqlx::query(
@@ -500,7 +550,13 @@ pub async fn run_now(
     }
 
     let row = ensure_global_row(&s.db).await?;
-    let outcome = run_submission(&s.db, &row, &s.config.base_domain).await?;
+    let outcome = run_submission(
+        &s.db,
+        &row,
+        &s.config.base_domain,
+        &format!("http://{}:{}", s.config.host, s.config.port),
+    )
+    .await?;
     Ok(Json(outcome))
 }
 
@@ -536,7 +592,7 @@ pub async fn indexnow_key_file(State(s): State<AppState>) -> impl IntoResponse {
 }
 
 /// Start the submission scheduler — checks every 5 minutes for a due global row.
-pub fn start_submission_scheduler(db: PgPool, base_domain: String) {
+pub fn start_submission_scheduler(db: PgPool, base_domain: String, local_origin: String) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
         loop {
@@ -559,7 +615,7 @@ pub fn start_submission_scheduler(db: PgPool, base_domain: String) {
             }
 
             tracing::info!("[seo-submit] settings due — running submission pass");
-            match run_submission(&db, &row, &base_domain).await {
+            match run_submission(&db, &row, &base_domain, &local_origin).await {
                 Ok(v) => tracing::info!(
                     "[seo-submit] pass complete: {} ({} targets)",
                     v["status"],
@@ -595,6 +651,17 @@ mod tests {
             Some("http://127.0.0.1:9997".to_string())
         );
         assert_eq!(origin_of("not-a-url"), None);
+    }
+
+    #[test]
+    fn path_of_keeps_the_document_path_for_the_local_fallback() {
+        assert_eq!(path_of("https://zaarhub.com/sitemap.xml"), "/sitemap.xml");
+        assert_eq!(
+            path_of("https://zaarhub.com/sitemap.xml?x=1"),
+            "/sitemap.xml?x=1"
+        );
+        assert_eq!(path_of("https://zaarhub.com"), "/");
+        assert_eq!(path_of("https://zaarhub.com/"), "/");
     }
 
     #[test]

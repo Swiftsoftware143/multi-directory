@@ -145,6 +145,7 @@ async fn main() {
     handlers::seo_submission::start_submission_scheduler(
         state.db.clone(),
         state.config.base_domain.clone(),
+        format!("http://{}:{}", state.config.host, state.config.port),
     );
 
     let app = routes::create_router(state.clone())
