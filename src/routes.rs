@@ -2087,6 +2087,12 @@ pub fn create_router(s: AppState) -> Router {
         // to the other pros matched by category and area. Public like a direct message.
         .route("/quotes/broadcast", post(messaging::broadcast_quote))
         .route("/businesses/:id/claim", post(visitors::claim_business))
+        // The public business page's preferred reviews call (approved rows only, no reviewer
+        // address). Registered here so that page stops paying a 404 before its fallback.
+        .route(
+            "/businesses/:id/reviews",
+            get(reviews::list_business_reviews_public),
+        )
         // Two-step claim confirmation link (card B76) — the token IS the credential, so no JWT.
         .route("/claims/verify/:token", get(visitors::verify_claim_email))
         .route(

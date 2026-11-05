@@ -578,6 +578,28 @@ pub async fn list_business_reviews(
             slug
         )))?;
 
+    approved_reviews_page(&s, business_id, params).await
+}
+
+/// GET /api/v1/businesses/:id/reviews — the public business page's preferred reviews call.
+///
+/// `frontend/business-detail.html` requests this first and only falls back to
+/// `/reviews?status=approved&business_id=…` when it 404s; the route was never registered, so every
+/// business page paid a failing round-trip and rendered reviews through the fallback. Same payload
+/// as the directory-scoped route (approved rows only, reviewer address stripped).
+pub async fn list_business_reviews_public(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    approved_reviews_page(&s, business_id, params).await
+}
+
+async fn approved_reviews_page(
+    s: &AppState,
+    business_id: Uuid,
+    params: std::collections::HashMap<String, String>,
+) -> ApiResult<impl IntoResponse> {
     let page = params
         .get("page")
         .and_then(|v| v.parse::<i64>().ok())

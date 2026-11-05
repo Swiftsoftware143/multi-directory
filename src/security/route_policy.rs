@@ -145,6 +145,7 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("POST", "/business-articles/:id/track", "article-track"),
     // --- /businesses -------------------------------------------------
     ("GET", "/businesses/:id/questions", "business-questions"),
+    ("GET", "/businesses/:id/reviews", "business-reviews"),
     ("POST", "/businesses/:id/claim", "business-claim"),
     ("POST", "/businesses/:id/questions", "business-questions"),
     ("POST", "/businesses/:id/report", "business-report"),
@@ -763,10 +764,12 @@ mod tests {
         // changes, the census wants a look.
         // plus the public business review list (GET /directories/:slug/businesses/:id/reviews —
         // the endpoint guide.html documents; approved rows only, reviewer address stripped);
-        // if this changes, the census wants a look.
+        // plus its listing-scoped twin (GET /businesses/:id/reviews, the call
+        // business-detail.html makes FIRST and used to 404 into a fallback); if this changes,
+        // the census wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            164,
+            165,
             "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews)"
         );
     }
