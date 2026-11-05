@@ -597,6 +597,14 @@ pub async fn upsert_email_settings(
         pw => Some(encrypt_for_storage(&s.db, pw).await?),
     };
 
+    // NETWORK MAIL RULE: a network has ONE mail identity ("one setup for all cities"). The card
+    // tells the operator exactly that, so a Save made while looking at a city that has no row of
+    // its own must write the NETWORK's row — writing a second row here would silently fork the
+    // network's mail (this city sending under a different provider/from-address than every other
+    // city) while the panel kept saying it was network-wide. A city that already owns a row keeps
+    // updating that row.
+    let mail_dir = effective_mail_directory(&s.db, dir.0).await?;
+
     let settings = sqlx::query_as::<_, DirectoryEmailSettings>(
         r#"INSERT INTO directory_email_settings
              (directory_id, transport, smtp_host, smtp_port, smtp_username, smtp_password,
@@ -610,7 +618,7 @@ pub async fn upsert_email_settings(
                          reply_to = $10, updated_at = NOW()
            RETURNING *"#,
     )
-    .bind(dir.0)
+    .bind(mail_dir)
     .bind(transport)
     .bind(&req.smtp_host)
     .bind(req.smtp_port.unwrap_or(587))
