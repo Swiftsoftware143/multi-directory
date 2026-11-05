@@ -150,11 +150,32 @@ def main():
     check("owner sees their own bookings list", st == 200, f"status={st}")
     check("the customer's booking is in the owner's list", bkid in ids, f"ids={len(ids)}")
 
-    # The write side uses the same ownership check.
-    st, upd = http("POST", f"/api/v1/bookings/{bkid}/status", {"status": "confirmed"},
+    # The real user path: the owner's own screen shows the request and its Confirm control works.
+    shot = os.path.join(AUD, "portal-bookings.png")
+    br = sh("node", os.path.join(os.path.dirname(__file__), "bookings-owner-browser.js"),
+            owner_email, pw, "Bookings ownership probe",
+            env={**os.environ, "SHOT": shot,
+                 "NODE_PATH": os.environ.get("NODE_PATH", "/opt/swift/browser-run/node_modules")})
+    try:
+        ui = json.loads(br.stdout.strip().splitlines()[-1])
+    except Exception:
+        ui = {"ok": False, "raw": (br.stdout or br.stderr)[-400:]}
+    with open(os.path.join(AUD, "ui-proof.json"), "w") as fh:
+        json.dump(ui, fh, indent=1)
+    check("portal: the request is on the owner's Booking Requests screen", ui.get("cardSeen") is True,
+          ui.get("listText", "")[:120])
+    check("portal: the owner's own listing is not denied", not ui.get("denied"), "403 text absent")
+    check("portal: the page's own Confirm button works", ui.get("confirmedOnScreen") is True,
+          ui.get("afterText", "")[:120])
+    check("database row is confirmed after the screen action",
+          psql(f"SELECT status FROM service_bookings WHERE id='{bkid}'") == "confirmed")
+    check("portal: the whole owner path passed in the browser", ui.get("ok") is True,
+          f"other 4xx={ui.get('badResponses')}")
+
+    # The API write side uses the same ownership check (already covered above by the screen click).
+    st, upd = http("POST", f"/api/v1/bookings/{bkid}/status", {"status": "completed"},
                    token=owner_token)
-    check("owner can confirm the booking", st == 200, f"status={st}")
-    check("the database row is confirmed", psql(f"SELECT status FROM service_bookings WHERE id='{bkid}'") == "confirmed")
+    check("owner can move the booking on (API, same ownership check)", st == 200, f"status={st}")
 
     # Negative case: a stranger must still be refused.
     st, tok = http("POST", "/api/v1/auth/login", {"email": stranger_email, "password": pw})
