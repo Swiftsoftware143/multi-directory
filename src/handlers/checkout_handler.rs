@@ -1432,15 +1432,23 @@ pub async fn list_checkout_sessions(
     // checkout_sessions, so this route 500'd for everyone (kanban t_5356f3fb).
     // A platform admin with no claimed business still sees the whole book.
     let scope = match resolve_checkout_business(&state.db, user_id, tenant_id).await {
-        Ok((business_id, _dir)) => Ok(Some(business_id)),
+        Ok((business_id, _dir)) => Some(business_id),
         Err(e) => {
             if is_admin(&claims) {
-                Ok(None)
+                None
             } else {
-                Err(e)
+                // An owner whose listing was claimed before they had an account (or a brand-new
+                // portal signup with no listing yet) has bought nothing. The purchases panel asks
+                // this route on load, so answering 400 put a red console error on the dashboard for
+                // every such owner (measured 2026-11-05, the portal review-approval browser proof
+                // failed only on `400 /api/v1/checkout/sessions`). A list with nothing in it is an
+                // empty list, never an error. The CREATE path keeps its 400 — a checkout with no
+                // business genuinely cannot proceed.
+                let _ = e;
+                return Ok(Json(json!({"sessions": [], "total": 0})));
             }
         }
-    }?;
+    };
 
     let rows = match scope {
         Some(business_id) => {

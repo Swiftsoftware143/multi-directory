@@ -2429,6 +2429,42 @@ pub async fn resolve_buyer_business(db: &sqlx::PgPool, user_id: Uuid) -> ApiResu
         }
     }
 
+    // A business the account owns outright (listing-invite / ownership-transfer flows set this
+    // instead of minting a claim row).
+    if let Some(bid) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM businesses WHERE owner_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?
+    {
+        return Ok(bid);
+    }
+
+    // A claim minted by the PUBLIC claim route carries the owner's EMAIL only — it runs before the
+    // claimant has an account, so it cannot record visitor_account_id. Without this arm every such
+    // owner's purchases panel answered 400 ("No business is linked to this account") on load.
+    // Same email-only guard as reviews::owned_by: a claim already linked to somebody else can never
+    // be shadowed by an email match. The address comes from owner_identity::caller_email so
+    // `users`-table portal signups match too, not just visitor_accounts.
+    if let Some(email) = crate::owner_identity::caller_email(db, user_id).await? {
+        if let Some(bid) = sqlx::query_scalar::<_, Uuid>(
+            r#"SELECT business_id FROM claimed_businesses
+               WHERE is_active
+                 AND visitor_account_id IS NULL AND user_id IS NULL
+                 AND business_id IS NOT NULL
+                 AND lower(owner_email) = lower($1)
+               ORDER BY created_at DESC
+               LIMIT 1"#,
+        )
+        .bind(&email)
+        .fetch_optional(db)
+        .await?
+        {
+            return Ok(bid);
+        }
+    }
+
     Err(AppError::NotFound(
         "No business linked to your account. Claim a business first.".into(),
     ))
