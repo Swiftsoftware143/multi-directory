@@ -35,3 +35,7 @@ credentials.json
 !*.template
 
 .hermes/
+
+# Python bytecode from the probe scripts (never committed)
+__pycache__/
+*.pyc
