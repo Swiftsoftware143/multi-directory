@@ -211,6 +211,16 @@ pub async fn update_tier(
         .and_then(|v| v.as_str())
         .unwrap_or(&existing.slug);
 
+    // An explicit null (or empty string) CLEARS the provider; omitting the field keeps it.
+    // Without this the screen's "Not set — use the active gateway" choice was a no-op once a
+    // provider had been saved, which made the control lie about what it does.
+    let payment_provider: Option<String> = match body.get("payment_provider") {
+        Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(v)) if v.trim().is_empty() => None,
+        Some(serde_json::Value::String(v)) => Some(v.clone()),
+        _ => existing.payment_provider.clone(),
+    };
+
     let tier = sqlx::query_as::<_, PlanTier>(
         r#"UPDATE plan_tiers SET
             name = $1, slug = $2,
@@ -250,7 +260,7 @@ pub async fn update_tier(
     .bind(body.get("featured_listing").and_then(|v| v.as_bool()).or(existing.featured_listing))
     .bind(body.get("description").and_then(|v| v.as_str()).or(existing.description.as_deref()))
     .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()).or(existing.plan_sales_page_url.as_deref()))
-    .bind(body.get("payment_provider").and_then(|v| v.as_str()).or(existing.payment_provider.as_deref()))
+    .bind(payment_provider.as_deref())
     .bind(body.get("monthly_point_allowance").and_then(|v| v.as_i64()).map(|v| v as i32).or(existing.monthly_point_allowance))
     .bind(id)
     .fetch_one(&s.db)

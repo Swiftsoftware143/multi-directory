@@ -1039,7 +1039,7 @@ function renderTierPlans(){
 function renderTierTable(list){
   if(!list||list.length===0)return'<p style="padding:12px;color:var(--text-secondary)">No plan tiers. Create one to offer subscriptions.</p>';
   return'<table class="data-table" style="width:100%;border-collapse:collapse"><tr><th>Name</th><th>Slug</th><th>Monthly</th><th>Yearly</th><th>Provider</th><th>Active</th><th>Order</th><th></th></tr>'+
-    list.map(function(t){return'<tr><td>'+esc(t.name||'')+'</td><td>'+esc(t.slug||'')+'</td><td>$'+(t.price_monthly||'0')+'</td><td>$'+(t.price_yearly||'0')+'</td><td>'+(t.payment_provider?esc(t.payment_provider):'<span style="color:var(--text-secondary)">Stripe</span>')+'</td><td>'+(t.is_active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</td><td>'+(t.sort_order||0)+'</td><td><button class="btn btn-sm" onclick="editTier(\''+t.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteTier(\''+t.id+'\')">🗑️</button></td></tr>';}).join('')+'</table>';
+    list.map(function(t){return'<tr><td>'+esc(t.name||'')+'</td><td>'+esc(t.slug||'')+'</td><td>$'+(t.price_monthly||'0')+'</td><td>$'+(t.price_yearly||'0')+'</td><td>'+(t.payment_provider?esc(t.payment_provider):'<span style="color:var(--text-secondary)">Not set</span>')+'</td><td>'+(t.is_active!==false?'<span class="badge active">Active</span>':'<span class="badge inactive">Inactive</span>')+'</td><td>'+(t.sort_order||0)+'</td><td><button class="btn btn-sm" onclick="editTier(\''+t.id+'\')">✏️</button><button class="btn btn-sm btn-danger" onclick="deleteTier(\''+t.id+'\')">🗑️</button></td></tr>';}).join('')+'</table>';
 }
 
 var _tierFormId=null;
@@ -1050,7 +1050,7 @@ function showTierForm(tier){
     '<div class="form-row"><label>Slug</label><input type="text" id="tf-slug" value="'+esc(t.slug||'')+'" style="width:100%" placeholder="auto-generated"></div>'+
     '<div class="form-row"><label>Monthly Price ($)</label><input type="number" step="0.01" id="tf-monthly" value="'+(t.price_monthly||'0')+'" style="width:120px"></div>'+
     '<div class="form-row"><label>Yearly Price ($)</label><input type="number" step="0.01" id="tf-yearly" value="'+(t.price_yearly||'0')+'" style="width:120px"></div>'+
-    '<div class="form-row"><label>Payment Provider</label><select id="tf-provider" style="width:200px"><option value="">Default (Stripe)</option><option value="stripe"'+(t.payment_provider==='stripe'?' selected':'')+'>Stripe</option><option value="paypal"'+(t.payment_provider==='paypal'?' selected':'')+'>PayPal</option></select></div>'+
+    '<div class="form-row"><label>Payment Provider</label><select id="tf-provider" style="width:220px"><option value="">Not set — use the active gateway</option>'+['stripe','paypal','nmi','epd','square','paddle'].map(function(p){var L={stripe:'Stripe',paypal:'PayPal',nmi:'NMI (no receiver yet)',epd:'EPD (no receiver yet)',square:'Square (no receiver yet)',paddle:'Paddle (no receiver yet)'};return '<option value="'+p+'"'+(t.payment_provider===p?' selected':'')+'>'+L[p]+'</option>';}).join('')+'</select></div>'+
     '<div class="form-row"><label>Thank-You URL</label><input type="text" id="tf-thankyou" value="'+esc(t.thank_you_url||'')+'" style="width:100%" placeholder="/thank-you.html"></div>'+
     '<div class="form-row"><label>Sort Order</label><input type="number" id="tf-order" value="'+(t.sort_order||0)+'" style="width:80px"></div>'+
     '<div class="form-row"><label><input type="checkbox" id="tf-active" '+(t.is_active!==false?'checked':'')+'> Active</label></div>'+
