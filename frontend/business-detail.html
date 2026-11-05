@@ -170,8 +170,8 @@ a:hover{text-decoration:underline}
 .zh-gallery-count{position:absolute;bottom:12px;right:12px;background:rgba(0,0,0,.6);color:#fff;font-size:.75rem;font-weight:600;padding:4px 12px;border-radius:100px;backdrop-filter:blur(4px)}
 
 /* Lightbox */
-.zh-lightbox{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:1000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .3s ease}
-.zh-lightbox.show{opacity:1}
+.zh-lightbox{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:1000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s ease}
+.zh-lightbox.show{opacity:1;pointer-events:auto}
 .zh-lightbox-content{max-width:90vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);object-fit:contain}
 .zh-lightbox-close{position:absolute;top:16px;right:24px;font-size:2.5rem;color:#fff;cursor:pointer;z-index:1001;transition:opacity .2s;opacity:.7;line-height:1}
 .zh-lightbox-close:hover{opacity:1}
@@ -330,6 +330,7 @@ a:hover{text-decoration:underline}
         <!-- Reviews -->
         <div class="card">
           <div class="card-title">⭐ Reviews</div>
+          <div id="writeReviewCard"></div>
           <div id="reviewsContent"></div>
         </div>
 
@@ -839,6 +840,7 @@ function renderBusiness() {
 
   // Render reviews
   renderReviews();
+  initWriteReview();
 
   // Active deals (the API has always returned bizData.deals; the card was a static placeholder
   // even with live deals — render it, and keep the empty state when there are none).
@@ -1001,6 +1003,107 @@ function renderReviews() {
     `;
   });
   container.innerHTML = html;
+}
+
+// ── Write a review ──
+// POST /api/v1/reviews has always existed (and is what the business portal moderates), but no
+// screen ever called it: a customer could read reviews and never leave one, so every review on
+// the live site arrived by API/import. This is the customer half of the loop that ends in the
+// owner's approve/reject queue.
+let myReviewRating = 0;
+
+function initWriteReview() {
+  const host = document.getElementById('writeReviewCard');
+  if (!host || !bizData || !bizData.id) return;
+
+  const back = encodeURIComponent(window.location.pathname + window.location.search);
+  const token = localStorage.getItem('zh_token');
+  if (!token) {
+    host.innerHTML = '<div style="border:1px dashed var(--border,#e2e8f0);border-radius:10px;padding:14px;margin-bottom:14px;font-size:.88rem;color:var(--text-muted,#64748b)">' +
+      'Been here? <a href="/visitor?redirect=' + back + '" style="color:var(--teal,#0d9488);font-weight:600">Sign in</a> to leave a review.' +
+      '</div>';
+    return;
+  }
+
+  host.innerHTML = `
+    <div id="reviewForm" style="border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="font-weight:600;font-size:.92rem;margin-bottom:8px">Write a review</div>
+      <div id="reviewStars" style="font-size:1.5rem;letter-spacing:2px;cursor:pointer;user-select:none;line-height:1">
+        ${[1, 2, 3, 4, 5].map(n => `<span data-star="${n}" style="color:#cbd5e1">★</span>`).join('')}
+      </div>
+      <div id="reviewStarsHint" style="font-size:.76rem;color:var(--text-muted,#64748b);margin:4px 0 8px">Tap a star to rate</div>
+      <textarea id="reviewText" maxlength="1500" rows="3" placeholder="What was your experience like?" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--border,#e2e8f0);border-radius:8px;font:inherit;font-size:.9rem;resize:vertical"></textarea>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button id="reviewSubmit" onclick="submitReview()" style="background:var(--teal,#0d9488);color:#fff;border:0;border-radius:8px;padding:9px 18px;font-weight:600;font-size:.88rem;cursor:pointer">Post review</button>
+        <span id="reviewStatus" style="font-size:.82rem;color:var(--text-muted,#64748b)"></span>
+      </div>
+    </div>`;
+
+  document.querySelectorAll('#reviewStars span').forEach(el => {
+    el.addEventListener('click', () => setReviewRating(Number(el.dataset.star)));
+    el.addEventListener('mouseenter', () => paintStars(Number(el.dataset.star)));
+  });
+  const row = document.getElementById('reviewStars');
+  if (row) row.addEventListener('mouseleave', () => paintStars(myReviewRating));
+}
+
+function paintStars(n) {
+  document.querySelectorAll('#reviewStars span').forEach(el => {
+    el.style.color = Number(el.dataset.star) <= n ? '#f59e0b' : '#cbd5e1';
+  });
+}
+
+function setReviewRating(n) {
+  myReviewRating = n;
+  paintStars(n);
+  const hint = document.getElementById('reviewStarsHint');
+  if (hint) hint.textContent = n + ' of 5';
+}
+
+async function submitReview() {
+  const status = document.getElementById('reviewStatus');
+  const btn = document.getElementById('reviewSubmit');
+  if (!bizData || !bizData.id || !status || !btn) return;
+
+  const text = (document.getElementById('reviewText').value || '').trim();
+  if (myReviewRating < 1) {
+    status.style.color = '#dc2626';
+    status.textContent = 'Choose a star rating first.';
+    return;
+  }
+  if (text.length < 3) {
+    status.style.color = '#dc2626';
+    status.textContent = 'Add a sentence about your visit.';
+    return;
+  }
+
+  const token = localStorage.getItem('zh_token');
+  if (!token) {
+    window.location.href = '/visitor?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+    return;
+  }
+
+  btn.disabled = true;
+  status.style.color = 'var(--text-muted,#64748b)';
+  status.textContent = 'Posting…';
+
+  try {
+    const resp = await fetch('/api/v1/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ business_id: bizData.id, rating: myReviewRating, content: text })
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.message || ('Could not post your review (HTTP ' + resp.status + ').'));
+    document.getElementById('reviewForm').innerHTML =
+      '<div style="font-size:.9rem;color:#166534;font-weight:600">✅ Thanks — your review was sent to ' +
+      esc(bizData.name || 'the business') + ' for approval. It will appear here once they publish it.</div>';
+  } catch (e) {
+    btn.disabled = false;
+    paintStars(myReviewRating);
+    status.style.color = '#dc2626';
+    status.textContent = e.message || 'Could not post your review.';
+  }
 }
 
 // ── Deals ──
