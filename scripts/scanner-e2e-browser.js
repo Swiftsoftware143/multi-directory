@@ -99,7 +99,11 @@ async function scanAndAward(y4m) {
     localStorage.setItem('scannerBizCat', c);
   }, TOKEN, BIZ_ID, BIZ_NAME, BIZ_CAT);
 
-  const resp = await page.goto(MD_BASE + '/scanner', { waitUntil: 'networkidle2', timeout: 45000 });
+  // domcontentloaded, not networkidle2: through Cloudflare a long-lived beacon/keep-alive
+  // connection can keep the network "busy" forever, producing a false navigation timeout
+  // (seen 2026-11-05: same page, same host, PASS on retry 60s later). The waitForFunction
+  // below already waits for the scanner screen, which is the real readiness signal.
+  const resp = await page.goto(MD_BASE + '/scanner', { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForFunction(() => {
     const s = document.getElementById('scannerScreen');
     return s && getComputedStyle(s).display !== 'none';
