@@ -114,6 +114,29 @@ def restore():
 restored = {"done": False}
 
 
+def edge_get(path, tries=3):
+    """Fetch a live public page, retrying a transient edge/network stall.
+
+    A single unretried 30 s curl made this proof crash with a TimeoutExpired traceback whenever
+    the public host briefly stalled (measured 2026-11-05: two of three consecutive runs aborted
+    while the site itself answered in ~0.1 s moments later). A proof must fail only when the
+    product is wrong, not when the network hiccups — so retry, then raise one clear message.
+    """
+    last = None
+    for attempt in range(tries):
+        r = subprocess.run(
+            ["curl", "-s", "-A", UA, EDGE + path, "--max-time", "25"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0 and r.stdout:
+            return r.stdout
+        last = r
+        time.sleep(2 * (attempt + 1))
+    raise RuntimeError(
+        f"live page unreachable after {tries} tries: {EDGE}{path} (curl rc={getattr(last, 'returncode', '?')})"
+    )
+
+
 def main():
     try:
         # --- A. server-side injection on the live edge ---
@@ -124,8 +147,7 @@ def main():
         )
         time.sleep(1.5)
         for path in (f"/{SLUG}", f"/{SLUG}/businesses"):
-            r = subprocess.run(["curl", "-s", "-A", UA, EDGE + path], capture_output=True, text=True, timeout=30)
-            page = r.stdout
+            page = edge_get(path)
             check(f"{path} head code rendered", HEAD in page)
             check(f"{path} body code rendered", BODY in page)
             check(f"{path} footer code rendered", FOOT in page)
@@ -144,7 +166,7 @@ def main():
         time.sleep(1.0)
         AFTER = one(CAPTURE)
         check("net-zero (city code boxes restored)", BEFORE == AFTER, f"before={BEFORE[:24]} after={AFTER[:24]}")
-        live = sh("curl", "-s", "-A", UA, f"{EDGE}/{SLUG}", "--max-time", "25").stdout
+        live = edge_get(f"/{SLUG}")
         check("probe removed from live page", "ZZHEAD4471" not in live and "ZZBODY4471" not in live)
 
         # --- save endpoint serves all three fields ---
