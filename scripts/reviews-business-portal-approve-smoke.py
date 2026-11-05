@@ -70,6 +70,9 @@ def http(method, path, body=None, token=None, extra_headers=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(BASE + path, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    # Cloudflare in front of the public hostnames answers a bare urllib client with 403;
+    # the probes must present the same browser identity a real user does.
+    req.add_header("User-Agent", "Mozilla/5.0 (compatible; SwiftOps/1.0)")
     if token:
         req.add_header("Authorization", "Bearer " + token)
     for k, v in (extra_headers or {}).items():
