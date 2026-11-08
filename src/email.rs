@@ -255,6 +255,21 @@ pub async fn send_claim_review_notice(
     claimant_email: &str,
     link: &str,
 ) -> Result<(), String> {
+    // Test/proof records must NEVER email the admin (David, 2026-11-05).
+    // The verification harness creates "Proof Cafe"/"ZZ …" businesses claimed from
+    // @example.test addresses; each run was firing a real claim email. Skip them.
+    let bn = business_name.to_ascii_lowercase();
+    let ce = claimant_email.to_ascii_lowercase();
+    let test_business = bn.starts_with("zz") || bn.contains("impbase") || bn.contains("proof cafe");
+    let test_email = ce.ends_with("@example.test")
+        || ce.ends_with("@example.com")
+        || ce.ends_with(".invalid")
+        || ce.ends_with(".dev")
+        || ce.starts_with("zz-")
+        || ce.starts_with("scan-proof-");
+    if test_business || test_email {
+        return Ok(());
+    }
     let subject = format!("Claim needs review: {business_name}");
     let html = format!(
         r#"<!DOCTYPE html><html><head><meta charset="utf-8"></head>
