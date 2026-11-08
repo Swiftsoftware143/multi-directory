@@ -101,6 +101,7 @@ a:hover{text-decoration:underline}
 /* Map */
 .map-container{width:100%;height:260px;border-radius:8px;overflow:hidden;border:1px solid var(--border)}
 .map-container .leaflet-container{width:100%;height:100%}
+.walk-score{margin-top:10px;font-size:.9rem;color:var(--text-muted);font-variant-numeric:tabular-nums}
 
 /* Deals */
 .deal-card{background:linear-gradient(135deg,#fef3c7,#fff);border:1px solid #fbbf24;border-radius:var(--radius);padding:16px;margin-bottom:10px}
@@ -318,6 +319,7 @@ a:hover{text-decoration:underline}
         <div class="card">
           <div class="card-title">📍 Location</div>
           <div class="map-container" id="mapContainer"></div>
+          <div class="walk-score" id="walkScoreLine" style="display:none"></div>
         </div>
 
 
@@ -819,6 +821,24 @@ function renderBusiness() {
     initMap(b.lat, b.lng, name);
   } else {
     document.getElementById('mapContainer').innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-muted);font-size:.85rem">Map location not available.</p>';
+  }
+
+  // Walk / Bike score — cached server-side (quarterly refresh); this page NEVER calls the
+  // vendor. Neutral numbers only, and nothing at all when the listing has no cached pair.
+  const scoreEl = document.getElementById('walkScoreLine');
+  if (scoreEl) {
+    const walk = (typeof b.walk_score === 'number' && b.walk_score > 0) ? Math.round(b.walk_score) : null;
+    const bike = (typeof b.bike_score === 'number' && b.bike_score > 0) ? Math.round(b.bike_score) : null;
+    const parts = [];
+    if (walk !== null) parts.push('Walk ' + walk);
+    if (bike !== null) parts.push('Bike ' + bike);
+    if (parts.length) {
+      scoreEl.textContent = parts.join(' · ');
+      scoreEl.style.display = 'block';
+    } else {
+      scoreEl.textContent = '';
+      scoreEl.style.display = 'none';
+    }
   }
 
   // Gallery

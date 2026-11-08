@@ -113,6 +113,7 @@ pub fn usage() {
          USAGE\n\
          \x20 multidirectory migrate [--database-url URL] [--dry-run]\n\
          \x20 multidirectory create-admin --email EMAIL [options]\n\
+         \x20 multidirectory walk-scores [BATCH]   refresh Walk/Bike scores due this quarter\n\
          \n\
          create-admin options\n\
          \x20 --email EMAIL          login address (required, must look like name@example.com)\n\

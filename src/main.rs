@@ -5,6 +5,7 @@ mod coreswift;
 mod email;
 mod entitlements;
 mod reminders;
+mod walk_scores;
 
 mod auth;
 mod beacon_middleware;
@@ -93,6 +94,28 @@ async fn main() {
         );
     }
 
+    // Manual Walk Score / Bike Score pass (operator/verification path). Exactly the function
+    // the hourly scheduler runs, so a manual pass and a scheduled pass cannot diverge.
+    if cli.get(1).map(String::as_str) == Some("walk-scores") {
+        let limit = cli
+            .get(2)
+            .and_then(|n| n.parse::<i64>().ok())
+            .unwrap_or(200);
+        match walk_scores::refresh_due(&pool, limit).await {
+            Ok(r) => {
+                println!(
+                    "walk-scores: attempted={} stored={} failed={} unconfigured={}",
+                    r.attempted, r.stored, r.failed, r.unconfigured
+                );
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("walk-scores: refresh failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     let state = AppState::new(pool, config.clone());
 
     // Say the inbound body bound out loud at boot (kanban t_52b9f3c7): a client that sends a
@@ -126,6 +149,10 @@ async fn main() {
 
     // Start background reminder cron
     reminders::start_reminder_cron(state.db.clone());
+
+    // Walk Score / Bike Score: quarterly refresh, batched hourly. A page view NEVER calls the
+    // vendor — the detail endpoint only reads `business_walk_scores`.
+    walk_scores::start_walk_score_cron(state.db.clone());
 
     // Start the enrichment cycle scheduler (T4) — the rotating re-enrichment that
     // was previously only a comment. It checks every 5 minutes for a due

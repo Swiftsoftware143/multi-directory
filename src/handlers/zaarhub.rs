@@ -1359,6 +1359,10 @@ struct BizDetail {
     /// Neighbourhood granularity (card B90, Nextdoor-style): operator-set suburb/community,
     /// public on the listing. None for `business_listings` rows (a different UUID space).
     neighbourhood: Option<String>,
+    /// The `businesses.id` this listing maps to. Equal to `id` for a `businesses` row; the
+    /// linked business for a `business_listings` card (NULL only if the link is broken).
+    /// Walk Score caching is keyed by this value so both detail paths read ONE cached row.
+    business_id: Option<Uuid>,
     /// TRUE when the row came from `business_listings` (a different UUID space).
     is_listing: bool,
 }
@@ -1511,11 +1515,12 @@ pub async fn get_business_detail(
             licensed: r.try_get::<Option<bool>, _>("licensed")?.unwrap_or(false),
             insured: r.try_get::<Option<bool>, _>("insured")?.unwrap_or(false),
             neighbourhood: r.try_get("neighbourhood")?,
+            business_id: Some(r.try_get("id")?),
             is_listing: false,
         }
     } else if let Ok(bid) = Uuid::parse_str(&id) {
         let r = sqlx::query(
-            r#"SELECT bl.id, bl.business_name, bl.category, bl.description, bl.phone,
+            r#"SELECT bl.id, bl.business_id, bl.business_name, bl.category, bl.description, bl.phone,
                       bl.website, bl.address, cp.city_name, cp.state, bl.rating,
                       bl.review_count, bl.coordinates_lat, bl.coordinates_lng,
                       bl.logo_url, bl.cover_image_url, bl.is_claimed
@@ -1566,6 +1571,7 @@ pub async fn get_business_detail(
             licensed: false,
             insured: false,
             neighbourhood: None,
+            business_id: r.try_get("business_id")?,
             is_listing: true,
         }
     } else {
@@ -1757,6 +1763,14 @@ pub async fn get_business_detail(
         Vec::new()
     };
 
+    // Walk Score / Bike Score — READ ONLY from the quarterly cache. A page view never calls
+    // the vendor. (None, None) means the listing has not been scored yet or its directory has
+    // no walkscore key; the page then renders nothing at all.
+    let (walk_score, bike_score) = match biz.business_id {
+        Some(bid) => crate::walk_scores::cached_for_business(&s.db, bid).await?,
+        None => (None, None),
+    };
+
     // ONE FLAT shape. This is the contract every consumer reads (`bizData.name`, `b.name`), so
     // the business fields sit at the TOP LEVEL next to deals / reviews / hours — there is no
     // nested `business` object any more. `lat`/`lng` are aliases of latitude/longitude because
@@ -1776,6 +1790,9 @@ pub async fn get_business_detail(
         "longitude": biz.longitude,
         "lat": biz.latitude,
         "lng": biz.longitude,
+        // Cached Walk Score / Bike Score. Integers only — no vendor verdict, link or branding.
+        "walk_score": walk_score,
+        "bike_score": bike_score,
         "rating": biz.rating,
         "review_count": biz.review_count,
         "category_name": category_name.clone(),
