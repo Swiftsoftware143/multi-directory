@@ -496,7 +496,26 @@ const NOINDEX_PATHS: &[&str] = &[
     "/pricing-admin.html",
     "/blog-features-admin.html",
     "/supplier-portal.html",
+    // Remainder of the console class, 2026-11-10: operator/owner consoles behind a
+    // login wall that answer 200 anonymously. `/admin-panel*` and `/admin-ops*` are
+    // NOT covered by the robots.txt `Disallow: /admin/` prefix rule (no trailing
+    // slash), so they need the directive here rather than a Disallow.
+    "/admin-panel",
+    "/admin-panel/",
+    "/admin-panel.html",
+    "/admin-ops",
+    "/admin-ops/",
+    "/admin-ops.html",
+    "/business-dashboard",
+    "/business-dashboard/",
+    "/business-dashboard.html",
+    "/portal",
+    "/portal/",
 ];
+
+/// Console path PREFIXES: `/portal/business*` is the same business-portal shell as
+/// `/portal`, so the whole subtree carries the response-level directive.
+const NOINDEX_PREFIXES: &[&str] = &["/portal/"];
 
 /// Paths that are private consoles or non-page surfaces: never canonicalised.
 const EXCLUDED_PREFIXES: &[&str] = &[
@@ -522,6 +541,14 @@ fn excluded(path: &str) -> bool {
     EXCLUDED_PREFIXES.iter().any(|p| path.starts_with(p))
 }
 
+/// Console paths that carry BOTH the noindex and a self-canonical. `/portal` has
+/// always emitted `<link rel="canonical" href="https://zaarhub.com/portal">`; the
+/// CEO board's instruction (2026-11-10) is that the canonical and the noindex
+/// coexist there, so the noindex branch must not swallow the canonical rewrite.
+fn noindex_keeps_canonical(path: &str) -> bool {
+    path == "/portal" || path.starts_with("/portal/")
+}
+
 /// Largest document this middleware will buffer — the same ceiling the beacon
 /// middleware uses; the biggest page this app serves is well under it.
 const MAX_HTML_BYTES: usize = 4 * 1024 * 1024;
@@ -543,7 +570,8 @@ pub async fn seo_headers(req: Request, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     let is_get = req.method() == Method::GET;
-    let noindex = NOINDEX_PATHS.contains(&path.as_str());
+    let noindex = NOINDEX_PATHS.contains(&path.as_str())
+        || NOINDEX_PREFIXES.iter().any(|p| path.starts_with(p));
 
     let brands = brand_hosts();
     let target = resolve(host.as_deref(), &path, &brands);
@@ -572,7 +600,11 @@ pub async fn seo_headers(req: Request, next: Next) -> Response {
     if noindex {
         res.headers_mut()
             .insert("x-robots-tag", header::HeaderValue::from_static("noindex"));
-        return res;
+        // `/portal` keeps its self-canonical alongside the noindex (see
+        // `noindex_keeps_canonical`); every other console returns here, as before.
+        if !noindex_keeps_canonical(&path) {
+            return res;
+        }
     }
 
     if !is_get || !public_path || matches!(target, Target::Own) {
@@ -792,5 +824,39 @@ mod tests {
         let html = "<head><link rel=\"canonical\" href=\"https://zaarhub.com/new-path\"></head>";
         let out = pin_html(html, "/legacy-alias", "https://zaarhub.com");
         assert!(out.contains("href=\"https://zaarhub.com/new-path\""));
+    }
+
+    /// Regression guard for the console class (CEO board, 2026-11-10): every
+    /// operator/owner console path answers the crawler with a noindex, and no
+    /// public path ever gets one.
+    #[test]
+    fn every_console_path_is_noindex_and_public_paths_are_not() {
+        let noindex = |p: &str| {
+            NOINDEX_PATHS.contains(&p) || NOINDEX_PREFIXES.iter().any(|x| p.starts_with(x))
+        };
+        for p in [
+            "/admin-panel",
+            "/admin-panel.html",
+            "/admin-ops.html",
+            "/business-dashboard.html",
+            "/portal",
+            "/portal/business",
+        ] {
+            assert!(noindex(p), "{p} must carry the noindex directive");
+        }
+        for p in [
+            "/",
+            "/apopka",
+            "/apopka/businesses",
+            "/claim",
+            "/guides/participant-guide.html",
+            "/zaarhub/lake-nona/abc",
+        ] {
+            assert!(!noindex(p), "{p} must stay indexable");
+        }
+        // The business portal keeps its self-canonical next to the noindex.
+        assert!(noindex_keeps_canonical("/portal"));
+        assert!(noindex_keeps_canonical("/portal/business"));
+        assert!(!noindex_keeps_canonical("/admin-panel"));
     }
 }
