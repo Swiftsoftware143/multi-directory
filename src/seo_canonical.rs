@@ -480,7 +480,23 @@ pub fn strip_canonical(html: &str) -> String {
 /// currently not indexed" (CEO board, 2026-11-10). They answer `X-Robots-Tag:
 /// noindex` so they stop competing; `/claim`, the `/zaarhub/<city>/<listing>` pages
 /// and `/guides/participant-guide.html` stay indexable because they ARE content.
-const NOINDEX_PATHS: &[&str] = &["/visitor", "/visitor/", "/zaarhub-offer.html"];
+const NOINDEX_PATHS: &[&str] = &[
+    "/visitor",
+    "/visitor/",
+    "/zaarhub-offer.html",
+    // Private consoles and account surfaces that answer 200 anonymously on the
+    // public host but carry no content of their own (CEO board, 2026-11-10): the
+    // meta tag in each static file is the shipped fix, and this response-level
+    // companion also covers JS-rendered or linked entry to the same page.
+    "/login",
+    "/login/",
+    "/scanner",
+    "/scanner/",
+    "/zaarhub-admin.html",
+    "/pricing-admin.html",
+    "/blog-features-admin.html",
+    "/supplier-portal.html",
+];
 
 /// Paths that are private consoles or non-page surfaces: never canonicalised.
 const EXCLUDED_PREFIXES: &[&str] = &[
