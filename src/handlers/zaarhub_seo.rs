@@ -68,6 +68,12 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> impl axum::response::
         "  <url><loc>{host}/lead-exchange</loc><changefreq>daily</changefreq><priority>0.7</priority></url>\n"
     ));
 
+    // Business claim landing page — real content (how claiming works, what a claim unlocks),
+    // answers 200 anonymously and is linked from every listing page, but was never listed here.
+    xml.push_str(&format!(
+        "  <url><loc>{host}/claim</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n"
+    ));
+
     // Legal pages
     let legal = sqlx::query(
         "SELECT slug FROM zaarhub_legal_pages \

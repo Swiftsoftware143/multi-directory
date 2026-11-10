@@ -3479,9 +3479,7 @@ pub fn create_router(s: AppState) -> Router {
         // being the factory's home). Documents rendered by the app already build a
         // pinned canonical; this pins the ones served as static files, which build
         // no url server-side at all — the SPA shell at `/` and `/portal` most of all.
-        .layer(axum::middleware::from_fn(
-            crate::seo_canonical::pin_canonical,
-        ))
+        .layer(axum::middleware::from_fn(crate::seo_canonical::seo_headers))
         // kanban t_dd9d99c9 — OUTERMOST, so it sees every request before routing: the session
         // behind a presented bearer token is verified once, here, instead of at each of the 28
         // handlers that parse the header themselves (see `session_gate`).

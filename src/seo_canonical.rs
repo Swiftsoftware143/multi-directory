@@ -238,6 +238,13 @@ pub fn pin_html(html: &str, path_and_query: &str) -> String {
     out
 }
 
+/// Paths that are account/claim surfaces sitting on the PUBLIC directory host but
+/// carrying no content of their own — Google already listed them under "Crawled -
+/// currently not indexed" (CEO board, 2026-11-10). They answer `X-Robots-Tag:
+/// noindex` so they stop competing; `/claim`, the `/zaarhub/<city>/<listing>` pages
+/// and `/guides/participant-guide.html` stay indexable because they ARE content.
+const NOINDEX_PATHS: &[&str] = &["/visitor", "/visitor/", "/zaarhub-offer.html"];
+
 /// Paths that are private consoles or non-page surfaces: never canonicalised.
 const EXCLUDED_PREFIXES: &[&str] = &[
     "/api/",
@@ -266,9 +273,10 @@ fn excluded(path: &str) -> bool {
 /// middleware uses; the biggest page this app serves is well under it.
 const MAX_HTML_BYTES: usize = 4 * 1024 * 1024;
 
-/// Response middleware: pin the canonical url of every public HTML page served
-/// from the ZaarHub hostnames, whatever host served it.
-pub async fn pin_canonical(req: Request, next: Next) -> Response {
+/// Response middleware for the three public hostnames: pin the canonical url of
+/// every public HTML page (whatever host served it), and keep the two account
+/// surfaces out of the index.
+pub async fn seo_headers(req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
     let path_and_query = req
         .uri()
@@ -282,8 +290,17 @@ pub async fn pin_canonical(req: Request, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     let is_get = req.method() == Method::GET;
+    let noindex = NOINDEX_PATHS.contains(&path.as_str());
 
-    let res = next.run(req).await;
+    let mut res = next.run(req).await;
+
+    // Account/claim surfaces: noindex at the response level, so the directive holds
+    // even for a crawler that reaches the page through a link.
+    if noindex {
+        res.headers_mut()
+            .insert("x-robots-tag", header::HeaderValue::from_static("noindex"));
+        return res;
+    }
 
     if !is_get || excluded(&path) || !is_canonical_host(host.as_deref()) {
         return res;
