@@ -40,6 +40,17 @@ pub const CANONICAL_HOSTS: &[&str] = &[
     "directory.swiftsoftware.net",
 ];
 
+/// The FACTORY host: the directory-creation software and its admin console live
+/// here. David's rule (2026-11-10): the brand host ranks, the factory host never
+/// does — but the factory must keep working, so public responses here carry
+/// `noindex, follow` while `/admin*` and `/api/` are left untouched.
+pub const FACTORY_HOST: &str = "directory.swiftsoftware.net";
+
+/// Paths whose responses must NEVER get the factory noindex: the admin console, the
+/// admin API the SPA calls, and anything under the admin static alias. Nothing else
+/// is exempt — the whole point is that the factory's public pages stay out of search.
+const FACTORY_EXEMPT_PREFIXES: &[&str] = &["/api/", "/admin"];
+
 /// Lower-cased hostname without the port.
 fn hostname(host: &str) -> String {
     host.trim()
@@ -291,8 +302,21 @@ pub async fn seo_headers(req: Request, next: Next) -> Response {
         .map(|s| s.to_string());
     let is_get = req.method() == Method::GET;
     let noindex = NOINDEX_PATHS.contains(&path.as_str());
+    let factory_public = matches!(host.as_deref(), Some(h) if hostname(h) == FACTORY_HOST)
+        && !FACTORY_EXEMPT_PREFIXES.iter().any(|p| path.starts_with(p));
 
     let mut res = next.run(req).await;
+
+    // The FACTORY host is never the indexed copy — the brand host is (David,
+    // 2026-11-10). Applied to every public response, including a 404, and never to
+    // `/admin*` or `/api/`: the factory's own console has to keep working, and the
+    // admin SPA's requests must look exactly as they did before.
+    if factory_public {
+        res.headers_mut().append(
+            "x-robots-tag",
+            header::HeaderValue::from_static("noindex, follow"),
+        );
+    }
 
     // Account/claim surfaces: noindex at the response level, so the directive holds
     // even for a crawler that reaches the page through a link.

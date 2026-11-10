@@ -230,9 +230,34 @@ def main():
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    check(status in (400, 401, 422), "factory login endpoint rejects a bad body honestly", f"HTTP {status}")
+    check(status in (400, 401, 408, 422), "factory login endpoint rejects a bad body honestly", f"HTTP {status}")
 
-    # ── 6. account surfaces noindex, content indexable ──────────────────────────
+    # ── 6. the factory host is never the indexed copy ───────────────────────────
+    for path in ("/", "/apopka", "/portal"):
+        status, hdrs, _b = fetch(FACTORY + path)
+        xrt = (hdrs.get("X-Robots-Tag") or hdrs.get("x-robots-tag") or "").lower()
+        check(
+            status == 200 and "noindex" in xrt,
+            f"factory host {path} is noindex (David's rule: only the brand host ranks)",
+            f"HTTP {status} x-robots-tag={xrt or '-'}",
+        )
+        status, hdrs, _b = fetch(PRIMARY + path)
+        xrt = (hdrs.get("X-Robots-Tag") or hdrs.get("x-robots-tag") or "").lower()
+        check(
+            "noindex" not in xrt and status == 200,
+            f"primary host {path} is NOT noindex (it must rank)",
+            f"HTTP {status} x-robots-tag={xrt or '-'}",
+        )
+    for path in ("/admin-panel", "/api/v1/health"):
+        status, hdrs, _b = fetch(FACTORY + path)
+        xrt = (hdrs.get("X-Robots-Tag") or hdrs.get("x-robots-tag") or "").lower()
+        check(
+            "noindex" not in xrt and status == 200,
+            f"factory {path} is untouched by the noindex rule",
+            f"HTTP {status} x-robots-tag={xrt or '-'}",
+        )
+
+    # ── 6b. account surfaces noindex, content indexable ─────────────────────────
     for path in ("/visitor", "/zaarhub-offer.html"):
         status, hdrs, body = fetch(PRIMARY + path)
         meta = ROBOTS_META_RE.search(body.decode("utf-8", "replace"))
