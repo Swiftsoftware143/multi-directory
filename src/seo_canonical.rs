@@ -511,6 +511,22 @@ const NOINDEX_PATHS: &[&str] = &[
     "/business-dashboard.html",
     "/portal",
     "/portal/",
+    // Same class, found by sweeping every frontend page for a login wall served to
+    // an anonymous crawler: the content-research and analytics tools, the legacy
+    // Directory Portal shell, and the visitor's own account page.
+    "/content-research",
+    "/content-research/",
+    "/content-research.html",
+    "/zaarhub-analytics",
+    "/zaarhub-analytics/",
+    "/zaarhub-analytics.html",
+    "/portal.html",
+    "/user-saved",
+    "/user-saved/",
+    "/user-saved.html",
+    "/complete-listing",
+    "/complete-listing/",
+    "/complete-listing.html",
 ];
 
 /// Console path PREFIXES: `/portal/business*` is the same business-portal shell as
@@ -841,6 +857,11 @@ mod tests {
             "/business-dashboard.html",
             "/portal",
             "/portal/business",
+            "/content-research.html",
+            "/zaarhub-analytics.html",
+            "/portal.html",
+            "/user-saved.html",
+            "/complete-listing.html",
         ] {
             assert!(noindex(p), "{p} must carry the noindex directive");
         }
