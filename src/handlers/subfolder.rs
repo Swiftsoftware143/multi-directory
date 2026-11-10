@@ -2447,6 +2447,13 @@ pub async fn sitemap(
         h(&base)
     ));
 
+    // Site-wide landing pages that are real content (200 anonymous, linked from listing pages) but
+    // are not derived from a table. /claim was live and linked yet never listed here.
+    xml.push_str(&format!(
+        "  <url><loc>{}/claim</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n",
+        h(&base)
+    ));
+
     let dirs =
         sqlx::query("SELECT id, slug FROM directories WHERE status = 'active' ORDER BY slug")
             .fetch_all(pool)
