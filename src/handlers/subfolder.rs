@@ -87,6 +87,20 @@ fn strip_tags(s: &str) -> String {
 /// request carries no host. Shared with the SEO sitemap builder so both always
 /// name the same, reachable host.
 pub fn origin(host: Option<&str>, proto: &str, fallback: &str) -> String {
+    // kanban t_f97664fe — ONE canonical host. This app (and this vhost) serves the
+    // public directory on THREE hostnames: zaarhub.com, www.zaarhub.com and
+    // directory.swiftsoftware.net. The last one is ALSO the factory's home — the
+    // software that creates directories, plus its admin console — so it keeps
+    // answering and is never redirected away. Deriving the origin from the request
+    // Host made each hostname self-canonicalise the same page, which is why Search
+    // Console reported 8 "Duplicate without user-selected canonical" rows. For
+    // those three hosts every absolute url built here (canonical, og:url,
+    // JSON-LD, internal links, sitemap <loc>) now names the primary host instead.
+    // Any other host keeps its own origin: a directory mapped to its own domain,
+    // and localhost / 127.x used by the probe harness and local tests.
+    if crate::seo_canonical::is_canonical_host(host) {
+        return crate::seo_canonical::CANONICAL_ORIGIN.to_string();
+    }
     let scheme = if proto.eq_ignore_ascii_case("http") {
         "http"
     } else {
@@ -2538,17 +2552,26 @@ pub async fn sitemap(
 }
 
 pub fn robots(host: Option<&str>, proto: &str, fallback_domain: &str) -> Response<Body> {
-    let base = origin(host, proto, fallback_domain);
-    let body = format!(
+    // kanban t_f97664fe — ONE sitemap, advertised by the primary host only.
+    // Each of the three hostnames used to answer with a `Sitemap:` line naming its
+    // OWN 4,030-url copy of the same sitemap, so three sitemaps competed for the
+    // same pages. The `/admin/` disallow stays on every host.
+    let mut body = String::from(
         "User-agent: *\n\
          Allow: /\n\
          Disallow: /api/\n\
          Disallow: /admin/\n\
-         Disallow: /auth/\n\
-         \n\
-         Sitemap: {}/sitemap.xml\n",
-        base
+         Disallow: /auth/\n",
     );
+    if crate::seo_canonical::is_primary_host(host) {
+        body.push_str(&format!(
+            "\nSitemap: {}/sitemap.xml\n",
+            crate::seo_canonical::CANONICAL_ORIGIN
+        ));
+    }
+    // `proto`/`fallback_domain` are kept in the signature: every caller shares it
+    // and a directory with its own mapped domain still needs an origin here.
+    let _ = (proto, fallback_domain);
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
@@ -2777,7 +2800,11 @@ catch(e){{}}}})();</script>",
 /// A readable 404 — never the SPA shell, so Google is not handed a 200 for a
 /// URL that does not exist. `no-store` so an edge cache cannot pin a 404 for a
 /// slug that is published a moment later.
-fn not_found_page(msg: &str) -> Response<Body> {
+/// The ONE 404 body — `noindex,follow`, no-store, so a junk url can never be
+/// indexed even if something links it. Shared with the SPA fallback in `routes`,
+/// which now answers 404 instead of the 200 shell for a path that matches no route
+/// (kanban t_f97664fe).
+pub fn not_found_page(msg: &str) -> Response<Body> {
     let body = format!(
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">\
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\

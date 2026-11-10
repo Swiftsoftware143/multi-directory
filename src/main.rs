@@ -25,6 +25,7 @@ mod probe_harness;
 mod providers;
 mod routes;
 mod security;
+mod seo_canonical;
 mod state;
 mod system_tenant;
 mod template_engine;

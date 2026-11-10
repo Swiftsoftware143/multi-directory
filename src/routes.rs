@@ -3172,12 +3172,18 @@ pub fn create_router(s: AppState) -> Router {
                     }
 
                     // &#10052;&#65039; ZaarHub public community frontend
+                    // kanban t_f97664fe: EXACT paths only. `/zaarhub/<city>` is a real
+                    // server-rendered route (zaarhub_ssr::render_city_page, registered on
+                    // the router above and matched before this fallback); the old
+                    // `starts_with("/zaarhub/")` swallowed every junk path under the
+                    // prefix and answered it with the 200 community shell — that is where
+                    // the Search Console soft-404 `/zaarhub/cities/` came from. The
+                    // frontend is hash-routed (`#/city/<slug>`), so no sub-path needs the
+                    // shell.
                     if path == "/zaarhub"
                         || path == "/zaarhub/"
-                        || path.starts_with("/zaarhub/")
                         || path == "/z"
                         || path == "/z/"
-                        || path.starts_with("/z/")
                     {
                         let zh_path = std::path::Path::new(&frontend).join("zaarhub.html");
                         if zh_path.exists() {
@@ -3346,6 +3352,24 @@ pub fn create_router(s: AppState) -> Router {
                         );
                     }
 
+                    // ── Hard 404 for a path that matches no real route ─────────────
+                    // kanban t_f97664fe. The frontend SPA is HASH-routed
+                    // (`#/city/<slug>`, `#/deals`, `#/search/<q>` …); its only PATH entry
+                    // points are `/`, `/city/<slug>[/biz/<id>]` and `/d/<slug>`. Directory
+                    // pages (`/<slug>`, `/<slug>/businesses`, …) are server-rendered above
+                    // and never reach here. Everything else that got this far used to be
+                    // answered with the 200 shell — the classic soft 404 Search Console
+                    // reported for /meta /end /search/ /transfers/ /home /zaarhub/cities/.
+                    // A crawler now gets 404 + a noindex body, so a junk url cannot be
+                    // indexed even when something links to it.
+                    if !is_spa_shell_route(path) {
+                        return Ok::<_, std::convert::Infallible>(
+                            crate::handlers::subfolder::not_found_page(
+                                "There is no page at that address.",
+                            ),
+                        );
+                    }
+
                     // SPA fallback: serve full index.html for all unmatched routes
                     {
                         // White-label: if the path targets a directory (/d/{slug}),
@@ -3449,6 +3473,14 @@ pub fn create_router(s: AppState) -> Router {
         // covers everything else so a new page cannot ship untracked.
         .layer(axum::middleware::from_fn(
             crate::beacon_middleware::inject_tracking_beacon,
+        ))
+        // kanban t_f97664fe — ONE canonical public host. Three hostnames serve this
+        // app (zaarhub.com, www.zaarhub.com, directory.swiftsoftware.net, the last
+        // being the factory's home). Documents rendered by the app already build a
+        // pinned canonical; this pins the ones served as static files, which build
+        // no url server-side at all — the SPA shell at `/` and `/portal` most of all.
+        .layer(axum::middleware::from_fn(
+            crate::seo_canonical::pin_canonical,
         ))
         // kanban t_dd9d99c9 — OUTERMOST, so it sees every request before routing: the session
         // behind a presented bearer token is verified once, here, instead of at each of the 28
@@ -3770,6 +3802,45 @@ fn is_asset_path(path: &str) -> bool {
 }
 
 #[cfg(test)]
+mod spa_shell_route_tests {
+    use super::is_spa_shell_route;
+
+    #[test]
+    fn real_client_routes_are_served() {
+        for p in [
+            "/",
+            "/city/palm-bay",
+            "/city/palm-bay/",
+            "/city/palm-bay/biz/8f14e45f",
+            "/d/palm-bay",
+            "/d/palm-bay/deals",
+            "/d/palm-bay/businesses/joes-diner",
+        ] {
+            assert!(is_spa_shell_route(p), "{p} should be served by the shell");
+        }
+    }
+
+    #[test]
+    fn junk_paths_are_not_served() {
+        for p in [
+            "/this-path-does-not-exist-xyz123",
+            "/meta",
+            "/end",
+            "/search/",
+            "/transfers/",
+            "/home",
+            "/zaarhub/cities/",
+            "/city",
+            "/d",
+            "/city/palm-bay/not-a-sub-view/extra",
+            "/city//palm-bay",
+        ] {
+            assert!(!is_spa_shell_route(p), "{p} should be a 404");
+        }
+    }
+}
+
+#[cfg(test)]
 mod asset_path_tests {
     use super::is_asset_path;
 
@@ -3894,6 +3965,41 @@ async fn health_check() -> impl axum::response::IntoResponse {
             "version": env!("CARGO_PKG_VERSION")
         })),
     )
+}
+
+/// True when `path` is a REAL client route of the SPA shell (`frontend/index.html`).
+///
+/// kanban t_f97664fe. The shell is hash-routed: every view lives behind `#/…`
+/// (`#/city/<slug>`, `#/deals`, `#/search/<q>`, `#/saved`, `#/about` …). Its only
+/// PATH entry points are the ones the client router reads out of `location.pathname`
+/// before it looks at the hash (`MD_ENTRY` in index.html):
+///
+///   * `/`                                  — the directory home
+///   * `/city/<slug>` (+ `/city/<slug>/biz/<id>`)
+///   * `/d/<slug>` (+ a directory sub-view: deals / events / blog)
+///
+/// Directory pages (`/<slug>`, `/<slug>/businesses`, `/<slug>/articles/<a>` …) are
+/// server-rendered before this fallback and never reach it. Keeping this list
+/// explicit is what lets an unknown path answer 404 instead of the 200 shell.
+fn is_spa_shell_route(path: &str) -> bool {
+    let trimmed = path.trim_start_matches('/').trim_end_matches('/');
+    if trimmed.is_empty() {
+        return true; // "/"
+    }
+    let segs: Vec<&str> = trimmed.split('/').collect();
+    if segs.iter().any(|s| s.is_empty()) {
+        return false; // "//" or "/city//x" — not a route we generate
+    }
+    match segs[0] {
+        // `/city/<slug>` and `/city/<slug>/biz/<id>`.
+        "city" => segs.len() >= 2 && segs.len() <= 4 && (segs.len() < 3 || segs[2] == "biz"),
+        // `/d/<slug>` and `/d/<slug>/<sub-view>` — the white-label directory
+        // namespace Nginx/the app itself generates from a mapped domain.
+        "d" => segs.len() >= 2 && segs.len() <= 4,
+        // A single segment is a directory slug, which the subfolder SEO renderer
+        // claims above; reaching here means no such directory exists.
+        _ => false,
+    }
 }
 
 /// The directory slug a public SPA entry path points at, using the SAME rule as the client

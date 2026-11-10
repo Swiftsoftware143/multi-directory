@@ -95,7 +95,7 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> impl axum::response::
 
 /// Serve robots.txt
 pub async fn robots_txt() -> impl axum::response::IntoResponse {
-    let body = "User-agent: *\nAllow: /\nAllow: /zaarhub/\nAllow: /zaarhub-city.html\nAllow: /zaarhub-offer.html\nAllow: /rfq-marketplace\nAllow: /coop-hub\nAllow: /lead-exchange\nAllow: /b2b-marketplace.html\nAllow: /supplier-portal.html\nAllow: /legal/\n\n# Sitemaps\nSitemap: https://zaarhub.com/zaarhub-sitemap.xml\n\n# Crawl delay — be nice to our server\nCrawl-delay: 2\n\n# Disallow API endpoints from indexing\nDisallow: /api/\nDisallow: /auth/\nDisallow: /admin/\n";
+    let body = "User-agent: *\nAllow: /\nAllow: /zaarhub/\nAllow: /zaarhub-city.html\nAllow: /zaarhub-offer.html\nAllow: /rfq-marketplace\nAllow: /coop-hub\nAllow: /lead-exchange\nAllow: /b2b-marketplace.html\nAllow: /supplier-portal.html\nAllow: /legal/\n\n# Sitemaps — ONE sitemap for the whole site (kanban t_f97664fe). This secondary\n# robots document used to advertise /zaarhub-sitemap.xml, a second file listing the\n# same pages; two sitemaps for one site split the crawl budget.\nSitemap: https://zaarhub.com/sitemap.xml\n\n# Crawl delay — be nice to our server\nCrawl-delay: 2\n\n# Disallow API endpoints from indexing\nDisallow: /api/\nDisallow: /auth/\nDisallow: /admin/\n";
 
     axum::response::Response::builder()
         .header("Content-Type", "text/plain; charset=utf-8")

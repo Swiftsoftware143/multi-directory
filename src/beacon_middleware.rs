@@ -41,6 +41,12 @@ pub async fn inject_tracking_beacon(req: Request, next: Next) -> Response {
     if !is_get || EXCLUDED_PREFIXES.iter().any(|p| path.starts_with(p)) {
         return res;
     }
+    // Only a page that was actually served is consumer demand. A 404 is a junk
+    // url (kanban t_f97664fe turned the soft-404 shell into a real 404) and must
+    // not be counted as a visitor view.
+    if !res.status().is_success() {
+        return res;
+    }
 
     let is_html = res
         .headers()

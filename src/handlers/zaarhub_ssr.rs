@@ -1,5 +1,6 @@
 /// SSR handlers for ZaarHub city landing pages
 use axum::extract::{Path, State};
+use axum::response::IntoResponse;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -90,7 +91,7 @@ const COOKIE_BANNER: &str = r#"<div id="cookie-banner" style="position:fixed;bot
 pub async fn render_city_page(
     Path(slug): Path<String>,
     State(state): State<AppState>,
-) -> impl axum::response::IntoResponse {
+) -> axum::response::Response {
     let city_row = sqlx::query(
         "SELECT id, city_slug, city_name, state, description, hero_image_url, meta_title, meta_description \
          FROM city_pages WHERE city_slug = $1 AND is_active = true",
@@ -101,10 +102,19 @@ pub async fn render_city_page(
     .unwrap_or(None);
 
     if city_row.is_none() {
-        return axum::response::Html(
-            r#"<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>404 — City Not Found | ZaarHub</title><style>body{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}h1{font-size:48px;color:#2b3255}p{color:#6b7280}a{color:#f27f2f}</style></head><body><div style="text-align:center"><h1>404</h1><p>This city page doesn't exist yet.</p><a href="/zaarhub">Browse all cities →</a></div></body></html>"#
-                .to_string(),
-        );
+        // kanban t_f97664fe: a real 404, not a 200 body that says "404". The old
+        // `Html(...)` answered HTTP 200, so `/zaarhub/cities/` (and any mistyped
+        // city) was a soft 404 in Search Console. `noindex` on top, so a crawler
+        // that still reaches it keeps it out of the index.
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            [
+                (axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (axum::http::header::CACHE_CONTROL, "no-store"),
+            ],
+            r#"<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="robots" content="noindex,follow"><title>404 — City Not Found | ZaarHub</title><style>body{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}h1{font-size:48px;color:#2b3255}p{color:#6b7280}a{color:#f27f2f}</style></head><body><div style="text-align:center"><h1>404</h1><p>This city page doesn't exist yet.</p><a href="/zaarhub">Browse all cities →</a></div></body></html>"#,
+        )
+            .into_response();
     }
 
     let r = city_row.unwrap();
@@ -371,6 +381,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         schema = schema,
         shell = shell_chrome(Some(&slug), &city_name),
     ))
+        .into_response()
 }
 
 /// Render the all-cities index page (SSR)

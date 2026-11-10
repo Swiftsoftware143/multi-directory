@@ -347,9 +347,14 @@ pub async fn generate_sitemap(State(s): State<AppState>) -> impl IntoResponse {
 }
 
 /// GET /api/v1/robots.txt — serve dynamic robots.txt
-pub async fn get_robots_txt(State(s): State<AppState>) -> impl IntoResponse {
-    let base_url = format!("https://{}", s.config.base_domain);
-    let robots = format!("User-agent: *\nAllow: /\n\nSitemap: {base_url}/sitemap.xml\n");
+pub async fn get_robots_txt(State(_s): State<AppState>) -> impl IntoResponse {
+    // kanban t_f97664fe: ONE sitemap, and it belongs to the primary host. This used
+    // to name `https://<base_domain>` (the factory host), advertising a second
+    // 4,030-url copy of the same sitemap.
+    let robots = format!(
+        "User-agent: *\nAllow: /\n\nSitemap: {}/sitemap.xml\n",
+        crate::seo_canonical::CANONICAL_ORIGIN
+    );
     (
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/plain")],
