@@ -27,6 +27,11 @@ This is NOT a SaaS. There are no tenants paying rent. A directory IS a standalon
 
 From the admin dashboard, manage any directory you operate. These are the key sections:
 
+**Before a directory goes live, set its brand host** (Directory Details → root domain, i.e.
+`PUT /api/v1/networks/<network-id>/root-domain {"root_domain":"example.com"}`) and run
+`scripts/seo-launch-check.sh <brand-host> directory.swiftsoftware.net` — a directory with no brand
+host set is deliberately kept out of search engines. Full rule: `docs/directory-hosting-rule.md`.
+
 ## Listings
 Add, edit, or remove business listings. Set business type (local, supplier, distributor, farm, etc.). Manage claim status.
 

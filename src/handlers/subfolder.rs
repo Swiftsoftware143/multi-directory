@@ -87,19 +87,21 @@ fn strip_tags(s: &str) -> String {
 /// request carries no host. Shared with the SEO sitemap builder so both always
 /// name the same, reachable host.
 pub fn origin(host: Option<&str>, proto: &str, fallback: &str) -> String {
-    // kanban t_f97664fe — ONE canonical host. This app (and this vhost) serves the
-    // public directory on THREE hostnames: zaarhub.com, www.zaarhub.com and
-    // directory.swiftsoftware.net. The last one is ALSO the factory's home — the
-    // software that creates directories, plus its admin console — so it keeps
-    // answering and is never redirected away. Deriving the origin from the request
-    // Host made each hostname self-canonicalise the same page, which is why Search
-    // Console reported 8 "Duplicate without user-selected canonical" rows. For
-    // those three hosts every absolute url built here (canonical, og:url,
-    // JSON-LD, internal links, sitemap <loc>) now names the primary host instead.
-    // Any other host keeps its own origin: a directory mapped to its own domain,
+    // kanban t_0b3cce4d — ONE canonical host PER DIRECTORY, resolved from
+    // `networks.root_domain` (data), never from a compile-time constant. This app
+    // (and this vhost) serves the public directory on several hostnames: the brand
+    // host, its `www`, and directory.swiftsoftware.net. The last one is ALSO the
+    // factory's home — the software that creates directories, plus its admin console
+    // — so it keeps answering and is never redirected away. Deriving the origin from
+    // the request Host made each hostname self-canonicalise the same page, which is
+    // why Search Console reported 8 "Duplicate without user-selected canonical" rows.
+    // A host that names a brand (or the factory host of a single-directory
+    // deployment) now gets that brand's origin; a site-facing path on the factory host
+    // is re-pointed per directory by `seo_canonical::seo_headers`, which knows the
+    // path. Any other host keeps its own origin: a directory mapped to its own domain,
     // and localhost / 127.x used by the probe harness and local tests.
-    if crate::seo_canonical::is_canonical_host(host) {
-        return crate::seo_canonical::CANONICAL_ORIGIN.to_string();
+    if let Some(brand) = crate::seo_canonical::brand_origin_for_host(host) {
+        return brand;
     }
     let scheme = if proto.eq_ignore_ascii_case("http") {
         "http"
@@ -2559,10 +2561,12 @@ pub async fn sitemap(
 }
 
 pub fn robots(host: Option<&str>, proto: &str, fallback_domain: &str) -> Response<Body> {
-    // kanban t_f97664fe — ONE sitemap, advertised by the primary host only.
-    // Each of the three hostnames used to answer with a `Sitemap:` line naming its
-    // OWN 4,030-url copy of the same sitemap, so three sitemaps competed for the
-    // same pages. The `/admin/` disallow stays on every host.
+    // kanban t_0b3cce4d — ONE sitemap, advertised by the BRAND host only, and the
+    // brand host comes from `networks.root_domain` (data). Each hostname used to
+    // answer with a `Sitemap:` line naming its OWN 4,030-url copy of the same
+    // sitemap, so three sitemaps competed for the same pages; with no brand host set
+    // a directory advertises NONE (fail safe). The `/admin/` disallow stays on every
+    // host.
     let mut body = String::from(
         "User-agent: *\n\
          Allow: /\n\
@@ -2570,11 +2574,8 @@ pub fn robots(host: Option<&str>, proto: &str, fallback_domain: &str) -> Respons
          Disallow: /admin/\n\
          Disallow: /auth/\n",
     );
-    if crate::seo_canonical::is_primary_host(host) {
-        body.push_str(&format!(
-            "\nSitemap: {}/sitemap.xml\n",
-            crate::seo_canonical::CANONICAL_ORIGIN
-        ));
+    if let Some(brand) = crate::seo_canonical::sitemap_origin(host) {
+        body.push_str(&format!("\nSitemap: {}/sitemap.xml\n", brand));
     }
     // `proto`/`fallback_domain` are kept in the signature: every caller shares it
     // and a directory with its own mapped domain still needs an origin here.

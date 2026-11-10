@@ -76,6 +76,10 @@ pub async fn set_root_domain(
     .await?
     .ok_or(AppError::NotFound(format!("Network '{}' not found", id)))?;
 
+    // kanban t_0b3cce4d — publish the new brand host at once. The background refresher
+    // would pick it up within 60 s; a launch check runs the moment this returns.
+    crate::seo_canonical::refresh_brand_hosts(&s.db).await?;
+
     Ok(Json(json!(network)))
 }
 
@@ -237,6 +241,9 @@ pub async fn update_network(
     .bind(id)
     .fetch_one(&s.db)
     .await?;
+
+    // kanban t_0b3cce4d — root_domain is the directory's brand host: publish it now.
+    crate::seo_canonical::refresh_brand_hosts(&s.db).await?;
 
     Ok(Json(json!(network)))
 }

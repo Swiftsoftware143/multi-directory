@@ -119,6 +119,11 @@ async fn main() {
 
     let state = AppState::new(pool, config.clone());
 
+    // kanban t_0b3cce4d — the brand host of every directory comes from DATA
+    // (`networks.root_domain`), never from a constant: load it at boot and keep it
+    // fresh, so a newly created directory is its own brand the moment the row is set.
+    crate::seo_canonical::start_brand_host_refresh(state.db.clone());
+
     // Say the inbound body bound out loud at boot (kanban t_52b9f3c7): a client that sends a
     // request head with a declared body and then stops is answered 408 at this bound instead of
     // parking a task, a connection and a partially-read body buffer for ever.

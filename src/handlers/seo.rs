@@ -347,14 +347,22 @@ pub async fn generate_sitemap(State(s): State<AppState>) -> impl IntoResponse {
 }
 
 /// GET /api/v1/robots.txt — serve dynamic robots.txt
-pub async fn get_robots_txt(State(_s): State<AppState>) -> impl IntoResponse {
-    // kanban t_f97664fe: ONE sitemap, and it belongs to the primary host. This used
-    // to name `https://<base_domain>` (the factory host), advertising a second
-    // 4,030-url copy of the same sitemap.
-    let robots = format!(
-        "User-agent: *\nAllow: /\n\nSitemap: {}/sitemap.xml\n",
-        crate::seo_canonical::CANONICAL_ORIGIN
-    );
+pub async fn get_robots_txt(
+    State(_s): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    // kanban t_0b3cce4d: ONE sitemap, and it belongs to the BRAND host — resolved
+    // from `networks.root_domain` (data), never a constant. This used to name
+    // `https://<base_domain>` for every caller, advertising a second 4,030-url copy
+    // of the same sitemap; a host with no brand host now advertises none (fail safe).
+    let host = headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get(axum::http::header::HOST))
+        .and_then(|v| v.to_str().ok());
+    let mut robots = "User-agent: *\nAllow: /\n".to_string();
+    if let Some(brand) = crate::seo_canonical::sitemap_origin(host) {
+        robots.push_str(&format!("\nSitemap: {}/sitemap.xml\n", brand));
+    }
     (
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/plain")],
