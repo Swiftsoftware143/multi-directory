@@ -2984,8 +2984,10 @@ pub async fn business_detail(
     }
     let rating_html = if rating > 0.0 {
         format!(
-            "<div class=\"row\"><span class=\"stars\">★ {:.1}</span> · {} reviews</div>",
-            rating, reviews
+            "<div class=\"row\"><span class=\"stars\">★ {:.1}</span> · {} {}</div>",
+            rating,
+            reviews,
+            if reviews == 1 { "review" } else { "reviews" }
         )
     } else {
         String::new()
