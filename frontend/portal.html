@@ -128,6 +128,7 @@ function closeModal(){document.getElementById('modalOverlay').style.display='non
 var CP='dashboard';
 var DIRS=[];
 var CUR_DIR=null;
+var __seoCodeLoaded=false;
 var PAGES=['dashboard','listings','categories','reviews','deals','branding','domains','webhooks','datacompany','monetization','crm','analytics','seo','blog','legals'];
 var PAGE_ICONS={'dashboard':'📊','listings':'📋','categories':'🏷️','reviews':'⭐','deals':'🏆','branding':'🎨','domains':'🌐','webhooks':'🔗','datacompany':'📁','monetization':'💰','crm':'👥','analytics':'📈','seo':'🔍','blog':'✍️','legals':'⚖️'};
 var PAGE_TITLES={'dashboard':'Dashboard','listings':'Listings','categories':'Categories','reviews':'Reviews','deals':'Deals & Coupons','branding':'Branding','domains':'Custom Domains','webhooks':'Webhooks','datacompany':'Data Company','monetization':'Monetization','crm':'CRM','analytics':'Analytics','seo':'SEO','blog':'Blog','legals':'Legal Pages'};
@@ -1249,12 +1250,20 @@ function drawSEO(seo){
   '<div class="form-group"><label>Custom Header HTML (head)</label><textarea id="seo_head" rows="3" placeholder="&lt;script type=&quot;application/ld+json&quot;&gt;...&lt;/script&gt;"></textarea><div style="font-size:.75rem;color:var(--text-secondary);margin-top:4px">Injected into &lt;head&gt; on this directory\'s pages.</div></div>'+
   '<div class="form-group"><label>Custom Body HTML (after &lt;body&gt;)</label><textarea id="seo_body" rows="3" placeholder="&lt;!-- code injected immediately after &lt;body&gt; --&gt;"></textarea><div style="font-size:.75rem;color:var(--text-secondary);margin-top:4px">Injected at the top of the page body for this directory.</div></div>'+
   '<div class="form-group"><label>Custom Footer HTML (before &lt;/body&gt;)</label><textarea id="seo_footer" rows="3" placeholder="&lt;!-- code injected before &lt;/body&gt; --&gt;"></textarea><div style="font-size:.75rem;color:var(--text-secondary);margin-top:4px">Injected before &lt;/body&gt; on this directory pages.</div></div>'+
+  '<div id="seo_code_note" style="font-size:.8rem;margin:8px 0 0">Loading the code saved for this city…</div>'+
   '</div>'+
   '<div class="card"><div class="card-header"><h3>🗺️ Sitemap</h3></div>'+
     '<p>Your sitemap is available at:</p>'+
-    '<div class="code-block"><a href="/sitemap.xml" target="_blank">https://directory.swiftsoftware.net/sitemap.xml</a></div>'+
+    '<div class="code-block"><a id="seo_sitemap_link" href="/sitemap.xml" target="_blank">/sitemap.xml</a></div>'+
   '</div>';
-  // head_injection lives on the directory, not in seo_meta.
+  // Head/body/footer code lives on the directory row, not in seo_meta. The three boxes render
+  // BLANK and are filled by a second request, so track whether that request answered: pressing
+  // Save before it lands used to PUT three empty strings and silently wipe the saved code.
+  __seoCodeLoaded=false;
+  var sm=document.getElementById('seo_sitemap_link');
+  if(sm){sm.href=location.origin+'/sitemap.xml';sm.textContent=sm.href;}
+  var note=document.getElementById('seo_code_note');
+  if(note){note.textContent='Loading the code saved for this city…';note.style.color='var(--text-secondary)';}
   g('/directories/'+encodeURIComponent(CUR_DIR.slug),function(dir){
     var h=document.getElementById('seo_head');
     if(h&&dir) h.value=dir.head_injection||'';
@@ -1262,7 +1271,14 @@ function drawSEO(seo){
     if(b&&dir) b.value=dir.body_injection||'';
     var f=document.getElementById('seo_footer');
     if(f&&dir) f.value=dir.footer_injection||'';
-  },function(){});
+    __seoCodeLoaded=true;
+    var n=document.getElementById('seo_code_note');
+    if(n){n.textContent='Loaded the code saved for '+CUR_DIR.name+'. Save replaces it; empty all three boxes to remove it.';n.style.color='var(--ok,#3ddc97)';}
+  },function(){
+    __seoCodeLoaded=false;
+    var n=document.getElementById('seo_code_note');
+    if(n){n.textContent='⚠ Could not load the code saved for this city — Save will leave the code untouched. Reopen this screen and try again.';n.style.color='var(--danger,#ff6b6b)';}
+  });
 }
 function renderSEO(){
   var el=document.getElementById('pageContent');
@@ -1276,8 +1292,14 @@ function saveSEO(){
     keywords:document.getElementById('seo_kw').value
   };
   pu('/seo/city/'+CUR_DIR.id,data,function(){toast('SEO settings saved','success');},function(){toast('SEO save failed','error');});
+  // Never PUT the three code boxes before they have loaded: the boxes start empty, so a Save in
+  // the first second would wipe code the operator cannot see.
+  if(!__seoCodeLoaded){
+    toast('Custom code was NOT changed (it had not loaded yet). Reopen SEO and save again.','error');
+    return;
+  }
   pu('/directories/'+encodeURIComponent(CUR_DIR.slug),{head_injection:document.getElementById('seo_head').value,body_injection:document.getElementById('seo_body').value,footer_injection:document.getElementById('seo_footer').value},
-     function(){toast('Header HTML saved','success');},function(){toast('Header HTML save failed','error');});
+     function(){toast('Header, body and footer code saved','success');},function(){toast('Header, body and footer code save failed','error');});
 }
 
 // ── Blog ───────────────────────────────────────────────
