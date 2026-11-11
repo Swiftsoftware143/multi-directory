@@ -495,6 +495,7 @@ fn inject_city_document(
     site_name: &str,
     theme: &BrandTheme,
     dir_id: Uuid,
+    nav_html: &str,
 ) -> String {
     let head = head_html(seo, site_name);
     // Attribute the entry view to this city, server-side. The visitor beacon fires its first
@@ -506,9 +507,9 @@ fn inject_city_document(
     let attr =
         format!("<script>window.__dir_id=\"{dir_id}\";window.__ssr_dir=\"{dir_id}\";</script>");
     let theme_tag = format!("<style id=\"brand-theme\">{}</style>", theme.css_block());
-    // Drop the homepage's own <title> (the city's is the first line of `head`).
+    // The homepage's own <title> is dropped (the city's is the first line of `head`).
     let base = strip_first_between(spa_html, "<title", "</title>");
-    match base.rfind("</head>") {
+    let with_head = match base.rfind("</head>") {
         Some(pos) => {
             let mut out = String::with_capacity(base.len() + head.len() + theme_tag.len());
             out.push_str(&base[..pos]);
@@ -519,6 +520,19 @@ fn inject_city_document(
             out
         }
         None => base,
+    };
+    // Card W36: a visible, clicked trail and a way onward in the SERVED HTML, not
+    // only in structured data — the SPA search box cannot help a crawler or a
+    // visitor who does not wait for JavaScript.
+    const MARKER: &str = "<!--ZH-NAV-->";
+    match with_head.find(MARKER) {
+        Some(pos) => format!(
+            "{}{}{}",
+            &with_head[..pos],
+            nav_html,
+            &with_head[pos + MARKER.len()..]
+        ),
+        None => with_head,
     }
 }
 
@@ -558,6 +572,10 @@ h1{font-size:2rem;font-weight:800;color:var(--dark);margin-bottom:10px}
 .chip{display:inline-block;background:var(--primary-light);color:var(--primary-hover);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-size:.82rem;margin:0 8px 8px 0}
 .stars{color:#f59e0b;font-size:.9rem}
 .pager{margin:28px 0;display:flex;gap:12px}
+.explore{margin:36px 0 8px;border-top:1px solid var(--border);padding-top:18px}
+.explore h2{font-size:1.2rem;margin-bottom:10px}
+.explore-group{margin-bottom:14px}
+.explore-group h3{font-size:.95rem;color:var(--text-light);font-weight:600;margin-bottom:6px}
 .btn{background:var(--primary);color:#fff;border-radius:var(--radius);padding:10px 18px;font-weight:600}
 .detail{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px}
 .detail h1{margin-bottom:6px}
@@ -989,6 +1007,440 @@ async fn town_chips_html(
     out
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// "Keep exploring" — no public page is a dead end (card W36)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// David's rule: every page offers a way onward, drawn from REAL relationships —
+// never a random list. This one builder feeds every server-rendered page, so the
+// hop count from any page to the rest of the directory is the same everywhere:
+// the city's categories, its best-rated businesses, its published towns and its
+// newest writing — plus whatever the caller knows is most related (the next
+// article, the sibling businesses on a listing page).
+
+/// One group of onward links inside the "Keep exploring" block.
+struct ExploreGroup {
+    heading: String,
+    links: Vec<(String, String)>,
+}
+
+/// Push a link unless it is the page being rendered or already present.
+fn push_link(
+    out: &mut Vec<(String, String)>,
+    label: &str,
+    href: &str,
+    skip: &str,
+) {
+    let href = href.trim_end_matches('/');
+    if href.is_empty() || href == skip.trim_end_matches('/') {
+        return;
+    }
+    if out.iter().any(|(_, h)| h.trim_end_matches('/') == href) {
+        return;
+    }
+    out.push((label.to_string(), href.to_string()));
+}
+
+/// The relationships every page in this city can offer: other categories,
+/// the best-rated businesses, the published towns, the newest articles and
+/// the city's own hub pages. `skip` is the path of the page being rendered.
+async fn city_relationships(
+    pool: &PgPool,
+    dir: &DirectoryRec,
+    base: &str,
+    skip: &str,
+    biz_limit: i64,
+) -> Vec<ExploreGroup> {
+    let mut groups: Vec<ExploreGroup> = Vec::new();
+
+    // 1. Other categories in this city — the browse level above every listing.
+    let mut links: Vec<(String, String)> = Vec::new();
+    if let Ok(rows) = sqlx::query(
+        "SELECT dc.slug, dc.name, COUNT(b.id) AS n \
+         FROM directory_categories dc \
+         JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
+         WHERE b.directory_id = $1 AND coalesce(dc.slug,'') <> '' \
+         GROUP BY dc.slug, dc.name \
+         ORDER BY COUNT(b.id) DESC, dc.name LIMIT 10",
+    )
+    .bind(dir.id)
+    .fetch_all(pool)
+    .await
+    {
+        for r in &rows {
+            let slug: String = r.try_get("slug").unwrap_or_default();
+            let name: String = r.try_get("name").unwrap_or_default();
+            let n: i64 = r.try_get("n").unwrap_or(0);
+            if slug.is_empty() || name.is_empty() {
+                continue;
+            }
+            push_link(
+                &mut links,
+                &format!("{} ({})", name, n),
+                &format!("{}/{}/{}", base, dir.slug, slug),
+                skip,
+            );
+        }
+    }
+    if !links.is_empty() {
+        groups.push(ExploreGroup {
+            heading: format!("More in {}", dir.city),
+            links,
+        });
+    }
+
+    // 2. The city's best-rated businesses — a real listing next to this page.
+    let mut links: Vec<(String, String)> = Vec::new();
+    if let Ok(rows) = sqlx::query(
+        "SELECT b.name, b.slug FROM businesses b \
+         WHERE b.directory_id = $1 AND b.is_active = true AND coalesce(b.slug,'') <> '' \
+         ORDER BY b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, \
+                  b.review_count DESC NULLS LAST LIMIT $2",
+    )
+    .bind(dir.id)
+    .bind(biz_limit)
+    .fetch_all(pool)
+    .await
+    {
+        for r in &rows {
+            let name: String = r.try_get("name").unwrap_or_default();
+            let slug: String = r.try_get("slug").unwrap_or_default();
+            if name.is_empty() || slug.is_empty() {
+                continue;
+            }
+            push_link(
+                &mut links,
+                &name,
+                &format!("{}/{}/businesses/{}", base, dir.slug, slug),
+                skip,
+            );
+        }
+    }
+    if !links.is_empty() {
+        groups.push(ExploreGroup {
+            heading: format!("Popular in {}", dir.city),
+            links,
+        });
+    }
+
+    // 3. The satellite towns that actually publish a page (>= MIN_TOWN_LISTINGS).
+    let mut links: Vec<(String, String)> = Vec::new();
+    for t in local_town_entries(pool, dir.id, &dir.city)
+        .await
+        .iter()
+        .filter(|t| t.count >= MIN_TOWN_LISTINGS)
+    {
+        let href = if t.is_home {
+            format!("{}/{}", base, dir.slug)
+        } else {
+            format!("{}/{}/{}", base, dir.slug, t.slug)
+        };
+        push_link(&mut links, &format!("{} ({})", t.label, t.count), &href, skip);
+    }
+    if !links.is_empty() {
+        groups.push(ExploreGroup {
+            heading: "Nearby towns".to_string(),
+            links,
+        });
+    }
+
+    // 4. The newest writing in this city (posts and sponsored articles alike).
+    let mut links: Vec<(String, String)> = Vec::new();
+    if let Ok(rows) = sqlx::query(
+        "SELECT slug, title, source_type FROM ( \
+           SELECT bp.slug, bp.title, 'blog'::text AS source_type, \
+                  COALESCE(bp.scheduled_at, bp.created_at) AS at \
+           FROM blog_posts bp \
+           WHERE bp.directory_id = $1 AND bp.published = true AND bp.status = 'published' \
+             AND (bp.scheduled_at IS NULL OR bp.scheduled_at <= NOW()) \
+           UNION ALL \
+           SELECT ba.slug, ba.title, 'article'::text AS source_type, ba.created_at AS at \
+           FROM business_articles ba \
+           WHERE ba.directory_id = $1 AND ba.status = 'published' \
+         ) u ORDER BY at DESC LIMIT 4",
+    )
+    .bind(dir.id)
+    .fetch_all(pool)
+    .await
+    {
+        for r in &rows {
+            let slug: String = r.try_get("slug").unwrap_or_default();
+            let title: String = r.try_get("title").unwrap_or_default();
+            let kind: String = r.try_get("source_type").unwrap_or_default();
+            if slug.is_empty() || title.is_empty() {
+                continue;
+            }
+            let seg = if kind == "article" { "articles" } else { "blog" };
+            push_link(
+                &mut links,
+                &title,
+                &format!("{}/{}/{}/{}", base, dir.slug, seg, slug),
+                skip,
+            );
+        }
+    }
+    if !links.is_empty() {
+        groups.push(ExploreGroup {
+            heading: "Read next".to_string(),
+            links,
+        });
+    }
+
+    // 5. The city's own browse surfaces — always real, always 200.
+    let mut links: Vec<(String, String)> = Vec::new();
+    push_link(
+        &mut links,
+        "All businesses",
+        &format!("{}/{}/businesses", base, dir.slug),
+        skip,
+    );
+    push_link(
+        &mut links,
+        &format!("{} home", dir.city),
+        &format!("{}/{}", base, dir.slug),
+        skip,
+    );
+    push_link(
+        &mut links,
+        "Blog",
+        &format!("{}/{}/blog", base, dir.slug),
+        skip,
+    );
+    push_link(
+        &mut links,
+        "Deals",
+        &format!("{}/{}/deals", base, dir.slug),
+        skip,
+    );
+    if !links.is_empty() {
+        groups.push(ExploreGroup {
+            heading: format!("Around {}", dir.city),
+            links,
+        });
+    }
+
+    groups
+}
+
+/// Render the "Keep exploring" block. `extra` is the caller's own strongest
+/// relationship set (same-category peers, next/previous article). Returns an
+/// empty string only if there is genuinely nothing to offer.
+async fn explore_block(
+    pool: &PgPool,
+    dir: &DirectoryRec,
+    base: &str,
+    skip: &str,
+    extra: Vec<(String, String)>,
+) -> String {
+    let mut groups: Vec<ExploreGroup> = Vec::new();
+    let mut own: Vec<(String, String)> = Vec::new();
+    for (label, href) in extra {
+        push_link(&mut own, &label, &href, skip);
+    }
+    if !own.is_empty() {
+        groups.push(ExploreGroup {
+            heading: "Related".to_string(),
+            links: own,
+        });
+    }
+    groups.extend(city_relationships(pool, dir, base, skip, 5).await);
+
+    let mut body = String::new();
+    for g in &groups {
+        let chips: Vec<String> = g
+            .links
+            .iter()
+            .take(12)
+            .map(|(label, href)| {
+                format!(
+                    "<a class=\"chip\" href=\"{}\">{}</a>",
+                    h(href),
+                    h(label)
+                )
+            })
+            .collect();
+        if chips.is_empty() {
+            continue;
+        }
+        body.push_str(&format!(
+            "<div class=\"explore-group\"><h3>{}</h3><div class=\"chips\">{}</div></div>",
+            h(&g.heading),
+            chips.join("")
+        ));
+    }
+    if body.is_empty() {
+        return String::new();
+    }
+    format!(
+        "<section class=\"explore\" aria-label=\"Keep exploring\"><h2>Keep exploring</h2>{}</section>",
+        body
+    )
+}
+
+/// The piece published immediately before and after this one in the city — the
+/// "next / previous article" the card asks for, across posts AND sponsored
+/// articles, so an archive can be read end to end.
+async fn neighbour_links(
+    pool: &PgPool,
+    dir: &DirectoryRec,
+    base: &str,
+    at: Option<chrono::DateTime<chrono::Utc>>,
+    skip: &str,
+) -> Vec<(String, String)> {
+    let Some(at) = at else {
+        return Vec::new();
+    };
+    const UNION: &str = "WITH u AS ( \
+           SELECT slug, 'blog'::text AS kind, title, COALESCE(scheduled_at, created_at) AS at \
+           FROM blog_posts WHERE directory_id = $1 AND published = true AND status = 'published' \
+             AND (scheduled_at IS NULL OR scheduled_at <= NOW()) \
+           UNION ALL \
+           SELECT slug, 'article'::text AS kind, title, created_at AS at \
+           FROM business_articles WHERE directory_id = $1 AND status = 'published' \
+         ) ";
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (dirn, ord, prefix) in [
+        ("<", "DESC", "← Previous: "),
+        (">", "ASC", "Next: "),
+    ] {
+        let sql = format!(
+            "{}SELECT slug, kind, title FROM u WHERE at IS NOT NULL AND at {} $2 ORDER BY at {} LIMIT 1",
+            UNION, dirn, ord
+        );
+        let row = sqlx::query(&sql)
+            .bind(dir.id)
+            .bind(at)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+        if let Some(r) = row {
+            let slug: String = r.try_get("slug").unwrap_or_default();
+            let kind: String = r.try_get("kind").unwrap_or_default();
+            let title: String = r.try_get("title").unwrap_or_default();
+            if slug.is_empty() {
+                continue;
+            }
+            let seg = if kind == "article" { "articles" } else { "blog" };
+            push_link(
+                &mut out,
+                &format!("{}{}", prefix, title),
+                &format!("{}/{}/{}/{}", base, dir.slug, seg, slug),
+                skip,
+            );
+        }
+    }
+    out
+}
+
+/// Inline CSS for the server-injected navigation strip. The SPA document carries
+/// its own stylesheet, which knows nothing about `.crumbs` / `.explore`, so the
+/// block ships its own rules and looks identical on every page type.
+const NAV_CSS: &str = "<style>\
+.zh-navbar{max-width:1180px;margin:0 auto;padding:12px 18px 0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}\
+.zh-navbar .crumbs{font-size:13px;color:#6b7280;margin-bottom:8px}\
+.zh-navbar .crumbs a{color:#ea580c;text-decoration:none}\
+.zh-navbar .crumbs a:hover{text-decoration:underline}\
+.zh-navbar .explore{margin:4px 0 16px;padding-top:10px;border-top:1px solid #f1f5f9}\
+.zh-navbar .explore h2{font-size:15px;color:#111827;margin:0 0 8px}\
+.zh-navbar .explore-group{margin-bottom:10px}\
+.zh-navbar .explore-group h3{font-size:12px;font-weight:600;color:#6b7280;margin:0 0 5px;text-transform:uppercase;letter-spacing:.03em}\
+.zh-navbar .chip{display:inline-block;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:999px;padding:5px 12px;font-size:12.5px;margin:0 6px 6px 0;text-decoration:none}\
+.zh-navbar .chip:hover{background:#ffedd5}\
+</style>";
+
+/// The served navigation strip for one surface: a small inline stylesheet, the
+/// breadcrumb trail, then the "Keep exploring" block.
+fn nav_strip(crumbs: &str, explore: &str) -> String {
+    format!(
+        "{}<div class=\"zh-navbar\">{}{}</div>",
+        NAV_CSS, crumbs, explore
+    )
+}
+
+/// Navigation for the NETWORK homepage (`/`): the root has no level above it, so
+/// the trail is the "you are here" marker, and the onward block is every city the
+/// network publishes plus the two ways in for a business owner.
+pub async fn home_nav_html(pool: &PgPool) -> String {
+    let mut groups: Vec<ExploreGroup> = Vec::new();
+
+    let mut links: Vec<(String, String)> = Vec::new();
+    if let Ok(rows) = sqlx::query(
+        "SELECT slug, city FROM directories WHERE status = 'active' \
+         ORDER BY city ASC LIMIT 24",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        for r in &rows {
+            let slug: String = r.try_get("slug").unwrap_or_default();
+            let city: String = r.try_get("city").unwrap_or_default();
+            if slug.is_empty() || city.is_empty() {
+                continue;
+            }
+            push_link(&mut links, &format!("{} directory", city), &format!("/{}", slug), "/");
+        }
+    }
+    if !links.is_empty() {
+        groups.push(ExploreGroup {
+            heading: "Cities we cover".to_string(),
+            links,
+        });
+    }
+
+    let mut links: Vec<(String, String)> = Vec::new();
+    push_link(&mut links, "All cities", "/zaarhub", "/");
+    push_link(&mut links, "Customer sign in", "/visitor", "/");
+    push_link(&mut links, "Business login", "/portal", "/");
+    push_link(&mut links, "Add your business", "/submit-business.html", "/");
+    push_link(&mut links, "Claim your listing", "/claim", "/");
+    if !links.is_empty() {
+        groups.push(ExploreGroup {
+            heading: "Get started".to_string(),
+            links,
+        });
+    }
+
+    let mut body = String::new();
+    for g in &groups {
+        let chips: Vec<String> = g
+            .links
+            .iter()
+            .take(24)
+            .map(|(label, href)| format!("<a class=\"chip\" href=\"{}\">{}</a>", h(href), h(label)))
+            .collect();
+        body.push_str(&format!(
+            "<div class=\"explore-group\"><h3>{}</h3><div class=\"chips\">{}</div></div>",
+            h(&g.heading),
+            chips.join("")
+        ));
+    }
+    let explore = if body.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<section class=\"explore\" aria-label=\"Keep exploring\"><h2>Keep exploring</h2>{}</section>",
+            body
+        )
+    };
+    nav_strip(
+        "<div class=\"crumbs\" aria-label=\"Breadcrumb\"><span>ZaarHub home</span></div>",
+        &explore,
+    )
+}
+
+/// Navigation for a CITY page (`/<slug>`) in the SPA document: Home › City, then
+/// the city's real relationships. This is what makes the city hub a hub instead
+/// of a dead end for anyone who does not run JavaScript.
+async fn city_nav_html(pool: &PgPool, dir: &DirectoryRec, base: &str, canonical: &str) -> String {
+    let crumbs = breadcrumbs(&[
+        ("ZaarHub", &format!("{}/", base)),
+        (&dir.name, canonical),
+    ]);
+    let explore = explore_block(pool, dir, base, canonical, Vec::new()).await;
+    nav_strip(&crumbs, &explore)
+}
+
 /// The active businesses of ONE town, in the same order the city grid uses.
 async fn list_town_businesses(
     pool: &PgPool,
@@ -1144,6 +1596,8 @@ pub async fn town_page(
         )
     };
 
+    let explore = explore_block(pool, &dir, &base, &canonical, Vec::new()).await;
+
     let body = format!(
         r#"{start}{crumbs}
 <h1>Local Businesses in {town}, {state}</h1>
@@ -1151,6 +1605,7 @@ pub async fn town_page(
 <div class="grid">{cards}</div>
 {siblings}
 <p style="margin-top:24px"><a class="btn" href="/{dir}/businesses">See all {city} businesses →</a></p>
+{explore}
 {end}"#,
         start = shell_start(
             &seo,
@@ -1170,6 +1625,7 @@ pub async fn town_page(
         city = h(&dir.city),
         cards = cards,
         siblings = siblings_block,
+        explore = explore,
         end = shell_end(&site),
     );
     Some(html_response(StatusCode::OK, body))
@@ -1318,9 +1774,10 @@ pub async fn directory_home(
     };
 
     // The city page IS the homepage document — identical markup, CSS, nav and
-    // components — carrying only the city's own <head>. The SPA scopes the data
-    // to this city from `/api/v1/zaarhub/cities/<slug>`, keyed off the path.
-    let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id);
+    // components — carrying only the city's own <head> and (card W36) a
+    // server-rendered trail + onward links that work without JavaScript.
+    let nav_html = city_nav_html(pool, &dir, &base, &canonical).await;
+    let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id, &nav_html);
 
     Some(html_response(StatusCode::OK, body))
 }
@@ -1483,6 +1940,8 @@ pub async fn businesses_page(
         )
     };
 
+    let explore = explore_block(pool, &dir, &base, &canonical, Vec::new()).await;
+
     let body = format!(
         r#"{start}{crumbs}
 <h1>{label}</h1>
@@ -1492,6 +1951,7 @@ pub async fn businesses_page(
 <div class="chips">{cat_chips}</div>
 {towns_block}
 {pager}
+{explore}
 {end}"#,
         start = shell_start(
             &seo,
@@ -1510,6 +1970,7 @@ pub async fn businesses_page(
         pages = total_pages,
         cards = cards,
         pager = pager,
+        explore = explore,
         end = shell_end(&site),
     );
 
@@ -1663,6 +2124,7 @@ pub async fn category_page(
         (&label, &canonical),
     ]));
 
+    let canonical_crumb = canonical.clone();
     let seo = Seo {
         title,
         description,
@@ -1678,6 +2140,24 @@ pub async fn category_page(
         .collect();
     let chips = category_chips(pool, &dir, &base, Some(&cat_slug)).await;
 
+    let explore = explore_block(
+        pool,
+        &dir,
+        &base,
+        &canonical_crumb,
+        items
+            .iter()
+            .take(3)
+            .map(|b| {
+                (
+                    b.name.clone(),
+                    format!("{}/{}/businesses/{}", base, dir.slug, b.slug),
+                )
+            })
+            .collect(),
+    )
+    .await;
+
     let body = format!(
         r#"{start}{crumbs}
 <h1>{label}</h1>
@@ -1686,6 +2166,7 @@ pub async fn category_page(
 <h2>More categories in {city}</h2>
 <div class="chips">{chips}</div>
 <p><a class="btn" href="/{dir}/businesses">See all {city} businesses →</a></p>
+{explore}
 {end}"#,
         start = shell_start(
             &seo,
@@ -1697,7 +2178,7 @@ pub async fn category_page(
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
             ("Businesses", &format!("{}/{}/businesses", base, dir.slug)),
-            (&label, &format!("{}/{}/businesses", base, dir.slug)),
+            (&label, &canonical_crumb),
         ]),
         label = h(&label),
         n = total,
@@ -1707,6 +2188,7 @@ pub async fn category_page(
         cards = cards,
         chips = chips,
         dir = h(&dir.slug),
+        explore = explore,
         end = shell_end(&site),
     );
 
@@ -1906,7 +2388,10 @@ pub async fn business_detail(
         }
     };
     let related_html = if related.is_empty() {
-        String::new()
+        // No neighbours to show as cards: fall back to the shared block so the page
+        // still cannot dead-end (card W36).
+        explore_block(pool, &dir, &base, &format!("{}/{}/businesses/{}", base, dir.slug, biz_slug), Vec::new())
+            .await
     } else {
         let cards: Vec<String> = related
             .iter()
@@ -1916,10 +2401,45 @@ pub async fn business_detail(
             Some(c) => format!("More {} in {}", h(c), h(&city)),
             None => format!("Similar businesses in {}", h(&city)),
         };
+        // The card grid sits inside the one shared "Keep exploring" section, together
+        // with the city's browse levels, so this page offers both a next listing and a
+        // way back up — never a dead end (card W36).
+        let mut chips = String::new();
+        if let Some(cs) = &category_slug {
+            chips.push_str(&format!(
+                "<a class=\"chip\" href=\"{}/{}/{}\">All {}</a>",
+                h(&base),
+                h(&dir.slug),
+                h(cs),
+                h(category.as_deref().unwrap_or(""))
+            ));
+        }
+        chips.push_str(&format!(
+            "<a class=\"chip\" href=\"{}/{}/businesses\">All businesses in {}</a>",
+            h(&base),
+            h(&dir.slug),
+            h(&city)
+        ));
+        chips.push_str(&format!(
+            "<a class=\"chip\" href=\"{}/{}\">{} home</a>",
+            h(&base),
+            h(&dir.slug),
+            h(&city)
+        ));
+        chips.push_str(&format!(
+            "<a class=\"chip\" href=\"{}/{}/blog\">{} blog</a>",
+            h(&base),
+            h(&dir.slug),
+            h(&city)
+        ));
         format!(
-            "<h2 style=\"font-size:1.1rem;margin:28px 0 12px\">{}</h2><div class=\"grid\">{}</div>",
+            "<section class=\"explore\" aria-label=\"Keep exploring\"><h2>Keep exploring</h2>\
+             <div class=\"explore-group\"><h3>{}</h3><div class=\"grid\">{}</div></div>\
+             <div class=\"explore-group\"><h3>Browse {}</h3><div class=\"chips\">{}</div></div></section>",
             heading,
-            cards.join("")
+            cards.join(""),
+            h(&city),
+            chips
         )
     };
 
@@ -2290,6 +2810,11 @@ pub async fn article_page(
         .map(|d| d.format("%B %-d, %Y").to_string())
         .unwrap_or_default();
 
+    // Card W36: the next and the previous piece in this city — a visitor reading one
+    // article can always read the next one, and a crawler can walk the whole archive.
+    let neighbours = neighbour_links(pool, &dir, &base, created.or(updated), &canonical).await;
+    let explore = explore_block(pool, &dir, &base, &canonical, neighbours).await;
+
     let body = format!(
         r#"{start}{crumbs}
 <article class="detail article-body">
@@ -2299,6 +2824,7 @@ pub async fn article_page(
 {content}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← More about {city}</a></p>
 </article>
+{explore}
 {end}"#,
         start = shell_start(
             &seo,
@@ -2309,6 +2835,10 @@ pub async fn article_page(
         crumbs = breadcrumbs(&[
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            (
+                &format!("{} Blog", dir.city),
+                &format!("{}/{}/blog", base, dir.slug)
+            ),
             (&title_raw, &canonical),
         ]),
         h1 = h(&title_raw),
@@ -2318,6 +2848,7 @@ pub async fn article_page(
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
+        explore = explore,
         end = shell_end(&site),
     );
 
@@ -2507,6 +3038,9 @@ pub async fn blog_post_page(
         })
         .unwrap_or_default();
 
+    let neighbours = neighbour_links(pool, &dir, &base, created, &canonical).await;
+    let explore = explore_block(pool, &dir, &base, &canonical, neighbours).await;
+
     let body = format!(
         r#"{start}{crumbs}
 <article class="detail article-body">
@@ -2517,6 +3051,7 @@ pub async fn blog_post_page(
 {content}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← More about {city}</a></p>
 </article>
+{explore}
 {end}"#,
         start = shell_start(
             &seo,
@@ -2527,6 +3062,10 @@ pub async fn blog_post_page(
         crumbs = breadcrumbs(&[
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            (
+                &format!("{} Blog", dir.city),
+                &format!("{}/{}/blog", base, dir.slug)
+            ),
             (&title_raw, &canonical),
         ]),
         img = img_html,
@@ -2538,6 +3077,7 @@ pub async fn blog_post_page(
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
+        explore = explore,
         end = shell_end(&site),
     );
 
@@ -2788,12 +3328,15 @@ pub async fn blog_list_page(
         )
     };
 
+    let explore = explore_block(pool, &dir, &base, &canonical, Vec::new()).await;
+
     let body = format!(
         r#"{start}{crumbs}
 <h1>{label}</h1>
 <p class="lede">{lede}</p>
 <div class="grid">{list}</div>
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← Back to {city}</a></p>
+{explore}
 {end}"#,
         start = shell_start(
             &seo,
@@ -2812,6 +3355,7 @@ pub async fn blog_list_page(
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
+        explore = explore,
         end = shell_end(&site),
     );
 
@@ -3056,12 +3600,15 @@ pub async fn deals_page(
         jsonld,
     };
 
+    let explore = explore_block(pool, &dir, &base, &canonical, Vec::new()).await;
+
     let body = format!(
         r#"{start}{crumbs}
 <h1>{label}</h1>
 <p class="lede">{lede}</p>
 <div class="grid">{list}</div>
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← Back to {city}</a></p>
+{explore}
 {end}"#,
         start = shell_start(
             &seo,
@@ -3080,6 +3627,7 @@ pub async fn deals_page(
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
+        explore = explore,
         end = shell_end(&site),
     );
 

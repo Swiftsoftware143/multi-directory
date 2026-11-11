@@ -297,7 +297,7 @@ function renderDashboard(){
           '</div>'+
           (listings&&listings.data&&listings.data.length>0?
           '<div class="card"><div class="card-header"><h3>📋 Recent Listings</h3></div><div class="table-wrap"><table><tr><th>Name</th><th>Status</th><th>Category</th></tr>'+
-            listings.data.map(function(b){return '<tr><td>'+esc(b.name||b.business_name||'')+'</td><td><span class="badge '+(b.status==='published'?'published':'draft')+'">'+esc(b.status||'draft')+'</span></td><td>'+esc(b.category||'')+'</td></tr>';}).join('')+
+            listings.data.map(function(b){return '<tr><td>'+esc(b.name||b.business_name||'')+'</td><td>'+stBadge(b)+'</td><td>'+esc(b.category||'')+'</td></tr>';}).join('')+
           '</table></div></div>':'');
         },function(){setContent(el,'<div class="empty-state"><p>Could not load dashboard data.</p></div>');});
       },function(){setContent(el,'<div class="empty-state"><p>Could not load reviews.</p></div>');});
@@ -307,6 +307,9 @@ function renderDashboard(){
 
 // ── Listings ───────────────────────────────────────────
 var LISTINGS_LISTING_DATA=null;
+// One status label for a listing: the backend calls a live listing "active", the screen
+// says "published" — showing the raw value made every live listing look like a draft.
+function stBadge(b){var live=(b.status==='active'||b.status==='published');return '<span class="badge '+(live?'published':'draft')+'">'+(live?'published':esc(b.status||'draft'))+'</span>';}
 function renderListings(){
   var el=document.getElementById('pageContent');
   if(!CUR_DIR){el.innerHTML='<div class="empty-state"><p>No directory selected.</p></div>';return;}
@@ -322,8 +325,8 @@ function renderListings(){
       (data.length===0?'<tr><td colspan="6" style="text-align:center;color:var(--text-secondary)">No listings yet</td></tr>':
       data.map(function(b,i){
         var bn=b.name||b.business_name||'';
-        return '<tr><td>'+esc(bn)+'</td><td>'+esc(b.category||'')+'</td><td>'+esc(b.email||'')+'</td><td>'+esc(b.phone||'')+'</td><td><span class="badge '+(b.status==='published'?'published':'draft')+'">'+esc(b.status||'draft')+'</span></td>'+
-        '<td><button class="btn btn-secondary btn-sm" onclick="showEditListing('+i+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteListing('+(b.id||i)+')">🗑️</button></td></tr>';
+        return '<tr><td>'+esc(bn)+'</td><td>'+esc(b.category||'')+'</td><td>'+esc(b.email||'')+'</td><td>'+esc(b.phone||'')+'</td><td>'+stBadge(b)+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="showEditListing('+i+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteListing(&quot;'+esc(String(b.id||i))+'&quot;)">🗑️</button></td></tr>';
       }).join(''))+
     '</table></div>';
   },function(){el.innerHTML='<div class="empty-state"><p>Failed to load listings.</p></div>';});
@@ -338,7 +341,7 @@ function showAddListing(){
     '<div class="form-group"><label>Phone</label><input id="f_bphone" placeholder="+1234567890"></div>'+
     '<div class="form-group"><label>Website</label><input id="f_bweb" placeholder="https://example.com"></div>'+
     '<div class="form-group"><label>Address</label><input id="f_baddr" placeholder="123 Main St, City"></div>'+
-    '<div class="form-group"><label>Status</label><select id="f_bstatus"><option value="published">Published</option><option value="draft">Draft</option></select></div>'+
+    '<div class="form-group"><label>Status</label><select id="f_bstatus"><option value="active">Published</option><option value="draft">Draft</option></select></div>'+
     '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveListing()">Save</button></div>'
   );
 }
@@ -362,8 +365,8 @@ function showEditListing(i){
     '<div class="form-group"><label>Website</label><input id="f_bweb" value="'+esc(data.website||'')+'"></div>'+
     '<div class="form-group"><label>Address</label><input id="f_baddr" value="'+esc(data.address||'')+'"></div>'+
     '<div class="form-group"><label>Web address</label><input id="f_bslug" value="'+esc(data.slug||'')+'" placeholder="my-business-name" oninput="bslugHelp(this.value)"><span class="help-text" id="f_bslug_help"></span></div>'+
-    '<div class="form-group"><label>Status</label><select id="f_bstatus"><option value="published" '+(data.status==='published'?'selected':'')+'>Published</option><option value="draft" '+(data.status!=='published'?'selected':'')+'>Draft</option></select></div>'+
-    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateListing('+bid+')">Update</button></div>'
+    '<div class="form-group"><label>Status</label><select id="f_bstatus"><option value="active" '+(data.status==='active'||data.status==='published'?'selected':'')+'>Published</option><option value="draft" '+(data.status!=='active'&&data.status!=='published'?'selected':'')+'>Draft</option></select></div>'+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateListing(&quot;'+esc(String(bid))+'&quot;)">Update</button></div>'
   );
   bslugHelp(data.slug||'');
 }
