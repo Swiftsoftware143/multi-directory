@@ -560,6 +560,7 @@
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#reviews-moderation-section">⭐ Reviews</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
+        <a href="#sat-towns-section">🏘️ Satellite Towns</a>
         <a href="#sc-svc-section">🧩 Services &amp; Cities</a>
         <a href="#sc-prog-section">🧱 Programmatic Pages</a>
         <a href="#sc-topic-section">🗓 Topics &amp; Authors</a>
@@ -2141,6 +2142,29 @@
         </div>
         <div id="sm-loading" class="loading-state"><span class="spinner"></span> Loading sitemap configs…</div>
         <div id="sm-list"></div>
+      </div>
+
+      <!-- 🏘 Satellite towns (W30) — the control for GET /seo/satellite-towns/:directory_id,
+           PUT /seo/satellite-towns/:directory_id/:town_key and
+           PUT /seo/satellite-settings/:directory_id.
+           Town pages used to publish the moment a town had three listings — no human decision,
+           so an import could put a page (and a sitemap entry) live with nobody having looked at
+           it. Now each town is a TAB here: you see how many listings it has and whether it is
+           draft (publishes nothing), approved (waiting for enough listings) or live (published,
+           linked, in the sitemap). The tab strip is built from the city's own towns, so no town
+           name is hardcoded anywhere. Unchecking "Include satellite towns" unpublishes every
+           town of that city at once and keeps the approvals. -->
+      <div class="feature-card" id="sat-towns-section">
+        <h3>🏘 Satellite Towns</h3>
+        <p class="feature-subtitle">The smaller towns around each city. A town only gets its own page once you approve it, so nothing goes public — or into the sitemap — without your decision. Pick a city, open a town's tab, and approve or revoke it: the live site follows immediately.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="input" id="sat-dir" onchange="window.__satPickDir(this.value)" style="min-width:220px"></select>
+          <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="sat-include" onchange="window.__satInclude()"> Include satellite towns</label>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__satLoad()">↻ Refresh</button>
+          <span class="feature-status" id="sat-status"></span>
+        </div>
+        <div id="sat-tabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+        <div id="sat-panel"><p class="feature-subtitle">Loading towns…</p></div>
       </div>
 
       <!-- 🔎 Search-engine submission — kanban B91/B117 gap #10. The sitemaps were served
@@ -5153,6 +5177,8 @@
       window.__artLoad();
       // 🗺 Sitemap config (priority / change frequency / auto-generate + regenerate).
       loadSitemapConfigs();
+      // 🏘 Satellite towns (W30) — one tab per town; approval is what makes a town page live.
+      loadSatelliteTowns();
       // 🔎 Search-engine submission (B91/B117 gap #10) — ping/schedule the sitemap.
       loadSubmission();
       // Round 11 / T1: demand analytics card (filters, matrix, chart, exports).
@@ -9011,6 +9037,132 @@
     window.__smLoad = loadSitemapConfigs;
     window.__smSave = saveSitemapConfig;
     window.__smRegenerate = regenerateSitemap;
+
+    // ===== 🏘 Satellite towns (W30) =====
+    // One tab per town with its listing count and status (draft / approved / live). The tab strip
+    // is built from whatever towns the selected city actually holds, so no town is hardcoded and a
+    // new town appears here on its own as a draft. Approving a town is what puts its page (and its
+    // sitemap entry) live; revoking it takes the page down again without touching the listings.
+    var satTowns = [];
+    var satDirId = null;
+    var satActiveKey = null;
+
+    function satStatusWord(t) {
+      if (t.status === 'live') return 'live — page is published and in the sitemap';
+      if (t.status === 'approved') return 'approved — waiting for at least 3 listings before its page can publish';
+      return 'draft — not published anywhere';
+    }
+
+    function satRenderTabs() {
+      var strip = document.getElementById('sat-tabs');
+      if (!strip) return;
+      var towns = satTowns.filter(function (t) { return !t.is_home; });
+      if (!towns.length) {
+        strip.innerHTML = '';
+        document.getElementById('sat-panel').innerHTML = '<p class="feature-subtitle">This city has no neighbouring towns with listings yet. Towns appear here automatically as soon as listings carry their town name.</p>';
+        return;
+      }
+      var html = '';
+      towns.forEach(function (t) {
+        var active = (t.town_key === satActiveKey);
+        var badge = t.status === 'live' ? '●' : (t.status === 'approved' ? '◐' : '○');
+        html += '<button class="btn btn-sm ' + (active ? 'btn-accent' : 'btn-ghost') + '" type="button" onclick="window.__satPick(\'' + pkEsc(t.town_key).replace(/'/g, '&#39;') + '\')">' + badge + ' ' + pkEsc(t.town_label) + ' (' + t.count + ')</button>';
+      });
+      strip.innerHTML = html;
+    }
+
+    function satRenderPanel() {
+      var panel = document.getElementById('sat-panel');
+      if (!panel) return;
+      var t = null;
+      for (var i = 0; i < satTowns.length; i++) { if (satTowns[i].town_key === satActiveKey) { t = satTowns[i]; break; } }
+      if (!t) { panel.innerHTML = ''; return; }
+      var approved = !!t.approved;
+      var includeOff = document.getElementById('sat-include') && !document.getElementById('sat-include').checked;
+      var btn = approved
+        ? '<button class="btn btn-sm" type="button" style="background:#7f1d1d;color:#fff" onclick="window.__satApprove(false)">Take this town offline</button>'
+        : '<button class="btn btn-accent btn-sm" type="button" onclick="window.__satApprove(true)">Approve this town</button>';
+      panel.innerHTML =
+        '<div style="border:1px solid #1f2937;border-radius:10px;padding:14px">' +
+        '<div style="font-size:17px;font-weight:700;margin-bottom:4px">' + pkEsc(t.town_label) + '</div>' +
+        '<div class="feature-subtitle" style="margin-bottom:10px">' + t.count + ' listing' + (t.count === 1 ? '' : 's') + ' · ' + satStatusWord(t) + '</div>' +
+        (includeOff ? '<div class="feature-subtitle" style="color:#fbbf24;margin-bottom:10px">Satellite towns are switched OFF for this city, so this approval has no effect until you tick “Include satellite towns”.</div>' : '') +
+        '<div class="pk-controls">' + btn + '</div>' +
+        (t.status === 'live' ? '<div class="feature-subtitle" style="margin-top:10px">Public page: <code>/' + pkEsc(t.slug) + '</code> under this city</div>' : '') +
+        '</div>';
+    }
+
+    function loadSatelliteTowns(dirId) {
+      var sel = document.getElementById('sat-dir');
+      if (!sel) return Promise.resolve();
+      var dirsP = apiGet('/directories?per_page=100').catch(function () { return { data: [] }; });
+      return dirsP.then(function (dirsRes) {
+        var dirs = (dirsRes && dirsRes.data) || [];
+        if (!dirs.length) { r8Status('sat-status', 'No cities found', false); return; }
+        var current = dirId || satDirId || dirs[0].id;
+        var opts = '';
+        dirs.forEach(function (d) {
+          opts += '<option value="' + pkEsc(d.id) + '"' + (d.id === current ? ' selected' : '') + '>' + pkEsc(d.name || d.slug) + '</option>';
+        });
+        sel.innerHTML = opts;
+        satDirId = current;
+        return satLoadCity(current);
+      });
+    }
+
+    function satLoadCity(dirId) {
+      satDirId = dirId;
+      r8Status('sat-status', 'Loading towns…', false);
+      return apiGet('/seo/satellite-towns/' + encodeURIComponent(dirId)).then(function (r) {
+        satTowns = (r && r.towns) || [];
+        var inc = document.getElementById('sat-include');
+        if (inc) inc.checked = !!(r && r.include_satellite_towns);
+        var others = satTowns.filter(function (t) { return !t.is_home; });
+        if (!satActiveKey || !others.some(function (t) { return t.town_key === satActiveKey; })) {
+          satActiveKey = others.length ? others[0].town_key : null;
+        }
+        satRenderTabs();
+        satRenderPanel();
+        var live = others.filter(function (t) { return t.status === 'live'; }).length;
+        r8Status('sat-status', others.length + ' town' + (others.length === 1 ? '' : 's') + ', ' + live + ' live', true);
+      }).catch(function (e) {
+        r8Status('sat-status', 'Could not load towns: ' + e.message, false);
+      });
+    }
+
+    window.__satLoad = function () { return loadSatelliteTowns(); };
+    window.__satPickDir = function (dirId) { return satLoadCity(dirId); };
+    window.__satPick = function (key) {
+      if (!key) return;
+      satActiveKey = key;
+      satRenderTabs();
+      satRenderPanel();
+    };
+    window.__satApprove = function (approved) {
+      if (!satDirId || !satActiveKey) return;
+      r8Status('sat-status', approved ? 'Approving…' : 'Taking offline…', false);
+      return apiPut('/seo/satellite-towns/' + encodeURIComponent(satDirId) + '/' + encodeURIComponent(satActiveKey), { approved: approved })
+        .then(function () {
+          showToast(approved ? 'Town approved' : 'Town taken offline');
+          return satLoadCity(satDirId).then(function () {
+            r8Status('sat-status', approved ? 'Approved — its page is live as soon as it has 3 listings' : 'Taken offline — the page and its sitemap entry are gone', true);
+          });
+        })
+        .catch(function (e) { r8Status('sat-status', 'Could not change that town: ' + e.message, false); });
+    };
+    window.__satInclude = function () {
+      if (!satDirId) return;
+      var inc = document.getElementById('sat-include');
+      var on = !!(inc && inc.checked);
+      return apiPut('/seo/satellite-settings/' + encodeURIComponent(satDirId), { include_satellite_towns: on })
+        .then(function () {
+          showToast(on ? 'Satellite towns on' : 'Satellite towns off');
+          return satLoadCity(satDirId).then(function () {
+            r8Status('sat-status', on ? 'Satellite towns on for this city' : 'Satellite towns off — every town page of this city is now unpublished', true);
+          });
+        })
+        .catch(function (e) { r8Status('sat-status', 'Could not save the switch: ' + e.message, false); });
+    };
 
     // ===== 🔎 Search-engine submission (kanban B91/B117 gap #10) =====
     // The sitemaps were served but never advertised. This is the panel control for

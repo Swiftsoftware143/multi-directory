@@ -26,6 +26,7 @@ pub mod public_pages;
 pub mod qa;
 pub mod reports;
 pub mod reviews;
+pub mod satellite;
 pub mod search;
 pub mod seo;
 pub mod seo_submission;

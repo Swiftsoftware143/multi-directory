@@ -705,6 +705,24 @@ pub fn create_router(s: AppState) -> Router {
             post(seo::regenerate_sitemap)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // W30 — satellite town approval. A town page used to publish on listing count alone,
+        // with no human decision; now each town is approved one at a time and the city has a
+        // master switch. `set_*` first: `:directory_id` then the town key.
+        .route(
+            "/seo/satellite-towns/:directory_id",
+            get(satellite::list_satellite_towns)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/seo/satellite-towns/:directory_id/:town_key",
+            put(satellite::set_town_approval)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/seo/satellite-settings/:directory_id",
+            put(satellite::set_satellite_include)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // B91/B117 gap #10 — nightly sitemap submission: admin-editable settings
         // (targets, cadence, enable) + a run-now endpoint; the scheduler in main
         // drives the configured passes.

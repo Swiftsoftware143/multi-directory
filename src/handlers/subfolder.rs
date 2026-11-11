@@ -923,17 +923,66 @@ fn breadcrumb_ld(items: &[(&str, &str)]) -> serde_json::Value {
 const MIN_TOWN_LISTINGS: i64 = 3;
 
 /// One town inside a directory's local area. `slug` is the crawlable path segment.
-struct TownEntry {
-    label: String,
-    slug: String,
-    count: i64,
-    is_home: bool,
+pub(crate) struct TownEntry {
+    /// `satellite_towns.town_key` — the lower-cased town name taken from the listings' city
+    /// field, so the admin screen and this gate always talk about the same town.
+    pub key: String,
+    pub label: String,
+    pub slug: String,
+    pub count: i64,
+    pub is_home: bool,
+    /// Whether the town may publish anything right now: the directory includes satellite towns,
+    /// an admin approved THIS town, and it still has enough listings to be a real page (W30).
+    pub published: bool,
+}
+
+/// Per-directory satellite gate (W30): the master switch plus the set of approved town keys.
+///
+/// Fails OPEN: a database without the `satellite_towns` table (an install mid-upgrade) keeps the
+/// old behaviour — towns publish on listing count alone — rather than silently unpublishing every
+/// town page of every city.
+pub(crate) async fn satellite_approval(
+    pool: &PgPool,
+    dir_id: Uuid,
+) -> (bool, std::collections::HashMap<String, bool>) {
+    let include: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT include_satellite_towns FROM directories WHERE id = $1",
+    )
+    .bind(dir_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(true);
+
+    let rows: Result<Vec<(String, bool)>, sqlx::Error> =
+        sqlx::query_as("SELECT town_key, approved FROM satellite_towns WHERE directory_id = $1")
+            .bind(dir_id)
+            .fetch_all(pool)
+            .await;
+
+    match rows {
+        Ok(rows) => (include, rows.into_iter().collect()),
+        Err(_) => (true, std::collections::HashMap::new()),
+    }
 }
 
 /// Every town a directory holds within its local area, home town first. Uses the
 /// SAME rule as the city page (`zaarhub::LOCAL_AREA_KM`): grouped in SQL so counts
-/// are exact, never taken from a capped card list.
-async fn local_town_entries(pool: &PgPool, dir_id: Uuid, dir_city: &str) -> Vec<TownEntry> {
+/// are exact, never taken from a capped card list. A town whose row is missing from
+/// `satellite_towns` is a DRAFT — it publishes nothing until an admin approves it.
+pub(crate) async fn local_town_entries(
+    pool: &PgPool,
+    dir_id: Uuid,
+    dir_city: &str,
+) -> Vec<TownEntry> {
+    let (include, approved) = satellite_approval(pool, dir_id).await;
+    // The master switch off means the city has no satellite towns at all: no pages, no links,
+    // nothing in the sitemap. The approvals are kept, so ticking it again restores them.
+    if !include {
+        return Vec::new();
+    }
+
     let rows: Vec<(String, String, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
         r#"SELECT LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) AS town_key,
                   MIN(TRIM(SPLIT_PART(TRIM(b.city), ',', 1))) AS town_label,
@@ -959,10 +1008,12 @@ async fn local_town_entries(pool: &PgPool, dir_id: Uuid, dir_city: &str) -> Vec<
     for (key, label, count, la, lo) in rows {
         if key == home_key {
             out.push(TownEntry {
+                key,
                 slug: crate::handlers::zaarhub::town_slug(&label),
                 label,
                 count,
                 is_home: true,
+                published: true,
             });
             continue;
         }
@@ -985,6 +1036,8 @@ async fn local_town_entries(pool: &PgPool, dir_id: Uuid, dir_city: &str) -> Vec<
             label,
             count,
             is_home: false,
+            published: approved.get(&key).copied().unwrap_or(false) && count >= MIN_TOWN_LISTINGS,
+            key,
         });
     }
     out.sort_by(|a, b| b.is_home.cmp(&a.is_home).then(b.count.cmp(&a.count)));
@@ -1003,7 +1056,7 @@ async fn town_chips_html(
     let mut out = String::new();
     for t in towns
         .iter()
-        .filter(|t| t.count >= MIN_TOWN_LISTINGS && Some(t.slug.as_str()) != skip)
+        .filter(|t| t.published && Some(t.slug.as_str()) != skip)
     {
         let href = if t.is_home {
             format!("{}/{}", base, dir.slug)
@@ -1136,7 +1189,7 @@ async fn city_relationships(
     for t in local_town_entries(pool, dir.id, &dir.city)
         .await
         .iter()
-        .filter(|t| t.count >= MIN_TOWN_LISTINGS)
+        .filter(|t| t.published)
     {
         let href = if t.is_home {
             format!("{}/{}", base, dir.slug)
@@ -1560,7 +1613,7 @@ pub async fn town_page(
     let wanted = town_slug_req.trim().to_lowercase();
     let town = towns
         .iter()
-        .find(|t| !t.is_home && t.slug == wanted && t.count >= MIN_TOWN_LISTINGS)?;
+        .find(|t| !t.is_home && t.slug == wanted && t.published)?;
 
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
@@ -3782,10 +3835,7 @@ pub async fn sitemap(
             .unwrap_or_default();
         if !dcity.trim().is_empty() {
             let towns = local_town_entries(pool, dir_id, &dcity).await;
-            for t in towns
-                .iter()
-                .filter(|t| !t.is_home && t.count >= MIN_TOWN_LISTINGS)
-            {
+            for t in towns.iter().filter(|t| !t.is_home && t.published) {
                 xml.push_str(&format!(
                     "  <url><loc>{base}/{d}/{t}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>\n",
                     base = h(&base),
