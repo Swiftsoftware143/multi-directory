@@ -313,6 +313,23 @@ const BUSINESS_CHILDREN: &[(&str, &str)] = &[
         "point_redemption_log.redeeming_business_id",
         child_q!("point_redemption_log", "redeeming_business_id"),
     ),
+    // — completeness gap closed 2026-11-11: a renamed listing's old web addresses (the 301
+    // history) carry business_id with no declared FK — the same class as the blocks above — so a
+    // "complete record" was dropping them. And the money rows below (settlement_invoices /
+    // settlement_payouts) carry only a run_id, so the settlement PERIOD they were billed in was
+    // unrecoverable from the download; the runs this business appears in are now a section too.
+    (
+        "business_slug_history",
+        child_q!("business_slug_history", "business_id"),
+    ),
+    (
+        "settlement_runs",
+        concat!(
+            "SELECT row_to_json(t)::text AS j FROM settlement_runs t WHERE t.id IN (",
+            "SELECT run_id FROM settlement_invoices WHERE business_id = $1 ",
+            "UNION SELECT run_id FROM settlement_payouts WHERE business_id = $1)"
+        ),
+    ),
 ];
 
 /// Every single-column FK pointing at `public.visitor_accounts`.
