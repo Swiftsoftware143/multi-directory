@@ -665,6 +665,20 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 // ── Helpers ──
 async function g(url){var ctrl=new AbortController();var timer=setTimeout(function(){ctrl.abort()},15000);try{var r=await fetch('/api/v1'+url,{signal:ctrl.signal});if(!r.ok){let e=await r.json().catch(()=>({}));throw new Error(e.message||e.error||'Request failed')}clearTimeout(timer);return r.json()}catch(e){clearTimeout(timer);throw e}}
 function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+// Where a rating came from. `review_count` is a COMBINATION of the listing's imported public-listing
+// aggregate and our own approved reviews (the API also sends the two halves separately). Printing the
+// combined number as if it were ZaarHub's own made the page contradict itself — "199 reviews" in the
+// header, "ZaarHub Reviews (0)" in the panel. Every place that prints a review count uses this.
+function reviewByline(d){
+  if(!d)return ''
+  var ours=(typeof d.zaarhub_review_count==='number')?d.zaarhub_review_count:((d.reviews&&d.reviews.length)||0)
+  var imported=d.imported_review_count||0
+  if(imported>0){
+    return (ours>0?ours+' ZaarHub review'+(ours===1?'':'s')+' · ':'')+Number(imported).toLocaleString()+' from public listings'
+  }
+  var rc=(typeof d.review_count==='number')?d.review_count:ours
+  return rc+' review'+(rc===1?'':'s')
+}
 // ── ZaarCash loyalty messaging (card B92) ────────────────────────────────────────────────
 // The on/off, the copy, the CTA target AND the honest earn state are all resolved by the back
 // end (GET /loyalty/messaging). The page renders exactly what it is handed, so the homepage and
@@ -2836,14 +2850,7 @@ function renderDealDetail(d){
       else starsStr+='☆'
     }
     ratingHtml='<span class="bizsnap-stars">'+starsStr+'</span><span class="bizsnap-rating-num">'+bizRating.toFixed(1)+'</span>'
-    if(bizReviewCount>0){
-      var bizZaarCount=d.zaarhub_review_count||0
-      var bizImported=d.imported_review_count||0
-      var byline=(bizImported>0)
-        ?((bizZaarCount>0?bizZaarCount+' ZaarHub review'+(bizZaarCount===1?'':'s')+' · ':'')+bizImported.toLocaleString()+' from public listings')
-        :(bizReviewCount+' review'+(bizReviewCount===1?'':'s'))
-      ratingHtml+='<span class="bizsnap-review-count" title="Some ratings come from public business listings until a ZaarHub customer reviews this place">('+byline+')</span>'
-    }
+    if(bizReviewCount>0)ratingHtml+='<span class="bizsnap-review-count" title="Some ratings come from public business listings until a ZaarHub customer reviews this place">('+reviewByline(d)+')</span>'
   }
   var verifiedBadge=bizVerified?'<span class="bizsnap-verified">✅ Verified</span>':''
   var locationStr=''
@@ -3561,7 +3568,7 @@ function renderBizPage(d){
   var walkLine=walkBits.length?'<div class="zh-walk-score" style="margin-top:6px;font-size:.82rem;color:var(--text-light)">'+walkBits.join(' · ')+'</div>':''
 
   el.innerHTML='<div class="zh-biz-hero" style="background:linear-gradient(135deg,#0f172a 0%,#134e4a 70%,#0d9488 100%);color:#fff;padding:48px 24px"><div class="zh-section-inner" style="max-width:1280px;margin:0 auto"><a href="#/city/'+state.slug+'" style="color:#94a3b8;font-size:.85rem;margin-bottom:12px;display:inline-block">← Back to '+toTitle(state.slug)+'</a><h1 style="font-size:2rem;font-weight:800;margin-bottom:4px">'+esc(b.name)+'</h1><div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:.9rem;color:#94a3b8">'+
-  (b.rating?'<span>'+stars+' ('+b.review_count+' reviews)</span>':'')+
+  (b.rating?'<span>'+stars+' ('+reviewByline(d)+')</span>':'')+
   (b.category?'<span>📁 '+esc(b.category)+'</span>':'')+
   (b.is_claimed?'<span>👑 Verified</span>':'')+
   '</div><div style="display:flex;gap:12px;flex-wrap:wrap">'+
