@@ -854,7 +854,7 @@ function showNearToast(msg,duration){
 (function(){var s=document.createElement('style');s.textContent='@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}.zh-near-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--primary);color:#fff;border-radius:100px;font-size:.78rem;font-weight:600;white-space:nowrap}.zh-near-badge .close{cursor:pointer;opacity:.7;margin-left:4px}.zh-near-badge .close:hover{opacity:1}.zh-dist-badge{font-size:.72rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px;margin-left:6px}';document.head.appendChild(s)})()
 
 // ── State ──
-let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',filterNeighbourhood:'',diningSlugs:[],loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
+let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',filterNeighbourhood:'',filterTown:'',diningSlugs:[],loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
 
 // ── Collections (localStorage) ──
 function loadCollections(){try{var r=localStorage.getItem('zh_collections');return r?JSON.parse(r):[]}catch(e){return[]}}
@@ -918,14 +918,14 @@ function route(){
     if(MD_ENTRY_SUB==='deals'){state.page='deals';state.dealsCityFilter=MD_ENTRY_SLUG}
     else if(MD_ENTRY_SUB==='events'){state.page='events';state.eventsCityFilter=MD_ENTRY_SLUG}
     else if(MD_ENTRY_SUB==='blog'){state.page='blog';state.slug=MD_ENTRY_SLUG}
-    else{state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory='';state.filterNeighbourhood=''}
+    else{state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory='';state.filterNeighbourhood='';state.filterTown=''}
     }
   }else if(hash.startsWith('/city/')){
     var parts=hash.split('/')
     if(parts.length>=5&&parts[3]==='biz'){
       state.page='biz';state.slug=parts[2];state.bizId=parts[4]
     }else{
-      state.page='city';state.slug=parts[2];state.filterCategory='';state.filterNeighbourhood=''
+      state.page='city';state.slug=parts[2];state.filterCategory='';state.filterNeighbourhood='';state.filterTown=''
     }
   }else if(hash.startsWith('/saved')){
     // The shopper's Saved Places screen. The view existed but nothing routed to it, so the
@@ -1205,7 +1205,7 @@ async function load(){
           state.page='blog';state.slug=entrySlug
           entryHash='#/blog/'+entrySlug
         }else{
-          state.page='city';state.slug=entrySlug;state.filterCategory='';state.filterNeighbourhood=''
+          state.page='city';state.slug=entrySlug;state.filterCategory='';state.filterNeighbourhood='';state.filterTown=''
           if(entrySub)entryHash='#/city/'+entrySlug+'/'+entrySub
         }
         try{history.replaceState(null,'',entryHash)}catch(e2){}
@@ -2039,7 +2039,7 @@ function renderCityPage(d){
   state.diningSlugs=diningSlugs
   var dirInfo=d.directory||{}
   var cityName=esc(dirInfo.name||toTitle(state.slug))
-  var bizCount=d.stats?.business_count||biz.length
+  var bizCount=(d.stats&&d.stats.total_businesses)||biz.length
   var desc=esc(dirInfo.description||'Explore '+cityName)
   // The company Headquarters (ONE value for the whole company, from zaarhub_site_config): shown on
   // every city page. A city needs no address of its own (David's MD STRUCTURE rule).
@@ -2221,6 +2221,29 @@ function renderCityPage(d){
   if(state.filterNeighbourhood){
     biz=biz.filter(function(b){return (b.neighbourhood||'')===state.filterNeighbourhood})
   }
+  // Town scoping (W22): the city page shows ONE town at a time and opens on the directory's own
+  // city, so a business from another town can never be read as if it were in this city. The API
+  // already limits the cards to this city's local area; these chips pick one town inside it.
+  var towns=(Array.isArray(d.local_towns))?d.local_towns:[]
+  var homeTown=d.home_town?String(d.home_town).trim():(towns.length?String(towns[0].name||'').trim():'')
+  var selTown=(state.filterTown==='__all__')?'':(state.filterTown||homeTown)
+  var townRowHtml=''
+  if(towns.length>1){
+    var townChip=function(label,val,active,count){
+      return '<a href="javascript:void(0)" data-town="'+esc(val)+'" onclick="filterTown(this.getAttribute(\'data-town\'))" style="padding:6px 14px;border-radius:100px;font-size:.8rem;font-weight:600;border:1px solid var(--border);background:var(--card);color:var(--text);text-decoration:none;cursor:pointer'+(active?';background:var(--primary);color:#fff;border-color:var(--primary)':'')+'">'+esc(label)+(count?(' ('+count+')'):'')+'</a>'
+    }
+    townRowHtml='<div id="zh-town-row" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 10px">'+
+      '<span style="font-size:.8rem;font-weight:700;color:var(--text-light)">🏙 Town:</span>'+
+      townChip('All towns','__all__',state.filterTown==='__all__',0)
+    for(var tj=0;tj<towns.length;tj++){
+      var tName=String(towns[tj].name||'').trim()
+      townRowHtml+=townChip(tName,tName,tName.toLowerCase()===selTown.toLowerCase(),towns[tj].count)
+    }
+    townRowHtml+='</div>'
+  }
+  if(towns.length&&selTown){
+    biz=biz.filter(function(b){return String(b.city||'').split(',')[0].trim().toLowerCase()===selTown.toLowerCase()})
+  }
   var nbNames=[]
   var nbSrc=d.featured_businesses||[]
   for(var ni=0;ni<nbSrc.length;ni++){
@@ -2323,6 +2346,8 @@ function renderCityPage(d){
   // Top Rated in this city (card B90 — top-rated lists): ranked, review-backed strip using the
   // same zh-biz-card component as the grid below; only listings with a real review history.
   var cityTopRated=d.top_rated||[]
+  // W22: the strip is headed by ONE town's name, so it may only list that town's businesses.
+  if(towns.length&&selTown){cityTopRated=cityTopRated.filter(function(x){return String(x.city||'').split(',')[0].trim().toLowerCase()===selTown.toLowerCase()})}
   var cityTopRatedHtml=''
   for(var ctr=0;ctr<cityTopRated.length;ctr++){
     var ctrB=cityTopRated[ctr]
@@ -2339,7 +2364,7 @@ function renderCityPage(d){
   }
   var cityTopRatedBlock=(cityTopRatedHtml?`
   <div style="margin-bottom:24px">
-    <div class="zh-section-header"><div><h2 class="zh-section-title">🏆 Top Rated in ${cityName}</h2><p class="zh-section-sub">The city's highest-rated businesses, ranked by reviews</p></div></div>
+    <div class="zh-section-header"><div><h2 class="zh-section-title">🏆 Top Rated in ${selTown?esc(selTown):cityName}</h2><p class="zh-section-sub">The highest-rated businesses${selTown?(' in '+esc(selTown)):''}, ranked by reviews</p></div></div>
     <div class="zh-biz-grid">${cityTopRatedHtml}</div>
   </div>`:'')
 
@@ -2377,8 +2402,9 @@ ${loyaltySectionHtml()}
   <div id="zh-city-map"></div>
   ${nearBadgeHtml}
   ${cityTopRatedBlock}
+  ${townRowHtml}
   ${nbRowHtml}
-  <div class="zh-section-header"><div><h2 class="zh-section-title">📍 Local Businesses</h2><p class="zh-section-sub">${bizCount||0} curated listings in ${cityName}</p></div></div>
+  <div class="zh-section-header"><div><h2 class="zh-section-title">📍 Local Businesses</h2><p class="zh-section-sub">${biz.length} listings in ${selTown?esc(selTown):cityName}</p></div></div>
   <div class="zh-biz-grid" id="zh-biz-grid">${bizHtml||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No businesses in this category yet</div>'}</div>
   ${deals.length?`
   <div style="margin-top:24px">
@@ -2431,6 +2457,15 @@ function filterCity(slug,el){
 // suburb/community. Clears any category filter so the two never compound confusingly.
 function filterNeighbourhood(nb,el){
   state.filterNeighbourhood=nb||''
+  state.filterCategory=''
+  loadCityPage()
+}
+
+// W22 — town scoping: show one town at a time. 'All towns' shows every town in this city's
+// local area (never a business from outside it).
+function filterTown(town){
+  state.filterTown=town||''
+  state.filterNeighbourhood=''
   state.filterCategory=''
   loadCityPage()
 }

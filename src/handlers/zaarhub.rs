@@ -40,6 +40,14 @@ pub struct DirectoryHomepageData {
     pub directory: DirectorySummary,
     pub stats: DirectoryStats,
     pub featured_businesses: Vec<BusinessCard>,
+    /// Towns that make up this city's local area — the directory's own town first, then
+    /// neighbouring towns inside [`LOCAL_AREA_KM`] of it (W22). The city page renders ONE town
+    /// at a time and opens on `home_town`, so a business from another town is never presented
+    /// as if it were in this city (a Melbourne FL business listed under Palm Bay).
+    pub local_towns: Vec<LocalTown>,
+    /// The directory's own town, normalised from `directories.city` (`"Palm Bay, FL"` -> `"Palm Bay"`).
+    /// `None` when the directory has no city set — the page then keeps its old show-everything behaviour.
+    pub home_town: Option<String>,
     /// Ranked, review-backed "top rated" list for this city (card B90 — top-rated lists).
     /// Ordered by rating then review volume; only listings with at least one review.
     pub top_rated: Vec<Value>,
@@ -89,6 +97,38 @@ pub struct DirectoryStats {
     pub total_reviews: i64,
     pub total_deals: i64,
     pub total_events: i64,
+}
+
+/// How far from a city's own centre a neighbouring town still counts as part of its local area
+/// (W22). Palm Bay's own towns — Melbourne ~5 km, Indialantic ~12 km, Satellite Beach ~20 km,
+/// Malabar ~15 km — are inside it; import errors such as Palm Beach Gardens (~140 km), Palm
+/// Harbor (~250 km) and Palm City (~55 km) are outside it and are not shown on the city page.
+pub const LOCAL_AREA_KM: f64 = 40.0;
+
+/// One town on a city page: what the town is called, how many of its businesses this directory
+/// holds, and whether it is the directory's own city (the town the page opens on).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LocalTown {
+    pub name: String,
+    pub count: i64,
+    pub is_home: bool,
+    /// Straight-line distance from the directory's own town centre, in km. `0.0` for the home town.
+    pub distance_km: f64,
+}
+
+/// `"Palm Bay, FL"` -> `"palm bay"`: the key two rows must share to be the same town.
+fn town_key(raw: &str) -> String {
+    raw.split(',').next().unwrap_or("").trim().to_lowercase()
+}
+
+/// Great-circle distance in km between two points.
+fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    const EARTH_KM: f64 = 6371.0;
+    let dlat = (lat2 - lat1).to_radians();
+    let dlon = (lon2 - lon1).to_radians();
+    let a = (dlat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
+    2.0 * EARTH_KM * a.sqrt().asin()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -830,14 +870,96 @@ pub async fn get_city_page(
     .flatten()
     .filter(|h| !h.trim().is_empty());
 
-    // Business count
-    let biz_count: i64 = sqlx::query_scalar(
+    // ── W22: which towns belong to THIS city ────────────────────────────────────────────────
+    // Grouped in SQL, not from the 500-row card list (which is capped), because the page needs
+    // exact per-town counts to scope the grid, the category pills and the "N businesses" line to
+    // one city. A business imported from another town must never be counted or shown as if it
+    // were in this city (a Melbourne FL business listed under Palm Bay).
+    let town_rows: Vec<(String, String, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
+        r#"SELECT LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) AS town_key,
+                  MIN(TRIM(SPLIT_PART(TRIM(b.city), ',', 1))) AS town_label,
+                  COUNT(*)::bigint,
+                  AVG(b.latitude), AVG(b.longitude)
+           FROM businesses b
+           WHERE b.directory_id = $1 AND b.is_active = true
+             AND b.city IS NOT NULL AND TRIM(b.city) <> ''
+           GROUP BY 1"#,
+    )
+    .bind(dir_id)
+    .fetch_all(&s.db)
+    .await
+    .unwrap_or_default();
+
+    let home_town: Option<String> = dir_city
+        .as_deref()
+        .map(|c| c.split(',').next().unwrap_or("").trim().to_string())
+        .filter(|c| !c.is_empty());
+    let home_key = home_town.as_deref().map(town_key);
+
+    // The directory's own town centre = the average position of its own listings, so no
+    // per-directory coordinates column is needed and a city always knows where it is.
+    let centre: Option<(f64, f64)> = home_key
+        .as_ref()
+        .and_then(|hk| town_rows.iter().find(|(k, _, _, _, _)| k == hk))
+        .and_then(|(_, _, _, la, lo)| la.zip(*lo));
+
+    let mut local_towns: Vec<LocalTown> = town_rows
+        .iter()
+        .filter_map(|(key, label, count, la, lo)| {
+            if home_key.as_deref() == Some(key.as_str()) {
+                return Some(LocalTown {
+                    name: label.clone(),
+                    count: *count,
+                    is_home: true,
+                    distance_km: 0.0,
+                });
+            }
+            let (cla, clo) = centre?;
+            let (tla, tlo) = la.zip(*lo)?;
+            let distance_km = haversine_km(cla, clo, tla, tlo);
+            (distance_km <= LOCAL_AREA_KM).then(|| LocalTown {
+                name: label.clone(),
+                count: *count,
+                is_home: false,
+                distance_km: (distance_km * 10.0).round() / 10.0,
+            })
+        })
+        .collect();
+    local_towns.sort_by(|a, b| {
+        b.is_home
+            .cmp(&a.is_home)
+            .then(b.count.cmp(&a.count))
+            .then(a.name.cmp(&b.name))
+    });
+
+    // Bound to every listing/count query below so the whole page agrees on ONE defined area.
+    // `None` (a directory with no city set, or no town rows) keeps the old show-everything path.
+    let town_filter: Option<Vec<String>> = if local_towns.is_empty() {
+        None
+    } else {
+        Some(local_towns.iter().map(|t| town_key(&t.name)).collect())
+    };
+
+    // Business count — the city's own town, not every town the directory happens to hold.
+    let dir_biz_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND is_active = true",
     )
     .bind(dir_id)
     .fetch_one(&s.db)
     .await
     .unwrap_or(0);
+    let home_count: i64 = local_towns
+        .iter()
+        .find(|t| t.is_home)
+        .map(|t| t.count)
+        .unwrap_or(0);
+    let biz_count: i64 = if local_towns.is_empty() {
+        dir_biz_count
+    } else if home_count > 0 {
+        home_count
+    } else {
+        local_towns.iter().map(|t| t.count).sum()
+    };
 
     // Total reviews in this directory
     let total_reviews: i64 = sqlx::query_scalar(
@@ -900,10 +1022,12 @@ pub async fn get_city_page(
            FROM businesses b
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND b.is_active = true
+             AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2))
            ORDER BY b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST
            LIMIT 500"#,
     )
     .bind(dir_id)
+    .bind(town_filter.clone())
     .fetch_all(&s.db)
     .await?;
 
@@ -1106,12 +1230,14 @@ pub async fn get_city_page(
     // resolves to the per-city dining set on every city — count-independent, all cities.
     let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>, Option<String>, Option<String>)>(
         r#"SELECT c.id, c.name, c.slug,
-                  (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true) as biz_count,
+                  (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true
+                     AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2))) as biz_count,
                   c.icon, c.group_name
            FROM directory_categories c
            WHERE c.slug IN ('fitness-studio','day-spa','dentist','real-estate-agent','hair-salon','auto-repair','plumber')
               OR c.parent_id IN (SELECT id FROM directory_categories WHERE slug IN ('fine-dining','food-drink'))  -- Fine Dining / Food & Drink children (resolved by slug, never a copied id)
-              OR EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true)
+              OR EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true
+                     AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2)))
            ORDER BY
              CASE c.slug
                WHEN 'fitness-studio' THEN 0 WHEN 'day-spa' THEN 1 WHEN 'dentist' THEN 2
@@ -1122,6 +1248,7 @@ pub async fn get_city_page(
              c.group_name, c.name"#
     )
     .bind(dir_id)
+    .bind(town_filter.clone())
     .fetch_all(&s.db)
     .await?;
 
@@ -1163,10 +1290,12 @@ pub async fn get_city_page(
             r#"SELECT COUNT(*) FROM businesses b
                JOIN directory_categories c ON c.id = b.category_id
                WHERE b.directory_id = $1 AND b.is_active = true
-                 AND c.slug = ANY($2)"#,
+                 AND c.slug = ANY($2)
+                 AND ($3::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($3))"#,
         )
         .bind(dir_id)
         .bind(&dining_slugs)
+        .bind(town_filter.clone())
         .fetch_one(&s.db)
         .await
         .unwrap_or(0);
@@ -1269,11 +1398,13 @@ pub async fn get_city_page(
            FROM businesses b
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND b.is_active = true
+             AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2))
              AND b.rating IS NOT NULL AND b.review_count > 0
            ORDER BY b.rating DESC, b.review_count DESC
            LIMIT 8"#,
     )
     .bind(dir_id)
+    .bind(town_filter)
     .fetch_all(&s.db)
     .await
     .unwrap_or_default();
@@ -1315,6 +1446,8 @@ pub async fn get_city_page(
             total_events,
         },
         featured_businesses: featured,
+        local_towns,
+        home_town,
         top_rated: top_rated_list,
         recent_reviews: review_cards,
         active_deals: deal_cards,
