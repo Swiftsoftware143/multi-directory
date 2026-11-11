@@ -91,10 +91,11 @@ pub async fn coreswift_lists(
 
 /// Body for the manual push / the shared capture helper's HTTP shape.
 ///
-/// NOTE (item 18, 2026-11-11): the address fields on this body are deserialized but not yet
-/// carried into the push — that wiring is item 19, the CoreSwift integration lane's code.
-/// The attribute keeps the lint visible here instead of re-hiding it crate-wide.
-#[allow(dead_code)]
+/// Every field here is carried into the hub payload by `From<LeadPushRequest> for LeadPayload`
+/// (item 19, proven live 2026-11-11: an enquiry/lead pushed from this endpoint reaches
+/// CoreSwift's `/api/external/contacts` with email, phone, first/last name, company, title,
+/// city, state, postal code, address and notes). No `#[allow(dead_code)]` any more — a field
+/// that stops being read must fail `clippy -D warnings`, which is the bug this hid for a day.
 #[derive(Debug, Deserialize, Default)]
 pub struct LeadPushRequest {
     pub directory_id: Option<Uuid>,
