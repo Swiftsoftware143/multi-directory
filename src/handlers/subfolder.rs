@@ -1732,11 +1732,11 @@ pub async fn business_detail(
     let site = brand_name_for(pool, &dir).await;
 
     let by_uuid = Uuid::parse_str(ident).ok();
-    let row = sqlx::query(
+    let fetched = sqlx::query(
         "SELECT id, name, slug, description, category_id, address, city, state, zip, phone, \
                 website, logo_url, cover_url, rating, review_count, latitude, longitude, featured \
          FROM businesses WHERE directory_id = $1 AND is_active = true \
-           AND (slug = $2 OR ($3::uuid IS NOT NULL AND id = $3::uuid)) LIMIT 1",
+           AND (lower(slug) = lower($2) OR ($3::uuid IS NOT NULL AND id = $3::uuid)) LIMIT 1",
     )
     .bind(dir.id)
     .bind(ident)
@@ -1744,7 +1744,36 @@ pub async fn business_detail(
     .fetch_optional(pool)
     .await
     .ok()
-    .flatten()?;
+    .flatten();
+    // A listing the owner renamed (card W19): the address in the link may be one this page
+    // used before. Answer a permanent redirect to the current address so old links, printed
+    // QR codes and search results keep working instead of landing on a dead page.
+    let row = match fetched {
+        Some(r) => r,
+        None => {
+            let current: Option<String> = sqlx::query_scalar(
+                "SELECT b.slug FROM business_slug_history h \
+                 JOIN businesses b ON b.id = h.business_id \
+                 WHERE h.directory_id = $1 AND lower(h.slug) = lower($2) \
+                   AND b.is_active = true AND coalesce(b.slug, '') <> '' LIMIT 1",
+            )
+            .bind(dir.id)
+            .bind(ident)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            return match current {
+                Some(s) => Some(redirect_301(&format!(
+                    "{}/{}/businesses/{}",
+                    origin(host, proto, fallback_domain),
+                    dir.slug,
+                    s
+                ))),
+                None => None,
+            };
+        }
+    };
 
     let biz_id: Uuid = row.try_get("id").ok()?;
     let name: String = row.try_get("name").unwrap_or_default();

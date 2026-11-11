@@ -215,6 +215,15 @@ pub async fn create_business(
             "Name and slug are required".to_string(),
         ));
     }
+    // One canonical address for every new listing (card W19): the same rule the directory
+    // and network slugs use, so a new page never lands at a mixed-case or padded URL.
+    let slug_c = crate::utils::slug::slugify(&req.slug);
+    if slug_c.is_empty() {
+        return Err(AppError::Validation(
+            "The web address needs at least one letter or number, e.g. \"joes-plumbing\"."
+                .to_string(),
+        ));
+    }
 
     // B119: refuse an unknown merge field in an authored description at save time.
     if let Some(ref desc) = req.description {
@@ -252,11 +261,11 @@ pub async fn create_business(
                AND LOWER(REGEXP_REPLACE(COALESCE(address,''), '\s+', ' ', 'g'))
                    = LOWER(REGEXP_REPLACE(COALESCE($4,''), '\s+', ' ', 'g'))
                AND COALESCE($4,'') <> '')
-             OR slug = $2
+             OR lower(slug) = lower($2)
            )"#,
     )
     .bind(dir.id)
-    .bind(&req.slug)
+    .bind(&slug_c)
     .bind(&req.name)
     .bind(&req.address)
     .fetch_one(&s.db)
@@ -293,7 +302,7 @@ pub async fn create_business(
     )
     .bind(dir.id)
     .bind(&req.name)
-    .bind(&req.slug)
+    .bind(&slug_c)
     .bind(&req.description)
     .bind(req.category_id)
     .bind(&req.address)
@@ -398,6 +407,68 @@ pub async fn update_business(
         }
     }
 
+    // Public web address (card W19): the owner may rename the listing's page from the portal,
+    // but the change has to be safe — a tidy address, a plain-English refusal when another
+    // listing already uses it, and the OLD address remembered so existing links, printed QR
+    // codes and search results redirect instead of dying.
+    let new_slug = match req.slug.as_deref() {
+        Some(raw) => {
+            let want = crate::utils::slug::slugify(raw);
+            if want.is_empty() {
+                return Err(AppError::BadRequest(
+                    "The web address cannot be blank — use letters, numbers and dashes, e.g. \
+                     \"joes-plumbing\"."
+                        .to_string(),
+                ));
+            }
+            if want.chars().count() > 120 {
+                return Err(AppError::BadRequest(
+                    "The web address must be 120 characters or fewer.".to_string(),
+                ));
+            }
+            if want != _existing.slug {
+                let taken: Option<(Uuid,)> = sqlx::query_as(
+                    "SELECT id FROM businesses WHERE directory_id = $1 AND lower(slug) = lower($2) \
+                     AND id <> $3 LIMIT 1",
+                )
+                .bind(_existing.directory_id)
+                .bind(&want)
+                .bind(business_id)
+                .fetch_optional(&s.db)
+                .await?;
+                if taken.is_some() {
+                    return Err(AppError::BadRequest(format!(
+                        "Another listing already uses the web address \"{want}\". Please choose a \
+                         different one."
+                    )));
+                }
+                // Remember the address being replaced so /…/businesses/<old> 301s to the new one.
+                if !_existing.slug.trim().is_empty() {
+                    let moved = sqlx::query(
+                        "INSERT INTO business_slug_history (business_id, directory_id, slug) \
+                         VALUES ($1, $2, $3) ON CONFLICT (directory_id, slug) DO NOTHING",
+                    )
+                    .bind(business_id)
+                    .bind(_existing.directory_id)
+                    .bind(&_existing.slug)
+                    .execute(&s.db)
+                    .await
+                    .map_err(|e| {
+                        AppError::Internal(format!("could not record old address: {e}"))
+                    })?;
+                    if moved.rows_affected() == 0 {
+                        eprintln!(
+                            "slug history: old address '{}' already recorded for another listing",
+                            _existing.slug
+                        );
+                    }
+                }
+            }
+            Some(want)
+        }
+        None => None,
+    };
+
     let business = sqlx::query_as::<_, Business>(
         r#"UPDATE businesses SET
            name = COALESCE($1, name),
@@ -427,7 +498,7 @@ pub async fn update_business(
            WHERE id = $22 RETURNING *"#,
     )
     .bind(&req.name)
-    .bind(&req.slug)
+    .bind(new_slug.as_deref())
     .bind(&req.description)
     .bind(req.category_id)
     .bind(&req.address)

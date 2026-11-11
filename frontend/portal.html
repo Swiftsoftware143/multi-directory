@@ -361,14 +361,28 @@ function showEditListing(i){
     '<div class="form-group"><label>Phone</label><input id="f_bphone" value="'+esc(data.phone||'')+'"></div>'+
     '<div class="form-group"><label>Website</label><input id="f_bweb" value="'+esc(data.website||'')+'"></div>'+
     '<div class="form-group"><label>Address</label><input id="f_baddr" value="'+esc(data.address||'')+'"></div>'+
+    '<div class="form-group"><label>Web address</label><input id="f_bslug" value="'+esc(data.slug||'')+'" placeholder="my-business-name" oninput="bslugHelp(this.value)"><span class="help-text" id="f_bslug_help"></span></div>'+
     '<div class="form-group"><label>Status</label><select id="f_bstatus"><option value="published" '+(data.status==='published'?'selected':'')+'>Published</option><option value="draft" '+(data.status!=='published'?'selected':'')+'>Draft</option></select></div>'+
     '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateListing('+bid+')">Update</button></div>'
   );
+  bslugHelp(data.slug||'');
+}
+// Plain-English preview of the listing's public page, refreshed as the owner types.
+function bslugHelp(v){
+  var h=document.getElementById('f_bslug_help');
+  if(!h)return;
+  var s=slugify(v||'');
+  h.textContent='Your public page: '+window.location.origin+'/'+(CUR_DIR?CUR_DIR.slug:'')+'/businesses/'+(s||'your-business-name')+
+    ' \u2014 changing it is fine: older links keep working and send people to the new address.';
 }
 function updateListing(id){
-  var data={name:document.getElementById('f_bname').value,category:document.getElementById('f_bcat').value,description:document.getElementById('f_bdesc').value,email:document.getElementById('f_bemail').value,phone:document.getElementById('f_bphone').value,website:document.getElementById('f_bweb').value,address:document.getElementById('f_baddr').value,status:document.getElementById('f_bstatus').value};
+  var data={name:document.getElementById('f_bname').value,category:document.getElementById('f_bcat').value,description:document.getElementById('f_bdesc').value,email:document.getElementById('f_bemail').value,phone:document.getElementById('f_bphone').value,website:document.getElementById('f_bweb').value,address:document.getElementById('f_baddr').value,slug:document.getElementById('f_bslug').value,status:document.getElementById('f_bstatus').value};
   closeModal();
-  pu('/directories/'+CUR_DIR.slug+'/businesses/'+id,data,function(){toast('Listing updated','success');renderListings();},function(){toast('Failed to update listing','error');renderListings();});
+  pu('/directories/'+CUR_DIR.slug+'/businesses/'+id,data,function(){toast('Listing updated','success');renderListings();},function(e){
+    var msg='Failed to update listing';
+    if(e&&e.text){e.text().then(function(t){toast(t||msg,'error');renderListings();});return;}
+    toast(msg,'error');renderListings();
+  });
 }
 function deleteListing(id){
   if(!confirm('Delete this listing?'))return;
