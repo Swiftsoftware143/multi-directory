@@ -484,6 +484,97 @@ fn strip_first_between(s: &str, open: &str, close: &str) -> String {
     }
 }
 
+/// The city hub's own visible content, server-rendered **inside** the SPA's `#app`
+/// element. Measured 2026-11-11: `/<city>` shipped the 248 KB JavaScript shell whose
+/// only visible text was the trail and the category chips (~280 characters), so the
+/// eleven city URLs in the sitemap — the pages named after the money query — carried
+/// no businesses in the HTML they served, while every page below them was fully
+/// server-rendered. The SPA replaces `#app` on boot, so a visitor with JavaScript
+/// sees exactly the app they saw before and nobody ever sees the list twice; a
+/// crawler, a social scraper or a visitor without JavaScript gets the real listings.
+fn city_hub_html(dir: &DirectoryRec, site: &str, total: i64, top: &[BizCard]) -> String {
+    let place = if dir.state.trim().is_empty() {
+        h(&dir.city)
+    } else {
+        format!("{}, {}", h(&dir.city), h(&dir.state))
+    };
+    let mut out = String::with_capacity(4096);
+    // The shell's full-screen splash is normally removed by the app at boot; without
+    // JavaScript it would sit on top of this content forever, so hide it only then.
+    out.push_str("<noscript><style>#splash-load{display:none!important}</style></noscript>");
+    out.push_str(
+        "<div style=\"max-width:1180px;margin:0 auto;padding:26px 18px 6px;text-align:left\">",
+    );
+    out.push_str(&format!(
+        "<h1 style=\"font-size:1.9rem;font-weight:800;color:#0f172a;margin:0 0 10px;line-height:1.2\">{} Business Directory</h1>",
+        place
+    ));
+    let mut lede = format!(
+        "{} local business{} in {}, with ratings, addresses and contact details.",
+        total,
+        if total == 1 { "" } else { "es" },
+        place
+    );
+    if let Some(d) = dir.description.as_deref() {
+        let d = clip(&strip_tags(d), 220);
+        if !d.trim().is_empty() {
+            lede = format!("{} {}", h(&d), lede);
+        }
+    }
+    out.push_str(&format!(
+        "<p style=\"font-size:.95rem;color:#475569;margin:0 0 18px;max-width:70ch\">{}</p>",
+        lede
+    ));
+
+    if !top.is_empty() {
+        out.push_str(&format!(
+            "<h2 style=\"font-size:1.15rem;font-weight:700;color:#0f172a;margin:0 0 10px\">Top-rated businesses in {}</h2>",
+            place
+        ));
+        out.push_str("<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin:0 0 18px\">");
+        for b in top {
+            let url = format!("/{}/businesses/{}", dir.slug, b.slug);
+            let mut meta = Vec::new();
+            if let Some(c) = b.category.as_deref().filter(|c| !c.trim().is_empty()) {
+                meta.push(h(c));
+            }
+            if b.rating > 0.0 {
+                meta.push(format!(
+                    "★ {:.1} ({} review{})",
+                    b.rating,
+                    b.review_count,
+                    if b.review_count == 1 { "" } else { "s" }
+                ));
+            } else {
+                meta.push("No reviews yet".to_string());
+            }
+            if let Some(a) = b.address.as_deref().filter(|a| !a.trim().is_empty()) {
+                meta.push(h(a));
+            }
+            out.push_str(&format!(
+                "<article style=\"background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px\">\
+                 <h3 style=\"margin:0 0 4px;font-size:1rem;font-weight:700;line-height:1.3\">\
+                 <a href=\"{url}\" style=\"color:#116dc0;text-decoration:none\">{name}</a></h3>\
+                 <div style=\"font-size:.82rem;color:#64748b;line-height:1.5\">{meta}</div></article>",
+                url = url,
+                name = h(&b.name),
+                meta = meta.join(" · ")
+            ));
+        }
+        out.push_str("</div>");
+    }
+
+    out.push_str(&format!(
+        "<p style=\"margin:0 0 26px\"><a href=\"/{slug}/businesses\" style=\"color:#ea580c;font-weight:600;text-decoration:none\">See all {total} businesses in {place} →</a></p>",
+        slug = dir.slug,
+        total = total,
+        place = place
+    ));
+    let _ = site; // the brand is already in the page's <title>/head; not repeated in the body
+    out.push_str("</div>");
+    out
+}
+
 /// Render a city page by taking the **homepage document** (`frontend/index.html`,
 /// the shared component library) and giving it the city's own SEO head. The
 /// markup, CSS, navigation and component set are therefore byte-identical to the
@@ -496,6 +587,7 @@ fn inject_city_document(
     theme: &BrandTheme,
     dir_id: Uuid,
     nav_html: &str,
+    app_html: &str,
 ) -> String {
     let head = head_html(seo, site_name);
     // Attribute the entry view to this city, server-side. The visitor beacon fires its first
@@ -530,7 +622,7 @@ fn inject_city_document(
     // cached copy), the trail is inserted at the top of <body> instead of being lost —
     // a missing marker is a layout question, not a reason to publish a dead end.
     const MARKER: &str = "<!--ZH-NAV-->";
-    match with_head.find(MARKER) {
+    let with_nav = match with_head.find(MARKER) {
         Some(pos) => format!(
             "{}{}{}",
             &with_head[..pos],
@@ -546,6 +638,27 @@ fn inject_city_document(
             }
             None => with_head,
         },
+    };
+    // The city's listings, in the HTML that is served. They go INSIDE `#app`, which the
+    // SPA overwrites the moment it boots, so a visitor with JavaScript never sees them
+    // and a crawler always does. If the shell's empty `#app` cannot be found the content
+    // is appended before `</body>` — a missing anchor is a layout question, never a
+    // reason to publish a hub page with no businesses on it.
+    const APP_ANCHOR: &str = "<div id=\"app\"></div>";
+    if let Some(pos) = with_nav.find(APP_ANCHOR) {
+        return format!(
+            "{}<div id=\"app\">{}</div>{}",
+            &with_nav[..pos],
+            app_html,
+            &with_nav[pos + APP_ANCHOR.len()..]
+        );
+    }
+    match with_nav.rfind("</body>") {
+        Some(pos) => {
+            eprintln!("subfolder: homepage shell has no empty #app — city listings appended at <body> end");
+            format!("{}{}{}", &with_nav[..pos], app_html, &with_nav[pos..])
+        }
+        None => format!("{}{}", with_nav, app_html),
     }
 }
 
@@ -1917,7 +2030,11 @@ pub async fn directory_home(
     // components — carrying only the city's own <head> and (card W36) a
     // server-rendered trail + onward links that work without JavaScript.
     let nav_html = city_nav_html(pool, &dir, &base, &canonical).await;
-    let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id, &nav_html);
+    // The city's own listings in the served HTML — see city_hub_html: they live inside
+    // `#app`, which the SPA replaces on boot, so only non-JavaScript readers and crawlers
+    // ever see them and no visitor gets the list twice.
+    let app_html = city_hub_html(&dir, &site, total, &top);
+    let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id, &nav_html, &app_html);
 
     Some(html_response(StatusCode::OK, body))
 }
