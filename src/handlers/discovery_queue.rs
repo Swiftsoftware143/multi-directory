@@ -479,16 +479,20 @@ pub async fn add_selected(
         let category_id: Option<Uuid> = r.get("mapped_category_id");
         let types: Vec<String> = r.get("types");
 
+        // The column list used to carry `description` while the bind list carried the address
+        // twice, so every business published from the discovery queue was stored with its own
+        // ADDRESS as its public description (a copy-paste bind slip — measured 2026-11-11 on a
+        // fixture publish). Publish only what the queue actually holds; the owner writes the
+        // description in their back office.
         let ins = sqlx::query(
             "INSERT INTO businesses \
-                (directory_id, name, slug, description, category_id, address, city, phone, \
+                (directory_id, name, slug, category_id, address, city, phone, \
                  website, rating, review_count, business_type, is_franchise) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'local',$12)",
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'local',$11)",
         )
         .bind(req.directory_id)
         .bind(&name)
         .bind(&slug)
-        .bind(&address)
         .bind(category_id)
         .bind(&address)
         .bind(r.get::<Option<String>, _>("city"))

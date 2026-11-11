@@ -3218,12 +3218,17 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
-                    let clean_path = path.trim_start_matches('/');
-                    let file_path = if clean_path.is_empty() {
-                        std::path::Path::new(&frontend).join("index.html")
-                    } else {
-                        std::path::Path::new(&frontend).join(clean_path)
-                    };
+                    let mut clean_path = path.trim_start_matches('/').to_string();
+                    let is_root = clean_path.is_empty();
+                    // A DIRECTORY url must answer that directory's index.html. `/guides/` used to
+                    // fall past this file check (a directory "exists()", `is_file()` is false) and
+                    // land on the hard-404 page while `/guides/index.html` answered 200 — so the
+                    // guides hub, which every guide links back to, had a dead address (measured
+                    // 2026-11-11). Same trap waits for any future `/subdir/` url.
+                    if is_root || clean_path.ends_with('/') {
+                        clean_path.push_str("index.html");
+                    }
+                    let file_path = std::path::Path::new(&frontend).join(&clean_path);
 
                     if file_path.exists() && file_path.is_file() {
                         if let Ok(content) = tokio::fs::read(&file_path).await {
@@ -3244,7 +3249,7 @@ pub fn create_router(s: AppState) -> Router {
                             // The homepage consumes the SAME brand tokens as
                             // the server-rendered city pages (`brand_theme`),
                             // so the two surfaces cannot drift apart again.
-                            let content = if clean_path.is_empty() && ext == "html" {
+                            let content = if is_root && ext == "html" {
                                 let theme =
                                     crate::brand_theme::theme_for_home(&_pool_for_host).await;
                                 let mut themed =
