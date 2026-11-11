@@ -299,8 +299,19 @@ def main():
                       int(zones.stdout.strip() or 0) > 0 and int(tmpl.stdout.strip() or 0) > 0,
                       f"{zones.stdout.strip()} zones, {tmpl.stdout.strip()} emails")
 
-                st, body = http(f"/city/{PROBE_CITY_SLUG}")
-                check("the new city's public page answers", st == 200 and len(body) > 2000,
+                # The page itself is hash-routed in the browser, so a shell 200 proves only that the
+                # SPA was served -- never content. The page's OWN data feed is the content proof.
+                st, body = http(f"/api/v1/zaarhub/cities/{PROBE_CITY_SLUG}")
+                check("the new city's page data names it on the public site",
+                      st == 200 and PROBE_CITY_NAME in body, f"{st} {body[:100]}")
+
+                st, body = 0, ""
+                for _attempt in range(3):   # a fresh instance can reset the first large response
+                    st, body = http(f"/city/{PROBE_CITY_SLUG}")
+                    if st == 200 and len(body) > 2000:
+                        break
+                    time.sleep(1)
+                check("the public city URL is served on a clean install", st == 200 and len(body) > 2000,
                       f"{st} len={len(body)}")
     finally:
         if proc and proc.poll() is None:
