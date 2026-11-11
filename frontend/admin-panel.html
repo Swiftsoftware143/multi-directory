@@ -1295,7 +1295,11 @@
         <div id="ak-list"></div>
         <div class="feature-status" id="ak-status"></div>
 
-        <div style="font-weight:600;font-size:.9rem;margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">Webhooks</div>
+        <div style="display:flex;align-items:center;gap:12px;margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
+          <div style="font-weight:600;font-size:.9rem">Webhooks</div>
+          <button class="btn btn-ghost btn-sm" onclick="window.__whRefresh()">↻ Refresh</button>
+          <span style="font-size:.75rem;color:var(--text-secondary)">Deliveries arrive a few seconds after the change.</span>
+        </div>
         <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
           <label style="font-size:.75rem;flex:1;min-width:240px;display:flex;flex-direction:column;gap:3px">Endpoint URL
             <input class="pk-input" id="wh-url" placeholder="https://example.com/hooks/zaarhub"></label>
@@ -11146,6 +11150,7 @@
         box.innerHTML = h + '</tbody></table>';
       }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load webhooks: ' + akEsc(e.message) + '</p>'; });
     }
+    window.__whRefresh = function () { loadWebhooks(); akStatus('wh-status', 'Refreshed.', true); };
     window.__whCreate = function () {
       var url = (document.getElementById('wh-url').value || '').trim();
       var events = Array.prototype.slice.call(document.querySelectorAll('.wh-ev:checked')).map(function (c) { return c.value; });
@@ -11181,6 +11186,9 @@
           h += '<tr style="border-top:1px solid var(--border)"><td style="padding:4px">' + akEsc(d.event_type) + '</td><td>' + akEsc(d.status) + '</td><td>' + akEsc(d.response_status_code == null ? '—' : d.response_status_code) + '</td><td>' + akEsc(d.attempt_count == null ? '—' : d.attempt_count) + '</td><td>' + akFmt(d.created_at) + '</td></tr>';
         });
         box.innerHTML = h + '</tbody></table>';
+        // The row above was rendered before these deliveries existed; re-read it so "Last success"
+        // and "Failures" show what the deliveries view is showing.
+        loadWebhooks();
       }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load deliveries: ' + akEsc(e.message) + '</p>'; });
     };
 
