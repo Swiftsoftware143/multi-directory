@@ -233,7 +233,19 @@ pub async fn test_provider_key_live(
         })));
     }
 
-    let conn = resolve_lead_conn(&s.db, Some(tenant_id), directory_id)
+    coreswift_test_payload(&s.db, tenant_id, directory_id)
+        .await
+        .map(Json)
+}
+
+/// The CoreSwift connection verdict, shared by POST /provider-keys/:provider/test and the
+/// GET form the panel's Test button uses, so both answer the same thing.
+pub(crate) async fn coreswift_test_payload(
+    db: &sqlx::PgPool,
+    tenant_id: Uuid,
+    directory_id: Option<Uuid>,
+) -> Result<Value, AppError> {
+    let conn = resolve_lead_conn(db, Some(tenant_id), directory_id)
         .await
         .map_err(AppError::Internal)?
         .ok_or_else(|| {
@@ -243,32 +255,34 @@ pub async fn test_provider_key_live(
         })?;
 
     let key_preview = mask_key(&conn.api_key);
-    match hub_lists(&conn).await {
+    Ok(match hub_lists(&conn).await {
         Ok(lists) => {
             let count = lists
                 .get("lists")
                 .and_then(|l| l.as_array())
                 .map(|a| a.len())
                 .unwrap_or(0);
-            Ok(Json(json!({
+            json!({
                 "provider": "coreswift",
                 "configured": true,
                 "valid": true,
+                "probed": true,
                 "base_url": conn.base_url,
                 "key_preview": key_preview,
                 "lists": count,
                 "message": format!("CoreSwift reachable — {count} list(s) available."),
-            })))
+            })
         }
-        Err(e) => Ok(Json(json!({
+        Err(e) => json!({
             "provider": "coreswift",
             "configured": true,
             "valid": false,
+            "probed": true,
             "base_url": conn.base_url,
             "key_preview": key_preview,
             "message": e,
-        }))),
-    }
+        }),
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -312,7 +326,7 @@ pub(crate) async fn probe_vendor(provider: &str, key: &str) -> (Option<bool>, St
                 ])
                 .send()
                 .await;
-            google_verdict(resp, "Places").await
+            google_verdict(resp, "Places", false).await
         }
         "google_maps" => {
             let resp = client
@@ -320,7 +334,9 @@ pub(crate) async fn probe_vendor(provider: &str, key: &str) -> (Option<bool>, St
                 .query(&[("address", PROBE_ADDRESS), ("key", key)])
                 .send()
                 .await;
-            google_verdict(resp, "Geocoding").await
+            // The browser-maps key is SUPPOSED to be referrer-restricted, so a referrer
+            // refusal here is the correct configuration, not a broken key.
+            google_verdict(resp, "Geocoding", true).await
         }
         "walkscore" => {
             let resp = client
@@ -428,6 +444,7 @@ pub(crate) async fn probe_vendor(provider: &str, key: &str) -> (Option<bool>, St
 async fn google_verdict(
     resp: Result<reqwest::Response, reqwest::Error>,
     label: &str,
+    browser_key_ok: bool,
 ) -> (Option<bool>, String, Value) {
     match resp {
         Ok(r) => {
@@ -443,6 +460,20 @@ async fn google_verdict(
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
+
+            // A referrer-restricted key is unusable from a server — but it is also exactly the
+            // right shape for the BROWSER-maps key, so there we say so instead of crying wolf.
+            if browser_key_ok && reason.to_lowercase().contains("referer restrictions") {
+                return (
+                    None,
+                    "Restricted to website use, so the server cannot call Google with it. That is \
+                     correct for the browser-maps key — a key meant for server lookups must be \
+                     restricted by IP address instead."
+                        .to_string(),
+                    json!({ "http_status": code, "status": status, "error": reason }),
+                );
+            }
+
             let verdict = match status.as_str() {
                 "OK" | "ZERO_RESULTS" => Some(true),
                 _ => Some(false),

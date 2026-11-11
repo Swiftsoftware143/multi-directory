@@ -727,6 +727,21 @@ pub async fn test_provider_key(
 ) -> ApiResult<impl IntoResponse> {
     let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
 
+    // CoreSwift is not a `provider_keys` credential for a city: the link lives on the
+    // directory/network row. Sending it through the generic key lookup answered "no key in
+    // force" for a directory that IS connected — a false alarm on a working connection.
+    if provider == "coreswift" {
+        let dir = q
+            .directory_id
+            .as_deref()
+            .and_then(|d| Uuid::parse_str(d).ok());
+        let payload = crate::handlers::coreswift_integration_handler::coreswift_test_payload(
+            &s.db, tenant_id, dir,
+        )
+        .await?;
+        return Ok(Json(payload));
+    }
+
     // With ?directory_id= this answers for exactly the key that directory will read at runtime,
     // so the button can never report a key the feature does not use (and never hides one it does).
     // The LABEL comes from the same row as the value: a scope-blind label query named one scope's
@@ -744,22 +759,23 @@ pub async fn test_provider_key(
             (k, format!("{} ({})", origin.label, origin.source_name))
         }
         None => {
-            let k = resolve_provider_key_for_tenant(&s.db, tenant_id, &provider)
-                .await
-                .ok_or_else(|| {
-                    AppError::NotFound(format!("No API key found for provider '{}'", provider))
-                })?;
-            let lbl = sqlx::query_scalar::<_, String>(
-                "SELECT label FROM provider_keys WHERE provider = $1 AND is_default = true \
-                   AND directory_id IS NULL \
-                 ORDER BY (tenant_id = $2) DESC, updated_at DESC LIMIT 1",
-            )
-            .bind(&provider)
-            .bind(tenant_id)
-            .fetch_optional(&s.db)
-            .await?
-            .unwrap_or_else(|| DEFAULT_LABEL.to_string());
-            (k, lbl)
+            // Value AND label must come from the SAME row: the old path resolved the value by
+            // tenant but read the label from a separate `is_default` query, so the screen could
+            // caption one key with another key's label.
+            match lookup_platform(&s.db, tenant_id, &provider).await {
+                Some((k, origin)) => (k, format!("{} ({})", origin.label, origin.source_name)),
+                None => {
+                    let k = resolve_provider_key_for_tenant(&s.db, tenant_id, &provider)
+                        .await
+                        .ok_or_else(|| {
+                            AppError::NotFound(format!(
+                                "No API key found for provider '{}'",
+                                provider
+                            ))
+                        })?;
+                    (k, DEFAULT_LABEL.to_string())
+                }
+            }
         }
     };
 
@@ -863,6 +879,51 @@ async fn lookup_scoped(
         KeyOrigin {
             source,
             source_name,
+            label,
+            key_id,
+            masked,
+        },
+    ))
+}
+
+/// The PLATFORM/site-wide lookup, used when no directory is in hand. Same contract as
+/// [`lookup_scoped`]: one row supplies BOTH the value and the label, so the caption can never
+/// describe a different key than the one being tested.
+async fn lookup_platform(
+    db: &sqlx::PgPool,
+    tenant_id: Uuid,
+    provider: &str,
+) -> Option<(String, KeyOrigin)> {
+    let row = sqlx::query(
+        r#"SELECT pk.id, pk.api_key, pk.label
+           FROM provider_keys pk
+           WHERE pk.provider = $1
+             AND pk.is_active = true
+             AND pk.directory_id IS NULL
+             AND pk.network_id IS NULL
+           ORDER BY (pk.tenant_id = $2) DESC, pk.is_default DESC, pk.updated_at DESC
+           LIMIT 1"#,
+    )
+    .bind(provider)
+    .bind(tenant_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()?;
+
+    let key_id: Uuid = row.try_get("id").ok()?;
+    let stored: String = row.try_get("api_key").ok()?;
+    let label: String = row
+        .try_get("label")
+        .unwrap_or_else(|_| DEFAULT_LABEL.to_string());
+
+    let plain = keycrypto::decrypt_for_use(db, &stored, provider).await?;
+    let masked = mask_key(&plain);
+    Some((
+        plain,
+        KeyOrigin {
+            source: "platform".to_string(),
+            source_name: "platform".to_string(),
             label,
             key_id,
             masked,
