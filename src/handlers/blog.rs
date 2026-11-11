@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -12,8 +12,20 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::auth::models::Claims;
 use crate::error::{ApiResult, AppError};
+use crate::handlers::tenant_scope;
 use crate::AppState;
+
+/// The caller's claims, verified from the bearer token the request carries.
+///
+/// W39: every content route needs the caller's identity, and a route's position in the router does
+/// not guarantee `auth_guard` injected an `Extension<Claims>` (per-router layering, and the public
+/// allowlist returns before injection). Reading the token here holds wherever the route lives, and
+/// a missing/expired token answers 401 instead of panicking into a 500.
+fn caller(s: &AppState, headers: &HeaderMap) -> Result<Claims, AppError> {
+    tenant_scope::claims_from_headers(headers, &s.config.jwt_secret)
+}
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct BlogPost {
@@ -105,16 +117,29 @@ async fn validate_town_key(
 /// the town).
 pub async fn list_blog_posts(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<BlogListQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    // W39: a caller only ever lists the directories it may write content for. An explicitly
+    // requested FOREIGN directory is a 404 (not an empty list) so the id cannot be enumerated.
+    let claims = caller(&s, &headers)?;
+    let allowed = tenant_scope::writable_directory_ids(&s.db, &claims).await?;
+    if let (Some(list), Some(did)) = (&allowed, q.directory_id) {
+        if !list.contains(&did) {
+            return Err(AppError::NotFound("directory not found".into()));
+        }
+    }
+
     let rows = sqlx::query(
         "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at, \
                 coalesce(status, 'published') AS status, town_key \
          FROM blog_posts \
          WHERE ($1::uuid IS NULL OR directory_id = $1) \
+           AND ($2::uuid[] IS NULL OR directory_id = ANY($2)) \
          ORDER BY created_at DESC",
     )
     .bind(q.directory_id)
+    .bind(allowed.as_deref())
     .fetch_all(&s.db)
     .await?;
 
@@ -148,6 +173,7 @@ pub struct BlogListQuery {
 /// GET /api/v1/directories/:slug/blog-posts — list posts for a directory
 pub async fn list_directory_blog_posts(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = \x241 ")
@@ -156,12 +182,26 @@ pub async fn list_directory_blog_posts(
         .await?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
 
-    let posts = sqlx::query_as::<_, BlogPost>(
-        "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at FROM blog_posts WHERE directory_id = \x241 ORDER BY created_at DESC "
-    )
-    .bind(dir.0)
-    .fetch_all(&s.db)
-    .await?;
+    // W39: a caller that cannot write this city sees its PUBLISHED articles only — drafts stay
+    // with the people who make them.
+    let claims = caller(&s, &headers)?;
+    let writer = tenant_scope::can_write_directory_content(&s.db, &claims, dir.0).await?;
+
+    let posts = if writer {
+        sqlx::query_as::<_, BlogPost>(
+            "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at FROM blog_posts WHERE directory_id = \x241 ORDER BY created_at DESC "
+        )
+        .bind(dir.0)
+        .fetch_all(&s.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, BlogPost>(
+            "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at FROM blog_posts WHERE directory_id = \x241 AND published = true AND coalesce(status, 'published') = 'published' ORDER BY created_at DESC "
+        )
+        .bind(dir.0)
+        .fetch_all(&s.db)
+        .await?
+    };
 
     Ok(Json(posts))
 }
@@ -169,8 +209,13 @@ pub async fn list_directory_blog_posts(
 /// POST /api/v1/blog-posts — create a blog post
 pub async fn create_blog_post(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateBlogPostRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // W39: a caller may only file an article under a directory it administers.
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, req.directory_id).await?;
+
     let slug = req.slug.unwrap_or_else(|| slugify(&req.title));
 
     // W30(b): an article may belong to one town of its directory — never to a town
@@ -210,6 +255,7 @@ pub async fn create_blog_post(
 /// GET /api/v1/blog-posts/:id — get single blog post
 pub async fn get_blog_post(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let post = sqlx::query_as::<_, BlogPost>(
@@ -220,12 +266,17 @@ pub async fn get_blog_post(
     .await?
     .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?;
 
+    // W39: the row's OWN directory decides, never the id the caller sent.
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, post.directory_id).await?;
+
     Ok(Json(post))
 }
 
 /// PUT /api/v1/blog-posts/:id — update blog post
 pub async fn update_blog_post(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateBlogPostRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -236,6 +287,10 @@ pub async fn update_blog_post(
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?;
+
+    // W39: the post's own directory decides — a foreign id answers 404 and changes nothing.
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, existing.directory_id).await?;
 
     // Town + status are not on the lean struct above: read them on their own so the
     // model keeps serving the endpoints that never needed them.
@@ -297,8 +352,20 @@ pub async fn update_blog_post(
 /// DELETE /api/v1/blog-posts/:id — delete blog post
 pub async fn delete_blog_post(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // W39: read the row's directory first; a foreign post is a 404 and is NOT deleted.
+    let post = sqlx::query_as::<_, BlogPost>(
+        "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at FROM blog_posts WHERE id = \x241 "
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?;
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, post.directory_id).await?;
+
     let result = sqlx::query("DELETE FROM blog_posts WHERE id = \x241")
         .bind(id)
         .execute(&s.db)
@@ -468,8 +535,26 @@ pub async fn get_template(
 /// POST /api/v1/blog-templates
 pub async fn create_template(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateTemplateRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // W39: a shared (global) template is a platform asset; a city's own template belongs to
+    // whoever administers that city.
+    let claims = caller(&s, &headers)?;
+    let is_global = req.is_global.unwrap_or(true);
+    if is_global {
+        if !tenant_scope::is_platform_operator(&claims) {
+            return Err(AppError::Forbidden(
+                "Only the platform operator can create a shared template".to_string(),
+            ));
+        }
+    } else {
+        let dir = req.directory_id.ok_or_else(|| {
+            AppError::BadRequest("A template that is not shared needs a directory".to_string())
+        })?;
+        tenant_scope::assert_directory_content_writer(&s.db, &claims, dir).await?;
+    }
+
     let mf = req.merge_fields.unwrap_or_else(|| serde_json::json!([]));
     let template = sqlx::query_as::<_, BlogTemplate>(
         "INSERT INTO blog_templates (name, slug, description, category, content_template, merge_fields, is_global, directory_id) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8) RETURNING id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at"
@@ -483,6 +568,7 @@ pub async fn create_template(
 /// PUT /api/v1/blog-templates/:id
 pub async fn update_template(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTemplateRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -490,6 +576,19 @@ pub async fn update_template(
         "SELECT id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at FROM blog_templates WHERE id = $1"
     ).bind(id).fetch_optional(&s.db).await?
     .ok_or_else(|| AppError::NotFound("Template not found".into()))?;
+
+    // W39: the template's own owner decides — a global template is the operator's.
+    let claims = caller(&s, &headers)?;
+    match existing.directory_id {
+        Some(dir) => tenant_scope::assert_directory_content_writer(&s.db, &claims, dir).await?,
+        None => {
+            if !tenant_scope::is_platform_operator(&claims) {
+                return Err(AppError::Forbidden(
+                    "Only the platform operator can change a shared template".to_string(),
+                ));
+            }
+        }
+    }
     let template = sqlx::query_as::<_, BlogTemplate>(
         "UPDATE blog_templates SET name=$1, slug=$2, description=$3, category=$4, content_template=$5, merge_fields=$6::jsonb, is_global=$7, updated_at=NOW() WHERE id=$8 RETURNING id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at"
     ).bind(req.name.unwrap_or(existing.name)).bind(req.slug.unwrap_or(existing.slug))
@@ -504,8 +603,27 @@ pub async fn update_template(
 /// DELETE /api/v1/blog-templates/:id
 pub async fn delete_template(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    let existing = sqlx::query_as::<_, BlogTemplate>(
+        "SELECT id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at FROM blog_templates WHERE id = $1"
+    ).bind(id).fetch_optional(&s.db).await?
+    .ok_or_else(|| AppError::NotFound("Template not found".into()))?;
+
+    // W39: same rule as update — deleting someone's template is a write on their directory.
+    let claims = caller(&s, &headers)?;
+    match existing.directory_id {
+        Some(dir) => tenant_scope::assert_directory_content_writer(&s.db, &claims, dir).await?,
+        None => {
+            if !tenant_scope::is_platform_operator(&claims) {
+                return Err(AppError::Forbidden(
+                    "Only the platform operator can delete a shared template".to_string(),
+                ));
+            }
+        }
+    }
+
     let r = sqlx::query("DELETE FROM blog_templates WHERE id = $1")
         .bind(id)
         .execute(&s.db)
@@ -519,8 +637,13 @@ pub async fn delete_template(
 /// POST /api/v1/blog-posts/ext — create blog post with extended fields
 pub async fn create_blog_post_ext(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<CreateBlogPostExtRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // W39: same directory rule as the lean create route — the ext route is not a side door.
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, req.directory_id).await?;
+
     let slug = req.slug.unwrap_or_else(|| slugify(&req.title));
     let tags = req.tags.unwrap_or_default();
     let post = sqlx::query_as::<_, BlogPostExt>(
@@ -536,6 +659,7 @@ pub async fn create_blog_post_ext(
 /// PUT /api/v1/blog-posts/:id/ext — update blog post with extended fields
 pub async fn update_blog_post_ext(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateBlogPostExtRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -543,6 +667,10 @@ pub async fn update_blog_post_ext(
         "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE id = $1"
     ).bind(id).fetch_optional(&s.db).await?
     .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?;
+
+    // W39: the ext update is the same row, so it answers to the same rule.
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, existing.directory_id).await?;
     let tags = req
         .tags
         .unwrap_or_else(|| existing.tags.unwrap_or_default());
@@ -561,16 +689,23 @@ pub async fn update_blog_post_ext(
 }
 
 /// GET /api/v1/blog-posts/ext — list all blog posts with extended fields
-pub async fn list_blog_posts_ext(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+pub async fn list_blog_posts_ext(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    // W39: scoped to the directories this caller may write (operator: all).
+    let claims = caller(&s, &headers)?;
+    let allowed = tenant_scope::writable_directory_ids(&s.db, &claims).await?;
     let posts = sqlx::query_as::<_, BlogPostExt>(
-        "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts ORDER BY created_at DESC"
-    ).fetch_all(&s.db).await?;
+        "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE ($1::uuid[] IS NULL OR directory_id = ANY($1)) ORDER BY created_at DESC"
+    ).bind(allowed.as_deref()).fetch_all(&s.db).await?;
     Ok(Json(posts))
 }
 
 /// GET /api/v1/directories/:slug/blog-posts/ext — list posts for directory (extended)
 pub async fn list_directory_blog_posts_ext(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
@@ -578,26 +713,54 @@ pub async fn list_directory_blog_posts_ext(
         .fetch_optional(&s.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
-    let posts = sqlx::query_as::<_, BlogPostExt>(
-        "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE directory_id = $1 ORDER BY created_at DESC"
-    ).bind(dir.0).fetch_all(&s.db).await?;
+
+    // W39: same published-only rule for a caller that cannot write the city.
+    let claims = caller(&s, &headers)?;
+    let writer = tenant_scope::can_write_directory_content(&s.db, &claims, dir.0).await?;
+    let posts = if writer {
+        sqlx::query_as::<_, BlogPostExt>(
+            "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE directory_id = $1 ORDER BY created_at DESC"
+        ).bind(dir.0).fetch_all(&s.db).await?
+    } else {
+        sqlx::query_as::<_, BlogPostExt>(
+            "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE directory_id = $1 AND published = true AND coalesce(status, 'published') = 'published' ORDER BY created_at DESC"
+        ).bind(dir.0).fetch_all(&s.db).await?
+    };
     Ok(Json(posts))
 }
 
 /// GET /api/v1/blog-posts/scheduled — list scheduled posts
-pub async fn list_scheduled_posts(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
+pub async fn list_scheduled_posts(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    let claims = caller(&s, &headers)?;
+    let allowed = tenant_scope::writable_directory_ids(&s.db, &claims).await?;
     let posts = sqlx::query_as::<_, BlogPostExt>(
-        "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE scheduled_at IS NOT NULL AND scheduled_at > NOW() AND published = false ORDER BY scheduled_at ASC"
-    ).fetch_all(&s.db).await?;
+        "SELECT id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at FROM blog_posts WHERE scheduled_at IS NOT NULL AND scheduled_at > NOW() AND published = false AND ($1::uuid[] IS NULL OR directory_id = ANY($1)) ORDER BY scheduled_at ASC"
+    ).bind(allowed.as_deref()).fetch_all(&s.db).await?;
     Ok(Json(posts))
 }
 
 /// POST /api/v1/blog-posts/:id/publish — publish/unpublish
 pub async fn publish_blog_post_handler(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(req): Json<PublishRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // W39: publishing is a write on the row — resolve its directory and check it first.
+    let dir_of: Option<(Uuid,)> =
+        sqlx::query_as("SELECT directory_id FROM blog_posts WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?;
+    let dir_id = dir_of
+        .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?
+        .0;
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, dir_id).await?;
+
     let post = if req.publish_now.unwrap_or(true) {
         sqlx::query_as::<_, BlogPostExt>(
             "UPDATE blog_posts SET published = true, scheduled_at = NULL, updated_at = NOW() WHERE id = $1 RETURNING id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at"
@@ -621,8 +784,28 @@ pub struct PublishRequest {
 /// POST /api/v1/blog/distribute — multi-city distribution
 pub async fn distribute_blog_post(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<DistributeRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // W39: distribution writes into EVERY target city, so every target must be writable. An
+    // unscoped "all directories" run is the platform operator's alone.
+    let claims = caller(&s, &headers)?;
+    let allowed = tenant_scope::writable_directory_ids(&s.db, &claims).await?;
+    if let Some(list) = &allowed {
+        match &req.target_directory_ids {
+            None => {
+                return Err(AppError::Forbidden(
+                    "Choose the directories this article goes to".to_string(),
+                ))
+            }
+            Some(ids) => {
+                if let Some(bad) = ids.iter().find(|id| !list.contains(id)) {
+                    return Err(AppError::NotFound(format!("directory {bad} not found")));
+                }
+            }
+        }
+    }
+
     let template = sqlx::query_as::<_, BlogTemplate>(
         "SELECT id, name, slug, description, category, content_template, merge_fields, is_global, directory_id, created_at, updated_at FROM blog_templates WHERE id = $1"
     ).bind(req.template_id).fetch_optional(&s.db).await?

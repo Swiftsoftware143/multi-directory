@@ -152,6 +152,91 @@ pub async fn assert_directory_admin_by_slug(
     Ok(id)
 }
 
+// ── CONTENT WRITERS (W39) ───────────────────────────────────────────────────────────────────────
+//
+// `can_admin_directory` above answers "may this caller read the directory's SECRETS / write its
+// config". Content (blog articles and everything filed against a directory) needs the same rule
+// but is reached from screens that only know a directory id, so before W39 the blog CRUD routes
+// accepted any id the caller sent: a signed-in tenant could read another city's articles and
+// PUT/DELETE them by id. These three functions are the ONE rule for "may this caller create, edit
+// or delete CONTENT for this directory":
+//   * the platform operator (`super_admin`) — every directory;
+//   * the directory's own owner (`directories.owner_id`) and any user of that owner's TENANT
+//     (staff of the company that bought the city);
+//   * the owner of the NETWORK the directory belongs to (the brand owner administers its cities).
+// Everyone else — business owners included — may not write a city's content. `None` from
+// `writable_directory_ids` means unrestricted (operator), never "none allowed".
+
+/// May this caller create/edit/delete content filed against `directory_id`?
+pub async fn can_write_directory_content(
+    db: &PgPool,
+    claims: &Claims,
+    directory_id: Uuid,
+) -> Result<bool, AppError> {
+    if is_platform_operator(claims) {
+        return Ok(true);
+    }
+    let uid = caller_user(claims)?;
+    let tid = caller_tenant(claims).ok();
+    let ok = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS ( \
+            SELECT 1 FROM directories d WHERE d.id = $1 AND d.owner_id = $2 \
+            UNION ALL \
+            SELECT 1 FROM directories d JOIN networks n ON n.id = d.network_id \
+             WHERE d.id = $1 AND n.owner_id = $2 \
+            UNION ALL \
+            SELECT 1 FROM directories d JOIN users u ON u.id = d.owner_id \
+             WHERE d.id = $1 AND $3::uuid IS NOT NULL AND u.tenant_id = $3 \
+         )",
+    )
+    .bind(directory_id)
+    .bind(uid)
+    .bind(tid)
+    .fetch_one(db)
+    .await?;
+    Ok(ok)
+}
+
+/// Guard for content routes addressed by directory id. 404 on failure, so a probe cannot learn
+/// whether another tenant's directory exists.
+pub async fn assert_directory_content_writer(
+    db: &PgPool,
+    claims: &Claims,
+    directory_id: Uuid,
+) -> Result<(), AppError> {
+    if can_write_directory_content(db, claims, directory_id).await? {
+        Ok(())
+    } else {
+        Err(AppError::NotFound("directory not found".into()))
+    }
+}
+
+/// The directory ids this caller may write content for. `None` = unrestricted (platform
+/// operator). An empty `Some(vec![])` is a real answer: this tenant owns no directory.
+pub async fn writable_directory_ids(
+    db: &PgPool,
+    claims: &Claims,
+) -> Result<Option<Vec<Uuid>>, AppError> {
+    if is_platform_operator(claims) {
+        return Ok(None);
+    }
+    let uid = caller_user(claims)?;
+    let tid = caller_tenant(claims).ok();
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT d.id FROM directories d \
+           LEFT JOIN networks n ON n.id = d.network_id \
+           LEFT JOIN users u ON u.id = d.owner_id \
+          WHERE d.owner_id = $1 \
+             OR n.owner_id = $1 \
+             OR ($2::uuid IS NOT NULL AND u.tenant_id = $2)",
+    )
+    .bind(uid)
+    .bind(tid)
+    .fetch_all(db)
+    .await?;
+    Ok(Some(rows.into_iter().map(|r| r.0).collect()))
+}
+
 /// May this caller administer this business (owner, claimant, or directory operator)?
 pub async fn can_admin_business(
     db: &PgPool,
