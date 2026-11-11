@@ -706,6 +706,12 @@ h1{font-size:2rem;font-weight:800;color:var(--dark);margin-bottom:10px}
 .detail{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px}
 .detail h1{margin-bottom:6px}
 .row{margin:8px 0;color:var(--text)}
+.reviews{margin:28px 0 8px;border-top:1px solid var(--border);padding-top:18px}
+.reviews h2{font-size:1.2rem;margin-bottom:12px;color:var(--dark)}
+.review{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px}
+.review .who{font-size:.85rem;color:var(--text-light);margin-bottom:6px}
+.review p{margin:0;color:var(--text)}
+.review .resp{border-left:3px solid var(--border);padding-left:10px;margin-top:10px;font-size:.92rem;color:var(--text)}
 .article-body h2{font-size:1.25rem;margin:22px 0 10px;color:var(--secondary)}
 .article-body p{margin-bottom:14px}
 .article-body ul,.article-body ol{margin:0 0 14px 22px}
@@ -2776,6 +2782,121 @@ pub async fn business_detail(
         .or_else(|| logo.clone())
         .or_else(|| cover.clone());
 
+    // Approved customer reviews. The page used to publish only the aggregate ("★ 4.6 · 87
+    // reviews") with no review text anywhere, so a reader — and a crawler — saw the claim and
+    // never the evidence, and reviews a business had already approved were invisible on the one
+    // page search sends people to. Only `status = 'approved'` rows are ever shown.
+    struct PageReview {
+        who: String,
+        rating: i32,
+        when: Option<chrono::DateTime<chrono::Utc>>,
+        content: String,
+        response: Option<String>,
+    }
+    let page_reviews: Vec<PageReview> = match sqlx::query(
+        "SELECT reviewer_name, rating, content, created_at, owner_response FROM reviews \
+         WHERE business_id = $1 AND status = 'approved' \
+         ORDER BY featured DESC NULLS LAST, rating DESC, created_at DESC LIMIT 10",
+    )
+    .bind(biz_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rs) => rs
+            .iter()
+            .map(|r| PageReview {
+                who: r
+                    .try_get::<Option<String>, _>("reviewer_name")
+                    .unwrap_or(None)
+                    .map(|n| n.trim().to_string())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| "A customer".to_string()),
+                rating: r.try_get::<i32, _>("rating").unwrap_or(0),
+                when: r
+                    .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("created_at")
+                    .unwrap_or(None),
+                content: r
+                    .try_get::<Option<String>, _>("content")
+                    .unwrap_or(None)
+                    .unwrap_or_default(),
+                response: r
+                    .try_get::<Option<String>, _>("owner_response")
+                    .unwrap_or(None)
+                    .filter(|s| !s.trim().is_empty()),
+            })
+            .collect(),
+        Err(e) => {
+            // Never fail the page over the decorative section, but never hide the failure
+            // either (that is how the related-table export gap stayed invisible).
+            eprintln!("reviews query failed for {biz_id}: {e}");
+            Vec::new()
+        }
+    };
+    let stars_for = |r: i32| -> String {
+        let full = r.clamp(0, 5) as usize;
+        format!("{}{}", "★".repeat(full), "☆".repeat(5 - full))
+    };
+    let reviews_html = if page_reviews.is_empty() {
+        String::new()
+    } else {
+        let mut cards = String::new();
+        for rv in &page_reviews {
+            let when = rv
+                .when
+                .map(|d| d.format("%B %Y").to_string())
+                .unwrap_or_default();
+            let when_html = if when.is_empty() {
+                String::new()
+            } else {
+                format!(" · {}", h(&when))
+            };
+            let body_html = if rv.content.trim().is_empty() {
+                String::new()
+            } else {
+                format!("<p>{}</p>", h(rv.content.trim()))
+            };
+            let resp_html = match &rv.response {
+                Some(o) => format!(
+                    "<div class=\"resp\"><strong>Response from {}</strong><br>{}</div>",
+                    h(&name),
+                    h(o)
+                ),
+                None => String::new(),
+            };
+            cards.push_str(&format!(
+                "<article class=\"review\"><div class=\"who\"><span class=\"stars\">{}</span> · \
+                 <strong>{}</strong>{}</div>{}{}</article>",
+                stars_for(rv.rating),
+                h(&rv.who),
+                when_html,
+                body_html,
+                resp_html
+            ));
+        }
+        format!(
+            "<section class=\"reviews\" aria-label=\"Customer reviews\"><h2>Reviews</h2>{}</section>",
+            cards
+        )
+    };
+    // Review markup for the crawler: only reviews that actually exist here, with the author
+    // and rating Google needs; a rating-only row carries no text, so it stays out.
+    let review_ld: Vec<serde_json::Value> = page_reviews
+        .iter()
+        .filter(|r| !r.content.trim().is_empty())
+        .map(|r| {
+            let mut o = serde_json::json!({
+                "@type": "Review",
+                "author": {"@type": "Person", "name": r.who},
+                "reviewRating": {"@type": "Rating", "ratingValue": r.rating, "bestRating": 5},
+                "reviewBody": r.content.trim(),
+            });
+            if let Some(d) = r.when {
+                o["datePublished"] = serde_json::json!(d.format("%Y-%m-%d").to_string());
+            }
+            o
+        })
+        .collect();
+
     // JSON-LD LocalBusiness — includes the city / area served, auto-derived.
     let mut jsonld = Vec::new();
     if let Some(cs) = ov.as_ref().and_then(|o| o.custom_schema.clone()) {
@@ -2820,6 +2941,9 @@ pub async fn business_detail(
                 "reviewCount": reviews,
                 "bestRating": 5,
             });
+        }
+        if !review_ld.is_empty() {
+            lb["review"] = serde_json::json!(review_ld);
         }
         jsonld.push(lb);
         jsonld.push(breadcrumb_ld(&crumb_pairs));
@@ -2903,6 +3027,7 @@ pub async fn business_detail(
 {rows}
 <p class="row"><a href="{base}/{dslug}/businesses">← All businesses in {city}</a></p>
 </div>
+{reviews}
 {related}
 {end}"#,
         ctx = ctx_script,
@@ -2929,6 +3054,7 @@ pub async fn business_detail(
             _ => String::new(),
         },
         rows = rows,
+        reviews = reviews_html,
         related = related_html,
         base = h(&base),
         dslug = h(&dir.slug),
