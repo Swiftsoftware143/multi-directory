@@ -673,29 +673,105 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 
 /// Render a single business listing detail page (SSR, SEO-optimized)
 pub async fn render_listing_page(
-    Path((slug, listing_id)): Path<(String, Uuid)>,
+    Path((slug, listing_ref)): Path<(String, String)>,
     State(state): State<AppState>,
-) -> impl axum::response::IntoResponse {
-    let row = sqlx::query(
-        "SELECT bl.*, cp.city_name, \
+) -> axum::response::Response {
+    // `/zaarhub/<city>/<id>` is the LEGACY short form of a business page. The
+    // canonical page is the server-rendered `/<city>/businesses/<slug>` — the URL
+    // the sitemap publishes and every public page links. This route used to render
+    // a SECOND copy of the same business that self-canonicalised (duplicate
+    // content), answered a non-UUID segment with a raw `400 Invalid URL: UUID
+    // parsing failed` that leaked an internal error, and answered an unknown id
+    // with HTTP **200** and a "Business not found" body (a soft 404 Google can
+    // index). Resolve the reference and 301 it to the canonical page; anything
+    // that does not resolve is a real 404.
+    let as_uuid = Uuid::parse_str(&listing_ref).ok();
+    let mut target: Option<(String, String)> = None;
+
+    // 1. the modern identity — a business id (W29: one business = one record)
+    if let Some(id) = as_uuid {
+        target = sqlx::query_as::<_, (String, String)>(
+            "SELECT d.slug, b.slug FROM businesses b \
+             JOIN directories d ON d.id = b.directory_id \
+             WHERE b.id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+
+        // 2. the legacy appearance row id that this route was originally built for
+        if target.is_none() {
+            target = sqlx::query_as::<_, (String, String)>(
+                "SELECT d.slug, b.slug FROM business_listings bl \
+                 JOIN businesses b ON b.id = bl.business_id \
+                 JOIN directories d ON d.id = b.directory_id \
+                 WHERE bl.id = $1",
+            )
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or(None);
+        }
+    }
+
+    // 3. a business slug inside this city (an old link that used the name)
+    if target.is_none() {
+        target = sqlx::query_as::<_, (String, String)>(
+            "SELECT d.slug, b.slug FROM businesses b \
+             JOIN directories d ON d.id = b.directory_id \
+             WHERE d.slug = $1 AND b.slug = $2",
+        )
+        .bind(&slug)
+        .bind(&listing_ref)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+    }
+
+    if let Some((city, biz_slug)) = target {
+        let dest = format!("{}/{}/businesses/{}", ORIGIN, city, biz_slug);
+        // A 301, matching every other URL move in this app: the legacy address is
+        // permanently replaced by the canonical one and the old link's ranking
+        // passes to it.
+        return (
+            axum::http::StatusCode::MOVED_PERMANENTLY,
+            [(axum::http::header::LOCATION, dest)],
+        )
+            .into_response();
+    }
+
+    let listing_id = as_uuid.unwrap_or_default();
+    let row = match as_uuid {
+        Some(id) => sqlx::query(
+            "SELECT bl.*, cp.city_name, \
                 COALESCE(b.claimed, false) AS biz_claimed, \
                 b.id AS biz_id \
          FROM business_listings bl \
          JOIN city_pages cp ON bl.city_page_id = cp.id \
          LEFT JOIN businesses b ON b.id = bl.business_id \
          WHERE cp.city_slug = $1 AND bl.id = $2",
-    )
-    .bind(&slug)
-    .bind(listing_id)
-    .fetch_optional(&state.db)
-    .await
-    .unwrap_or(None);
+        )
+        .bind(&slug)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None),
+        None => None,
+    };
 
     if row.is_none() {
-        return axum::response::Html(format!(
-            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Not Found | ZaarHub</title><style>body{{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}h1{{font-size:48px;color:#2b3255}}a{{color:#f27f2f}}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Business not found.</p><a href=\"/zaarhub/{s}\">← Back to directory</a></div></body></html>",
+        // A real 404, not a 200 with a "not found" body: the soft 404 is what let
+        // Google index URLs that lead nowhere.
+        let body = format!(
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><meta name=\"robots\" content=\"noindex,follow\"><title>Business not found | ZaarHub</title><style>body{{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}h1{{font-size:48px;color:#2b3255}}a{{color:#f27f2f}}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Business not found.</p><a href=\"/zaarhub/{s}\">&larr; Back to directory</a></div></body></html>",
             s = h(&slug)
-        ));
+        );
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            axum::response::Html(body),
+        )
+            .into_response();
     }
 
     let r = row.unwrap();
@@ -972,6 +1048,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         cookie_banner = COOKIE_BANNER,
         shell = shell_chrome(Some(&slug), &city_name),
     ))
+    .into_response()
 }
 
 /// SSR — render a legal page (public)
