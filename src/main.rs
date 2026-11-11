@@ -31,6 +31,7 @@ mod system_tenant;
 mod template_engine;
 pub mod tracking_script;
 mod utils;
+mod webhook_dispatch;
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -180,6 +181,11 @@ async fn main() {
         state.config.base_domain.clone(),
         format!("http://{}:{}", state.config.host, state.config.port),
     );
+
+    // Start the webhook delivery drain — the ONE place a recorded event is handed to the
+    // subscribers an operator registered on the admin "API Access & Webhooks" screen. Covers the
+    // events the database triggers record (imports included), not just the ones a handler sees.
+    webhook_dispatch::start_webhook_dispatch(state.db.clone());
 
     let app = routes::create_router(state.clone())
         .layer(TraceLayer::new_for_http())

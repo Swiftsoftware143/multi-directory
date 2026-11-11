@@ -11025,7 +11025,12 @@
     // ===== 🧩 API Access & Webhooks (card B91 / B117 gap #4) =====
     // src/handlers/api_complete.rs exposes a full operator-guarded CRUD surface for api_keys and
     // webhooks; the panel had NO control for either. This is that control.
-    var AK_EVENTS = ['business.created','business.updated','business.deleted','review.created','review.approved','deal.created','deal.claimed','submission.created','submission.approved','contact.created','directory.created'];
+    // The event names are the ones the platform actually RECORDS in `directory_events`: the
+    // database triggers write `<table>.created|updated|deleted`, migration 177 adds the three review
+    // transitions, and the booking/contact paths write their own names. The list used to offer
+    // `business.created`, `deal.created`, `submission.approved`, … — none of which any code ever
+    // emitted, so a subscriber picked an event that could never arrive. `*` = every event.
+    var AK_EVENTS = ['*','businesses.created','businesses.updated','businesses.deleted','reviews.created','reviews.approved','reviews.rejected','directories.created','directories.updated','directories.deleted','directory_categories.created','directory_categories.updated','directory_categories.deleted','service_booking_created','contact.created'];
     function akEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
     function akFmt(dt) { if (!dt) return '—'; try { return new Date(dt).toLocaleString(); } catch (e) { return '—'; } }
     function akStatus(id, msg, ok) { var el = document.getElementById(id); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
@@ -11082,7 +11087,7 @@
       var box = document.getElementById('wh-list'); if (!box) return;
       var ev = document.getElementById('wh-events');
       if (ev && !ev.getAttribute('data-built')) {
-        ev.innerHTML = 'Events: ' + AK_EVENTS.map(function (e) { return '<label style="display:inline-flex;align-items:center;gap:4px;margin:2px 10px 2px 0"><input type="checkbox" class="wh-ev" value="' + e + '"' + (e === 'business.created' ? ' checked' : '') + '> ' + e + '</label>'; }).join('');
+        ev.innerHTML = 'Events: ' + AK_EVENTS.map(function (e) { return '<label style="display:inline-flex;align-items:center;gap:4px;margin:2px 10px 2px 0"><input type="checkbox" class="wh-ev" value="' + e + '"' + (e === '*' ? ' checked' : '') + '> ' + (e === '*' ? 'all events' : e) + '</label>'; }).join('');
         ev.setAttribute('data-built', '1');
       }
       apiGet('/webhooks').then(function (rows) {
@@ -11092,7 +11097,7 @@
         rows.forEach(function (w) {
           h += '<tr style="border-top:1px solid var(--border)">'
             + '<td style="padding:6px 4px"><input readonly value="' + akEsc(w.url) + '" style="width:100%;min-width:200px;font-size:.78rem" onclick="this.select()"></td>'
-            + '<td>' + akEsc((w.events || []).length) + ' event(s)</td>'
+            + '<td style="max-width:280px">' + akEsc((w.events || []).map(function (e) { return e === '*' ? 'all events' : e; }).join(', ') || '—') + '</td>'
             + '<td>' + (w.is_active === false ? '<span style="color:#ef4444">paused</span>' : '<span style="color:#22c55e">active</span>') + '</td>'
             + '<td>' + (w.failure_count || 0) + '</td>'
             + '<td>' + akFmt(w.last_success_at) + '</td>'

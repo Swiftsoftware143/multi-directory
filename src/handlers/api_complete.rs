@@ -513,19 +513,23 @@ pub async fn list_webhook_deliveries(
 
 // ── Webhook Dispatcher (internal) ─────────────────────────────────────────────
 
-/// Call this internally when an event happens to dispatch to matching webhooks
+/// Call this internally when an event happens to dispatch to matching webhooks.
+///
+/// `db` rather than `AppState` so the background drain (`webhook_dispatch`) can call it with the
+/// pool it already holds. A webhook subscribed to `*` receives every event.
 pub async fn dispatch_webhook_event(
-    state: &AppState,
+    db: &sqlx::PgPool,
     event_type: &str,
     entity_type: &str,
     entity_id: Uuid,
     payload: serde_json::Value,
 ) {
     let webhooks = sqlx::query_as::<_, Webhook>(
-        "SELECT * FROM webhooks WHERE $1 = ANY(events) AND is_active = true",
+        "SELECT * FROM webhooks
+          WHERE ($1 = ANY(events) OR '*' = ANY(events)) AND is_active = true",
     )
     .bind(event_type)
-    .fetch_all(&state.db)
+    .fetch_all(db)
     .await;
 
     let webhooks = match webhooks {
@@ -560,7 +564,7 @@ pub async fn dispatch_webhook_event(
         .bind(webhook.id)
         .bind(event_type)
         .bind(&payload)
-        .execute(&state.db)
+        .execute(db)
         .await;
 
         // Fire webhook (fire-and-forget)
@@ -570,7 +574,7 @@ pub async fn dispatch_webhook_event(
         let timeout_secs = webhook.timeout_seconds.unwrap_or(10) as u64;
         let max_retries = webhook.retry_count.unwrap_or(3);
         let payload = full_payload.clone();
-        let db_write = state.db.clone();
+        let db_write = db.clone();
 
         tokio::spawn(async move {
             let mut last_error: Option<String> = None;
@@ -679,7 +683,7 @@ pub async fn dispatch_webhook_event(
         "UPDATE webhooks SET last_triggered_at = NOW() WHERE id = ANY($1) AND is_active = true",
     )
     .bind(webhooks.iter().map(|w| w.id).collect::<Vec<_>>())
-    .execute(&state.db)
+    .execute(db)
     .await;
 }
 

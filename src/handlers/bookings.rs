@@ -1091,16 +1091,8 @@ async fn notify_business_owners(
                 "[notifications] Created service_booking_created event for business {}",
                 business_id
             );
-            // Deliver to the webhooks registered on the admin "Webhooks" screen — a new booking is
-            // a real app event, and a registered subscriber previously never heard about it.
-            crate::handlers::api_complete::dispatch_webhook_event(
-                s,
-                "service_booking_created",
-                "business",
-                business_id,
-                event_payload,
-            )
-            .await;
+            // Delivery to the admin "Webhooks" screen is handled by the background drain
+            // (`webhook_dispatch`), which picks up the directory_events row this booking just wrote.
         }
         Err(e) => tracing::warn!("[notifications] Failed to create event: {}", e),
     }
