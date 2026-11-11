@@ -5328,10 +5328,15 @@
     var MD_PLATFORM_STATS = null;
 
     function updateStats(total, active, businesses) {
-      document.getElementById('stat-total').textContent = total;
-      document.getElementById('stat-active').textContent = active;
-      var biz = (MD_PLATFORM_STATS && MD_PLATFORM_STATS.total_businesses != null)
-        ? MD_PLATFORM_STATS.total_businesses : businesses;
+      // ONE source per tile: when the stats endpoint answered, its numbers win for ALL five tiles,
+      // so "Total Directories" can never mean the network in the context bar while "Reviews" means
+      // the whole platform. Falls back to the list only when the endpoint did not answer.
+      var s = MD_PLATFORM_STATS;
+      document.getElementById('stat-total').textContent =
+        (s && s.total_directories != null) ? s.total_directories : total;
+      document.getElementById('stat-active').textContent =
+        (s && s.active_directories != null) ? s.active_directories : active;
+      var biz = (s && s.total_businesses != null) ? s.total_businesses : businesses;
       document.getElementById('stat-businesses').textContent = biz;
     }
 
@@ -5346,6 +5351,8 @@
       apiGet(isOp ? '/dashboard/stats' : '/me/dashboard-stats').then(function (s) {
         if (!s) return;
         MD_PLATFORM_STATS = s;
+        var tt = document.getElementById('stat-total'); if (tt && s.total_directories != null) tt.textContent = s.total_directories;
+        var ac = document.getElementById('stat-active'); if (ac && s.active_directories != null) ac.textContent = s.active_directories;
         var rv = document.getElementById('stat-reviews'); if (rv) rv.textContent = (s.total_reviews == null ? '—' : s.total_reviews);
         var dm = document.getElementById('stat-domains'); if (dm) dm.textContent = (s.total_domains == null ? '—' : s.total_domains);
         var bz = document.getElementById('stat-businesses'); if (bz && s.total_businesses != null) bz.textContent = s.total_businesses;

@@ -56,8 +56,8 @@ pub async fn dashboard_stats(State(s): State<AppState>) -> ApiResult<impl IntoRe
 /// directory buyer's console with "—" on every tile it could never fill: an authenticated customer
 /// asked and was refused. This is the buyer's own view — the directories their tenant owns, the
 /// businesses and reviews inside them, and their domain mappings. The platform route is untouched.
-/// A caller whose tenant owns nothing (a visitor-account workspace, a business owner) gets honest
-/// zeros rather than another account's totals.
+/// A caller whose tenant owns directories gets exactly those numbers; a caller whose tenant owns
+/// none keeps the shared view its directory list already shows.
 pub async fn my_dashboard_stats(
     State(s): State<AppState>,
     headers: HeaderMap,
@@ -78,27 +78,40 @@ pub async fn my_dashboard_stats(
         })));
     };
 
-    // "Owned by this tenant" has ONE definition in this codebase: directories.owner_id → a user of
-    // that tenant (B120). Every count below walks that same edge.
-    const OWNED: &str = "d.owner_id IN (SELECT id FROM users WHERE tenant_id = $1)";
+    // Scope rule — the SAME one `list_directories` applies (B120), so the tiles can never disagree
+    // with the list on screen: a tenant that owns directories sees only its own; a tenant that owns
+    // none (a business owner, a visitor-account workspace) keeps the shared view, exactly as its own
+    // directory list does. Only aggregate counts leave this handler — never a row, never an address.
+    let owned = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM directories d JOIN users u ON u.id = d.owner_id \
+         WHERE u.tenant_id = $1)",
+    )
+    .bind(tid)
+    .fetch_one(&s.db)
+    .await?;
+    let scope: Option<uuid::Uuid> = if owned { Some(tid) } else { None };
+
+    // `$1 IS NULL` = the shared view; otherwise strictly the caller's own directories.
+    const OWNED: &str =
+        "($1::uuid IS NULL OR d.owner_id IN (SELECT id FROM users WHERE tenant_id = $1))";
 
     let total_directories =
         sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM directories d WHERE {OWNED}"))
-            .bind(tid)
+            .bind(scope)
             .fetch_one(&s.db)
             .await?;
 
     let active_directories = sqlx::query_scalar::<_, i64>(&format!(
         "SELECT COUNT(*) FROM directories d WHERE {OWNED} AND d.status = 'active'"
     ))
-    .bind(tid)
+    .bind(scope)
     .fetch_one(&s.db)
     .await?;
 
     let total_businesses = sqlx::query_scalar::<_, i64>(&format!(
         "SELECT COUNT(*) FROM businesses b JOIN directories d ON d.id = b.directory_id WHERE {OWNED}"
     ))
-    .bind(tid)
+    .bind(scope)
     .fetch_one(&s.db)
     .await?;
 
@@ -106,7 +119,7 @@ pub async fn my_dashboard_stats(
         "SELECT COUNT(*) FROM reviews r JOIN businesses b ON b.id = r.business_id \
          JOIN directories d ON d.id = b.directory_id WHERE {OWNED}"
     ))
-    .bind(tid)
+    .bind(scope)
     .fetch_one(&s.db)
     .await?;
 
@@ -114,7 +127,7 @@ pub async fn my_dashboard_stats(
         "SELECT COUNT(*) FROM domain_mappings dm JOIN directories d ON d.id = dm.directory_id \
          WHERE {OWNED}"
     ))
-    .bind(tid)
+    .bind(scope)
     .fetch_one(&s.db)
     .await?;
 
