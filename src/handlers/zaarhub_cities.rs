@@ -507,6 +507,69 @@ pub async fn search_listings(
 
     let results_json = Value::Array(results);
 
+    // Record the search itself. The demand product's headline metric — what people searched
+    // for and how many results they got — had NO writer anywhere in the codebase, so
+    // `/analytics/demand/rollups` reported `searches: 0` and an empty "unmet demand" list no
+    // matter how much traffic arrived (fixed 2026-11-11). Page 1 only (paging is not a new
+    // search), a 2-second dedupe absorbs the SPA re-rendering the same query, and the write is
+    // best effort: a tracking failure must never break a visitor's search.
+    if page <= 1 && !search_term.is_empty() {
+        let dir_id: Option<Uuid> = if city.is_empty() {
+            None
+        } else {
+            sqlx::query_scalar("SELECT id FROM directories WHERE slug = $1 LIMIT 1")
+                .bind(&city)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten()
+        };
+        let cat_id: Option<Uuid> = if category.is_empty() {
+            None
+        } else {
+            sqlx::query_scalar(
+                "SELECT id FROM directory_categories \
+                 WHERE lower(name) = lower($1) OR lower(slug) = lower($1) LIMIT 1",
+            )
+            .bind(&category)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+        };
+        let duplicate: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM visitor_events \
+             WHERE event_type = 'search' AND event_value = $1 \
+               AND created_at > NOW() - INTERVAL '2 seconds')",
+        )
+        .bind(&search_term)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(false);
+        if !duplicate {
+            let meta = json!({
+                "query": search_term,
+                "result_count": total,
+                "category": if category.is_empty() { Value::Null } else { json!(category) },
+            });
+            if let Err(e) = sqlx::query(
+                "INSERT INTO visitor_events \
+                 (directory_id, category_id, event_type, event_value, metadata, page_url) \
+                 VALUES ($1, $2, 'search', $3, $4::jsonb, $5)",
+            )
+            .bind(dir_id)
+            .bind(cat_id)
+            .bind(&search_term)
+            .bind(&meta)
+            .bind(format!("/search/{search_term}"))
+            .execute(&state.db)
+            .await
+            {
+                tracing::warn!("search event not recorded: {e}");
+            }
+        }
+    }
+
     Ok(Json(json!({
         // `results` is the key the screen reads; `listings` is kept as the legacy alias.
         "results": results_json.clone(),

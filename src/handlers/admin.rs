@@ -92,40 +92,53 @@ pub async fn my_dashboard_stats(
     let scope: Option<uuid::Uuid> = if owned { Some(tid) } else { None };
 
     // `$1 IS NULL` = the shared view; otherwise strictly the caller's own directories.
-    const OWNED: &str =
-        "($1::uuid IS NULL OR d.owner_id IN (SELECT id FROM users WHERE tenant_id = $1))";
+    // A compile-time literal spliced by `concat!`, never a run-time `format!`: the gate rejects
+    // SQL assembled at run time (class-14 rule), and a `concat!` argument must be a literal, so
+    // the shared scope fragment is a macro — the same shape `search_filter!` uses elsewhere.
+    macro_rules! owned {
+        () => {
+            "($1::uuid IS NULL OR d.owner_id IN (SELECT id FROM users WHERE tenant_id = $1))"
+        };
+    }
 
-    let total_directories =
-        sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM directories d WHERE {OWNED}"))
-            .bind(scope)
-            .fetch_one(&s.db)
-            .await?;
-
-    let active_directories = sqlx::query_scalar::<_, i64>(&format!(
-        "SELECT COUNT(*) FROM directories d WHERE {OWNED} AND d.status = 'active'"
+    let total_directories = sqlx::query_scalar::<_, i64>(concat!(
+        "SELECT COUNT(*) FROM directories d WHERE ",
+        owned!()
     ))
     .bind(scope)
     .fetch_one(&s.db)
     .await?;
 
-    let total_businesses = sqlx::query_scalar::<_, i64>(&format!(
-        "SELECT COUNT(*) FROM businesses b JOIN directories d ON d.id = b.directory_id WHERE {OWNED}"
+    let active_directories = sqlx::query_scalar::<_, i64>(concat!(
+        "SELECT COUNT(*) FROM directories d WHERE ",
+        owned!(),
+        " AND d.status = 'active'"
     ))
     .bind(scope)
     .fetch_one(&s.db)
     .await?;
 
-    let total_reviews = sqlx::query_scalar::<_, i64>(&format!(
+    let total_businesses = sqlx::query_scalar::<_, i64>(concat!(
+        "SELECT COUNT(*) FROM businesses b JOIN directories d ON d.id = b.directory_id WHERE ",
+        owned!()
+    ))
+    .bind(scope)
+    .fetch_one(&s.db)
+    .await?;
+
+    let total_reviews = sqlx::query_scalar::<_, i64>(concat!(
         "SELECT COUNT(*) FROM reviews r JOIN businesses b ON b.id = r.business_id \
-         JOIN directories d ON d.id = b.directory_id WHERE {OWNED}"
+         JOIN directories d ON d.id = b.directory_id WHERE ",
+        owned!()
     ))
     .bind(scope)
     .fetch_one(&s.db)
     .await?;
 
-    let total_domains = sqlx::query_scalar::<_, i64>(&format!(
+    let total_domains = sqlx::query_scalar::<_, i64>(concat!(
         "SELECT COUNT(*) FROM domain_mappings dm JOIN directories d ON d.id = dm.directory_id \
-         WHERE {OWNED}"
+         WHERE ",
+        owned!()
     ))
     .bind(scope)
     .fetch_one(&s.db)
