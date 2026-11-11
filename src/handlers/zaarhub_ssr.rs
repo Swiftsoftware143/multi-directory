@@ -619,9 +619,12 @@ pub async fn render_listing_page(
     State(state): State<AppState>,
 ) -> impl axum::response::IntoResponse {
     let row = sqlx::query(
-        "SELECT bl.*, cp.city_name \
+        "SELECT bl.*, cp.city_name, \
+                COALESCE(b.claimed, false) AS biz_claimed, \
+                b.id AS biz_id \
          FROM business_listings bl \
          JOIN city_pages cp ON bl.city_page_id = cp.id \
+         LEFT JOIN businesses b ON b.id = bl.business_id \
          WHERE cp.city_slug = $1 AND bl.id = $2",
     )
     .bind(&slug)
@@ -705,14 +708,22 @@ pub async fn render_listing_page(
         _ => String::new(),
     };
 
-    // Verification badge — query business_verifications matched via business name
+    // W29 — a claim binds to the BUSINESS, so the badge follows the business record,
+    // never the copy captured when the listing was created. Matching by name used to
+    // pick up a same-named business in another city.
+    let biz_id: Option<Uuid> = r.try_get("biz_id").unwrap_or(None);
     let verified_badge = sqlx::query(
         "SELECT bv.status FROM business_verifications bv \
-         JOIN businesses b ON bv.business_id = b.id \
-         WHERE b.name = $1 AND bv.status = 'approved' AND (bv.expires_at IS NULL OR bv.expires_at > now()) \
-         LIMIT 1"
-    ).bind(&name).fetch_optional(&state.db).await.unwrap_or(None)
-     .is_some();
+         WHERE bv.business_id = COALESCE($1, (SELECT id FROM businesses WHERE name = $2 LIMIT 1)) \
+           AND bv.status = 'approved' AND (bv.expires_at IS NULL OR bv.expires_at > now()) \
+         LIMIT 1",
+    )
+    .bind(biz_id)
+    .bind(&name)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None)
+    .is_some();
 
     let verified_html = if verified_badge {
         "<div class=\"verified-badge\">\u{2705} Verified Business</div>"
@@ -724,9 +735,10 @@ pub async fn render_listing_page(
     let freshness: Option<String> = {
         let ver_date: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
             "SELECT MAX(bv.created_at) FROM business_verifications bv \
-             JOIN businesses b ON bv.business_id = b.id \
-             WHERE b.name = $1 AND bv.status = 'approved'",
+             WHERE bv.business_id = COALESCE($1, (SELECT id FROM businesses WHERE name = $2 LIMIT 1)) \
+               AND bv.status = 'approved'",
         )
+        .bind(biz_id)
         .bind(&name)
         .fetch_optional(&state.db)
         .await
@@ -744,7 +756,7 @@ pub async fn render_listing_page(
         latest.map(|dt| dt.format("%B %d, %Y").to_string())
     };
 
-    let is_claimed: bool = r.try_get("is_claimed").unwrap_or(false);
+    let is_claimed: bool = r.try_get("biz_claimed").unwrap_or(false);
 
     let freshness_html = match (&freshness, is_claimed) {
         (Some(date), _) => format!("<div class=\"freshness\">\u{1f4c5} Data last verified: {}</div>", h(date)),
