@@ -758,6 +758,15 @@ pub async fn render_listing_page(
 
     let is_claimed: bool = r.try_get("biz_claimed").unwrap_or(false);
 
+    // W29 — a claimed business is marked wherever it appears. Visitors can see that the
+    // listing is managed by its owner, and the mark comes from the BUSINESS record, so
+    // claiming once covers every town/hub the business is listed in.
+    let claimed_html = if is_claimed {
+        "<div class=\"verified-badge claimed-badge\">\u{1f3e2} Claimed by the business</div>"
+    } else {
+        ""
+    };
+
     let freshness_html = match (&freshness, is_claimed) {
         (Some(date), _) => format!("<div class=\"freshness\">\u{1f4c5} Data last verified: {}</div>", h(date)),
         (None, false) => "<div class=\"freshness freshness-cta\">\u{1f4cc} <a href=\"/claim.html\">Claim this listing</a> to keep data fresh</div>".to_string(),
@@ -863,7 +872,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub/{slug}">← Back to {city_name}</a></nav></div></header>
 <div class="page">
 <div class="breadcrumb"><a href="/zaarhub">Cities</a> › <a href="/zaarhub/{slug}">{city_name}</a> › {name}</div>
-<div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{verified_html}{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}{freshness_html}</div></div>
+<div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{verified_html}{claimed_html}{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}{freshness_html}</div></div>
 <div class="detail-meta">{addr_html}{phone_html}{web_html}{maps_html}</div>
 {offers_html}
 </div>
@@ -880,6 +889,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         logo_html = logo_html,
         fb = fb,
         verified_html = verified_html,
+        claimed_html = claimed_html,
         cat_html = cat_html,
         stars = stars,
         rating = rv,
