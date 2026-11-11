@@ -390,6 +390,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 {city_picks}
 <div class="listing-grid">{listings}</div>
 <div class="load-more"><a href="/zaarhub-city.html?city={slug}">View all {city_name} businesses →</a></div>
+{explore}
 {footer}
 {cookie_banner}</body>
 </html>"#,
@@ -397,6 +398,12 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         desc = h(&page_desc),
         slug = h(&slug),
         city_name = h(&city_name),
+        explore = explore_section(&[
+            ("All cities", "/zaarhub"),
+            ("Home", "/"),
+            ("Claim your business", "/claim"),
+            ("Add your business", "/submit-business.html"),
+        ]),
         crumbs = crumb_bar(&[("ZaarHub", "/"), ("Cities", "/zaarhub"), (city_name.as_str(), "")]),
         hero = hero_section,
         city_picks = city_picks_section,
