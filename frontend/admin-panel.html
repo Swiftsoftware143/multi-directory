@@ -1281,10 +1281,10 @@
            for either (api_keys 0 rows, 750 webhook rows, both curl-only). This is that control. -->
       <div class="feature-card" id="developer-api-section">
         <h3>🧩 API Access &amp; Webhooks</h3>
-        <p class="feature-subtitle">Issue API keys for outside integrations and register webhooks that fire on directory events. Operator-only.</p>
+        <p class="feature-subtitle" id="ak-subtitle">Your account's API key lets an outside app read and update your listings with your own permissions. Keep it secret; you can show it or replace it here at any time.</p>
 
         <div style="font-weight:600;font-size:.9rem;margin:4px 0 8px">API keys</div>
-        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div class="pk-controls" id="ak-create-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">Name
             <input class="pk-input" id="ak-name" placeholder="e.g. Website integration"></label>
           <label style="font-size:.75rem;flex:1;min-width:220px;display:flex;flex-direction:column;gap:3px">Scopes (optional, comma-separated)
@@ -1295,6 +1295,7 @@
         <div id="ak-list"></div>
         <div class="feature-status" id="ak-status"></div>
 
+        <div id="wh-block">
         <div style="display:flex;align-items:center;gap:12px;margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
           <div style="font-weight:600;font-size:.9rem">Webhooks</div>
           <button class="btn btn-ghost btn-sm" onclick="window.__whRefresh()">↻ Refresh</button>
@@ -1311,6 +1312,7 @@
         <div id="wh-list"></div>
         <div id="wh-deliveries" style="margin-top:10px"></div>
         <div class="feature-status" id="wh-status"></div>
+        </div>
       </div>
 
       <!-- 📰 Sponsored & SEO Articles (card B91 / B117 gap #2) — src/handlers/business_articles.rs
@@ -11039,26 +11041,48 @@
     function akFmt(dt) { if (!dt) return '—'; try { return new Date(dt).toLocaleString(); } catch (e) { return '—'; } }
     function akStatus(id, msg, ok) { var el = document.getElementById(id); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
 
-    function loadApiAccess() { loadApiKeys(); loadWebhooks(); }
+    function loadApiAccess() { loadApiKeys(); if (akIsOperator()) loadWebhooks(); }
+
+    function akIsOperator() { return !!(user && user.role === 'super_admin'); }
 
     function loadApiKeys() {
       var box = document.getElementById('ak-list'); if (!box) return;
-      apiGet('/api-keys').then(function (rows) {
+      var isOp = akIsOperator();
+      var sub = document.getElementById('ak-subtitle');
+      var mk = document.getElementById('ak-create-controls');
+      var wh = document.getElementById('wh-block');
+      if (sub) sub.textContent = isOp
+        ? 'Issue API keys for outside integrations and register webhooks that fire on directory events. This console lists every account\u2019s keys.'
+        : 'Your API key lets an outside app (your website, a CRM, a reporting tool) work with your listings using your own permissions. Keep it secret — anyone holding it can act as you. You can show it or replace it here at any time.';
+      if (mk) mk.style.display = isOp ? '' : 'none';
+      if (wh) wh.style.display = isOp ? '' : 'none';
+
+      // Operator: every account's key rows. Everyone else: strictly their OWN key, which is
+      // minted with the account at signup and is otherwise unreachable — /api-keys is
+      // operator-guarded, so this card used to answer "Could not load keys: 403" for every
+      // customer even though the card was visible to them.
+      var req = isOp
+        ? apiGet('/api-keys').then(function (rows) { return rows || []; })
+        : apiGet('/me/api-keys').then(function (d) { return (d && d.keys) || []; });
+      req.then(function (rows) {
         rows = rows || [];
-        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">No API keys yet. Every account is created with one; create another above if you need a separate key.</p>'; return; }
-        var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:6px 4px">Name</th><th>Key</th><th>Status</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>';
+        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">' + (isOp ? 'No API keys yet. Every account is created with one; create another above if you need a separate key.' : 'This account has no API key right now. Contact your directory operator to have one issued.') + '</p>'; return; }
+        var h = isOp
+          ? '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:6px 4px">Name</th><th>Key</th><th>Status</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>'
+          : '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:6px 4px">Name</th><th>Key</th><th>Status</th><th>Last used</th><th></th></tr></thead><tbody>';
         rows.forEach(function (k) {
+          var pfx = k.key_prefix || k.prefix || '';
           h += '<tr style="border-top:1px solid var(--border)">'
             + '<td style="padding:6px 4px">' + akEsc(k.name) + '</td>'
-            + '<td><code>' + akEsc(k.key_prefix) + '…</code></td>'
+            + '<td><code>' + akEsc(pfx) + '…</code></td>'
             + '<td>' + (k.is_active === false ? '<span style="color:#ef4444">revoked</span>' : '<span style="color:#22c55e">active</span>') + '</td>'
-            + '<td>' + akEsc((k.scopes || []).join(', ') || '—') + '</td>'
+            + (isOp ? '<td>' + akEsc((k.scopes || []).join(', ') || '—') + '</td>' : '')
             + '<td>' + akFmt(k.last_used_at) + '</td>'
             + '<td style="text-align:right;white-space:nowrap">'
               + (k.is_active === false ? '' : '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akView(this)">View</button> ')
               + (k.is_active === false ? '' : '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akRegen(this)">Regenerate</button> ')
-              + '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akToggle(this)">' + (k.is_active === false ? 'Enable' : 'Revoke') + '</button> '
-              + '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akDelete(this)">Delete</button>'
+              + (isOp ? '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akToggle(this)">' + (k.is_active === false ? 'Enable' : 'Revoke') + '</button> ' : '')
+              + (isOp ? '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akDelete(this)">Delete</button>' : '')
             + '</td></tr>';
         });
         box.innerHTML = h + '</tbody></table>';
