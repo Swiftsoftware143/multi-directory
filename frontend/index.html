@@ -3541,6 +3541,17 @@ function renderBizPage(d){
   var el=document.getElementById('zh-content')
   var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
   var phoneHref=b.phone?'tel:'+b.phone.replace(/[^\d+]/g,''):''
+  // Walk / Bike scores: cached in business_walk_scores and served by the business endpoint.
+  // Render OUR OWN numbers in the Location block (under the address), never a provider widget
+  // and never an outbound link. Bike arrives flat as bike_score (a nested `bike: {score}` shape
+  // is accepted too). A zero/missing score is omitted, not printed as "Car-Dependent".
+  var walkScore=(typeof b.walk_score==='number'&&b.walk_score>0)?Math.round(b.walk_score):null
+  var rawBike=(typeof b.bike_score==='number')?b.bike_score:((b.bike&&typeof b.bike.score==='number')?b.bike.score:null)
+  var bikeScore=(rawBike!==null&&rawBike>0)?Math.round(rawBike):null
+  var walkBits=[]
+  if(walkScore!==null)walkBits.push('Walk '+walkScore)
+  if(bikeScore!==null)walkBits.push('Bike '+bikeScore)
+  var walkLine=walkBits.length?'<div class="zh-walk-score" style="margin-top:6px;font-size:.82rem;color:var(--text-light)">'+walkBits.join(' · ')+'</div>':''
 
   el.innerHTML='<div class="zh-biz-hero" style="background:linear-gradient(135deg,#0f172a 0%,#134e4a 70%,#0d9488 100%);color:#fff;padding:48px 24px"><div class="zh-section-inner" style="max-width:1280px;margin:0 auto"><a href="#/city/'+state.slug+'" style="color:#94a3b8;font-size:.85rem;margin-bottom:12px;display:inline-block">← Back to '+toTitle(state.slug)+'</a><h1 style="font-size:2rem;font-weight:800;margin-bottom:4px">'+esc(b.name)+'</h1><div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:.9rem;color:#94a3b8">'+
   (b.rating?'<span>'+stars+' ('+b.review_count+' reviews)</span>':'')+
@@ -3553,7 +3564,7 @@ function renderBizPage(d){
   '</div></div></div>'+
   '<div class="zh-section"><div class="zh-section-inner"><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px"><div>'+
   (b.description?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">About</h3><p style="color:var(--text-light);line-height:1.7">'+esc(b.description)+'</p></div>':'')+
-  (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(b.address)+'<br>'+esc(b.city)+', '+esc(b.state)+'</p></div>':'')+
+  (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(b.address)+'<br>'+esc(b.city)+', '+esc(b.state)+'</p>'+walkLine+'</div>':'')+
   (d.hours?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🕐 Hours</h3><p style="color:var(--text-light);white-space:pre-wrap;font-size:.85rem">'+esc(JSON.stringify(b.hours,null,2))+'</p></div>':'')+
   '</div><div>'+
   (d.deals&&d.deals.length?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🎁 Current Deals</h3>'+d.deals.map(function(dl){return '<div style="background:var(--bg-teal);padding:14px;border-radius:8px;margin-bottom:8px"><strong>'+esc(dl.title)+'</strong>'+(dl.deal_price?'<div style="color:var(--teal);font-weight:700;margin-top:4px">$'+esc(dl.deal_price)+(dl.original_price?' <span style="text-decoration:line-through;color:var(--text-muted)">$'+esc(dl.original_price)+'</span>':'')+'</div>':'')+(dl.description?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(dl.description)+'</div>':'')+'</div>'}).join('')+'</div>':'')+
