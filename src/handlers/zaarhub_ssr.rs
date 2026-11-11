@@ -15,11 +15,15 @@ fn h(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// The brand origin these hand-built SSR pages publish. Same constant the
+/// canonical links and LocalBusiness schema in this module already use.
+const ORIGIN: &str = "https://zaarhub.com";
+
 /// A clickable trail for the hand-built SSR surface (home › section › this page).
 /// Every level that is not the current page is a real link, so a visitor can go
 /// back UP as well as on. Rendered with its own inline style because these pages
 /// carry a bespoke <style> block instead of the shared subfolder stylesheet.
-fn crumb_bar(items: &[(&str, &str)]) -> String {
+fn crumb_bar_visual(items: &[(&str, &str)]) -> String {
     let mut parts: Vec<String> = Vec::new();
     for (i, (label, href)) in items.iter().enumerate() {
         if i + 1 == items.len() || href.is_empty() {
@@ -35,6 +39,60 @@ fn crumb_bar(items: &[(&str, &str)]) -> String {
 .zh-crumbs .zh-sep{{opacity:.5;margin:0 6px}}</style>\
 <nav class=\"zh-crumbs\" aria-label=\"Breadcrumb\">{}</nav>",
         parts.join("<span class=\"zh-sep\">›</span>")
+    )
+}
+
+/// Card W27 (2026-11-11): the visible trail above shipped with no BreadcrumbList
+/// schema, so `/zaarhub`, `/zaarhub/<city>` and `/legal/<slug>` told Google
+/// nothing about where they sit in the site while every subfolder page did.
+/// Emit the machine-readable copy from the SAME items, so the two cannot drift.
+fn crumb_bar(items: &[(&str, &str)]) -> String {
+    let mut list: Vec<serde_json::Value> = Vec::new();
+    for (i, (label, href)) in items.iter().enumerate() {
+        let mut el = serde_json::Map::new();
+        el.insert(
+            "@type".to_string(),
+            serde_json::Value::String("ListItem".to_string()),
+        );
+        el.insert(
+            "position".to_string(),
+            serde_json::Value::from((i + 1) as u64),
+        );
+        el.insert(
+            "name".to_string(),
+            serde_json::Value::String((*label).to_string()),
+        );
+        // The last crumb is the page being read: Google allows its `item` to be
+        // omitted, and the call sites pass an empty href for it.
+        if !href.is_empty() {
+            el.insert(
+                "item".to_string(),
+                serde_json::Value::String(format!("{}{}", ORIGIN, href)),
+            );
+        }
+        list.push(serde_json::Value::Object(el));
+    }
+    let mut root = serde_json::Map::new();
+    root.insert(
+        "@context".to_string(),
+        serde_json::Value::String("https://schema.org".to_string()),
+    );
+    root.insert(
+        "@type".to_string(),
+        serde_json::Value::String("BreadcrumbList".to_string()),
+    );
+    root.insert(
+        "itemListElement".to_string(),
+        serde_json::Value::Array(list),
+    );
+    // `</` inside a name would end the script element early.
+    let ld = serde_json::Value::Object(root)
+        .to_string()
+        .replace("</", "<\\/");
+    format!(
+        "{}\n<script type=\"application/ld+json\">{}</script>",
+        crumb_bar_visual(items),
+        ld
     )
 }
 
@@ -815,6 +873,15 @@ pub async fn render_listing_page(
         listing_id,
     );
     let footer = footer_html(&state.db).await;
+    // W27 — this legacy listing page carried a hand-rolled trail with no schema;
+    // the shared trail emits the BreadcrumbList alongside it.
+    let city_crumb_href = format!("/zaarhub/{}", slug);
+    let crumbs = crumb_bar(&[
+        ("ZaarHub", "/"),
+        ("Cities", "/zaarhub"),
+        (city_name.as_str(), city_crumb_href.as_str()),
+        (name.as_str(), ""),
+    ]);
 
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
@@ -871,8 +938,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 {shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub/{slug}">← Back to {city_name}</a></nav></div></header>
 <div class="page">
-<div class="breadcrumb"><a href="/zaarhub">Cities</a> › <a href="/zaarhub/{slug}">{city_name}</a> › {name}</div>
-<div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{verified_html}{claimed_html}{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}{freshness_html}</div></div>
+{crumbs}<div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{verified_html}{claimed_html}{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}{freshness_html}</div></div>
 <div class="detail-meta">{addr_html}{phone_html}{web_html}{maps_html}</div>
 {offers_html}
 </div>
@@ -884,6 +950,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         slug = h(&slug),
         id = listing_id,
         schema = schema,
+        crumbs = crumbs,
         name = h(&name),
         city_name = h(&city_name),
         logo_html = logo_html,
