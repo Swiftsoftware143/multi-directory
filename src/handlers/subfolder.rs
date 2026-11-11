@@ -1510,6 +1510,74 @@ pub async fn business_detail(
         None => None,
     };
 
+    // Related listings: same category first, then nearest (when we know where this one is),
+    // then best rated. Every card is a real crawlable href to that listing's own page, so a
+    // crawler arriving at any business can walk on to its neighbours instead of dead-ending,
+    // and a shopper always has somewhere to go next.
+    let related: Vec<BizCard> = match sqlx::query(
+        "SELECT b.name, b.slug, b.rating, b.review_count, b.address, dc.name AS category \
+         FROM businesses b \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
+           AND coalesce(b.slug, '') <> '' \
+         ORDER BY CASE WHEN $3::uuid IS NOT NULL AND b.category_id = $3::uuid THEN 0 ELSE 1 END, \
+                  CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
+                            AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL \
+                       THEN (b.latitude - $4::float8) ^ 2 + (b.longitude - $5::float8) ^ 2 \
+                       ELSE 1e9 END, \
+                  b.rating DESC NULLS LAST, b.review_count DESC \
+         LIMIT 6",
+    )
+    .bind(dir.id)
+    .bind(biz_id)
+    .bind(category_id)
+    .bind(lat)
+    .bind(lng)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows
+            .iter()
+            .map(|r| BizCard {
+                name: r.try_get("name").unwrap_or_default(),
+                slug: r.try_get("slug").unwrap_or_default(),
+                category: r.try_get("category").unwrap_or(None),
+                rating: r
+                    .try_get::<Option<f64>, _>("rating")
+                    .unwrap_or(None)
+                    .unwrap_or(0.0),
+                review_count: r
+                    .try_get::<Option<i32>, _>("review_count")
+                    .unwrap_or(None)
+                    .unwrap_or(0),
+                address: r.try_get("address").unwrap_or(None),
+            })
+            .collect(),
+        Err(e) => {
+            // Decorative section: never fail the page over it, but never swallow it silently
+            // either (that is how the related-table export gap stayed invisible).
+            eprintln!("related businesses query failed for {biz_id}: {e}");
+            Vec::new()
+        }
+    };
+    let related_html = if related.is_empty() {
+        String::new()
+    } else {
+        let cards: Vec<String> = related
+            .iter()
+            .map(|b| card_html(&base, &dir.slug, b))
+            .collect();
+        let heading = match &category {
+            Some(c) => format!("More {} in {}", h(c), h(&city)),
+            None => format!("Similar businesses in {}", h(&city)),
+        };
+        format!(
+            "<h2 style=\"font-size:1.1rem;margin:28px 0 12px\">{}</h2><div class=\"grid\">{}</div>",
+            heading,
+            cards.join("")
+        )
+    };
+
     let canonical = format!("{}/{}/businesses/{}", base, dir.slug, biz_slug);
     // One trail for both the visible crumbs and the BreadcrumbList JSON-LD: Home › City ›
     // Businesses › Category › Business, so every level of the new category surface is one
@@ -1707,6 +1775,7 @@ pub async fn business_detail(
 {rows}
 <p class="row"><a href="{base}/{dslug}/businesses">← All businesses in {city}</a></p>
 </div>
+{related}
 {end}"#,
         ctx = ctx_script,
         start = shell_start(
@@ -1732,6 +1801,7 @@ pub async fn business_detail(
             _ => String::new(),
         },
         rows = rows,
+        related = related_html,
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&city),
