@@ -3602,6 +3602,32 @@ function renderBizPage(d){
   if(bikeScore!==null)walkBits.push('Bike '+bikeScore)
   var walkLine=walkBits.length?'<div class="zh-walk-score" style="margin-top:6px;font-size:.82rem;color:var(--text-light)">'+walkBits.join(' · ')+'</div>':''
 
+  // ── Reviews: TWO TIERS (card W23) ───────────────────────────────────────────────
+  // Row 1 "Google Reviews" = the imported public-listing aggregate (imported_rating /
+  // imported_review_count), linked to that business on Google Maps. Row 2 "Community Reviews" =
+  // our OWN approved reviews (zaarhub_review_count / community_rating, averaged server-side because
+  // the list below is capped at 10), linked to the list on this page. Generic labels; the two
+  // numbers are never mixed, and a row with no data is not rendered at all — a brand-new listing
+  // gets one Community row saying "No reviews yet", never an empty Google row.
+  var gCount=Number(d.imported_review_count||0)
+  var gRating=(gCount>0&&typeof d.imported_rating==='number')?d.imported_rating:null
+  var cCount=(typeof d.zaarhub_review_count==='number')?d.zaarhub_review_count:((d.reviews&&d.reviews.length)||0)
+  var cRating=(cCount>0&&typeof d.community_rating==='number')?d.community_rating:null
+  function zhStars(n){if(typeof n!=='number')return '☆☆☆☆☆';var sr=Math.max(0,Math.min(5,Math.round(n)));return '★'.repeat(sr)+'☆'.repeat(5-sr)}
+  var zhRowStyle='display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;text-decoration:none;color:inherit;font-size:.88rem'
+  var gUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent([b.name,b.address,b.city,b.state].filter(Boolean).join(', '))
+  var reviewTiers=''
+  if(gCount>0){
+    reviewTiers+='<a id="zhGoogleReviewsRow" href="'+gUrl+'" target="_blank" rel="noopener" style="'+zhRowStyle+'">'+
+      '<span style="font-weight:600">Google Reviews</span>'+
+      '<span style="color:var(--text-light)"><span style="color:var(--warm,#f59e0b);letter-spacing:1px">'+zhStars(gRating)+'</span>'+(gRating!==null?' '+Number(gRating).toFixed(1):'')+' · '+gCount.toLocaleString()+' review'+(gCount===1?'':'s')+'</span>'+
+      '<span style="color:var(--teal);font-weight:600;white-space:nowrap">View on Google ↗</span></a>'
+  }
+  reviewTiers+='<div id="zhCommunityReviewsRow" onclick="zhScrollToCommunity()" style="'+zhRowStyle+';cursor:pointer;'+(gCount>0?'border-top:1px solid var(--border-light);':'')+'">'+
+    '<span style="font-weight:600">Community Reviews</span>'+
+    '<span style="color:var(--text-light)">'+(cCount>0?('<span style="color:var(--warm,#f59e0b);letter-spacing:1px">'+zhStars(cRating)+'</span>'+(cRating!==null?' '+Number(cRating).toFixed(1):'')+' · '+cCount+' review'+(cCount===1?'':'s')):'No reviews yet')+'</span>'+
+    '<span style="color:var(--teal);font-weight:600;white-space:nowrap">'+(cCount>0?'Read reviews ↓':'Be the first →')+'</span></div>'
+
   el.innerHTML='<div class="zh-biz-hero" style="background:linear-gradient(135deg,#0f172a 0%,#134e4a 70%,#0d9488 100%);color:#fff;padding:48px 24px"><div class="zh-section-inner" style="max-width:1280px;margin:0 auto"><a href="#/city/'+state.slug+'" style="color:#94a3b8;font-size:.85rem;margin-bottom:12px;display:inline-block">← Back to '+toTitle(state.slug)+'</a><h1 style="font-size:2rem;font-weight:800;margin-bottom:4px">'+esc(b.name)+'</h1><div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:.9rem;color:#94a3b8">'+
   (b.rating?'<span>'+stars+' ('+reviewByline(d)+')</span>':'')+
   (b.category?'<span>📁 '+esc(b.category)+'</span>':'')+
@@ -3617,10 +3643,27 @@ function renderBizPage(d){
   (d.hours?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🕐 Hours</h3><p style="color:var(--text-light);white-space:pre-wrap;font-size:.85rem">'+esc(JSON.stringify(b.hours,null,2))+'</p></div>':'')+
   '</div><div>'+
   (d.deals&&d.deals.length?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🎁 Current Deals</h3>'+d.deals.map(function(dl){return '<div style="background:var(--bg-teal);padding:14px;border-radius:8px;margin-bottom:8px"><strong>'+esc(dl.title)+'</strong>'+(dl.deal_price?'<div style="color:var(--teal);font-weight:700;margin-top:4px">$'+esc(dl.deal_price)+(dl.original_price?' <span style="text-decoration:line-through;color:var(--text-muted)">$'+esc(dl.original_price)+'</span>':'')+'</div>':'')+(dl.description?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(dl.description)+'</div>':'')+'</div>'}).join('')+'</div>':'')+
-  '<!-- Reviews Section --><div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">⭐ ZaarHub Reviews ('+(typeof d.zaarhub_review_count==='number'?d.zaarhub_review_count:(d.reviews?d.reviews.length:0))+')</h3>'+
+  '<!-- Reviews Section --><div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">Reviews</h3><div id="zhReviewTiers" style="border:1px solid var(--border-light);border-radius:12px;overflow:hidden;margin-bottom:12px">'+reviewTiers+'</div><button id="zhSubmitReviewBtn" onclick="zhToggleReviewForm()" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem;margin-bottom:16px">✍️ Submit a Review</button><div id="zhCommunityReviews"><h4 style="margin-bottom:6px;font-size:.95rem;font-weight:600">Community Reviews ('+cCount+')</h4>'+
   (d.reviews&&d.reviews.length?d.reviews.map(function(rv){var s='★'.repeat(rv.rating)+'☆'.repeat(5-rv.rating);return '<div style="padding:10px 0;border-bottom:1px solid var(--border-light)"><div style="font-size:.9rem">'+s+'</div><div style="font-weight:600;font-size:.85rem;margin-top:2px">'+esc(rv.reviewer_name||'Anonymous')+(rv.is_verified?' <span style="background:#dcfce7;color:#166534;font-size:.7rem;padding:1px 6px;border-radius:6px;font-weight:600">✅ Verified customer</span>':'')+'</div>'+(rv.content?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(rv.content)+'</div>':'')+'</div>'}).join(''):'<p style="color:var(--text-light);font-size:.85rem">'+(Number(d.imported_review_count||b.review_count||0)>0?'The '+Number(d.imported_review_count||b.review_count||0).toLocaleString()+' reviews and '+(b.rating||'')+'-star rating above come from public business listings. No ZaarHub customer has reviewed this place yet — be the first!':'No reviews yet — be the first!')+'</p>')+
-  '</div><!-- Write Review --><div id="zhReviewForm" style="background:var(--bg-teal);padding:16px;border-radius:12px;margin-bottom:16px"><h4 style="font-size:.95rem;margin-bottom:8px;font-weight:600">✍️ Write a Review</h4><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Rating</label><div id="zhStarPicker" style="font-size:1.5rem;cursor:pointer"><span data-star="1" onclick="pickStar(1)" style="color:var(--border)">★</span><span data-star="2" onclick="pickStar(2)" style="color:var(--border)">★</span><span data-star="3" onclick="pickStar(3)" style="color:var(--border)">★</span><span data-star="4" onclick="pickStar(4)" style="color:var(--border)">★</span><span data-star="5" onclick="pickStar(5)" style="color:var(--border)">★</span></div></div><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Your thoughts</label><textarea id="zhReviewContent" placeholder="Share your experience..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;resize:vertical;min-height:60px;font-family:inherit"></textarea></div><button onclick="handleSubmitReview('+ (b.id||state.bizId||'') +')" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem">⭐ Post Review</button></div>'+
+  '</div></div><!-- Write Review --><div id="zhReviewForm" style="display:none;background:var(--bg-teal);padding:16px;border-radius:12px;margin-bottom:16px"><h4 style="font-size:.95rem;margin-bottom:8px;font-weight:600">✍️ Write a Review</h4><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Rating</label><div id="zhStarPicker" style="font-size:1.5rem;cursor:pointer"><span data-star="1" onclick="pickStar(1)" style="color:var(--border)">★</span><span data-star="2" onclick="pickStar(2)" style="color:var(--border)">★</span><span data-star="3" onclick="pickStar(3)" style="color:var(--border)">★</span><span data-star="4" onclick="pickStar(4)" style="color:var(--border)">★</span><span data-star="5" onclick="pickStar(5)" style="color:var(--border)">★</span></div></div><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Your thoughts</label><textarea id="zhReviewContent" placeholder="Share your experience..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;resize:vertical;min-height:60px;font-family:inherit"></textarea></div><button onclick="handleSubmitReview('+ (b.id||state.bizId||'') +')" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem">⭐ Post Review</button></div>'+
   '</div></div></div>'
+}
+
+// ── Two-tier review rows (card W23) ──
+// The Google row is a plain link out to that business on Google Maps. The Community row is an
+// in-page jump: an href="#…" would rewrite the SPA's route hash and navigate AWAY from the
+// business page, so it scrolls programmatically instead.
+function zhScrollToCommunity(){
+  var el=document.getElementById('zhCommunityReviews')
+  if(el)el.scrollIntoView({behavior:'smooth',block:'start'})
+  zhToggleReviewForm(false)
+}
+function zhToggleReviewForm(show){
+  var f=document.getElementById('zhReviewForm')
+  if(!f)return
+  var open=(typeof show==='boolean')?show:(f.style.display==='none')
+  f.style.display=open?'block':'none'
+  if(open){var t=document.getElementById('zhReviewContent');if(t)try{t.focus()}catch(e){}}
 }
 
 // ── Review Star Picker ──

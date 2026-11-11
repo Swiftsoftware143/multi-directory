@@ -1909,11 +1909,21 @@ pub async fn get_business_detail(
     // plus our own approved rows. Presenting the aggregate as if it were ZaarHub's own reviews is
     // what made the page contradict itself: a listing with 199 imported reviews and none of ours
     // showed "199 reviews" in the header and "ZaarHub Reviews (0)" in the panel. Both halves are
-    // exposed so the page can NAME the source. The sub-selects are safe on the `business_listings`
-    // fallback path too (no matching row -> NULL -> 0).
-    let (zaarhub_review_count, imported_review_count): (i64, i32) = sqlx::query_as(
+    // exposed so the page can NAME the source (card W23: one row for the Google/public-listing
+    // aggregate, one row for our own community reviews). `community_rating` is the average of the
+    // approved rows, computed here because the `reviews` list below is capped at 10 — averaging a
+    // truncated list would print a number that is not the real average. The sub-selects are safe
+    // on the `business_listings` fallback path too (no matching row -> NULL -> 0/NULL).
+    let (zaarhub_review_count, community_rating, imported_review_count, imported_rating): (
+        i64,
+        Option<f64>,
+        i32,
+        Option<f64>,
+    ) = sqlx::query_as(
         r#"SELECT (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
-                  COALESCE((SELECT imported_review_count FROM businesses WHERE id = $1), 0)"#,
+                  (SELECT AVG(rating)::double precision FROM reviews WHERE business_id = $1 AND status = 'approved'),
+                  COALESCE((SELECT imported_review_count FROM businesses WHERE id = $1), 0),
+                  (SELECT imported_rating FROM businesses WHERE id = $1)"#,
     )
     .bind(biz.id)
     .fetch_one(&s.db)
@@ -1945,7 +1955,9 @@ pub async fn get_business_detail(
         "review_count": biz.review_count,
         // Split so the page can label where the rating came from (see the query above).
         "zaarhub_review_count": zaarhub_review_count,
+        "community_rating": community_rating,
         "imported_review_count": imported_review_count,
+        "imported_rating": imported_rating,
         "category_name": category_name.clone(),
         "category": category_name,
         // Exposed so the visitor tracker can tag demand events with the business's
