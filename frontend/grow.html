@@ -121,6 +121,18 @@ a:hover{text-decoration:underline}
 .grow-footer .footer-links a{font-size:.85rem;color:var(--text-light)}
 .grow-footer .footer-links a:hover{color:var(--teal)}
 </style>
+<style id="zh-mkt-nav-css">
+.zh-crumbs{font-size:13px;color:#64748b;margin:0 0 18px;line-height:1.5}
+.zh-crumbs a{color:#f27f2f;text-decoration:none}
+.zh-crumbs a:hover{text-decoration:underline}
+.zh-crumbs .zh-sep{opacity:.5;margin:0 6px}
+.zh-onward{margin:36px 0 8px;padding:18px 20px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc}
+.zh-onward h2{font-size:15px;margin:0 0 10px;color:#0f172a}
+.zh-onward ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 10px}
+.zh-onward li{margin:0}
+.zh-onward a{display:inline-block;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid #cbd5e1;color:#0f172a;text-decoration:none;font-size:14px}
+.zh-onward a:hover{border-color:#f27f2f;color:#f27f2f}
+</style>
 </head>
 <body>
 
@@ -140,7 +152,8 @@ a:hover{text-decoration:underline}
 <!-- Hero -->
 <div class="hero-section">
   <div class="hero-inner">
-    <h1>Grow Your Local Presence <br>with <span class="highlight">ZaarHub</span></h1>
+    <nav class="zh-crumbs" aria-label="Breadcrumb"><a href="/">ZaarHub</a><span class="zh-sep">›</span><span aria-current="page">Grow your business</span></nav>
+<h1>Grow Your Local Presence <br>with <span class="highlight">ZaarHub</span></h1>
     <p>Connect with customers in your community, manage your reputation, and drive more foot traffic — all from one simple dashboard.</p>
     <div class="hero-cta">
       <button class="grow-btn-primary" onclick="scrollToClaim()">🚀 Claim Your Free Listing</button>
@@ -371,5 +384,6 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
   });
 });
 </script>
+<nav class="zh-onward" aria-label="Keep exploring"><h2>Keep exploring</h2><ul><li><a href="/claim.html">Claim your listing</a></li><li><a href="/guides/business-owner-guide.html">Business owner guide</a></li><li><a href="/guides/merchant-guide.html">Merchant guide</a></li><li><a href="/zaarhub">Browse directories</a></li></ul></nav>
 </body>
 </html>

@@ -524,6 +524,11 @@ fn inject_city_document(
     // Card W36: a visible, clicked trail and a way onward in the SERVED HTML, not
     // only in structured data — the SPA search box cannot help a crawler or a
     // visitor who does not wait for JavaScript.
+    // Card W36 (hardened): the trail is what keeps the city hub from being a dead end
+    // for anyone who does not run JavaScript, so it must never be silently dropped.
+    // When the shell has no marker (a homepage rewrite, a custom homepage HTML, an old
+    // cached copy), the trail is inserted at the top of <body> instead of being lost —
+    // a missing marker is a layout question, not a reason to publish a dead end.
     const MARKER: &str = "<!--ZH-NAV-->";
     match with_head.find(MARKER) {
         Some(pos) => format!(
@@ -532,7 +537,15 @@ fn inject_city_document(
             nav_html,
             &with_head[pos + MARKER.len()..]
         ),
-        None => with_head,
+        None => match body_open_end(&with_head) {
+            Some(pos) => {
+                eprintln!(
+                    "subfolder: homepage shell has no ZH-NAV marker — trail injected at <body>"
+                );
+                format!("{}{}{}", &with_head[..pos], nav_html, &with_head[pos..])
+            }
+            None => with_head,
+        },
     }
 }
 
@@ -1025,12 +1038,7 @@ struct ExploreGroup {
 }
 
 /// Push a link unless it is the page being rendered or already present.
-fn push_link(
-    out: &mut Vec<(String, String)>,
-    label: &str,
-    href: &str,
-    skip: &str,
-) {
+fn push_link(out: &mut Vec<(String, String)>, label: &str, href: &str, skip: &str) {
     let href = href.trim_end_matches('/');
     if href.is_empty() || href == skip.trim_end_matches('/') {
         return;
@@ -1135,7 +1143,12 @@ async fn city_relationships(
         } else {
             format!("{}/{}/{}", base, dir.slug, t.slug)
         };
-        push_link(&mut links, &format!("{} ({})", t.label, t.count), &href, skip);
+        push_link(
+            &mut links,
+            &format!("{} ({})", t.label, t.count),
+            &href,
+            skip,
+        );
     }
     if !links.is_empty() {
         groups.push(ExploreGroup {
@@ -1170,7 +1183,11 @@ async fn city_relationships(
             if slug.is_empty() || title.is_empty() {
                 continue;
             }
-            let seg = if kind == "article" { "articles" } else { "blog" };
+            let seg = if kind == "article" {
+                "articles"
+            } else {
+                "blog"
+            };
             push_link(
                 &mut links,
                 &title,
@@ -1251,13 +1268,7 @@ async fn explore_block(
             .links
             .iter()
             .take(12)
-            .map(|(label, href)| {
-                format!(
-                    "<a class=\"chip\" href=\"{}\">{}</a>",
-                    h(href),
-                    h(label)
-                )
-            })
+            .map(|(label, href)| format!("<a class=\"chip\" href=\"{}\">{}</a>", h(href), h(label)))
             .collect();
         if chips.is_empty() {
             continue;
@@ -1299,10 +1310,7 @@ async fn neighbour_links(
            FROM business_articles WHERE directory_id = $1 AND status = 'published' \
          ) ";
     let mut out: Vec<(String, String)> = Vec::new();
-    for (dirn, ord, prefix) in [
-        ("<", "DESC", "← Previous: "),
-        (">", "ASC", "Next: "),
-    ] {
+    for (dirn, ord, prefix) in [("<", "DESC", "← Previous: "), (">", "ASC", "Next: ")] {
         let sql = format!(
             "{}SELECT slug, kind, title FROM u WHERE at IS NOT NULL AND at {} $2 ORDER BY at {} LIMIT 1",
             UNION, dirn, ord
@@ -1321,7 +1329,11 @@ async fn neighbour_links(
             if slug.is_empty() {
                 continue;
             }
-            let seg = if kind == "article" { "articles" } else { "blog" };
+            let seg = if kind == "article" {
+                "articles"
+            } else {
+                "blog"
+            };
             push_link(
                 &mut out,
                 &format!("{}{}", prefix, title),
@@ -1347,7 +1359,42 @@ const NAV_CSS: &str = "<style>\
 .zh-navbar .explore-group h3{font-size:12px;font-weight:600;color:#6b7280;margin:0 0 5px;text-transform:uppercase;letter-spacing:.03em}\
 .zh-navbar .chip{display:inline-block;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:999px;padding:5px 12px;font-size:12.5px;margin:0 6px 6px 0;text-decoration:none}\
 .zh-navbar .chip:hover{background:#ffedd5}\
+.zh-navbar .zh-quicknav{margin:0 0 10px}\
+.zh-navbar .zh-quicknav h2{font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;margin:0 0 5px}\
+.zh-navbar .zh-quicknav .chips{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;padding-bottom:2px;scrollbar-width:none}\
+.zh-navbar .zh-quicknav .chips::-webkit-scrollbar{display:none}\
+.zh-navbar .zh-quicknav .chip{margin:0;flex:0 0 auto}\
 </style>";
+
+/// A single compact band of onward links: one scrollable row, capped so the strip
+/// never pushes the page's own hero down. Used on the two SPA surfaces (network
+/// home and city page), where the page below renders its own layout.
+fn compact_explore(links: Vec<(String, String)>) -> String {
+    let mut chips = String::new();
+    let mut seen = 0usize;
+    for (label, href) in links {
+        if seen >= 8 {
+            break;
+        }
+        let tag = format!("href=\"{}\"", h(&href));
+        if chips.contains(&tag) {
+            continue;
+        }
+        chips.push_str(&format!(
+            "<a class=\"chip\" href=\"{}\">{}</a>",
+            h(&href),
+            h(&label)
+        ));
+        seen += 1;
+    }
+    if chips.is_empty() {
+        return String::new();
+    }
+    format!(
+        "<section class=\"explore zh-quicknav\" aria-label=\"Keep exploring\"><h2>Keep exploring</h2><div class=\"chips\">{}</div></section>",
+        chips
+    )
+}
 
 /// The served navigation strip for one surface: a small inline stylesheet, the
 /// breadcrumb trail, then the "Keep exploring" block.
@@ -1378,7 +1425,12 @@ pub async fn home_nav_html(pool: &PgPool) -> String {
             if slug.is_empty() || city.is_empty() {
                 continue;
             }
-            push_link(&mut links, &format!("{} directory", city), &format!("/{}", slug), "/");
+            push_link(
+                &mut links,
+                &format!("{} directory", city),
+                &format!("/{}", slug),
+                "/",
+            );
         }
     }
     if !links.is_empty() {
@@ -1392,7 +1444,12 @@ pub async fn home_nav_html(pool: &PgPool) -> String {
     push_link(&mut links, "All cities", "/zaarhub", "/");
     push_link(&mut links, "Customer sign in", "/visitor", "/");
     push_link(&mut links, "Business login", "/portal", "/");
-    push_link(&mut links, "Add your business", "/submit-business.html", "/");
+    push_link(
+        &mut links,
+        "Add your business",
+        "/submit-business.html",
+        "/",
+    );
     push_link(&mut links, "Claim your listing", "/claim", "/");
     if !links.is_empty() {
         groups.push(ExploreGroup {
@@ -1401,28 +1458,12 @@ pub async fn home_nav_html(pool: &PgPool) -> String {
         });
     }
 
-    let mut body = String::new();
+    // One compact scrollable row: cities first, then the owner entry points.
+    let mut flat: Vec<(String, String)> = Vec::new();
     for g in &groups {
-        let chips: Vec<String> = g
-            .links
-            .iter()
-            .take(24)
-            .map(|(label, href)| format!("<a class=\"chip\" href=\"{}\">{}</a>", h(href), h(label)))
-            .collect();
-        body.push_str(&format!(
-            "<div class=\"explore-group\"><h3>{}</h3><div class=\"chips\">{}</div></div>",
-            h(&g.heading),
-            chips.join("")
-        ));
+        flat.extend(g.links.iter().cloned());
     }
-    let explore = if body.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "<section class=\"explore\" aria-label=\"Keep exploring\"><h2>Keep exploring</h2>{}</section>",
-            body
-        )
-    };
+    let explore = compact_explore(flat);
     nav_strip(
         "<div class=\"crumbs\" aria-label=\"Breadcrumb\"><span>ZaarHub home</span></div>",
         &explore,
@@ -1433,12 +1474,13 @@ pub async fn home_nav_html(pool: &PgPool) -> String {
 /// the city's real relationships. This is what makes the city hub a hub instead
 /// of a dead end for anyone who does not run JavaScript.
 async fn city_nav_html(pool: &PgPool, dir: &DirectoryRec, base: &str, canonical: &str) -> String {
-    let crumbs = breadcrumbs(&[
-        ("ZaarHub", &format!("{}/", base)),
-        (&dir.name, canonical),
-    ]);
-    let explore = explore_block(pool, dir, base, canonical, Vec::new()).await;
-    nav_strip(&crumbs, &explore)
+    let crumbs = breadcrumbs(&[("ZaarHub", &format!("{}/", base)), (&dir.name, canonical)]);
+    // One compact row (categories first) so the city's own hero stays in view.
+    let mut flat: Vec<(String, String)> = Vec::new();
+    for g in city_relationships(pool, dir, base, canonical, 3).await {
+        flat.extend(g.links);
+    }
+    nav_strip(&crumbs, &compact_explore(flat))
 }
 
 /// The active businesses of ONE town, in the same order the city grid uses.
@@ -2390,8 +2432,14 @@ pub async fn business_detail(
     let related_html = if related.is_empty() {
         // No neighbours to show as cards: fall back to the shared block so the page
         // still cannot dead-end (card W36).
-        explore_block(pool, &dir, &base, &format!("{}/{}/businesses/{}", base, dir.slug, biz_slug), Vec::new())
-            .await
+        explore_block(
+            pool,
+            &dir,
+            &base,
+            &format!("{}/{}/businesses/{}", base, dir.slug, biz_slug),
+            Vec::new(),
+        )
+        .await
     } else {
         let cards: Vec<String> = related
             .iter()
@@ -4070,8 +4118,9 @@ pub fn not_found_page(msg: &str) -> Response<Body> {
 <meta name=\"robots\" content=\"noindex,follow\"><title>Page not found</title>\
 <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"></head>\
 <body style=\"font-family:system-ui,-apple-system,sans-serif;max-width:640px;margin:80px auto;padding:0 24px;line-height:1.6\">\
-<h1 style=\"font-size:1.6rem\">Page not found</h1><p>{}</p>\
-<p><a href=\"/\">Go to the homepage</a></p></body></html>",
+<style>.zh-nf-link{{display:inline-block;padding:6px 12px;border:1px solid #cbd5e1;border-radius:999px;color:#0f172a;text-decoration:none}}.zh-nf-link:hover{{border-color:#f27f2f;color:#f27f2f}}</style>\
+<nav class=\"zh-crumbs\" aria-label=\"Breadcrumb\" style=\"font-size:13px;color:#6b7280\"><a href=\"/\" style=\"color:#f27f2f;text-decoration:none\">ZaarHub</a> <span style=\"opacity:.5;margin:0 6px\">&#8250;</span> <span aria-current=\"page\">Page not found</span></nav><h1 style=\"font-size:1.6rem\">Page not found</h1><p>{}</p>\
+<ul style=\"list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:20px\"><li><a href=\"/\" class=\"zh-nf-link\">Go to the homepage</a></li><li><a href=\"/zaarhub\" class=\"zh-nf-link\">Browse all cities</a></li><li><a href=\"/guides/index.html\" class=\"zh-nf-link\">Read the guides</a></li><li><a href=\"/claim.html\" class=\"zh-nf-link\">Claim your business</a></li></ul></body></html>",
         h(msg)
     );
     let mut r = html_response(StatusCode::NOT_FOUND, body);

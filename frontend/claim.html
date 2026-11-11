@@ -119,13 +119,26 @@ a:hover{text-decoration:underline}
 .claim-footer{text-align:center;padding:24px;font-size:.8rem;color:var(--text-muted);border-top:1px solid var(--border-light)}
 .claim-footer a{color:var(--teal)}
 </style>
+<style id="zh-mkt-nav-css">
+.zh-crumbs{font-size:13px;color:#64748b;margin:0 0 18px;line-height:1.5}
+.zh-crumbs a{color:#f27f2f;text-decoration:none}
+.zh-crumbs a:hover{text-decoration:underline}
+.zh-crumbs .zh-sep{opacity:.5;margin:0 6px}
+.zh-onward{margin:36px 0 8px;padding:18px 20px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc}
+.zh-onward h2{font-size:15px;margin:0 0 10px;color:#0f172a}
+.zh-onward ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 10px}
+.zh-onward li{margin:0}
+.zh-onward a{display:inline-block;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid #cbd5e1;color:#0f172a;text-decoration:none;font-size:14px}
+.zh-onward a:hover{border-color:#f27f2f;color:#f27f2f}
+</style>
 </head>
 <body>
 
 <div class="claim-header">
   <div class="claim-header-inner">
     <button class="back-btn" onclick="goBack()">← Back</button>
-    <h1>Claim Your Business</h1>
+    <nav class="zh-crumbs" aria-label="Breadcrumb"><a href="/">ZaarHub</a><span class="zh-sep">›</span><span aria-current="page">Claim your business</span></nav>
+<h1>Claim Your Business</h1>
   </div>
 </div>
 
@@ -458,5 +471,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
+<nav class="zh-onward" aria-label="Keep exploring"><h2>Keep exploring</h2><ul><li><a href="/guides/business-owner-guide.html">Why claim a listing</a></li><li><a href="/submit-business.html">List a new business</a></li><li><a href="/zaarhub">Browse directories</a></li><li><a href="/guides/index.html">All guides</a></li></ul></nav>
 </body>
 </html>

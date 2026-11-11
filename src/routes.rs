@@ -3264,6 +3264,22 @@ pub fn create_router(s: AppState) -> Router {
                                         None => themed.push_str(&cities_nav),
                                     }
                                 }
+                                // Card W36: the homepage is the top of the trail but never
+                                // a dead end — the served HTML carries the cities, the
+                                // owner entry points and a "you are here" marker.
+                                let home_nav = crate::handlers::subfolder::home_nav_html(
+                                    &_pool_for_host,
+                                )
+                                .await;
+                                if !home_nav.is_empty() {
+                                    match themed.find("<!--ZH-NAV-->") {
+                                        Some(pos) => themed.replace_range(
+                                            pos..pos + "<!--ZH-NAV-->".len(),
+                                            &home_nav,
+                                        ),
+                                        None => themed.push_str(&home_nav),
+                                    }
+                                }
                                 themed.into_bytes()
                             } else {
                                 content

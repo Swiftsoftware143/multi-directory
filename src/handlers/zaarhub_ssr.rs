@@ -15,6 +15,29 @@ fn h(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// A clickable trail for the hand-built SSR surface (home › section › this page).
+/// Every level that is not the current page is a real link, so a visitor can go
+/// back UP as well as on. Rendered with its own inline style because these pages
+/// carry a bespoke <style> block instead of the shared subfolder stylesheet.
+fn crumb_bar(items: &[(&str, &str)]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (i, (label, href)) in items.iter().enumerate() {
+        if i + 1 == items.len() || href.is_empty() {
+            parts.push(format!("<span aria-current=\"page\">{}</span>", h(label)));
+        } else {
+            parts.push(format!("<a href=\"{}\">{}</a>", h(href), h(label)));
+        }
+    }
+    format!(
+        "<style>.zh-crumbs{{max-width:1200px;margin:14px auto 0;padding:0 20px;font-size:13px;color:#6b7280}}\
+.zh-crumbs a{{color:#f27f2f;text-decoration:none}}\
+.zh-crumbs a:hover{{text-decoration:underline}}\
+.zh-crumbs .zh-sep{{opacity:.5;margin:0 6px}}</style>\
+<nav class=\"zh-crumbs\" aria-label=\"Breadcrumb\">{}</nav>",
+        parts.join("<span class=\"zh-sep\">›</span>")
+    )
+}
+
 /// Shared public page-shell chrome (card B89): the entry-point bar and the
 /// inline newsletter signup, rendered on every SSR public page. Reuses the
 /// exact same markup/CSS/JS as the subfolder shell so the surfaces cannot
@@ -362,6 +385,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <body>
 {shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub-city.html" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:14px;font-weight:500">🔍 Search</a></nav></div></header>
+{crumbs}
 {hero}
 {city_picks}
 <div class="listing-grid">{listings}</div>
@@ -373,6 +397,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         desc = h(&page_desc),
         slug = h(&slug),
         city_name = h(&city_name),
+        crumbs = crumb_bar(&[("ZaarHub", "/"), ("Cities", "/zaarhub"), (city_name.as_str(), "")]),
         hero = hero_section,
         city_picks = city_picks_section,
         footer = footer,
@@ -382,6 +407,29 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         shell = shell_chrome(Some(&slug), &city_name),
     ))
         .into_response()
+}
+
+/// Card W36 — "Keep exploring": real onward links for the SSR surfaces that do
+/// not go through the subfolder page shell (the all-cities index and the legal
+/// pages), so none of them is a dead end. `links` is (label, href) pairs.
+fn explore_section(links: &[(&str, &str)]) -> String {
+    let mut chips = String::new();
+    for (label, href) in links {
+        chips.push_str(&format!(
+            "<a class=\"zh-chip\" href=\"{}\">{}</a>",
+            h(href),
+            h(label)
+        ));
+    }
+    format!(
+        "<style>.zh-explore{{max-width:1100px;margin:28px auto;padding:0 20px;font-family:Inter,system-ui,sans-serif}}\
+.zh-explore h2{{font-size:20px;font-weight:800;color:#2b3255;margin-bottom:10px}}\
+.zh-explore .zh-chip{{display:inline-block;background:#fff7f0;color:#c2410c;border:1px solid #fed7aa;\
+border-radius:999px;padding:6px 14px;font-size:13px;margin:0 8px 8px 0;text-decoration:none}}\
+.zh-explore .zh-chip:hover{{background:#ffedd5}}</style>\
+<section class=\"explore zh-explore\" aria-label=\"Keep exploring\"><h2>Keep exploring</h2><div>{}</div></section>",
+        chips
+    )
 }
 
 /// Render the all-cities index page (SSR)
@@ -533,15 +581,25 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <body>
 {shell}
 <header><span class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></span></header>
+{crumbs}
 <div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 10 Florida cities with thousands of listings, reviews, and deals.</p></div>
 {picks}
 <div class="city-grid">{cities}</div>
+{explore}
 {footer}
 {cookie_banner}
 </body>
 </html>"#,
         picks = picks_section,
         cities = cities_html,
+        explore = explore_section(&[
+            ("Home", "/"),
+            ("Add your business", "/submit-business.html"),
+            ("Claim your listing", "/claim"),
+            ("Business login", "/portal"),
+            ("Customer sign in", "/visitor"),
+        ]),
+        crumbs = crumb_bar(&[("ZaarHub", "/"), ("Cities", "")]),
         footer = footer,
         cookie_banner = COOKIE_BANNER,
         shell = shell_chrome(None, ""),
@@ -852,6 +910,17 @@ pub async fn render_legal_page(
     let title = crate::merge_fields::render(&title, &ctx).text;
     let content = crate::merge_fields::render(&content, &ctx).text;
 
+    // Card W36: onward links for a legal page — never back to itself.
+    let mut legal_links: Vec<(&str, &str)> = vec![("All cities", "/zaarhub"), ("Home", "/")];
+    if slug != "terms" {
+        legal_links.push(("Terms of service", "/legal/terms"));
+    }
+    if slug != "privacy" {
+        legal_links.push(("Privacy policy", "/legal/privacy"));
+    }
+    legal_links.push(("Claim your listing", "/claim"));
+    legal_links.push(("Add your business", "/submit-business.html"));
+
     let footer = footer_html(&state.db).await;
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
@@ -886,13 +955,17 @@ footer a{{color:#f27f2f;text-decoration:none}}
 <body>
 {shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
+{crumbs}
 <div class="page">{content}</div>
+{explore}
 {footer}
 {cookie_banner}
 </body></html>"#,
         title = h(&title),
         slug = h(&slug),
+        crumbs = crumb_bar(&[("ZaarHub", "/"), (title.as_str(), "")]),
         content = content,
+        explore = explore_section(&legal_links),
         footer = footer,
         cookie_banner = COOKIE_BANNER,
         shell = shell_chrome(None, ""),
