@@ -126,36 +126,58 @@ pub async fn register(
         s => s.chars().take(40).collect(),
     };
     let mut slug = slug_base.clone();
-    // The walk must not run dry. The old fixed `base-2 … base-8` candidate list was exhausted
-    // by the ninth tenant that shared a display name and the signup got the bare 500 right back
-    // (measured 2026-10-14: tenants `probe-webhooks` … `probe-webhooks-8`; every signup after
-    // that failed). Try the readable `-2 … -9` first, then a random suffix, so the loop
-    // converges instead of running out of candidates.
-    for attempt in 0..16u32 {
-        let inserted = sqlx::query(
-            "INSERT INTO tenants (id, name, slug, is_active) VALUES (\x241, \x242, \x243, true)",
-        )
-        .bind(tenant_id)
-        .bind(&tenant_name)
-        .bind(&slug)
-        .execute(&s.db)
-        .await;
-        match inserted {
-            Ok(_) => break,
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() && attempt < 15 => {
-                slug = if attempt < 8 {
-                    format!("{slug_base}-{}", attempt + 2)
-                } else {
-                    format!(
-                        "{}-{}",
-                        slug_base,
-                        &Uuid::new_v4().simple().to_string()[..8]
-                    )
-                };
-            }
-            Err(e) => return Err(e.into()),
+    // Resolve the slug with SELECTs BEFORE the transaction: a unique violation inside a Postgres
+    // transaction aborts it, so the old retry-the-INSERT loop could never have worked once the
+    // tenant insert moved into a transaction (which it did, below, so the account and its API key
+    // commit together). Walk `-2 … -9` first, then a random suffix, so the loop converges.
+    let mut attempt = 0u32;
+    loop {
+        let taken: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenants WHERE slug = $1)")
+                .bind(&slug)
+                .fetch_one(&s.db)
+                .await?;
+        if !taken {
+            break;
         }
+        attempt += 1;
+        if attempt > 16 {
+            return Err(AppError::Duplicate(
+                "Could not find a free workspace slug — try a different directory name".to_string(),
+            ));
+        }
+        slug = if attempt <= 8 {
+            format!("{slug_base}-{}", attempt + 1)
+        } else {
+            format!(
+                "{}-{}",
+                slug_base,
+                &Uuid::new_v4().simple().to_string()[..8]
+            )
+        };
     }
+
+    // ── ONE transaction: the workspace, its admin user AND that account's API key ─────────────
+    // Kanban t_7863696b: an account is not provisioned until it holds a key. Minting inside this
+    // transaction means a rolled-back signup leaves no orphan key and a committed signup can never
+    // end without one.
+    let mut tx = s.db.begin().await?;
+
+    sqlx::query(
+        "INSERT INTO tenants (id, name, slug, is_active) VALUES (\x241, \x242, \x243, true)",
+    )
+    .bind(tenant_id)
+    .bind(&tenant_name)
+    .bind(&slug)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(dbe) if dbe.is_unique_violation() => AppError::Duplicate(
+            "A workspace with this slug already exists — try a different directory name"
+                .to_string(),
+        ),
+        _ => e.into(),
+    })?;
 
     // Create user
     let user_id = Uuid::new_v4();
@@ -169,8 +191,19 @@ pub async fn register(
     .bind(&password_hash)
     .bind(&req.name)
     .bind(now)
-    .execute(&s.db)
+    .execute(&mut *tx)
     .await?;
+
+    // The account's API key, in the SAME transaction (sealed for display, hashed for auth).
+    let api_key = crate::handlers::api_key_auto::mint_on(
+        &mut tx,
+        user_id,
+        Some(tenant_id),
+        "auto-provisioned",
+    )
+    .await?;
+
+    tx.commit().await?;
 
     // Loyalty is native Multi-Directory code — there is no per-user IncentiveSwift account to
     // provision here. The only external seam is the onboarding/IQS survey proxy, which the app
@@ -228,6 +261,13 @@ pub async fn register(
                 slug: tenant_slug,
                 is_active: true,
             },
+            api_key: json!({
+                "id": api_key.id.to_string(),
+                "name": api_key.name,
+                "prefix": api_key.prefix,
+                "key": api_key.raw_key,
+                "note": "Your account's API key. View and copy it any time in Settings > API access."
+            }),
         })),
     ))
 }

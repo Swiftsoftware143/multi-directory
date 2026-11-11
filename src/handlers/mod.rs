@@ -32,6 +32,7 @@ pub mod seo_submission;
 pub mod submissions;
 
 pub mod api_complete;
+pub mod api_key_auto;
 pub mod audience;
 pub mod automation;
 pub mod data_company;

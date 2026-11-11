@@ -55,6 +55,10 @@ pub struct RegisterResponse {
     pub expires_in: i64,
     pub user: UserResponse,
     pub tenant: TenantResponse,
+    /// The API key minted INSIDE the signup transaction (kanban t_7863696b): `{id, name, prefix,
+    /// key}`. Every account is provisioned with one; it stays viewable in Settings, so this is a
+    /// convenience for the welcome screen, not the only chance to see it.
+    pub api_key: serde_json::Value,
 }
 
 // ── User ─────────────────────────────────────────────────────────────────────

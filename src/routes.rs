@@ -1633,6 +1633,18 @@ pub fn create_router(s: AppState) -> Router {
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route("/api-keys/verify", post(api_complete::verify_api_key))
+        // ── the account's OWN keys (kanban t_7863696b) ─────────────────────────────────────
+        // Tenant-scoped, not operator-scoped: these are the controls a customer uses in their
+        // own settings — list, view (re-auth), regenerate (atomic).
+        .route("/me/api-keys", get(api_key_auto::my_keys))
+        .route(
+            "/me/api-keys/:id/reveal",
+            post(api_key_auto::reveal_api_key),
+        )
+        .route(
+            "/me/api-keys/:id/regenerate",
+            post(api_key_auto::regenerate_api_key),
+        )
         // ??? Phase 4: Webhook management
         .route(
             "/webhooks",

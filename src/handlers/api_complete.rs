@@ -74,7 +74,7 @@ pub struct UpdateApiKeyRequest {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-fn generate_api_key() -> (String, String, String) {
+pub(crate) fn generate_api_key() -> (String, String, String) {
     let prefix: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(8)
@@ -352,27 +352,62 @@ pub struct UpdateWebhookRequest {
     pub timeout_seconds: Option<i32>,
 }
 
+/// The event names a subscriber may pick.
+///
+/// This used to be a static list of eleven names (`business.created`, `deal.created`,
+/// `submission.approved`, …) that NO code path ever emitted, while the events the platform really
+/// records (`businesses.created`, `reviews.approved`, `service_booking_created`, …) were rejected
+/// with 422. So the screen could only subscribe you to silence.
+///
+/// Now the allow-list is the platform's own ledger — every event type present in
+/// `directory_events` — plus `*` (everything) and the handful of names written by code paths that
+/// may not have fired yet on a brand-new install. It cannot drift from reality again: the moment
+/// the app records a new event type, that type is subscribable.
+async fn valid_webhook_events(db: &sqlx::PgPool) -> Vec<String> {
+    // Names written by code paths that may not have produced a row yet on a fresh install.
+    const SEEDED: &[&str] = &[
+        "service_booking_created",
+        "contact.created",
+        "businesses.created",
+        "businesses.updated",
+        "businesses.deleted",
+        "directories.created",
+        "directories.updated",
+        "directories.deleted",
+        "directory_categories.created",
+        "directory_categories.updated",
+        "directory_categories.deleted",
+        "reviews.created",
+        "reviews.approved",
+        "reviews.rejected",
+        "*",
+    ];
+
+    let mut events: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT event_type FROM directory_events WHERE event_type IS NOT NULL",
+    )
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    for seed in SEEDED {
+        if !events.iter().any(|e| e == seed) {
+            events.push((*seed).to_string());
+        }
+    }
+    events.sort();
+    events
+}
+
 /// POST /api/v1/admin/webhooks — register a webhook
 pub async fn create_webhook(
     State(state): State<AppState>,
     Json(req): Json<CreateWebhookRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let valid_events = vec![
-        "business.created",
-        "business.updated",
-        "business.deleted",
-        "review.created",
-        "review.approved",
-        "deal.created",
-        "deal.claimed",
-        "submission.created",
-        "submission.approved",
-        "contact.created",
-        "directory.created",
-    ];
+    let valid_events = valid_webhook_events(&state.db).await;
 
     for event in &req.events {
-        if !valid_events.contains(&event.as_str()) {
+        if !valid_events.iter().any(|v| v == event) {
             return Err(AppError::Validation(format!(
                 "Invalid event '{}'. Valid events: {:?}",
                 event, valid_events

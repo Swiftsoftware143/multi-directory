@@ -96,6 +96,14 @@ async fn main() {
         );
     }
 
+    // Kanban t_7863696b: every account that exists today holds a key it can view. One-time (a
+    // `fleet_data_backfills` marker gates it) so an account whose keys were deliberately revoked is
+    // never re-minted behind their back.
+    match crate::handlers::api_key_auto::backfill_missing_keys(&pool).await {
+        Ok(n) => tracing::info!(minted = n, "account API keys: backfill complete"),
+        Err(e) => tracing::warn!(error = %e, "account API keys: backfill skipped"),
+    }
+
     // Manual Walk Score / Bike Score pass (operator/verification path). Exactly the function
     // the hourly scheduler runs, so a manual pass and a scheduled pass cannot diverge.
     if cli.get(1).map(String::as_str) == Some("walk-scores") {
