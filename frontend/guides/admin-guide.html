@@ -709,12 +709,150 @@ a:hover{text-decoration:underline}
   </div>
 </div>
 
-<!-- 20. What only the owner can do — the setup checklist (2026-09-23).
+<!-- 20. Satellite towns (W31). Written GENERICALLY on purpose: no real town or city name
+     appears anywhere in the guides, because each directory detects its own towns from its own
+     listings and the list changes as the network grows. Screen names must match the panel:
+     nav + card "🏘 Satellite Towns", checkbox "Include satellite towns", buttons
+     "Approve this town" / "Take this town offline", statuses draft / approved / live. -->
+<div class="card" id="satellite-towns">
+  <h3><span class="emoji">🏘</span> 20. Satellite towns — the smaller towns around a city <span class="badge">Optional</span></h3>
+  <p>Every directory is built around <strong>one main city</strong>. The smaller towns around that city can each
+     get their own page on the site, with their own address, their own title and their own listings. This
+     feature is <strong>optional</strong> — a directory works completely without it — and nothing is ever published
+     by accident: <strong>a town page only goes live after you approve that town.</strong></p>
+  <p style="font-size:.85rem">You never type town names. The list is taken from the addresses of the city's own
+     listings, so it fills itself in as listings are imported or added — which is why this guide talks about
+     towns in general and never names any.</p>
+
+  <h4>Walkthrough — do this, in this order</h4>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Sign in and open <code>/admin-panel.html</code>. In the left menu click
+      <strong>🏘 Satellite Towns</strong> (the card sits beside <strong>🔎 Search-engine submission</strong>).</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Pick the city in the <strong>dropdown at the top of the card</strong>. The tabs below are
+      that city's own towns, and the line beside <strong>↻ Refresh</strong> says how many towns it found and how many
+      are live.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Tick <strong>Include satellite towns</strong> if this city should have town pages at all.
+      Unticking it takes <em>every</em> town page of that city down at once — the approvals you already gave are kept,
+      so ticking it again brings the approved ones straight back.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Click a town's tab. It shows <strong>how many listings</strong> that town has and one of
+      three states:</p>
+      <ul>
+        <li><strong>draft — not published anywhere</strong>: nobody can see a page for this town.</li>
+        <li><strong>approved — waiting for at least 3 listings before its page can publish</strong>: your decision is
+          recorded, but the page stays unpublished until the town has enough real listings.</li>
+        <li><strong>live — page is published and in the sitemap</strong>: the page exists, is linked from the city page
+          and is advertised to search engines. A live tab also prints the public address under the city.</li>
+      </ul></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">5</div>
+    <div class="step-text"><p>Press <strong>Approve this town</strong> to publish it, or <strong>Take this town offline</strong>
+      to unpublish it. The live site follows immediately — no rebuild, no waiting.</p></div>
+  </div>
+
+  <h4>What a live town actually gets</h4>
+  <ul>
+    <li>Its <strong>own address under the city</strong>, self-canonical, with a title and description of its own — never
+      a copy of the city page.</li>
+    <li>Its businesses listed with <strong>real links</strong>, a link back up to the city, and links across to the
+      city's other towns.</li>
+    <li>A line in the <strong>sitemap</strong>, and a place in the city page's town list — so the two point at each other
+      both ways.</li>
+    <li>A town with fewer than <strong>3 listings is never advertised anywhere</strong>, so you never publish an empty page
+      that makes the site look thin.</li>
+  </ul>
+
+  <h4>Articles and towns</h4>
+  <p>In the blog editor every article can be <strong>assigned to one town</strong>. That article then appears on the
+     town's page and in the city's blog index, keeps <strong>one</strong> address, and links down into that town's real
+     businesses. An article assigned to a town the directory does not hold is refused, so a typo cannot create a page.</p>
+
+  <div class="tip-box">
+    <strong>⚠️ Approving a town is not a switch for extra content.</strong> If the town has fewer than three listings,
+    approving it changes nothing public — the page stays unpublished until the listings arrive. That is deliberate:
+    an approved-but-thin page is exactly what search engines treat as a low-quality page.
+  </div>
+</div>
+
+<!-- 21. API access & webhooks (W31). Screen names verified against admin-panel.html:
+     nav "🧩 API Access & Webhooks", buttons "+ Create key", "View", "Regenerate",
+     "+ Add webhook", "↻ Refresh". A customer sees only their OWN key; the platform-wide
+     list of keys and every delivery log is operator-only. -->
+<div class="card" id="api-access">
+  <h3><span class="emoji">🧩</span> 21. Connecting other software — API keys and webhooks <span class="badge">Optional</span></h3>
+  <p>Two optional ways to let something outside the panel work with your directory. Neither is needed to run a
+     directory — they exist so a buyer can plug the platform into their own website, CRM or reporting tool
+     <strong>without asking a developer</strong>.</p>
+
+  <h4>API keys — letting another app act as you</h4>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Open <code>/admin-panel.html</code> and click <strong>🧩 API Access &amp; Webhooks</strong> in
+      the left menu.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Under <strong>API keys</strong> type a <strong>Name</strong> you will recognise later
+      ("Website integration"), optionally type <strong>Scopes</strong> (comma-separated, e.g. <code>read, write</code>),
+      then press <strong>+ Create key</strong>. The key appears in the list with the date it was created.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p><strong>View</strong> shows the key — you are asked for your password again, because this is
+      the one screen that reveals a secret. <strong>Regenerate</strong> replaces the key (the old one stops working
+      immediately — that is how you revoke a leaked key). <strong>Delete</strong> removes it for good.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">4</div>
+    <div class="step-text"><p>Give the key to the outside app <strong>once</strong>. It carries your own permissions, so
+      treat it exactly like your password: never put it in a chat, a document or a public page. A customer account sees
+      only its own key — it can never list or touch anyone else's.</p></div>
+  </div>
+
+  <h4>Webhooks — telling another system when something happens</h4>
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-text"><p>Same screen, lower half. Paste the <strong>Endpoint URL</strong> of the system that should
+      be told about changes (for example <code>https://example.com/hooks/zaarhub</code>). Optionally add a
+      <strong>Signing secret</strong>, which lets that system verify the message really came from your directory.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-text"><p>Tick the <strong>Events</strong> you care about (business created / updated / deleted,
+      reviews created / approved / rejected, directories, and so on) — or tick <code>*</code> for all of them — then
+      press <strong>+ Add webhook</strong>. A webhook with no event ticked is refused.</p></div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-text"><p>Deliveries arrive a few seconds after the change. <strong>↻ Refresh</strong> reloads the
+      list, the <strong>Events</strong> column shows what that webhook is subscribed to, and under it you can see recent
+      deliveries with their result and the other system's response code — so you can prove it is receiving, without
+      reading any log file. <strong>Pause</strong> stops deliveries without deleting the webhook.</p></div>
+  </div>
+
+  <div class="tip-box">
+    <strong>⚠️ If the other end is wrong, nothing is lost.</strong> A failed delivery is recorded against the webhook
+    with its error, and your data is unaffected. Fix the address and the next change goes through. The platform-wide list
+    of every key and every delivery belongs to the platform operator, not to an individual directory owner.
+  </div>
+</div>
+
+<!-- 22. What only the owner can do — the setup checklist (2026-09-23).
      Items 1-6 are panel-only and a VA can do them; 7 needs a decision, 8 needs DNS access.
      Item 7 is deliberately marked PENDING: the CoreSwift connection API exists but has no
      admin screen yet, so the guide must NOT send anyone to a screen that is not there. -->
 <div class="card" id="david-setup-checklist">
-  <h3><span class="emoji">✅</span> 20. What only you can do — the setup checklist</h3>
+  <h3><span class="emoji">✅</span> 22. What only you can do — the setup checklist</h3>
   <p>Everything below needs something a machine can't supply: a key from a provider console, a business
      decision (which gateway, which CRM account), or a DNS record. <strong>None of it is done yet</strong>,
      and none of it can be done from code. Tick each line as it's finished — every line names the
