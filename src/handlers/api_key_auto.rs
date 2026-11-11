@@ -92,12 +92,15 @@ pub struct RevealRequest {
     pub password: String,
 }
 
-fn caller(headers: &HeaderMap, state: &AppState) -> Result<(Uuid, Option<Uuid>), AppError> {
+fn caller(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<(crate::auth::models::Claims, Uuid, Option<Uuid>), AppError> {
     let claims =
         crate::handlers::tenant_scope::claims_from_headers(headers, &state.config.jwt_secret)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
     let tenant_id = claims.tid.parse::<Uuid>().ok().filter(|t| !t.is_nil());
-    Ok((user_id, tenant_id))
+    Ok((claims, user_id, tenant_id))
 }
 
 fn client_ip(headers: &HeaderMap) -> Option<String> {
@@ -124,17 +127,27 @@ pub async fn reveal_api_key(
     Path(id): Path<Uuid>,
     Json(req): Json<RevealRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    let (user_id, tenant_id) = caller(&headers, &state)?;
+    let (claims, user_id, tenant_id) = caller(&headers, &state)?;
 
     let row = sqlx::query(
-        "SELECT key_prefix, key_encrypted FROM api_keys
-         WHERE id = $1 AND user_id = $2 AND is_active = true",
+        "SELECT user_id, key_prefix, key_encrypted FROM api_keys
+         WHERE id = $1 AND is_active = true",
     )
     .bind(id)
-    .bind(user_id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
+
+    // The key's OWNER may reveal it; the platform operator console may too (it is the surface that
+    // issues the keys). Anyone else is refused before the password is even read.
+    let owner_id: Option<Uuid> = row.get("user_id");
+    if owner_id != Some(user_id)
+        && crate::auth::middleware::operator_surface_denied("/api/v1/admin/api-keys", &claims)
+    {
+        return Err(AppError::Forbidden(
+            "This API key belongs to another account".to_string(),
+        ));
+    }
 
     let prefix: String = row.get("key_prefix");
     let sealed: Option<String> = row.get("key_encrypted");
@@ -210,22 +223,32 @@ pub async fn regenerate_api_key(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let (user_id, tenant_id) = caller(&headers, &state)?;
+    let (claims, user_id, tenant_id) = caller(&headers, &state)?;
 
-    let name: Option<String> = sqlx::query_scalar(
-        "SELECT name FROM api_keys WHERE id = $1 AND user_id = $2 AND is_active = true",
+    let row = sqlx::query(
+        "SELECT user_id, tenant_id, name FROM api_keys WHERE id = $1 AND is_active = true",
     )
     .bind(id)
-    .bind(user_id)
     .fetch_optional(&state.db)
     .await?;
-    let name = name.ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
+    let row = row.ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
+    let owner_id: Option<Uuid> = row.get("user_id");
+    if owner_id != Some(user_id)
+        && crate::auth::middleware::operator_surface_denied("/api/v1/admin/api-keys", &claims)
+    {
+        return Err(AppError::Forbidden(
+            "This API key belongs to another account".to_string(),
+        ));
+    }
+    // The replacement stays with the same owner and tenant as the key it replaces.
+    let owner_id = owner_id.unwrap_or(user_id);
+    let tenant_id: Option<Uuid> = row.get::<Option<Uuid>, _>("tenant_id").or(tenant_id);
+    let name: String = row.get("name");
 
     let mut tx = state.db.begin().await?;
-    let minted = mint_on(&mut tx, user_id, tenant_id, &name).await?;
-    sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
+    let minted = mint_on(&mut tx, owner_id, tenant_id, &name).await?;
+    sqlx::query("DELETE FROM api_keys WHERE id = $1")
         .bind(id)
-        .bind(user_id)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -314,7 +337,7 @@ pub async fn my_keys(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
-    let (user_id, _) = caller(&headers, &state)?;
+    let (_claims, user_id, _tenant) = caller(&headers, &state)?;
     let rows = sqlx::query(
         "SELECT id, name, key_prefix, is_active, last_used_at, created_at,
                 (key_encrypted IS NOT NULL) AS recoverable

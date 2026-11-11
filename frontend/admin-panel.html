@@ -11041,7 +11041,7 @@
       var box = document.getElementById('ak-list'); if (!box) return;
       apiGet('/api-keys').then(function (rows) {
         rows = rows || [];
-        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">No API keys yet. Create one above — the full key is shown once, at creation.</p>'; return; }
+        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">No API keys yet. Every account is created with one; create another above if you need a separate key.</p>'; return; }
         var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:6px 4px">Name</th><th>Key</th><th>Status</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>';
         rows.forEach(function (k) {
           h += '<tr style="border-top:1px solid var(--border)">'
@@ -11051,6 +11051,8 @@
             + '<td>' + akEsc((k.scopes || []).join(', ') || '—') + '</td>'
             + '<td>' + akFmt(k.last_used_at) + '</td>'
             + '<td style="text-align:right;white-space:nowrap">'
+              + (k.is_active === false ? '' : '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akView(this)">View</button> ')
+              + (k.is_active === false ? '' : '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akRegen(this)">Regenerate</button> ')
               + '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akToggle(this)">' + (k.is_active === false ? 'Enable' : 'Revoke') + '</button> '
               + '<button class="btn btn-ghost btn-sm" data-akid="' + akEsc(k.id) + '" onclick="window.__akDelete(this)">Delete</button>'
             + '</td></tr>';
@@ -11070,6 +11072,40 @@
         out.innerHTML = '<b>Copy this key now — it is shown only once.</b><div style="margin-top:6px"><code style="word-break:break-all">' + akEsc(k.raw_key || '(no key returned)') + '</code></div>';
         akStatus('ak-status', 'Key created.', true); loadApiKeys();
       }).catch(function (e) { akStatus('ak-status', 'Create failed: ' + e.message, false); });
+    };
+    // View = re-authenticate, then show the SAME stored key again. Repeatable.
+    window.__akView = function (el) {
+      var id = el.getAttribute('data-akid');
+      var pw = window.prompt('Enter YOUR account password to show this key. Every view is recorded.');
+      if (!pw) return;
+      apiPost('/me/api-keys/' + id + '/reveal', { password: pw }).then(function (d) {
+        var out = document.getElementById('ak-new'); out.style.display = 'block';
+        out.innerHTML = '<b>API key ' + akEsc(d.prefix) + '…</b>'
+          + '<div style="margin-top:6px;display:flex;gap:8px;align-items:center">'
+          + '<input readonly id="ak-view-val" value="' + akEsc(d.key) + '" style="flex:1;font-family:monospace;font-size:.78rem" onclick="this.select()">'
+          + '<button class="btn btn-accent btn-sm" onclick="window.__akCopy()">Copy</button></div>';
+        akStatus('ak-status', 'Key shown — the same key as before.', true);
+      }).catch(function (e) { akStatus('ak-status', 'Could not show key: ' + e.message, false); });
+    };
+    window.__akCopy = function () {
+      var inp = document.getElementById('ak-view-val'); if (!inp) return;
+      inp.select();
+      try { document.execCommand('copy'); } catch (e) { /* the value stays selected */ }
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(inp.value); }
+      akStatus('ak-status', 'Key copied.', true);
+    };
+    // Regenerate = revoke the old key and issue a new one in ONE action (atomic server-side).
+    window.__akRegen = function (el) {
+      var id = el.getAttribute('data-akid');
+      if (!window.confirm('Regenerate this key? The current key stops working immediately, so anything already using it stops until you paste the new one in.')) return;
+      apiPost('/me/api-keys/' + id + '/regenerate', {}).then(function (d) {
+        var out = document.getElementById('ak-new'); out.style.display = 'block';
+        out.innerHTML = '<b>New key ' + akEsc(d.prefix) + '… — the old one no longer works.</b>'
+          + '<div style="margin-top:6px;display:flex;gap:8px;align-items:center">'
+          + '<input readonly id="ak-view-val" value="' + akEsc(d.key || '') + '" style="flex:1;font-family:monospace;font-size:.78rem" onclick="this.select()">'
+          + '<button class="btn btn-accent btn-sm" onclick="window.__akCopy()">Copy</button></div>';
+        akStatus('ak-status', 'Key regenerated.', true); loadApiKeys();
+      }).catch(function (e) { akStatus('ak-status', 'Regenerate failed: ' + e.message, false); });
     };
     window.__akToggle = function (el) {
       var id = el.getAttribute('data-akid'); var enable = el.textContent === 'Enable';
