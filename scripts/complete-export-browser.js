@@ -23,7 +23,7 @@ const PUBLIC = process.env.PUBLIC || 'https://zaarhub.com';
 const BIZ = process.env.BIZ;
 const TOKEN = process.env.TOKEN;
 const AUD = process.env.AUD;
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 const DL = path.join(AUD || '/tmp', 'downloads');
 const PANEL = `${PUBLIC}/admin-panel.html`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

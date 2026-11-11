@@ -37,7 +37,7 @@ const AUD = process.env.AUD;
 const PROBE_NAME = process.env.PROBE_NAME || '';
 const PROBE_SLUG = process.env.PROBE_SLUG || '';
 const PROBE_ROOT = process.env.PROBE_ROOT || '';
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 const HARNESS = process.env.MD_HARNESS || 't_8bea040a';
 
 if (!TOKEN || !AUD || !PROBE_SLUG) {

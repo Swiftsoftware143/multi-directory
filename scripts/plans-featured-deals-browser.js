@@ -25,7 +25,7 @@ const AUD = process.env.AUD;
 const TEMP_TITLE = process.env.TEMP_DEAL_TITLE || '';
 const TEMP_ID = process.env.TEMP_DEAL_ID || '';
 const BIZ_ID = process.env.BIZ_ID || '';
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 
 if (!TOKEN || !AUD) {
   console.error('TOKEN and AUD are required');

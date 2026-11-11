@@ -32,7 +32,7 @@ const SHOT_DIR = process.env.SHOT_DIR || '/tmp';
   if (!MARKER) { console.log('FAIL  MARKER is required'); process.exit(1); }
 
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser',
+    executablePath: require('./lib/chrome.cjs')(),
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });

@@ -31,7 +31,7 @@ const AMOUNT = process.env.AMOUNT || '25.00';
 const REDEEM_POINTS = process.env.REDEEM_POINTS || '10';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 
 async function renderQrCard(path) {
   const browser = await puppeteer.launch({

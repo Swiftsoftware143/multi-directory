@@ -23,7 +23,7 @@ const fs = require('fs');
 const MD_BASE = process.env.MD_BASE || 'http://127.0.0.1:8089';
 const TOKEN = process.env.TOKEN;
 const AUD = process.env.AUD || '/tmp';
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const checks = [];

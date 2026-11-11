@@ -23,7 +23,7 @@ const CAT = process.env.CAT || 'ZZPROBE-CAT-A';
 const CAT_IDS = (process.env.CAT_IDS || '').split(',').filter(Boolean);
 const URGENT_ID = process.env.URGENT_ID || '';
 const AUD = process.env.AUD || '/tmp/rfq-filter-browser';
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 
 fs.mkdirSync(AUD, { recursive: true });
 

@@ -91,10 +91,7 @@ function findChrome() {
       }
     }
   } catch (e) {}
-  for (const p of ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome']) {
-    try { if (fs.statSync(p).size > 0) return p; } catch (e) {}
-  }
-  return null;
+  try { return require('./lib/chrome.cjs')(); } catch (e) { return null; }
 }
 
 function mintToken() {

@@ -22,7 +22,7 @@ const PROBE = process.env.PROBE_TITLE || 'ZZ PORTAL SEO PROBE';
 
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser',
+    executablePath: require('./lib/chrome.cjs')(),
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });

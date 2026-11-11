@@ -39,7 +39,7 @@ const bad = (m) => { problems.push(m); console.log('FAIL  ' + m); };
 
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser',
+    executablePath: require('./lib/chrome.cjs')(),
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });

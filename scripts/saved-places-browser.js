@@ -23,7 +23,7 @@ const EMAIL = process.env.EMAIL;
 const PW = process.env.PW;
 const BIZ = process.env.BIZ_NAME;
 const SHOT = process.env.SHOT_DIR || '/tmp';
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 
 const checks = [];
 function check(name, ok, detail) {

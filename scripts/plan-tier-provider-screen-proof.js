@@ -24,7 +24,7 @@ const rec = (ok, name, detail) => out.push((ok ? 'PASS ' : 'FAIL ') + name + ' :
 
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/chromium-browser',
+    executablePath: require('./lib/chrome.cjs')(),
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });

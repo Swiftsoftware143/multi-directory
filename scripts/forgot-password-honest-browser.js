@@ -18,7 +18,7 @@ const puppeteer = require('puppeteer-core');
 const MD_BASE = process.env.MD_BASE || 'http://127.0.0.1:8089';
 const EMAIL = process.env.EMAIL;
 const AUD = process.env.AUD;
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {

@@ -18,7 +18,7 @@ const SLUG = process.env.SLUG;
 const TITLE = process.env.TITLE;
 const MARKER = process.env.MARKER;
 const AUD = process.env.AUD;
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 const ARTICLE_PATH = `/${CITY}/articles/${SLUG}`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

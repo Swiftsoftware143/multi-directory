@@ -32,7 +32,7 @@ const CITY_SLUG = process.env.CITY_SLUG || '';
 const KEYWORD = process.env.KEYWORD || '';
 const SERVICE = process.env.SERVICE || 'plumbing';
 const AUD = process.env.AUD || '/tmp';
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const checks = [];

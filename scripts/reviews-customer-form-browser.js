@@ -30,7 +30,7 @@ const TEXT = process.env.REVIEW_TEXT || 'Probe review typed by a customer in the
   const bad = (m) => { problems.push(m); console.log('FAIL  ' + m); };
 
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser',
+    executablePath: require('./lib/chrome.cjs')(),
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--window-size=1400,1000'],
   });

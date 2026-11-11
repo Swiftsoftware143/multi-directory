@@ -41,7 +41,7 @@ const PROBE_RENAMED = process.env.PROBE_RENAMED || '';
 const NETWORK_ID = process.env.NETWORK_ID || '';
 const NETWORK_NAME = process.env.NETWORK_NAME || '';
 const EXISTING_SLUG = process.env.EXISTING_SLUG || '';
-const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium-browser';
+const CHROME = require('./lib/chrome.cjs')();
 const HARNESS = process.env.MD_HARNESS || 't_26639554';
 
 if (!TOKEN || !AUD || !PROBE_SLUG) {

@@ -30,7 +30,7 @@ function chromePath() {
       .toString().trim();
     if (d) return d;
   } catch (e) {}
-  return '/usr/bin/chromium-browser';
+  try { return require('./lib/chrome.cjs')(); } catch (e) { return null; }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

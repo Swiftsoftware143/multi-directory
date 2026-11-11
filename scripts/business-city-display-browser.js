@@ -29,7 +29,7 @@ const TRUNC = /(^|\s)(Palm|Boca|Pompano|Winter|Fort|Lighthouse|Deerfield|Halland
   const bad = (m) => { problems.push(m); console.log('FAIL  ' + m); };
 
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser',
+    executablePath: require('./lib/chrome.cjs')(),
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });

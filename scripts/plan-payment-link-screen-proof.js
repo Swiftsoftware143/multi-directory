@@ -38,7 +38,7 @@ function psql(q) {
   fs.mkdirSync(OUT, { recursive: true });
   if (!TOKEN) { console.log('FAIL no MD_TOKEN'); process.exit(1); }
   const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/chromium-browser',
+    executablePath: require('./lib/chrome.cjs')(),
     headless: 'new',
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
