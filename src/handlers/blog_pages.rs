@@ -158,16 +158,14 @@ pub async fn render_blog_post(
 
     let mut byline = String::from("Admin");
     if let Some(aid) = post.author_id {
-        if let Ok(author) = sqlx::query_as::<_, AuthorProfile>(
+        if let Ok(Some(a)) = sqlx::query_as::<_, AuthorProfile>(
             "SELECT id, directory_id, user_id, name, slug, bio, avatar_url, twitter_url, linkedin_url, website_url, role, is_active, created_at, updated_at FROM author_profiles WHERE id = $1"
         )
         .bind(aid)
         .fetch_optional(&s.db)
         .await
         {
-            if let Some(a) = author {
-                byline = a.name;
-            }
+            byline = a.name;
         }
     }
 

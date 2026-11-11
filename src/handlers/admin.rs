@@ -220,10 +220,9 @@ pub async fn admin_members(State(s): State<AppState>) -> ApiResult<impl IntoResp
     // (ZaarCash) and there is no second pool any more (kanban t_20e0bcd5).
     let emails: Vec<&str> = members.iter().map(|m| m.email.as_str()).collect();
     let loyalty_emails: std::collections::HashSet<String> = if !emails.is_empty() {
-        match check_loyalty_enrollment(&s, &emails).await {
-            Ok(set) => set,
-            Err(_) => std::collections::HashSet::new(),
-        }
+        check_loyalty_enrollment(&s, &emails)
+            .await
+            .unwrap_or_default()
     } else {
         std::collections::HashSet::new()
     };

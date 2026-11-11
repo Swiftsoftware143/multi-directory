@@ -390,7 +390,7 @@ pub async fn get_activity(
     }
 
     // Sort by recency
-    items.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    items.sort_by_key(|i| std::cmp::Reverse(i.timestamp));
     items.truncate(20);
 
     Ok(Json(items))

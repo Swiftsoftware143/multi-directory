@@ -17,7 +17,6 @@ use uuid::Uuid;
 /// Regex-free HTML head injection. We insert right after `<head>` (first match)
 /// or fall back to prepending at the very start of the document if no head tag
 /// is found. Never panics on malformed input.
-
 const HEAD_STYLE_TEMPLATE: &str = r#"<style id="branding-theme">
 :root {
   --md-primary: $PRIMARY;

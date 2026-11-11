@@ -313,8 +313,7 @@ pub async fn get_feed(
         .bind(visitor_id)
         .fetch_optional(&s.db)
         .await
-        .unwrap_or(None)
-        .map(|v| v);
+        .unwrap_or(None);
 
         active_polls.push(ActivePoll {
             id: poll_id,
@@ -663,8 +662,7 @@ pub async fn feed_page(
         .bind(visitor_id)
         .fetch_optional(&s.db)
         .await
-        .unwrap_or(None)
-        .map(|v| v);
+        .unwrap_or(None);
 
         polls_list.push(json!({
             "id": poll_id,

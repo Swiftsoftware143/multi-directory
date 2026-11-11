@@ -291,7 +291,7 @@ pub async fn list_events(
     State(s): State<AppState>,
     Query(params): Query<ListEventsQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let limit = params.limit.unwrap_or(50).min(200).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let offset = params.offset.unwrap_or(0).max(0);
 
     let events = if let Some(ref et) = params.event_type {

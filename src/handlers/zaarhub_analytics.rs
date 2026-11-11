@@ -17,7 +17,7 @@ fn default_page(p: Option<i32>) -> i32 {
     p.unwrap_or(1).max(1)
 }
 fn default_per_page(pp: Option<i32>) -> i32 {
-    pp.unwrap_or(20).min(100).max(1)
+    pp.unwrap_or(20).clamp(1, 100)
 }
 fn offset(page: i32, per_page: i32) -> i32 {
     (page - 1) * per_page

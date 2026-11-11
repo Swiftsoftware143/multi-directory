@@ -90,6 +90,11 @@ pub async fn coreswift_lists(
 }
 
 /// Body for the manual push / the shared capture helper's HTTP shape.
+///
+/// NOTE (item 18, 2026-11-11): the address fields on this body are deserialized but not yet
+/// carried into the push — that wiring is item 19, the CoreSwift integration lane's code.
+/// The attribute keeps the lint visible here instead of re-hiding it crate-wide.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 pub struct LeadPushRequest {
     pub directory_id: Option<Uuid>,

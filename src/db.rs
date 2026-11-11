@@ -91,9 +91,7 @@ pub fn split_statements(sql: &str) -> Vec<String> {
                     }
                     if chars.get(j) == Some(&'$') {
                         // Enter dollar-quoted block, consuming the opening delimiter.
-                        for k in i..=j {
-                            current.push(chars[k]);
-                        }
+                        current.extend(&chars[i..=j]);
                         state = St::Dollar(tag);
                         i = j + 1;
                         continue;

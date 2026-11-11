@@ -267,7 +267,7 @@ pub fn brand_origin_for_host(host: Option<&str>) -> Option<String> {
 /// The ONE host allowed to advertise a sitemap: an exact brand host, in data.
 pub fn sitemap_host(host: Option<&str>, brands: &BrandHosts) -> Option<String> {
     let h = hostname(host?);
-    if brands.brands().iter().any(|b| *b == h) {
+    if brands.brands().contains(&h) {
         Some(h)
     } else {
         None
@@ -340,7 +340,7 @@ fn find_ci(hay: &str, needle: &str) -> Option<usize> {
         }
         let mut ok = true;
         for (j, nb) in n.iter().enumerate().skip(1) {
-            if h[i + j].to_ascii_lowercase() != nb.to_ascii_lowercase() {
+            if !h[i + j].eq_ignore_ascii_case(nb) {
                 ok = false;
                 break;
             }

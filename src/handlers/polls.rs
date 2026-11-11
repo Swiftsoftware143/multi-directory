@@ -256,7 +256,7 @@ pub async fn list_polls(
             created_at: poll.created_at,
             total_votes,
             option_votes,
-            user_vote: user_vote.map(|v| v),
+            user_vote,
         });
     }
 
@@ -329,7 +329,7 @@ pub async fn get_poll(
             created_at: poll.created_at,
             total_votes,
             option_votes,
-            user_vote: user_vote.map(|v| v),
+            user_vote,
         }
     })))
 }

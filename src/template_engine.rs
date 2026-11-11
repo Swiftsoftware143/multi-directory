@@ -329,15 +329,6 @@ impl Default for TemplateEngine {
 
 // ── Helper: prepare template data from directory + businesses ───────────────
 
-/// Build a JSON context object for template rendering.
-///
-/// Expected inputs:
-/// - `directory`: serialized directory info (name, description, slug, etc.)
-/// - `businesses`: array of business objects
-/// - `categories`: array of category objects
-/// - `color_scheme`: optional color scheme (will be normalized)
-/// - `query`: optional search query parameters
-
 // -- HTML sanitization ------------------------------------------------
 
 /// Sanitize HTML by removing dangerous tags/attributes
@@ -408,6 +399,14 @@ pub fn sanitize_html(input: &str) -> String {
     }
     output
 }
+/// Build a JSON context object for template rendering.
+///
+/// Expected inputs:
+/// - `directory`: serialized directory info (name, description, slug, etc.)
+/// - `businesses`: array of business objects
+/// - `categories`: array of category objects
+/// - `color_scheme`: optional color scheme (will be normalized)
+/// - `query`: optional search query parameters
 pub fn build_template_context(
     directory: &Value,
     businesses: &Value,

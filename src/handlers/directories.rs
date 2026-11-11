@@ -940,7 +940,7 @@ pub async fn render_directory(
     // Load business meta
     let mut meta_map = HashMap::new();
     for biz in &businesses {
-        if let Ok(meta) = sqlx::query_as::<_, BusinessMeta>(
+        if let Ok(Some(m)) = sqlx::query_as::<_, BusinessMeta>(
             "SELECT * FROM business_meta WHERE business_id = \x241 AND template = \x242 ",
         )
         .bind(biz.id)
@@ -953,9 +953,7 @@ pub async fn render_directory(
         .fetch_optional(&s.db)
         .await
         {
-            if let Some(m) = meta {
-                meta_map.insert(biz.id, m.meta_data);
-            }
+            meta_map.insert(biz.id, m.meta_data);
         }
     }
 

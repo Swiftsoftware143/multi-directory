@@ -478,7 +478,7 @@ pub async fn generate_posts(
     State(s): State<AppState>,
     Json(req): Json<GeneratePostsReq>,
 ) -> ApiResult<impl IntoResponse> {
-    let count = req.count.unwrap_or(5).max(1).min(20);
+    let count = req.count.unwrap_or(5).clamp(1, 20);
 
     let rows = sqlx::query(
         "SELECT id, question, keyword, target_category FROM blog_qa_keywords \

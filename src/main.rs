@@ -1,4 +1,12 @@
-#![allow(clippy::all)]
+// Clippy was disabled crate-wide here (`#![allow(clippy::all)]`, in place since 2026-07-28) until
+// item 18 on 2026-11-11, which made every `cargo clippy -- -D warnings` in the pre-build gate a
+// no-op. What remains below is a short, named list of deliberate style choices; every other lint —
+// correctness included — is now enforced by the gate.
+#![allow(clippy::type_complexity)] // handler/query types: a type alias per site adds noise, not clarity
+#![allow(clippy::too_many_arguments)] // handler signatures mirror the HTTP wire contract 1:1
+#![allow(clippy::format_in_format_args)] // pre-formatted statement/HTML fields (settlement, SSR cards)
+#![allow(clippy::doc_lazy_continuation)] // doc-comment list layout in handler headers
+#![allow(clippy::doc_overindented_list_items)] // same, the over-indented variant
 #![recursion_limit = "256"]
 #[allow(dead_code)] // CoreSwift integration surface — owned by the CoreSwift lane (item 19).
 mod coreswift;
