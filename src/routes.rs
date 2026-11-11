@@ -2136,7 +2136,9 @@ pub fn create_router(s: AppState) -> Router {
         .route("/claims/verify/:token", get(visitors::verify_claim_email))
         .route(
             "/businesses/:id/images",
-            post(businesses::upload_business_images),
+            post(businesses::upload_business_images)
+                .get(businesses::list_business_images)
+                .put(businesses::set_business_images),
         )
         .route(
             "/city-requests",

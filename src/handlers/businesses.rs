@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -890,13 +890,29 @@ pub struct UploadImagesRequest {
     pub images: Vec<String>, // base64-encoded or full data URIs
 }
 
+/// Generous cap that still protects the box: the portal sends one photo per request
+/// after the owner picks it from their phone, so a normal upload is 1 file.
+const MAX_PHOTOS_PER_BUSINESS: usize = 12;
+const MAX_PHOTO_BYTES: usize = 6 * 1024 * 1024;
+
 /// POST /api/v1/businesses/:id/images — upload images for a business
 /// Accepts JSON with `images` array of base64 or data URIs.
+///
+/// W24 part 2: this used to be a logged-in-but-unowned route (any account could add photos
+/// to anybody's listing) with no size cap and fixed filenames (`photo_0.jpg` overwritten by
+/// the next upload). It now requires the caller to administer or hold the claim on the
+/// business, caps each file and the total count, and stores under a unique name.
 pub async fn upload_business_images(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(business_id): Path<Uuid>,
     Json(req): Json<UploadImagesRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, business_id)
+        .await?;
+
     // Verify business exists
     let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM businesses WHERE id = $1")
         .bind(business_id)
@@ -907,16 +923,31 @@ pub async fn upload_business_images(
         return Err(AppError::NotFound("Business not found".to_string()));
     }
 
+    if req.images.is_empty() {
+        return Err(AppError::Validation("No images were sent".to_string()));
+    }
+
+    // Cap BEFORE writing any file, so a rejected upload never leaves orphan files behind.
+    let current_photos: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(jsonb_array_length(images), 0) FROM businesses WHERE id = $1",
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await?;
+    if current_photos + req.images.len() as i64 > MAX_PHOTOS_PER_BUSINESS as i64 {
+        return Err(AppError::Validation(format!(
+            "This listing already has {current_photos} photos and you sent {} — the limit is {MAX_PHOTOS_PER_BUSINESS}. Remove a photo first.",
+            req.images.len()
+        )));
+    }
+
     // B113: server-side plan photo-slot gate. No-op unless the business holds an active
     // subscription, so unsubscribed listings are unaffected.
     crate::entitlements::require_photo_slot(&s.db, business_id, req.images.len() as i64).await?;
 
     // Build URLs for uploaded images — for now store references to /uploads/
     // In future, upload to CDN. For MVP, we save base64 data to local files.
-    let upload_dir = format!(
-        "/opt/swift/www/zaarhub.com/uploads/businesses/{}",
-        business_id
-    );
+    let upload_dir = business_upload_dir(business_id);
     tokio::fs::create_dir_all(&upload_dir)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to create upload dir: {e}")))?;
@@ -939,14 +970,34 @@ pub async fn upload_business_images(
                 ("jpeg".to_string(), img_data.clone())
             };
 
+        // Only real web-image formats; anything else (or a decode failure) is skipped with a
+        // warning instead of writing a file the browser cannot render.
+        let ext = match format_name.as_str() {
+            "jpeg" | "jpg" => "jpg",
+            "png" => "png",
+            "webp" => "webp",
+            "gif" => "gif",
+            other => {
+                tracing::warn!(
+                    "Refusing photo {i} for business {business_id}: unsupported type '{other}'"
+                );
+                continue;
+            }
+        };
+
         match base64::engine::general_purpose::STANDARD.decode(&base64_data) {
             Ok(bytes) => {
-                let ext = if format_name == "jpeg" {
-                    "jpg"
-                } else {
-                    &format_name
-                };
-                let filename = format!("photo_{}.{}", i, ext);
+                if bytes.len() > MAX_PHOTO_BYTES {
+                    tracing::warn!(
+                        "Refusing photo {i} for business {business_id}: {} bytes exceeds the {MAX_PHOTO_BYTES}-byte limit",
+                        bytes.len()
+                    );
+                    continue;
+                }
+                // Unique name per upload: the old `photo_0.jpg` was overwritten by the next
+                // upload of the same slot, so the URL never changed and every browser cache
+                // kept serving the first picture.
+                let filename = format!("photo_{}.{}", Uuid::new_v4(), ext);
                 let path = format!("{}/{}", upload_dir, filename);
                 if let Err(e) = tokio::fs::write(&path, &bytes).await {
                     tracing::warn!("Failed to write photo {i} for business {business_id}: {e}");
@@ -1020,6 +1071,85 @@ pub async fn upload_business_images(
             "images": all_images
         })),
     ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetImagesRequest {
+    pub images: Vec<String>,
+}
+
+/// Photo storage root: the container bind-mounts `/opt/swift/www/zaarhub.com/uploads`
+/// (`docker inspect multidirectory`) and `audience::serve_media` serves it back at `/uploads/*`,
+/// so a URL stored here is publicly fetchable.
+fn business_upload_dir(business_id: Uuid) -> String {
+    format!("/opt/swift/www/zaarhub.com/uploads/businesses/{business_id}")
+}
+
+async fn load_business_images(
+    db: &sqlx::PgPool,
+    business_id: Uuid,
+) -> Result<Vec<String>, AppError> {
+    let raw: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT images FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(db)
+            .await?
+            .flatten();
+    Ok(raw
+        .and_then(|v| v.as_array().cloned())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+/// GET /api/v1/businesses/:id/images — the listing's own photos, in display order.
+pub async fn list_business_images(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, business_id)
+        .await?;
+    let images = load_business_images(&s.db, business_id).await?;
+    Ok(Json(json!({ "images": images })))
+}
+
+/// PUT /api/v1/businesses/:id/images — keep exactly these photos (remove and reorder).
+///
+/// Only URLs already stored on this business are accepted, so the endpoint can never be used
+/// to point a listing at somebody else's file or an off-site image.
+pub async fn set_business_images(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(business_id): Path<Uuid>,
+    Json(req): Json<SetImagesRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    crate::handlers::tenant_scope::assert_business_admin_or_claimant(&s.db, &claims, business_id)
+        .await?;
+
+    let current = load_business_images(&s.db, business_id).await?;
+    if let Some(unknown) = req.images.iter().find(|u| !current.contains(u)) {
+        return Err(AppError::Validation(format!(
+            "'{unknown}' is not a photo of this listing"
+        )));
+    }
+
+    let images_json = serde_json::to_value(&req.images)
+        .map_err(|e| AppError::Internal(format!("JSON error: {e}")))?;
+    sqlx::query("UPDATE businesses SET images = $1::jsonb, updated_at = NOW() WHERE id = $2")
+        .bind(&images_json)
+        .bind(business_id)
+        .execute(&s.db)
+        .await?;
+
+    Ok(Json(json!({ "success": true, "images": req.images })))
 }
 
 /// Advance a deal from "Lead" to "Contacted" when images are uploaded.

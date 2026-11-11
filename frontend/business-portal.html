@@ -221,6 +221,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <a href="#messagesSection" id="navMessages" onclick="showPortalView('messages');return false;">✉️ Customer Messages</a>
        <a href="#bookingsSection" id="navBookings" onclick="showPortalView('bookings');return false;">📅 Booking Requests</a>
       <a href="#reviewsSection" id="navReviews" onclick="showPortalView('reviews');return false;">⭐ Reviews &amp; Replies</a>
+      <a href="#photosSection" id="navPhotos" onclick="showPortalView('photos');return false;">📷 Photos</a>
       <a href="#listingToolsSection" id="navListing" onclick="showPortalView('listing');return false;">✅ Verify &amp; Categories</a>
       <a href="#billingSection" id="navBilling" onclick="showPortalView('billing');return false;">💎 Plan &amp; Purchases</a>
       <a href="#b2bSection" id="navB2B" onclick="showPortalView('b2b');return false;">🤝 B2B &amp; Co-op</a>
@@ -370,6 +371,28 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
       <div id="rvPending" style="margin:10px 0;font-size:.85rem"></div>
       <div id="rvList" style="margin-top:12px"></div>
+    </div>
+
+    <!-- 📷 Photos (W24 part 2) — the owner's own pictures of their listing.
+         GET/PUT/POST /api/v1/businesses/:id/images. The FIRST photo is the hero image on the
+         public listing page, so this screen shows the current order and lets the owner remove
+         one. Owner/claimant only (the API enforces it, not just this page). -->
+    <div id="photosSection" style="margin-top:32px">
+      <div class="section-title">📷 Photos</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:14px">
+        The first photo is the main picture on your public listing. Add up to 12 pictures, and
+        remove any you no longer want.
+      </div>
+      <div class="form-group" style="max-width:420px">
+        <label>Business</label>
+        <select id="phBiz" onchange="loadPhotos()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem"></select>
+      </div>
+      <div style="margin:12px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="file" id="phFile" accept="image/jpeg,image/png,image/webp,image/gif" style="font-size:.85rem">
+        <button class="btn btn-primary btn-sm" id="phUploadBtn" onclick="uploadPhoto()">Add photo</button>
+        <span id="phResult" style="font-size:.82rem"></span>
+      </div>
+      <div id="phGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px"></div>
     </div>
 
     <!-- ✅ Verification & Categories (view id: listing) — GET /businesses/:id/verifications,
@@ -1421,13 +1444,13 @@ var _icCoreStatus = { connected: false };
 
 function showPortalView(view) {
   var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations',
-              calls: 'callsSection', messages: 'messagesSection', bookings: 'bookingsSection', reviews: 'reviewsSection', listing: 'listingToolsSection',
+              calls: 'callsSection', messages: 'messagesSection', bookings: 'bookingsSection', reviews: 'reviewsSection', photos: 'photosSection', listing: 'listingToolsSection',
               billing: 'billingSection', b2b: 'b2bSection', mentions: 'mentionsSection', payouts: 'payoutsSection' };
   var id = map[view] || 'businessList';
   var el = document.getElementById(id);
   if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   var links = { businesses: 'navBusinesses', transfers: 'navTransfers', integrations: 'navIntegrations',
-                calls: 'navCalls', messages: 'navMessages', bookings: 'navBookings', reviews: 'navReviews', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B', mentions: 'navMentions', payouts: 'navPayouts' };
+                calls: 'navCalls', messages: 'navMessages', bookings: 'navBookings', reviews: 'navReviews', photos: 'navPhotos', listing: 'navListing', billing: 'navBilling', b2b: 'navB2B', mentions: 'navMentions', payouts: 'navPayouts' };
   Object.keys(links).forEach(function(k) {
     var a = document.getElementById(links[k]);
     if (a) a.className = (k === view) ? 'active' : '';
@@ -1437,6 +1460,7 @@ function showPortalView(view) {
   if (view === 'messages') loadMessages();
   if (view === 'bookings') loadBookings();
   if (view === 'reviews') loadReviews();
+  if (view === 'photos') loadPhotos();
   if (view === 'mentions') loadMentions();
   if (view === 'payouts') loadPayouts();
   if (view === 'listing') { loadVerifications(); loadCategoryChoices(); }
@@ -2109,7 +2133,7 @@ function setMyBiz(list) {
       plan: sub.tier_name || null
     };
   }).filter(function (b) { return !!b.id; });
-  ['clBiz', 'msgBiz', 'bkBiz', 'rvBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
+  ['clBiz', 'msgBiz', 'bkBiz', 'rvBiz', 'phBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
   // renderBusinesses used biz[0].id, which is undefined for /portal/business/profile rows —
   // that silently disabled the ads/earnings block below. Point it at the real id.
   if (_myBiz.length && !_selectedBizId) _selectedBizId = _myBiz[0].id;
@@ -2132,6 +2156,87 @@ function fillBizSelect(id) {
 }
 
 function bizOf(id) { var s = document.getElementById(id); return s ? s.value : ''; }
+
+// ── 📷 Photos (W24 part 2): the owner's own pictures of their listing ──
+// GET /businesses/:id/images (this listing's photos, in order)
+// POST /businesses/:id/images {images:[dataUrl]} (add one)
+// PUT  /businesses/:id/images {images:[kept...]} (remove / reorder — only stored URLs accepted)
+async function loadPhotos() {
+  var bid = bizOf('phBiz');
+  var grid = document.getElementById('phGrid');
+  if (!grid) return;
+  if (!bid) {
+    grid.innerHTML = '<div class="card" style="grid-column:1/-1"><p>No claimed business on this account.</p></div>';
+    return;
+  }
+  grid.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Loading photos\u2026</p>';
+  try {
+    var resp = await g('/businesses/' + encodeURIComponent(bid) + '/images');
+    var list = (resp && resp.images) || [];
+    if (!list.length) {
+      grid.innerHTML = '<div class="card" style="grid-column:1/-1"><p>No photos yet. Add your first picture above \u2014 it becomes the main image on your public listing.</p></div>';
+      return;
+    }
+    grid.innerHTML = list.map(function (url, i) {
+      return '<div class="card" style="padding:8px">' +
+        '<img src="' + esc(url) + '" alt="Photo ' + (i + 1) + '" style="width:100%;height:120px;object-fit:cover;border-radius:8px" onerror="this.style.opacity=.3">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px">' +
+          '<span style="font-size:.72rem;color:var(--text-secondary)">' + (i === 0 ? 'Main picture' : 'Photo ' + (i + 1)) + '</span>' +
+          '<button class="btn btn-secondary btn-sm" onclick="removePhoto(' + i + ')">Remove</button>' +
+        '</div></div>';
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = '<div class="card" style="grid-column:1/-1"><p>Could not load your photos: ' + esc(e.message || e) + '</p></div>';
+  }
+}
+
+async function uploadPhoto() {
+  var bid = bizOf('phBiz');
+  var input = document.getElementById('phFile');
+  if (!bid) { setNote('phResult', 'Pick a business first.', true); return; }
+  var f = input && input.files && input.files[0];
+  if (!f) { setNote('phResult', 'Choose a picture first.', true); return; }
+  if (f.size > 6 * 1024 * 1024) {
+    setNote('phResult', 'That picture is larger than 6 MB \u2014 please choose a smaller one.', true);
+    return;
+  }
+  var btn = document.getElementById('phUploadBtn');
+  if (btn) btn.disabled = true;
+  setNote('phResult', 'Uploading\u2026');
+  try {
+    var dataUrl = await new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { res(r.result); };
+      r.onerror = rej;
+      r.readAsDataURL(f);
+    });
+    await po('/businesses/' + encodeURIComponent(bid) + '/images', { images: [dataUrl] });
+    input.value = '';
+    setNote('phResult', 'Photo added.');
+    loadPhotos();
+  } catch (e) {
+    setNote('phResult', 'Upload failed: ' + (e.message || e), true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function removePhoto(index) {
+  var bid = bizOf('phBiz');
+  if (!bid) return;
+  if (!confirm('Remove this photo from your public listing?')) return;
+  try {
+    var resp = await g('/businesses/' + encodeURIComponent(bid) + '/images');
+    var list = ((resp && resp.images) || []).slice();
+    list.splice(index, 1);
+    await pu('/businesses/' + encodeURIComponent(bid) + '/images', { images: list });
+    setNote('phResult', 'Photo removed.');
+    loadPhotos();
+  } catch (e) {
+    setNote('phResult', 'Could not remove the photo: ' + (e.message || e), true);
+  }
+}
+
 function setNote(id, msg, bad) {
   var el = document.getElementById(id);
   if (!el) return;
