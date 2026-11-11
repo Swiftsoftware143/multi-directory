@@ -130,19 +130,30 @@ def call(method, path, token=None, body=None):
 
 
 def mint_non_operator():
-    """A structurally valid session that is NOT the platform operator (role `directory_admin`)."""
+    """A real, non-operator session: an existing `admin` account from the live database.
+
+    A hand-built token for a made-up user id proves nothing — `auth_guard` answers 401 for an
+    unknown subject before authorization runs, so the "not allowed to destroy" check passed on the
+    wrong refusal arm. The fixture must be a user that EXISTS so the door's own 403/404 is what
+    answers.
+    """
     secret = env_value(MD_ENV, "JWT_SECRET")
     if not secret:
         return ""
+    row = one(
+        "SELECT id::text || '|' || COALESCE(tenant_id::text, '') FROM users "
+        "WHERE role IS DISTINCT FROM 'super_admin' ORDER BY created_at DESC LIMIT 1")
+    if not row or "|" not in row:
+        return ""
+    sub, tid = row.split("|", 1)
     b64 = lambda o: __import__("base64").urlsafe_b64encode(  # noqa: E731
         json.dumps(o).encode()).decode().rstrip("=")
     now = int(time.time())
-    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
-        "sub": "00000000-0000-0000-0000-000000000003",
-        "tid": "00000000-0000-0000-0000-000000000001",
-        "role": "directory_admin", "exp": now + 600, "iat": now,
-        "aud": "multidirectory-api", "iss": "multidirectory",
-    })
+    claims = {"sub": sub, "role": "admin", "exp": now + 600, "iat": now,
+              "aud": "multidirectory-api", "iss": "multidirectory"}
+    if tid:
+        claims["tid"] = tid
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64(claims)
     sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()
     import base64
     return msg + "." + base64.urlsafe_b64encode(sig).decode().rstrip("=")
