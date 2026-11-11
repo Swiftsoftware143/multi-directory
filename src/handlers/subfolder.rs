@@ -1656,6 +1656,41 @@ pub async fn town_page(
         .map(|b| card_html(&base, &dir.slug, b))
         .collect();
 
+    // W30(b): the articles filed to THIS town are reachable from its page — the town
+    // is a real browse surface, not just a list of shops.
+    let town_articles: Vec<(String, String)> = sqlx::query_as(
+        "SELECT slug, title FROM blog_posts \
+         WHERE directory_id = $1 AND town_key = $2 \
+           AND coalesce(published, true) = true AND coalesce(status, 'published') = 'published' \
+           AND (scheduled_at IS NULL OR scheduled_at <= NOW()) \
+         ORDER BY coalesce(scheduled_at, created_at) DESC LIMIT 10",
+    )
+    .bind(dir.id)
+    .bind(&town.key)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let articles_block = if town_articles.is_empty() {
+        String::new()
+    } else {
+        let lis: String = town_articles
+            .iter()
+            .map(|(pslug, ptitle)| {
+                format!(
+                    "<li><a href=\"/{}/blog/{}\">{}</a></li>",
+                    h(&dir.slug),
+                    h(pslug),
+                    h(ptitle)
+                )
+            })
+            .collect();
+        format!(
+            "<h2>Reading about {}</h2>\n<ul class=\"article-list\">{}</ul>",
+            h(&town.label),
+            lis
+        )
+    };
+
     let mut jsonld = vec![serde_json::json!({
         "@context": "https://schema.org",
         "@type": "CollectionPage",
@@ -1706,6 +1741,7 @@ pub async fn town_page(
 <h1>Local Businesses in {town}, {state}</h1>
 <p class="lede">{n} local businesses listed in {town}, {state} — rated and reviewed by locals. Part of the <a href="/{dir}">{city}</a> directory.</p>
 <div class="grid">{cards}</div>
+{articles}
 {siblings}
 <p style="margin-top:24px"><a class="btn" href="/{dir}/businesses">See all {city} businesses →</a></p>
 {explore}
@@ -1727,6 +1763,7 @@ pub async fn town_page(
         dir = h(&dir.slug),
         city = h(&dir.city),
         cards = cards,
+        articles = articles_block,
         siblings = siblings_block,
         explore = explore,
         end = shell_end(&site),
@@ -2984,7 +3021,8 @@ pub async fn blog_post_page(
 
     let row = sqlx::query(
         "SELECT id, title, slug, excerpt, content, meta_title, meta_description, canonical_url, \
-                robots_meta, featured_image_url, author_name, blog_category, created_at, updated_at \
+                robots_meta, featured_image_url, author_name, blog_category, created_at, updated_at, \
+                town_key \
          FROM blog_posts WHERE directory_id = $1 AND slug = $2 \
            AND coalesce(published, true) = true LIMIT 1",
     )
@@ -3009,7 +3047,8 @@ pub async fn blog_post_page(
                         NULL::text AS meta_title, ba.meta_description, NULL::text AS canonical_url, \
                         NULL::text AS robots_meta, NULL::text AS featured_image_url, \
                         (SELECT b.name FROM businesses b WHERE b.id = ba.business_id) AS author_name, \
-                        ba.keyword AS blog_category, ba.created_at, ba.updated_at \
+                        ba.keyword AS blog_category, ba.created_at, ba.updated_at, \
+                        NULL::text AS town_key \
                  FROM business_articles ba \
                  WHERE ba.directory_id = $1 AND ba.slug = $2 AND ba.status = 'published' LIMIT 1",
             )
@@ -3036,6 +3075,62 @@ pub async fn blog_post_page(
     let category: Option<String> = row.try_get("blog_category").unwrap_or(None);
     let created: Option<chrono::DateTime<chrono::Utc>> = row.try_get("created_at").unwrap_or(None);
     let updated: Option<chrono::DateTime<chrono::Utc>> = row.try_get("updated_at").unwrap_or(None);
+
+    // W30(b): an article filed to ONE town must link DOWN into that town's listings,
+    // so the town is a real crawl path (article → its businesses → the town page),
+    // not a label nobody can follow.
+    let town_key: Option<String> = row
+        .try_get::<Option<String>, _>("town_key")
+        .unwrap_or(None)
+        .map(|k: String| k.trim().to_lowercase())
+        .filter(|k| !k.is_empty());
+    let mut town_label_for_schema: Option<String> = None;
+    let mut town_biz_html = String::new();
+    if let Some(key) = town_key.as_deref() {
+        let towns = local_town_entries(pool, dir.id, &dir.city).await;
+        if let Some(town) = towns.iter().find(|t| t.key == key) {
+            town_label_for_schema = Some(town.label.clone());
+            let items = list_town_businesses(pool, dir.id, &town.label, 6).await;
+            let lis: String = items
+                .iter()
+                .map(|b| {
+                    let cat = b
+                        .category
+                        .as_ref()
+                        .filter(|c| !c.trim().is_empty())
+                        .map(|c| format!(" — {}", h(c)))
+                        .unwrap_or_default();
+                    format!(
+                        "<li><a href=\"{}/{}/businesses/{}\">{}</a>{}</li>",
+                        base,
+                        h(&dir.slug),
+                        h(&b.slug),
+                        h(&b.name),
+                        cat
+                    )
+                })
+                .collect();
+            let all_link = if town.published {
+                format!(
+                    "<p><a class=\"btn\" href=\"{}/{}/{}\">All {} businesses →</a></p>",
+                    base,
+                    h(&dir.slug),
+                    h(&town.slug),
+                    h(&town.label)
+                )
+            } else {
+                String::new()
+            };
+            if !lis.is_empty() || !all_link.is_empty() {
+                town_biz_html = format!(
+                    "<section class=\"town-biz\"><h2>Businesses in {}</h2>\n<ul class=\"article-list\">{}</ul>\n{}</section>",
+                    h(&town.label),
+                    lis,
+                    all_link
+                );
+            }
+        }
+    }
 
     // B119: authored blog copy resolves the shared merge vocabulary at render time.
     let mctx = crate::merge_fields::MergeContext::for_directory(pool, dir.id).await;
@@ -3103,7 +3198,7 @@ pub async fn blog_post_page(
             "publisher": {"@type": "Organization", "name": site},
             "contentLocation": {
                 "@type": "City",
-                "name": dir.city,
+                "name": town_label_for_schema.clone().unwrap_or_else(|| dir.city.clone()),
                 "containedInPlace": {"@type": "AdministrativeArea", "name": dir.state},
             },
         }));
@@ -3182,7 +3277,7 @@ pub async fn blog_post_page(
         date = h(&date_label),
         byline = byline,
         cat = cat_html,
-        content = safe_content,
+        content = format!("{}{}", safe_content, town_biz_html),
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
@@ -3235,18 +3330,21 @@ pub async fn blog_list_page(
         // article invisible on the browse surface a visitor actually lands on, so the
         // index and the feed disagreed about what this city publishes.
         "SELECT slug, title, excerpt, scheduled_at, created_at, featured_image_url, \
-                author_name, blog_category, source_type \
+                author_name, blog_category, town_label, source_type \
          FROM ( \
            SELECT bp.slug, bp.title, bp.excerpt, bp.scheduled_at, bp.created_at, \
                   bp.featured_image_url, bp.author_name, bp.blog_category, \
+                  st.town_label, \
                   'blog'::text AS source_type \
            FROM blog_posts bp \
+           LEFT JOIN satellite_towns st \
+                  ON st.directory_id = bp.directory_id AND st.town_key = bp.town_key \
            WHERE bp.directory_id = $1 AND bp.published = true AND bp.status = 'published' \
              AND (bp.scheduled_at IS NULL OR bp.scheduled_at <= NOW()) \
            UNION ALL \
            SELECT ba.slug, ba.title, ba.meta_description, NULL::timestamptz, ba.created_at, \
                   NULL::text, (SELECT b.name FROM businesses b WHERE b.id = ba.business_id), \
-                  ba.keyword, 'article'::text \
+                  ba.keyword, NULL::text AS town_label, 'article'::text \
            FROM business_articles ba \
            WHERE ba.directory_id = $1 AND ba.status = 'published' \
          ) u \
@@ -3282,6 +3380,7 @@ pub async fn blog_list_page(
             let image: Option<String> = r.try_get("featured_image_url").unwrap_or(None);
             let author: Option<String> = r.try_get("author_name").unwrap_or(None);
             let category: Option<String> = r.try_get("blog_category").unwrap_or(None);
+            let town_label: Option<String> = r.try_get("town_label").unwrap_or(None);
             let source: String = r
                 .try_get("source_type")
                 .unwrap_or_else(|_| "blog".to_string());
@@ -3296,6 +3395,11 @@ pub async fn blog_list_page(
             }
             if let Some(c) = category.filter(|c| !c.is_empty() && c.as_str() != "general") {
                 meta_bits.push(format!("🏷️ {}", c));
+            }
+            // W30(b): a town-scoped article says which town it is about, so a reader
+            // scanning the city index can see the local ones.
+            if let Some(t) = town_label.filter(|t| !t.trim().is_empty()) {
+                meta_bits.push(format!("📍 {}", t));
             }
 
             Some(BlogItem {

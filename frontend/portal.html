@@ -1320,70 +1320,106 @@ function saveSEO(){
 }
 
 // ── Blog ───────────────────────────────────────────────
+// W30(b): the town list for the "Town" selector. Cached for the session; each town's
+// `key` is exactly the value a town page and a town tab use, so an article filed here
+// appears on that town's page as well as the city blog.
+var __mdTowns=null;
+function loadTowns(cb){
+  if(__mdTowns!==null){cb(__mdTowns);return;}
+  g('/zaarhub/cities/'+encodeURIComponent(CUR_DIR.slug),function(r){
+    var d=(r&&r.data)?r.data:r;
+    __mdTowns=(d&&d.local_towns)||[];
+    cb(__mdTowns);
+  },function(){__mdTowns=[];cb(__mdTowns);});
+}
+function townOptions(sel){
+  var out='<option value="">— City-wide (no town) —</option>';
+  for(var i=0;i<(__mdTowns||[]).length;i++){
+    var t=__mdTowns[i];
+    out+='<option value="'+esc(t.key||'')+'"'+(sel&&sel===t.key?' selected':'')+'>'+esc(t.name||t.key||'')+'</option>';
+  }
+  return out;
+}
+function townLabel(key){
+  var list=__mdTowns||[];
+  for(var i=0;i<list.length;i++){if(list[i].key===key){return list[i].name||key;}}
+  return key||'';
+}
+var __blogRows=[];
 function renderBlog(){
   var el=document.getElementById('pageContent');
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
-  g('/blog-posts?directory_id='+CUR_DIR.id,function(r){
-    var data=r.data||r||[];
-    el.innerHTML=
-    '<div class="card-header"><h3>✍️ Blog Posts</h3><div class="header-actions"><a href="/api/v1/d/'+CUR_DIR.slug+'/blog" class="btn btn-secondary btn-sm" target="_blank">👁 View Blog</a><button class="btn btn-primary btn-sm" onclick="showAddBlogPost()">+ New Post</button></div></div>'+
-    '<div class="table-wrap"><table>'+
-      '<tr><th>Title</th><th>Status</th><th>Published</th><th>Actions</th></tr>'+
-      (data.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">No posts yet</td></tr>':
-      data.map(function(p,i){
-        return '<tr><td>'+esc(p.title||'')+'</td><td><span class="badge '+(p.status==='published'?'published':'draft')+'">'+esc(p.status||'draft')+'</span></td><td>'+(p.published_at?new Date(p.published_at).toLocaleDateString():'—')+'</td>'+
-        '<td><button class="btn btn-secondary btn-sm" onclick="showEditBlogPost('+(p.id||i)+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteBlogPost('+(p.id||i)+')">🗑️</button></td></tr>';
-      }).join(''))+
-    '</table></div>';
-  },function(){el.innerHTML='<div class="empty-state"><p>Failed to load blog posts.</p></div>';});
+  loadTowns(function(){
+    g('/blog-posts?directory_id='+encodeURIComponent(CUR_DIR.id),function(r){
+      var data=r.data||r||[];
+      __blogRows=data;
+      el.innerHTML=
+      '<div class="card-header"><h3>✍️ Blog Posts</h3><div class="header-actions"><a href="/api/v1/d/'+CUR_DIR.slug+'/blog" class="btn btn-secondary btn-sm" target="_blank">👁 View Blog</a><button class="btn btn-primary btn-sm" onclick="showAddBlogPost()">+ New Post</button></div></div>'+
+      '<div class="table-wrap"><table>'+
+        '<tr><th>Title</th><th>Town</th><th>Status</th><th>Created</th><th>Actions</th></tr>'+
+        (data.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">No posts yet</td></tr>':
+        data.map(function(p,i){
+          return '<tr><td>'+esc(p.title||'')+'</td><td>'+(p.town_key?esc(townLabel(p.town_key)):'<span style="color:var(--text-secondary)">City-wide</span>')+'</td><td><span class="badge '+((p.status||'draft')==='published'?'published':'draft')+'">'+esc(p.status||'draft')+'</span></td><td>'+(p.created_at?new Date(p.created_at).toLocaleDateString():'—')+'</td>'+
+          '<td><button class="btn btn-secondary btn-sm" onclick="showEditBlogPost('+i+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteBlogPost(&quot;'+esc(String(p.id||''))+'&quot;)">🗑️</button></td></tr>';
+        }).join(''))+
+      '</table></div>';
+    },function(){el.innerHTML='<div class="empty-state"><p>Failed to load blog posts.</p></div>';});
+  });
 }
 function showAddBlogPost(){
-  showModal(
-    '<h2>New Blog Post</h2>'+
-    '<div class="form-group"><label>Title</label><input id="bp_title" placeholder="Post title"></div>'+
-    '<div class="form-group"><label>Slug</label><input id="bp_slug" placeholder="my-post-title"><span class="help-text">Leave empty to auto-generate</span></div>'+
-    '<div class="form-group"><label>Excerpt</label><textarea id="bp_excerpt" rows="2" placeholder="Short description for listings"></textarea></div>'+
-    '<div class="form-group"><label>Content (Markdown)</label><textarea id="bp_content" rows="8" placeholder="Write your post in Markdown..."></textarea></div>'+
-    '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft">Draft</option><option value="published">Published</option></select></div>'+
-    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveBlogPost()">Save</button></div>'
-  );
+  loadTowns(function(){
+    showModal(
+      '<h2>New Blog Post</h2>'+
+      '<div class="form-group"><label>Title</label><input id="bp_title" placeholder="Post title"></div>'+
+      '<div class="form-group"><label>Slug</label><input id="bp_slug" placeholder="my-post-title"><span class="help-text">Leave empty to auto-generate</span></div>'+
+      '<div class="form-group"><label>Excerpt</label><textarea id="bp_excerpt" rows="2" placeholder="Short description for listings"></textarea></div>'+
+      '<div class="form-group"><label>Content (Markdown)</label><textarea id="bp_content" rows="8" placeholder="Write your post in Markdown..."></textarea></div>'+
+      '<div class="form-group"><label>Town</label><select id="bp_town">'+townOptions('')+'</select><span class="help-text">Pick a town to publish this article on that town\'s page too. Leave city-wide for a general post.</span></div>'+
+      '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft">Draft</option><option value="published">Published</option></select></div>'+
+      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveBlogPost()">Save</button></div>'
+    );
+  });
 }
 function saveBlogPost(){
-  closeModal();
-  po('/blog-posts?directory_id='+CUR_DIR.id,{
+  var body={
     title:document.getElementById('bp_title').value,
     slug:document.getElementById('bp_slug').value,
     excerpt:document.getElementById('bp_excerpt').value,
     content:document.getElementById('bp_content').value,
+    directory_id:CUR_DIR.id,
+    town_key:document.getElementById('bp_town').value,
     status:document.getElementById('bp_status').value
-  },function(){toast('Post created','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
+  };
+  closeModal();
+  po('/blog-posts?directory_id='+encodeURIComponent(CUR_DIR.id),body,function(){toast('Post created','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
 }
-function showEditBlogPost(id){
-  g('/blog-posts?directory_id='+CUR_DIR.id,function(r){
-    var data=r.data||r||[];
-    var bp=null;
-    for(var i=0;i<data.length;i++){if(data[i].id===id||i===id-1){bp=data[i];break;}}
-    if(!bp){toast('Not found','error');return;}
+function showEditBlogPost(i){
+  var bp=__blogRows[i];
+  if(!bp){toast('Not found','error');return;}
+  loadTowns(function(){
     showModal(
       '<h2>Edit Post</h2>'+
       '<div class="form-group"><label>Title</label><input id="bp_title" value="'+esc(bp.title||'')+'"></div>'+
       '<div class="form-group"><label>Slug</label><input id="bp_slug" value="'+esc(bp.slug||'')+'"></div>'+
       '<div class="form-group"><label>Excerpt</label><textarea id="bp_excerpt" rows="2">'+esc(bp.excerpt||'')+'</textarea></div>'+
-    '<div class="form-group"><label>Content</label><textarea id="bp_content" rows="8">'+esc(bp.content||'')+'</textarea></div>'+
-      '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft" '+(bp.status==='draft'?'selected':'')+'>Draft</option><option value="published" '+(bp.status==='published'?'selected':'')+'>Published</option></select></div>'+
-      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateBlogPost('+(bp.id||0)+')">Update</button></div>'
+      '<div class="form-group"><label>Content</label><textarea id="bp_content" rows="8">'+esc(bp.content||'')+'</textarea></div>'+
+      '<div class="form-group"><label>Town</label><select id="bp_town">'+townOptions(bp.town_key||'')+'</select><span class="help-text">Pick a town to publish this article on that town\'s page too.</span></div>'+
+      '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft" '+((bp.status||'published')==='draft'?'selected':'')+'>Draft</option><option value="published" '+((bp.status||'published')==='published'?'selected':'')+'>Published</option></select></div>'+
+      '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateBlogPost(&quot;'+esc(String(bp.id||''))+'&quot;)">Update</button></div>'
     );
   });
 }
 function updateBlogPost(id){
-  closeModal();
-  pu('/blog-posts/'+id,{
+  var body={
     title:document.getElementById('bp_title').value,
     slug:document.getElementById('bp_slug').value,
     excerpt:document.getElementById('bp_excerpt').value,
     content:document.getElementById('bp_content').value,
+    town_key:document.getElementById('bp_town').value,
     status:document.getElementById('bp_status').value
-  },function(){toast('Post updated','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
+  };
+  closeModal();
+  pu('/blog-posts/'+id,body,function(){toast('Post updated','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
 }
 function deleteBlogPost(id){
   if(!confirm('Delete this post?'))return;

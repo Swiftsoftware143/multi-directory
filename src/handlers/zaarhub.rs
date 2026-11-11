@@ -131,6 +131,10 @@ pub(crate) fn town_slug(raw: &str) -> String {
 /// holds, and whether it is the directory's own city (the town the page opens on).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalTown {
+    /// `satellite_towns.town_key` — the lower-cased town name. The value an article,
+    /// a town page and a listing's `city` all share, so the portal can file a post to
+    /// exactly the town the directory already holds.
+    pub key: String,
     pub name: String,
     pub count: i64,
     pub is_home: bool,
@@ -930,6 +934,7 @@ pub async fn get_city_page(
         .filter_map(|(key, label, count, la, lo)| {
             if home_key.as_deref() == Some(key.as_str()) {
                 return Some(LocalTown {
+                    key: key.clone(),
                     name: label.clone(),
                     count: *count,
                     is_home: true,
@@ -940,6 +945,7 @@ pub async fn get_city_page(
             let (tla, tlo) = la.zip(*lo)?;
             let distance_km = haversine_km(cla, clo, tla, tlo);
             (distance_km <= LOCAL_AREA_KM).then(|| LocalTown {
+                key: key.clone(),
                 name: label.clone(),
                 count: *count,
                 is_home: false,

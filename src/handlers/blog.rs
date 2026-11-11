@@ -1,7 +1,7 @@
 //! Blog post CRUD handlers for Multi-Directory API.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -9,6 +9,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
@@ -36,6 +37,12 @@ pub struct CreateBlogPostRequest {
     pub directory_id: Uuid,
     pub published: Option<bool>,
     pub author_name: Option<String>,
+    /// W30(b): the ONE town this article is about (`satellite_towns.town_key`), or
+    /// absent/empty for a city-wide article.
+    pub town_key: Option<String>,
+    /// `draft` / `published`. The portal's New Post form sends this; it used to be
+    /// dropped, so a post saved as a draft went live immediately.
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,17 +53,96 @@ pub struct UpdateBlogPostRequest {
     pub content: Option<String>,
     pub published: Option<bool>,
     pub status: Option<String>,
+    /// W30(b): absent = leave the town unchanged; empty string = make the article city-wide.
+    pub town_key: Option<String>,
 }
 
-/// GET /api/v1/blog-posts — list all blog posts
-pub async fn list_blog_posts(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let posts = sqlx::query_as::<_, BlogPost>(
-        "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at FROM blog_posts ORDER BY created_at DESC "
+/// `"  Melbourne "` -> `"melbourne"`; empty (or the literal "none" the portal's
+/// empty option posts) -> `None`.
+fn normalise_town_key(raw: &str) -> Option<String> {
+    let key = raw.trim().to_lowercase();
+    if key.is_empty() || key == "none" {
+        None
+    } else {
+        Some(key)
+    }
+}
+
+/// Reject a town the directory does not hold, so a typo can never file an article
+/// under a town that has no listings and no page. The home town counts: it is a
+/// legitimate target even though it is not a `satellite_towns` row.
+async fn validate_town_key(
+    db: &sqlx::PgPool,
+    directory_id: Uuid,
+    key: &Option<String>,
+) -> Result<(), AppError> {
+    let Some(key) = key else { return Ok(()) };
+    let city: Option<String> = sqlx::query_scalar("SELECT city FROM directories WHERE id = $1")
+        .bind(directory_id)
+        .fetch_optional(db)
+        .await?;
+    let towns = crate::handlers::subfolder::local_town_entries(
+        db,
+        directory_id,
+        city.as_deref().unwrap_or(""),
     )
+    .await;
+    if towns.iter().any(|t| &t.key == key) {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(format!(
+            "Unknown town '{key}' for this directory — choose one of its towns or leave it blank."
+        )))
+    }
+}
+
+/// GET /api/v1/blog-posts[?directory_id=…] — list blog posts.
+///
+/// The business portal's Blog screen always asks for ONE directory's posts. The
+/// endpoint used to ignore the filter and return every directory's posts, so the
+/// screen a directory owner sees was the whole platform's content. `directory_id`
+/// is now honoured (and each row carries `town_key` so the edit form can prefill
+/// the town).
+pub async fn list_blog_posts(
+    State(s): State<AppState>,
+    Query(q): Query<BlogListQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let rows = sqlx::query(
+        "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at, \
+                coalesce(status, 'published') AS status, town_key \
+         FROM blog_posts \
+         WHERE ($1::uuid IS NULL OR directory_id = $1) \
+         ORDER BY created_at DESC",
+    )
+    .bind(q.directory_id)
     .fetch_all(&s.db)
     .await?;
 
-    Ok(Json(posts))
+    let out: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<Uuid, _>("id").ok(),
+                "title": r.try_get::<String, _>("title").unwrap_or_default(),
+                "slug": r.try_get::<Option<String>, _>("slug").unwrap_or(None),
+                "excerpt": r.try_get::<Option<String>, _>("excerpt").unwrap_or(None),
+                "content": r.try_get::<String, _>("content").unwrap_or_default(),
+                "directory_id": r.try_get::<Uuid, _>("directory_id").ok(),
+                "published": r.try_get::<Option<bool>, _>("published").unwrap_or(None),
+                "created_at": r.try_get::<Option<DateTime<Utc>>, _>("created_at").unwrap_or(None),
+                "updated_at": r.try_get::<Option<DateTime<Utc>>, _>("updated_at").unwrap_or(None),
+                "status": r.try_get::<String, _>("status").unwrap_or_else(|_| "published".into()),
+                "town_key": r.try_get::<Option<String>, _>("town_key").unwrap_or(None),
+            })
+        })
+        .collect();
+
+    Ok(Json(out))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlogListQuery {
+    pub directory_id: Option<Uuid>,
 }
 
 /// GET /api/v1/directories/:slug/blog-posts — list posts for a directory
@@ -87,15 +173,34 @@ pub async fn create_blog_post(
 ) -> ApiResult<impl IntoResponse> {
     let slug = req.slug.unwrap_or_else(|| slugify(&req.title));
 
+    // W30(b): an article may belong to one town of its directory — never to a town
+    // the directory does not hold (that would file it under a page that cannot exist).
+    let town_key = req.town_key.as_deref().and_then(normalise_town_key);
+    validate_town_key(&s.db, req.directory_id, &town_key).await?;
+
+    // The status the form sends is the truth; `published` follows it unless the
+    // caller states one explicitly.
+    let status = req
+        .status
+        .as_deref()
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| v == "draft" || v == "published")
+        .unwrap_or_else(|| "published".to_string());
+    let published = req.published.unwrap_or(status == "published") && status != "draft";
+
     let post = sqlx::query_as::<_, BlogPost>(
-        "INSERT INTO blog_posts (title, slug, excerpt, content, directory_id, published) VALUES (\x241, \x242, \x243, \x244, \x245, \x246) RETURNING id, title, slug, excerpt, content, directory_id, published, created_at, updated_at "
+        "INSERT INTO blog_posts (title, slug, excerpt, content, directory_id, published, town_key, status) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         RETURNING id, title, slug, excerpt, content, directory_id, published, created_at, updated_at ",
     )
     .bind(&req.title)
     .bind(&slug)
     .bind(&req.excerpt)
     .bind(&req.content)
     .bind(req.directory_id)
-    .bind(req.published.unwrap_or(true))
+    .bind(published)
+    .bind(&town_key)
+    .bind(&status)
     .fetch_one(&s.db)
     .await?;
 
@@ -132,22 +237,56 @@ pub async fn update_blog_post(
     .await?
     .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?;
 
+    // Town + status are not on the lean struct above: read them on their own so the
+    // model keeps serving the endpoints that never needed them.
+    let (existing_town, existing_status): (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT town_key, status FROM blog_posts WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?
+            .unwrap_or((None, None));
+
+    // W30(b): absent field = keep the town; empty string = make the article city-wide.
+    let town_key: Option<String> = match req.town_key.as_deref() {
+        None => existing_town,
+        Some(raw) => {
+            let key = normalise_town_key(raw);
+            validate_town_key(&s.db, existing.directory_id, &key).await?;
+            key
+        }
+    };
+
     let title = req.title.unwrap_or(existing.title);
     let slug = req
         .slug
         .unwrap_or_else(|| existing.slug.unwrap_or_else(|| slugify(&title)));
     let excerpt = req.excerpt.or(existing.excerpt);
     let content = req.content.unwrap_or(existing.content);
-    let published = req.published.unwrap_or(existing.published.unwrap_or(true));
+    let status = req
+        .status
+        .as_deref()
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| v == "draft" || v == "published")
+        .or(existing_status)
+        .unwrap_or_else(|| "published".to_string());
+    let published = if status == "draft" {
+        false
+    } else {
+        req.published.unwrap_or(existing.published.unwrap_or(true))
+    };
 
     let post = sqlx::query_as::<_, BlogPost>(
-        "UPDATE blog_posts SET title = \x241, slug = \x242, excerpt = \x243, content = \x244, published = \x245, updated_at = NOW() WHERE id = \x246 RETURNING id, title, slug, excerpt, content, directory_id, published, created_at, updated_at "
+        "UPDATE blog_posts SET title = $1, slug = $2, excerpt = $3, content = $4, published = $5, \
+                status = $6, town_key = $7, updated_at = NOW() WHERE id = $8 \
+         RETURNING id, title, slug, excerpt, content, directory_id, published, created_at, updated_at ",
     )
     .bind(&title)
     .bind(&slug)
     .bind(&excerpt)
     .bind(&content)
     .bind(published)
+    .bind(&status)
+    .bind(&town_key)
     .bind(id)
     .fetch_one(&s.db)
     .await?;
