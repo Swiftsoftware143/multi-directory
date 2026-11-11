@@ -1671,6 +1671,27 @@
         </h3>
         <p class="feature-subtitle">The data toolbelt for this directory: look a business up in <b>Google Places</b> (autocomplete → details), search <b>Yelp</b>, work the <b>business verification</b> queue, and <b>bulk-export</b> the directory's records as JSON or CSV. Google/Yelp keys come from <b>Provider API Keys</b>; a provider that is not configured tells you instead of failing silently.</p>
 
+        <!-- 📈 The product itself: demand data from real visitor events (searches, unmet demand,
+             what people looked for by area/category). Same figures as the full Demand Analytics
+             screen, summarised here so this tab is the data business, not only its toolbelt. -->
+        <h4 style="margin-top:6px">📈 Demand data — what people actually searched for</h4>
+        <p class="feature-subtitle" style="margin:0 0 8px">Counted from real visitor events on the public site: searches, views, and the searches that came back with <b>nothing</b> (unmet demand — the gap worth selling). This is the licenceable data product; the full grid, chart and exports live in <b>Demand Analytics</b>.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="dc-demand-dir"><option value="">All directories (network)</option></select>
+          <select class="pk-input" id="dc-demand-days">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90" selected>Last 90 days</option>
+            <option value="365">Last 365 days</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__dcDemandLoad()">↻ Refresh demand</button>
+          <a class="btn btn-ghost btn-sm" href="#demand-analytics-section">Open full Demand Analytics →</a>
+          <span class="feature-status" id="dc-demand-status">demand not loaded yet</span>
+        </div>
+        <div id="dc-demand-summary" style="margin-top:10px;font-size:.9rem"></div>
+        <div id="dc-demand-unmet" style="margin-top:10px"></div>
+        <div id="dc-demand-cats" style="margin-top:10px"></div>
+
         <!-- Google Places lookup -->
         <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
           <select class="pk-input" id="dc-psearch-dir"><option value="">All / default</option></select>
@@ -7805,12 +7826,65 @@
     // which is shown verbatim instead of faking success.
     var dcPlaces = [];
 
+    // ── Demand data inside the Data Company tab (the licenceable product): the same rollup
+    // endpoint the full Demand Analytics screen reads, summarised in plain numbers. Counts come
+    // from real visitor events; "unmet demand" is the searches that returned no business at all.
+    window.__dcDemandLoad = function () {
+      var st = document.getElementById('dc-demand-status');
+      var sum = document.getElementById('dc-demand-summary');
+      var unmetBox = document.getElementById('dc-demand-unmet');
+      var catBox = document.getElementById('dc-demand-cats');
+      if (!st || !sum) return;
+      var dir = (document.getElementById('dc-demand-dir') || {}).value || '';
+      var days = (document.getElementById('dc-demand-days') || {}).value || '90';
+      var p = ['days=' + encodeURIComponent(days)];
+      if (dir) p.push('directory_id=' + encodeURIComponent(dir));
+      st.textContent = 'loading…';
+      apiGet('/analytics/demand/rollups?' + p.join('&')).then(function (r) {
+        var s = r.summary || {};
+        var mix = r.search_vs_view || {};
+        var win = (r.scope && r.scope.days) || days;
+        st.textContent = 'loaded · last ' + win + ' days';
+        sum.innerHTML = '<b>' + (s.total_events || 0) + '</b> visitor events · <b>' + (mix.searches || 0) +
+          '</b> searches · <b>' + (s.distinct_visitors || 0) + '</b> visitors · <b>' +
+          (s.distinct_categories || 0) + '</b> categories · <b>' + (s.distinct_areas || 0) + '</b> areas';
+
+        var unmet = (r.unmet_demand || []).slice(0, 8);
+        var h = '<div style="font-size:.85rem;font-weight:600;margin-bottom:4px">Unmet demand — searches that found nothing</div>';
+        if (!unmet.length) {
+          h += '<div class="empty-state">No zero-result searches in this window.</div>';
+        } else {
+          h += '<table style="width:100%;font-size:.8rem;border-collapse:collapse"><tr style="text-align:left;color:var(--text-secondary)"><th>Category</th><th>What they searched</th><th>Searches</th></tr>';
+          unmet.forEach(function (u) {
+            h += '<tr style="border-top:1px solid var(--border,#1e2a3a)"><td style="padding:5px 4px">' +
+              daEsc(u.category || 'Uncategorized') + '</td><td>' + daEsc(u.term || '(any)') +
+              '</td><td>' + (u.zero_result_searches || 0) + '</td></tr>';
+          });
+          h += '</table>';
+        }
+        unmetBox.innerHTML = h;
+
+        var byCat = {};
+        (r.top_category_per_area || []).forEach(function (x) {
+          var k = x.category || 'Uncategorized';
+          byCat[k] = (byCat[k] || 0) + (x.events || 0);
+        });
+        var cats = Object.keys(byCat).map(function (k) { return [k, byCat[k]]; })
+          .sort(function (a, b) { return b[1] - a[1]; }).slice(0, 5);
+        var ch = '<div style="font-size:.85rem;font-weight:600;margin-bottom:4px">Top categories by demand</div>';
+        ch += cats.length
+          ? '<div style="font-size:.8rem">' + cats.map(function (c) { return daEsc(c[0]) + ' <b>' + c[1] + '</b>'; }).join(' · ') + '</div>'
+          : '<div class="empty-state">No category demand recorded in this window.</div>';
+        catBox.innerHTML = ch;
+      }).catch(function (e) { st.textContent = 'error: ' + e.message; });
+    };
+
     function dcFillDirs() {
-      ['dc-psearch-dir', 'dc-yelp-dir', 'dc-x-dir'].forEach(function (id) {
+      ['dc-psearch-dir', 'dc-yelp-dir', 'dc-x-dir', 'dc-demand-dir'].forEach(function (id) {
         var sel = document.getElementById(id);
         if (!sel) return;
         var keep = sel.value;
-        var blank = (id === 'dc-x-dir') ? 'All directories' : 'All / default';
+        var blank = (id === 'dc-x-dir' || id === 'dc-demand-dir') ? 'All directories' : 'All / default';
         sel.innerHTML = '<option value="">' + blank + '</option>';
         (directories || []).forEach(function (d) {
           var o = document.createElement('option');
@@ -7829,6 +7903,7 @@
       }
       dcFillDirs();
       window.__dcVerifLoad();
+      window.__dcDemandLoad();
     }
 
     window.__dcPlacesSearch = function () {
