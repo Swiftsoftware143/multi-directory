@@ -1146,7 +1146,7 @@ pub async fn town_page(
 
     let body = format!(
         r#"{start}{crumbs}
-<h1>{label} in {town}, {state}</h1>
+<h1>Local Businesses in {town}, {state}</h1>
 <p class="lede">{n} local businesses listed in {town}, {state} — rated and reviewed by locals. Part of the <a href="/{dir}">{city}</a> directory.</p>
 <div class="grid">{cards}</div>
 {siblings}
@@ -1163,7 +1163,6 @@ pub async fn town_page(
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
             (&town.label, &canonical),
         ]),
-        label = h(&label),
         town = h(&town.label),
         state = h(&dir.state),
         n = town.count,
@@ -1173,7 +1172,6 @@ pub async fn town_page(
         siblings = siblings_block,
         end = shell_end(&site),
     );
-
     Some(html_response(StatusCode::OK, body))
 }
 
