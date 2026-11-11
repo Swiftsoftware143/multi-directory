@@ -189,7 +189,7 @@
       <tr><td>Choose which email service a directory sends with, verify it and send a test email</td><td>Admin Panel &rarr; <b>&#x2709;&#xFE0F; Email / SMTP</b> card (<a href="#email-transport">details below</a>)</td></tr>
       <tr><td>Save the Google Places key and populate businesses</td><td>Admin Panel &rarr; <b>&#x1F50D; Discovery / Populate</b> (ZaarHub Admin &rarr; Populate Businesses tab)</td></tr>
       <tr><td>Review/approve what a search found before it enters the directory</td><td>ZaarHub Admin &rarr; Populate Businesses &rarr; <b>2 &middot; Queue &mdash; review, then add</b> (<a href="#discovery-queue">details below</a>)</td></tr>
-      <tr><td>Connect Stripe / PayPal so customers can pay</td><td>Admin Panel &rarr; <b>&#x1F4B3; Payment Gateways</b> card (<a href="#payment-gateways">details below</a>)</td></tr>
+      <tr><td>Connect a payment gateway so customers can pay</td><td>Admin Panel &rarr; <b>&#x1F4B3; Payment Gateways</b> card (<a href="#payment-gateways">details below</a>) &mdash; <b>read the note first: Stripe is not used on this network</b></td></tr>
       <tr><td>Ad slots, submission queue, B2B toggles, plan/branding settings</td><td>Admin Panel nav bar (top of the panel links every card)</td></tr>
     </table>
     <p class="anchor-note">The panel's nav bar reaches every admin card, so nothing is hidden on an unlinked page. The same nav links back here.</p>
@@ -210,9 +210,10 @@
     </ol>
   </div>
 
-  <h2 id="payment-gateways">&#x1F4B3; Payment Gateways card &mdash; Stripe &amp; PayPal</h2>
+  <h2 id="payment-gateways">&#x1F4B3; Payment Gateways card &mdash; which gateway this network uses</h2>
   <div class="card">
-    <p>Customers pay through <b>Stripe</b> and/or <b>PayPal</b>. The card sits under <b>Provider API Keys</b> in <code>admin-panel.html</code> and writes the <code>payment_providers</code> settings. Two values are needed per gateway: the <b>API key</b> that creates the checkout, and the <b>webhook verification value</b> that proves an incoming &ldquo;payment complete&rdquo; message really came from the gateway.</p>
+    <div class="warn"><b>&#x26A0; Stripe is NOT used on this network.</b> That is the owner's decision (November 2026). The card still offers Stripe, PayPal, NMI, EPD, Square and Paddle, and only <b>Stripe</b> and <b>PayPal</b> show a live receiver today &mdash; the others say <b>no receiver yet</b>. <b>no receiver yet</b> means the key can be saved but a payment cannot be taken or settled through it, so do not announce card payments as working on the strength of a saved key. The gateway to use is <b>NMI or EPD</b>, and switching one on needs its receiver built first; until the owner confirms which of the two, leave every gateway inactive.</div>
+    <p>The card is called <b>&#x1F4B3; Payment Gateways</b> and sits in <code>admin-panel.html</code>. It writes the <code>payment_providers</code> settings. Two values are needed per gateway: the <b>API key</b> that creates the checkout, and the <b>webhook verification value</b> that proves an incoming &ldquo;payment complete&rdquo; message really came from the gateway.</p>
     <p><b>Why the second value is mandatory:</b> the webhook endpoint is public (the gateway has to reach it without a login). Without a verification value the server cannot tell a real payment notice from a forged one, so it refuses every event instead of marking orders paid. That is why the card &mdash; and the API behind it &mdash; will not let you switch a gateway to <b>Active</b> until the verification value is stored.</p>
     <ol class="checklist">
       <li><b>Stripe.</b> In <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">Stripe &rarr; Developers &rarr; API keys</a> copy the <b>Secret key</b> (<code>sk_live_…</code> or <code>sk_test_…</code>). Paste it into <b>API key / client credentials</b>.</li>
@@ -249,7 +250,7 @@
       <li><b>Google Places first</b> &mdash; it is the one that is actually broken right now. Create a <b>Google Maps Platform &rarr; Places API</b> key and paste it (see <a href="#provider-google_places">Google Places</a>). This unblocks Populate / business discovery.</li>
       <li><b>AI drafting.</b> Paste a <b>DeepSeek</b> key (the default AI provider) or an <b>OpenAI</b> / <b>Anthropic</b> key. Without one of these, AI blog/content drafting cannot run.</li>
       <li><b>System email.</b> If the directory sends newsletters, notifications or receipts, paste <b>Mailgun</b>, <b>SendGrid</b> or <b>Sendiio</b> &mdash; then open the <b>&#x2709;&#xFE0F; Email / SMTP</b> card, pick that transport for the directory and press <b>Verify credentials</b>, then <b>Send test email</b> (<a href="#email-transport">steps</a>). SMTP needs no provider key at all: just host/username/password on the same card.</li>
-      <li><b>Card payments.</b> If the directory takes card payments or pays out, paste the <b>Stripe</b> <i>secret</i> key.</li>
+      <li><b>Card payments.</b> Not Stripe on this network. Choose <b>NMI</b> or <b>EPD</b> in the <b>&#x1F4B3; Payment Gateways</b> card, but note both still show <b>no receiver yet</b> — a saved key does not let a payment run until the receiver exists.</li>
       <li><b>SMS.</b> If the directory texts customers, paste the <b>Twilio</b> credentials (and complete carrier/A2P registration).</li>
       <li><b>Captured leads &rarr; CRM.</b> For CoreSwift, paste only the <code>csk_…</code> key — the hub URL is preconfigured. (Advanced: paste a <b>Base URL</b> too if you run a self-hosted CoreSwift.)</li>
       <li><b>Optionals.</b> Add BrightLocal / Yext / Uberall / SerpAPI / Google Custom Search / Bing / Telnyx / GrooveSell / SAM.gov / USAspending only if the client actually uses them.</li>
@@ -647,8 +648,8 @@
     <p class="anchor-note">Deep-link to this section with <code>#provider-groovesell</code>. <a class="top-link" href="#top">&#x2191; Back to top</a></p>
   </section>
   <section class="card prov" id="provider-stripe">
-    <h2>💳 Stripe <span class="badge badge-req">Required</span> <span class="keyid">stripe</span></h2>
-    <p class="prov-desc">Card payments, subscriptions, invoices and payouts</p>
+    <h2>💳 Stripe <span class="badge">Not used on this network</span> <span class="keyid">stripe</span></h2>
+    <p class="prov-desc">Card payments, subscriptions, invoices and payouts — <b>switched off for this network by the owner (November 2026). This section is kept only so the card makes sense if a future directory chooses it.</b></p>
     
     <h4>1. What it powers</h4>
     <ul><li><b>Card payments at checkout</b> (<code>checkout_handler.rs</code> resolves the active provider <code>stripe</code> and stores its credentials as the active payment provider).</li><li>Subscriptions, invoices and payouts.</li><li>Marketplace / listing upgrades and any paid placement flow that goes through checkout.</li></ul>
