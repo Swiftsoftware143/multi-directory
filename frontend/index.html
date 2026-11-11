@@ -665,6 +665,13 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 // ── Helpers ──
 async function g(url){var ctrl=new AbortController();var timer=setTimeout(function(){ctrl.abort()},15000);try{var r=await fetch('/api/v1'+url,{signal:ctrl.signal});if(!r.ok){let e=await r.json().catch(()=>({}));throw new Error(e.message||e.error||'Request failed')}clearTimeout(timer);return r.json()}catch(e){clearTimeout(timer);throw e}}
 function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+/* SEO: a business card must link to its REAL, server-rendered page
+   /<city>/businesses/<business-slug> (correct title, description, canonical and
+   structured data) so search engines can crawl and rank it. Before this, every
+   card was a div+onclick hash link, so 3,988 sitemap URLs had no inbound links.
+   Falls back to the in-app view only when the business has no slug. */
+function bizHref(citySlug,bizSlug){if(!citySlug||!bizSlug)return '';return '/'+encodeURIComponent(citySlug)+'/businesses/'+encodeURIComponent(bizSlug)}
+function bizLink(href,label){return href?('<a class="zh-biz-link" href="'+href+'" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none">'+label+'</a>'):label}
 // Where a rating came from. `review_count` is a COMBINATION of the listing's imported public-listing
 // aggregate and our own approved reviews (the API also sends the two halves separately). Printing the
 // combined number as if it were ZaarHub's own made the page contradict itself — "199 reviews" in the
@@ -1630,7 +1637,7 @@ function renderHomepageContent(d){
       '<div class="zh-biz-cover" style="background:linear-gradient(135deg,#f27f2f,#f97316)"><span class="letter">'+(tr.name?esc(tr.name[0].toUpperCase()):'🏪')+'</span>'+
       (tr.category?'<span class="cat-tag">'+esc(tr.category)+'</span>':'')+'</div>'+
       '<div class="zh-biz-body">'+
-      '<h4>'+medal+esc(tr.name)+'</h4>'+
+      '<h4>'+medal+bizLink(bizHref(tr.directory_slug,tr.slug),esc(tr.name))+'</h4>'+
       '<div><span class="zh-rating">'+trStars+'</span> <span class="num" style="color:var(--text-light);font-size:.78rem">'+(tr.review_count||0)+' reviews</span></div>'+
       (tr.city?'<div class="addr">📍 '+esc(tr.city)+'</div>':'')+
       '</div></div>'
@@ -1851,7 +1858,7 @@ function initCityMap(){
     var slug=card.getAttribute('data-slug')||''
     var id=card.getAttribute('data-id')||''
     var marker=L.marker([lat,lng]).addTo(_cityMap)
-    marker.bindPopup('<strong>'+esc(name)+'</strong><br><a href="#/city/'+slug+'/biz/'+id+'" style="color:var(--primary)">View Business →</a>')
+    marker.bindPopup('<strong>'+esc(name)+'</strong><br><a href="'+(bizHref(slug,card.getAttribute('data-biz-slug')||'')||('#/city/'+slug+'/biz/'+id))+'" style="color:var(--primary)">View Business →</a>')
   })
 }
 
@@ -2288,7 +2295,7 @@ function renderCityPage(d){
     var lngAttr=b.lng?(' data-lng="'+b.lng+'"'):''
     if(!latAttr&&b.latitude)latAttr=' data-lat="'+b.latitude+'"'
     if(!lngAttr&&b.longitude)lngAttr=' data-lng="'+b.longitude+'"'
-    var dataAttrs=' data-name="'+esc(b.name)+'" data-slug="'+state.slug+'" data-id="'+b.id+'"'+latAttr+lngAttr
+    var dataAttrs=' data-name="'+esc(b.name)+'" data-slug="'+state.slug+'" data-biz-slug="'+esc(b.slug||'')+'" data-id="'+b.id+'"'+latAttr+lngAttr
     bizHtml+=`
 <div class="zh-biz-card" onclick="location.hash='#/city/${encodeURIComponent(state.slug)}/biz/${b.id}'"${dataAttrs}>
   <div class="zh-biz-cover" style="background:linear-gradient(${coverGrad})">
@@ -2297,7 +2304,7 @@ function renderCityPage(d){
   </div>
   <div class="zh-biz-body">
     <div class="badges">${badges}</div>
-    <h4>${esc(b.name)}${distBadge}</h4>
+    <h4>${bizLink(bizHref(state.slug,b.slug),esc(b.name))}${distBadge}</h4>
     <div><span class="zh-rating">${stars}</span> <span class="num" style="color:var(--text-light);font-size:.78rem">${reviewCount?reviewCount+' reviews':''}</span></div>
     ${b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':''}
     <div class="zh-biz-actions-row" onclick="event.stopPropagation()">
@@ -2358,7 +2365,7 @@ function renderCityPage(d){
       '<div class="zh-biz-cover" style="background:linear-gradient(135deg,#f27f2f,#f97316)"><span class="letter">'+(ctrB.name?esc(ctrB.name[0].toUpperCase()):'🏪')+'</span>'+
       (ctrB.category?'<span class="cat-tag">'+esc(ctrB.category)+'</span>':'')+'</div>'+
       '<div class="zh-biz-body">'+
-      '<h4>'+ctrMedal+esc(ctrB.name)+'</h4>'+
+      '<h4>'+ctrMedal+bizLink(bizHref(state.slug,ctrB.slug),esc(ctrB.name))+'</h4>'+
       '<div><span class="zh-rating">'+ctrStars+'</span> <span class="num" style="color:var(--text-light);font-size:.78rem">'+(ctrB.review_count||0)+' reviews</span></div>'+
       '</div></div>'
   }
@@ -2591,7 +2598,7 @@ function renderSearchResults(r){
       }
       h+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'">'+
         '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="">':esc((b.name||'?')[0]))+'</div>'+
-        '<div class="zh-biz-body"><h4>'+esc(b.name)+distBadge+'</h4>'+
+        '<div class="zh-biz-body"><h4>'+bizLink(bizHref(b.directory_slug,b.slug),esc(b.name))+distBadge+'</h4>'+
         '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div>'+
         (b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':'')+
         (b.city?'<div class="addr">🏙️ '+esc(b.city)+'</div>':'')+
@@ -3827,7 +3834,7 @@ function renderSavedPlaces(items){
     var bImg=b.image_url||(b.images&&b.images[0])||''
     var bWhere=[b.city,b.state].filter(Boolean).join(', ')
     var stars=b.rating?'★'.repeat(Math.round(b.rating))+'☆'.repeat(5-Math.round(b.rating)):''
-    html+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+bSlug+'/biz/'+bId+'\'"><div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(bImg?'<img src="'+esc(bImg)+'" alt="">':esc(bName.charAt(0)))+'</div><div class="zh-biz-body"><h4>'+esc(bName)+'</h4><div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div><div style="font-size:.78rem;color:var(--text-light)">'+esc(bWhere)+'</div></div></div>'
+    html+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+bSlug+'/biz/'+bId+'\'"><div class="zh-biz-img" style="background:'+(i%2===0?'var(--bg-teal)':'var(--accent-light)')+'">'+(bImg?'<img src="'+esc(bImg)+'" alt="">':esc(bName.charAt(0)))+'</div><div class="zh-biz-body"><h4>'+bizLink(bizHref(b.directory_slug,b.slug),esc(bName))+'</h4><div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div><div style="font-size:.78rem;color:var(--text-light)">'+esc(bWhere)+'</div></div></div>'
   }
   html+='</div>'
   el.innerHTML=html
