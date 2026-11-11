@@ -1163,11 +1163,18 @@ pub async fn businesses_page(
         format!("<div class=\"pager\">{}</div>", pager)
     };
 
+    // Category links: the businesses index is the hub every category page hangs off,
+    // so this block is what makes the category pages reachable by a crawler and by a
+    // visitor (and passes the city page's inbound links down to every category).
+    let cat_chips = category_chips(pool, &dir, &base, None).await;
+
     let body = format!(
         r#"{start}{crumbs}
 <h1>{label}</h1>
 <p class="lede">{n} businesses · page {page} of {pages}</p>
 <div class="grid">{cards}</div>
+<h2>Browse by category</h2>
+<div class="chips">{cat_chips}</div>
 {pager}
 {end}"#,
         start = shell_start(
@@ -1187,6 +1194,203 @@ pub async fn businesses_page(
         pages = total_pages,
         cards = cards,
         pager = pager,
+        end = shell_end(&site),
+    );
+
+    Some(html_response(StatusCode::OK, body))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Category page — GET /<slug>/<category-slug>
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Links to every category that has listings in this directory. The internal-link
+/// backbone: the businesses index links here once, and every category page links to
+/// its siblings, so no category page is an orphan and every listing below inherits
+/// the inbound links of its category.
+async fn category_chips(
+    pool: &PgPool,
+    dir: &DirectoryRec,
+    base: &str,
+    exclude: Option<&str>,
+) -> String {
+    let rows = sqlx::query(
+        "SELECT dc.slug, dc.name, COUNT(b.id) AS n \
+         FROM directory_categories dc \
+         JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
+         WHERE b.directory_id = $1 AND coalesce(dc.slug,'') <> '' \
+         GROUP BY dc.slug, dc.name \
+         ORDER BY COUNT(b.id) DESC, dc.name",
+    )
+    .bind(dir.id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let mut out = String::new();
+    for r in &rows {
+        let s: String = r.try_get("slug").unwrap_or_default();
+        let name: String = r.try_get("name").unwrap_or_default();
+        let n: i64 = r.try_get("n").unwrap_or(0);
+        if s.is_empty() || name.is_empty() || exclude == Some(s.as_str()) {
+            continue;
+        }
+        out.push_str(&format!(
+            "<a class=\"chip\" href=\"{}/{}/{}\">{} ({})</a>",
+            h(base),
+            h(&dir.slug),
+            h(&s),
+            h(&name),
+            n
+        ));
+    }
+    out
+}
+
+/// One crawlable page per category per city (`/palm-bay/roofing`).
+///
+/// Before this, a city's only server-rendered listing surfaces were its home and
+/// `/businesses`: a search like "roofers in Palm Bay" had no page naming the
+/// category, so demand for every category landed on one city URL and every business
+/// below it inherited that page's rank. Each category with real listings now gets
+/// its own URL — its own title/description, a self-canonical, an ItemList of every
+/// business in it (each a real `<a href>` to the server-rendered listing), a
+/// breadcrumb trail and links to its sibling categories.
+///
+/// Returns `None` when the slug is not a category with at least one active business
+/// here, so the caller keeps its genuine 404 — never a thin page, never the SPA
+/// shell.
+pub async fn category_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    slug: &str,
+    cat_slug: &str,
+    _query: &str,
+) -> Option<Response<Body>> {
+    let dir = load_directory(pool, slug).await?;
+    // A category is network-wide (`directory_id IS NULL`, how the factory seeds
+    // them) or owned by one directory; a directory's own row wins over the shared one.
+    let row = match sqlx::query(
+        "SELECT dc.name, dc.slug FROM directory_categories dc \
+         WHERE dc.slug = $1 AND (dc.directory_id = $2 OR dc.directory_id IS NULL) \
+         ORDER BY dc.directory_id NULLS LAST LIMIT 1",
+    )
+    .bind(cat_slug)
+    .bind(dir.id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(Some(r)) => r,
+        _ => return None,
+    };
+    let cat_name: String = row.try_get("name").unwrap_or_default();
+    let cat_slug: String = row.try_get("slug").unwrap_or_default();
+    if cat_name.is_empty() || cat_slug.is_empty() {
+        return None;
+    }
+
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM businesses b \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.directory_id = $1 AND b.is_active = true \
+           AND lower(coalesce(dc.name,'')) = lower($2)",
+    )
+    .bind(dir.id)
+    .bind(&cat_name)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    if total == 0 {
+        return None;
+    }
+
+    let theme = theme_for(pool, &dir).await;
+    let base = origin(host, proto, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
+    let canonical = format!("{}/{}/{}", base, dir.slug, cat_slug);
+    let label = format!("{} in {}, {}", cat_name, dir.city, dir.state);
+
+    // The admin's own category pattern applies here too (same pattern the
+    // /businesses?category= view uses), so one pattern serves both surfaces.
+    let (fb_title, fb_desc) =
+        seo_pattern(pool, dir.id, "category", &[("category", cat_name.as_str())]).await;
+    let title = fb_title.unwrap_or_else(|| format!("{} | {}", label, site));
+    let description = clip(
+        &fb_desc.unwrap_or_else(|| {
+            format!(
+                "Browse {} businesses listed under {} in {}, {}. Ratings, reviews, addresses and contact details.",
+                total, cat_name, dir.city, dir.state
+            )
+        }),
+        158,
+    );
+
+    let items = list_businesses(pool, &dir, Some(&cat_name), 100, 0).await;
+
+    let mut jsonld = vec![serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": label,
+        "numberOfItems": total,
+        "itemListElement": items.iter().enumerate().map(|(i, b)| serde_json::json!({
+            "@type": "ListItem",
+            "position": i + 1,
+            "url": format!("{}/{}/businesses/{}", base, dir.slug, b.slug),
+            "name": b.name,
+        })).collect::<Vec<_>>(),
+    })];
+    jsonld.push(breadcrumb_ld(&[
+        (&site, &format!("{}/", base)),
+        (&dir.name, &format!("{}/{}/", base, dir.slug)),
+        ("Businesses", &format!("{}/{}/businesses", base, dir.slug)),
+        (&label, &canonical),
+    ]));
+
+    let seo = Seo {
+        title,
+        description,
+        canonical,
+        og_type: "website".into(),
+        og_image: None,
+        jsonld,
+    };
+
+    let cards: String = items
+        .iter()
+        .map(|b| card_html(&base, &dir.slug, b))
+        .collect();
+    let chips = category_chips(pool, &dir, &base, Some(&cat_slug)).await;
+
+    let body = format!(
+        r#"{start}{crumbs}
+<h1>{label}</h1>
+<p class="lede">Browse {n} businesses listed under {cat} in {city}, {state} — rated and reviewed by locals.</p>
+<div class="grid">{cards}</div>
+<h2>More categories in {city}</h2>
+<div class="chips">{chips}</div>
+<p><a class="btn" href="/{dir}/businesses">See all {city} businesses →</a></p>
+{end}"#,
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
+        crumbs = breadcrumbs(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            ("Businesses", &format!("{}/{}/businesses", base, dir.slug)),
+            (&label, &format!("{}/{}/businesses", base, dir.slug)),
+        ]),
+        label = h(&label),
+        n = total,
+        cat = h(&cat_name),
+        city = h(&dir.city),
+        state = h(&dir.state),
+        cards = cards,
+        chips = chips,
+        dir = h(&dir.slug),
         end = shell_end(&site),
     );
 
@@ -2488,6 +2692,29 @@ pub async fn sitemap(
             slug = h(&dslug)
         ));
 
+        // Per-city category pages (`/<city>/<category-slug>`). Only categories with
+        // at least two active listings are advertised: a one-listing category page is
+        // thin content, and the sitemap must never publish a URL that renders empty.
+        let cats = sqlx::query(
+            "SELECT dc.slug FROM directory_categories dc \
+             JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
+             WHERE b.directory_id = $1 AND coalesce(dc.slug,'') <> '' \
+             GROUP BY dc.slug HAVING COUNT(b.id) >= 2 ORDER BY dc.slug",
+        )
+        .bind(dir_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        for c in &cats {
+            let cslug: String = c.try_get("slug").unwrap_or_default();
+            xml.push_str(&format!(
+                "  <url><loc>{base}/{d}/{c}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>\n",
+                base = h(&base),
+                d = h(&dslug),
+                c = h(&cslug)
+            ));
+        }
+
         // Businesses (subfolder URLs).
         let biz = sqlx::query(
             "SELECT slug FROM businesses WHERE directory_id = $1 AND is_active = true \
@@ -2950,6 +3177,12 @@ pub async fn try_render(
                                     slug,
                                     short
                                 )))
+                            } else if let Some(page) =
+                                category_page(pool, host, proto, fallback_domain, slug, short, "")
+                                    .await
+                            {
+                                // `/<city>/<category-slug>` — its own crawlable page.
+                                Some(page)
                             } else {
                                 Some(not_found_page(&format!(
                                     "There is no page at /{}/{}.",
