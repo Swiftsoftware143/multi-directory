@@ -882,6 +882,22 @@ function route(){
   
   let hash=location.hash.slice(1)||'/';
   if(MD_ENTRY_PENDING){
+    // The entry PATH only names a directory (e.g. /palm-bay); the HASH can name a deeper
+    // view inside it. Prefer the hash when it does — otherwise a shared/cold link like
+    // /palm-bay#/city/palm-bay/biz/<id> silently drops to the city landing page and the
+    // business page is unreachable by URL (2026-11-10).
+    var ehash=location.hash.slice(1)||''
+    var eparts=ehash.split('/')
+    if(eparts.length>=5&&eparts[1]==='city'&&eparts[3]==='biz'&&eparts[4]){
+      MD_ENTRY_PENDING=false
+      state.page='biz';state.slug=eparts[2];state.bizId=eparts[4]
+    }else if(eparts.length>=3&&eparts[1]==='deal'&&eparts[2]){
+      MD_ENTRY_PENDING=false
+      state.page='deal';state.dealId=eparts[2]
+    }else if(eparts.length>=3&&eparts[1]==='blog'&&eparts[2]){
+      MD_ENTRY_PENDING=false
+      state.page='blog';state.slug=eparts[2]
+    }else{
     // Pending directory deep-link; load() validates the slug against the city
     // list and confirms the sub-view. Dispatch the sub-segment to the loader
     // that already exists for it; anything else is the city landing view.
@@ -889,6 +905,7 @@ function route(){
     else if(MD_ENTRY_SUB==='events'){state.page='events';state.eventsCityFilter=MD_ENTRY_SLUG}
     else if(MD_ENTRY_SUB==='blog'){state.page='blog';state.slug=MD_ENTRY_SLUG}
     else{state.page='city';state.slug=MD_ENTRY_SLUG;state.filterCategory='';state.filterNeighbourhood=''}
+    }
   }else if(hash.startsWith('/city/')){
     var parts=hash.split('/')
     if(parts.length>=5&&parts[3]==='biz'){
