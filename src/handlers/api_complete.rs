@@ -464,6 +464,10 @@ pub async fn update_webhook(
             events = COALESCE($2, events),
             secret = COALESCE($3, secret),
             is_active = COALESCE($4, is_active),
+            -- Resuming a webhook is a deliberate act, so it clears the run-of-failures count
+            -- that auto-paused it; without this the next single failure would pause it again
+            -- the instant it was resumed.
+            failure_count = CASE WHEN $4::boolean IS TRUE THEN 0 ELSE failure_count END,
             retry_count = COALESCE($5, retry_count),
             timeout_seconds = COALESCE($6, timeout_seconds),
             updated_at = NOW()
@@ -547,6 +551,16 @@ pub async fn list_webhook_deliveries(
 }
 
 // ── Webhook Dispatcher (internal) ─────────────────────────────────────────────
+
+/// Consecutive failed deliveries after which a webhook is paused automatically.
+///
+/// Without this a consumer whose endpoint has gone away keeps being called on every single
+/// event, forever: measured 2026-11-11, a test endpoint registered in July still received
+/// every business write and had logged 213 failed deliveries, all of them retried three
+/// times. Pausing is what every webhook provider does (Stripe disables after N consecutive
+/// failures) and it makes the failure visible on the Webhooks screen instead of silently
+/// burning work on every write.
+const WEBHOOK_MAX_CONSECUTIVE_FAILURES: i32 = 20;
 
 /// Call this internally when an event happens to dispatch to matching webhooks.
 ///
@@ -669,8 +683,18 @@ pub async fn dispatch_webhook_event(
                         .execute(&db_write)
                         .await;
 
+                        // Success resets the CONSECUTIVE-failure counter (the auto-pause below
+                        // counts failures in a row, so a consumer that recovers starts clean).
+                        // A >=500 answer only stamps the failure time here — the counter is
+                        // incremented ONCE after the retry loop, not once per attempt (it used
+                        // to be incremented per attempt AND again at the end, so three failed
+                        // attempts advanced it by four and the auto-pause would have fired early).
                         let _ = sqlx::query(
-                            "UPDATE webhooks SET last_triggered_at = NOW(), last_success_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE last_success_at END, last_failure_at = CASE WHEN $1 = 'failed' THEN NOW() ELSE last_failure_at END, failure_count = CASE WHEN $1 = 'failed' THEN failure_count + 1 ELSE failure_count END WHERE id = $2"
+                            "UPDATE webhooks SET last_triggered_at = NOW(),
+                               last_success_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE last_success_at END,
+                               last_failure_at = CASE WHEN $1 = 'failed' THEN NOW() ELSE last_failure_at END,
+                               failure_count = CASE WHEN $1 = 'delivered' THEN 0 ELSE failure_count END
+                             WHERE id = $2"
                         )
                         .bind(delivery_status)
                         .bind(wh_id)
@@ -704,10 +728,16 @@ pub async fn dispatch_webhook_event(
             .execute(&db_write)
             .await;
 
+            // Final failure: count it ONCE, and pause the webhook after a run of failures so a
+            // dead endpoint stops being called on every event (the reason shows on the screen).
             let _ = sqlx::query(
-                "UPDATE webhooks SET last_triggered_at = NOW(), last_failure_at = NOW(), failure_count = failure_count + 1 WHERE id = $1"
+                "UPDATE webhooks SET last_triggered_at = NOW(), last_failure_at = NOW(),
+                   failure_count = failure_count + 1,
+                   is_active = CASE WHEN failure_count + 1 >= $2 THEN false ELSE is_active END
+                 WHERE id = $1",
             )
             .bind(wh_id)
+            .bind(WEBHOOK_MAX_CONSECUTIVE_FAILURES)
             .execute(&db_write)
             .await;
         });

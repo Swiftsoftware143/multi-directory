@@ -11247,7 +11247,12 @@
           h += '<tr style="border-top:1px solid var(--border)">'
             + '<td style="padding:6px 4px"><input readonly value="' + akEsc(w.url) + '" style="width:100%;min-width:200px;font-size:.78rem" onclick="this.select()"></td>'
             + '<td style="max-width:280px">' + akEsc((w.events || []).map(function (e) { return e === '*' ? 'all events' : e; }).join(', ') || '—') + '</td>'
-            + '<td>' + (w.is_active === false ? '<span style="color:#ef4444">paused</span>' : '<span style="color:#22c55e">active</span>') + '</td>'
+            + '<td>' + (w.is_active === false
+                ? '<span style="color:#ef4444">paused</span>'
+                  + ((w.failure_count || 0) >= 20
+                     ? '<div style="font-size:.72rem;color:var(--text-secondary);max-width:220px">auto-paused after ' + (w.failure_count || 0) + ' failed in a row — Resume once the endpoint answers</div>'
+                     : '')
+                : '<span style="color:#22c55e">active</span>') + '</td>'
             + '<td>' + (w.failure_count || 0) + '</td>'
             + '<td>' + akFmt(w.last_success_at) + '</td>'
             + '<td style="text-align:right;white-space:nowrap">'
