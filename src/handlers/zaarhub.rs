@@ -105,6 +105,28 @@ pub struct DirectoryStats {
 /// Harbor (~250 km) and Palm City (~55 km) are outside it and are not shown on the city page.
 pub const LOCAL_AREA_KM: f64 = 40.0;
 
+/// The same local-area rule, shared with the server-rendered town pages
+/// (`/<city>/<town>`, W26) so a town the city page counts is exactly a town a
+/// crawler can reach — one definition, never two that drift.
+pub(crate) fn town_slug(raw: &str) -> String {
+    let key = town_key(raw);
+    let mut out = String::with_capacity(key.len());
+    let mut dash = false;
+    for ch in key.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            dash = false;
+        } else if !dash && !out.is_empty() {
+            out.push('-');
+            dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
 /// One town on a city page: what the town is called, how many of its businesses this directory
 /// holds, and whether it is the directory's own city (the town the page opens on).
 #[derive(Debug, Serialize, Deserialize)]
@@ -117,12 +139,12 @@ pub struct LocalTown {
 }
 
 /// `"Palm Bay, FL"` -> `"palm bay"`: the key two rows must share to be the same town.
-fn town_key(raw: &str) -> String {
+pub(crate) fn town_key(raw: &str) -> String {
     raw.split(',').next().unwrap_or("").trim().to_lowercase()
 }
 
 /// Great-circle distance in km between two points.
-fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+pub(crate) fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     const EARTH_KM: f64 = 6371.0;
     let dlat = (lat2 - lat1).to_radians();
     let dlon = (lon2 - lon1).to_radians();

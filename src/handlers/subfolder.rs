@@ -874,6 +874,310 @@ fn breadcrumb_ld(items: &[(&str, &str)]) -> serde_json::Value {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Satellite towns — GET /<slug>/<town-slug>   (W26)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// W22 scoped a city page to its own local area (its own town + neighbours inside
+// `LOCAL_AREA_KM`) but published ONE URL for the whole area, and the town chips on
+// that page are JS filters (`href="javascript:void(0)"` + onclick). So "plumber in
+// Melbourne FL" had no page, and no page even named Melbourne: every town's listings
+// competed on one city page. Each town now gets its own server-rendered,
+// self-canonical URL with its own title/meta, its own businesses as real
+// `<a href>` links, a breadcrumb trail UP to the city and links across to its
+// sibling towns — and a town with fewer than `MIN_TOWN_LISTINGS` listings
+// publishes nothing at all (no thin pages, and the sitemap never advertises one).
+
+/// A town page needs at least this many active listings; below it the page is thin
+/// content that competes with the city page instead of ranking for the town.
+const MIN_TOWN_LISTINGS: i64 = 3;
+
+/// One town inside a directory's local area. `slug` is the crawlable path segment.
+struct TownEntry {
+    label: String,
+    slug: String,
+    count: i64,
+    is_home: bool,
+}
+
+/// Every town a directory holds within its local area, home town first. Uses the
+/// SAME rule as the city page (`zaarhub::LOCAL_AREA_KM`): grouped in SQL so counts
+/// are exact, never taken from a capped card list.
+async fn local_town_entries(pool: &PgPool, dir_id: Uuid, dir_city: &str) -> Vec<TownEntry> {
+    let rows: Vec<(String, String, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
+        r#"SELECT LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) AS town_key,
+                  MIN(TRIM(SPLIT_PART(TRIM(b.city), ',', 1))) AS town_label,
+                  COUNT(*)::bigint,
+                  AVG(b.latitude), AVG(b.longitude)
+           FROM businesses b
+           WHERE b.directory_id = $1 AND b.is_active = true
+             AND b.city IS NOT NULL AND TRIM(b.city) <> ''
+           GROUP BY 1"#,
+    )
+    .bind(dir_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let home_key = crate::handlers::zaarhub::town_key(dir_city);
+    let centre: Option<(f64, f64)> = rows
+        .iter()
+        .find(|(k, _, _, _, _)| *k == home_key)
+        .and_then(|(_, _, _, la, lo)| la.zip(*lo));
+
+    let mut out: Vec<TownEntry> = Vec::new();
+    for (key, label, count, la, lo) in rows {
+        if key == home_key {
+            out.push(TownEntry {
+                slug: crate::handlers::zaarhub::town_slug(&label),
+                label,
+                count,
+                is_home: true,
+            });
+            continue;
+        }
+        // A town with no usable centre distance is not part of the local area.
+        let (cla, clo) = match centre {
+            Some(c) => c,
+            None => continue,
+        };
+        let (tla, tlo) = match la.zip(lo) {
+            Some(c) => c,
+            None => continue,
+        };
+        if crate::handlers::zaarhub::haversine_km(cla, clo, tla, tlo)
+            > crate::handlers::zaarhub::LOCAL_AREA_KM
+        {
+            continue;
+        }
+        out.push(TownEntry {
+            slug: crate::handlers::zaarhub::town_slug(&label),
+            label,
+            count,
+            is_home: false,
+        });
+    }
+    out.sort_by(|a, b| b.is_home.cmp(&a.is_home).then(b.count.cmp(&a.count)));
+    out
+}
+
+/// Real `<a href>` chips for every town with a published page — the crawl and click
+/// path from a city surface down to each town. `skip` omits the page you are on.
+async fn town_chips_html(
+    pool: &PgPool,
+    dir: &DirectoryRec,
+    base: &str,
+    skip: Option<&str>,
+) -> String {
+    let towns = local_town_entries(pool, dir.id, &dir.city).await;
+    let mut out = String::new();
+    for t in towns
+        .iter()
+        .filter(|t| t.count >= MIN_TOWN_LISTINGS && Some(t.slug.as_str()) != skip)
+    {
+        let href = if t.is_home {
+            format!("{}/{}", base, dir.slug)
+        } else {
+            format!("{}/{}/{}", base, dir.slug, t.slug)
+        };
+        out.push_str(&format!(
+            "<a class=\"chip\" href=\"{}\">{} ({})</a>",
+            h(&href),
+            h(&t.label),
+            t.count
+        ));
+    }
+    out
+}
+
+/// The active businesses of ONE town, in the same order the city grid uses.
+async fn list_town_businesses(
+    pool: &PgPool,
+    dir_id: Uuid,
+    town_label: &str,
+    limit: i64,
+) -> Vec<BizCard> {
+    /// Compile-time form of the shared column list (gate rule 5d). MUST stay
+    /// byte-identical to `COLS` / `list_businesses`'s `cols_lit!`.
+    macro_rules! cols_lit {
+        () => {
+            "b.id, b.name, b.slug, b.description, b.logo_url, b.rating, \
+                        b.review_count, b.address, b.city, b.state, dc.name AS category"
+        };
+    }
+
+    let rows = sqlx::query(concat!(
+        "SELECT ",
+        cols_lit!(),
+        " FROM businesses b \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.directory_id = $1 AND b.is_active = true \
+           AND lower(btrim(split_part(b.city, ',', 1))) = lower($2) \
+         ORDER BY b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
+         LIMIT $3"
+    ))
+    .bind(dir_id)
+    .bind(town_label)
+    .bind(limit)
+    .fetch_all(pool)
+    .await;
+
+    let mut out = Vec::new();
+    for r in rows.unwrap_or_default() {
+        out.push(BizCard {
+            name: r.try_get("name").unwrap_or_default(),
+            slug: r.try_get("slug").unwrap_or_default(),
+            category: r.try_get("category").unwrap_or(None),
+            rating: r
+                .try_get::<Option<f64>, _>("rating")
+                .unwrap_or(None)
+                .unwrap_or(0.0),
+            review_count: r
+                .try_get::<Option<i32>, _>("review_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            address: r.try_get("address").unwrap_or(None),
+        });
+    }
+    out
+}
+
+/// GET `/<city>/<town-slug>` — one crawlable page per satellite town.
+///
+/// Returns `None` when the path is not a town of this directory (a real 404 is then
+/// produced by the caller), so a town can never shadow an unknown URL.
+pub async fn town_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    slug: &str,
+    town_slug_req: &str,
+) -> Option<Response<Body>> {
+    let dir = load_directory(pool, slug).await?;
+    let towns = local_town_entries(pool, dir.id, &dir.city).await;
+    let wanted = town_slug_req.trim().to_lowercase();
+    let town = towns
+        .iter()
+        .find(|t| !t.is_home && t.slug == wanted && t.count >= MIN_TOWN_LISTINGS)?;
+
+    let theme = theme_for(pool, &dir).await;
+    let base = origin(host, proto, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
+    let canonical = format!("{}/{}/{}", base, dir.slug, town.slug);
+    let label = format!("{} Businesses", town.label);
+
+    // Admin-editable per-town pattern when one exists; the derived title otherwise.
+    let count_s = town.count.to_string();
+    let (fb_title, fb_desc) = seo_pattern(
+        pool,
+        dir.id,
+        "town",
+        &[
+            ("town", town.label.as_str()),
+            ("city", dir.city.as_str()),
+            ("count", count_s.as_str()),
+        ],
+    )
+    .await;
+    let title = fb_title.unwrap_or_else(|| {
+        format!(
+            "{} Businesses & Local Services, {} | {}",
+            town.label, dir.state, site
+        )
+    });
+    let description = clip(
+        &fb_desc.unwrap_or_else(|| {
+            format!(
+                "Browse {} local businesses in {}, {}. Addresses, phone numbers, ratings and reviews — part of the {} directory on {}.",
+                town.count, town.label, dir.state, dir.city, site
+            )
+        }),
+        158,
+    );
+
+    let items = list_town_businesses(pool, dir.id, &town.label, 100).await;
+    let cards: String = items
+        .iter()
+        .map(|b| card_html(&base, &dir.slug, b))
+        .collect();
+
+    let mut jsonld = vec![serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": format!("{} businesses in {}", town.label, dir.city),
+        "url": canonical.clone(),
+        "mainEntity": {
+            "@type": "ItemList",
+            "name": label.clone(),
+            "numberOfItems": town.count,
+            "itemListElement": items.iter().enumerate().map(|(i, b)| serde_json::json!({
+                "@type": "ListItem",
+                "position": i + 1,
+                "url": format!("{}/{}/businesses/{}", base, dir.slug, b.slug),
+                "name": b.name,
+            })).collect::<Vec<_>>(),
+        },
+    })];
+    jsonld.push(breadcrumb_ld(&[
+        (&site, &format!("{}/", base)),
+        (&dir.name, &format!("{}/{}/", base, dir.slug)),
+        (&town.label, &canonical),
+    ]));
+
+    let seo = Seo {
+        title,
+        description,
+        canonical: canonical.clone(),
+        og_type: "website".into(),
+        og_image: None,
+        jsonld,
+    };
+
+    let siblings = town_chips_html(pool, &dir, &base, Some(town.slug.as_str())).await;
+    let siblings_block = if siblings.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<h2>Other towns in {}</h2>\n<div class=\"chips\">{}</div>",
+            h(&dir.city),
+            siblings
+        )
+    };
+
+    let body = format!(
+        r#"{start}{crumbs}
+<h1>{label} in {town}, {state}</h1>
+<p class="lede">{n} local businesses listed in {town}, {state} — rated and reviewed by locals. Part of the <a href="/{dir}">{city}</a> directory.</p>
+<div class="grid">{cards}</div>
+{siblings}
+<p style="margin-top:24px"><a class="btn" href="/{dir}/businesses">See all {city} businesses →</a></p>
+{end}"#,
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
+        crumbs = breadcrumbs(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            (&town.label, &canonical),
+        ]),
+        label = h(&label),
+        town = h(&town.label),
+        state = h(&dir.state),
+        n = town.count,
+        dir = h(&dir.slug),
+        city = h(&dir.city),
+        cards = cards,
+        siblings = siblings_block,
+        end = shell_end(&site),
+    );
+
+    Some(html_response(StatusCode::OK, body))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Directory home — GET /<slug>
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1167,6 +1471,19 @@ pub async fn businesses_page(
     // so this block is what makes the category pages reachable by a crawler and by a
     // visitor (and passes the city page's inbound links down to every category).
     let cat_chips = category_chips(pool, &dir, &base, None).await;
+    // Towns: the crawl path from the businesses hub DOWN to each satellite town page
+    // (W26). Real <a href> links, so every town is one hop from the city's business
+    // index — and the city is one hop back up from the town.
+    let town_chips = town_chips_html(pool, &dir, &base, None).await;
+    let towns_block = if town_chips.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<h2>Towns in {}</h2>\n<div class=\"chips\">{}</div>",
+            h(&dir.city),
+            town_chips
+        )
+    };
 
     let body = format!(
         r#"{start}{crumbs}
@@ -1175,6 +1492,7 @@ pub async fn businesses_page(
 <div class="grid">{cards}</div>
 <h2>Browse by category</h2>
 <div class="chips">{cat_chips}</div>
+{towns_block}
 {pager}
 {end}"#,
         start = shell_start(
@@ -2769,7 +3087,7 @@ pub async fn sitemap(
     ));
 
     let dirs =
-        sqlx::query("SELECT id, slug FROM directories WHERE status = 'active' ORDER BY slug")
+        sqlx::query("SELECT id, slug, city FROM directories WHERE status = 'active' ORDER BY slug")
             .fetch_all(pool)
             .await
             .unwrap_or_default();
@@ -2821,6 +3139,29 @@ pub async fn sitemap(
                 d = h(&dslug),
                 c = h(&cslug)
             ));
+        }
+
+        // Satellite town pages (`/<city>/<town-slug>`, W26): one crawlable URL per town
+        // inside the city's own local area with enough listings to be a real page. A town
+        // below the threshold publishes nothing, so the sitemap never advertises a page
+        // that would render thin content or 404.
+        let dcity: String = d
+            .try_get::<Option<String>, _>("city")
+            .unwrap_or(None)
+            .unwrap_or_default();
+        if !dcity.trim().is_empty() {
+            let towns = local_town_entries(pool, dir_id, &dcity).await;
+            for t in towns
+                .iter()
+                .filter(|t| !t.is_home && t.count >= MIN_TOWN_LISTINGS)
+            {
+                xml.push_str(&format!(
+                    "  <url><loc>{base}/{d}/{t}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>\n",
+                    base = h(&base),
+                    d = h(&dslug),
+                    t = h(&t.slug)
+                ));
+            }
         }
 
         // Businesses (subfolder URLs).
@@ -3290,6 +3631,13 @@ pub async fn try_render(
                                     .await
                             {
                                 // `/<city>/<category-slug>` — its own crawlable page.
+                                Some(page)
+                            } else if let Some(page) =
+                                town_page(pool, host, proto, fallback_domain, slug, short).await
+                            {
+                                // `/<city>/<town-slug>` — a satellite town with enough
+                                // listings for its own page (W26). Checked AFTER a category
+                                // so an existing category URL never changes meaning.
                                 Some(page)
                             } else {
                                 Some(not_found_page(&format!(
