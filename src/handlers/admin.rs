@@ -1,5 +1,6 @@
 //! Admin handlers: dashboard, admin listings, portfolio sync.
 
+use axum::http::HeaderMap;
 use axum::{extract::State, response::IntoResponse, Json};
 use serde_json::json;
 
@@ -46,6 +47,85 @@ pub async fn dashboard_stats(State(s): State<AppState>) -> ApiResult<impl IntoRe
         total_domains,
         active_directories,
         published_directories,
+    })))
+}
+
+/// GET /api/v1/me/dashboard-stats — the caller's OWN numbers, same shape as the platform view.
+///
+/// `/dashboard/stats` counts the whole platform and is operator-only (card B52), which left a
+/// directory buyer's console with "—" on every tile it could never fill: an authenticated customer
+/// asked and was refused. This is the buyer's own view — the directories their tenant owns, the
+/// businesses and reviews inside them, and their domain mappings. The platform route is untouched.
+/// A caller whose tenant owns nothing (a visitor-account workspace, a business owner) gets honest
+/// zeros rather than another account's totals.
+pub async fn my_dashboard_stats(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let tid = crate::handlers::tenant_scope::caller_tenant(&claims).ok();
+
+    // No tenant → nothing is theirs. Never fall through to a global count.
+    let Some(tid) = tid else {
+        return Ok(Json(json!(DashboardStats {
+            total_directories: 0,
+            total_businesses: 0,
+            total_reviews: 0,
+            total_domains: 0,
+            active_directories: 0,
+            published_directories: 0,
+        })));
+    };
+
+    // "Owned by this tenant" has ONE definition in this codebase: directories.owner_id → a user of
+    // that tenant (B120). Every count below walks that same edge.
+    const OWNED: &str = "d.owner_id IN (SELECT id FROM users WHERE tenant_id = $1)";
+
+    let total_directories =
+        sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM directories d WHERE {OWNED}"))
+            .bind(tid)
+            .fetch_one(&s.db)
+            .await?;
+
+    let active_directories = sqlx::query_scalar::<_, i64>(&format!(
+        "SELECT COUNT(*) FROM directories d WHERE {OWNED} AND d.status = 'active'"
+    ))
+    .bind(tid)
+    .fetch_one(&s.db)
+    .await?;
+
+    let total_businesses = sqlx::query_scalar::<_, i64>(&format!(
+        "SELECT COUNT(*) FROM businesses b JOIN directories d ON d.id = b.directory_id WHERE {OWNED}"
+    ))
+    .bind(tid)
+    .fetch_one(&s.db)
+    .await?;
+
+    let total_reviews = sqlx::query_scalar::<_, i64>(&format!(
+        "SELECT COUNT(*) FROM reviews r JOIN businesses b ON b.id = r.business_id \
+         JOIN directories d ON d.id = b.directory_id WHERE {OWNED}"
+    ))
+    .bind(tid)
+    .fetch_one(&s.db)
+    .await?;
+
+    let total_domains = sqlx::query_scalar::<_, i64>(&format!(
+        "SELECT COUNT(*) FROM domain_mappings dm JOIN directories d ON d.id = dm.directory_id \
+         WHERE {OWNED}"
+    ))
+    .bind(tid)
+    .fetch_one(&s.db)
+    .await?;
+
+    Ok(Json(json!(DashboardStats {
+        total_directories,
+        total_businesses,
+        total_reviews,
+        total_domains,
+        active_directories,
+        // Same meaning as the platform view: "published/live" is directory status 'active'.
+        published_directories: active_directories,
     })))
 }
 

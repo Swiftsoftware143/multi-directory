@@ -1566,6 +1566,10 @@ pub fn create_router(s: AppState) -> Router {
             get(admin::dashboard_stats)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // The buyer's OWN numbers — same shape, scoped to the directories their tenant owns. The
+        // platform route above stays operator-only (B52); without this a customer's dashboard
+        // asked for the platform view, was refused, and every tile stayed "—".
+        .route("/me/dashboard-stats", get(admin::my_dashboard_stats))
         .route(
             "/domains",
             get(domains::list_domains)

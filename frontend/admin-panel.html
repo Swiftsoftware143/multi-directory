@@ -5340,7 +5340,10 @@
     // Reviews + domain mappings are not derivable from the directory list, so read them from the
     // endpoint; any failure leaves the honest "—" rather than a fabricated 0.
     function loadPlatformStats() {
-      apiGet('/dashboard/stats').then(function (s) {
+      // The platform view is operator-only (all accounts' data); a customer's dashboard reads its
+      // OWN numbers from /me/dashboard-stats, so the tiles fill instead of sitting on "—".
+      var isOp = !!(user && user.role === 'super_admin');
+      apiGet(isOp ? '/dashboard/stats' : '/me/dashboard-stats').then(function (s) {
         if (!s) return;
         MD_PLATFORM_STATS = s;
         var rv = document.getElementById('stat-reviews'); if (rv) rv.textContent = (s.total_reviews == null ? '—' : s.total_reviews);
