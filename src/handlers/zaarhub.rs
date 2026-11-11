@@ -1620,7 +1620,8 @@ pub async fn get_business_detail(
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
                       b.licensed, b.insured, b.neighbourhood
                FROM businesses b
-               WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true"#,
+               WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true
+                 AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
         )
         .bind(bid)
         .bind(dir_id)
@@ -1636,7 +1637,8 @@ pub async fn get_business_detail(
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
                       b.licensed, b.insured, b.neighbourhood
                FROM businesses b
-               WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true"#,
+               WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true
+                 AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
         )
         .bind(&id)
         .bind(dir_id)
@@ -1687,7 +1689,13 @@ pub async fn get_business_detail(
                       bl.logo_url, bl.cover_image_url, bl.is_claimed
                FROM business_listings bl
                JOIN city_pages cp ON bl.city_page_id = cp.id
-               WHERE bl.id = $1 AND cp.city_slug = $2"#,
+               WHERE bl.id = $1 AND cp.city_slug = $2
+                 AND NOT EXISTS (
+                     SELECT 1 FROM businesses b2
+                      WHERE b2.id = bl.business_id
+                        AND (COALESCE(b2.is_active, true) = false
+                             OR COALESCE(b2.status, 'active') IN ('draft', 'prospect'))
+                 )"#,
         )
         .bind(bid)
         .bind(&slug)
