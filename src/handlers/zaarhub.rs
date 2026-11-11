@@ -1771,6 +1771,21 @@ pub async fn get_business_detail(
         None => (None, None),
     };
 
+    // Review PROVENANCE. `businesses.review_count`/`rating` are a COMBINATION of the listing's
+    // imported public-listing aggregate (migration 171: `imported_review_count`/`imported_rating`)
+    // plus our own approved rows. Presenting the aggregate as if it were ZaarHub's own reviews is
+    // what made the page contradict itself: a listing with 199 imported reviews and none of ours
+    // showed "199 reviews" in the header and "ZaarHub Reviews (0)" in the panel. Both halves are
+    // exposed so the page can NAME the source. The sub-selects are safe on the `business_listings`
+    // fallback path too (no matching row -> NULL -> 0).
+    let (zaarhub_review_count, imported_review_count): (i64, i32) = sqlx::query_as(
+        r#"SELECT (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'),
+                  COALESCE((SELECT imported_review_count FROM businesses WHERE id = $1), 0)"#,
+    )
+    .bind(biz.id)
+    .fetch_one(&s.db)
+    .await?;
+
     // ONE FLAT shape. This is the contract every consumer reads (`bizData.name`, `b.name`), so
     // the business fields sit at the TOP LEVEL next to deals / reviews / hours — there is no
     // nested `business` object any more. `lat`/`lng` are aliases of latitude/longitude because
@@ -1795,6 +1810,9 @@ pub async fn get_business_detail(
         "bike_score": bike_score,
         "rating": biz.rating,
         "review_count": biz.review_count,
+        // Split so the page can label where the rating came from (see the query above).
+        "zaarhub_review_count": zaarhub_review_count,
+        "imported_review_count": imported_review_count,
         "category_name": category_name.clone(),
         "category": category_name,
         // Exposed so the visitor tracker can tag demand events with the business's
