@@ -1235,7 +1235,7 @@
         <h3>🎁 Deals
           <span class="pk-badge pk-missing" id="dl-badge" style="float:right">loading…</span>
         </h3>
-        <p class="feature-subtitle">Every deal across all directories. Flip the two spotlight flags here — <b>Featured</b> puts a deal in its directory's featured feed (<code>/deals/featured</code>); <b>ZaarHub</b> lifts it into the network-wide spotlight on the homepage. Operator-only; changes take effect immediately.</p>
+        <p class="feature-subtitle">Every deal across all directories. Flip the two spotlight flags here — <b>Featured</b> puts a deal in its directory's featured feed (<code>/deals/featured</code>); <b>ZaarHub</b> lifts it into the network-wide spotlight on the homepage. Operator-only; changes take effect immediately. <b>Runs</b> is the deal's own dates — a deal only reaches a shopper while those dates cover today, so an expired deal needs <b>Renew 30 days</b> before any flag does anything.</p>
         <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">Filter
             <input class="pk-input" id="dl-q" placeholder="Filter by deal title…" oninput="window.__dlRender()"></label>
@@ -12632,6 +12632,27 @@
       for (var i = 0; i < DEALS.length; i++) if (String(DEALS[i].id) === String(id)) return DEALS[i];
       return null;
     }
+    /* Validity — a deal only reaches a shopper while its dates are current. The public
+       homepage feed and the directory deals feed both filter on start_date/end_date, so a
+       deal that ended last month can be flagged featured and STILL never appear anywhere.
+       Before this, the operator saw status "active", pressed Feature, got "Saved." and no
+       deal ever showed up on the site (measured 2026-11-11: 21 deals, all ended by 22 Oct). */
+    function day(iso) {
+      if (!iso) return '';
+      var t = new Date(iso); if (isNaN(t.getTime())) return '';
+      return t.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    function validity(d) {
+      var now = Date.now();
+      var s = d.start_date ? new Date(d.start_date).getTime() : null;
+      var e = d.end_date ? new Date(d.end_date).getTime() : null;
+      if (d.status && d.status !== 'active') return { cls: 'off', text: 'not active (' + d.status + ')' };
+      if (s && !isNaN(s) && s > now) return { cls: 'future', text: 'starts ' + day(d.start_date) };
+      if (e && !isNaN(e) && e < now) return { cls: 'expired', text: 'ended ' + day(d.end_date) };
+      if (e && !isNaN(e)) return { cls: 'live', text: 'live until ' + day(d.end_date) };
+      return { cls: 'live', text: 'live, open-ended' };
+    }
+    function isLive(d) { return validity(d).cls === 'live'; }
     function render() {
       var el = document.getElementById('dl-list'); if (!el) return;
       var q = (document.getElementById('dl-q').value || '').trim().toLowerCase();
@@ -12642,23 +12663,33 @@
         return true;
       });
       var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
-        '<thead><tr><th>Deal</th><th>Directory</th><th>Status</th><th>Featured</th><th>ZaarHub</th><th></th></tr></thead><tbody>';
-      if (!rows.length) html += '<tr><td colspan="6" style="opacity:.6">No deals' + (q || onlyF ? ' match this filter' : ' yet') + '.</td></tr>';
+        '<thead><tr><th>Deal</th><th>Directory</th><th>Status</th><th>Runs</th><th>Featured</th><th>ZaarHub</th><th></th></tr></thead><tbody>';
+      if (!rows.length) html += '<tr><td colspan="7" style="opacity:.6">No deals' + (q || onlyF ? ' match this filter' : ' yet') + '.</td></tr>';
       rows.forEach(function (d) {
+        var v = validity(d);
+        var vColor = v.cls === 'live' ? '#16a34a' : (v.cls === 'expired' ? '#dc2626' : '#b45309');
         html += '<tr><td><b>' + esc(d.title) + '</b></td>' +
           '<td>' + esc(dirName(d.directory_id) || '—') + '</td>' +
           '<td>' + esc(d.status || '') + '</td>' +
+          '<td><span style="color:' + vColor + ';font-weight:600">' + esc(v.text) + '</span></td>' +
           '<td>' + (d.featured ? '<span class="badge">featured</span>' : '<span style="opacity:.5">—</span>') + '</td>' +
           '<td>' + (d.zaarhub_featured ? '<span class="badge">zaarhub</span>' : '<span style="opacity:.5">—</span>') + '</td>' +
           '<td><button class="btn btn-ghost btn-sm" type="button" data-dl-feat="' + esc(d.id) + '">' +
             (d.featured ? 'Unfeature' : 'Feature') + '</button> ' +
           '<button class="btn btn-ghost btn-sm" type="button" data-dl-zh="' + esc(d.id) + '">' +
-            (d.zaarhub_featured ? 'Remove from ZaarHub' : 'ZaarHub') + '</button></td></tr>';
+            (d.zaarhub_featured ? 'Remove from ZaarHub' : 'ZaarHub') + '</button>' +
+          (isLive(d) ? '' : ' <button class="btn btn-sm" type="button" data-dl-renew="' + esc(d.id) + '" title="Extend this deal 30 days from today and make it active">Renew 30 days</button>') +
+          '</td></tr>';
       });
       html += '</tbody></table>';
       el.innerHTML = html;
       var badge = document.getElementById('dl-badge');
-      if (badge) { badge.textContent = DEALS.length + ' deal' + (DEALS.length === 1 ? '' : 's'); badge.className = 'pk-badge ' + (DEALS.length ? 'pk-ok' : 'pk-missing'); }
+      if (badge) {
+        var liveN = DEALS.filter(isLive).length;
+        badge.textContent = DEALS.length + ' deal' + (DEALS.length === 1 ? '' : 's') + ' · ' + liveN + ' live';
+        badge.className = 'pk-badge ' + (liveN ? 'pk-ok' : 'pk-missing');
+        badge.title = liveN ? (liveN + ' deal(s) can appear on the site now') : 'No deal is currently within its run dates, so the Deals page is empty for shoppers';
+      }
     }
     function load() {
       if (!document.getElementById('dl-list')) return;
@@ -12676,8 +12707,34 @@
         var cur = byId(id);
         if (cur && d) { cur.featured = d.featured; cur.zaarhub_featured = d.zaarhub_featured; }
         render();
-        document.getElementById('dl-status').textContent = 'Saved.';
+        var warn = '';
+        if (cur && val) {
+          var v = validity(cur);
+          if (v.cls === 'expired') warn = 'Saved — but this deal ' + v.text + ', so it will NOT appear on the site. Press Renew 30 days to put it live.';
+          else if (v.cls === 'future') warn = 'Saved — but this deal ' + v.text + ', so it is not on the site yet.';
+          else if (v.cls === 'off') warn = 'Saved — but this deal is ' + v.text + ', so it will not appear on the site.';
+        }
+        document.getElementById('dl-status').textContent = warn || 'Saved.';
         setTimeout(function () { var s = document.getElementById('dl-status'); if (s && s.textContent === 'Saved.') s.textContent = ''; }, 2500);
+      }).catch(function (e) { document.getElementById('dl-status').textContent = 'Failed: ' + e.message; });
+    }
+    /* Renew — a deal that has run out stops appearing everywhere (both public feeds filter on
+       end_date), so the operator needs a way back without touching a database. Extends 30 days
+       from today and makes it active; the flags are left exactly as they were. */
+    function renew(id) {
+      var cur = byId(id);
+      var end = new Date(Date.now() + 30 * 86400000);
+      document.getElementById('dl-status').textContent = 'Renewing…';
+      req('PUT', '/deals/' + encodeURIComponent(id), { end_date: end.toISOString(), status: 'active' }).then(function (d) {
+        if (cur) {
+          cur.end_date = (d && d.end_date) || end.toISOString();
+          cur.status = (d && d.status) || 'active';
+          if (d) { cur.featured = d.featured; cur.zaarhub_featured = d.zaarhub_featured; }
+        }
+        render();
+        var stillOff = cur && !(cur.featured || cur.zaarhub_featured);
+        document.getElementById('dl-status').textContent = 'Renewed — runs until ' + day((cur && cur.end_date) || end.toISOString()) + '.' +
+          (stillOff ? ' Now press Feature or ZaarHub to spotlight it.' : ' It is on the site now.');
       }).catch(function (e) { document.getElementById('dl-status').textContent = 'Failed: ' + e.message; });
     }
     window.__dlLoad = load;
@@ -12689,6 +12746,8 @@
         if (f) { var c1 = byId(f.getAttribute('data-dl-feat')); toggle(f.getAttribute('data-dl-feat'), 'featured', !(c1 && c1.featured)); return; }
         var z = ev.target.closest('[data-dl-zh]');
         if (z) { var c2 = byId(z.getAttribute('data-dl-zh')); toggle(z.getAttribute('data-dl-zh'), 'zaarhub_featured', !(c2 && c2.zaarhub_featured)); return; }
+        var rn = ev.target.closest('[data-dl-renew]');
+        if (rn) { renew(rn.getAttribute('data-dl-renew')); return; }
       });
       document.addEventListener('md-context-change', load);
       setTimeout(load, 800);
