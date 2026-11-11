@@ -1414,8 +1414,16 @@ pub struct StatementSendOutcome {
     pub message: String,
 }
 
+/// Render a stored **cents** figure as money. The ledger keeps amounts in cents
+/// (`settlement_invoices.amount_cents`, `net_position_cents`, …); every figure a business
+/// reads — on the statement email or in the console — must be that value divided by 100,
+/// because 100 cents on an invoice is $1.00, not $100.00.
 fn money(currency: &str, cents: &Decimal) -> String {
-    format!("{currency} {:.2}", cents)
+    format!(
+        "{} {:.2}",
+        currency,
+        (*cents / Decimal::from(100)).round_dp(2)
+    )
 }
 
 /// Build the statement a business actually receives: what it issued and owes, what
@@ -1939,4 +1947,57 @@ pub fn start_settlement_scheduler(db: PgPool) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every figure a business reads is stored in CENTS. 100 cents must print as $1.00 —
+    /// the statement used to print the raw number, overstating a bill by 100x.
+    #[test]
+    fn money_converts_cents_to_currency_units() {
+        assert_eq!(money("USD", &Decimal::from(100)), "USD 1.00");
+        assert_eq!(money("USD", &Decimal::from(40)), "USD 0.40");
+        assert_eq!(money("USD", &Decimal::from(-40)), "USD -0.40");
+        assert_eq!(
+            money("USD", &Decimal::from(1250)),
+            "USD 12.50",
+            "1250 cents is twelve dollars fifty, not one thousand two hundred fifty dollars"
+        );
+        assert_eq!(money("USD", &Decimal::from(1)), "USD 0.01");
+    }
+
+    #[test]
+    fn statement_email_lists_the_real_amount() {
+        let r = StatementRecipient {
+            business_name: Some("Probe Cafe".into()),
+            email: Some("probe@example.dev".into()),
+            points_issued: 100,
+            points_redeemed: 0,
+            invoiced_cents: Decimal::from(100),
+            reimbursed_cents: Decimal::ZERO,
+            net_position_cents: Decimal::from(100),
+        };
+        let (subject, html, text) = statement_email(
+            "Probe Cafe",
+            "2026-11",
+            "USD",
+            &r,
+            Decimal::new(1, 2),
+            Decimal::new(8, 3),
+        );
+        assert!(subject.contains("2026-11 ZaarCash statement"));
+        assert!(
+            text.contains("Amount payable: USD 1.00"),
+            "statement must show dollars, got: {text}"
+        );
+        assert!(
+            !text.contains("USD 100.00"),
+            "100 cents must never be printed as USD 100.00"
+        );
+        assert!(html.contains("USD 1.00"));
+        // 100 points at a 0.002 spread = 20 cents.
+        assert!(text.contains("USD 0.20"), "spread shown in dollars: {text}");
+    }
 }

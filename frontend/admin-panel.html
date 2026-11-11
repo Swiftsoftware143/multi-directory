@@ -6929,6 +6929,14 @@
       return {};
     }
 
+    // Settlement figures come back in CENTS (100 = $1.00). Never show the raw number to the
+    // operator: a bill of 100 cents must read $1.00, or it looks like a hundred dollars.
+    function chUsd(v) {
+      var n = parseFloat(v);
+      if (isNaN(n)) return '—';
+      return (n / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    }
+
     function loadClearinghouse() {
       chFillDirectories();
       var slug = chSlug();
@@ -7032,13 +7040,13 @@
           var p = r.period || {};
           status.textContent = 'preview ' + p.key + ' (' + p.start + ' → ' + p.end + ') — no writes made';
           var html = '<div style="font-size:.82rem;font-weight:600;margin:10px 0 4px">Preview ' + daEsc(p.key) + ' — ' +
-            t.points_issued + ' ZaarCash issued (' + t.invoiced_cents + ' invoiced) · ' +
-            t.points_redeemed + ' ZaarCash redeemed (' + t.payout_cents + ' reimbursed) · platform spread ' +
-            t.platform_spread_cents + '</div>';
-          html += daRollupTable('Invoices (issuing businesses owe)', ['Business', 'ZaarCash issued', 'Amount (cents)'],
-            r.invoices, function (x) { return [x.business_name, x.points_issued, x.amount_cents]; });
-          html += daRollupTable('Payouts (redeeming businesses are reimbursed)', ['Business', 'ZaarCash redeemed', 'Amount (cents)', 'Below minimum'],
-            r.payouts, function (x) { return [x.business_name, x.points_redeemed, x.amount_cents, x.below_minimum ? 'yes' : 'no']; });
+            t.points_issued + ' ZaarCash issued (' + chUsd(t.invoiced_cents) + ' invoiced) · ' +
+            t.points_redeemed + ' ZaarCash redeemed (' + chUsd(t.payout_cents) + ' reimbursed) · platform spread ' +
+            chUsd(t.platform_spread_cents) + '</div>';
+          html += daRollupTable('Invoices (issuing businesses owe)', ['Business', 'ZaarCash issued', 'Amount'],
+            r.invoices, function (x) { return [x.business_name, x.points_issued, chUsd(x.amount_cents)]; });
+          html += daRollupTable('Payouts (redeeming businesses are reimbursed)', ['Business', 'ZaarCash redeemed', 'Amount', 'Below minimum'],
+            r.payouts, function (x) { return [x.business_name, x.points_redeemed, chUsd(x.amount_cents), x.below_minimum ? 'yes' : 'no']; });
           host.innerHTML = html;
         })
         .catch(function (e) { status.textContent = 'preview error: ' + e.message; });
@@ -7147,9 +7155,9 @@
               '<td style="padding:4px 5px">' + daEsc(x.status) + '</td>' +
               '<td style="padding:4px 5px">' + x.total_points_issued + '</td>' +
               '<td style="padding:4px 5px">' + x.total_points_redeemed + '</td>' +
-              '<td style="padding:4px 5px">' + daEsc(x.total_invoiced_cents) + '</td>' +
-              '<td style="padding:4px 5px">' + daEsc(x.total_payout_cents) + '</td>' +
-              '<td style="padding:4px 5px">' + daEsc(x.platform_spread_cents) + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(chUsd(x.total_invoiced_cents)) + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(chUsd(x.total_payout_cents)) + '</td>' +
+              '<td style="padding:4px 5px">' + daEsc(chUsd(x.platform_spread_cents)) + '</td>' +
               '<td style="padding:4px 5px">' + daEsc(x.provider || '—') + '</td>' +
               '<td style="padding:4px 5px">' +
                 '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__chStatements(\'' + x.id + '\')">Statements</button> ' +
@@ -7181,8 +7189,8 @@
           }
           html += daRollupTable('Per-business position', ['Business', 'Issued', 'Invoiced', 'Redeemed', 'Reimbursed', 'Net', 'Invoice', 'Payout'],
             rows, function (x) {
-              return [x.business_name, x.points_issued, x.invoiced_cents, x.points_redeemed,
-                x.reimbursed_cents, x.net_position_cents, x.invoice_status || '—', x.payout_status || '—'];
+              return [x.business_name, x.points_issued, chUsd(x.invoiced_cents), x.points_redeemed,
+                chUsd(x.reimbursed_cents), chUsd(x.net_position_cents), x.invoice_status || '—', x.payout_status || '—'];
             });
           host.innerHTML = html;
         })
