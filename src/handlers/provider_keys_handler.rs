@@ -763,13 +763,38 @@ pub async fn test_provider_key(
         }
     };
 
-    Ok(Json(json!({
-        "provider": provider,
-        "configured": true,
-        "resolved_label": label,
-        "key_preview": mask_key(&key), // masked — never the raw credential
-        "message": format!("{} API key is configured ({})", provider, label)
-    })))
+    // A stored key is not a WORKING key. For the vendors we can ask directly, ask them: a
+    // key Google/Mailgun/Walk Score rejects must never come back as "configured, all good".
+    let probed = match provider.as_str() {
+        "google_places" | "google_maps" | "walkscore" | "mailgun" => Some(
+            crate::handlers::coreswift_integration_handler::probe_vendor(&provider, &key).await,
+        ),
+        _ => None,
+    };
+
+    match probed {
+        Some((valid, vendor_msg, vendor_status)) => Ok(Json(json!({
+            "provider": provider,
+            "configured": true,
+            "valid": valid,
+            "probed": valid.is_some(),
+            "resolved_label": label,
+            "key_preview": mask_key(&key),
+            "vendor_status": vendor_status,
+            "message": match valid {
+                Some(true) => format!("{} key WORKS ({}). {}", provider, label, vendor_msg),
+                Some(false) => format!("{} key REJECTED ({}). {}", provider, label, vendor_msg),
+                None => format!("{} key stored ({}); the vendor could not be reached. {}", provider, label, vendor_msg),
+            },
+        }))),
+        None => Ok(Json(json!({
+            "provider": provider,
+            "configured": true,
+            "resolved_label": label,
+            "key_preview": mask_key(&key), // masked — never the raw credential
+            "message": format!("{} API key is configured ({})", provider, label)
+        }))),
+    }
 }
 
 // ── B39: scope resolution (directory -> network -> platform) ─────────────────────────────────

@@ -3283,7 +3283,13 @@
       pkStatus('Testing the ' + provider + ' key in force'
         + (testQ ? ' for the selected directory' : '') + '...', true);
       apiGet('/provider-keys/' + encodeURIComponent(provider) + '/test' + testQ)
-        .then(function (r) { pkStatus(provider + ': ' + JSON.stringify(r).slice(0, 200), true); })
+        .then(function (r) {
+          // valid === true  -> the vendor accepted the key
+          // valid === false -> the vendor REJECTED it (show their reason)
+          // valid === null  -> stored only, nothing was proved
+          var mark = r.valid === true ? '\u2713 ' : (r.valid === false ? '\u2717 ' : '\u2022 ');
+          pkStatus(mark + provider + ': ' + (r.message || 'no answer'), r.valid !== false);
+        })
         .catch(function (e) { pkStatus(provider + ' test failed: ' + e.message, false); });
     }
 

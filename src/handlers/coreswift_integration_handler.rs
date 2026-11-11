@@ -184,40 +184,56 @@ pub async fn coreswift_push(
     })))
 }
 
+/// Query for the key test — the SAME scope the panel already sends. Without this the
+/// endpoint tested the platform/network key even when the caller asked about a city whose
+/// own directory-scoped key is what the runtime actually reads.
+#[derive(Debug, Deserialize)]
+pub struct KeyTestQuery {
+    pub directory_id: Option<Uuid>,
+}
+
 /// POST /api/v1/provider-keys/:provider/test — a REAL probe, not a stored-flag read.
 ///
-/// For `coreswift` this hits the hub (`GET /api/external/lists`) with the resolved
-/// key, so the answer is the hub's own: a bad/revoked key reports `valid: false`
-/// instead of "configured: true".
+/// `coreswift` hits the hub (`GET /api/external/lists`); `google_places` / `google_maps` /
+/// `walkscore` / `mailgun` hit their own vendor API with the resolved key. The vendor's
+/// answer decides `valid`, so a key that Google (or Mailgun / Walk Score) REJECTS can never
+/// be reported as "configured, all good" just because a row exists.
 pub async fn test_provider_key_live(
     Extension(claims): Extension<Claims>,
     State(s): State<AppState>,
     Path(provider): Path<String>,
+    Query(q): Query<KeyTestQuery>,
 ) -> ApiResult<impl IntoResponse> {
     let tenant_id = Uuid::parse_str(&claims.tid).map_err(|_| AppError::Unauthorized)?;
     let provider = provider.to_lowercase();
+    let directory_id = q.directory_id;
 
     if provider != "coreswift" {
-        // Other providers have no live probe wired here; report honestly that the
-        // key is stored without claiming it was validated against the vendor.
-        let key = super::provider_keys_handler::resolve_provider_key_for_tenant(
-            &s.db, tenant_id, &provider,
+        // One resolver for this question: own directory key -> its network -> platform.
+        let key = super::provider_keys_handler::resolve_provider_key_for_directory(
+            &s.db,
+            directory_id,
+            &provider,
         )
         .await
         .ok_or_else(|| {
             AppError::NotFound(format!("No API key found for provider '{}'", provider))
         })?;
+
+        let (valid, message, vendor_status) = probe_vendor(&provider, &key).await;
         return Ok(Json(json!({
             "provider": provider,
             "configured": true,
-            "valid": Value::Null,
-            "probed": false,
+            "valid": valid,
+            "probed": valid.is_some(),
+            "directory_id": directory_id,
             "key_preview": mask_key(&key),
-            "message": format!("{} key is stored (no live probe for this provider).", provider),
+            "vendor_status": vendor_status,
+            "message": message,
         })));
     }
 
-    let conn = resolve_lead_conn(&s.db, Some(tenant_id), None)
+    let conn = resolve_lead_conn(&s.db, Some(tenant_id), directory_id)
         .await
         .map_err(AppError::Internal)?
         .ok_or_else(|| {
@@ -256,6 +272,203 @@ pub async fn test_provider_key_live(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Live vendor probes for the Integration Center's "Test" button.
+//
+// A key that is merely STORED is not a working key: Google, Mailgun and Walk Score all
+// answer in a way that says "this credential is rejected" (referrer-restricted Google key,
+// revoked Mailgun key, wrong Walk Score plan). Every probe below therefore asks the vendor
+// with the resolved key and reports the vendor's own verdict — never a stored flag.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A fixed, vendor-safe address used only to make the probe call. It is never stored and
+/// never shown: the point is the credential verdict, not the place.
+const PROBE_ADDRESS: &str = "Orlando, FL";
+
+pub(crate) async fn probe_vendor(provider: &str, key: &str) -> (Option<bool>, String, Value) {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                None,
+                format!("Could not build HTTP client: {e}"),
+                Value::Null,
+            )
+        }
+    };
+
+    match provider {
+        // Legacy Places endpoint — this is the one the app itself calls (places_client).
+        "google_places" => {
+            let resp = client
+                .get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json")
+                .query(&[
+                    ("input", PROBE_ADDRESS),
+                    ("inputtype", "textquery"),
+                    ("fields", "place_id,name"),
+                    ("key", key),
+                ])
+                .send()
+                .await;
+            google_verdict(resp, "Places").await
+        }
+        "google_maps" => {
+            let resp = client
+                .get("https://maps.googleapis.com/maps/api/geocode/json")
+                .query(&[("address", PROBE_ADDRESS), ("key", key)])
+                .send()
+                .await;
+            google_verdict(resp, "Geocoding").await
+        }
+        "walkscore" => {
+            let resp = client
+                .get("https://api.walkscore.com/score")
+                .query(&[
+                    ("format", "json"),
+                    ("address", PROBE_ADDRESS),
+                    ("lat", "28.5383"),
+                    ("lon", "-81.3792"),
+                    ("wsapikey", key),
+                ])
+                .send()
+                .await;
+            match resp {
+                Ok(r) => {
+                    let body: Value = r.json().await.unwrap_or(Value::Null);
+                    let status = body.get("status").and_then(Value::as_i64);
+                    match status {
+                        Some(1) => (
+                            Some(true),
+                            "Walk Score accepted the key — scores are available.".to_string(),
+                            json!({ "status": 1 }),
+                        ),
+                        Some(40) | Some(41) => (
+                            Some(false),
+                            format!(
+                                "Walk Score rejected the key (status {}). Check the plan on that \
+                                 account.",
+                                status.unwrap_or(0)
+                            ),
+                            json!({ "status": status }),
+                        ),
+                        other => (
+                            Some(false),
+                            format!(
+                                "Walk Score did not accept the key (status {:?}: {}).",
+                                other,
+                                body.get("statusString")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("no reason given")
+                            ),
+                            json!({ "status": other }),
+                        ),
+                    }
+                }
+                Err(e) => (
+                    None,
+                    format!("Could not reach Walk Score: {e}"),
+                    Value::Null,
+                ),
+            }
+        }
+        // Mailgun: the key authenticates as the user `api`. Listing domains is a read-only
+        // call that answers 200 for a live key and 401 for a dead one.
+        "mailgun" => {
+            let resp = client
+                .get("https://api.mailgun.net/v3/domains")
+                .basic_auth("api", Some(key))
+                .send()
+                .await;
+            match resp {
+                Ok(r) => {
+                    let code = r.status().as_u16();
+                    let body: Value = r.json().await.unwrap_or(Value::Null);
+                    if code == 200 {
+                        let n = body
+                            .get("total_count")
+                            .and_then(Value::as_i64)
+                            .or_else(|| {
+                                body.get("items")
+                                    .and_then(Value::as_array)
+                                    .map(|a| a.len() as i64)
+                            })
+                            .unwrap_or(0);
+                        (
+                            Some(true),
+                            format!("Mailgun accepted the key — {n} sending domain(s) on it."),
+                            json!({ "http_status": code }),
+                        )
+                    } else {
+                        let detail = body
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("no reason given");
+                        (
+                            Some(false),
+                            format!("Mailgun rejected the key ({}): {detail}", code),
+                            json!({ "http_status": code }),
+                        )
+                    }
+                }
+                Err(e) => (None, format!("Could not reach Mailgun: {e}"), Value::Null),
+            }
+        }
+        other => (
+            None,
+            format!("{other} key is stored (no live probe for this provider yet)."),
+            Value::Null,
+        ),
+    }
+}
+
+/// Google's legacy JSON APIs answer 200 with a `status` field — the HTTP code says nothing,
+/// so the verdict is read from the body.
+async fn google_verdict(
+    resp: Result<reqwest::Response, reqwest::Error>,
+    label: &str,
+) -> (Option<bool>, String, Value) {
+    match resp {
+        Ok(r) => {
+            let code = r.status().as_u16();
+            let body: Value = r.json().await.unwrap_or(Value::Null);
+            let status = body
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("UNKNOWN")
+                .to_string();
+            let reason = body
+                .get("error_message")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let verdict = match status.as_str() {
+                "OK" | "ZERO_RESULTS" => Some(true),
+                _ => Some(false),
+            };
+            let msg = if verdict == Some(true) {
+                format!("Google {label} accepted the key.")
+            } else if reason.is_empty() {
+                format!("Google {label} rejected the key (status {status}).")
+            } else {
+                format!("Google {label} rejected the key: {reason}")
+            };
+            (
+                verdict,
+                msg,
+                json!({ "http_status": code, "status": status, "error": reason }),
+            )
+        }
+        Err(e) => (
+            None,
+            format!("Could not reach Google {label}: {e}"),
+            Value::Null,
+        ),
+    }
+}
+
+//
 // Card B67 — the NATIVE per-network / per-directory CoreSwift connection.
 //
 // Operable entirely from the Admin Panel: connect, test, see the status, choose the lists,
