@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -35,10 +36,30 @@ APP = "/opt/swift/apps/multi-directory"
 BIN = os.path.join(APP, "target", "release", "multidirectory")
 ENVFILE = os.environ.get("MD_ENV", "/etc/swift/env/multi-directory.env")
 PROBE_DB = os.environ.get("MD_PROBE_DB", "md_sellable_probe")
-PORT = int(os.environ.get("MD_PROBE_PORT", "8099"))
+
+
+def pick_port(preferred=None):
+    """A TCP port nobody is listening on.
+
+    Never default to a fixed guess: 8090-8099 are all taken by fleet services (8099 is the
+    message bus client), and an occupied port makes the instance die at bind time -- which used
+    to be reported as `health=404`, or worse, could read a 200 from the stranger holding the port
+    and pass without the app ever booting. Ephemeral by default, MD_PROBE_PORT to force one.
+    """
+    if preferred:
+        return int(preferred)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+PORT = pick_port(os.environ.get("MD_PROBE_PORT"))
 BASE = f"http://127.0.0.1:{PORT}"
 ADMIN_EMAIL = "cleaninstall-probe@example.com"
 ADMIN_PASSWORD = "CleanInstall-Probe-2026!"
+# The buyer's first city -- created through the real admin API on the throwaway install.
+PROBE_CITY_NAME = "Clean Install Testville"
+PROBE_CITY_SLUG = "cleaninstall-testville"
 AUD = os.environ.get("AUD", f"/opt/swift/audits/zz-item17-sellable-{time.strftime('%Y%m%d-%H%M%S')}")
 UPLOADS = "/tmp/md-item17-uploads"
 FAILS = []
@@ -88,6 +109,7 @@ def dburl_pw(url):
 def http(path, method="GET", body=None, token=None, allow_redirect=True):
     req = urllib.request.Request(BASE + path, method=method)
     req.add_header("User-Agent", "Mozilla/5.0 (compatible; SwiftOps/1.0)")
+    req.add_header("X-Swift-Harness", "item17-sellable")   # attributable rows, never indistinguishable residue
     req.add_header("Accept", "application/json, text/html")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
@@ -105,6 +127,7 @@ def http(path, method="GET", body=None, token=None, allow_redirect=True):
 
 
 def main():
+    global PORT, BASE
     os.makedirs(AUD, exist_ok=True)
     env = read_env()
     live_url = env.get("DATABASE_URL") or os.environ["DATABASE_URL"]
@@ -162,29 +185,62 @@ def main():
 
     # ---- 5. boot the shipped binary against that empty database --------------------------
     proc = None
+    logf = None
+    ready, status, boot_fail = False, 0, ""
+    LOGPATH = os.path.join(AUD, "probe-instance.log")
     try:
-        run_env = {**os.environ}
-        for k in ("DATABASE_URL", "JWT_SECRET", "APP_HOST", "APP_PORT", "RUST_LOG",
-                  "GOOGLE_PLACES_API_KEY", "CORESWIFT_INTERNAL_KEY", "PROVIDER_KEY_ENC_SECRET"):
-            if env.get(k):
-                run_env[k] = env[k]
-        run_env["DATABASE_URL"] = probe_url
-        run_env["APP_PORT"] = str(PORT)
-        run_env["APP_HOST"] = "127.0.0.1"
-        run_env["REDIS_URL"] = re.sub(r"/\d+$", "/9", env.get("REDIS_URL", "redis://127.0.0.1:6379"))
-        run_env["MD_UPLOADS_ROOT"] = UPLOADS
-        run_env["RUST_LOG"] = "info"
-        logf = open(os.path.join(AUD, "probe-instance.log"), "wb")
-        proc = subprocess.Popen([BIN], cwd=APP, env=run_env, stdout=logf, stderr=subprocess.STDOUT)
+        for attempt in (1, 2):
+            run_env = {**os.environ}
+            for k in ("DATABASE_URL", "JWT_SECRET", "APP_HOST", "APP_PORT", "RUST_LOG",
+                      "GOOGLE_PLACES_API_KEY", "CORESWIFT_INTERNAL_KEY", "PROVIDER_KEY_ENC_SECRET"):
+                if env.get(k):
+                    run_env[k] = env[k]
+            for k in [k for k in run_env if k.startswith("CORESWIFT_")]:
+                run_env.pop(k, None)   # a throwaway install must never register a workspace in the live CRM
+            run_env["DATABASE_URL"] = probe_url
+            run_env["APP_PORT"] = str(PORT)
+            run_env["APP_HOST"] = "127.0.0.1"
+            run_env["REDIS_URL"] = re.sub(r"/\d+$", "/9", env.get("REDIS_URL", "redis://127.0.0.1:6379"))
+            run_env["MD_UPLOADS_ROOT"] = UPLOADS
+            run_env["RUST_LOG"] = "info"
+            logf = open(LOGPATH, "wb")
+            proc = subprocess.Popen([BIN], cwd=APP, env=run_env, stdout=logf, stderr=subprocess.STDOUT)
 
-        ready, status = False, 0
-        for _ in range(60):
-            status, _body = http("/api/v1/health")
-            if status == 200:
-                ready = True
+            status = 0
+            for _ in range(60):
+                if proc.poll() is not None:
+                    break          # our instance is gone -- a stranger's 200 must never count
+                status, _body = http("/api/v1/health")
+                if status == 200:
+                    ready = True
+                    break
+                time.sleep(1)
+            logf.flush()
+            if ready and proc.poll() is None:
                 break
-            time.sleep(1)
-        check("clean-install instance booted and reports healthy", ready, f"health={status}")
+            logf.close()
+            full, tail = "", ""
+            try:
+                with open(LOGPATH, errors="replace") as fh:
+                    full = fh.read().strip()
+                lines = full.splitlines()
+                hits = [ln for ln in lines if "panicked" in ln or "Failed to bind" in ln or "Error" in ln]
+                tail = (hits[-1] if hits else (lines[-1] if lines else ""))[:300]
+            except Exception:  # noqa: BLE001
+                pass
+            boot_fail = (f"probe instance exited rc={proc.returncode}: {tail}"
+                         if proc.poll() is not None else f"probe instance alive but health={status}")
+            if ("Address already in use" in full and attempt == 1
+                    and not os.environ.get("MD_PROBE_NO_RETRY")):
+                PORT = pick_port()
+                BASE = f"http://127.0.0.1:{PORT}"
+                proc, ready, boot_fail = None, False, ""
+                continue
+            break
+
+        check("clean-install instance booted and reports healthy",
+              ready and proc is not None and proc.poll() is None,
+              f"health={status} port={PORT}" if ready else boot_fail)
 
         if ready:
             st, body = http("/api/v1/health")
@@ -215,6 +271,37 @@ def main():
                 st, body = http("/api/v1/admin/questions", token=token)
                 check("admin content list is empty of operator data", st == 200 and '"data":[]' in body.replace(" ", ""),
                       f"{st} {body[:80]}")
+
+                # ---- 5b. the buyer's FIRST CITY: the whole point of the product -----------
+                # A clean install that boots is not sellable; a clean install where a non-technical
+                # operator can create their first city and have it complete and reachable is.
+                st, body = http("/api/v1/directories", "POST", {
+                    "name": PROBE_CITY_NAME,
+                    "slug": PROBE_CITY_SLUG,
+                    "city": "Testville",
+                    "state": "TS",
+                    "status": "active",
+                }, token=token)
+                made = st in (200, 201) and PROBE_CITY_SLUG in body
+                check("the operator can create their first city on a clean install", made, f"{st} {body[:100]}")
+
+                st, body = http(f"/api/v1/directories/{PROBE_CITY_SLUG}", token=token)
+                check("the new city reads back with its own identity",
+                      st == 200 and PROBE_CITY_NAME in body, f"{st} {body[:100]}")
+
+                zones = psql(probe_url,
+                             "SELECT count(*) FROM ad_zones z JOIN directories d ON d.id = z.directory_id "
+                             f"WHERE d.slug = '{PROBE_CITY_SLUG}'")
+                tmpl = psql(probe_url,
+                            "SELECT count(*) FROM email_templates t JOIN directories d ON d.id = t.directory_id "
+                            f"WHERE d.slug = '{PROBE_CITY_SLUG}'")
+                check("a new city is complete on day one (ad zones + emails provisioned)",
+                      int(zones.stdout.strip() or 0) > 0 and int(tmpl.stdout.strip() or 0) > 0,
+                      f"{zones.stdout.strip()} zones, {tmpl.stdout.strip()} emails")
+
+                st, body = http(f"/city/{PROBE_CITY_SLUG}")
+                check("the new city's public page answers", st == 200 and len(body) > 2000,
+                      f"{st} len={len(body)}")
     finally:
         if proc and proc.poll() is None:
             proc.send_signal(signal.SIGTERM)
@@ -223,6 +310,11 @@ def main():
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait(timeout=20)
+        if logf is not None:
+            try:
+                logf.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     # ---- 6. teardown ---------------------------------------------------------------------
     r = psql(admin_url, f'DROP DATABASE IF EXISTS "{PROBE_DB}" WITH (FORCE)')
