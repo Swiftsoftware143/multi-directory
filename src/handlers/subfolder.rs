@@ -1490,8 +1490,49 @@ pub async fn business_detail(
             None
         }
     };
+    // The slug of that category's crawlable page (`/<city>/<category-slug>`), resolved with the
+    // same rule the category page uses (a directory's own row wins over the network-wide one) so
+    // the link only ever points at a page that renders. Without it the category surface is linked
+    // from the hub alone and a crawler reaching a business cannot walk up to its category.
+    let category_slug: Option<String> = match &category {
+        Some(c) => sqlx::query_scalar::<_, String>(
+            "SELECT slug FROM directory_categories \
+             WHERE lower(name) = lower($1) AND (directory_id = $2 OR directory_id IS NULL) \
+             ORDER BY directory_id NULLS LAST LIMIT 1",
+        )
+        .bind(c)
+        .bind(dir.id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .filter(|s| !s.trim().is_empty()),
+        None => None,
+    };
 
     let canonical = format!("{}/{}/businesses/{}", base, dir.slug, biz_slug);
+    // One trail for both the visible crumbs and the BreadcrumbList JSON-LD: Home › City ›
+    // Businesses › Category › Business, so every level of the new category surface is one
+    // click — and one hop for a crawler — from a business.
+    let crumb_items: Vec<(String, String)> = {
+        let mut v: Vec<(String, String)> = vec![
+            (site.clone(), format!("{}/", base)),
+            (dir.name.clone(), format!("{}/{}/", base, dir.slug)),
+            (
+                "Businesses".to_string(),
+                format!("{}/{}/businesses", base, dir.slug),
+            ),
+        ];
+        if let (Some(c), Some(s)) = (&category, &category_slug) {
+            v.push((c.clone(), format!("{}/{}/{}", base, dir.slug, s)));
+        }
+        v.push((name.clone(), canonical.clone()));
+        v
+    };
+    let crumb_pairs: Vec<(&str, &str)> = crumb_items
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
     let ov = seo_override(pool, "business", biz_id).await;
 
     // B119: business-page pattern (e.g. `{business_name} in {city}, {state} | ZaarHub`).
@@ -1585,12 +1626,7 @@ pub async fn business_detail(
             });
         }
         jsonld.push(lb);
-        jsonld.push(breadcrumb_ld(&[
-            (&site, &format!("{}/", base)),
-            (&dir.name, &format!("{}/{}/", base, dir.slug)),
-            ("Businesses", &format!("{}/{}/businesses", base, dir.slug)),
-            (&name, &canonical),
-        ]));
+        jsonld.push(breadcrumb_ld(&crumb_pairs));
     }
 
     let seo = Seo {
@@ -1679,20 +1715,22 @@ pub async fn business_detail(
             Some((dir.slug.as_str(), dir.name.as_str())),
             &theme
         ),
-        crumbs = breadcrumbs(&[
-            (&site, &format!("{}/", base)),
-            (&dir.name, &format!("{}/{}/", base, dir.slug)),
-            ("Businesses", &format!("{}/{}/businesses", base, dir.slug)),
-            (&name, &canonical),
-        ]),
+        crumbs = breadcrumbs(&crumb_pairs),
         logo = logo_html,
         name = h(&name),
         rating_html = rating_html,
         desc_html = desc_html,
-        cat = category
-            .as_ref()
-            .map(|c| format!("<div class=\"row\">🏷️ {}</div>", h(c)))
-            .unwrap_or_default(),
+        cat = match (&category, &category_slug) {
+            (Some(c), Some(s)) => format!(
+                "<div class=\"row\">🏷️ <a href=\"{}/{}/{}\">{}</a></div>",
+                h(&base),
+                h(&dir.slug),
+                h(s),
+                h(c)
+            ),
+            (Some(c), None) => format!("<div class=\"row\">🏷️ {}</div>", h(c)),
+            _ => String::new(),
+        },
         rows = rows,
         base = h(&base),
         dslug = h(&dir.slug),
