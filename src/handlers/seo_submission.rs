@@ -266,6 +266,23 @@ async fn submit_indexnow(
         .filter(|u| !known.contains(*u))
         .cloned()
         .collect();
+
+    // Mirror the sitemap: a url that is no longer in it must not stay "already submitted"
+    // forever. Without this the record only grows, so a deleted page — or a probe directory that
+    // should never have existed at all — keeps counting as submitted and the "what we have
+    // submitted equals what the sitemap holds" check can never come back clean (measured
+    // 2026-11-11: 4389 recorded vs 4385 in the sitemap, the 4 extras all belonged to a
+    // throwaway probe city). Never prune on an EMPTY list: a sitemap that failed to load must not
+    // wipe the record.
+    if !locs.is_empty() {
+        let _ = sqlx::query(
+            "DELETE FROM seo_submission_urls WHERE scope = $1 AND NOT (url = ANY($2::text[]))",
+        )
+        .bind(scope)
+        .bind(&locs)
+        .execute(db)
+        .await;
+    }
     if delta.len() > INDEXNOW_MAX_URLS {
         delta.truncate(INDEXNOW_MAX_URLS);
     }

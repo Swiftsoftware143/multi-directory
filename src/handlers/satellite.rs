@@ -32,6 +32,31 @@ pub struct IncludeRequest {
     pub include_satellite_towns: bool,
 }
 
+/// The city a directory is anchored to.
+///
+/// `directories.city` is NULLABLE, and a directory created without one used to make this screen
+/// answer 500 (`error occurred while decoding column 0: unexpected null`); the SEO console then
+/// logged a failed call and the Sitemaps card could not finish loading (measured 2026-11-11 on a
+/// city-less directory). A directory with no city has no towns to approve, so answer a plain
+/// validation error the screen can show instead of a server error.
+async fn directory_city(db: &PgPool, directory_id: Uuid) -> ApiResult<String> {
+    let dir: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT city FROM directories WHERE id = $1")
+            .bind(directory_id)
+            .fetch_optional(db)
+            .await?;
+
+    let (city,) = dir.ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
+
+    match city.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+        Some(city) => Ok(city),
+        None => Err(AppError::Validation(
+            "This directory has no city set yet. Add the city in Directory Details, then reopen Satellite Towns."
+                .to_string(),
+        )),
+    }
+}
+
 /// GET /api/v1/seo/satellite-towns/:directory_id
 ///
 /// Every town of this city with its own live listing count and its effective status:
@@ -43,12 +68,7 @@ pub async fn list_satellite_towns(
     State(s): State<AppState>,
     Path(directory_id): Path<Uuid>,
 ) -> ApiResult<impl axum::response::IntoResponse> {
-    let dir: Option<(String,)> = sqlx::query_as("SELECT city FROM directories WHERE id = $1")
-        .bind(directory_id)
-        .fetch_optional(&s.db)
-        .await?;
-
-    let (city,) = dir.ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
+    let city = directory_city(&s.db, directory_id).await?;
 
     let towns = local_town_entries(&s.db, directory_id, &city).await;
     let (include, approved) = satellite_approval(&s.db, directory_id).await;
@@ -142,11 +162,7 @@ pub async fn set_town_approval(
         return Err(AppError::BadRequest("town_key is required".to_string()));
     }
 
-    let dir: Option<(String,)> = sqlx::query_as("SELECT city FROM directories WHERE id = $1")
-        .bind(directory_id)
-        .fetch_optional(&s.db)
-        .await?;
-    let (city,) = dir.ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
+    let city = directory_city(&s.db, directory_id).await?;
 
     // Only a town this city actually holds inside its own local area can be approved — never a
     // free-text name that would publish an empty page. A town Google detected for the city
