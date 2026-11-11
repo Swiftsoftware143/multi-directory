@@ -149,6 +149,13 @@ const BUSINESS_CHILDREN: &[(&str, &str)] = &[
         "business_verifications",
         child_q!("business_verifications", "business_id"),
     ),
+    // Walk/Bike scores cached per listing (migration 172). A complete record must carry them:
+    // they are computed from the listing's own coordinates and are part of its published data,
+    // and this table declares its `business_id` without an FK, so nothing enumerating FKs finds it.
+    (
+        "business_walk_scores",
+        child_q!("business_walk_scores", "business_id"),
+    ),
     (
         "buying_group_deals",
         child_q!("buying_group_deals", "supplier_business_id"),
