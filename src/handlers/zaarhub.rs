@@ -3,7 +3,6 @@
 
 use axum::{
     extract::{Path, Query, State},
-    response::{IntoResponse, Response},
     Json,
 };
 use chrono::{DateTime, Utc};
@@ -1525,37 +1524,9 @@ fn photo_is_renderable(url: &str) -> bool {
     }
 }
 
-/// The URL a browser should load for ONE stored photo value.
-///
-/// A real http(s) URL and a stored upload are used as-is. A Google Places photo RESOURCE NAME
-/// (`places/<place>/photos/<photo>`) is routed through our own `/place-photo` proxy: the browser
-/// cannot load the resource name, and building a googleapis URL here would put the operator's
-/// key into public HTML. Anything else is dropped, so a page never renders a broken image.
-fn photo_display_url(raw: &str) -> Option<String> {
-    let u = raw.trim();
-    if u.starts_with("http://") || u.starts_with("https://") {
-        return Some(u.to_string());
-    }
-    if u.starts_with("/uploads/") {
-        return photo_is_renderable(u).then(|| u.to_string());
-    }
-    if u.starts_with("places/")
-        && u.contains("/photos/")
-        && u.len() < 512
-        && !u.contains("..")
-        && usize::from(u.contains('?')) == 0
-        && u.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'))
-    {
-        return Some(format!("/api/v1/place-photo?ref={u}"));
-    }
-    None
-}
-
 /// Accepts both shapes a photos column takes in this database: `["url", ...]` and
-/// `[{"url": ...}, ...]`, keeps only references that will render, and turns a Google photo
-/// resource name into a URL the page can actually load (see `photo_display_url`). Nothing is
-/// ever invented or substituted.
+/// `[{"url": ...}, ...]`, and keeps only references that will actually render (see
+/// `photo_is_renderable`). Nothing is ever invented or substituted.
 fn image_urls(v: &Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     if let Some(arr) = v.as_array() {
@@ -1570,95 +1541,13 @@ fn image_urls(v: &Value) -> Vec<String> {
                 _ => None,
             };
             if let Some(u) = url {
-                if let Some(display) = photo_display_url(&u) {
-                    if !out.contains(&display) {
-                        out.push(display);
-                    }
+                if photo_is_renderable(&u) && !out.contains(&u) {
+                    out.push(u);
                 }
             }
         }
     }
     out
-}
-
-/// Query for [`place_photo`].
-#[derive(Debug, Deserialize)]
-pub struct PlacePhotoQuery {
-    /// The stored Google Places photo resource name, e.g. `places/ChIJ…/photos/AWC…`.
-    #[serde(rename = "ref")]
-    pub r: String,
-    /// Rendered height in pixels; clamped so a caller cannot ask for an enormous image.
-    pub w: Option<u32>,
-}
-
-/// GET /api/v1/place-photo?ref=places/<place>/photos/<photo>&w=800
-///
-/// Streams ONE listing photo. The photo reference is resolved with the operator's saved Places
-/// key at call time and the key is never sent to the browser. Bytes are cached for 30 days by
-/// the browser/edge. A malformed reference answers 404 and an unconfigured network answers 503,
-/// in both cases as JSON — never a stand-in image, so the page's own placeholder stays in charge.
-pub async fn place_photo(
-    State(s): State<AppState>,
-    Query(q): Query<PlacePhotoQuery>,
-) -> ApiResult<Response> {
-    let raw = q.r.trim().to_string();
-    let valid = raw.starts_with("places/")
-        && raw.contains("/photos/")
-        && raw.len() < 512
-        && !raw.contains("..")
-        && usize::from(raw.contains('?')) == 0
-        && raw
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'));
-    if !valid {
-        return Err(AppError::NotFound("Unknown photo".into()));
-    }
-    let width = q.w.unwrap_or(800).clamp(120, 1600);
-    let key = crate::handlers::provider_keys_handler::resolve_provider_key(&s.db, "google_places")
-        .await
-        .ok_or_else(|| {
-            AppError::Internal(
-                "Google Places is not configured yet. Add your Google Places API key in the \
-                 admin panel > Integrations, then reload this page."
-                    .to_string(),
-            )
-        })?;
-    let url = format!("https://places.googleapis.com/v1/{raw}/media?maxHeightPx={width}&key={key}");
-    let resp = reqwest::Client::new()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("photo fetch failed: {e}")))?;
-    if !resp.status().is_success() {
-        return Err(AppError::NotFound(format!(
-            "photo unavailable ({})",
-            resp.status().as_u16()
-        )));
-    }
-    let content_type = resp
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("image/jpeg")
-        .to_string();
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| AppError::Internal(format!("photo read failed: {e}")))?;
-    if bytes.is_empty() || bytes.len() > 8_000_000 {
-        return Err(AppError::NotFound("photo unavailable".into()));
-    }
-    Ok((
-        [
-            (axum::http::header::CONTENT_TYPE, content_type),
-            (
-                axum::http::header::CACHE_CONTROL,
-                "public, max-age=2592000".to_string(),
-            ),
-        ],
-        bytes,
-    )
-        .into_response())
 }
 
 /// GET /api/v1/zaarhub/business/:slug/:id — business detail page
