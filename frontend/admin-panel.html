@@ -2160,6 +2160,7 @@
         <div class="pk-controls" style="margin-bottom:10px">
           <select class="input" id="sat-dir" onchange="window.__satPickDir(this.value)" style="min-width:220px"></select>
           <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="sat-include" onchange="window.__satInclude()"> Include satellite towns</label>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__satDetect()">📍 Find nearby towns</button>
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__satLoad()">↻ Refresh</button>
           <span class="feature-status" id="sat-status"></span>
         </div>
@@ -9155,6 +9156,26 @@
           });
         })
         .catch(function (e) { r8Status('sat-status', 'Could not change that town: ' + e.message, false); });
+    };
+    // W28 — ask Google which towns surround the selected city. Additive only: every town it
+    // finds becomes a DRAFT in this list, so approving one is still a human decision.
+    window.__satDetect = function () {
+      if (!satDirId) return;
+      r8Status('sat-status', 'Asking Google which towns are around this city…', false);
+      return apiPost('/seo/satellite-towns/' + encodeURIComponent(satDirId) + '/detect', {})
+        .then(function (r) {
+          var added = (r && r.added) || 0;
+          var skipped = ((r && r.hubs_skipped) || []).length;
+          var keyOff = !!(r && r.key && r.key.switched_on === false);
+          return satLoadCity(satDirId).then(function () {
+            r8Status('sat-status',
+              added + ' new town' + (added === 1 ? '' : 's') + ' added as drafts' +
+              (skipped ? ' · ' + skipped + ' skipped because already a city of their own' : '') +
+              (keyOff ? ' · the Google key that answered is switched off in the Integration Center' : ''),
+              true);
+          });
+        })
+        .catch(function (e) { r8Status('sat-status', 'Could not look for nearby towns: ' + e.message, false); });
     };
     window.__satInclude = function () {
       if (!satDirId) return;

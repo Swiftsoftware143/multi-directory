@@ -714,6 +714,11 @@ pub fn create_router(s: AppState) -> Router {
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
         .route(
+            "/seo/satellite-towns/:directory_id/detect",
+            post(satellite::detect_nearby_towns)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
             "/seo/satellite-towns/:directory_id/:town_key",
             put(satellite::set_town_approval)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),

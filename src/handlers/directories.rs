@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{validate_pagination, ApiResult, AppError};
+use crate::handlers::satellite;
 use crate::handlers::tenant_scope;
 use crate::models::*;
 use crate::template_engine;
@@ -415,6 +416,34 @@ pub async fn create_directory(
         report.ad_zones_created,
         report.email_templates_created
     );
+
+    // W28 — a new city arrives knowing its neighbours: ask Google for the localities around it
+    // and record them as drafts (nothing publishes until an admin approves a town, and a town
+    // page still needs its three listings). Background + non-fatal: a missing key, a refusal or
+    // a slow Google must never delay or fail the create.
+    {
+        let db2 = s.db.clone();
+        let dir_id2 = directory.id;
+        let city2 = directory.city.clone().unwrap_or_default();
+        let state2 = directory.state.clone();
+        let slug2 = slug.clone();
+        tokio::spawn(async move {
+            if city2.trim().is_empty() {
+                return;
+            }
+            match satellite::detect_and_store(&db2, dir_id2, &city2, state2.as_deref()).await {
+                Ok(d) => tracing::info!(
+                    "[directory] {slug2}: {} nearby town(s) detected, {} added, {} already known",
+                    d.found,
+                    d.added,
+                    d.already
+                ),
+                Err(e) => tracing::warn!(
+                    "[directory] {slug2}: nearby towns not detected ({e}) — the admin can run it from the satellite screen"
+                ),
+            }
+        });
+    }
 
     Ok((StatusCode::CREATED, Json(json!(directory))))
 }
