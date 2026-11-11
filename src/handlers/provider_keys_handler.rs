@@ -240,6 +240,53 @@ pub async fn resolve_provider_key(db: &sqlx::PgPool, provider: &str) -> Option<S
     keycrypto::decrypt_for_use(db, &stored, provider).await
 }
 
+/// Resolve the configured ENDPOINT for a provider, on the same scope ladder as the key
+/// (directory -> its network -> platform). `None` means "use the provider's official URL", so an
+/// admin who leaves the field blank keeps the default. NOTHING HARDWIRED: the endpoint a
+/// directory's AI calls go to is an admin setting — which is also what makes a stand-in endpoint
+/// testable without touching the vendor.
+pub async fn resolve_provider_base_url_for_directory(
+    db: &sqlx::PgPool,
+    directory_id: Option<Uuid>,
+    provider: &str,
+) -> Option<String> {
+    match directory_id {
+        Some(dir) => sqlx::query_scalar(
+            r#"SELECT NULLIF(TRIM(COALESCE(base_url, '')), '')
+               FROM provider_keys
+               WHERE provider = $1 AND is_active = true
+                 AND (directory_id = $2
+                      OR network_id = (SELECT network_id FROM directories WHERE id = $2)
+                      OR (directory_id IS NULL AND network_id IS NULL))
+               ORDER BY CASE WHEN directory_id = $2 THEN 0
+                             WHEN network_id IS NOT NULL THEN 1
+                             ELSE 2 END,
+                        is_default DESC, updated_at DESC
+               LIMIT 1"#,
+        )
+        .bind(provider)
+        .bind(dir)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten(),
+        None => sqlx::query_scalar(
+            r#"SELECT NULLIF(TRIM(COALESCE(base_url, '')), '')
+               FROM provider_keys
+               WHERE provider = $1 AND is_active = true
+                 AND directory_id IS NULL
+               ORDER BY (tenant_id = $2) DESC, is_default DESC, updated_at DESC
+               LIMIT 1"#,
+        )
+        .bind(provider)
+        .bind(uuid::Uuid::nil())
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten(),
+    }
+}
+
 /// Resolve "the key for provider X" for one tenant: the tenant's own keys first
 /// (default row, then most recent), then the system/global key.
 ///

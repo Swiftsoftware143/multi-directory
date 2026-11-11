@@ -166,119 +166,39 @@ pub async fn generate_blog_posts(
 
     let mut posts: Vec<GeneratedPost> = Vec::new();
     let mut failed = 0usize;
-    let mut fields = req.field_values.clone();
 
     for dir_id in &req.directory_ids {
-        // Get directory info for merge fields
-        let dir_info: Option<(String, String, String)> =
-            sqlx::query_as("SELECT name, slug, COALESCE(city, '') FROM directories WHERE id = $1")
-                .bind(dir_id)
-                .fetch_optional(&s.db)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?;
-
-        let (dir_name, dir_slug, dir_city) =
-            dir_info.unwrap_or_else(|| ("Directory".into(), "directory".into(), String::new()));
-
-        // Auto-fill directory merge fields
-        fields.insert("directory_name".to_string(), dir_name.clone());
-        fields.insert(
-            "directory_url".to_string(),
-            format!("https://{}.{}", dir_slug, s.config.base_domain),
-        );
-        fields.insert("directory_slug".to_string(), dir_slug.clone());
-        fields.insert(
-            "city".to_string(),
-            if dir_city.is_empty() {
-                fields.get("city").cloned().unwrap_or_default()
-            } else {
-                dir_city.clone()
-            },
-        );
-
-        // Build the prompt using the template
-        let filled_template = fill_template(&tpl.content_template, &fields);
-        let merge_fields_str = serde_json::to_string(&tpl.merge_fields).unwrap_or_default();
-
-        let prompt = build_llm_prompt(
-            &filled_template,
-            &fields,
-            word_count,
+        match generate_for_directory(
+            &s,
+            &tpl,
+            *dir_id,
+            req.field_values.clone(),
+            publish,
             provider,
-            &merge_fields_str,
-        );
-
-        // Call LLM — the key is the one THIS directory reads.
-        match call_llm(&s.db, provider, model, &prompt, Some(*dir_id)).await {
-            Ok(generated) => {
-                // Parse title from generated content (first h1 or first line)
-                let (title, mut content) =
-                    extract_title_and_content(&generated, &fields, &tpl.name);
-
-                let date_str = Utc::now().format("%B %d, %Y").to_string();
-                let byline = "Admin";
-                let meta = format!(
-                    r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by {}</p>"#,
-                    date_str, byline
-                );
-                content = meta + "\n" + &content;
-
-                // Generate slug
-                let slug = slugify(&title);
-
-                // Create the blog post
-                let post = sqlx::query_as::<_, (Uuid,)>(
-                    r#"INSERT INTO blog_posts (title, slug, content, directory_id, published, template_id, template_data, focus_keyword, blog_category, feature_image, feature_video, media_json, scheduled_at)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb, $13)
-                       RETURNING id"#
-                )
-                .bind(&title)
-                .bind(&slug)
-                .bind(&content)
-                .bind(dir_id)
-                .bind(publish)
-                .bind(req.template_id)
-                .bind(json!({"template_name": &tpl.name, "fields": &fields, "provider": provider, "model": model}))
-                .bind(fields.get("focus_keyword").cloned().unwrap_or_default())
-                .bind(tpl.template_type.as_deref().unwrap_or("article"))
-                .bind(fields.get("feature_image").cloned().unwrap_or_default())
-                .bind(fields.get("feature_video").cloned().unwrap_or_default())
-                .bind(json!([]))
-                .fetch_one(&s.db)
-                .await;
-
-                match post {
-                    Ok((post_id,)) => {
-                        // Try to inject media after post is created
-                        if tpl.image_provider.as_deref() != Some("none") {
-                            let _ = inject_media(&s, post_id, &title, &fields, &tpl).await;
-                        }
-
-                        posts.push(GeneratedPost {
-                            id: post_id,
-                            title,
-                            directory_id: *dir_id,
-                            slug,
-                            status: if publish {
-                                "published".to_string()
-                            } else {
-                                "draft".to_string()
-                            },
-                            generated_at: Utc::now(),
-                        });
-                    }
-                    Err(_e) => {
-                        failed += 1;
-                    }
-                }
-            }
-            Err(_e) => {
+            model,
+            word_count,
+        )
+        .await
+        {
+            Ok(post) => posts.push(post),
+            Err(e) => {
+                eprintln!("blog generation failed for directory {}: {}", dir_id, e);
                 failed += 1;
             }
         }
     }
 
     let total_generated = posts.len();
+    // A run that produced NOTHING must not answer 201 CREATED: that is exactly how the broken
+    // placeholder-count bug hid for months (the panel showed success, no post existed).
+    if total_generated == 0 && failed > 0 {
+        // ServiceUnavailable (not Internal) on purpose: the operator must SEE the reason in the
+        // panel. An Internal error is masked to "Internal server error" on the wire.
+        return Err(AppError::ServiceUnavailable(format!(
+            "No article was written — the {} AI call(s) failed. Check that an AI key is saved in Provider Keys and that the provider answers.",
+            failed
+        )));
+    }
     Ok((
         StatusCode::CREATED,
         Json(GenerateBlogResponse {
@@ -287,6 +207,165 @@ pub async fn generate_blog_posts(
             total_failed: failed,
         }),
     ))
+}
+
+// ── Generate one post for one directory ──
+
+/// Generate ONE post for ONE directory. Shared by the HTTP endpoint and the content queue, so the
+/// queue can never drift into a second, parallel copy of this logic (its old copy was a stub that
+/// marked jobs completed while writing nothing).
+#[allow(clippy::too_many_arguments)]
+pub async fn generate_for_directory(
+    s: &AppState,
+    tpl: &BlogTemplate,
+    dir_id: Uuid,
+    base_fields: HashMap<String, String>,
+    publish: bool,
+    provider: &str,
+    model: &str,
+    word_count: i32,
+) -> Result<GeneratedPost, String> {
+    let dir_info: Option<(String, String, String)> =
+        sqlx::query_as("SELECT name, slug, COALESCE(city, '') FROM directories WHERE id = $1")
+            .bind(dir_id)
+            .fetch_optional(&s.db)
+            .await
+            .map_err(|e| format!("directory lookup failed: {}", e))?;
+
+    let (dir_name, dir_slug, dir_city) =
+        dir_info.unwrap_or_else(|| ("Directory".into(), "directory".into(), String::new()));
+
+    let mut fields = base_fields;
+    fields.insert("directory_name".to_string(), dir_name);
+    fields.insert(
+        "directory_url".to_string(),
+        format!("https://{}.{}", dir_slug, s.config.base_domain),
+    );
+    fields.insert("directory_slug".to_string(), dir_slug);
+    if !dir_city.is_empty() {
+        fields.insert("city".to_string(), dir_city);
+    }
+
+    let filled_template = fill_template(&tpl.content_template, &fields);
+    let merge_fields_str = serde_json::to_string(&tpl.merge_fields).unwrap_or_default();
+    let prompt = build_llm_prompt(
+        &filled_template,
+        &fields,
+        word_count,
+        provider,
+        &merge_fields_str,
+    );
+
+    // Call the LLM — the key AND the endpoint are the ones THIS directory reads.
+    let generated = call_llm(&s.db, provider, model, &prompt, Some(dir_id))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let (title, mut content) = extract_title_and_content(&generated, &fields, &tpl.name);
+    let date_str = Utc::now().format("%B %d, %Y").to_string();
+    let meta = format!(
+        r#"<p class="post-meta" style="color:#6b7280;font-size:.9rem;margin-bottom:1.5rem">Posted on {} by Admin</p>"#,
+        date_str
+    );
+    content = meta + "\n" + &content;
+    let slug = slugify(&title);
+    let status = if publish { "published" } else { "draft" };
+
+    // Fourteen placeholders, fourteen binds. `scheduled_at` is bound NULL on purpose (the post is
+    // live now). The previous version listed $13 and bound only twelve, so EVERY generation died
+    // at execute time while the endpoint still answered 201 CREATED with zero posts.
+    let (post_id,): (Uuid,) = sqlx::query_as(
+        r#"INSERT INTO blog_posts (title, slug, content, directory_id, published, status, template_id, template_data, focus_keyword, blog_category, feature_image, feature_video, media_json, scheduled_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13::jsonb, $14)
+           RETURNING id"#,
+    )
+    .bind(&title)
+    .bind(&slug)
+    .bind(&content)
+    .bind(dir_id)
+    .bind(publish)
+    .bind(status)
+    .bind(tpl.id)
+    .bind(json!({"template_name": &tpl.name, "fields": &fields, "provider": provider, "model": model}))
+    .bind(fields.get("focus_keyword").cloned().unwrap_or_default())
+    .bind(tpl.template_type.as_deref().unwrap_or("article"))
+    .bind(fields.get("feature_image").cloned().unwrap_or_default())
+    .bind(fields.get("feature_video").cloned().unwrap_or_default())
+    .bind(json!([]))
+    .bind(Option::<DateTime<Utc>>::None)
+    .fetch_one(&s.db)
+    .await
+    .map_err(|e| format!("saving the post failed: {}", e))?;
+
+    if tpl.image_provider.as_deref() != Some("none") {
+        let _ = inject_media(s, post_id, &title, &fields, tpl).await;
+    }
+
+    Ok(GeneratedPost {
+        id: post_id,
+        title,
+        directory_id: dir_id,
+        slug,
+        status: status.to_string(),
+        generated_at: Utc::now(),
+    })
+}
+
+/// Queue entry point: a `blog` job in `content_queue` becomes a real published post. Resolves the
+/// template (the job's own, else the first one), then reuses the same generation path as the HTTP
+/// endpoint. Failures are RETURNED — a queued article must never be recorded as done when nothing
+/// was written.
+pub async fn generate_for_queued_job(
+    s: &AppState,
+    directory_id: Uuid,
+    template_id: Option<Uuid>,
+    keyword: &str,
+    extra_fields: HashMap<String, String>,
+) -> Result<Uuid, String> {
+    let tpl = match template_id {
+        Some(id) => sqlx::query_as::<_, BlogTemplate>("SELECT * FROM blog_templates WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await
+            .map_err(|e| format!("template lookup failed: {}", e))?
+            .ok_or_else(|| format!("template {} not found", id))?,
+        None => sqlx::query_as::<_, BlogTemplate>(
+            "SELECT * FROM blog_templates ORDER BY is_global DESC NULLS LAST, name ASC LIMIT 1",
+        )
+        .fetch_optional(&s.db)
+        .await
+        .map_err(|e| format!("template lookup failed: {}", e))?
+        .ok_or_else(|| "no blog template exists to generate from".to_string())?,
+    };
+
+    let provider = tpl
+        .llm_provider
+        .clone()
+        .unwrap_or_else(|| "deepseek".to_string());
+    let model = tpl
+        .llm_model
+        .clone()
+        .unwrap_or_else(|| "deepseek-chat".to_string());
+    let word_count = tpl.word_count.unwrap_or(1000);
+
+    let mut fields = extra_fields;
+    if !keyword.trim().is_empty() {
+        fields.insert("focus_keyword".to_string(), keyword.trim().to_string());
+    }
+
+    let post = generate_for_directory(
+        s,
+        &tpl,
+        directory_id,
+        fields,
+        true,
+        &provider,
+        &model,
+        word_count,
+    )
+    .await?;
+
+    Ok(post.id)
 }
 
 // ── Regenerate Single Post ──
@@ -505,6 +584,34 @@ async fn call_llm(
     }
 }
 
+/// The endpoint an AI call goes to: the admin-configured `base_url` for THIS directory when one is
+/// set (Provider Keys screen), otherwise the provider's official URL. The vendor host was hardcoded
+/// before, so a self-hosted or stand-in endpoint could not be configured at all.
+async fn llm_endpoint(
+    db: &sqlx::PgPool,
+    provider: &str,
+    directory_id: Option<Uuid>,
+    official: &str,
+) -> String {
+    match crate::handlers::provider_keys_handler::resolve_provider_base_url_for_directory(
+        db,
+        directory_id,
+        provider,
+    )
+    .await
+    {
+        Some(base) => {
+            let trimmed = base.trim().trim_end_matches('/').to_string();
+            if trimmed.ends_with("/chat/completions") {
+                trimmed
+            } else {
+                format!("{}/chat/completions", trimmed)
+            }
+        }
+        None => official.to_string(),
+    }
+}
+
 async fn call_deepseek(
     db: &sqlx::PgPool,
     model: &str,
@@ -518,7 +625,13 @@ async fn call_deepseek(
         .ok_or_else(|| {
             AppError::Internal("DeepSeek API key not configured. Add it in Provider Keys.".into())
         })?;
-    let url = "https://api.deepseek.com/v1/chat/completions";
+    let url = llm_endpoint(
+        db,
+        "deepseek",
+        directory_id,
+        "https://api.deepseek.com/v1/chat/completions",
+    )
+    .await;
 
     let body = json!({
         "model": if model.contains('/') { "deepseek-chat" } else { model },
@@ -529,7 +642,7 @@ async fn call_deepseek(
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(url)
+        .post(&url)
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -562,7 +675,13 @@ async fn call_openai(
         .ok_or_else(|| {
             AppError::Internal("OpenAI API key not configured. Add it in Provider Keys.".into())
         })?;
-    let url = "https://api.openai.com/v1/chat/completions";
+    let url = llm_endpoint(
+        db,
+        "openai",
+        directory_id,
+        "https://api.openai.com/v1/chat/completions",
+    )
+    .await;
 
     let body = json!({
         "model": if model.is_empty() { "gpt-4o" } else { model },
@@ -573,7 +692,7 @@ async fn call_openai(
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(url)
+        .post(&url)
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)

@@ -13,6 +13,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
@@ -582,22 +583,33 @@ async fn process_trap_door_job(s: &AppState, job: &ContentQueueItem) -> Result<S
 
 /// Process a blog queue job.
 ///
-/// Currently serves as a placeholder. When full LLM blog generation is wired
-/// for queued jobs, this should be replaced with a call to the blog generator.
-/// For now, it marks the job as completed without generating content.
-async fn process_blog_job(_s: &AppState, _job: &ContentQueueItem) -> Result<String, AppError> {
-    // TODO: Wire up full blog generation from content_queue.
-    // This should call blog_generator::generate_blog_posts or similar
-    // with the job's template_id, keyword, and merge_fields.
-    //
-    // Currently a placeholder — marks blog jobs as completed so they
-    // don't accumulate. Full AI blog generation for queued jobs can be
-    // added in a follow-up iteration.
+/// Generates a real published post through the one shared blog-generation path
+/// (`blog_generator::generate_for_queued_job`) and returns its id. A failure is returned to the
+/// worker so the job is recorded `failed` with the reason — never `completed` with nothing written.
+async fn process_blog_job(s: &AppState, job: &ContentQueueItem) -> Result<String, AppError> {
+    // A queued article must become a REAL post. This used to be a stub that answered
+    // "acknowledged — generation not yet wired" and still marked the job COMPLETED, so every
+    // article an operator scheduled silently vanished while the queue looked healthy.
+    let mut extra: HashMap<String, String> = HashMap::new();
+    if let Some(serde_json::Value::Object(map)) = job.merge_fields.clone() {
+        for (k, v) in map {
+            if let Some(text) = v.as_str() {
+                extra.insert(k, text.to_string());
+            }
+        }
+    }
 
-    Ok(
-        "Blog job acknowledged — generation not yet wired for queue. Marked as completed."
-            .to_string(),
+    let post_id = crate::handlers::blog_generator::generate_for_queued_job(
+        s,
+        job.directory_id,
+        job.template_id,
+        &job.keyword,
+        extra,
     )
+    .await
+    .map_err(AppError::ServiceUnavailable)?;
+
+    Ok(format!("blog post {} published", post_id))
 }
 
 // ── Helpers ──
