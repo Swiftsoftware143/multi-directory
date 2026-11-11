@@ -929,7 +929,7 @@ pub async fn upload_business_images(
 
     // Cap BEFORE writing any file, so a rejected upload never leaves orphan files behind.
     let current_photos: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(jsonb_array_length(images), 0) FROM businesses WHERE id = $1",
+        "SELECT COALESCE(jsonb_array_length(images), 0)::bigint FROM businesses WHERE id = $1",
     )
     .bind(business_id)
     .fetch_one(&s.db)
