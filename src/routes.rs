@@ -263,19 +263,51 @@ pub fn create_router(s: AppState) -> Router {
         // "Report a problem" on a listing (card B90 cross-cutting). The public POST is anonymous
         // (see the is_public allowlist); the moderation queue is directory-scoped + tenant-guarded.
         .route("/businesses/:id/report", post(reports::create_report))
-        .route("/admin/reports", get(reports::list_reports))
-        .route("/admin/reports/stats", get(reports::report_stats))
-        .route("/admin/reports/:id", patch(reports::update_report))
+        // Moderation queues are DIRECTORY STAFF work. kanban W50: these three sat behind
+        // `auth_guard` alone, so any signed-in account — including a shopper's visitor-account
+        // session that claimed the platform tenant — read the operator's moderation counts.
+        .route(
+            "/admin/reports",
+            get(reports::list_reports).route_layer(middleware::from_fn_with_state(
+                s.clone(),
+                staff_principal_guard,
+            )),
+        )
+        .route(
+            "/admin/reports/stats",
+            get(reports::report_stats).route_layer(middleware::from_fn_with_state(
+                s.clone(),
+                staff_principal_guard,
+            )),
+        )
+        .route(
+            "/admin/reports/:id",
+            patch(reports::update_report).route_layer(middleware::from_fn_with_state(
+                s.clone(),
+                staff_principal_guard,
+            )),
+        )
         // Local Q&A on a listing (card B90, Nextdoor-style). The public GET/POST are anonymous
         // (see the is_public allowlist); the answer/moderation queue is directory-scoped.
         .route(
             "/businesses/:id/questions",
             get(qa::list_questions).post(qa::create_question),
         )
-        .route("/admin/questions", get(qa::list_admin_questions))
+        .route(
+            "/admin/questions",
+            get(qa::list_admin_questions).route_layer(middleware::from_fn_with_state(
+                s.clone(),
+                staff_principal_guard,
+            )),
+        )
         .route(
             "/admin/questions/:id",
-            patch(qa::answer_question).delete(qa::delete_question),
+            patch(qa::answer_question)
+                .delete(qa::delete_question)
+                .route_layer(middleware::from_fn_with_state(
+                    s.clone(),
+                    staff_principal_guard,
+                )),
         )
         .route("/directories/:slug/branding", get(branding::get_branding))
         .route(
@@ -3679,7 +3711,11 @@ async fn auth_guard(
         return Ok(resp);
     }
 
-    let claims = verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
+    // kanban W50 — the token's role/tenant are what it was MINTED with; the identity row decides
+    // what it still grants. A visitor-account principal is normalised to the visitor shape below.
+    let mut claims =
+        verify_token(token, &s.config.jwt_secret).map_err(|_| AppError::Unauthorized)?;
+    let mut row_role: Option<String> = None;
 
     // Kanban t_fb37dfc0 — the signature only proves the token was MINTED by us; it says nothing
     // about whether the account it names still exists. Re-read the principal here, at the one
@@ -3696,7 +3732,9 @@ async fn auth_guard(
     // duplicate primary-key read when that marker is present.
     if !req.extensions().get::<SessionValidated>().is_some() {
         match crate::auth::middleware::session_state(&s.db, &claims.sub).await? {
-            Some(state) if crate::auth::middleware::session_is_acceptable(&state, &claims) => {}
+            Some(state) if crate::auth::middleware::session_is_acceptable(&state, &claims) => {
+                row_role = Some(state.role);
+            }
             Some(state) => {
                 warn!(
                     "AUTH_GUARD: refused path={} for dead/revoked session sub={} (active={} rotated={} row_role={})",
@@ -3716,6 +3754,19 @@ async fn auth_guard(
                 return Err(AppError::Unauthorized);
             }
         }
+    }
+
+    // kanban W50 — apply the identity row's shape. When the state read above ran, `row_role` says
+    // whether this principal is a visitor account (`visitor_accounts`) rather than staff
+    // (`users`). When `session_gate` already validated the bearer, it left its own (already
+    // normalised) `Claims` in the extensions — prefer those, so the two boundaries cannot disagree.
+    if let Some(role) = row_role.as_deref() {
+        if role == "visitor" {
+            claims.role = "visitor".to_string();
+            claims.tid = uuid::Uuid::nil().to_string();
+        }
+    } else if let Some(validated) = req.extensions().get::<crate::auth::models::Claims>() {
+        claims = validated.clone();
     }
 
     // kanban t_a9c33fea — an ENDED operator support session must not keep working for the rest of
@@ -3792,6 +3843,24 @@ async fn session_gate(
                 .await
             {
                 crate::auth::middleware::SessionVerdict::Live(claims) => {
+                    // kanban W50 — a visitor-account session is re-minted into the visitor shape
+                    // (nil tenant, `visitor` role) and the header REPLACED, so every handler and
+                    // guard that re-parses `Authorization` — `tenant_guard`, `report_stats`,
+                    // `counter_scan` … — sees the row's real authority, not the role/tenant its
+                    // stale 24 h token was minted with. Same claims, same expiry; only the shape
+                    // the boundary enforces. Ordinary staff/operator sessions are untouched.
+                    if claims.role == "visitor" {
+                        if let Ok(fresh) =
+                            crate::auth::middleware::create_token(&claims, &s.config.jwt_secret)
+                        {
+                            if let Ok(value) =
+                                axum::http::HeaderValue::from_str(&format!("Bearer {fresh}"))
+                            {
+                                req.headers_mut()
+                                    .insert(axum::http::header::AUTHORIZATION, value);
+                            }
+                        }
+                    }
                     req.extensions_mut().insert(SessionValidated);
                     req.extensions_mut().insert(claims);
                 }
@@ -4060,6 +4129,19 @@ async fn tenant_guard(
     let claims =
         crate::handlers::tenant_scope::claims_from_headers(req.headers(), &s.config.jwt_secret)?;
     if crate::auth::middleware::is_visitor(&claims) {
+        return Err(AppError::Forbidden(
+            "Tenant admin access required".to_string(),
+        ));
+    }
+    // kanban W50 — belt and braces for a token minted before the fix: the ROLE CLAIM is not the
+    // authority, the identity row is. A principal whose `sub` names a `visitor_accounts` row is
+    // never a tenant admin, whatever its 24 h token says.
+    let is_visitor_account: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM visitor_accounts WHERE id = $1)")
+            .bind(crate::handlers::tenant_scope::caller_user(&claims)?)
+            .fetch_one(&s.db)
+            .await?;
+    if is_visitor_account {
         return Err(AppError::Forbidden(
             "Tenant admin access required".to_string(),
         ));

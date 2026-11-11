@@ -329,12 +329,17 @@ pub async fn login(
         (
             User {
                 id: vrow.try_get("id")?,
-                // Use the SwiftSoftware system tenant for visitor/business portal accounts
-                tenant_id: crate::system_tenant::system_tenant_uuid(),
+                // kanban W50 — a visitor account is NOT a tenant principal. This used to carry the
+                // SwiftSoftware platform tenant (where the OPERATOR lives) plus `company_admin`, so
+                // an owner's bearer passed `tenant_guard` and every tenant-scoped query answered
+                // with the operator's own data. The documented shape (what `POST /visitor/login`
+                // mints) is the nil tenant and the `visitor` role; `auth::middleware::
+                // visitor_normalized_claims` enforces the same at the boundary.
+                tenant_id: Uuid::nil(),
                 email: vrow.try_get("email")?,
                 password_hash: vrow.try_get("password_hash")?,
                 name: vrow.try_get("name")?,
-                role: "company_admin".to_string(),
+                role: "visitor".to_string(),
                 is_active: true,
                 last_login_at: None,
                 created_at: chrono::Utc::now(),
@@ -478,13 +483,14 @@ pub async fn me(
 
     let user = User {
         id: vrow.try_get("id")?,
-        // Visitor/business accounts live on the SwiftSoftware system tenant, exactly as login sets it.
-        tenant_id: crate::system_tenant::system_tenant_uuid(),
+        // kanban W50 — a visitor account carries the nil tenant and the `visitor` role, exactly as
+        // login now mints it. It is never a tenant/staff principal.
+        tenant_id: Uuid::nil(),
         email: vrow.try_get("email")?,
         // Never surfaced: UserResponse omits password_hash. Kept empty so no secret leaves the DB.
         password_hash: String::new(),
         name: vrow.try_get("name")?,
-        role: "company_admin".to_string(),
+        role: "visitor".to_string(),
         is_active: vrow.try_get("is_active")?,
         last_login_at: vrow.try_get("last_login_at")?,
         created_at: vrow.try_get("created_at")?,

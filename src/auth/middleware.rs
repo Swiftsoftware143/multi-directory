@@ -242,6 +242,29 @@ pub fn session_is_acceptable(state: &SessionState, claims: &Claims) -> bool {
         && !platform_claim_outranks_row(&claims.role, &state.role)
 }
 
+/// The `visitor` SHAPE for a token whose `sub` names a `visitor_accounts` row.
+///
+/// kanban W50. Two identity tables, two shapes: staff/directory accounts are `users` rows and
+/// carry a real tenant + role; a shopper or self-registered listing owner is a `visitor_accounts`
+/// row and, by the documented design, carries `tid = nil` and `role = "visitor"` (what
+/// `POST /visitor/login` mints). `/auth/login` minted the OTHER shape for the same row — the
+/// SwiftSoftware platform tenant plus `company_admin` — and the platform tenant is where the
+/// operator lives, so a shopper's bearer passed `tenant_guard` and every tenant-scoped query came
+/// back scoped to the operator's own directories. Measured 2026-11-11: such a token collected 200
+/// from `GET /admin/reports/stats` (the operator's moderation counts) and from
+/// `GET /integrations/coreswift/status`.
+///
+/// This normalises at the boundary, from the row's own role — so tokens already in the wild (24 h
+/// life) are corrected without waiting for a re-login, and a future mint that slips back to the
+/// wrong shape still cannot reach a tenant API.
+pub fn visitor_normalized_claims(mut claims: Claims, state: &SessionState) -> Claims {
+    if state.role == "visitor" {
+        claims.role = "visitor".to_string();
+        claims.tid = Uuid::nil().to_string();
+    }
+    claims
+}
+
 /// Verify a bearer token AND the session behind it.
 ///
 /// This is the credential check used by [`crate::routes::session_gate`], which sits outside every
@@ -259,6 +282,10 @@ pub async fn session_verdict(db: &PgPool, token: &str, secret: &str) -> SessionV
 
     match session_state(db, &claims.sub).await {
         Ok(Some(state)) if session_is_acceptable(&state, &claims) => {
+            // kanban W50 — a visitor-account row is ALWAYS the visitor shape, whatever its token
+            // claims. Normalising here (and in `routes::auth_guard`) means every handler that
+            // reads `Extension<Claims>` sees the row's real authority, not the mint.
+            let claims = visitor_normalized_claims(claims, &state);
             // kanban t_a9c33fea — the FOURTH arm: a support session the operator has ENDED is dead
             // even though its account is live and its signature is fine. Only tokens carrying an
             // `impersonating` claim reach the lookup, so an ordinary sign-in pays nothing for it.
