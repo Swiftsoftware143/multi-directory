@@ -241,28 +241,6 @@ async fn map_category(
     (fallback_id, fallback_name)
 }
 
-/// True when this business is already in the directory (name + address, the
-/// strongest match available: `businesses` has no place_id column).
-async fn already_listed(
-    s: &AppState,
-    directory_id: Uuid,
-    name: &str,
-    address: &str,
-) -> Result<bool, AppError> {
-    let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM businesses \
-         WHERE directory_id = $1 \
-           AND lower(name) = lower($2) \
-           AND lower(COALESCE(address, '')) = lower(COALESCE($3, ''))",
-    )
-    .bind(directory_id)
-    .bind(name)
-    .bind(address)
-    .fetch_one(&s.db)
-    .await?;
-    Ok(n > 0)
-}
-
 async fn queue_snapshot(s: &AppState, directory_id: Uuid, status: Option<&str>) -> Value {
     let status = status.unwrap_or("queued");
     let rows = sqlx::query(
@@ -349,7 +327,15 @@ pub async fn push_results(
         if is_franchise {
             franchises += 1;
         }
-        let listed = already_listed(&s, req.directory_id, &name, &address).await?;
+        let listed = crate::handlers::businesses::find_business_by_identity(
+            &s.db,
+            req.directory_id,
+            it.place_id.as_deref(),
+            &name,
+            &address,
+        )
+        .await?
+        .is_some();
         if listed {
             dupes += 1;
         }
@@ -434,7 +420,7 @@ pub async fn add_selected(
     for id in &req.ids {
         let row = sqlx::query(
             "SELECT name, address, city, phone, website, rating, review_count, types, \
-                    mapped_category_id, is_franchise \
+                    mapped_category_id, is_franchise, place_id \
              FROM discovery_queue WHERE id = $1 AND directory_id = $2",
         )
         .bind(id)
@@ -449,7 +435,20 @@ pub async fn add_selected(
 
         let name: String = r.get("name");
         let address: String = r.get::<Option<String>, _>("address").unwrap_or_default();
-        if already_listed(&s, req.directory_id, &name, &address).await? {
+        let place_id: Option<String> = r.get("place_id");
+
+        // W29 — the place id is the identity: a business already published from any
+        // source is matched by it, not by a repeated name.
+        if crate::handlers::businesses::find_business_by_identity(
+            &s.db,
+            req.directory_id,
+            place_id.as_deref(),
+            &name,
+            &address,
+        )
+        .await?
+        .is_some()
+        {
             skipped += 1;
             let _ = sqlx::query(
                 "UPDATE discovery_queue SET is_duplicate = true, selected = false, updated_at = NOW() \
@@ -461,20 +460,12 @@ pub async fn add_selected(
             continue;
         }
 
-        let mut slug = slugify(&name);
-        // Guarantee a unique slug without a second round trip for the common case.
-        let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM businesses WHERE slug = $1")
-            .bind(&slug)
-            .fetch_one(&s.db)
-            .await?;
-        if exists > 0 {
-            let suffix = id.simple().to_string();
-            slug = format!(
-                "{}-{}",
-                slug.chars().take(70).collect::<String>(),
-                &suffix[..6]
-            );
-        }
+        let slug = crate::handlers::businesses::unique_business_slug(
+            &s.db,
+            req.directory_id,
+            &slugify(&name),
+        )
+        .await?;
 
         let category_id: Option<Uuid> = r.get("mapped_category_id");
         let types: Vec<String> = r.get("types");
@@ -483,12 +474,13 @@ pub async fn add_selected(
         // twice, so every business published from the discovery queue was stored with its own
         // ADDRESS as its public description (a copy-paste bind slip — measured 2026-11-11 on a
         // fixture publish). Publish only what the queue actually holds; the owner writes the
-        // description in their back office.
+        // description in their back office. The place id is stored so the next refresh matches
+        // this record instead of creating a second one.
         let ins = sqlx::query(
             "INSERT INTO businesses \
                 (directory_id, name, slug, category_id, address, city, phone, \
-                 website, rating, review_count, business_type, is_franchise) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'local',$11)",
+                 website, rating, review_count, business_type, is_franchise, place_id) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'local',$11,$12)",
         )
         .bind(req.directory_id)
         .bind(&name)
@@ -501,6 +493,7 @@ pub async fn add_selected(
         .bind(r.get::<Option<f64>, _>("rating").unwrap_or(0.0))
         .bind(r.get::<Option<i32>, _>("review_count").unwrap_or(0))
         .bind(r.get::<bool, _>("is_franchise"))
+        .bind(&place_id)
         .execute(&s.db)
         .await;
 

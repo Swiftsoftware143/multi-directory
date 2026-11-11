@@ -1301,21 +1301,29 @@ async fn neighbour_links(
     let Some(at) = at else {
         return Vec::new();
     };
-    const UNION: &str = "WITH u AS ( \
+    // Parameterized queries only (pre-build gate): the direction is part of the
+    // statement, never spliced in — two complete statements, one per direction.
+    const PREV: &str = "WITH u AS ( \
            SELECT slug, 'blog'::text AS kind, title, COALESCE(scheduled_at, created_at) AS at \
            FROM blog_posts WHERE directory_id = $1 AND published = true AND status = 'published' \
              AND (scheduled_at IS NULL OR scheduled_at <= NOW()) \
            UNION ALL \
            SELECT slug, 'article'::text AS kind, title, created_at AS at \
            FROM business_articles WHERE directory_id = $1 AND status = 'published' \
-         ) ";
+         ) \
+         SELECT slug, kind, title FROM u WHERE at IS NOT NULL AND at < $2 ORDER BY at DESC LIMIT 1";
+    const NEXT: &str = "WITH u AS ( \
+           SELECT slug, 'blog'::text AS kind, title, COALESCE(scheduled_at, created_at) AS at \
+           FROM blog_posts WHERE directory_id = $1 AND published = true AND status = 'published' \
+             AND (scheduled_at IS NULL OR scheduled_at <= NOW()) \
+           UNION ALL \
+           SELECT slug, 'article'::text AS kind, title, created_at AS at \
+           FROM business_articles WHERE directory_id = $1 AND status = 'published' \
+         ) \
+         SELECT slug, kind, title FROM u WHERE at IS NOT NULL AND at > $2 ORDER BY at ASC LIMIT 1";
     let mut out: Vec<(String, String)> = Vec::new();
-    for (dirn, ord, prefix) in [("<", "DESC", "← Previous: "), (">", "ASC", "Next: ")] {
-        let sql = format!(
-            "{}SELECT slug, kind, title FROM u WHERE at IS NOT NULL AND at {} $2 ORDER BY at {} LIMIT 1",
-            UNION, dirn, ord
-        );
-        let row = sqlx::query(&sql)
+    for (sql, prefix) in [(PREV, "← Previous: "), (NEXT, "Next: ")] {
+        let row = sqlx::query(sql)
             .bind(dir.id)
             .bind(at)
             .fetch_optional(pool)

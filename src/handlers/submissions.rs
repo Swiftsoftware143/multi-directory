@@ -362,27 +362,52 @@ pub async fn approve_submission(
         ));
     }
 
-    // Generate a slug from the business name
-    let slug = slugify(&submission.business_name);
+    let dir_id = submission
+        .directory_id
+        .ok_or_else(|| AppError::Validation("submission has no directory".into()))?;
 
-    // Create the business record
-    // We need to insert into businesses (name, slug, directory_id, etc.)
-    let business = sqlx::query_as::<_, (Uuid,)>(
-        "INSERT INTO businesses (name, slug, description, address, city, state, zip, phone, email, website, directory_id) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411) RETURNING id "
+    // W29 — one business = one record. If the business is already listed in this
+    // directory (same place, or the same name at the same address), the approval
+    // links to THAT record instead of inserting a second one (which used to fail
+    // outright on the unique slug and 500 the approval).
+    let existing = crate::handlers::businesses::find_business_by_identity(
+        &s.db,
+        dir_id,
+        None,
+        &submission.business_name,
+        submission.address.as_deref().unwrap_or(""),
     )
-    .bind(&submission.business_name)
-    .bind(&slug)
-    .bind(&submission.description)
-    .bind(&submission.address)
-    .bind(&submission.city)
-    .bind(&submission.state)
-    .bind(&submission.zip)
-    .bind(&submission.phone)
-    .bind(&submission.email)
-    .bind(&submission.website)
-    .bind(submission.directory_id)
-    .fetch_one(&s.db)
     .await?;
+
+    let (business_id, already) = match existing {
+        Some(id) => (id, true),
+        None => {
+            let slug = crate::handlers::businesses::unique_business_slug(
+                &s.db,
+                dir_id,
+                &slugify(&submission.business_name),
+            )
+            .await?;
+            // Create the business record
+            let business = sqlx::query_as::<_, (Uuid,)>(
+                "INSERT INTO businesses (name, slug, description, address, city, state, zip, phone, email, website, directory_id) VALUES (\x241, \x242, \x243, \x244, \x245, \x246, \x247, \x248, \x249, \x2410, \x2411) RETURNING id "
+            )
+            .bind(&submission.business_name)
+            .bind(&slug)
+            .bind(&submission.description)
+            .bind(&submission.address)
+            .bind(&submission.city)
+            .bind(&submission.state)
+            .bind(&submission.zip)
+            .bind(&submission.phone)
+            .bind(&submission.email)
+            .bind(&submission.website)
+            .bind(submission.directory_id)
+            .fetch_one(&s.db)
+            .await?;
+            (business.0, false)
+        }
+    };
 
     // Update submission status to approved
     let updated = sqlx::query_as::<_, Submission>(
@@ -394,8 +419,13 @@ pub async fn approve_submission(
 
     Ok(Json(serde_json::json!({
         "submission": updated,
-        "business_id": business.0,
-        "message": "Submission approved and business created "
+        "business_id": business_id,
+        "linked_existing": already,
+        "message": if already {
+            "Submission approved and linked to the business already listed"
+        } else {
+            "Submission approved and business created "
+        }
     })))
 }
 

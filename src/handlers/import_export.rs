@@ -104,7 +104,6 @@ async fn import_business_row(
         .get("name")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::Validation("Missing 'name' field".to_string()))?;
-    let slug = row.get("slug").and_then(|v| v.as_str()).unwrap_or(name);
     let directory_id = row
         .get("directory_id")
         .and_then(|v| v.as_str())
@@ -159,37 +158,93 @@ async fn import_business_row(
         None
     };
 
-    sqlx::query(
-        "INSERT INTO businesses (name, slug, directory_id, description, address, city, state, zip, phone, email, website, latitude, longitude, rating, review_count, category_id, images) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-         ON CONFLICT (directory_id, slug) DO UPDATE SET
-            name = EXCLUDED.name,
-            description = COALESCE(NULLIF(EXCLUDED.description, ''), businesses.description),
-            address = COALESCE(NULLIF(EXCLUDED.address, ''), businesses.address),
-            city = COALESCE(NULLIF(EXCLUDED.city, ''), businesses.city),
-            state = COALESCE(NULLIF(EXCLUDED.state, ''), businesses.state),
-            zip = COALESCE(NULLIF(EXCLUDED.zip, ''), businesses.zip),
-            phone = COALESCE(NULLIF(EXCLUDED.phone, ''), businesses.phone),
-            email = COALESCE(NULLIF(EXCLUDED.email, ''), businesses.email),
-            website = COALESCE(NULLIF(EXCLUDED.website, ''), businesses.website),
-            latitude = COALESCE(EXCLUDED.latitude, businesses.latitude),
-            longitude = COALESCE(EXCLUDED.longitude, businesses.longitude),
-            rating = GREATEST(COALESCE(EXCLUDED.rating, 0), COALESCE(businesses.rating, 0)),
-            review_count = GREATEST(COALESCE(EXCLUDED.review_count, 0), COALESCE(businesses.review_count, 0)),
-            category_id = COALESCE(EXCLUDED.category_id, businesses.category_id),
-            images = (
-                SELECT jsonb_agg(DISTINCT v) FROM jsonb_array_elements_text(
-                    CASE WHEN businesses.images IS NULL OR businesses.images = '[]'::jsonb 
-                         THEN $17::jsonb 
-                         WHEN $17::jsonb = '[]'::jsonb 
-                         THEN businesses.images 
-                         ELSE businesses.images || $17::jsonb 
-                    END
-                ) AS v
-            ),
-            updated_at = NOW()"
+    let place_id = row
+        .get("place_id")
+        .or_else(|| row.get("placeId"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    // W29 — identity, never the name alone. A business that is already here (same
+    // place id, or the same name at the same address) is UPDATED, so re-importing
+    // the same source cannot create a second record. Two different businesses that
+    // share a name are kept apart by the slug disambiguator below.
+    if let Some(existing) = crate::handlers::businesses::find_business_by_identity(
+        db,
+        directory_id,
+        place_id,
+        name,
+        address,
     )
-    .bind(name).bind(slug).bind(directory_id)
+    .await?
+    {
+        sqlx::query(
+            "UPDATE businesses SET
+                name = COALESCE(NULLIF($2, ''), name),
+                description = COALESCE(NULLIF($3, ''), description),
+                address = COALESCE(NULLIF($4, ''), address),
+                city = COALESCE(NULLIF($5, ''), city),
+                state = COALESCE(NULLIF($6, ''), state),
+                zip = COALESCE(NULLIF($7, ''), zip),
+                phone = COALESCE(NULLIF($8, ''), phone),
+                email = COALESCE(NULLIF($9, ''), email),
+                website = COALESCE(NULLIF($10, ''), website),
+                latitude = COALESCE($11, latitude),
+                longitude = COALESCE($12, longitude),
+                rating = GREATEST(COALESCE($13, 0), COALESCE(rating, 0)),
+                review_count = GREATEST(COALESCE($14, 0), COALESCE(review_count, 0)),
+                category_id = COALESCE($15, category_id),
+                images = (
+                    SELECT jsonb_agg(DISTINCT v) FROM jsonb_array_elements_text(
+                        CASE WHEN images IS NULL OR images = '[]'::jsonb
+                             THEN $16::jsonb
+                             WHEN $16::jsonb = '[]'::jsonb
+                             THEN images
+                             ELSE images || $16::jsonb
+                        END
+                    ) AS v
+                ),
+                place_id = COALESCE($17, place_id),
+                updated_at = NOW()
+             WHERE id = $1",
+        )
+        .bind(existing)
+        .bind(name)
+        .bind(description)
+        .bind(address)
+        .bind(city)
+        .bind(state)
+        .bind(zip)
+        .bind(phone)
+        .bind(email)
+        .bind(&website)
+        .bind(latitude)
+        .bind(longitude)
+        .bind(rating)
+        .bind(review_count)
+        .bind(cat_id)
+        .bind(&images_json)
+        .bind(place_id)
+        .execute(db)
+        .await?;
+        return Ok(());
+    }
+
+    let slug_base = row
+        .get("slug")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(crate::utils::slug::slugify)
+        .unwrap_or_else(|| crate::utils::slug::slugify(name));
+    let slug =
+        crate::handlers::businesses::unique_business_slug(db, directory_id, &slug_base).await?;
+
+    sqlx::query(
+        "INSERT INTO businesses (name, slug, directory_id, description, address, city, state, zip, phone, email, website, latitude, longitude, rating, review_count, category_id, images, place_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)",
+    )
+    .bind(name).bind(&slug).bind(directory_id)
     .bind(description)
     .bind(address)
     .bind(city).bind(state).bind(zip)
@@ -199,6 +254,7 @@ async fn import_business_row(
     .bind(review_count)
     .bind(cat_id)
     .bind(&images_json)
+    .bind(place_id)
     .execute(db)
     .await?;
     Ok(())

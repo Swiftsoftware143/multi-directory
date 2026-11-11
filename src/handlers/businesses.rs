@@ -16,6 +16,78 @@ use crate::models::*;
 use crate::utils;
 use crate::AppState;
 
+/// W29 — the single place that answers "is this business already here?".
+///
+/// Identity order: the Google place id (durable — it survives renames and
+/// re-imports), then the exact name + address pair (the best match available
+/// for rows that do not carry a place id yet). A name alone is never an
+/// identity: two different businesses legitimately share one.
+pub(crate) async fn find_business_by_identity(
+    db: &sqlx::PgPool,
+    directory_id: Uuid,
+    place_id: Option<&str>,
+    name: &str,
+    address: &str,
+) -> Result<Option<Uuid>, AppError> {
+    if let Some(pid) = place_id.map(str::trim).filter(|p| !p.is_empty()) {
+        let hit = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM businesses WHERE directory_id = $1 AND place_id = $2 LIMIT 1",
+        )
+        .bind(directory_id)
+        .bind(pid)
+        .fetch_optional(db)
+        .await?;
+        if hit.is_some() {
+            return Ok(hit);
+        }
+    }
+    let hit = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM businesses
+          WHERE directory_id = $1
+            AND lower(btrim(name)) = lower(btrim($2))
+            AND lower(btrim(COALESCE(address, ''))) = lower(btrim($3))
+          LIMIT 1",
+    )
+    .bind(directory_id)
+    .bind(name)
+    .bind(address)
+    .fetch_optional(db)
+    .await?;
+    Ok(hit)
+}
+
+/// W29 — a slug that cannot collide. Two distinct businesses that share a name
+/// get their own record and their own URL instead of overwriting each other.
+pub(crate) async fn unique_business_slug(
+    db: &sqlx::PgPool,
+    directory_id: Uuid,
+    base: &str,
+) -> Result<String, AppError> {
+    let base = base.trim();
+    let base = if base.is_empty() { "business" } else { base };
+    for n in 1..=60u32 {
+        let cand = if n == 1 {
+            base.to_string()
+        } else {
+            format!("{base}-{n}")
+        };
+        let taken: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND slug = $2",
+        )
+        .bind(directory_id)
+        .bind(&cand)
+        .fetch_one(db)
+        .await?;
+        if taken == 0 {
+            return Ok(cand);
+        }
+    }
+    Ok(format!(
+        "{base}-{}",
+        &Uuid::new_v4().simple().to_string()[..6]
+    ))
+}
+
 /// GET /api/v1/directories/:slug/businesses
 pub async fn list_businesses(
     State(s): State<AppState>,
@@ -522,7 +594,25 @@ pub async fn update_business(
     .fetch_one(&s.db)
     .await?;
 
-    // Upsert cta_type into business_meta.meta_data
+    // W29 — one edit, shown everywhere. A town/hub appearance is a REFERENCE to this
+    // business, so the copy the public pages render is refreshed from the record the
+    // owner just edited. It used to keep the values captured when the listing was
+    // created, so an owner's correction never reached the public page.
+    sqlx::query(
+        r#"UPDATE business_listings SET
+             business_name = b.name,
+             address = b.address,
+             phone = b.phone,
+             website = b.website,
+             description = b.description,
+             logo_url = COALESCE(b.logo_url, business_listings.logo_url),
+             updated_at = NOW()
+           FROM businesses b
+           WHERE business_listings.business_id = b.id AND b.id = $1"#,
+    )
+    .bind(business_id)
+    .execute(&s.db)
+    .await?;
     if req.cta_type.is_some() {
         let cta_value = req.cta_type.as_deref().unwrap_or("none");
         let meta_patch = serde_json::json!({"cta_type": cta_value});
