@@ -1732,28 +1732,41 @@ pub fn create_router(s: AppState) -> Router {
             "/provider-keys",
             get(provider_keys_handler::list_provider_keys)
                 .post(provider_keys_handler::upsert_provider_key)
-                // Tenant-scoped in the handler (rows filter on claims.tid); refuse the visitor role,
-                // whose nil tenant must never reach a tenant API.
-                .route_layer(middleware::from_fn_with_state(s.clone(), tenant_guard)),
+                // Live directory credentials: staff/directory principals only — an owner's
+                // visitor-account session must never read or write them (it carries the
+                // platform tenant, so tenant_guard alone let it through).
+                .route_layer(middleware::from_fn_with_state(
+                    s.clone(),
+                    staff_principal_guard,
+                )),
         )
         .route(
             "/provider-keys/:provider",
             put(provider_keys_handler::upsert_provider_key)
-                .delete(provider_keys_handler::delete_provider_key),
+                .delete(provider_keys_handler::delete_provider_key)
+                .route_layer(middleware::from_fn_with_state(
+                    s.clone(),
+                    staff_principal_guard,
+                )),
         )
         // B39 — the scoped view: what key is in force for ONE directory, and where it comes
         // from (own / inherited from its network / platform). Masked previews only.
         .route(
             "/provider-keys/effective",
-            get(provider_keys_handler::list_effective_keys)
-                .route_layer(middleware::from_fn_with_state(s.clone(), tenant_guard)),
+            get(provider_keys_handler::list_effective_keys).route_layer(
+                middleware::from_fn_with_state(s.clone(), staff_principal_guard),
+            ),
         )
         .route(
             "/provider-keys/:provider/test",
             get(provider_keys_handler::test_provider_key)
                 // Fleet standard: a REAL probe (coreswift hits the hub), so a
                 // revoked key cannot report "configured: true".
-                .post(coreswift_integration_handler::test_provider_key_live),
+                .post(coreswift_integration_handler::test_provider_key_live)
+                .route_layer(middleware::from_fn_with_state(
+                    s.clone(),
+                    staff_principal_guard,
+                )),
         )
         // ── Integration Center: canonical CoreSwift spoke endpoints ──
         // Fleet standard /opt/swift/docs/integration-center-standard-2026-09-20.md
@@ -1819,16 +1832,24 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/provider-keys/id/:id",
             delete(provider_keys_handler::delete_provider_key_by_id)
-                .put(provider_keys_handler::update_provider_key_by_id),
+                .put(provider_keys_handler::update_provider_key_by_id)
+                .route_layer(middleware::from_fn_with_state(
+                    s.clone(),
+                    staff_principal_guard,
+                )),
         )
         .route(
             "/provider-keys/id/:id/default",
-            post(provider_keys_handler::set_default_provider_key),
+            post(provider_keys_handler::set_default_provider_key).route_layer(
+                middleware::from_fn_with_state(s.clone(), staff_principal_guard),
+            ),
         )
         // B39 — deactivate a key (the value stays; the resolver stops choosing it) or bring it back.
         .route(
             "/provider-keys/id/:id/active",
-            post(provider_keys_handler::set_provider_key_active),
+            post(provider_keys_handler::set_provider_key_active).route_layer(
+                middleware::from_fn_with_state(s.clone(), staff_principal_guard),
+            ),
         )
         // Feature 2 support — networks list + the root domain a subdomain mapping hangs off.
         // B91/B117 completeness inventory gap #3 — the network CRUD handlers (get/create/
@@ -3993,6 +4014,37 @@ async fn cron_guard(
         }
         _ => Err(AppError::Unauthorized),
     }
+}
+
+/// Gate for the surfaces that hold the DIRECTORY's own credentials (`provider_keys`).
+///
+/// A business owner administers their LISTING; the directory's integrations — mail, maps, AI,
+/// scraping keys — are the directory administrator's. An owner's session is a visitor-account
+/// principal, and its token carries a tenant (the platform tenant), so `tenant_guard` alone let
+/// an owner read the network's key metadata and CREATE a network-scoped key, which every city
+/// would then use. The boundary is the identity table: `users` = staff/directory side,
+/// `visitor_accounts` = shoppers and listing owners. Operators pass; staff accounts pass; a
+/// visitor-account principal is refused 403.
+async fn staff_principal_guard(
+    State(s): State<AppState>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    use crate::handlers::tenant_scope::{caller_user, claims_from_headers, is_platform_operator};
+    let claims = claims_from_headers(req.headers(), &s.config.jwt_secret)?;
+    if !is_platform_operator(&claims) {
+        let is_staff: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)")
+            .bind(caller_user(&claims)?)
+            .fetch_one(&s.db)
+            .await?;
+        if !is_staff {
+            return Err(AppError::Forbidden(
+                "Directory admin access required".to_string(),
+            ));
+        }
+    }
+    req.extensions_mut().insert(claims);
+    Ok(next.run(req).await)
 }
 
 /// Card B52 — role gate for TENANT-SCOPED routes a business/directory portal legitimately calls.

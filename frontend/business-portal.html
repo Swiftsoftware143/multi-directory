@@ -266,7 +266,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
          tenant (BYOK, provider_keys) — nothing about the catalogue is hardcoded here. -->
     <div id="integrations" style="margin-top:32px">
       <div class="section-title">🔌 Integrations</div>
-      <div style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">
+      <div id="integrationsSubtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">
         Bring your own API keys (BYOK) for the services this directory uses. Every key is stored
         against your own account and never shared. CoreSwift CRM is the native integration: the
         leads your directory captures — enquiries, booking requests and claimed listings — are
@@ -1082,6 +1082,7 @@ async function loadDashboard() {
   
   try {
     var data = await g('/portal/business/profile');
+    _portalOwner = true;
     $('userInfo').textContent = 'You have ' + (data.claimed_businesses || []).length + ' claimed business(es)';
     setMyBiz(data.claimed_businesses || []);
     renderBusinesses(data.claimed_businesses || []);
@@ -1441,6 +1442,12 @@ function updateIntegrationVisibility() {
 var _icProviders = [];
 var _icKeys = {};
 var _icCoreStatus = { connected: false };
+// A business owner's session cannot manage the directory's provider keys or its CoreSwift link
+// (both are directory/network surfaces and answer 403 to an owner). Set when the portal profile
+// call succeeds, so the Integration Center shows the catalogue READ-ONLY instead of offering
+// controls that can only fail.
+var _portalOwner = false;
+var _icReadOnly = false;
 
 function showPortalView(view) {
   var map = { businesses: 'businessList', transfers: 'transfersSection', integrations: 'integrations',
@@ -1489,6 +1496,18 @@ async function loadIntegrationCenter() {
     var prov = await g('/available-providers');
     _icProviders = (prov && (prov.data || prov.providers)) || [];
 
+    // A business owner cannot read or change the directory's provider keys / CoreSwift link
+    // (both answer 403 to an owner session). Do not call them at all: a refused request logs a
+    // console error on every portal load and leaves controls on screen that can only fail.
+    if (_portalOwner) {
+      _icReadOnly = true;
+      _icKeys = {};
+      _icCoreStatus = { connected: false };
+      renderIntegrationCenter();
+      return;
+    }
+    _icReadOnly = false;
+
     var keys = { data: [] };
     try { keys = await g('/provider-keys'); } catch (e) { keys = { data: [] }; }
     _icKeys = {};
@@ -1514,8 +1533,22 @@ function icIsConnected(key) {
   return false;
 }
 
+function icCardReadOnly(p) {
+  var key = p.key;
+  var isCore = (key === 'coreswift');
+  var style = isCore ? 'border:2px solid var(--primary);box-shadow:0 4px 14px rgba(242,127,47,.12)' : '';
+  var h = '<div class="card" id="iccard_' + esc(key) + '" style="' + style + '">';
+  h += '<h3>' + (isCore ? '⭐ ' : '') + esc(p.name || key) + ' <span class="badge inactive">Managed by your directory</span></h3>';
+  h += '<p>' + esc(p.description || '') + '</p>';
+  h += '<p style="font-size:.8rem;color:var(--text-secondary)">Your directory connects this service once and it applies to every listing in it. Ask your directory admin to turn it on.</p>';
+  if (isCore) h += icCoreCrossSell();
+  h += '</div>';
+  return h;
+}
+
 function icCard(p) {
   var key = p.key;
+  if (_icReadOnly) return icCardReadOnly(p);
   var connected = icIsConnected(key);
   var rows = _icKeys[key] || [];
   var preview = (rows.length && rows[0].api_key) ? rows[0].api_key : '';
@@ -1563,6 +1596,18 @@ function icCard(p) {
 function renderIntegrationCenter() {
   var box = document.getElementById('integrationCenter');
   if (!box) return;
+  var sub = document.getElementById('integrationsSubtitle');
+  if (sub) {
+    sub.innerHTML = _icReadOnly
+      ? 'These are the services your directory uses. Your directory connects them once and they apply ' +
+        'to every listing in it — ask your directory admin to turn one on. CoreSwift CRM is the native ' +
+        'integration: the leads your listing captures — enquiries, booking requests and claims — are ' +
+        'pushed into it automatically once your directory has connected it.'
+      : 'Bring your own API keys (BYOK) for the services this directory uses. Every key is stored ' +
+        'against your directory’s own account and never shared. CoreSwift CRM is the native integration: ' +
+        'the leads your directory captures — enquiries, booking requests and claimed listings — are ' +
+        'pushed into it automatically once connected.';
+  }
   if (!_icProviders.length) {
     box.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><p>No integrations are available right now.</p></div>';
     return;
