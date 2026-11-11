@@ -282,6 +282,8 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     // --- /places -----------------------------------------------------
     ("GET", "/places/autocomplete", "places"),
     ("GET", "/places/details", "places"),
+    // A listing photo streamed through our own proxy (the saved Places key stays server-side).
+    ("GET", "/place-photo", "zaarhub-public"),
     // --- /polls ------------------------------------------------------
     ("GET", "/polls", "polls-list"),
     ("GET", "/polls/:id", "polls-id"),

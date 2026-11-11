@@ -3628,6 +3628,36 @@ function renderBizPage(d){
     '<span style="color:var(--text-light)">'+(cCount>0?('<span style="color:var(--warm,#f59e0b);letter-spacing:1px">'+zhStars(cRating)+'</span>'+(cRating!==null?' '+Number(cRating).toFixed(1):'')+' · '+cCount+' review'+(cCount===1?'':'s')):'No reviews yet')+'</span>'+
     '<span style="color:var(--teal);font-weight:600;white-space:nowrap">'+(cCount>0?'Read reviews ↓':'Be the first →')+'</span></div>'
 
+  // ── Photos (card W24) ───────────────────────────────────────────────────────────
+  // The business endpoint already serves the listing's photo URLs (imported from the public
+  // listing), but this page never rendered them, so every listing was text-only. The first
+  // photo is the hero image; the rest are a small click-to-swap gallery. A listing with no
+  // usable photo gets a placeholder frame instead of an empty strip, and a photo that fails
+  // to load falls back to that frame rather than leaving a broken image.
+  var pics=[]
+  var rawPics=[]
+  try{
+    rawPics=(Array.isArray(b.images)?b.images:[]).slice()
+    if(b.image_url)rawPics.unshift(b.image_url)
+    if(b.cover_url)rawPics.unshift(b.cover_url)
+  }catch(e){}
+  for(var pi=0;pi<rawPics.length&&pics.length<5;pi++){
+    var pu=rawPics[pi]
+    if(typeof pu!=="string")continue
+    if(!/^(https?:\/\/|\/)/i.test(pu))continue
+    if(pics.indexOf(pu)<0)pics.push(pu)
+  }
+  var photoFrame='<div id="zhBizPhotoFrame" style="display:'+(pics.length?'none':'flex')+';align-items:center;justify-content:center;flex-direction:column;height:260px;border:1px dashed var(--border);border-radius:14px;background:var(--bg-teal);color:var(--text-light)"><div style="font-size:2.4rem;font-weight:800;opacity:.45">'+esc((b.name||'?').charAt(0).toUpperCase())+'</div><div style="font-size:.82rem;margin-top:6px">No photos yet</div></div>'
+  var photoHtml='<div class="zh-section" style="padding-top:0"><div class="zh-section-inner">'+
+    '<div id="zhBizPhotoWrap" style="position:relative;margin-bottom:'+(pics.length?'10px':'0')+'">'+
+      (pics.length?'<img id="zhBizHeroImg" src="'+esc(pics[0])+'" alt="'+esc(b.name||'Business photo')+'" style="width:100%;height:360px;object-fit:cover;border-radius:14px;display:block;background:var(--bg-teal)">':'')+
+      (pics.length>1?'<button type="button" id="zhBizPhotoPrev" aria-label="Previous photo" style="position:absolute;left:10px;top:180px;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:none;background:rgba(15,23,42,.55);color:#fff;font-size:1.2rem;line-height:1;cursor:pointer">‹</button><button type="button" id="zhBizPhotoNext" aria-label="Next photo" style="position:absolute;right:10px;top:180px;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:none;background:rgba(15,23,42,.55);color:#fff;font-size:1.2rem;line-height:1;cursor:pointer">›</button>':'')+
+    '</div>'+
+    (pics.length>1?'<div id="zhBizPhotoStrip" style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px">'+
+      pics.map(function(pp,i){return '<button type="button" data-idx="'+i+'" style="flex:0 0 96px;padding:0;border:2px solid '+(i===0?'var(--teal)':'transparent')+';border-radius:10px;overflow:hidden;background:none;cursor:pointer"><img src="'+esc(pp)+'" alt="'+esc(b.name||'Business')+' photo '+(i+1)+'" style="width:100%;height:64px;object-fit:cover;display:block"></button>'}).join('')+
+    '</div>':'')+
+    photoFrame+
+  '</div></div>'
   el.innerHTML='<div class="zh-biz-hero" style="background:linear-gradient(135deg,#0f172a 0%,#134e4a 70%,#0d9488 100%);color:#fff;padding:48px 24px"><div class="zh-section-inner" style="max-width:1280px;margin:0 auto"><a href="#/city/'+state.slug+'" style="color:#94a3b8;font-size:.85rem;margin-bottom:12px;display:inline-block">← Back to '+toTitle(state.slug)+'</a><h1 style="font-size:2rem;font-weight:800;margin-bottom:4px">'+esc(b.name)+'</h1><div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:.9rem;color:#94a3b8">'+
   (b.rating?'<span>'+stars+' ('+reviewByline(d)+')</span>':'')+
   (b.category?'<span>📁 '+esc(b.category)+'</span>':'')+
@@ -3637,6 +3667,7 @@ function renderBizPage(d){
   (b.website?'<a href="'+esc(b.website)+'" target="_blank" class="zh-btn-secondary" style="padding:10px 20px;border-radius:8px;border:1px solid rgba(255,255,255,.3);color:#fff;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px">🌐 Website</a>':'')+
   (b.address?'<a href="https://maps.google.com/?q='+encodeURIComponent(b.address+' '+b.city)+'" target="_blank" class="zh-btn-secondary" style="padding:10px 20px;border-radius:8px;border:1px solid rgba(255,255,255,.3);color:#fff;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px">🗺️ Directions</a>':'')+
   '</div></div></div>'+
+  photoHtml+
   '<div class="zh-section"><div class="zh-section-inner"><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px"><div>'+
   (b.description?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">About</h3><p style="color:var(--text-light);line-height:1.7">'+esc(b.description)+'</p></div>':'')+
   (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(b.address)+'<br>'+esc(b.city)+', '+esc(b.state)+'</p>'+walkLine+'</div>':'')+
@@ -3647,7 +3678,52 @@ function renderBizPage(d){
   (d.reviews&&d.reviews.length?d.reviews.map(function(rv){var s='★'.repeat(rv.rating)+'☆'.repeat(5-rv.rating);return '<div style="padding:10px 0;border-bottom:1px solid var(--border-light)"><div style="font-size:.9rem">'+s+'</div><div style="font-weight:600;font-size:.85rem;margin-top:2px">'+esc(rv.reviewer_name||'Anonymous')+(rv.is_verified?' <span style="background:#dcfce7;color:#166534;font-size:.7rem;padding:1px 6px;border-radius:6px;font-weight:600">✅ Verified customer</span>':'')+'</div>'+(rv.content?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(rv.content)+'</div>':'')+'</div>'}).join(''):'<p style="color:var(--text-light);font-size:.85rem">'+(Number(d.imported_review_count||b.review_count||0)>0?'The '+Number(d.imported_review_count||b.review_count||0).toLocaleString()+' reviews and '+(b.rating||'')+'-star rating above come from public business listings. No ZaarHub customer has reviewed this place yet — be the first!':'No reviews yet — be the first!')+'</p>')+
   '</div></div><!-- Write Review --><div id="zhReviewForm" style="display:none;background:var(--bg-teal);padding:16px;border-radius:12px;margin-bottom:16px"><h4 style="font-size:.95rem;margin-bottom:8px;font-weight:600">✍️ Write a Review</h4><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Rating</label><div id="zhStarPicker" style="font-size:1.5rem;cursor:pointer"><span data-star="1" onclick="pickStar(1)" style="color:var(--border)">★</span><span data-star="2" onclick="pickStar(2)" style="color:var(--border)">★</span><span data-star="3" onclick="pickStar(3)" style="color:var(--border)">★</span><span data-star="4" onclick="pickStar(4)" style="color:var(--border)">★</span><span data-star="5" onclick="pickStar(5)" style="color:var(--border)">★</span></div></div><div style="margin-bottom:8px"><label style="font-size:.8rem;display:block;margin-bottom:4px;font-weight:500">Your thoughts</label><textarea id="zhReviewContent" placeholder="Share your experience..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;outline:none;resize:vertical;min-height:60px;font-family:inherit"></textarea></div><button onclick="handleSubmitReview('+ (b.id||state.bizId||'') +')" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem">⭐ Post Review</button></div>'+
   '</div></div></div>'
+  zhWireBizPhotos(pics)
 }
+
+// ── Business photos (card W24) ──
+// Wires the gallery built by renderBizPage: the strip/arrow buttons swap the hero image, and a
+// hero that fails to load (dead provider URL) falls back to the placeholder frame instead of
+// leaving a broken-image icon. Kept out of the HTML string so no inline handlers escape.
+function zhWireBizPhotos(pics){
+  window.__zhBizPics=pics||[]
+  window.__zhBizPhotoIdx=0
+  var img=document.getElementById("zhBizHeroImg")
+  if(img)img.onerror=function(){
+    img.style.display="none"
+    var f=document.getElementById("zhBizPhotoFrame")
+    if(f)f.style.display="flex"
+  }
+  var strip=document.getElementById("zhBizPhotoStrip")
+  if(strip){
+    var btns=strip.querySelectorAll("button[data-idx]")
+    for(var i=0;i<btns.length;i++){
+      btns[i].onclick=function(){zhBizShowPhoto(Number(this.getAttribute("data-idx")))}
+    }
+  }
+  var prev=document.getElementById("zhBizPhotoPrev")
+  if(prev)prev.onclick=function(){zhBizPhotoStep(-1)}
+  var next=document.getElementById("zhBizPhotoNext")
+  if(next)next.onclick=function(){zhBizPhotoStep(1)}
+}
+function zhBizShowPhoto(i){
+  var pics=window.__zhBizPics||[]
+  if(!pics.length)return
+  i=(i+pics.length)%pics.length
+  var img=document.getElementById("zhBizHeroImg")
+  if(img){img.src=pics[i];img.style.display="block"}
+  var frame=document.getElementById("zhBizPhotoFrame")
+  if(frame)frame.style.display="none"
+  var strip=document.getElementById("zhBizPhotoStrip")
+  if(strip){
+    var btns=strip.querySelectorAll("button[data-idx]")
+    for(var k=0;k<btns.length;k++){
+      btns[k].style.borderColor=(Number(btns[k].getAttribute("data-idx"))===i)?"var(--teal)":"transparent"
+    }
+  }
+  window.__zhBizPhotoIdx=i
+}
+function zhBizPhotoStep(step){zhBizShowPhoto((window.__zhBizPhotoIdx||0)+step)}
 
 // ── Two-tier review rows (card W23) ──
 // The Google row is a plain link out to that business on Google Maps. The Community row is an

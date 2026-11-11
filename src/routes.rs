@@ -2110,6 +2110,10 @@ pub fn create_router(s: AppState) -> Router {
             "/zaarhub/business/:slug/:id",
             get(zaarhub::get_business_detail),
         )
+        // Listing photos: imported listings store Google photo RESOURCE NAMES, which a browser
+        // cannot load. This proxies one photo through the saved Places key so the key never
+        // reaches the page. Public by design (a photo is public data) - see the is_public list.
+        .route("/place-photo", get(zaarhub::place_photo))
         .route("/zaarhub/deals", get(zaarhub::list_featured_deals))
         .route("/zaarhub/events", get(zaarhub::list_featured_events))
         .route(
