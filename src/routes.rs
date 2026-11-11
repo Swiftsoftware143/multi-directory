@@ -3218,17 +3218,18 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
-                    let mut clean_path = path.trim_start_matches('/').to_string();
+                    let clean_path = path.trim_start_matches('/').to_string();
                     let is_root = clean_path.is_empty();
-                    // A DIRECTORY url must answer that directory's index.html. `/guides/` used to
-                    // fall past this file check (a directory "exists()", `is_file()` is false) and
-                    // land on the hard-404 page while `/guides/index.html` answered 200 — so the
-                    // guides hub, which every guide links back to, had a dead address (measured
-                    // 2026-11-11). Same trap waits for any future `/subdir/` url.
-                    if is_root || clean_path.ends_with('/') {
-                        clean_path.push_str("index.html");
+                    // A DIRECTORY url must answer that directory's index.html. `/guides` and
+                    // `/guides/` used to fall past the file check (a directory `exists()` but is
+                    // not a file) and land on the hard-404 page while `/guides/index.html`
+                    // answered 200 — so the guides hub, which every guide links back to, had a
+                    // dead address (measured 2026-11-11). Same trap waits for any future
+                    // `/subdir/` url.
+                    let mut file_path = std::path::Path::new(&frontend).join(&clean_path);
+                    if file_path.is_dir() {
+                        file_path = file_path.join("index.html");
                     }
-                    let file_path = std::path::Path::new(&frontend).join(&clean_path);
 
                     if file_path.exists() && file_path.is_file() {
                         if let Ok(content) = tokio::fs::read(&file_path).await {
