@@ -18,6 +18,9 @@ The only direct DB writes are the disposable probe listing and teardown.
 Run:  python3 scripts/reviews-public-xss-escape-smoke.py
 Exit: 0 = PASS, 1 = FAIL.  Nothing is left behind on either path.
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -51,6 +54,22 @@ def db_password():
     if not m:
         sys.exit("could not read DATABASE_URL from the multidirectory container")
     return m.group(1)
+
+
+def mint_operator_token():
+    """super_admin JWT, same shape the admin console uses. Secret never printed."""
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
 
 
 PW = db_password()
@@ -141,6 +160,15 @@ def main():
                  {"owner_email": owner_email, "owner_name": "ZZ XSS Owner",
                   "owner_phone": "4075550100"}, extra_headers=HARNESS)
     check("owner can claim the listing", st in (200, 201), f"status={st}")
+
+    # the real flow since 2026-11-12: a claim whose e-mail domain does not match the listing
+    # is stored INACTIVE; ownership is granted from the Businesses screen
+    # (POST /admin/claims/:id/approve) — nothing granted until a human does that.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    op = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op)
+    check("the operator approves the claim (POST /admin/claims/:id/approve)",
+          st in (200, 201), f"status={st}")
 
     st, tok = http("POST", "/api/v1/auth/login", {"email": cust_email, "password": pw})
     cust_token = (tok or {}).get("access_token")
