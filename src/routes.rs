@@ -404,6 +404,20 @@ pub fn create_router(s: AppState) -> Router {
             get(admin_businesses::list_businesses)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // A claim whose email domain does not match its listing is INACTIVE until a human approves
+        // it: the emailed link only confirms the claimant's address. Approving grants ownership
+        // (verification, publication, owner login + email); rejecting frees the listing again.
+        // Operator-guarded, same scope as the Businesses list that shows the buttons.
+        .route(
+            "/admin/claims/:id/approve",
+            post(admin_businesses::approve_claim)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/claims/:id/reject",
+            post(admin_businesses::reject_claim)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // Hand a draft/prospect record to its supplier (card B82): mint a one-time link that
         // ADOPTS the existing business instead of creating a duplicate. Operator-guarded.
         .route(

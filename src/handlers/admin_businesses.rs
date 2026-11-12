@@ -18,7 +18,7 @@
 //! Every statement is a compile-time literal and every filter is a bind (class-14).
 
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
     Json,
 };
@@ -76,6 +76,10 @@ FROM (
            (SELECT bm.meta_data->>'response_time' FROM business_meta bm
              WHERE bm.business_id = b.id AND bm.meta_data ? 'response_time' LIMIT 1) AS response_time,
            (c.id IS NOT NULL) AS has_account,
+           c.id::text AS claim_id,
+           c.is_active AS claim_active,
+           (c.verified_at IS NOT NULL) AS claim_approved,
+           (c.email_verified_at IS NOT NULL) AS claim_email_confirmed,
            c.owner_email AS owner_email,
            c.owner_name AS owner_name,
            COALESCE(b.rating, 0) AS rating,
@@ -85,7 +89,7 @@ FROM (
            b.created_at::text AS created_at,
            count(*) OVER() AS total
     FROM businesses b
-    JOIN directories d ON d.id = b.directory_id
+    LEFT JOIN directories d ON d.id = b.directory_id
     LEFT JOIN claimed_businesses c ON c.business_id = b.id
     LEFT JOIN coreswift_sync_state cs
            ON cs.entity_kind = 'business' AND cs.entity_id = b.id
@@ -117,7 +121,7 @@ SELECT count(*) FILTER (WHERE b.claimed) AS claimed,
        count(*) FILTER (WHERE b.status IN ('draft', 'prospect')) AS hidden,
        count(*) AS all_rows
 FROM businesses b
-JOIN directories d ON d.id = b.directory_id
+LEFT JOIN directories d ON d.id = b.directory_id
 LEFT JOIN claimed_businesses c ON c.business_id = b.id
 WHERE ($1::uuid IS NULL OR d.network_id = $1)
   AND ($2::uuid IS NULL OR d.id = $2)
@@ -223,4 +227,158 @@ pub async fn list_businesses(
         "coreswift_connected": connected,
         "rows": rows,
     })))
+}
+
+/// POST /admin/claims/:id/approve — an operator approves a REVIEWED ownership claim.
+///
+/// A claim whose email domain did not match the listing is created INACTIVE: it is recorded, its
+/// email can be confirmed, and it grants nothing — no portal, no review moderation, no payouts —
+/// until this runs. Approving records the verification, publishes the listing, creates the owner's
+/// login (or keeps the account they already have) and emails them. Idempotent: approving twice says
+/// so and changes nothing.
+pub async fn approve_claim(
+    State(s): State<AppState>,
+    Path(claim_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Option<Uuid>,
+            String,
+            Option<String>,
+            Option<String>,
+            bool,
+            String,
+        ),
+    >(
+        r#"SELECT cb.business_id, b.directory_id, cb.owner_email, cb.owner_name,
+                  cb.owner_phone, (cb.verified_at IS NOT NULL), b.name
+           FROM claimed_businesses cb
+           JOIN businesses b ON b.id = cb.business_id
+           WHERE cb.id = $1"#,
+    )
+    .bind(claim_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("that claim no longer exists".to_string()))?;
+
+    let (business_id, directory_id, owner_email, owner_name, owner_phone, already, biz_name) = row;
+    if already {
+        return Ok(Json(
+            json!({"ok": true, "business_id": business_id, "already_approved": true}),
+        ));
+    }
+
+    let temp_password = crate::handlers::visitors::grant_claim_ownership(
+        &s.db,
+        claim_id,
+        business_id,
+        directory_id,
+        &owner_email,
+        owner_name.as_deref(),
+        owner_phone.as_deref(),
+        "manual",
+    )
+    .await?;
+
+    // Tell the owner — approval they are never told about is a listing they cannot use.
+    let signin = match temp_password.as_deref() {
+        Some(p) => format!(
+            "<p style=\"color:#1e293b;font-size:14px;\">Your listing <b>{biz_name}</b> is now yours. \
+             Sign in to the business portal with <b>{owner_email}</b> and this temporary password, \
+             then change it after your first login:</p>\
+             <div style=\"background:#fff;border:2px dashed #6366f1;border-radius:8px;padding:12px 20px;\
+             display:inline-block;margin:8px 0 16px;\"><code style=\"font-size:20px;font-weight:700;\
+             color:#6366f1;\">{p}</code></div>"
+        ),
+        None => format!(
+            "<p style=\"color:#1e293b;font-size:14px;\">Your listing <b>{biz_name}</b> is now yours. \
+             Sign in to the business portal with <b>{owner_email}</b> and the password you already use.</p>"
+        ),
+    };
+    let html = format!(
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>\
+<body style=\"font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:20px;\">\
+<div style=\"background:#f8f9fa;border-radius:12px;padding:32px;text-align:center;\">\
+<h1 style=\"color:#1e293b;margin:0 0 8px;\">Your listing is approved</h1>\
+{biz_name_marker}{signin}\
+<p style=\"margin:24px 0;\"><a href=\"https://zaarhub.com/business-portal.html\" style=\"background:#6366f1;\
+color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;\">Open the business portal</a></p>\
+</div></body></html>",
+        biz_name_marker = format!("<p style=\"color:#64748b;font-size:14px;margin:0 0 16px;\">{biz_name}</p>")
+    );
+    let text = match temp_password.as_deref() {
+        Some(p) => format!(
+            "Your listing {biz_name} is approved.\nSign in at https://zaarhub.com/business-portal.html \
+             with {owner_email} / {p}\nChange the password after your first login."
+        ),
+        None => format!(
+            "Your listing {biz_name} is approved.\nSign in at https://zaarhub.com/business-portal.html \
+             with {owner_email} and the password you already use."
+        ),
+    };
+    let db = s.db.clone();
+    let to = owner_email.clone();
+    tokio::spawn(async move {
+        match crate::email::send_rendered_email_for_directory(
+            &db,
+            directory_id,
+            &to,
+            "Your listing is approved",
+            &html,
+            Some(&text),
+        )
+        .await
+        {
+            Ok(()) => tracing::info!("[claim] approval email sent to {to}"),
+            Err(e) => tracing::warn!("[claim] approval email NOT sent to {to}: {e}"),
+        }
+    });
+
+    Ok(Json(json!({
+        "ok": true,
+        "business_id": business_id,
+        "owner_email": owner_email,
+        "already_approved": false,
+        "account_created": temp_password.is_some(),
+    })))
+}
+
+/// POST /admin/claims/:id/reject — an operator rejects a reviewed ownership claim.
+///
+/// Deletes the claim so the listing is free to be claimed by its real owner (a pending claim holds
+/// the one-claim-per-business slot). The claimant's email confirmation is discarded with it.
+pub async fn reject_claim(
+    State(s): State<AppState>,
+    Path(claim_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let row = sqlx::query_as::<_, (Uuid, String, bool)>(
+        r#"SELECT cb.business_id, cb.owner_email, (cb.verified_at IS NOT NULL)
+           FROM claimed_businesses cb WHERE cb.id = $1"#,
+    )
+    .bind(claim_id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("that claim no longer exists".to_string()))?;
+
+    let (business_id, owner_email, approved) = row;
+    if approved {
+        // An approved claim is ownership: refuse instead of silently stripping a real owner.
+        return Err(AppError::Validation(
+            "this claim is already approved — transfer or remove the listing instead".to_string(),
+        ));
+    }
+
+    sqlx::query("DELETE FROM claimed_businesses WHERE id = $1")
+        .bind(claim_id)
+        .execute(&s.db)
+        .await?;
+
+    tracing::info!(
+        "[claim] operator rejected the claim by {owner_email} on business {business_id}"
+    );
+    Ok(Json(
+        json!({"ok": true, "business_id": business_id, "rejected": true}),
+    ))
 }

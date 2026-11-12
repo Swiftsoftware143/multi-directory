@@ -12349,6 +12349,16 @@
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
       });
     }
+    function postApi(path) {
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      return fetch(API + path, { method: 'POST', headers: h }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
     function api(path) {
       var h = { 'Content-Type': 'application/json' };
       var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
@@ -12436,6 +12446,19 @@
           // Card B90: Angie's List-style trust badges (licensed / insured), operator-set.
           var trustBadges = (r.licensed ? '<span class="badge" title="Trade licence verified">🛡 Licensed</span> ' : '') +
                             (r.insured ? '<span class="badge" title="Insurance verified">🛡 Insured</span>' : '');
+          // A claim whose email domain did not match the listing waits here for a human: the
+          // emailed link only confirms the claimant's address, so ownership is granted by this
+          // button (or the claim is dropped and the listing freed) — never by the link alone.
+          var claimBadge = (r.claim_id && !r.claim_approved)
+            ? '<span class="badge" style="background:#7a4a00">owner pending review</span>'
+            : (r.claim_id && r.claim_approved
+              ? '<span class="badge" style="background:#1b5e20">owner approved</span>' : '');
+          var claimBtns = (r.claim_id && !r.claim_approved)
+            ? '<button class="btn btn-accent btn-sm" type="button" data-claim-approve="' +
+              esc(r.claim_id) + '" data-claim-biz="' + esc(r.name || '') + '">✔ Approve owner</button> ' +
+              '<button class="btn btn-ghost btn-sm" type="button" data-claim-reject="' +
+              esc(r.claim_id) + '" data-claim-biz="' + esc(r.name || '') + '">✖ Reject claim</button> '
+            : '';
           var trustBtns = '<button class="btn btn-ghost btn-sm" type="button" data-trust="licensed" data-trust-val="' +
               (r.licensed ? 'false' : 'true') + '" data-trust-id="' + esc(r.id) + '" data-trust-dir="' +
               esc(r.directory_slug || '') + '">' + (r.licensed ? '− Licensed' : '+ Licensed') + '</button> ' +
@@ -12461,11 +12484,11 @@
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') +
               (r.neighbourhood ? ' · 🏘 ' + esc(r.neighbourhood) : '') + '</td>' +
             '<td>' + esc(r.directory_name || '') + '</td>' +
-            '<td>' + badge + ' ' + lcBadge + ' ' + trustBadges + '</td>' +
+            '<td>' + badge + ' ' + lcBadge + ' ' + claimBadge + ' ' + trustBadges + '</td>' +
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + ' ' + nbBtn + '</td></tr>';
+            '<td>' + claimBtns + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + ' ' + nbBtn + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -12648,7 +12671,25 @@
       if (tr) { setTrust(tr.getAttribute('data-trust-id'), tr.getAttribute('data-trust-dir'), tr.getAttribute('data-trust'), tr.getAttribute('data-trust-val')); return; }
       var nb = ev.target.closest('[data-nb-open]');
       if (nb) { setNeighbourhood(nb.getAttribute('data-nb-open'), nb.getAttribute('data-nb-dir'), nb.getAttribute('data-nb-name'), nb.getAttribute('data-nb-val')); return; }
+      var ca = ev.target.closest('[data-claim-approve]');
+      if (ca) { decideClaim(ca.getAttribute('data-claim-approve'), 'approve', ca.getAttribute('data-claim-biz')); return; }
+      var cr = ev.target.closest('[data-claim-reject]');
+      if (cr) { decideClaim(cr.getAttribute('data-claim-reject'), 'reject', cr.getAttribute('data-claim-biz')); return; }
     });
+
+    function decideClaim(id, action, biz) {
+      var msg = action === 'approve'
+        ? 'Approve ownership of "' + biz + '"? The claimant becomes the owner, the listing is published and they are emailed their sign-in details.'
+        : 'Reject this ownership claim on "' + biz + '"? The listing is freed so its real owner can claim it.';
+      if (!window.confirm(msg)) return;
+      var st = document.getElementById('bz-status');
+      if (st) st.textContent = (action === 'approve' ? 'Approving…' : 'Rejecting…');
+      postApi('/admin/claims/' + encodeURIComponent(id) + '/' + action).then(function () {
+        load();
+      }).catch(function (e) {
+        if (st) st.textContent = 'Failed: ' + e.message;
+      });
+    }
 
     function bzReload() { if (!document.getElementById('bz-rows')) return; load(); }
 

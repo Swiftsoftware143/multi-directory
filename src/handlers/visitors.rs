@@ -1588,7 +1588,7 @@ pub async fn claim_business(
         .or(biz_website.as_deref());
 
     let mut auto_approved = false;
-    let mut temp_password = String::new();
+    let mut temp_password: Option<String> = None;
     let no_website = submitted_website.is_none();
 
     // Check business email field match
@@ -1646,8 +1646,21 @@ pub async fn claim_business(
         }
     }
 
+    // A claim that could not be matched to the listing's own domain is PENDING: it is recorded and
+    // its email is confirmed by the link, but it must not be EFFECTIVE (no portal access, no review
+    // moderation, no payouts) until an operator approves it in the admin panel. Only the domain
+    // match — real evidence of ownership — activates a claim immediately. Without this, anybody
+    // could take over any listing by typing an email address and clicking the link.
+    if !auto_approved {
+        sqlx::query(
+            "UPDATE claimed_businesses SET is_active = FALSE, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(cb.id)
+        .execute(&s.db)
+        .await?;
+    }
+
     if auto_approved {
-        // Get directory_id for the business
         let dir_id: Option<Uuid> =
             sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
                 .bind(business_id)
@@ -1655,106 +1668,22 @@ pub async fn claim_business(
                 .await?
                 .flatten();
 
-        if let Some(directory_id) = dir_id {
-            // Upsert business_verifications with approved status
-            let _ = sqlx::query(
-                r#"INSERT INTO business_verifications (business_id, directory_id, method, status, verified_at)
-                   VALUES ($1, $2, 'auto_domain', 'approved', NOW())
-                   ON CONFLICT (business_id) DO UPDATE
-                   SET status = 'approved', verified_at = NOW(), method = 'auto_domain', updated_at = NOW()"#
-            )
-            .bind(business_id)
-            .bind(directory_id)
-            .execute(&s.db)
-            .await;
-
-            // Update claimed_businesses verified_at
-            let _ = sqlx::query(
-                "UPDATE claimed_businesses SET verified_at = NOW(), updated_at = NOW() WHERE id = $1"
-            )
-            .bind(cb.id)
-            .execute(&s.db)
-            .await;
-
-            // Card B81: an approved claim adopts and PUBLISHES a pre-populated draft/prospect —
-            // the owner is now in control, so the lifecycle flips to 'active'.
-            let _ = sqlx::query(
-                "UPDATE businesses SET status = 'active', is_active = true, updated_at = NOW() \
-                 WHERE id = $1 AND COALESCE(status, 'active') <> 'active'",
-            )
-            .bind(business_id)
-            .execute(&s.db)
-            .await;
-
-            // Create visitor account with temp password
-            use argon2::password_hash::SaltString;
-            use argon2::{Argon2, PasswordHasher};
-            use rand::rngs::OsRng;
-
-            // Generate 8-char password from random bytes
-            use rand::RngCore;
-            let mut bytes = [0u8; 6];
-            OsRng.fill_bytes(&mut bytes);
-            temp_password = hex::encode(bytes);
-
-            let salt = SaltString::generate(&mut OsRng);
-            let password_hash = Argon2::default()
-                .hash_password(temp_password.as_bytes(), &salt)
-                .map(|h| h.to_string())
-                .unwrap_or_default();
-
-            if !password_hash.is_empty() {
-                let owner_name = req.owner_name.clone().unwrap_or_default();
-                let owner_phone = req.owner_phone.clone().unwrap_or_default();
-                let _ = sqlx::query(
-                    r#"INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, is_active, business_type)
-                       VALUES ($1, $2, $3, $4, $5, true, 'merchant')
-                       ON CONFLICT (email) DO NOTHING"#
-                )
-                .bind(&owner_email)
-                .bind(&password_hash)
-                .bind(&owner_name)
-                .bind(&owner_phone)
-                .bind(directory_id)
-                .execute(&s.db)
-                .await;
-            }
-
-            // Card B49 — award the directory's BUSINESS signup reward once the owner's login
-            // exists (auto-approved claim). Best-effort: never fails the claim.
-            {
-                let db = s.db.clone();
-                let email_for_award = owner_email.clone();
-                tokio::spawn(async move {
-                    let acct: Option<Uuid> = sqlx::query_scalar(
-                        "SELECT id FROM visitor_accounts WHERE lower(email) = $1 ORDER BY created_at LIMIT 1",
-                    )
-                    .bind(&email_for_award)
-                    .fetch_optional(&db)
-                    .await
-                    .unwrap_or(None);
-                    if let Some(aid) = acct {
-                        match crate::handlers::loyalty_native::award_signup_reward(
-                            &db,
-                            Some(directory_id),
-                            &aid,
-                            "business",
-                        )
-                        .await
-                        {
-                            Ok(Some(a)) if a.units > 0 => tracing::info!(
-                                "[loyalty] business signup reward: credited {} {} to account {aid}",
-                                a.units,
-                                a.currency_name
-                            ),
-                            Ok(_) => {}
-                            Err(e) => tracing::warn!(
-                                "[loyalty] business signup reward failed for account {aid}: {e}"
-                            ),
-                        }
-                    }
-                });
-            }
+        match grant_claim_ownership(
+            &s.db,
+            cb.id,
+            business_id,
+            dir_id,
+            &owner_email,
+            req.owner_name.as_deref(),
+            req.owner_phone.as_deref(),
+            "auto_domain",
+        )
+        .await
+        {
+            Ok(pwd) => temp_password = pwd,
+            Err(e) => tracing::warn!(
+                "[claim] could not grant ownership of business {business_id} to {owner_email}: {e}"
+            ),
         }
     }
 
@@ -1806,7 +1735,7 @@ pub async fn claim_business(
         let bn = biz_name_final.clone();
         let link = verify_link.clone();
         let pwd = if auto_approved {
-            Some(temp_password.clone())
+            temp_password.clone()
         } else {
             None
         };
@@ -1870,10 +1799,10 @@ pub async fn claim_business(
             "owner_email": cb.owner_email,
             "owner_name": cb.owner_name,
             "owner_phone": cb.owner_phone,
-            "is_active": cb.is_active,
+            "is_active": auto_approved,
             "created_at": cb.created_at,
             "auto_approved": auto_approved,
-            "temp_password": if auto_approved { Some(&temp_password) } else { None },
+            "temp_password": if auto_approved { temp_password.clone() } else { None },
             "no_website": if auto_approved { false } else { no_website },
             "message": if auto_approved {
                 "Your business has been verified! We just emailed you a confirmation link with your login credentials."
@@ -1886,12 +1815,134 @@ pub async fn claim_business(
     ))
 }
 
+/// Grant OWNERSHIP of a listing to a claim — the single place a claim becomes effective.
+///
+/// Two things pass a claim, and nothing else does:
+///   * `auto_domain` — at claim time the claimant's email domain matched the listing's own
+///     website/email (evidence of ownership);
+///   * `manual` — an operator approved a reviewed claim in the admin panel.
+///
+/// Confirming the emailed link proves only that the ADDRESS belongs to the claimant, so it never
+/// calls this: a claim pending review is stored with `is_active = false` and every ownership
+/// resolver ignores it. Returns the temporary password when a new login was created (`None` when
+/// the claimant already had an account, whose password this must not overwrite).
+pub async fn grant_claim_ownership(
+    db: &sqlx::PgPool,
+    claim_id: Uuid,
+    business_id: Uuid,
+    directory_id: Option<Uuid>,
+    owner_email: &str,
+    owner_name: Option<&str>,
+    owner_phone: Option<&str>,
+    method: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    // 1. Ownership verification record (approved).
+    sqlx::query(
+        r#"INSERT INTO business_verifications (business_id, directory_id, method, status, verified_at)
+           VALUES ($1, $2, $3, 'approved', NOW())
+           ON CONFLICT (business_id) DO UPDATE
+           SET status = 'approved', verified_at = NOW(), method = $3, updated_at = NOW()"#,
+    )
+    .bind(business_id)
+    .bind(directory_id)
+    .bind(method)
+    .execute(db)
+    .await?;
+
+    // 2. The claim becomes EFFECTIVE (this is the flag every ownership query reads).
+    sqlx::query(
+        "UPDATE claimed_businesses SET verified_at = NOW(), is_active = TRUE, \
+         verification_method = $2, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(claim_id)
+    .bind(method)
+    .execute(db)
+    .await?;
+
+    // 3. Card B81: an approved claim adopts and PUBLISHES a pre-populated draft/prospect.
+    sqlx::query(
+        "UPDATE businesses SET status = 'active', is_active = true, claimed = true, \
+         updated_at = NOW() WHERE id = $1",
+    )
+    .bind(business_id)
+    .execute(db)
+    .await?;
+
+    // 4. Owner login. An account that already exists keeps its own password — minting a new one
+    //    and mailing it would lock the owner out of the account they already use.
+    let existing: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE lower(email) = lower($1) \
+         UNION ALL SELECT id FROM visitor_accounts WHERE lower(email) = lower($1) LIMIT 1",
+    )
+    .bind(owner_email)
+    .fetch_optional(db)
+    .await?;
+    if existing.is_some() {
+        return Ok(None);
+    }
+
+    use argon2::password_hash::SaltString;
+    use argon2::{Argon2, PasswordHasher};
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+    let mut bytes = [0u8; 6];
+    OsRng.fill_bytes(&mut bytes);
+    let temp_password = hex::encode(bytes);
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(temp_password.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .unwrap_or_default();
+    if password_hash.is_empty() {
+        return Ok(None);
+    }
+    sqlx::query(
+        r#"INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, is_active, business_type)
+           VALUES ($1, $2, $3, $4, $5, true, 'merchant')
+           ON CONFLICT (email) DO NOTHING"#,
+    )
+    .bind(owner_email)
+    .bind(&password_hash)
+    .bind(owner_name.unwrap_or(""))
+    .bind(owner_phone.unwrap_or(""))
+    .bind(directory_id)
+    .execute(db)
+    .await?;
+
+    // 5. Card B49 — the directory's BUSINESS signup reward once the login exists. Best-effort.
+    if let Some(aid) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM visitor_accounts WHERE lower(email) = lower($1) ORDER BY created_at LIMIT 1",
+    )
+    .bind(owner_email)
+    .fetch_optional(db)
+    .await?
+    {
+        match crate::handlers::loyalty_native::award_signup_reward(db, directory_id, &aid, "business")
+            .await
+        {
+            Ok(Some(a)) if a.units > 0 => tracing::info!(
+                "[loyalty] business signup reward: credited {} {} to account {aid}",
+                a.units,
+                a.currency_name
+            ),
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("[loyalty] business signup reward failed for account {aid}: {e}")
+            }
+        }
+    }
+
+    Ok(Some(temp_password))
+}
+
 /// GET /api/v1/claims/verify/:token — step two of a business claim (card B76).
 ///
-/// The claimant clicks the link from the verification email. A valid, unused token marks the
-/// claim's email verified and approves ownership (business_verifications + claimed_businesses), so
-/// the listing becomes theirs even when the domain could not be matched automatically. Idempotent:
-/// re-opening an already-confirmed link says so and changes nothing.
+/// The claimant clicks the link from the verification email. A valid token confirms that the EMAIL
+/// ADDRESS belongs to them (`email_verified_at`) and NOTHING ELSE. Ownership is granted only by the
+/// domain match at claim time or by an operator approving the reviewed claim in the admin panel.
+/// This handler used to approve ownership on the click, so anybody could take over any listing by
+/// typing an address — while the claimant was told a human would review the claim. Idempotent:
+/// re-opening the link reports the current state and changes nothing.
 pub async fn verify_claim_email(
     State(s): State<AppState>,
     Path(token): Path<String>,
@@ -1903,9 +1954,10 @@ pub async fn verify_claim_email(
         ));
     }
 
-    let row = sqlx::query_as::<_, (Uuid, Uuid, String, Option<Uuid>, bool)>(
-        r#"SELECT cb.id, cb.business_id, cb.owner_email, b.directory_id,
-                  (cb.email_verified_at IS NOT NULL)
+    let row = sqlx::query_as::<_, (Uuid, Uuid, String, bool, bool)>(
+        r#"SELECT cb.id, cb.business_id, cb.owner_email,
+                  (cb.email_verified_at IS NOT NULL),
+                  (cb.verified_at IS NOT NULL)
            FROM claimed_businesses cb
            JOIN businesses b ON b.id = cb.business_id
            WHERE cb.verification_token = $1"#,
@@ -1915,56 +1967,52 @@ pub async fn verify_claim_email(
     .await?
     .ok_or_else(|| AppError::NotFound("this verification link is not valid".to_string()))?;
 
-    let (claim_id, business_id, owner_email, directory_id, already) = row;
+    let (claim_id, business_id, owner_email, email_already, approved) = row;
 
-    if !already {
+    if !email_already {
         sqlx::query(
-            "UPDATE claimed_businesses SET email_verified_at = NOW(), \
-             verified_at = COALESCE(verified_at, NOW()), verification_method = 'email_link', \
-             updated_at = NOW() WHERE id = $1",
+            "UPDATE claimed_businesses SET email_verified_at = NOW(), updated_at = NOW() \
+             WHERE id = $1",
         )
         .bind(claim_id)
         .execute(&s.db)
         .await?;
-
-        if let Some(dir) = directory_id {
-            let _ = sqlx::query(
-                r#"INSERT INTO business_verifications (business_id, directory_id, method, status, verified_at)
-                   VALUES ($1, $2, 'email_link', 'approved', NOW())
-                   ON CONFLICT (business_id) DO UPDATE
-                   SET status = 'approved', verified_at = NOW(), method = 'email_link', updated_at = NOW()"#,
-            )
-            .bind(business_id)
-            .bind(dir)
-            .execute(&s.db)
-            .await;
-        }
-
-        // Card B81: a confirmed claim adopts and PUBLISHES a pre-populated draft/prospect.
-        let _ = sqlx::query(
-            "UPDATE businesses SET status = 'active', is_active = true, updated_at = NOW() \
-             WHERE id = $1 AND COALESCE(status, 'active') <> 'active'",
-        )
-        .bind(business_id)
-        .execute(&s.db)
-        .await;
-
         tracing::info!(
-            "[claim] {owner_email} confirmed ownership by email link (business {business_id})"
+            "[claim] {owner_email} confirmed their email address (business {business_id}); \
+             ownership is {}",
+            if approved {
+                "already approved"
+            } else {
+                "pending review"
+            }
         );
     }
 
-    let body = if already {
-        "This listing was already verified — you're all set."
+    let (title, body) = if approved {
+        (
+            "Listing verified",
+            "This listing is verified and yours — you're all set. You can sign in to the business \
+             portal with your email address.",
+        )
+    } else if email_already {
+        (
+            "Email already confirmed",
+            "Your email is confirmed. Our team is still checking that this listing is yours and \
+             will email you as soon as it is approved.",
+        )
     } else {
-        "Thanks — your ownership of this listing is confirmed."
+        (
+            "Email confirmed",
+            "Thanks — your email address is confirmed. Our team is now checking that this business \
+             is yours, and we will email you as soon as it is approved.",
+        )
     };
     Ok((
         StatusCode::OK,
         Html(format!(
-            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Listing verified</title></head>\
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>{title}</title></head>\
 <body style=\"font-family:Arial,sans-serif;max-width:520px;margin:60px auto;text-align:center;\">\
-<h1 style=\"color:#16a34a;\">Listing verified</h1>\
+<h1 style=\"color:#16a34a;\">{title}</h1>\
 <p style=\"color:#334155;\">{body}</p>\
 <p style=\"color:#94a3b8;font-size:13px;\">You can close this window.</p>\
 </body></html>"

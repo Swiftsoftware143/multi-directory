@@ -237,7 +237,7 @@ pub async fn create_event(
         if let Some(biz_id) = req.business_id {
             let owns_biz = sqlx::query_scalar::<_, i64>(
                 r#"SELECT COUNT(*) FROM claimed_businesses
-                   WHERE business_id = $1 AND (user_id = $2 OR owner_email = (
+                   WHERE business_id = $1 AND is_active AND (user_id = $2 OR owner_email = (
                        SELECT email FROM users WHERE id = $2
                    ))"#,
             )

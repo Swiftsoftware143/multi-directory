@@ -197,8 +197,9 @@ pub async fn business_profile(
     let claims_rows = sqlx::query_as::<_, ClaimedBusinessRow>(
         r#"SELECT id, business_id, owner_email, owner_name, owner_phone, user_id, is_active, created_at
            FROM claimed_businesses
-           WHERE user_id = $1
-              OR ($2 IS NOT NULL AND lower(owner_email) = lower($2))
+           WHERE is_active
+             AND (user_id = $1
+                  OR ($2 IS NOT NULL AND lower(owner_email) = lower($2)))
            ORDER BY created_at DESC"#
     )
     .bind(user_id)
