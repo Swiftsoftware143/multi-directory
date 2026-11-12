@@ -3382,19 +3382,21 @@ pub fn create_router(s: AppState) -> Router {
                                     crate::brand_theme::theme_for_home(&_pool_for_host).await;
                                 let mut themed =
                                     theme.inject(&String::from_utf8_lossy(&content));
-                                // B88: the homepage carries a server-rendered "Cities we
-                                // cover" list — every active directory as a real crawlable
-                                // `<a href="/{slug}">`, read live from the DB, so the city
-                                // list is in the served HTML with no JavaScript and every
-                                // city the homepage points to is linked for search engines.
-                                let cities_nav = crate::handlers::subfolder::city_links_html(
+                                // B88 / t_68393020: the homepage carries a server-rendered hub
+                                // page — one real `<h1>`, an introduction sized to the live
+                                // catalogue, every active directory as a crawlable
+                                // `<a href="/{slug}">`, the best-rated business in each city
+                                // linking to its real `/{city}/businesses/{slug}` page, and the
+                                // top categories. The SPA removes `#zh-home-ssr` on boot, so a
+                                // visitor still gets the app and a crawler gets the content.
+                                let home_ssr = crate::handlers::subfolder::home_ssr_html(
                                     &_pool_for_host,
                                 )
                                 .await;
-                                if !cities_nav.is_empty() {
+                                if !home_ssr.is_empty() {
                                     match themed.rfind("</body>") {
-                                        Some(pos) => themed.insert_str(pos, &cities_nav),
-                                        None => themed.push_str(&cities_nav),
+                                        Some(pos) => themed.insert_str(pos, &home_ssr),
+                                        None => themed.push_str(&home_ssr),
                                     }
                                 }
                                 // Card W36: the homepage is the top of the trail but never
@@ -3602,19 +3604,18 @@ pub fn create_router(s: AppState) -> Router {
                         html = crate::brand_theme::theme_for_home(&_pool_for_host)
                             .await
                             .inject(&html);
-                        // B88: on the homepage, append the server-rendered "Cities we
-                        // cover" list — every active directory as a real crawlable
-                        // `<a href="/{slug}">`, read live from the DB, so the city list
-                        // is in the served HTML with no JavaScript and every city the
-                        // homepage points to is linked for search engines. The SPA
-                        // removes this node when it boots (frontend/index.html).
+                        // B88 / t_68393020: on the homepage, append the server-rendered hub
+                        // page — one real `<h1>`, intro copy, every active directory as a
+                        // crawlable `<a href="/{slug}">`, a featured business per city and the
+                        // top categories. The SPA removes `#zh-home-ssr` when it boots
+                        // (frontend/index.html).
                         if path == "/" {
-                            let cities_nav =
-                                crate::handlers::subfolder::city_links_html(&_pool_for_host).await;
-                            if !cities_nav.is_empty() {
+                            let home_ssr =
+                                crate::handlers::subfolder::home_ssr_html(&_pool_for_host).await;
+                            if !home_ssr.is_empty() {
                                 match html.rfind("</body>") {
-                                    Some(pos) => html.insert_str(pos, &cities_nav),
-                                    None => html.push_str(&cities_nav),
+                                    Some(pos) => html.insert_str(pos, &home_ssr),
+                                    None => html.push_str(&home_ssr),
                                 }
                             }
                         }

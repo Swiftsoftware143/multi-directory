@@ -265,44 +265,285 @@ async fn load_directory(pool: &PgPool, slug: &str) -> Option<DirectoryRec> {
     })
 }
 
-/// B88: every active directory as a real, crawlable `<a href="/{slug}">` link,
-/// wrapped in a "Cities we cover" section. Injected into the homepage HTML by
-/// the SPA fallback (see `routes.rs`) so the full city list is present in the
-/// served document — crawlable and readable with no JavaScript at all. The SPA
-/// removes this node once it boots and renders its own grid pointing at the
-/// same `/<slug>` URLs, so a JS visitor never sees two lists.
+// B88 / t_68393020: the homepage's crawlable city list now lives inside
+// `home_ssr_html` (one block with the h1, intro, city links, featured
+// businesses and categories), so the standalone `city_links_html` list was
+// retired rather than kept as a second, thinner copy of the same links.
+
+/// Join names the way a person writes a list: `a, b, c and d`.
+fn join_natural(items: &[String]) -> String {
+    match items.len() {
+        0 => String::new(),
+        1 => items[0].clone(),
+        n => format!("{} and {}", items[..n - 1].join(", "), items[n - 1]),
+    }
+}
+
+/// The homepage's server-rendered hub block.
 ///
-/// Read live from `directories` on every request: adding or renaming a city
-/// changes the list with no code change and no manual edit.
-pub async fn city_links_html(pool: &PgPool) -> String {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT name, slug FROM directories \
-         WHERE (status = 'active' OR status IS NULL) \
-           AND slug IS NOT NULL AND slug <> '' \
-         ORDER BY name",
+/// `/` is served from the SPA shell, which ships no prose, no real heading and
+/// no listings in the initial HTML: a crawler that never executes JavaScript
+/// saw ~460 characters and zero business links, while every city root now
+/// carries 3.5k+. This builds a real hub page body for the same shell — one
+/// `<h1>`, an introduction sized to the live catalogue, every active city as a
+/// crawlable `<a href="/{slug}">`, the best-rated business in each city as a
+/// card pointing at its real `/{city}/businesses/{slug}` page, and the
+/// categories people search for most. `index.html` removes `#zh-home-ssr` on
+/// boot, so a visitor sees the SPA and a crawler sees the content.
+pub async fn home_ssr_html(pool: &PgPool) -> String {
+    struct City {
+        slug: String,
+        city: String,
+        state: String,
+        count: i64,
+    }
+
+    let rows = sqlx::query(
+        "SELECT d.slug, d.city, COALESCE(d.state, 'FL') AS state, \
+                (SELECT COUNT(*) FROM businesses b \
+                  WHERE b.directory_id = d.id AND b.is_active = true) AS listing_count \
+         FROM directories d \
+         WHERE (d.status = 'active' OR d.status IS NULL) \
+           AND d.slug IS NOT NULL AND d.slug <> '' \
+         ORDER BY d.city",
     )
     .fetch_all(pool)
     .await
+    .map_err(|e| eprintln!("subfolder: homepage city query failed: {e}"))
     .unwrap_or_default();
 
-    if rows.is_empty() {
+    let mut cities: Vec<City> = Vec::new();
+    for r in &rows {
+        let slug: String = r.try_get("slug").unwrap_or_default();
+        let city: String = r.try_get("city").unwrap_or_default();
+        if slug.is_empty() || city.is_empty() {
+            continue;
+        }
+        cities.push(City {
+            slug,
+            city,
+            state: r.try_get("state").unwrap_or_default(),
+            count: r.try_get("listing_count").unwrap_or(0),
+        });
+    }
+    if cities.is_empty() {
         return String::new();
     }
 
-    let mut links = String::new();
-    for (name, slug) in &rows {
-        links.push_str(&format!(
-            "<a href=\"/{slug}\" style=\"display:inline-block;color:inherit;text-decoration:none;padding:6px 12px;border:1px solid var(--border,#e5e7eb);border-radius:999px;font-weight:600;font-size:.9rem\">{name}</a>",
-            slug = h(slug),
-            name = h(name)
+    // One best-rated business per city, so the block covers the whole network
+    // instead of ten cards from whichever city happens to be biggest.
+    let pick_rows = sqlx::query(
+        "SELECT DISTINCT ON (d.id) \
+                b.name, b.slug, b.rating, b.review_count, dc.name AS category, \
+                b.address, d.slug AS city_slug, d.city \
+         FROM businesses b \
+         JOIN directories d ON d.id = b.directory_id \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.is_active = true AND d.status = 'active' \
+           AND d.slug IS NOT NULL AND d.slug <> '' \
+           AND b.rating IS NOT NULL AND b.rating > 0 \
+           AND b.slug IS NOT NULL AND b.slug <> '' \
+         ORDER BY d.id, b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST \
+         LIMIT 12",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| eprintln!("subfolder: homepage featured query failed: {e}"))
+    .unwrap_or_default();
+
+    let mut picks: Vec<(String, String, String, String, f64, i32, String, String)> = Vec::new();
+    for p in &pick_rows {
+        let name: String = p.try_get("name").unwrap_or_default();
+        let slug: String = p.try_get("slug").unwrap_or_default();
+        let city_slug: String = p.try_get("city_slug").unwrap_or_default();
+        if name.is_empty() || slug.is_empty() || city_slug.is_empty() {
+            continue;
+        }
+        picks.push((
+            name,
+            slug,
+            city_slug,
+            p.try_get("city").unwrap_or_default(),
+            p.try_get::<Option<f64>, _>("rating")
+                .unwrap_or(None)
+                .unwrap_or(0.0),
+            p.try_get::<Option<i32>, _>("review_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            p.try_get::<Option<String>, _>("category")
+                .unwrap_or(None)
+                .unwrap_or_default(),
+            p.try_get::<Option<String>, _>("address")
+                .unwrap_or(None)
+                .unwrap_or_default(),
+        ));
+    }
+    picks.sort_by_key(|p| std::cmp::Reverse(p.5));
+
+    // The categories people search for most, each pointed at the city where it
+    // has the deepest listing base so the link lands on a page with content.
+    let cat_rows = sqlx::query(
+        "SELECT dc.slug AS cat_slug, dc.name AS cat_name, d.slug AS city_slug, d.city, \
+                COUNT(*) AS n \
+         FROM businesses b \
+         JOIN directories d ON d.id = b.directory_id \
+         JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.is_active = true AND d.status = 'active' \
+           AND d.slug IS NOT NULL AND d.slug <> '' \
+           AND dc.slug IS NOT NULL AND dc.slug <> '' \
+         GROUP BY 1, 2, 3, 4 \
+         ORDER BY n DESC \
+         LIMIT 60",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| eprintln!("subfolder: homepage category query failed: {e}"))
+    .unwrap_or_default();
+
+    let mut seen_cats: Vec<String> = Vec::new();
+    let mut cats: Vec<(String, String, String, String, i64)> = Vec::new();
+    for c in &cat_rows {
+        let cat_slug: String = c.try_get("cat_slug").unwrap_or_default();
+        let city_slug: String = c.try_get("city_slug").unwrap_or_default();
+        if cat_slug.is_empty() || city_slug.is_empty() || seen_cats.contains(&cat_slug) {
+            continue;
+        }
+        seen_cats.push(cat_slug.clone());
+        cats.push((
+            cat_slug,
+            c.try_get("cat_name").unwrap_or_default(),
+            city_slug,
+            c.try_get("city").unwrap_or_default(),
+            c.try_get("n").unwrap_or(0),
+        ));
+        if cats.len() >= 10 {
+            break;
+        }
+    }
+
+    let total: i64 = cities.iter().map(|c| c.count).sum();
+    let n_cities = cities.len();
+    let region = if cities.iter().all(|c| c.state == "FL") {
+        "Florida"
+    } else {
+        "the areas we cover"
+    };
+    let place_phrase = join_natural(&cities.iter().map(|c| c.city.clone()).collect::<Vec<_>>());
+
+    // ── City cards ───────────────────────────────────────────────────────────
+    let mut city_cards = String::new();
+    for c in &cities {
+        city_cards.push_str(&format!(
+            "<a href=\"/{slug}\" style=\"display:block;padding:14px 16px;border:1px solid #e5e7eb;\
+border-radius:12px;text-decoration:none;color:inherit;background:#fff\">\
+<strong style=\"display:block;font-size:1rem\">{city}</strong>\
+<span style=\"font-size:.85rem;color:#6b7280\">{count} businesses \u{2192}</span></a>",
+            slug = h(&c.slug),
+            city = h(&c.city),
+            count = c.count
         ));
     }
 
+    // ── Featured business cards ──────────────────────────────────────────────
+    let mut pick_cards = String::new();
+    for (name, slug, city_slug, city, rating, reviews, category, address) in &picks {
+        let cat_html = if category.is_empty() {
+            String::new()
+        } else {
+            format!("{} \u{00b7} ", h(category))
+        };
+        let addr_html = if address.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<span style=\"display:block;font-size:.8rem;color:#9ca3af\">{}</span>",
+                h(&clip(address, 64))
+            )
+        };
+        pick_cards.push_str(&format!(
+            "<a href=\"/{city_slug}/businesses/{slug}\" style=\"display:block;padding:14px 16px;\
+border:1px solid #e5e7eb;border-radius:12px;text-decoration:none;color:inherit;background:#fff\">\
+<strong style=\"display:block;font-size:1rem\">{name}</strong>\
+<span style=\"display:block;font-size:.82rem;color:#ea580c\">{cat}\u{2605} {rating:.1} ({reviews} reviews)</span>\
+<span style=\"display:block;font-size:.8rem;color:#6b7280\">{city}</span>{addr}</a>",
+            city_slug = h(city_slug),
+            slug = h(slug),
+            name = h(name),
+            cat = cat_html,
+            rating = rating,
+            reviews = reviews,
+            city = h(city),
+            addr = addr_html
+        ));
+    }
+
+    // ── Category chips ───────────────────────────────────────────────────────
+    let mut cat_chips = String::new();
+    for (cat_slug, cat_name, city_slug, city, n) in &cats {
+        cat_chips.push_str(&format!(
+            "<a href=\"/{city_slug}/{cat_slug}\" style=\"display:inline-block;padding:7px 13px;\
+border:1px solid #e5e7eb;border-radius:999px;text-decoration:none;color:inherit;\
+background:#fff;font-size:.88rem\">{name} in {city} <span style=\"color:#9ca3af\">({n})</span></a>",
+            city_slug = h(city_slug),
+            cat_slug = h(cat_slug),
+            name = h(cat_name),
+            city = h(city),
+            n = n
+        ));
+    }
+
+    let picks_section = if pick_cards.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<h2 style=\"font-size:1.2rem;margin:34px 0 12px\">Top-rated businesses right now</h2>\
+<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px\">{pick_cards}</div>"
+        )
+    };
+    let cats_section = if cat_chips.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<h2 style=\"font-size:1.2rem;margin:34px 0 12px\">What people search for most</h2>\
+<div style=\"display:flex;flex-wrap:wrap;gap:8px\">{cat_chips}</div>"
+        )
+    };
+
     format!(
-        "<section id=\"zh-cities-ssr\" aria-label=\"Cities we cover\" style=\"max-width:1100px;margin:8px auto 40px;padding:0 20px\">\
-<h2 style=\"font-size:1.05rem;margin:0 0 12px\">\u{1f3d9}\u{fe0f} Cities we cover</h2>\
-<nav style=\"display:flex;flex-wrap:wrap;gap:8px\">{links}</nav>\
-</section>"
+        "<section id=\"zh-home-ssr\" aria-label=\"About this directory\" \
+style=\"max-width:1100px;margin:24px auto 48px;padding:0 20px;font-family:inherit;\
+line-height:1.6;color:#111827\">\
+<h1 style=\"font-size:clamp(1.5rem,3vw,2rem);margin:0 0 14px\">\
+Find a local business in {n_cities} {region} cities</h1>\
+<p style=\"margin:0 0 12px;max-width:70ch\">ZaarHub is a local business directory organised city by \
+city: {place_phrase}. Between them these {n_cities} directories hold {total} active listings \u{2014} \
+restaurants and cafés, dentists, hair salons, tattoo studios, gyms, contractors, law firms, med spas \
+and more \u{2014} each with its address, phone number, opening hours, category and the customer \
+rating it has earned.</p>\
+<p style=\"margin:0 0 12px;max-width:70ch\">Every city below is its own directory with its own front \
+page, its own category pages, local articles and weekly deals, so the business you find is one that \
+actually serves your street rather than the nearest big-city list. Pick the town you live in, choose \
+the category you need, and every listing opens a full profile you can call, save, share or review.</p>\
+<p style=\"margin:0 0 12px;max-width:70ch\">If you own a business the listing is free: add it in a \
+couple of minutes, or claim the page that is already here, and then keep your hours, photographs and \
+offers current. The same listing appears on your city page, in search results, and in the local \
+newsletter that goes out each week.</p>\
+<h2 style=\"font-size:1.2rem;margin:30px 0 12px\">Browse a city</h2>\
+<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px\">{city_cards}</div>\
+{picks_section}\
+{cats_section}\
+<p style=\"margin:26px 0 0;max-width:70ch;font-size:.92rem;color:#4b5563\">ZaarHub is independent: \
+listings are found and maintained by our own team rather than sold in bulk, every page carries the \
+rating and review count it has actually earned, and any business can claim its own page at any time \
+\u{2014} free of charge.</p>\
+</section>",
+        n_cities = n_cities,
+        region = region,
+        place_phrase = h(&place_phrase),
+        total = total,
+        city_cards = city_cards,
+        picks_section = picks_section,
+        cats_section = cats_section,
     )
 }
 

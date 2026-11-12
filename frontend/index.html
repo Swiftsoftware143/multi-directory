@@ -1178,10 +1178,11 @@ function onSearchInput(e){
 
 // ── Load ──
 async function load(){
-  // Server-rendered "Cities we cover" list (present in the HTML for SEO / no-JS).
-  // The SPA renders the same cities as real /<slug> links in the Explore grid below,
-  // so drop the server copy once JS is running to avoid showing two identical lists.
+  // Server-rendered homepage hub block + "Cities we cover" list (present in the HTML for
+  // SEO / no-JS). The SPA renders the same cities as real /<slug> links in the Explore grid
+  // below, so drop the server copy once JS is running to avoid showing two identical lists.
   var _ssrCities=document.getElementById('zh-cities-ssr');if(_ssrCities)_ssrCities.remove()
+  var _ssrHub=document.getElementById('zh-home-ssr');if(_ssrHub)_ssrHub.remove()
   state.loading=true
   try{
     if(!state.cities.length){
