@@ -1326,7 +1326,8 @@ function renderCityPage(d){
     bizHtml+=`
 <div class="zh-biz-card" onclick="location.hash='#/city/${state.slug}/biz/${b.id}'"${dataAttrs}>
   <div class="zh-biz-cover" style="background:linear-gradient(${coverGrad})">
-    ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'">':'<span class="letter">'+letter+'</span>'}
+    <span class="letter">${letter}</span>
+    ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove();var c=this.parentNode&&this.parentNode.querySelector(\'.zh-photo-credit\');if(c)c.remove();">':''}
     ${b.image_url&&b.image_url.indexOf('/api/v1/place-photo/')===0?'<span class="zh-photo-credit">Photo: Google</span>':''}
     ${b.category?'<span class="cat-tag">'+esc(b.category)+'</span>':''}
   </div>

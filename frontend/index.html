@@ -2333,7 +2333,8 @@ function renderCityPage(d){
     bizHtml+=`
 <div class="zh-biz-card" onclick="location.hash='#/city/${encodeURIComponent(state.slug)}/biz/${b.id}'"${dataAttrs}>
   <div class="zh-biz-cover" style="background:linear-gradient(${coverGrad})">
-    ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'" loading="lazy" decoding="async">':'<span class="letter">'+letter+'</span>'}
+    <span class="letter">${letter}</span>
+    ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'" loading="lazy" decoding="async" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove();var c=this.parentNode&&this.parentNode.querySelector(\'.zh-photo-credit\');if(c)c.remove();">':''}
     ${b.image_url&&b.image_url.indexOf('/api/v1/place-photo/')===0?'<span class="zh-photo-credit">Photo: Google</span>':''}
     ${b.category?'<span class="cat-tag">'+esc(b.category)+'</span>':''}
   </div>
@@ -2632,7 +2633,7 @@ function renderSearchResults(r){
         else{distBadge='<span class="zh-dist-badge">📍 '+b.distance_km.toFixed(1)+' km away</span>'}
       }
       h+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'">'+
-        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="" loading="lazy" decoding="async">':esc((b.name||'?')[0]))+(b.image_url&&b.image_url.indexOf('/api/v1/place-photo/')===0?'<span class="zh-photo-credit">Photo: Google</span>':'')+'</div>'+
+        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+esc((b.name||'?')[0])+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="" loading="lazy" decoding="async" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove();var c=this.parentNode&&this.parentNode.querySelector(\'.zh-photo-credit\');if(c)c.remove();">':'')+(b.image_url&&b.image_url.indexOf('/api/v1/place-photo/')===0?'<span class="zh-photo-credit">Photo: Google</span>':'')+'</div>'+
         '<div class="zh-biz-body"><h4>'+bizLink(bizHref(b.directory_slug,b.slug),esc(b.name))+distBadge+'</h4>'+
         '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div>'+
         (b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':'')+
@@ -3692,7 +3693,7 @@ function renderBizPage(d){
   var photoFrame='<div id="zhBizPhotoFrame" style="display:'+(pics.length?'none':'flex')+';align-items:center;justify-content:center;flex-direction:column;height:260px;border:1px dashed var(--border);border-radius:14px;background:var(--bg-teal);color:var(--text-light)"><div style="font-size:2.4rem;font-weight:800;opacity:.45">'+esc((b.name||'?').charAt(0).toUpperCase())+'</div><div style="font-size:.82rem;margin-top:6px">No photos yet</div></div>'
   var photoHtml='<div class="zh-section" style="padding-top:0"><div class="zh-section-inner">'+
     '<div id="zhBizPhotoWrap" style="position:relative;margin-bottom:'+(pics.length?'10px':'0')+'">'+
-      (pics.length?'<img id="zhBizHeroImg" src="'+esc(pics[0])+'" alt="'+esc(b.name||'Business photo')+'" style="width:100%;height:360px;object-fit:cover;border-radius:14px;display:block;background:var(--bg-teal)">':'')+
+      (pics.length?'<img id="zhBizHeroImg" src="'+esc(pics[0])+'" alt="'+esc(b.name||'Business photo')+'" style="width:100%;height:360px;object-fit:cover;border-radius:14px;display:block;background:var(--bg-teal)" onerror="this.style.display=\'none\';var c=this.parentNode&&this.parentNode.querySelector(\'.zh-photo-credit\');if(c)c.remove();">':'')+
       (pics.some(function(u){return u.indexOf('/api/v1/place-photo/')===0})?'<span class="zh-photo-credit" style="right:10px;bottom:10px;font-size:.62rem">Photos: Google</span>':'')+
       (pics.length>1?'<button type="button" id="zhBizPhotoPrev" aria-label="Previous photo" style="position:absolute;left:10px;top:180px;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:none;background:rgba(15,23,42,.55);color:#fff;font-size:1.2rem;line-height:1;cursor:pointer">‹</button><button type="button" id="zhBizPhotoNext" aria-label="Next photo" style="position:absolute;right:10px;top:180px;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:none;background:rgba(15,23,42,.55);color:#fff;font-size:1.2rem;line-height:1;cursor:pointer">›</button>':'')+
     '</div>'+
