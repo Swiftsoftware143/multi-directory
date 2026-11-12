@@ -4645,12 +4645,14 @@ pub async fn sitemap(
             .max();
         let deal_ts = deals_ts.into_iter().chain(dir_ts).max();
 
-        // The city landing page itself is decided by the city row.
+        // The city landing page renders the city row AND that city's top-rated listings,
+        // so its lastmod is the newer of the two — the city row alone reported "unchanged
+        // since August" on six of ten cities whose listings had changed in November.
         xml.push_str(&format!(
             "  <url><loc>{base}/{slug}</loc>{lm}</url>\n",
             base = h(&base),
             slug = h(&dslug),
-            lm = lastmod_xml(dir_ts)
+            lm = lastmod_xml(biz_ts)
         ));
         xml.push_str(&format!(
             "  <url><loc>{base}/{slug}/businesses</loc>{lm}</url>\n",
