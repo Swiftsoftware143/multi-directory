@@ -707,6 +707,41 @@ async fn discover_arm(
         );
     };
 
+    // The city's own postal codes — the test that saves a neighbourhood directory (Lake Nona's
+    // businesses are addressed "Orlando, FL 32827"). Built ONLY from rows whose own city is this
+    // city, so a long-standing mis-filed listing cannot widen the fence: Palm Bay's directory also
+    // holds a handful of Melbourne addresses from the July import, and deriving the zips from all
+    // rows would have let Melbourne businesses straight back in.
+    let city_zips: Vec<String> = sqlx::query_scalar(
+        "SELECT zip FROM ( \
+             SELECT trim(zip) AS zip, COUNT(*) AS c FROM businesses \
+             WHERE directory_id = $1 AND coalesce(trim(zip), '') <> '' \
+               AND lower(replace(trim(coalesce(city, '')), '.', '')) = \
+                   lower(replace(trim($2), '.', '')) \
+             GROUP BY 1 ORDER BY c DESC LIMIT 6) z",
+    )
+    .bind(dir.id)
+    .bind(&city_short)
+    .fetch_all(&s.db)
+    .await
+    .map_err(|e| e.to_string())?;
+    // A directory whose rows carry no city at all (an unpopulated import) falls back to its own
+    // zip mix — otherwise discovery could never add anything to it.
+    let city_zips: Vec<String> = if city_zips.is_empty() {
+        sqlx::query_scalar(
+            "SELECT zip FROM ( \
+                 SELECT trim(zip) AS zip, COUNT(*) AS c FROM businesses \
+                 WHERE directory_id = $1 AND coalesce(trim(zip), '') <> '' \
+                 GROUP BY 1 ORDER BY c DESC LIMIT 6) z",
+        )
+        .bind(dir.id)
+        .fetch_all(&s.db)
+        .await
+        .map_err(|e| e.to_string())?
+    } else {
+        city_zips
+    };
+
     let cats: Vec<(Uuid, String)> = sqlx::query_as(
         "SELECT c.id, c.name FROM directory_categories c \
          LEFT JOIN businesses b ON b.category_id = c.id AND b.directory_id = $1 \
@@ -779,7 +814,10 @@ async fn discover_arm(
             // city; everything else belongs to the directory that names it. The city/state
             // stamped on the record are the business's own, never the directory's.
             let (cand_city, cand_state) = address_locality(&caddr);
-            if !same_city(&cand_city, &city_short) {
+            let cand_zip = zip_of(&caddr);
+            let in_city = same_city(&cand_city, &city_short)
+                || (!cand_zip.is_empty() && city_zips.iter().any(|z| *z == cand_zip));
+            if !in_city {
                 skipped_outside += 1;
                 continue;
             }
@@ -837,10 +875,10 @@ async fn discover_arm(
 
             let inserted: Result<Option<Uuid>, sqlx::Error> = sqlx::query_scalar(
                 "INSERT INTO businesses \
-                    (directory_id, name, slug, category_id, address, city, state, phone, website, \
-                     latitude, longitude, lat, lng, rating, review_count, business_type, \
+                    (directory_id, name, slug, category_id, address, city, state, zip, phone, \
+                     website, latitude, longitude, lat, lng, rating, review_count, business_type, \
                      is_franchise, place_id, claimed, is_active, enriched_at) \
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$10,$11,$12,$13,'local',$14,$15,\
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$11,$12,$13,$14,'local',$15,$16,\
                          false,true,NOW()) \
                  ON CONFLICT DO NOTHING RETURNING id",
             )
@@ -858,6 +896,11 @@ async fn discover_arm(
                 None
             } else {
                 Some(cand_state.clone())
+            })
+            .bind(if cand_zip.is_empty() {
+                None
+            } else {
+                Some(cand_zip.clone())
             })
             .bind(cand.get("phone").and_then(Value::as_str))
             .bind(cand.get("website").and_then(Value::as_str))
@@ -1134,6 +1177,30 @@ fn same_city(a: &str, b: &str) -> bool {
     }
     let (ka, kb) = (key(a), key(b));
     !ka.is_empty() && ka == kb
+}
+
+/// The 5-digit ZIP in a Google formatted address (`"…, Orlando, FL 32827, USA"` ⇒ `"32827"`).
+fn zip_of(address: &str) -> String {
+    let parts: Vec<&str> = address.split(',').map(str::trim).collect();
+    let tail = parts
+        .iter()
+        .rev()
+        .find(|p| {
+            let l = p.to_ascii_lowercase();
+            !matches!(
+                l.as_str(),
+                "usa" | "us" | "united states" | "united states of america"
+            )
+        })
+        .copied()
+        .unwrap_or("");
+    // "FL 32827" / "FL 32827-1234" — take the first 5-digit run.
+    let digits: String = tail
+        .split_whitespace()
+        .find(|w| w.chars().filter(char::is_ascii_digit).count() >= 5)
+        .map(|w| w.chars().filter(char::is_ascii_digit).take(5).collect())
+        .unwrap_or_default();
+    digits
 }
 
 fn digits(s: &str) -> String {

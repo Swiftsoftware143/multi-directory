@@ -203,13 +203,18 @@ def main():
                      "and coalesce(city,'')<>'' and category_id is not null" % id_list)) == put,
               "checked %d rows" % len(added_ids))
         # ONE CITY PER RECORD: a business Google returned for a neighbouring town must not be
-        # filed under this city (the W22 defect). The record's OWN address locality must be the
-        # directory's city.
+        # filed under this city (the W22 defect). Allowed: its own address names this city, or its
+        # ZIP is one this city's own in-city listings use (the neighbourhood-directory case).
         check("no out-of-town business was filed under this city",
               int(q1("select count(*) from businesses b join directories d on d.id=b.directory_id "
-                     "where b.id in (%s) and lower(trim(split_part(b.address, ',', "
-                     "array_length(string_to_array(b.address, ','),1) - 2))) "
-                     "<> lower(split_part(d.city,',',1))" % id_list)) == 0,
+                     "where b.id in (%s) "
+                     "and lower(replace(trim(split_part(b.address, ',', "
+                     "array_length(string_to_array(b.address, ','),1) - 2)),'.','')) "
+                     "<> lower(replace(split_part(d.city,',',1),'.','')) "
+                     "and coalesce(b.zip,'') not in (select distinct trim(x.zip) from businesses x "
+                     "where x.directory_id=d.id and coalesce(trim(x.zip),'')<>'' "
+                     "and lower(replace(trim(coalesce(x.city,'')),'.','')) = "
+                     "lower(replace(split_part(d.city,',',1),'.','')))" % id_list)) == 0,
               "checked %d adds" % len(added_ids))
         # Public reachability: the new listing must be findable through the public directory API
         # (the city page and the search screen both read it), not only in the database.
