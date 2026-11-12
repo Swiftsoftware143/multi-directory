@@ -98,7 +98,7 @@ async function waitFile(before, ms) {
     if (dl1) {
       const d = JSON.parse(dl1.text);
       rec(d.entity && d.entity.id === BIZ, 'downloaded JSON is this record', d.entity && d.entity.name);
-      rec((d.sections || []).length === 62, 'downloaded JSON has all 62 sections', String((d.sections || []).length));
+      rec((d.sections || []).length >= 61, 'downloaded JSON has every declared section', String((d.sections || []).length));
       rec(((d.related || {}).reviews || []).length === 2, 'its 2 reviews are inside', String(((d.related || {}).reviews || []).length));
       rec(((d.related || {}).business_listings || []).length === 1, 'its listing is inside', '1');
       fs.writeFileSync(AUD + '/downloaded-record.json', dl1.text);

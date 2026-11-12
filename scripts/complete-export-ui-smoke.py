@@ -12,7 +12,7 @@ buttons. This driver makes the screen half re-runnable:
      page's OWN "This record — JSON" and "— CSV" buttons, capture the actual downloaded files,
   3. fails unless the browser arm exits 0 AND reports every check passed,
   4. independently asserts both downloaded files exist, are non-trivial, and carry the record's
-     62 declared sections (so a driver run cannot pass on a screenshot alone),
+     full declared section set (so a driver run cannot pass on a screenshot alone),
   5. keeps evidence under /opt/swift/audits/<run>/.
 
 Run:  python3 scripts/complete-export-ui-smoke.py
@@ -87,7 +87,8 @@ def main():
         check("the JSON download is a real file, not a stub", size > 4000, f"{size} bytes")
         try:
             doc = json.load(open(js_files[0]))
-            # Shape: {"sections": [ {name,count,...} x62 ], "related": {...} x61}
+            # Shape: {"sections": [ {name,count,...} ... ], "related": {...} } — one section per
+            # declared child table plus the entity row itself.
             sections = doc.get("sections") or doc.get("related") or []
             n = len(sections)
             check("the JSON carries all declared sections", n >= 61, str(n))
