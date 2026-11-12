@@ -16,9 +16,17 @@ pub fn coreswift_url() -> String {
     std::env::var("CORESWIFT_URL").unwrap_or_else(|_| "http://localhost:8084".to_string())
 }
 
-/// Internal key for CoreSwift API — MUST be set via CORESWIFT_INTERNAL_KEY env var
+/// Internal key for CoreSwift API — served from CORESWIFT_INTERNAL_KEY.
+///
+/// NEVER panics. This crate is built with `panic = "abort"`, so a missing or blank env var
+/// used to take the whole server down from inside a best-effort CoreSwift call — measured
+/// 2026-11-11 on a clean install: creating the first city aborted the process, because
+/// directory provisioning asked for the key (sellable-test failure, item 17).
+/// Not configured now yields an empty string: CoreSwift fails closed on a blank credential
+/// (401), which is the graceful outcome. Callers that must not even attempt the call should
+/// test `internal_key_opt()` first.
 pub fn internal_key() -> String {
-    internal_key_opt().expect("CORESWIFT_INTERNAL_KEY environment variable must be set")
+    internal_key_opt().unwrap_or_default()
 }
 
 /// Non-panicking variant. This crate is built with `panic = "abort"`, so a fire-and-forget
@@ -942,6 +950,16 @@ pub async fn provision_directory_resources(
         .map_err(|e| format!("Failed to set booking_calendar_slug: {e}"))?;
 
     tracing::info!("[provision] Set booking_calendar_slug='{prefix}' for directory {directory_id}");
+
+    // A city must never fail to exist because CoreSwift is not configured. With no internal
+    // key (every clean install, and any buyer who does not use CoreSwift) the calendar/tag
+    // provisioning below is skipped instead of attempting a call that cannot authenticate.
+    if internal_key_opt().is_none() {
+        tracing::info!(
+            "[provision] CORESWIFT_INTERNAL_KEY not configured - skipping CoreSwift calendar/tag provisioning for {directory_slug}"
+        );
+        return Ok(prefix);
+    }
 
     // Step 2: Resolve tenant ID - could be on directory or its parent network
     let tenant_id = sqlx::query_scalar::<_, Option<Uuid>>(

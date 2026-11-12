@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::auth::middleware::is_super_admin;
 use crate::auth::models::Claims;
-use crate::coreswift::{coreswift_url, internal_key};
+use crate::coreswift::{coreswift_url, internal_key_opt};
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
 
@@ -282,7 +282,14 @@ async fn ensure_calendar_exists(
     directory_slug: &str,
 ) -> Result<(), String> {
     let base = coreswift_url();
-    let key = internal_key();
+    // No CoreSwift key means CoreSwift is not in use (clean install): there is no calendar to
+    // create, and booking must not fail because of it.
+    let Some(key) = internal_key_opt() else {
+        tracing::info!(
+            "[bookings] CORESWIFT_INTERNAL_KEY not configured - skipping calendar provisioning for {directory_slug}"
+        );
+        return Ok(());
+    };
 
     let city_name = directory_slug
         .replace('-', " ")

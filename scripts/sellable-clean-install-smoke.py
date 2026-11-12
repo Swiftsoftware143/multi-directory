@@ -36,6 +36,9 @@ APP = "/opt/swift/apps/multi-directory"
 BIN = os.path.join(APP, "target", "release", "multidirectory")
 ENVFILE = os.environ.get("MD_ENV", "/etc/swift/env/multi-directory.env")
 PROBE_DB = os.environ.get("MD_PROBE_DB", "md_sellable_probe")
+# Where the throwaway instance believes CoreSwift lives. Nothing listens on port 9 (discard),
+# so a probe can never register itself in the real CRM that owns 8084 on this host.
+PROBE_CORESWIFT_URL = os.environ.get("MD_PROBE_CORESWIFT_URL", "http://127.0.0.1:9")
 
 
 def pick_port(preferred=None):
@@ -203,6 +206,12 @@ def main():
             run_env["REDIS_URL"] = re.sub(r"/\d+$", "/9", env.get("REDIS_URL", "redis://127.0.0.1:6379"))
             run_env["MD_UPLOADS_ROOT"] = UPLOADS
             run_env["RUST_LOG"] = "info"
+            # A throwaway install must not reach the LIVE CRM either. The binary defaults
+            # CORESWIFT_URL to http://localhost:8084, and on this host that IS CoreSwift CRM:
+            # the probe once registered a real tenant there ("Clean Install Testville",
+            # measured 2026-11-11 19:22 EST). A closed port makes provisioning fail gracefully
+            # and proves the clean install works with no CoreSwift at all.
+            run_env["CORESWIFT_URL"] = PROBE_CORESWIFT_URL
             logf = open(LOGPATH, "wb")
             proc = subprocess.Popen([BIN], cwd=APP, env=run_env, stdout=logf, stderr=subprocess.STDOUT)
 
@@ -298,6 +307,15 @@ def main():
                 check("a new city is complete on day one (ad zones + emails provisioned)",
                       int(zones.stdout.strip() or 0) > 0 and int(tmpl.stdout.strip() or 0) > 0,
                       f"{zones.stdout.strip()} zones, {tmpl.stdout.strip()} emails")
+
+                # Regression guard: creating the first city used to ABORT the whole process when
+                # CORESWIFT_INTERNAL_KEY was unset (panic = "abort" inside directory provisioning),
+                # i.e. a buyer's very first city killed their new install. A live process here is
+                # the difference between "the city was created" and "the server came back".
+                alive = proc is not None and proc.poll() is None
+                check("creating a city with no CoreSwift configured leaves the install running",
+                      alive,
+                      "instance still up" if alive else f"instance exited rc={proc.poll() if proc else 'no process'}")
 
                 # The page itself is hash-routed in the browser, so a shell 200 proves only that the
                 # SPA was served -- never content. The page's OWN data feed is the content proof.
