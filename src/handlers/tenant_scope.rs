@@ -290,7 +290,13 @@ pub async fn assert_business_admin(
 /// they administer it (owner, claim by user id, or directory operator) OR when the caller's user
 /// email matches the active public claim on it — the claim form records `owner_email` only and
 /// never `user_id`, so an email match is the only ownership link a self-serve owner has. 404 on
-/// failure (never 403) so a probe cannot confirm the business exists.
+/// failure so a stranger cannot confirm the business exists.
+///
+/// ONE exception: when the caller holds a claim on the listing that is not yet ACTIVE (email
+/// verified / operator approval pending), it answers 403 with the real reason instead of 404.
+/// The caller submitted that claim, so nothing is leaked that they do not already know, and a
+/// bare "business not found" left a just-claimed owner staring at a dead Photos screen with no
+/// hint that approval was the missing step (t_fcf467ca).
 pub async fn assert_business_admin_or_claimant(
     db: &PgPool,
     claims: &Claims,
@@ -327,6 +333,31 @@ pub async fn assert_business_admin_or_claimant(
     .await?;
     if claimed {
         return Ok(());
+    }
+    // A claim on this listing that is not effective yet, held by this caller: say so plainly
+    // instead of pretending the business does not exist (see the doc comment above).
+    let pending = sqlx::query_scalar::<_, bool>(
+        r#"SELECT EXISTS (SELECT 1 FROM claimed_businesses c
+             WHERE c.business_id = $1 AND NOT c.is_active
+               AND (
+                    c.visitor_account_id = $2
+                 OR c.user_id = $2
+                 OR (c.visitor_account_id IS NULL AND c.user_id IS NULL
+                     AND lower(c.owner_email) = lower(COALESCE(
+                           (SELECT email FROM visitor_accounts WHERE id = $2),
+                           (SELECT email FROM users WHERE id = $2))))
+               ))"#,
+    )
+    .bind(business_id)
+    .bind(uid)
+    .fetch_one(db)
+    .await?;
+    if pending {
+        return Err(AppError::Forbidden(
+            "Your claim on this listing is still awaiting approval. You can add and manage its \
+             photos the moment an operator approves the claim."
+                .into(),
+        ));
     }
     Err(AppError::NotFound("business not found".into()))
 }
