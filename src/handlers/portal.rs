@@ -49,9 +49,26 @@ pub struct BusinessVerificationRow {
     pub verified_at: Option<chrono::DateTime<Utc>>,
 }
 
+/// A claim that a human operator has not decided yet (measured 2026-11-12): since a claim whose
+/// email domain does not match the listing stays `is_active = false`, the portal used to answer
+/// with an EMPTY business list and say "No claimed businesses yet — claim your listing", telling an
+/// owner who had just claimed it to do the thing they already did. A rejected claim is deleted, so
+/// every inactive row here is genuinely waiting for review.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct PendingClaimInfo {
+    pub claim_id: Uuid,
+    pub business_id: Uuid,
+    pub business_name: String,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub owner_email: String,
+    pub submitted_at: Option<chrono::DateTime<Utc>>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BusinessPortalResponse {
     pub claimed_businesses: Vec<BusinessWithSubscription>,
+    pub pending_claims: Vec<PendingClaimInfo>,
 }
 
 #[derive(Debug, Serialize)]
@@ -290,8 +307,26 @@ pub async fn business_profile(
         });
     }
 
+    // Claims still waiting for an operator decision. Without this the owner signs in to an empty
+    // portal after claiming (2026-11-12) and is told to claim the listing they just claimed.
+    let pending_claims = sqlx::query_as::<_, PendingClaimInfo>(
+        r#"SELECT cb.id AS claim_id, cb.business_id, b.name AS business_name,
+                  b.city, b.state, cb.owner_email, cb.created_at AS submitted_at
+           FROM claimed_businesses cb
+           JOIN businesses b ON b.id = cb.business_id
+           WHERE COALESCE(cb.is_active, false) = false
+             AND (cb.user_id = $1
+                  OR ($2 IS NOT NULL AND lower(cb.owner_email) = lower($2)))
+           ORDER BY cb.created_at DESC"#,
+    )
+    .bind(user_id)
+    .bind(&visitor_email)
+    .fetch_all(&s.db)
+    .await?;
+
     Ok(Json(json!(BusinessPortalResponse {
         claimed_businesses: businesses_with_subs,
+        pending_claims,
     })))
 }
 

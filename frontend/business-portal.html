@@ -1071,6 +1071,8 @@ function doLogout() {
 }
 
 // ── Dashboard ──
+// Claims waiting for an operator decision, as returned by /portal/business/profile.
+var _pendingClaims = [];
 async function loadDashboard() {
   var token = localStorage.getItem('bizToken');
   if (!token) { show('authScreen'); hide('dashboard'); return; }
@@ -1089,6 +1091,11 @@ async function loadDashboard() {
     _portalOwner = true;
     $('userInfo').textContent = 'You have ' + (data.claimed_businesses || []).length + ' claimed business(es)';
     setMyBiz(data.claimed_businesses || []);
+    // Two later assignments wrap renderBusinesses (`renderBusinesses = function(biz){…}`), and each
+    // forwards only the FIRST argument — so a second parameter never reaches the renderer. Keep the
+    // queue in a module-level variable instead (measured 2026-11-12: the wrapper swallowed it and
+    // the owner still got "No claimed businesses yet").
+    _pendingClaims = data.pending_claims || [];
     renderBusinesses(data.claimed_businesses || []);
     hide('loadingState');
     show('dashboardContent');
@@ -1108,8 +1115,35 @@ async function loadDashboard() {
   }
 }
 
-function renderBusinesses(businesses) {
+// Pending claims: a claim whose email does not match the listing's own domain waits for a human,
+// so the owner must be told it is in the queue instead of being asked to claim it again.
+function renderPendingClaims(pending) {
+  if (!pending || !pending.length) return '';
+  var html = '<div class="section-title">⏳ Waiting for review</div>';
+  for (var p of pending) {
+    var place = [p.city, p.state].filter(Boolean).join(', ');
+    html += '<div class="card" style="border-left:4px solid #f59e0b">' +
+      '<h3>' + esc(p.business_name || 'Your business') + '</h3>' +
+      (place ? '<p style="margin:4px 0">📍 ' + esc(place) + '</p>' : '') +
+      '<p style="margin:8px 0"><b>Your claim is in the queue.</b> We received your claim for this ' +
+      'listing as <b>' + esc(p.owner_email || 'your email') + '</b> and our team checks it by hand ' +
+      '— usually within one working day. You will get an email the moment it is approved, and this ' +
+      'dashboard opens up at the same time.</p>' +
+      '<p style="margin:8px 0;font-size:.85rem;color:var(--text-secondary)">Nothing else is needed ' +
+      'from you right now. If it has been longer than a day, reply to the email you received when ' +
+      'you claimed the listing.</p>' +
+      '</div>';
+  }
+  return html;
+}
+
+function renderBusinesses(businesses, pendingClaims) {
+  var pendingHtml = renderPendingClaims(_pendingClaims);
   if (!businesses || businesses.length === 0) {
+    if (pendingHtml) {
+      $('businessList').innerHTML = pendingHtml;
+      return;
+    }
     $('businessList').innerHTML = '<div class="section-title">🏢 My Businesses</div>' +
       '<div class="card" style="text-align:center;padding:32px">' +
       '<div class="icon" style="font-size:2.5rem;margin-bottom:12px">🏪</div>' +
@@ -1120,7 +1154,7 @@ function renderBusinesses(businesses) {
     return;
   }
 
-  var html = '<div class="section-title">🏢 My Businesses (' + businesses.length + ')</div>';
+  var html = pendingHtml + '<div class="section-title">🏢 My Businesses (' + businesses.length + ')</div>';
   html += '<div class="card-grid">';
   
   for (var b of businesses) {
