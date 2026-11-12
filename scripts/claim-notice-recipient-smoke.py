@@ -6,14 +6,19 @@ shipped `ADMIN_EMAIL` default — a reserved domain with no MX record, so every 
 ("No MX for example.com, domain accepts no mail"), the operator was never told, and the shared
 Mailgun sending domain collected the failure.
 
-This proof drives the REAL public claim route against the LIVE app and then reads Mailgun's OWN
-event log for the message it produced:
+This proof drives the REAL public claim route against the LIVE app:
 
   1. a disposable listing is created (no website -> the claim cannot be auto-accepted)
   2. POST /api/v1/businesses/:id/claim  -> 201 with auto_approved=false  (manual review)
-  3. Mailgun's event log for updates.zaarhub.com carries the notice for THAT listing and its
-     recipient is a reachable address (the platform operator's own login) — not example.com
-  4. nothing was sent to an example.* / .invalid / .test placeholder
+  3. the app's own log shows the manual-review notice path ran, and that for a test/proof
+     record it reports SKIPPED (never "sent") — the harness must not email the operator
+  4. Mailgun's own event log carries NOTHING for that listing (the guard really held)
+  5. no message anywhere was addressed to an example.* / .invalid / .test placeholder
+
+What this cannot prove is delivery of a REAL notice: the product refuses to send one for a
+test record, and sending a real one on every run would email the operator (the very thing
+2026-11-05 forbade). Delivery is therefore asserted by the recipient resolver (the operator's
+own login, read from the database) plus the honest skip in the log.
 
 Run:  python3 scripts/claim-notice-recipient-smoke.py
 Exit: 0 = PASS, 1 = FAIL.  The probe rows are removed on both paths.
