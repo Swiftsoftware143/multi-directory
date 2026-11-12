@@ -186,6 +186,44 @@ def http(method, path, body=None, token=None, extra_headers=None):
             return e.code, raw
 
 
+PUBLIC = os.environ.get("MD_PUBLIC", "https://zaarhub.com").rstrip("/")
+# Negative-control hook, for proving the gate can FAIL: point the end-of-run public assertion at a
+# slug that legitimately EXISTS (a real business) and the run must exit non-zero. Never set in a
+# normal run.
+NEG_SLUG = os.environ.get("MD_PUBLIC_ASSERT_SLUG", "")
+
+
+def public_fetch(path):
+    """GET a path on the REAL public host (Cloudflare-fronted), as a browser identity. -> (status, body)"""
+    url = path if path.startswith("http") else PUBLIC + path
+    r = sh("curl", "-s", "-m", "25", "-A", "Mozilla/5.0 (compatible; SwiftOps/1.0)",
+           "-w", "\n%{http_code}", url)
+    out = r.stdout
+    i = out.rfind("\n")
+    if i < 0:
+        return 0, out
+    try:
+        return int(out[i + 1:].strip()), out[:i]
+    except ValueError:
+        return 0, out
+
+
+def assert_public_absent(city_slug, slug, label):
+    """POST-TEARDOWN proof on the PUBLIC surfaces, not just the database: the business page must be
+    404 on the real host and the slug must not appear in sitemap.xml. A sitemap that is not 200, or
+    that carries no business URLs, is a FAIL — grepping an error page would pass for the wrong
+    reason and this assertion would stop being a gate (zaarhub-ceo's standing ask, t_c2b3e774)."""
+    status, _ = public_fetch(f"/{city_slug}/businesses/{slug}")
+    check(f"{label}: business page is 404 on the public host", status == 404,
+          f"{PUBLIC}/{city_slug}/businesses/{slug} status={status}")
+    sm_status, sm = public_fetch("/sitemap.xml")
+    city_urls = sm.count(f"/{city_slug}/businesses/")
+    check(f"{label}: sitemap.xml is the real sitemap", sm_status == 200 and city_urls > 0,
+          f"status={sm_status} {city_slug}_business_urls={city_urls} bytes={len(sm)}")
+    hits = sm.count(slug)
+    check(f"{label}: slug absent from sitemap.xml", hits == 0, f"grep_count={hits}")
+
+
 def chrome_path():
     import glob
     if os.environ.get("CHROME_PATH"):
@@ -322,6 +360,11 @@ def main():
     reap_fixture("end of run")
     left = psql(f"SELECT (SELECT count(*) FROM businesses WHERE id='{bid}')")
     check("probe listing gone from the database", left == "0", f"remaining={left}")
+    # …and gone from the PUBLIC surfaces. A zero DB row does not prove the page is unreachable or
+    # that the slug never became sitemap-eligible; this is the assertion that fails the run instead
+    # of leaving a publish/sitemap regression for a human to notice.
+    assert_public_absent(dir_slug, NEG_SLUG or slug,
+                         "after teardown" + (" [NEGATIVE CONTROL]" if NEG_SLUG else ""))
 
     print()
     cs_left = sweep_coreswift_mirror(["zz-review-portal-"], window=15)
