@@ -121,6 +121,10 @@ def check(label, ok, detail=""):
 PAIR = re.compile(r'child_q!\("([a-z0-9_]+)"\s*,\s*"([a-z0-9_]+)"\)')
 LABELED_PAIR = re.compile(
     r'"([a-z0-9_.]+)"\s*,\s*child_q!\("([a-z0-9_]+)"\s*,\s*"([a-z0-9_]+)"\)', re.S)
+# A child can also be declared with a bespoke `concat!` statement (e.g. settlement_runs, which
+# joins through the invoice/payout run_id rather than a direct business_id column), so its label
+# must still count as declared even though it has no `child_q!` pair.
+CONCAT_LABEL = re.compile(r'"([a-z0-9_.]+)"\s*,\s*concat!\(')
 
 
 def _block(name):
@@ -136,7 +140,9 @@ def declared_pairs():
 
 
 def declared_labels():
-    return {m.group(1) for m in LABELED_PAIR.finditer(_block("BUSINESS_CHILDREN"))}
+    block = _block("BUSINESS_CHILDREN")
+    return ({m.group(1) for m in LABELED_PAIR.finditer(block)}
+            | {m.group(1) for m in CONCAT_LABEL.finditer(block)})
 
 
 def gaps(decl, catalog):
@@ -156,7 +162,9 @@ def main():
 
     decl = declared_pairs()
     labels = declared_labels()
-    check("the export declares a child list at all", len(decl) > 40 and len(labels) == len(decl),
+    # labels is a superset of pairs: every `child_q!` entry contributes one label, and the bespoke
+    # `concat!` entries (settlement_runs) contribute a label without a `child_q!` pair.
+    check("the export declares a child list at all", len(decl) > 40 and len(labels) > 40,
           f"pairs={len(decl)} labels={len(labels)}")
 
     cols = psql("SELECT c.table_name||'|'||c.column_name FROM information_schema.columns c "
