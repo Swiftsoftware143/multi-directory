@@ -2229,6 +2229,15 @@ pub fn create_router(s: AppState) -> Router {
         // Aggregate photo-cache counters (hits, misses, BILLED Google calls, bytes on disk).
         // Numbers only — no keys, no listing data — so the cache's effect is measurable.
         .route("/place-photo/cache-stats", get(place_photos::cache_stats))
+        // Photo cache warm-up: ONE capped batch per call for the city that needs it most, so a
+        // city reaches full card-photo coverage without a visitor paying the cold-call budget.
+        // Billed Google calls happen here, so it follows the /cron/* identity rule (internal key
+        // or a platform operator) and is never callable anonymously.
+        .route(
+            "/cron/photo-warm",
+            post(place_photos::warm_up)
+                .route_layer(middleware::from_fn_with_state(s.clone(), cron_guard)),
+        )
         .route(
             "/zaarhub/business/:slug/:id",
             get(zaarhub::get_business_detail),

@@ -1209,16 +1209,32 @@ pub async fn delete_media(
     Ok(Json(json!({ "deleted": true, "id": id })))
 }
 
+/// Is this `/uploads/` relative path public media?
+///
+/// Rejects any segment that starts with `.` — the photo cache keeps its entries in
+/// `uploads/.place-photo-cache/<hash>.img`, which the `/api/v1/place-photo/` proxy serves on
+/// purpose. A dot path is internal state, not an upload, so it 404s here even though the bytes are
+/// public elsewhere.
+fn media_path_allowed(rel: &str) -> bool {
+    !rel.split('/').any(|seg| seg.starts_with('.'))
+}
+
 /// GET /uploads/*path — serve an uploaded file out of the uploads root.
 ///
 /// This is what makes the url an upload returns actually WORK. Before it existed, `/uploads/*` fell
 /// through to the SPA fallback and every stored asset url was dead. Only paths that resolve INSIDE
-/// the uploads root are served — `..` cannot escape it.
+/// the uploads root are served — `..` cannot escape it, and a dot-segment is refused.
 pub async fn serve_media(Path(path): Path<String>) -> Result<Response, AppError> {
     let not_found = || AppError::NotFound("file not found".into());
 
     let rel = path.trim_start_matches('/');
     if rel.is_empty() || rel.contains("..") || rel.contains('\0') {
+        return Err(not_found());
+    }
+    // A dot-segment is not public media. The photo cache lives inside `uploads/` (as
+    // `.place-photo-cache/<hash>.img`) and is served by its own proxy route; it must not be
+    // reachable at `/uploads/.place-photo-cache/…` as well, and no other dot path is either.
+    if !media_path_allowed(rel) {
         return Err(not_found());
     }
 
@@ -1245,4 +1261,18 @@ pub async fn serve_media(Path(path): Path<String>) -> Result<Response, AppError>
         .header(header::CACHE_CONTROL, "public, max-age=86400")
         .body(Body::from(bytes))
         .map_err(|e| AppError::Internal(format!("could not build the response: {e}")))
+}
+
+#[cfg(test)]
+mod media_path_tests {
+    use super::media_path_allowed;
+
+    #[test]
+    fn uploads_reach_only_public_paths() {
+        assert!(media_path_allowed("businesses/abc/photo.jpg"));
+        assert!(media_path_allowed("businesses/abc/photo.v2.jpg"));
+        assert!(!media_path_allowed(".place-photo-cache/abc.img"));
+        assert!(!media_path_allowed("businesses/.hidden/x.jpg"));
+        assert!(!media_path_allowed("."));
+    }
 }

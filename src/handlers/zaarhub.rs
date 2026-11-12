@@ -1824,6 +1824,28 @@ pub(crate) fn card_image(
     None
 }
 
+/// The position of the stored reference `card_image` would send to the Google photo proxy.
+///
+/// Same predicate and same ceiling as `card_image` step 4 (a Google photo NAME at an index inside
+/// `MAX_PROXIED_PHOTOS`). The photo warm-up uses this so it warms exactly the picture a card will
+/// ask for — warming a different index of the same listing would be paid for and never shown.
+pub(crate) fn card_place_photo_index(images: &Value) -> Option<usize> {
+    images
+        .as_array()?
+        .iter()
+        .enumerate()
+        .find_map(|(idx, item)| {
+            let u = image_ref(item)?;
+            if crate::handlers::place_photos::is_place_photo_name(u)
+                && crate::handlers::place_photos::within_budget(idx)
+            {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+}
+
 /// GET /api/v1/zaarhub/business/:slug/:id — business detail page
 pub async fn get_business_detail(
     State(s): State<AppState>,
@@ -2826,5 +2848,47 @@ mod card_image_tests {
             card_image(bid(), &json!(["garbage"]), None, None, &mut budget),
             None
         );
+    }
+
+    #[test]
+    fn card_place_photo_index_matches_what_card_image_proxies() {
+        let id = bid();
+        let images = json!([
+            "https://cdn.example/own.jpg",
+            "places/ChIJa/photos/AWCfirst"
+        ]);
+        // The URL ahead of it is free, so the card does not use the proxy at all.
+        let mut budget = usize::MAX;
+        assert_eq!(
+            card_image(id, &images, None, None, &mut budget),
+            Some("https://cdn.example/own.jpg".to_string())
+        );
+        assert_eq!(card_place_photo_index(&images), Some(1));
+
+        // No free reference: the card proxies the place photo and the index is the SAME one.
+        let images = json!([
+            "places/ChIJa/photos/AWCfirst",
+            "places/ChIJa/photos/AWCsecond"
+        ]);
+        let mut budget = usize::MAX;
+        assert_eq!(
+            card_image(id, &images, None, None, &mut budget),
+            Some(format!("/api/v1/place-photo/{id}/0"))
+        );
+        assert_eq!(card_place_photo_index(&images), Some(0));
+        // A legacy `photo_reference` OBJECT is read the same way `card_image` reads it.
+        assert_eq!(
+            card_place_photo_index(&json!([{"photo_reference": "places/x/photos/y"}])),
+            Some(0)
+        );
+        // Past the proxy ceiling there is nothing for the warm-up to fetch.
+        let far = json!([
+            "places/x/photos/a",
+            "places/x/photos/b",
+            "places/x/photos/c",
+            "places/x/photos/d"
+        ]);
+        assert_eq!(card_place_photo_index(&far), Some(0));
+        assert_eq!(card_place_photo_index(&json!([])), None);
     }
 }

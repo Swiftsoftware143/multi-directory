@@ -134,7 +134,7 @@ pub fn note_hit(bytes: usize) {
 
 /// The cache key for a photo resource name: `sha256(name)`, hex. Stable across restarts and
 /// builds (unlike `DefaultHasher`), and safe as a filename whatever the name contains.
-fn key_of(name: &str) -> String {
+pub(crate) fn key_of(name: &str) -> String {
     let digest = ring::digest::digest(&ring::digest::SHA256, name.trim().as_bytes());
     hex::encode(digest.as_ref())
 }
@@ -510,6 +510,50 @@ pub fn is_warm(name: &str) -> bool {
         }
     }
     entry_path(&CacheConfig::from_env(), &key).exists()
+}
+
+/// The keys of every NON-EXPIRED entry on disk, in one directory walk.
+///
+/// The warm-up job needs to know what is already cached without spending a Google call to find
+/// out, and `is_warm` answers for THIS process only (its map is empty after a restart, and a
+/// restart must not make a fully warmed city look cold again). This reads the directory, so the
+/// answer is what the disk actually holds.
+pub async fn warm_keys(cfg: &CacheConfig) -> HashSet<String> {
+    let (_total, _n, all) = scan(cfg).await;
+    all.into_iter()
+        .filter(|e| !e.expired)
+        .map(|e| e.key)
+        .collect()
+}
+
+/// Populate the in-process warm map from what is already on disk.
+///
+/// `is_warm` is what decides whether a city page may show a photo for free or must spend its
+/// cold-miss budget on it. Without this seed every entry looks cold after a restart, so a fully
+/// warmed city would render letter avatars until 24 photos had been re-requested (each one a disk
+/// hit — no Google call — but the page would still look unwarmed). Runs once at boot, off the
+/// request path.
+pub async fn seed_warm_map(cfg: &CacheConfig) {
+    let (_total, _n, all) = scan(cfg).await;
+    let expires = now_unix() + cfg.ttl_secs as i64;
+    let mut marked = 0usize;
+    for e in all.iter().filter(|e| !e.expired) {
+        warm_mark(&e.key, expires);
+        marked += 1;
+    }
+    if marked > 0 {
+        tracing::info!(
+            entries = marked, dir = %cfg.dir.display(),
+            "photo cache served-from-disk map seeded"
+        );
+    }
+}
+
+/// Seed the warm map at boot without holding up the listener.
+pub fn start_warm_map_seed() {
+    tokio::spawn(async move {
+        seed_warm_map(&CacheConfig::from_env()).await;
+    });
 }
 
 // ---------------------------------------------------------------- stats

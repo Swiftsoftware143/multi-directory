@@ -173,6 +173,11 @@ async fn main() {
     // Start background reminder cron
     reminders::start_reminder_cron(state.db.clone());
 
+    // Photo cache: seed the served-from-disk map from the cache directory so a restart does not
+    // make a fully warmed city look cold (which would spend a page's cold-miss budget on photos
+    // that are already free).
+    handlers::photo_cache::start_warm_map_seed();
+
     // Walk Score / Bike Score: quarterly refresh, batched hourly. A page view NEVER calls the
     // vendor — the detail endpoint only reads `business_walk_scores`.
     walk_scores::start_walk_score_cron(state.db.clone());

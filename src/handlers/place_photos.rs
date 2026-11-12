@@ -21,20 +21,29 @@
 //!   * an unavailable photo answers 404, so the page hides the frame instead of showing a
 //!     broken image.
 //!
-//! Cost note: a cold view costs at most one media call, plus one place lookup when the stored
-//! name has expired. The bytes are then written to the on-disk cache in `photo_cache`, so every
-//! later view of the same photo is served from disk with no Google call at all (7-day TTL,
-//! size-capped and LRU-evicted). A listing exposes at most `MAX_PROXIED_PHOTOS` of them.
+//! Cost note (measured on the live binary 2026-11-12, Palm Bay): a cold photo used to cost FOUR
+//! billed Google requests — a refusal from the first configured key (it refuses Places API (New)),
+//! a media call with the working key on the expired stored name, a place lookup for a fresh name,
+//! and the media call that finally answers. Two changes cut that:
+//!   * the key that ANSWERED is remembered in-process and tried first on the next photo
+//!     ([`ANSWERING_LABEL`]) — a steady-state cold photo is 3 requests, not 4;
+//!   * the bytes are written to the on-disk cache in `photo_cache` (two keys: the stored name and
+//!     the fresh one), so every later view is served from disk with no Google call at all
+//!     (7-day TTL, size-capped, LRU-evicted). A listing exposes at most `MAX_PROXIED_PHOTOS`.
+//! [`warm_up`] fills that cache ahead of traffic, one capped city at a time.
 
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde_json::Value;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::sync::{Mutex as StdMutex, OnceLock};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-use crate::error::AppError;
+use crate::error::{ApiResult, AppError};
 use crate::handlers::photo_cache::{self, CacheConfig};
 use crate::handlers::places_client::PLACES_V1_BASE;
 use crate::state::AppState;
@@ -132,6 +141,62 @@ enum MediaOutcome {
     InvalidName,
     /// The key or the network refused; say why and move on to the next key.
     Failed(String),
+}
+
+/// One configured Google credential: `(provider, key, is_active, label)` — the shape
+/// `satellite::google_key_candidates` answers.
+type KeyCandidate = (String, String, bool, String);
+
+/// The LABEL of the key that last answered a Places v1 MEDIA request in this process.
+///
+/// MEASURED 2026-11-12 (Palm Bay, 24 cold cards = 96 billed calls): the FIRST configured Google
+/// key refuses Places API (New) with 403 while the key that answers sits further down the list
+/// (labelled "SUPERSEDED …", `is_active = false`). Every cold photo therefore paid a wasted call
+/// before the loop reached the working key. Remembering WHICH label answered lets the next cold
+/// photo try it first, which takes a cold photo from 4 billed calls to 3.
+///
+/// Only the LABEL is memoised — never a key value and never a decrypted secret. The candidate
+/// list, and therefore the key itself, is still read from `provider_keys` (and decrypted) on every
+/// request, so a rotated key, a re-pointed provider or a renamed label is picked up immediately
+/// and nothing about the credential survives outside the existing decryption path.
+static ANSWERING_LABEL: OnceLock<StdMutex<Option<String>>> = OnceLock::new();
+
+fn answering_label() -> Option<String> {
+    ANSWERING_LABEL
+        .get_or_init(|| StdMutex::new(None))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+/// Called only when Google actually returned bytes for a media request: a key that answered is
+/// remembered, a key that failed never is.
+fn remember_answering_label(label: &str) {
+    if label.trim().is_empty() {
+        return;
+    }
+    let mut slot = ANSWERING_LABEL
+        .get_or_init(|| StdMutex::new(None))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *slot = Some(label.to_string());
+}
+
+/// Put the memoised key first, keeping every other candidate and the original order.
+///
+/// Pure so the ordering rule is testable without a database: the memo must never REMOVE a
+/// candidate (the loop still has to fall through when the remembered key stops answering), and an
+/// unknown or empty memo must leave the list untouched.
+fn order_candidates(mut cands: Vec<KeyCandidate>, memo: Option<&str>) -> Vec<KeyCandidate> {
+    let memo = match memo.map(str::trim) {
+        Some(m) if !m.is_empty() => m,
+        _ => return cands,
+    };
+    if let Some(pos) = cands.iter().position(|c| c.3 == memo) {
+        let first = cands.remove(pos);
+        cands.insert(0, first);
+    }
+    cands
 }
 
 fn image_response(
@@ -272,6 +337,16 @@ pub async fn place_photo(
     State(s): State<AppState>,
     Path((business_id, index)): Path<(Uuid, usize)>,
 ) -> Result<Response, AppError> {
+    respond(&s, business_id, index).await
+}
+
+/// The one implementation of "give me this listing's photo", shared by the public route and the
+/// warm-up job.
+///
+/// The warm-up goes through THIS function, not a shortcut into the cache: it therefore passes the
+/// same single-flight claim (two visitors and the job never pay for the same photo twice), stores
+/// under the same keys, and is subject to the same expiry and size rules.
+async fn respond(s: &AppState, business_id: Uuid, index: usize) -> Result<Response, AppError> {
     let not_found = || AppError::NotFound("No photo for this listing".to_string());
 
     // Live rows only — the same lifecycle rule the public detail lookups enforce.
@@ -337,15 +412,22 @@ pub async fn place_photo(
     // labelled "SUPERSEDED — do not use for search" and sits at is_active = false, while every
     // active key refuses the v1 endpoint. A key that answers is a key that works; the flag only
     // decides what the panel shows as the default.
+    //
+    // The key that answered LAST is tried FIRST (see ANSWERING_LABEL): that alone removes the
+    // wasted refusal call every cold photo used to pay before reaching the working key.
+    let candidates = order_candidates(
+        crate::handlers::satellite::google_key_candidates(&s.db)
+            .await
+            .into_iter()
+            .filter(|(provider, ..)| provider.starts_with("google"))
+            .collect(),
+        answering_label().as_deref(),
+    );
     let mut last_error = String::new();
-    for (provider, key, _active, label) in
-        crate::handlers::satellite::google_key_candidates(&s.db).await
-    {
-        if !provider.starts_with("google") {
-            continue;
-        }
+    for (_provider, key, _active, label) in candidates {
         match media_bytes(&client, &key, &name).await {
             MediaOutcome::Bytes(bytes, ct) => {
+                remember_answering_label(&label);
                 // Store before answering: a served photo is a cached photo from now on.
                 photo_cache::put(&cfg, &name, &bytes, &ct).await;
                 tracing::debug!(
@@ -355,10 +437,17 @@ pub async fn place_photo(
                 return Ok(image_response(bytes, ct, "miss", cfg.ttl_secs));
             }
             MediaOutcome::InvalidName => {
+                // A 400/404 is about the NAME, so this key AUTHENTICATED — Google answered it.
+                // Remember it for the same reason as a byte success: the next cold photo must not
+                // pay a refusal call to the restricted key first. (Worth recording even when the
+                // refresh below fails, because the key's ability to answer is what is being learnt,
+                // not this one photo's fate.)
+                remember_answering_label(&label);
                 // Stored references expire (see the module note). Re-resolve from the place id.
                 match fresh_photo_name(&client, &key, &place_id, index).await {
                     Ok(Some(fresh)) => match media_bytes(&client, &key, &fresh).await {
                         MediaOutcome::Bytes(bytes, ct) => {
+                            remember_answering_label(&label);
                             // Two entries, one photo: the name the listing holds (so the stale
                             // reference is warm from now on) and the name Google just honoured
                             // (so any listing storing the fresh name shares these bytes).
@@ -400,6 +489,254 @@ pub fn within_budget(index: usize) -> bool {
 /// process has issued, and `hits` / `misses` are served-from-disk versus paid-for.
 pub async fn cache_stats() -> Json<Value> {
     Json(photo_cache::stats(&CacheConfig::from_env()).await)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Warm-up pass
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How many photos one warm-up run fetches by default.
+///
+/// A cold photo costs 2–3 BILLED Google Places requests, so this is a money bound rather than a
+/// pagination limit: at Google's ~7 USD per 1,000 photo requests, 30 photos is a few cents a run.
+/// The job is a background trickle, not a bulk import.
+pub const DEFAULT_WARM_PHOTOS: usize = 30;
+/// Hard ceiling for one run, whatever the caller asks for (a typo must not start a 4,000-photo
+/// batch against the account's quota and budget).
+pub const MAX_WARM_PHOTOS: usize = 200;
+/// A run stops after this long, so an external scheduler's HTTP client never times out on it.
+const WARM_DEADLINE: Duration = Duration::from_secs(45);
+
+#[derive(Debug, Deserialize)]
+pub struct WarmQuery {
+    /// How many photos this run may fetch (`DEFAULT_WARM_PHOTOS`, hard-capped at
+    /// `MAX_WARM_PHOTOS`).
+    pub photos: Option<usize>,
+    /// Warm this directory slug only. Omitted = the city the job should finish next.
+    pub city: Option<String>,
+}
+
+/// One photo a card will actually ask the proxy for.
+struct WarmPhoto {
+    business: Uuid,
+    index: usize,
+    name: String,
+}
+
+/// `POST /api/v1/cron/photo-warm` — fill the photo cache ahead of traffic.
+///
+/// WHY: a city page only offers a proxy photo for a card whose bytes are already on disk (a cold
+/// photo spends the page's `CARD_PHOTO_PROXY_BUDGET`), so coverage grows only as visitors arrive:
+/// Palm Bay showed 24 photos on the first view, 48 on the second, and needed ~12 views — each
+/// paying that view's cold budget. This job warms a city with nobody visiting, one city at a time,
+/// through the SAME code path as the public route (`respond`), so it uses the same cache keys and
+/// the same single-flight claim. It never raises a page's budget.
+///
+/// The photo it warms is the one `card_image` would render (`card_place_photo_index`), in the order
+/// the city page presents its cards, so a partly warmed city looks better from the top of the page
+/// down. "Warm" is decided from the CACHE DIRECTORY, not from this process's memory, so a restart
+/// cannot make a warmed city look cold and re-spend the budget.
+pub async fn warm_up(
+    State(s): State<AppState>,
+    Query(q): Query<WarmQuery>,
+) -> ApiResult<Json<Value>> {
+    use sqlx::Row;
+
+    let cfg = CacheConfig::from_env();
+    let cap = q
+        .photos
+        .unwrap_or(DEFAULT_WARM_PHOTOS)
+        .clamp(1, MAX_WARM_PHOTOS);
+
+    // Every listing whose CARD would show a proxy photo, in city-page order (rating first, the
+    // same ORDER BY the city listing uses) so progress is visible where a visitor looks first.
+    let rows = sqlx::query(
+        "SELECT b.id, b.images, b.logo_url, b.cover_url, d.slug AS city_slug \
+         FROM businesses b JOIN directories d ON d.id = b.directory_id \
+         WHERE b.is_active = TRUE AND COALESCE(b.status, 'active') <> 'draft' \
+           AND b.images::text LIKE '%/photos/%' \
+         ORDER BY d.slug ASC, b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST, b.name ASC",
+    )
+    .fetch_all(&s.db)
+    .await?;
+
+    let mut by_city: Vec<(String, Vec<WarmPhoto>)> = Vec::new();
+    for row in &rows {
+        let city: String = row.try_get("city_slug")?;
+        let business: Uuid = row.try_get("id")?;
+        let images: Value = row
+            .try_get::<Option<Value>, _>("images")?
+            .unwrap_or(Value::Null);
+        let logo: Option<String> = row.try_get("logo_url").unwrap_or_default();
+        let cover: Option<String> = row.try_get("cover_url").unwrap_or_default();
+
+        // Ask the RENDERER what this card would show: an owner upload or a real URL costs nothing
+        // and needs no warming. Only a proxy path is worth a billed call.
+        let mut budget = usize::MAX;
+        let Some(src) = crate::handlers::zaarhub::card_image(
+            business,
+            &images,
+            logo.as_deref(),
+            cover.as_deref(),
+            &mut budget,
+        ) else {
+            continue;
+        };
+        if !src.starts_with("/api/v1/place-photo/") {
+            continue;
+        }
+        let Some(index) = crate::handlers::zaarhub::card_place_photo_index(&images) else {
+            continue;
+        };
+        let Some(name) = raw_at(&images, index) else {
+            continue;
+        };
+        let name = name.trim().to_string();
+        if !is_place_photo_name(&name) {
+            continue;
+        }
+        match by_city.iter_mut().find(|(c, _)| *c == city) {
+            Some((_, list)) => list.push(WarmPhoto {
+                business,
+                index,
+                name,
+            }),
+            None => by_city.push((
+                city.clone(),
+                vec![WarmPhoto {
+                    business,
+                    index,
+                    name,
+                }],
+            )),
+        }
+    }
+
+    let warm_before_set = photo_cache::warm_keys(&cfg).await;
+    let calls_before = photo_cache::stats(&cfg).await["google_calls"]
+        .as_u64()
+        .unwrap_or(0);
+    let is_warm_before = |p: &WarmPhoto| warm_before_set.contains(&photo_cache::key_of(&p.name));
+
+    let coverage = |set: &std::collections::HashSet<String>| -> Vec<Value> {
+        by_city
+            .iter()
+            .map(|(city, photos)| {
+                let warm = photos
+                    .iter()
+                    .filter(|p| set.contains(&photo_cache::key_of(&p.name)))
+                    .count();
+                json!({
+                    "city": city,
+                    "photos": photos.len(),
+                    "warm": warm,
+                    "remaining": photos.len() - warm,
+                })
+            })
+            .collect()
+    };
+
+    if by_city.is_empty() {
+        return Ok(Json(json!({
+            "status": "no_candidates",
+            "detail": "no listing in any directory renders a Google-proxied card photo",
+            "cities": [],
+        })));
+    }
+
+    // ONE city per run, and the city with the LEAST work left, so a city is finished before the
+    // next one starts eating the budget.
+    let chosen = match q.city.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        Some(slug) => by_city
+            .iter()
+            .position(|(c, _)| c == slug)
+            .ok_or_else(|| AppError::NotFound(format!("No directory '{slug}' with photo cards")))?,
+        None => {
+            let next = by_city
+                .iter()
+                .enumerate()
+                .map(|(i, (_, photos))| (i, photos.iter().filter(|p| !is_warm_before(p)).count()))
+                .filter(|(_, left)| *left > 0)
+                .min_by_key(|(_, left)| *left)
+                .map(|(i, _)| i);
+            match next {
+                Some(i) => i,
+                // Nothing left to do anywhere: answer 200 with the numbers, so a scheduler does
+                // not have to treat "done" as an error and page somebody about it.
+                None => {
+                    return Ok(Json(json!({
+                        "status": "all_warm",
+                        "cities": coverage(&warm_before_set),
+                    })))
+                }
+            }
+        }
+    };
+
+    let (city, photos) = &by_city[chosen];
+    let total = photos.len();
+    let warm_before = photos.iter().filter(|p| is_warm_before(p)).count();
+
+    let started = Instant::now();
+    let mut attempted = 0usize;
+    let mut served = 0usize;
+    let mut failed = 0usize;
+    let mut last_error = String::new();
+    for photo in photos.iter().filter(|p| !is_warm_before(p)) {
+        if attempted >= cap || started.elapsed() > WARM_DEADLINE {
+            break;
+        }
+        attempted += 1;
+        match respond(&s, photo.business, photo.index).await {
+            Ok(_resp) => served += 1,
+            Err(e) => {
+                failed += 1;
+                last_error = format!("{}#{}: {e}", photo.business, photo.index);
+            }
+        }
+    }
+
+    let warm_after_set = photo_cache::warm_keys(&cfg).await;
+    let calls_after = photo_cache::stats(&cfg).await["google_calls"]
+        .as_u64()
+        .unwrap_or(0);
+    let calls = calls_after.saturating_sub(calls_before);
+    let warm_after = photos
+        .iter()
+        .filter(|p| warm_after_set.contains(&photo_cache::key_of(&p.name)))
+        .count();
+    let coverage_pct = if total == 0 {
+        100.0
+    } else {
+        (warm_after as f64 * 100.0 / total as f64 * 10.0).round() / 10.0
+    };
+    let calls_per_photo = if attempted == 0 {
+        0.0
+    } else {
+        (calls as f64 / attempted as f64 * 100.0).round() / 100.0
+    };
+
+    tracing::info!(
+        city = %city, total, warm_before, warm_after, attempted, served, failed, calls,
+        "photo cache warm-up run"
+    );
+
+    Ok(Json(json!({
+        "status": if warm_after == total { "city_warm" } else { "warmed" },
+        "city": city,
+        "photos_total": total,
+        "warm_before": warm_before,
+        "warm_after": warm_after,
+        "coverage_pct": coverage_pct,
+        "remaining": total - warm_after,
+        "attempted": attempted,
+        "served": served,
+        "failed": failed,
+        "google_calls": calls,
+        "calls_per_photo": calls_per_photo,
+        "cities": coverage(&warm_after_set),
+        "last_error": last_error,
+    })))
 }
 
 #[cfg(test)]
@@ -458,5 +795,78 @@ mod tests {
             Some("places/x/photos/y")
         );
         assert!(raw_at(&json!(["a"]), 3).is_none());
+    }
+
+    fn cand(label: &str, active: bool) -> KeyCandidate {
+        (
+            "google".to_string(),
+            format!("key-{label}"),
+            active,
+            label.to_string(),
+        )
+    }
+
+    #[test]
+    fn the_key_that_answered_is_tried_first() {
+        // The install's real shape: an ACTIVE key that refuses Places API (New) is listed first,
+        // and the key that actually answers is a later, inactive one.
+        let list = vec![
+            cand("active-but-refuses", true),
+            cand("superseded-but-answers", false),
+            cand("spare", true),
+        ];
+        let ordered = order_candidates(list.clone(), Some("superseded-but-answers"));
+        assert_eq!(ordered[0].3, "superseded-but-answers");
+        // Every candidate survives, in its original relative order after the promoted one.
+        assert_eq!(ordered.len(), list.len());
+        assert_eq!(ordered[1].3, "active-but-refuses");
+        assert_eq!(ordered[2].3, "spare");
+    }
+
+    #[test]
+    fn an_unknown_or_empty_memo_leaves_the_order_alone() {
+        let list = vec![cand("a", true), cand("b", true)];
+        assert_eq!(
+            order_candidates(list.clone(), Some("gone"))
+                .iter()
+                .map(|c| c.3.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert_eq!(
+            order_candidates(list.clone(), None)
+                .iter()
+                .map(|c| c.3.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert_eq!(
+            order_candidates(list, Some("   "))
+                .iter()
+                .map(|c| c.3.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+    }
+
+    #[test]
+    fn an_empty_label_is_never_remembered() {
+        // A label is the ONLY thing memoised; a blank one would let an arbitrary later key match.
+        // (Guarded in remember_answering_label; exercised here through the pure sorter.)
+        let list = vec![
+            ("google".to_string(), "k1".to_string(), true, String::new()),
+            cand("named", true),
+        ];
+        let ordered = order_candidates(list, Some(""));
+        assert!(ordered[0].3.is_empty());
+    }
+
+    #[test]
+    fn the_warm_cap_is_a_money_bound() {
+        // Both constants are money bounds, not pagination: a cold photo is 2–3 billed Google
+        // requests, so a run must stay small and the ceiling must stay reachable-but-low.
+        assert!(DEFAULT_WARM_PHOTOS >= 10 && DEFAULT_WARM_PHOTOS <= 60);
+        assert!(MAX_WARM_PHOTOS >= DEFAULT_WARM_PHOTOS);
+        assert!(MAX_WARM_PHOTOS <= 500);
     }
 }
