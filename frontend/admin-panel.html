@@ -12716,7 +12716,13 @@
         }
         load();
       }).catch(function (e) {
-        if (st) st.textContent = 'Failed: ' + e.message;
+        // A refusal has to survive the reload the operator is about to get: the status line is
+        // replaced by the table, so the reason (e.g. "this claim's email address cannot be used
+        // to sign in — nothing was changed") goes into the note card instead of vanishing.
+        if (st) st.textContent = 'Failed';
+        bzNote = { html: esc(action === 'approve' ? 'Could not approve: ' : 'Could not reject: ') +
+          esc(e.message || 'no reason given.') };
+        load();
       });
     }
 

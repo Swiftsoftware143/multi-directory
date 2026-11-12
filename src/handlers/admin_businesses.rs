@@ -284,11 +284,15 @@ pub async fn approve_claim(
     .map_err(|e| match e {
         // A claim whose stored address is not a usable login cannot be approved into an owner.
         // Say so (and say nothing changed) instead of letting the refusal surface as a bare 500
-        // after the listing had already been published and locked.
+        // after the listing had already been published and locked. The screen offers only
+        // Approve/Reject (there is no edit-the-claimant's-address control), so the instruction has
+        // to point at the action that exists — promising a correction an operator cannot make
+        // leaves them clicking Approve again.
         crate::handlers::visitors::ClaimGrantError::InvalidEmail(m) => {
             AppError::Validation(format!(
                 "This claim's email address cannot be used to sign in ({m}). Nothing was changed — \
-                 correct the claimant's address or reject the claim, then approve again."
+                 the listing is still free to claim. Reject this claim, then ask the claimant to \
+                 submit it again with an address they can receive mail at."
             ))
         }
         crate::handlers::visitors::ClaimGrantError::Internal(m) => AppError::Internal(m),
