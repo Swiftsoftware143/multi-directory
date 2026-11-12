@@ -366,6 +366,223 @@ pub async fn find_place_then_details(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Places API (New) fallback — a refused LEGACY key is not proof that no Google
+// key works (measured 2026-11-12)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The legacy endpoint answers `REQUEST_DENIED` / "The provided API key is invalid" for the key
+// this app prefers, and that refusal was read as "no working Google key exists" — three separate
+// items were parked on a key request to the owner because of it. The same install ALSO holds a key
+// whose only restriction is **Places API (New)**: it answers `places:searchNearby` (satellite
+// towns, proven on the running app) and `places:searchText`. So the lookup is retried on the new
+// endpoint and its answer is mapped back to the LEGACY field names every caller already reads,
+// which keeps every downstream parser and the enrichment screen unchanged.
+//
+// Nothing is deleted: the legacy call still runs first, byte-for-byte as before, and the new
+// endpoint is only asked after a refusal.
+
+/// Root of Places API (New).
+pub const PLACES_V1_BASE: &str = "https://places.googleapis.com/v1";
+
+/// Exactly the fields enrichment reads, in v1's names. v1 REJECTS the whole request when one name
+/// is unknown, so this list is the contract — never add a name without a live call.
+pub const V1_SEARCH_FIELDS: &str = "places.id,places.displayName,places.formattedAddress,\
+places.shortFormattedAddress,places.location,places.types,places.businessStatus,places.photos.name,\
+places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,\
+places.regularOpeningHours,places.addressComponents,places.googleMapsUri";
+
+/// Walk a JSON path (`&["location","latitude"]`), returning `None` at the first gap.
+fn dig<'a>(v: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut cur = v;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    Some(cur)
+}
+
+fn v1_text(v: &Value, path: &[&str]) -> Option<Value> {
+    dig(v, path)
+        .and_then(Value::as_str)
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| Value::String(s.to_string()))
+}
+
+/// One v1 place → the LEGACY JSON shape the rest of the app already parses.
+///
+/// Returned as the same `(candidate, details)` pair the legacy two-step call produces, for the
+/// same reason: the caller's `field_sources()` says which call supplied a value, and a v1 answer
+/// supplies both halves in one reply. Identity/location fields land in the candidate; the rich
+/// contact/hours/rating fields land in `details`.
+fn v1_place_split(place: &Value) -> (Value, Value) {
+    let mut cand = serde_json::Map::new();
+    let mut det = serde_json::Map::new();
+
+    if let Some(v) = v1_text(place, &["id"]) {
+        cand.insert("place_id".into(), v);
+    }
+    if let Some(v) = v1_text(place, &["displayName", "text"]) {
+        cand.insert("name".into(), v);
+    }
+    if let Some(v) = v1_text(place, &["formattedAddress"]) {
+        cand.insert("formatted_address".into(), v);
+    }
+    if let Some(v) = v1_text(place, &["shortFormattedAddress"]) {
+        det.insert("vicinity".into(), v);
+    }
+    let (lat, lng) = (
+        dig(place, &["location", "latitude"]).and_then(Value::as_f64),
+        dig(place, &["location", "longitude"]).and_then(Value::as_f64),
+    );
+    if let (Some(lat), Some(lng)) = (lat, lng) {
+        cand.insert(
+            "geometry".into(),
+            serde_json::json!({ "location": { "lat": lat, "lng": lng } }),
+        );
+    }
+    if let Some(types) = place.get("types").cloned() {
+        cand.insert("types".into(), types);
+    }
+    if let Some(v) = v1_text(place, &["businessStatus"]) {
+        cand.insert("business_status".into(), v);
+    }
+    if let Some(photos) = place.get("photos").and_then(Value::as_array) {
+        let refs: Vec<Value> = photos
+            .iter()
+            .filter_map(|p| p.get("name").and_then(Value::as_str))
+            .map(|n| serde_json::json!({ "photo_reference": n }))
+            .collect();
+        if !refs.is_empty() {
+            cand.insert("photos".into(), Value::Array(refs));
+        }
+    }
+
+    if let Some(v) = v1_text(place, &["nationalPhoneNumber"]) {
+        det.insert("formatted_phone_number".into(), v);
+    }
+    if let Some(v) = v1_text(place, &["websiteUri"]) {
+        det.insert("website".into(), v);
+    }
+    if let Some(v) = v1_text(place, &["googleMapsUri"]) {
+        det.insert("url".into(), v);
+    }
+    if let Some(r) = dig(place, &["rating"]).and_then(Value::as_f64) {
+        det.insert("rating".into(), serde_json::json!(r));
+    }
+    if let Some(n) = dig(place, &["userRatingCount"]).and_then(Value::as_i64) {
+        det.insert("user_ratings_total".into(), serde_json::json!(n));
+    }
+    if let Some(days) =
+        dig(place, &["regularOpeningHours", "weekdayDescriptions"]).and_then(Value::as_array)
+    {
+        det.insert(
+            "opening_hours".into(),
+            serde_json::json!({ "weekday_text": days }),
+        );
+    }
+    if let Some(comps) = place.get("addressComponents").and_then(Value::as_array) {
+        let mapped: Vec<Value> = comps
+            .iter()
+            .map(|c| {
+                serde_json::json!({
+                    "long_name": c.get("longText").and_then(Value::as_str).unwrap_or_default(),
+                    "short_name": c.get("shortText").and_then(Value::as_str).unwrap_or_default(),
+                    "types": c.get("types").cloned().unwrap_or(Value::Array(vec![])),
+                })
+            })
+            .collect();
+        if !mapped.is_empty() {
+            det.insert("address_components".into(), Value::Array(mapped));
+        }
+    }
+
+    (Value::Object(cand), Value::Object(det))
+}
+
+/// POST to Places API (New). Errors carry Google's own HTTP status, `error.status` and
+/// `error.message` — never the request URL, which holds the key.
+async fn v1_post(
+    path: &str,
+    key: &str,
+    field_mask: &str,
+    body: &Value,
+) -> Result<(u16, Value), PlacesError> {
+    const CALL: &str = "places/v1:searchText";
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| transport_error(PlacesCall::FindPlace, 0, &format!("http client: {e}")))?;
+    let resp = client
+        .post(format!("{PLACES_V1_BASE}/{path}"))
+        .header("X-Goog-Api-Key", key)
+        .header("X-Goog-FieldMask", field_mask)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| transport_error(PlacesCall::FindPlace, 0, &format!("request failed: {e}")))?;
+    let http_status = resp.status().as_u16();
+    let text = resp.text().await.map_err(|e| {
+        transport_error(
+            PlacesCall::FindPlace,
+            http_status,
+            &format!("body read failed: {e}"),
+        )
+    })?;
+    let parsed: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    if !(200..300).contains(&http_status) {
+        let message = dig(&parsed, &["error", "message"])
+            .and_then(Value::as_str)
+            .unwrap_or("Google refused the request")
+            .to_string();
+        let pstatus = dig(&parsed, &["error", "status"])
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("UNKNOWN")
+            .to_ascii_uppercase();
+        let e = PlacesError {
+            call: CALL.to_string(),
+            http_status,
+            provider_status: pstatus,
+            provider_error: Some(message),
+        };
+        tracing::warn!("[places] {e}");
+        return Err(e);
+    }
+    Ok((http_status, parsed))
+}
+
+/// The SAME two-step lookup, asked of Places API (New): one `searchText` call, mapped back to the
+/// legacy field names. `Ok(NoMatch)` is still an honest "Google answered, no such listing".
+pub async fn find_place_then_details_v1(
+    api_key: &str,
+    input: &str,
+) -> Result<PlacesOutcome, PlacesError> {
+    let body = serde_json::json!({
+        "textQuery": input.trim(),
+        "maxResultCount": 1,
+    });
+    let (status, parsed) = v1_post("places:searchText", api_key, V1_SEARCH_FIELDS, &body).await?;
+    let place = parsed
+        .get("places")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .cloned();
+    let Some(place) = place else {
+        return Ok(PlacesOutcome::NoMatch {
+            provider_status: "ZERO_RESULTS".to_string(),
+        });
+    };
+    let (candidate, details) = v1_place_split(&place);
+    Ok(PlacesOutcome::Found(Box::new(PlacesLookup {
+        candidate,
+        details,
+        find_http_status: status,
+        details_http_status: status,
+        provider_status: "OK".to_string(),
+    })))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Defensible matching — a wrong phone number on a listing is worse than an empty one (B80)
 // ─────────────────────────────────────────────────────────────────────────────
 

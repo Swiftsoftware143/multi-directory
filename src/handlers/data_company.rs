@@ -909,6 +909,15 @@ pub async fn enrich_business(
     // website, so the resolved `place_id` is used for a second call instead.
     let search_query = build_places_query(&business);
 
+    // THREE-STEP lookup. The legacy two-step call is unchanged and still runs first. If it is
+    // REFUSED, the same query is retried on Places API (New), because a legacy refusal is not
+    // proof that no key works: measured 2026-11-12, the key this app prefers is refused
+    // (REQUEST_DENIED "The provided API key is invalid") while another key on file — restricted
+    // to Places API (New) — answers searchText, and satellite detection had been working on it
+    // all along. Reading that refusal as "no Google key exists" parked three items on a key
+    // request to the owner.
+    let mut answered_call = PlacesCall::FindPlace.as_str();
+    let mut answered_key = String::new();
     let outcome = match crate::handlers::places_client::find_place_then_details(
         crate::handlers::places_client::LEGACY_PLACES_BASE,
         &api_key,
@@ -917,7 +926,47 @@ pub async fn enrich_business(
     .await
     {
         Ok(v) => v,
-        Err(e) => return Ok(refused_enrichment(&state, req, &source, &data_before, e).await),
+        Err(legacy_err) => {
+            let mut last_err = legacy_err;
+            let mut answer = None;
+            for (provider, key, _active, label) in
+                crate::handlers::satellite::google_key_candidates(&state.db).await
+            {
+                // Only a Google Places-capable row can answer a Places lookup; a browser Maps
+                // key would just be another refusal.
+                if !provider.starts_with("google") {
+                    continue;
+                }
+                match crate::handlers::places_client::find_place_then_details_v1(
+                    &key,
+                    &search_query,
+                )
+                .await
+                {
+                    Ok(v) => {
+                        answer = Some(v);
+                        answered_call = "places/v1:searchText";
+                        answered_key = label;
+                        break;
+                    }
+                    Err(e) => last_err = e,
+                }
+            }
+            match answer {
+                Some(v) => {
+                    tracing::info!(
+                        key = %answered_key,
+                        "places enrichment: the legacy endpoint refused, Places API (New) answered"
+                    );
+                    v
+                }
+                None => {
+                    return Ok(
+                        refused_enrichment(&state, req, &source, &data_before, last_err).await,
+                    )
+                }
+            }
+        }
     };
 
     let found = match outcome {
@@ -927,9 +976,9 @@ pub async fn enrich_business(
         } => {
             // An honest, distinguishable "no such listing" — Google answered, found nothing.
             let msg = format!(
-                "google_places place/findplacefromtext answered provider_status={} for query \
+                "google_places {} answered provider_status={} for query \
                  \"{}\" — no listing matched. This is a real no-result, not a provider error.",
-                ps, search_query
+                answered_call, ps, search_query
             );
             write_enrich_log(
                 &state.db,
@@ -955,8 +1004,8 @@ pub async fn enrich_business(
                     "provider_error": serde_json::Value::Null,
                     "http_status": serde_json::Value::Null,
                     "query": search_query,
-                    "places_call": PlacesCall::FindPlace.as_str(),
-                    "places_calls": [PlacesCall::FindPlace.as_str(), PlacesCall::Details.as_str()],
+                    "places_call": answered_call,
+                    "places_calls": [answered_call, PlacesCall::Details.as_str()],
                 }
             })));
         }
@@ -1015,8 +1064,8 @@ pub async fn enrich_business(
                 "matched_name": cand_name,
                 "matched_address": cand_address,
                 "query": search_query,
-                "places_call": PlacesCall::FindPlace.as_str(),
-                "places_calls": [PlacesCall::FindPlace.as_str(), PlacesCall::Details.as_str()],
+                "places_call": answered_call,
+                "places_calls": [answered_call, PlacesCall::Details.as_str()],
             }
         })));
     }
@@ -1094,6 +1143,57 @@ pub async fn enrich_business(
                 .await?;
         }
 
+        // IDENTITY (W29): the matched place id is what makes one business ONE record — import, the
+        // discovery publish and the claim approval all key on it, but ENRICHMENT never wrote it, so
+        // every enriched listing stayed identity-less (measured 2026-11-12: 0 of 3,988 rows had
+        // one) and two listings of the same shop could never be recognised as the same place.
+        // Stamp it only when the row has none, never overwrite a different one, and never fight the
+        // unique (directory_id, place_id) index: a place id another listing in this directory
+        // already holds is a DUPLICATE for the owner to merge, not something an enrichment steals.
+        let enriched_pid = p
+            .get("place_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let mut place_id_stored = false;
+        if let Some(gpid) = enriched_pid {
+            // Read the CURRENT value from the row: the `Business` model predates the column.
+            let current_pid: Option<String> =
+                sqlx::query_scalar("SELECT place_id FROM businesses WHERE id = $1")
+                    .bind(req.business_id)
+                    .fetch_optional(&state.db)
+                    .await?
+                    .flatten();
+            if current_pid.as_deref().unwrap_or("").is_empty() {
+                let taken: Option<(uuid::Uuid,)> = sqlx::query_as(
+                    "SELECT id FROM businesses WHERE directory_id = $1 AND place_id = $2 \
+                     AND id <> $3",
+                )
+                .bind(business.directory_id)
+                .bind(gpid)
+                .bind(req.business_id)
+                .fetch_optional(&state.db)
+                .await?;
+                if let Some((other,)) = taken {
+                    tracing::warn!(
+                        business = %req.business_id,
+                        other = %other,
+                        "enrichment matched a place id another listing in this directory already \
+                         holds — not overwritten (a duplicate to merge, not to steal)"
+                    );
+                } else {
+                    let updated = sqlx::query(
+                        "UPDATE businesses SET place_id = $1 WHERE id = $2 \
+                         AND COALESCE(place_id, '') = ''",
+                    )
+                    .bind(gpid)
+                    .bind(req.business_id)
+                    .execute(&state.db)
+                    .await?;
+                    place_id_stored = updated.rows_affected() > 0;
+                }
+            }
+        }
+
         serde_json::json!({
             "source": "google_places",
             "matched": true,
@@ -1104,8 +1204,9 @@ pub async fn enrich_business(
             "http_status": found.details_http_status,
             "find_http_status": found.find_http_status,
             "place_id": p.get("place_id"),
-            "places_call": PlacesCall::Details.as_str(),
-            "places_calls": [PlacesCall::FindPlace.as_str(), PlacesCall::Details.as_str()],
+            "place_id_stored": place_id_stored,
+            "places_call": answered_call,
+            "places_calls": [answered_call, PlacesCall::Details.as_str()],
             "field_sources": found.field_sources(),
             "data_after": data_after,
         })

@@ -313,7 +313,7 @@ async fn places_v1_post(
 /// Places key that only speaks the legacy API, so the only honest way to know which key can
 /// answer is to try it. A row that cannot be decrypted is skipped (log + skip, never hand
 /// ciphertext to Google).
-async fn google_key_candidates(db: &PgPool) -> Vec<(String, String, bool, String)> {
+pub(crate) async fn google_key_candidates(db: &PgPool) -> Vec<(String, String, bool, String)> {
     let rows: Result<Vec<(String, String, bool, String)>, sqlx::Error> = sqlx::query_as(
         "SELECT provider, api_key, is_active, COALESCE(label, provider) FROM provider_keys \
          WHERE provider LIKE 'google%' \
