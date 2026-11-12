@@ -658,6 +658,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 </div>
 
 <div id="app"></div>
+<!-- No JavaScript: the splash overlay never gets removed (the SPA removes it), and it covers
+     the whole viewport — so a no-JS visitor (and any text-only renderer) would see a permanent
+     loading screen instead of the server-rendered homepage hub below. Hide it in that case. -->
+<noscript><style>#splash-load{display:none!important}</style></noscript>
 
 <nav id="mobile-nav" class="zh-nav-links" style="display:none"></nav>
 
