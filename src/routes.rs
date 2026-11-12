@@ -9,7 +9,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{debug, warn};
 
 pub fn create_router(s: AppState) -> Router {
     // ??? Public API routes (no auth needed)
@@ -3630,23 +3630,6 @@ async fn auth_guard(
 ) -> Result<Response, AppError> {
     let path = req.uri().path().to_string();
     let has_auth = req.headers().get("Authorization").is_some();
-    // A JWT is short-lived and safe to preview in a log line; a raw API key is a long-lived
-    // credential and must never be written anywhere, not even its opening characters.
-    let auth_preview = match req
-        .headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-    {
-        Some(v) if v.starts_with("Bearer md_") || v.starts_with("md_") => {
-            "redacted-api-key".to_string()
-        }
-        Some(v) => v.chars().take(40).collect::<String>(),
-        None => "none".to_string(),
-    };
-    warn!(
-        "AUTH_GUARD: path={}, has_auth={}, auth_preview={}",
-        path, has_auth, auth_preview
-    );
 
     // Public paths that don't need authentication
     // The allowlist lives in `security::route_policy` (kanban t_8bfbbf7f): a mounted route is
@@ -3658,6 +3641,12 @@ async fn auth_guard(
     if is_public {
         return Ok(next.run(req).await);
     }
+
+    // Every request used to write one WARN line here (three per request, because the nested
+    // routers each run this layer) carrying the first 40 characters of the Authorization
+    // header: 61,782 of the 68,682 log lines in a day were this line, and it put a JWT prefix
+    // in the log. Refusals below still warn; the ordinary "we got here" trace is debug-only.
+    debug!("AUTH_GUARD: private path={}, has_auth={}", path, has_auth);
 
     // For all other routes, require valid JWT
     use crate::auth::middleware::{create_token, verify_token};
