@@ -336,41 +336,55 @@ pub async fn b2b_register(
         .await
         .map_err(|e| AppError::Internal(format!("Could not complete registration: {}", e)))?;
 
+    // One predicate decides whether this signup may fan out at all (t_f57a3ef3) — the same
+    // `probe_harness::classify_claim` the claim path uses, never a second list. A reserved
+    // fixture domain (or a harness marker) is fleet machinery, not a customer.
+    let signup_origin = crate::probe_harness::classify_claim(
+        crate::probe_harness::from_headers(&headers).as_deref(),
+        &visitor.email,
+    );
     // Fire tag sync in background
-    let ts_db = s.db.clone();
-    let ts_email = visitor.email.clone();
-    let ts_name = visitor.name.clone();
-    let ts_phone = visitor.phone.clone();
-    let ts_business_type = bt_lower.clone();
-    tokio::spawn(async move {
-        let cap = format!(
-            "{}{}",
-            ts_business_type
-                .chars()
-                .next()
-                .unwrap_or('S')
-                .to_uppercase(),
-            &ts_business_type[1..]
+    if signup_origin.is_customer() {
+        let ts_db = s.db.clone();
+        let ts_email = visitor.email.clone();
+        let ts_name = visitor.name.clone();
+        let ts_phone = visitor.phone.clone();
+        let ts_business_type = bt_lower.clone();
+        tokio::spawn(async move {
+            let cap = format!(
+                "{}{}",
+                ts_business_type
+                    .chars()
+                    .next()
+                    .unwrap_or('S')
+                    .to_uppercase(),
+                &ts_business_type[1..]
+            );
+            crate::handlers::tag_sync::fire_tag_sync(
+                &ts_db,
+                ts_email,
+                ts_name,
+                None,
+                ts_phone,
+                vec!["Supplier".to_string(), cap],
+                None,
+                Some("suppliers".to_string()),
+                None,
+                Some("b2b_register".to_string()),
+                // Tenant and list come from the CoreSwift LINK in the database (this account's
+                // network, or the directory that owns the capture). They were hardcoded here —
+                // one specific tenant + list id — which broke David's "nothing hardwired" rule
+                // and silently mis-targeted any other account.
+                None,
+                None,
+            );
+        });
+    } else {
+        tracing::info!(
+            "[signup] CoreSwift tag-sync suppressed for supplier register: origin={}",
+            signup_origin.log_class()
         );
-        crate::handlers::tag_sync::fire_tag_sync(
-            &ts_db,
-            ts_email,
-            ts_name,
-            None,
-            ts_phone,
-            vec!["Supplier".to_string(), cap],
-            None,
-            Some("suppliers".to_string()),
-            None,
-            Some("b2b_register".to_string()),
-            // Tenant and list come from the CoreSwift LINK in the database (this account's
-            // network, or the directory that owns the capture). They were hardcoded here —
-            // one specific tenant + list id — which broke David's "nothing hardwired" rule
-            // and silently mis-targeted any other account.
-            None,
-            None,
-        );
-    });
+    }
 
     // Card B49 — award the directory's SUPPLIER signup reward (once, only if switched on).
     // A supplier registers network-wide (no city), so the award resolves the active network

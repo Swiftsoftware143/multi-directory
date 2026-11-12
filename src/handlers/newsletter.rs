@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json},
     Json as JsonBody,
 };
@@ -714,6 +714,7 @@ pub async fn list_subscribers(
 pub async fn add_subscriber(
     State(s): State<AppState>,
     Path(slug): Path<String>,
+    headers: HeaderMap,
     JsonBody(req): JsonBody<AddSubscriberRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let dir = sqlx::query_as::<_, (Uuid,)>("SELECT id FROM directories WHERE slug = $1")
@@ -735,66 +736,85 @@ pub async fn add_subscriber(
     .fetch_one(&s.db)
     .await?;
 
+    // One predicate decides whether this signup may fan out at all (t_f57a3ef3) — the same
+    // `probe_harness::classify_claim` the claim path uses, never a second list. A reserved
+    // fixture domain (or a harness marker) is fleet machinery, not a customer: neither the
+    // CoreSwift contact nor the tag-sync list add may run.
+    let signup_origin = crate::probe_harness::classify_claim(
+        crate::probe_harness::from_headers(&headers).as_deref(),
+        &req.email,
+    );
     // Push to CoreSwift CRM with city tag (fire-and-forget, log on failure)
-    let db = s.db.clone();
-    let dir_id = dir.0;
-    let email = req.email.clone();
-    let name = req.name.clone();
-    tokio::spawn(async move {
-        match crate::coreswift::push_newsletter_signup(&db, dir_id, &email, name.as_deref()).await {
-            Ok(contact_id) => {
-                tracing::info!("[newsletter] CoreSwift push OK for {email}, contact={contact_id}")
+    if signup_origin.is_customer() {
+        let db = s.db.clone();
+        let dir_id = dir.0;
+        let email = req.email.clone();
+        let name = req.name.clone();
+        tokio::spawn(async move {
+            match crate::coreswift::push_newsletter_signup(&db, dir_id, &email, name.as_deref())
+                .await
+            {
+                Ok(contact_id) => {
+                    tracing::info!(
+                        "[newsletter] CoreSwift push OK for {email}, contact={contact_id}"
+                    )
+                }
+                Err(e) => tracing::warn!("[newsletter] CoreSwift push failed for {email}: {e}"),
             }
-            Err(e) => tracing::warn!("[newsletter] CoreSwift push failed for {email}: {e}"),
-        }
-    });
+        });
 
-    // Fire cross-platform tag sync (fire-and-forget) — Subscriber tag for IncentiveSwift
-    let ts_db = s.db.clone();
-    let ts_email = sub.email.clone();
-    let ts_name = sub.name.clone();
-    let ts_dir_id = dir.0;
-    let ts_dir_slug = slug.clone();
-    tokio::spawn(async move {
-        // Map directory slug to ZaarHub newsletter tag (e.g., palm-coast → pc-zh-newsletter)
-        let newsletter_tag = match ts_dir_slug.as_str() {
-            "apopka" => "ap-zh-newsletter",
-            "boca-raton" => "br-zh-newsletter",
-            "hollywood" => "hw-zh-newsletter",
-            "lake-nona" => "ln-zh-newsletter",
-            "palm-bay" => "pb-zh-newsletter",
-            "palm-coast" => "pc-zh-newsletter",
-            "pompano-beach" => "pp-zh-newsletter",
-            "st-cloud" => "sc-zh-newsletter",
-            "st-petersburg" => "sp-zh-newsletter",
-            "winter-garden" => "wg-zh-newsletter",
-            _ => &ts_dir_slug,
-        }
-        .to_string();
+        // Fire cross-platform tag sync (fire-and-forget) — Subscriber tag for IncentiveSwift
+        let ts_db = s.db.clone();
+        let ts_email = sub.email.clone();
+        let ts_name = sub.name.clone();
+        let ts_dir_id = dir.0;
+        let ts_dir_slug = slug.clone();
+        tokio::spawn(async move {
+            // Map directory slug to ZaarHub newsletter tag (e.g., palm-coast → pc-zh-newsletter)
+            let newsletter_tag = match ts_dir_slug.as_str() {
+                "apopka" => "ap-zh-newsletter",
+                "boca-raton" => "br-zh-newsletter",
+                "hollywood" => "hw-zh-newsletter",
+                "lake-nona" => "ln-zh-newsletter",
+                "palm-bay" => "pb-zh-newsletter",
+                "palm-coast" => "pc-zh-newsletter",
+                "pompano-beach" => "pp-zh-newsletter",
+                "st-cloud" => "sc-zh-newsletter",
+                "st-petersburg" => "sp-zh-newsletter",
+                "winter-garden" => "wg-zh-newsletter",
+                _ => &ts_dir_slug,
+            }
+            .to_string();
 
-        let tags = vec!["Subscriber".to_string(), newsletter_tag];
+            let tags = vec!["Subscriber".to_string(), newsletter_tag];
 
-        // Resolve tenant_id from directory so CoreSwift tag-sync doesn't 422
-        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id)
-            .await
-            .ok()
-            .map(|(tid, _, _, _)| tid.to_string());
+            // Resolve tenant_id from directory so CoreSwift tag-sync doesn't 422
+            let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id)
+                .await
+                .ok()
+                .map(|(tid, _, _, _)| tid.to_string());
 
-        crate::handlers::tag_sync::fire_tag_sync(
-            &ts_db,
-            ts_email,
-            ts_name,
-            None,
-            None, // phone
-            tags,
-            None, // city_list
-            Some("subscribers".to_string()),
-            Some(ts_dir_slug),
-            Some("newsletter_signup".to_string()),
-            resolved_tenant, // tenant_id (resolved)
-            None,            // coreswift_list_id
+            crate::handlers::tag_sync::fire_tag_sync(
+                &ts_db,
+                ts_email,
+                ts_name,
+                None,
+                None, // phone
+                tags,
+                None, // city_list
+                Some("subscribers".to_string()),
+                Some(ts_dir_slug),
+                Some("newsletter_signup".to_string()),
+                resolved_tenant, // tenant_id (resolved)
+                None,            // coreswift_list_id
+            );
+        });
+    } else {
+        tracing::info!(
+            "[signup] CoreSwift tag-sync suppressed for newsletter subscribe (contact mirror too): origin={}",
+            signup_origin.log_class()
         );
-    });
+    }
 
     Ok((StatusCode::CREATED, Json(sub)))
 }
@@ -804,6 +824,7 @@ pub async fn add_subscriber(
 /// Uses the "global" directory as target and pushes to CoreSwift with a "Global" tag.
 pub async fn add_global_subscriber(
     State(s): State<AppState>,
+    headers: HeaderMap,
     JsonBody(req): JsonBody<AddSubscriberRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Resolve the "global" directory, or fall back to the first directory
@@ -838,60 +859,74 @@ pub async fn add_global_subscriber(
     .fetch_one(&s.db)
     .await?;
 
+    // One predicate decides whether this signup may fan out at all (t_f57a3ef3) — the same
+    // `probe_harness::classify_claim` the claim path uses. Reserved fixture domain or harness
+    // marker => fleet machinery: neither the CoreSwift contact nor the tag-sync list add runs.
+    let signup_origin = crate::probe_harness::classify_claim(
+        crate::probe_harness::from_headers(&headers).as_deref(),
+        &req.email,
+    );
     // Push to CoreSwift CRM with "Global" tag (fire-and-forget, log on failure)
-    let db = s.db.clone();
-    let dir_id_clone = dir_id;
-    let email = req.email.clone();
-    let name = req.name.clone();
-    tokio::spawn(async move {
-        // Try the standard directory-based push first (it'll use whatever list is configured)
-        if dir_id_clone != Uuid::nil() {
-            match crate::coreswift::push_newsletter_signup(
-                &db,
-                dir_id_clone,
-                &email,
-                name.as_deref(),
-            )
-            .await
-            {
-                Ok(contact_id) => tracing::info!(
-                    "[global-newsletter] CoreSwift push OK for {email}, contact={contact_id}"
-                ),
-                Err(e) => {
-                    tracing::warn!("[global-newsletter] CoreSwift push failed for {email}: {e}")
+    if signup_origin.is_customer() {
+        let db = s.db.clone();
+        let dir_id_clone = dir_id;
+        let email = req.email.clone();
+        let name = req.name.clone();
+        tokio::spawn(async move {
+            // Try the standard directory-based push first (it'll use whatever list is configured)
+            if dir_id_clone != Uuid::nil() {
+                match crate::coreswift::push_newsletter_signup(
+                    &db,
+                    dir_id_clone,
+                    &email,
+                    name.as_deref(),
+                )
+                .await
+                {
+                    Ok(contact_id) => tracing::info!(
+                        "[global-newsletter] CoreSwift push OK for {email}, contact={contact_id}"
+                    ),
+                    Err(e) => {
+                        tracing::warn!("[global-newsletter] CoreSwift push failed for {email}: {e}")
+                    }
                 }
             }
-        }
-    });
+        });
 
-    // Fire cross-platform tag sync (fire-and-forget) — Global Subscriber tag
-    let ts_db = s.db.clone();
-    let ts_email = sub.email.clone();
-    let ts_name = sub.name.clone();
-    let ts_dir_id = dir_id;
-    tokio::spawn(async move {
-        let tags = vec!["Subscriber".to_string(), "Global-Newsletter".to_string()];
+        // Fire cross-platform tag sync (fire-and-forget) — Global Subscriber tag
+        let ts_db = s.db.clone();
+        let ts_email = sub.email.clone();
+        let ts_name = sub.name.clone();
+        let ts_dir_id = dir_id;
+        tokio::spawn(async move {
+            let tags = vec!["Subscriber".to_string(), "Global-Newsletter".to_string()];
 
-        let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id)
-            .await
-            .ok()
-            .map(|(tid, _, _, _)| tid.to_string());
+            let resolved_tenant = crate::coreswift::resolve_config(&ts_db, ts_dir_id)
+                .await
+                .ok()
+                .map(|(tid, _, _, _)| tid.to_string());
 
-        crate::handlers::tag_sync::fire_tag_sync(
-            &ts_db,
-            ts_email,
-            ts_name,
-            None,
-            None, // phone
-            tags,
-            None, // city_list
-            Some("subscribers".to_string()),
-            None, // dir_slug
-            Some("global_newsletter_signup".to_string()),
-            resolved_tenant,
-            None, // coreswift_list_id
+            crate::handlers::tag_sync::fire_tag_sync(
+                &ts_db,
+                ts_email,
+                ts_name,
+                None,
+                None, // phone
+                tags,
+                None, // city_list
+                Some("subscribers".to_string()),
+                None, // dir_slug
+                Some("global_newsletter_signup".to_string()),
+                resolved_tenant,
+                None, // coreswift_list_id
+            );
+        });
+    } else {
+        tracing::info!(
+            "[signup] CoreSwift tag-sync suppressed for global newsletter subscribe (contact mirror too): origin={}",
+            signup_origin.log_class()
         );
-    });
+    }
 
     Ok((StatusCode::CREATED, Json(sub)))
 }

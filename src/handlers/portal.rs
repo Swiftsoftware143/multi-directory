@@ -492,8 +492,15 @@ pub async fn visitor_register(
         }
     }
 
+    // One predicate decides whether this signup may fan out at all (t_f57a3ef3) — the same
+    // `probe_harness::classify_claim` the claim path uses, never a second list. A reserved
+    // fixture domain (or a harness marker) is fleet machinery, not a customer.
+    let signup_origin = crate::probe_harness::classify_claim(
+        crate::probe_harness::from_headers(&headers).as_deref(),
+        &visitor.email,
+    );
     // Fire cross-platform tag sync for visitor signup (fire-and-forget)
-    {
+    if signup_origin.is_customer() {
         let ts_db = s.db.clone();
         let ts_email = visitor.email.clone();
         let ts_name = visitor.name.clone();
@@ -537,6 +544,11 @@ pub async fn visitor_register(
                 None,
             );
         });
+    } else {
+        tracing::info!(
+            "[signup] CoreSwift tag-sync suppressed for visitor register: origin={}",
+            signup_origin.log_class()
+        );
     }
 
     // Enrol the new shopper in the network-wide loyalty programme — native Multi-Directory code.
