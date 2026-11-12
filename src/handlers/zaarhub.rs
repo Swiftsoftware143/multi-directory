@@ -1007,6 +1007,17 @@ pub async fn get_city_page(
             .then(a.name.cmp(&b.name))
     });
 
+    // The town the page opens on must be the NAME the listings actually carry. For a
+    // neighbourhood directory that is its postal city ("Lake Nona" opens on "Orlando"; 383 of its
+    // listings are addressed Orlando and none is addressed Lake Nona). Handing the SPA the
+    // directory's display name instead made its town filter select a town no listing has, so the
+    // page counted 383 businesses and rendered zero cards.
+    let home_town: Option<String> = local_towns
+        .iter()
+        .find(|t| t.is_home)
+        .map(|t| t.name.clone())
+        .or(home_town);
+
     // Bound to every listing/count query below so the whole page agrees on ONE defined area.
     // `None` (a directory with no city set, or no town rows) keeps the old show-everything path.
     let town_filter: Option<Vec<String>> = if local_towns.is_empty() {
