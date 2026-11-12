@@ -39,7 +39,8 @@ def fetch(path):
 s = open(SRC).read()
 block = s.split("const BUSINESS_CHILDREN")[1].split("\n];")[0]
 pairs = re.findall(r'\(\s*"([^"]+)",\s*(?:child_q!\(\s*)?"([a-z0-9_]+)"\s*,\s*"([a-z0-9_]+)"', block)
-print(f"declared related sections: {len(pairs)}")
+concat_labels = re.findall(r'"([a-z0-9_.]+)"\s*,\s*concat!\(', block)
+print(f"declared related sections: {len(pairs)} (+{len(concat_labels)} concat)")
 
 st, hdr, body = fetch(f"/api/v1/export/entity/business/{BIZ}?format=json")
 chk(st == 200, "JSON download answers 200", str(st))
@@ -48,8 +49,8 @@ chk("attachment" in hdr.get("content-disposition", ""), "JSON is sent as a downl
 d = json.loads(body)
 chk(d.get("entity", {}).get("id") == BIZ, "the record itself is in the download",
     str(d.get("entity", {}).get("name")))
-chk(len(d.get("sections", [])) == len(pairs) + 1, "every declared section is present",
-    f"{len(d.get('sections', []))} of {len(pairs) + 1}")
+chk(len(d.get("sections", [])) == len(pairs) + len(concat_labels) + 1, "every declared section is present",
+    f"{len(d.get('sections', []))} of {len(pairs) + len(concat_labels) + 1}")
 
 mismatch = missing = 0
 for label, table, fk in pairs:
