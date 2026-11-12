@@ -179,8 +179,15 @@ def main():
     check("at least one target answered OK", len(oks) >= 1,
           "targets=" + ",".join(str(r.get("target")) for r in (run.get("results") or [])))
     idx = next((r for r in (run.get("results") or []) if r.get("target") == "IndexNow"), {})
-    check("only the NEW url went on the wire (not the whole sitemap again)",
-          1 <= int(idx.get("urls_submitted") or 0) <= 5, f"urls={idx.get('urls_submitted')}")
+    # The fix remembers submitted urls and sends only the delta. The sitemap is NOT static —
+    # live imports add new listings every day (e.g. 125 on the run date), so the honest check is
+    # "a delta went out, not the whole sitemap again", i.e. strictly fewer urls than the sitemap
+    # holds — never a hard `<= 5` that a busy import day trips. (The probe url itself being
+    # remembered is asserted at the end, after the run.)
+    total_locs = sm.count("<loc>")
+    submitted = int(idx.get("urls_submitted") or 0)
+    check("a DELTA went on the wire, not the whole sitemap again",
+          1 <= submitted < total_locs, f"urls={submitted} of sitemap={total_locs}")
     check("IndexNow accepted the submission",
           idx.get("ok") is True and 200 <= int(idx.get("status_code") or 0) < 300,
           f"code={idx.get('status_code')}")
