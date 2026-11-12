@@ -492,7 +492,20 @@ fn strip_first_between(s: &str, open: &str, close: &str) -> String {
 /// server-rendered. The SPA replaces `#app` on boot, so a visitor with JavaScript
 /// sees exactly the app they saw before and nobody ever sees the list twice; a
 /// crawler, a social scraper or a visitor without JavaScript gets the real listings.
-fn city_hub_html(dir: &DirectoryRec, site: &str, total: i64, top: &[BizCard]) -> String {
+/// The city hub's server-rendered body (card W36 + CITY-HUB-TEXT).
+///
+/// `intro` is the city's own written introduction (`city_pages.intro_copy`, migration 188),
+/// printed paragraph by paragraph under the heading. It is the reason a root city page now
+/// carries real prose instead of a count sentence plus a grid of names: measured 2026-11-12 the
+/// served HTML held 1,842 characters of visible text, far below what a page needs to rank for a
+/// commercial local query or to be useful to somebody who landed on it from a search result.
+fn city_hub_html(
+    dir: &DirectoryRec,
+    site: &str,
+    total: i64,
+    top: &[BizCard],
+    intro: Option<&str>,
+) -> String {
     let place = if dir.state.trim().is_empty() {
         h(&dir.city)
     } else {
@@ -526,6 +539,18 @@ fn city_hub_html(dir: &DirectoryRec, site: &str, total: i64, top: &[BizCard]) ->
         lede
     ));
 
+    // The city's own introduction — hand-written per city (migration 188), a blank line
+    // separating paragraphs. It is deliberately NOT derived from `description`: that column is
+    // the 158-character meta description and stays exactly as it was (requirement 5).
+    if let Some(intro) = intro.map(str::trim).filter(|i| !i.is_empty()) {
+        for para in intro.split("\n\n").map(str::trim).filter(|p| !p.is_empty()) {
+            out.push_str(&format!(
+                "<p style=\"font-size:.95rem;color:#334155;margin:0 0 14px;max-width:70ch\">{}</p>",
+                h(para)
+            ));
+        }
+    }
+
     if !top.is_empty() {
         out.push_str(&format!(
             "<h2 style=\"font-size:1.15rem;font-weight:700;color:#0f172a;margin:0 0 10px\">Top-rated businesses in {}</h2>",
@@ -551,14 +576,29 @@ fn city_hub_html(dir: &DirectoryRec, site: &str, total: i64, top: &[BizCard]) ->
             if let Some(a) = b.address.as_deref().filter(|a| !a.trim().is_empty()) {
                 meta.push(h(a));
             }
+            // Short description (requirement 2: name, category, short description, link).
+            // Clipped so a business that pasted its whole history cannot blow the grid apart.
+            let desc = b
+                .description
+                .as_deref()
+                .map(|d| clip(&strip_tags(d), 170))
+                .filter(|d| !d.trim().is_empty())
+                .map(|d| {
+                    format!(
+                        "<p style=\"margin:6px 0 0;font-size:.84rem;color:#475569;line-height:1.45\">{}</p>",
+                        h(d.trim())
+                    )
+                })
+                .unwrap_or_default();
             out.push_str(&format!(
                 "<article style=\"background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px\">\
                  <h3 style=\"margin:0 0 4px;font-size:1rem;font-weight:700;line-height:1.3\">\
                  <a href=\"{url}\" style=\"color:#116dc0;text-decoration:none\">{name}</a></h3>\
-                 <div style=\"font-size:.82rem;color:#64748b;line-height:1.5\">{meta}</div></article>",
+                 <div style=\"font-size:.82rem;color:#64748b;line-height:1.5\">{meta}</div>{desc}</article>",
                 url = url,
                 name = h(&b.name),
-                meta = meta.join(" · ")
+                meta = meta.join(" · "),
+                desc = desc
             ));
         }
         out.push_str("</div>");
@@ -903,6 +943,11 @@ struct BizCard {
     rating: f64,
     review_count: i32,
     address: Option<String>,
+    /// The business's own short description. Optional everywhere: a business that never filled
+    /// it in still gets a card. The city hub prints it (card CITY-HUB-TEXT, 2026-11-12) because
+    /// a grid of names and star counts is thin content for a crawler and little help to a
+    /// visitor deciding whom to call.
+    description: Option<String>,
 }
 
 async fn list_businesses(
@@ -974,6 +1019,7 @@ async fn list_businesses(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
+            description: r.try_get("description").unwrap_or(None),
         });
     }
     out
@@ -1762,6 +1808,7 @@ async fn list_town_businesses(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
+            description: r.try_get("description").unwrap_or(None),
         });
     }
     out
@@ -1966,7 +2013,7 @@ pub async fn directory_home(
 
     // City-page SEO row (the platform's existing city meta) is the derived default.
     let city_row = sqlx::query(
-        "SELECT meta_title, meta_description, hero_image_url FROM city_pages \
+        "SELECT meta_title, meta_description, hero_image_url, intro_copy FROM city_pages \
          WHERE city_slug = $1 AND is_active = true LIMIT 1",
     )
     .bind(&dir.slug)
@@ -1975,15 +2022,16 @@ pub async fn directory_home(
     .ok()
     .flatten();
 
-    let (city_title, city_desc, hero) = match city_row {
+    let (city_title, city_desc, hero, city_intro) = match city_row {
         Some(r) => (
             r.try_get::<Option<String>, _>("meta_title").unwrap_or(None),
             r.try_get::<Option<String>, _>("meta_description")
                 .unwrap_or(None),
             r.try_get::<Option<String>, _>("hero_image_url")
                 .unwrap_or(None),
+            r.try_get::<Option<String>, _>("intro_copy").unwrap_or(None),
         ),
-        None => (None, None, None),
+        None => (None, None, None, None),
     };
 
     let ov = seo_override(pool, "city", dir.id).await;
@@ -2035,8 +2083,10 @@ pub async fn directory_home(
     };
 
     // Top businesses for the ItemList JSON-LD below. (The visible listing is
-    // rendered by the shared homepage template from the city API.)
-    let top = list_businesses(pool, &dir, None, 12, 0).await;
+    // rendered by the shared homepage template from the city API.) 18 rather than 12 keeps the
+    // served page comfortably above the 3,000-character visible-text floor even in the city
+    // with the fewest descriptions (measured 2026-11-12: 12 cards left St. Cloud at 3,123).
+    let top = list_businesses(pool, &dir, None, 18, 0).await;
 
     // JSON-LD: CollectionPage + ItemList + BreadcrumbList (or admin custom_schema).
     let mut jsonld = Vec::new();
@@ -2094,7 +2144,7 @@ pub async fn directory_home(
     // The city's own listings in the served HTML — see city_hub_html: they live inside
     // `#app`, which the SPA replaces on boot, so only non-JavaScript readers and crawlers
     // ever see them and no visitor gets the list twice.
-    let app_html = city_hub_html(&dir, &site, total, &top);
+    let app_html = city_hub_html(&dir, &site, total, &top, city_intro.as_deref());
     let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id, &nav_html, &app_html);
 
     Some(html_response(StatusCode::OK, body))
@@ -2723,6 +2773,8 @@ pub async fn business_detail(
                     .unwrap_or(None)
                     .unwrap_or(0),
                 address: r.try_get("address").unwrap_or(None),
+                // Not selected by this query — the related grid stays a name/rating grid.
+                description: None,
             })
             .collect(),
         Err(e) => {

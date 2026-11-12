@@ -2,6 +2,7 @@
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use sqlx::Row;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -174,7 +175,7 @@ pub async fn render_city_page(
     State(state): State<AppState>,
 ) -> axum::response::Response {
     let city_row = sqlx::query(
-        "SELECT id, city_slug, city_name, state, description, hero_image_url, meta_title, meta_description \
+        "SELECT id, city_slug, city_name, state, description, hero_image_url, meta_title, meta_description, intro_copy \
          FROM city_pages WHERE city_slug = $1 AND is_active = true",
     )
     .bind(&slug)
@@ -204,6 +205,16 @@ pub async fn render_city_page(
     let meta_title: Option<String> = r.try_get("meta_title").unwrap_or(None);
     let meta_desc: Option<String> = r.try_get("meta_description").unwrap_or(None);
     let city_page_id: Uuid = r.try_get("id").unwrap_or_default();
+    let city_intro: Option<String> = r.try_get("intro_copy").unwrap_or(None);
+    let state_code: String = r
+        .try_get::<Option<String>, _>("state")
+        .unwrap_or(None)
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "FL".to_string());
+    // Requirement 1 (card t_253bfa67): the page's single H1 is the directory heading, exactly
+    // as search users and the acceptance spec name it. It used to be "Best Businesses in <City>",
+    // which describes a ranking we do not produce; the editorial headings below stay, demoted.
+    let h1_text = format!("{}, {} Business Directory", city_name, state_code);
 
     let page_title =
         meta_title.unwrap_or_else(|| format!("Best Businesses in {} | ZaarHub", city_name));
@@ -278,16 +289,98 @@ pub async fn render_city_page(
         )
     };
 
-    // Load top featured listings for this city
+    // The city's categories, as real links. `directory_categories` is the table the root
+    // category pages resolve against, so a category that is only a free-text label on an
+    // imported listing (no matching row, no businesses) is NOT linked: a link to a page that
+    // 404s is worse than a plain label. One query, ordered by how many local businesses it
+    // actually holds.
+    let cat_rows = sqlx::query(
+        "SELECT dc.slug, dc.name, COUNT(b.id) AS n \
+         FROM directory_categories dc \
+         JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
+         JOIN directories d ON d.id = b.directory_id \
+         WHERE d.slug = $1 AND coalesce(dc.slug, '') <> '' AND coalesce(dc.name, '') <> '' \
+         GROUP BY dc.slug, dc.name \
+         ORDER BY COUNT(b.id) DESC, dc.name \
+         LIMIT 14",
+    )
+    .bind(&slug)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| eprintln!("zaarhub_ssr: city category query failed for {slug}: {e}"))
+    .unwrap_or_default();
+
+    let mut cat_slug_by_name: HashMap<String, String> = HashMap::new();
+    let mut cat_nav_html = String::new();
+    for c in &cat_rows {
+        let cslug: String = c.try_get("slug").unwrap_or_default();
+        let cname: String = c.try_get("name").unwrap_or_default();
+        let n: i64 = c.try_get("n").unwrap_or(0);
+        if cslug.is_empty() || cname.is_empty() {
+            continue;
+        }
+        cat_slug_by_name.insert(cname.trim().to_lowercase(), cslug.clone());
+        cat_nav_html.push_str(&format!(
+            "<a href=\"/{slug}/{cslug}\" style=\"display:inline-block;margin:0 8px 8px 0;padding:6px 12px;border:1px solid #e2e8f0;border-radius:999px;background:#fff;color:#2b3255;font-size:13px;font-weight:600;text-decoration:none\">{cname} ({n})</a>",
+            slug = h(&slug),
+            cslug = h(&cslug),
+            cname = h(&cname),
+            n = n
+        ));
+    }
+    let cat_nav_section = if cat_nav_html.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<nav class=\"cat-nav\" style=\"max-width:1200px;margin:22px auto 0;padding:0 20px\">\
+             <h2 style=\"font-size:1.1rem;font-weight:800;color:#2b3255;margin:0 0 10px\">\
+             Browse {} by category</h2>{}</nav>",
+            h(&city_name),
+            cat_nav_html
+        )
+    };
+
+    // Load the first page of listings for this city. Requirement 2 (card t_253bfa67): the
+    // first page must exist even in a city with no featured listings — the old query filtered
+    // `is_featured = true`, so a city whose featured flags were never set rendered an EMPTY
+    // grid. Featured still wins, everything else fills the page by rating.
     let rows = sqlx::query(
         "SELECT bl.* FROM business_listings bl \
-         WHERE bl.city_page_id = $1 AND bl.is_featured = true \
-         ORDER BY bl.rating DESC NULLS LAST LIMIT 24",
+         WHERE bl.city_page_id = $1 \
+         ORDER BY bl.is_featured DESC, bl.rating DESC NULLS LAST, bl.review_count DESC, bl.business_name \
+         LIMIT 24",
     )
     .bind(city_page_id)
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
+
+    // One verification lookup for the whole page instead of one per listing (the old loop ran
+    // up to 24 extra round-trips inside the request, which is where the TTFB went).
+    let names: Vec<String> = rows
+        .iter()
+        .map(|l| l.try_get::<String, _>("business_name").unwrap_or_default())
+        .filter(|n| !n.is_empty())
+        .collect();
+    let mut verified_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if !names.is_empty() {
+        let vrows = sqlx::query(
+            "SELECT DISTINCT b.name FROM business_verifications bv \
+             JOIN businesses b ON bv.business_id = b.id \
+             WHERE b.name = ANY($1) AND bv.status = 'approved' \
+               AND (bv.expires_at IS NULL OR bv.expires_at > now())",
+        )
+        .bind(&names)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| eprintln!("zaarhub_ssr: verification batch failed for {slug}: {e}"))
+        .unwrap_or_default();
+        for v in &vrows {
+            if let Ok(n) = v.try_get::<String, _>("name") {
+                verified_names.insert(n);
+            }
+        }
+    }
 
     let mut listings_html = String::new();
     for l in &rows {
@@ -300,13 +393,8 @@ pub async fn render_city_page(
         let reviews: i32 = l.try_get("review_count").unwrap_or(0);
         let lid: Uuid = l.try_get("id").unwrap_or_default();
 
-        // Verified indicator — check via business name match
-        let is_verified = sqlx::query(
-            "SELECT 1 FROM business_verifications bv \
-             JOIN businesses b ON bv.business_id = b.id \
-             WHERE b.name = $1 AND bv.status = 'approved' AND (bv.expires_at IS NULL OR bv.expires_at > now()) \
-             LIMIT 1"
-        ).bind(&name).fetch_optional(&state.db).await.unwrap_or(None).is_some();
+        // Verified indicator — answered from the single batched query above.
+        let is_verified = verified_names.contains(&name);
         let verified_icon = if is_verified {
             "<span class=\"verified-icon\" title=\"Verified Business\">\u{2714}</span>"
         } else {
@@ -325,7 +413,20 @@ pub async fn render_city_page(
 
         let cat_html = cat
             .as_ref()
-            .map(|c| format!("<span class=\"category-tag\">{}</span>", h(c)))
+            .map(|c| {
+                // Requirement 3: the category is a LINK to the root category page, not a
+                // decorative span. Only when that page really exists for this city (see
+                // `cat_slug_by_name`); otherwise the label stays a span.
+                match cat_slug_by_name.get(&c.trim().to_lowercase()) {
+                    Some(cs) => format!(
+                        "<a class=\"category-tag\" href=\"/{}/{}\">{}</a>",
+                        h(&slug),
+                        h(cs),
+                        h(c)
+                    ),
+                    None => format!("<span class=\"category-tag\">{}</span>", h(c)),
+                }
+            })
             .unwrap_or_default();
         let desc_html = desc
             .as_ref()
@@ -366,14 +467,36 @@ pub async fn render_city_page(
         ));
     }
 
+    // The generated blurb ("Find top-rated local businesses in …") is a caption, not content:
+    // it stays inside the hero, while the city's written introduction below it supplies the
+    // actual prose a crawler needs. Rendered only when the row has one.
+    let intro_section = city_intro
+        .as_deref()
+        .map(str::trim)
+        .filter(|i| !i.is_empty())
+        .map(|intro| {
+            let mut paras = String::new();
+            for para in intro.split("\n\n").map(str::trim).filter(|p| !p.is_empty()) {
+                paras.push_str(&format!("<p>{}</p>", h(para)));
+            }
+            format!(
+                "<section class=\"city-intro\" style=\"max-width:820px;margin:28px auto 8px;padding:0 20px\">\
+                 <h2 style=\"font-size:1.25rem;font-weight:800;color:#2b3255;margin:0 0 10px\">\
+                 About {city}</h2>{paras}</section>",
+                city = h(&city_name),
+                paras = paras
+            )
+        })
+        .unwrap_or_default();
+
     let hero_section = match &hero_img {
         Some(img) if !img.is_empty() => format!(
-            "<div class=\"hero\" style=\"background:linear-gradient(rgba(43,50,85,.85),rgba(43,50,85,.92)),url({}) center/cover\"><h1>Best Businesses in <span>{}</span></h1><p>{}</p></div>",
-            h(img), h(&city_name), h(&page_desc)
+            "<div class=\"hero\" style=\"background:linear-gradient(rgba(43,50,85,.85),rgba(43,50,85,.92)),url({}) center/cover\"><h1>{}</h1><p>{}</p></div>",
+            h(img), h(&h1_text), h(&page_desc)
         ),
         _ => format!(
-            "<div class=\"hero\"><h1>Best Businesses in <span>{}</span></h1><p>{}</p></div>",
-            h(&city_name), h(&page_desc)
+            "<div class=\"hero\"><h1>{}</h1><p>{}</p></div>",
+            h(&h1_text), h(&page_desc)
         ),
     };
 
@@ -445,6 +568,8 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub-city.html" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:14px;font-weight:500">🔍 Search</a></nav></div></header>
 {crumbs}
 {hero}
+{intro}
+{cat_nav}
 {city_picks}
 <div class="listing-grid">{listings}</div>
 <div class="load-more"><a href="/zaarhub-city.html?city={slug}">View all {city_name} businesses →</a></div>
@@ -464,6 +589,8 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         ]),
         crumbs = crumb_bar(&[("ZaarHub", "/"), ("Cities", "/zaarhub"), (city_name.as_str(), "")]),
         hero = hero_section,
+        intro = intro_section,
+        cat_nav = cat_nav_section,
         city_picks = city_picks_section,
         footer = footer,
         cookie_banner = COOKIE_BANNER,
