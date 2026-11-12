@@ -161,6 +161,9 @@ a:hover{text-decoration:underline}
 .zh-gallery-hero{position:relative;width:100%;height:340px;background:linear-gradient(135deg,#e2e8f0,#cbd5e1);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
 .zh-gallery-hero img{width:100%;height:100%;object-fit:cover;display:block}
 .zh-gallery-hero .letter{font-size:6rem;font-weight:800;color:#94a3b8;opacity:.6}
+/* Attribution for photos served by our Google Places proxy (Maps Platform terms). */
+.zh-photo-credit{position:absolute;right:10px;bottom:10px;background:rgba(15,23,42,.62);color:#fff;font-size:.62rem;font-weight:600;letter-spacing:.02em;padding:2px 8px;border-radius:4px;pointer-events:none;line-height:1.5}
+.zh-photo-credit-fixed{position:fixed;right:18px;bottom:18px;z-index:1002}
 .zh-gallery-thumbs{display:flex;gap:6px;padding:10px 16px;overflow-x:auto;background:#fff;border-top:1px solid var(--border-light)}
 .zh-gallery-thumbs::-webkit-scrollbar{height:4px}
 .zh-gallery-thumbs::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
@@ -1555,6 +1558,7 @@ function initGallery(images, bizName) {
     };
     hero.innerHTML = '';
     hero.appendChild(img);
+    hero.insertAdjacentHTML('beforeend', photoCreditHtml(images));
     countEl.style.display = 'none';
     thumbs.style.display = 'none';
     return;
@@ -1566,6 +1570,7 @@ function initGallery(images, bizName) {
   heroImg.alt = bizName || 'Photo';
   hero.innerHTML = '';
   hero.appendChild(heroImg);
+  hero.insertAdjacentHTML('beforeend', photoCreditHtml(images));
 
   countEl.style.display = 'block';
   countEl.textContent = '1 / ' + images.length;
@@ -1590,6 +1595,10 @@ function initGallery(images, bizName) {
   });
 }
 
+// A photo served by our Google Places proxy must carry its attribution wherever it is shown.
+function isProxyPhoto(u) { return typeof u === 'string' && u.indexOf('/api/v1/place-photo/') === 0; }
+function photoCreditHtml(list) { return (list || []).some(isProxyPhoto) ? '<span class="zh-photo-credit">Photos: Google</span>' : ''; }
+
 function openGalleryLightbox(index) {
   const images = _galleryImages;
   if (!images || images.length === 0) return;
@@ -1601,6 +1610,16 @@ function openGalleryLightbox(index) {
 
   lbImg.src = images[index];
   lbImg.alt = 'Gallery image ' + (index + 1);
+  // Attribution travels with the photo into the lightbox too.
+  var credit = document.getElementById('zh-photo-credit-lb');
+  if (!credit) {
+    credit = document.createElement('span');
+    credit.id = 'zh-photo-credit-lb';
+    credit.className = 'zh-photo-credit zh-photo-credit-fixed';
+    lb.appendChild(credit);
+  }
+  credit.textContent = 'Photos: Google';
+  credit.style.display = isProxyPhoto(images[index]) ? 'block' : 'none';
   counter.textContent = (index + 1) + ' / ' + images.length;
 
   // Show/hide arrows

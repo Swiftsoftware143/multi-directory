@@ -1742,12 +1742,16 @@ fn image_ref(item: &Value) -> Option<&str> {
     }
 }
 
-/// How many Google place-photo PROXIES one list response may hand out.
+/// How many Google place-photo PROXIES one list response may hand out to COLD photos.
 ///
 /// A proxied card photo is a billed Google call on a cold view, and one city list carries up to
 /// 1,200 cards, so the billed path is spent only on the first cards that have nothing free to
 /// show (an owner upload, a real URL, a logo, a cover). Cards after that keep the letter avatar
 /// they had before. One pageful of populated cards; worst case ~24 calls per response.
+///
+/// Since the photo cache landed this is a COLD-MISS budget only: a card whose photo is already on
+/// disk (`photo_cache::is_warm`) is served with no Google call and spends none of it, so a warm
+/// city page can show a picture on every card while still paying nothing.
 pub(crate) const CARD_PHOTO_PROXY_BUDGET: usize = 24;
 
 /// The picture for a business CARD (city list, search results, homepage rows).
@@ -1798,18 +1802,24 @@ pub(crate) fn card_image(
             }
         }
     }
-    // 4. A Google place photo, via the proxy, inside the response budget.
-    if *proxy_budget == 0 {
-        return None;
-    }
+    // 4. A Google place photo, via the proxy. The photo cache changes the arithmetic here: a photo
+    //    already in the disk cache costs NOTHING to serve (no Google call), so it spends none of
+    //    the response's cold-miss budget — a warm city page can therefore show every card's
+    //    picture. Only a COLD photo spends budget.
     for (idx, item) in arr.iter().enumerate() {
         let Some(u) = image_ref(item) else { continue };
-        if crate::handlers::place_photos::is_place_photo_name(u)
-            && crate::handlers::place_photos::within_budget(idx)
+        if !crate::handlers::place_photos::is_place_photo_name(u)
+            || !crate::handlers::place_photos::within_budget(idx)
         {
-            *proxy_budget -= 1;
-            return Some(crate::handlers::place_photos::proxy_path(bid, idx));
+            continue;
         }
+        if !crate::handlers::photo_cache::is_warm(u) {
+            if *proxy_budget == 0 {
+                return None;
+            }
+            *proxy_budget -= 1;
+        }
+        return Some(crate::handlers::place_photos::proxy_path(bid, idx));
     }
     None
 }

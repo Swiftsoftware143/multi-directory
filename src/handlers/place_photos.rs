@@ -22,17 +22,20 @@
 //!     broken image.
 //!
 //! Cost note: a cold view costs at most one media call, plus one place lookup when the stored
-//! name has expired. The response is cacheable for a week and a listing exposes at most
-//! `MAX_PROXIED_PHOTOS` of them.
+//! name has expired. The bytes are then written to the on-disk cache in `photo_cache`, so every
+//! later view of the same photo is served from disk with no Google call at all (7-day TTL,
+//! size-capped and LRU-evicted). A listing exposes at most `MAX_PROXIED_PHOTOS` of them.
 
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::AppError;
+use crate::handlers::photo_cache::{self, CacheConfig};
 use crate::handlers::places_client::PLACES_V1_BASE;
 use crate::state::AppState;
 
@@ -131,8 +134,8 @@ enum MediaOutcome {
     Failed(String),
 }
 
-fn image_response(bytes: Vec<u8>, content_type: String) -> Response {
-    (
+fn image_response(bytes: Vec<u8>, content_type: String, verdict: &'static str) -> Response {
+    let mut resp = (
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, content_type),
@@ -140,7 +143,14 @@ fn image_response(bytes: Vec<u8>, content_type: String) -> Response {
         ],
         Body::from(bytes),
     )
-        .into_response()
+        .into_response();
+    // `hit` = served from the disk cache, `miss` = Google was billed for this response. The proof
+    // script counts these, so the cache's effect is measured per request instead of asserted.
+    if let Ok(v) = HeaderValue::from_str(verdict) {
+        resp.headers_mut()
+            .insert(HeaderName::from_static(photo_cache::HEADER), v);
+    }
+    resp
 }
 
 /// Ask Google for the picture behind one photo name.
@@ -149,6 +159,7 @@ async fn media_bytes(client: &reqwest::Client, key: &str, name: &str) -> MediaOu
         "{}/{}/media?maxWidthPx=1200&skipHttpRedirect=true",
         PLACES_V1_BASE, name
     );
+    photo_cache::note_google_call();
     let resp = match client.get(&url).header("X-Goog-Api-Key", key).send().await {
         Ok(r) => r,
         Err(e) => return MediaOutcome::Failed(format!("transport {e}")),
@@ -208,6 +219,7 @@ async fn fresh_photo_name(
     index: usize,
 ) -> Result<Option<String>, String> {
     let url = format!("{}/places/{}", PLACES_V1_BASE, place_id);
+    photo_cache::note_google_call();
     let resp = client
         .get(&url)
         .header("X-Goog-Api-Key", key)
@@ -278,6 +290,34 @@ pub async fn place_photo(
         return Err(not_found());
     };
 
+    let cfg = CacheConfig::from_env();
+
+    // 1. Warm: the bytes are on disk already, so Google is not called at all.
+    if let Some((bytes, ct)) = photo_cache::get(&cfg, &name).await {
+        tracing::debug!(
+            business = %business_id, index, bytes = bytes.len(),
+            "place photo served from the disk cache"
+        );
+        return Ok(image_response(bytes, ct, "hit"));
+    }
+
+    // 2. Cold: one request fetches a given photo. A second request for the same photo (two
+    //    visitors at once, or a page requested twice in parallel) waits briefly for the first to
+    //    store it instead of paying Google for the same call again.
+    let _claim = match photo_cache::claim(&name) {
+        Some(claim) => Some(claim),
+        None => {
+            for _ in 0..30 {
+                tokio::time::sleep(photo_cache::WAIT_STEP).await;
+                if let Some((bytes, ct)) = photo_cache::peek(&cfg, &name).await {
+                    photo_cache::note_hit(bytes.len());
+                    return Ok(image_response(bytes, ct, "hit"));
+                }
+            }
+            None
+        }
+    };
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
@@ -298,22 +338,29 @@ pub async fn place_photo(
         }
         match media_bytes(&client, &key, &name).await {
             MediaOutcome::Bytes(bytes, ct) => {
+                // Store before answering: a served photo is a cached photo from now on.
+                photo_cache::put(&cfg, &name, &bytes, &ct).await;
                 tracing::debug!(
                     business = %business_id, index, key = %label, bytes = bytes.len(),
                     "place photo served from the stored reference"
                 );
-                return Ok(image_response(bytes, ct));
+                return Ok(image_response(bytes, ct, "miss"));
             }
             MediaOutcome::InvalidName => {
                 // Stored references expire (see the module note). Re-resolve from the place id.
                 match fresh_photo_name(&client, &key, &place_id, index).await {
                     Ok(Some(fresh)) => match media_bytes(&client, &key, &fresh).await {
                         MediaOutcome::Bytes(bytes, ct) => {
+                            // Two entries, one photo: the name the listing holds (so the stale
+                            // reference is warm from now on) and the name Google just honoured
+                            // (so any listing storing the fresh name shares these bytes).
+                            photo_cache::put(&cfg, &name, &bytes, &ct).await;
+                            photo_cache::put(&cfg, &fresh, &bytes, &ct).await;
                             tracing::debug!(
                                 business = %business_id, index, key = %label, bytes = bytes.len(),
                                 "place photo served after refreshing an expired reference"
                             );
-                            return Ok(image_response(bytes, ct));
+                            return Ok(image_response(bytes, ct, "miss"));
                         }
                         MediaOutcome::InvalidName => {
                             last_error = format!("{label}: refreshed name also refused")
@@ -336,6 +383,15 @@ pub async fn place_photo(
 /// Is `index` within the proxy ceiling? Keeps a page from asking for twenty billed images.
 pub fn within_budget(index: usize) -> bool {
     index < MAX_PROXIED_PHOTOS
+}
+
+/// GET /api/v1/place-photo/cache-stats — what the photo cache is doing, in numbers.
+///
+/// Aggregate counters only (no keys, no listing data), so the effect of the cache is measurable
+/// from outside the process: `google_calls` is the number of BILLED Google Places requests this
+/// process has issued, and `hits` / `misses` are served-from-disk versus paid-for.
+pub async fn cache_stats() -> Json<Value> {
+    Json(photo_cache::stats(&CacheConfig::from_env()).await)
 }
 
 #[cfg(test)]

@@ -2226,6 +2226,9 @@ pub fn create_router(s: AppState) -> Router {
             "/place-photo/:business_id/:index",
             get(place_photos::place_photo),
         )
+        // Aggregate photo-cache counters (hits, misses, BILLED Google calls, bytes on disk).
+        // Numbers only — no keys, no listing data — so the cache's effect is measurable.
+        .route("/place-photo/cache-stats", get(place_photos::cache_stats))
         .route(
             "/zaarhub/business/:slug/:id",
             get(zaarhub::get_business_detail),

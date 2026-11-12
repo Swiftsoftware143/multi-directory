@@ -109,6 +109,10 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
         "/place-photo/:business_id/:index",
         "public-listing-photo",
     ),
+    // Aggregate photo-cache counters (hits, misses, billed Google calls, bytes on disk). Numbers
+    // only: no keys, no image bytes, no listing data. Anonymous so an external check can measure
+    // the cache's effect (the per-image `X-Photo-Cache` header carries the per-request verdict).
+    ("GET", "/place-photo/cache-stats", "photo-cache-stats"),
     // --- /api-keys ---------------------------------------------------
     // The endpoint's own credential IS the API key (read from the Authorization header), so it
     // cannot also require a session JWT — that made it uncallable (401 for every caller). The
@@ -786,8 +790,8 @@ mod tests {
         // serves only published photos of an active listing and 404s everything else).
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            167,
-            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy)"
+            168,
+            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy, +1 photo cache stats)"
         );
     }
 }

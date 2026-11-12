@@ -51,7 +51,7 @@ use crate::AppState;
 /// `MD_UPLOADS_ROOT` lets a deployment point the store anywhere writable.
 const DEFAULT_UPLOADS_ROOT: &str = "/opt/swift/www/zaarhub.com/uploads";
 
-fn uploads_root() -> String {
+pub(crate) fn uploads_root() -> String {
     std::env::var("MD_UPLOADS_ROOT")
         .map(|v| v.trim().to_string())
         .ok()

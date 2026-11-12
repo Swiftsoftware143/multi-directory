@@ -43,6 +43,8 @@ pub mod provider_keys_handler;
 pub mod places_client;
 // A stored Google photo NAME is not a URL; this turns it into real image bytes on demand.
 pub mod place_photos;
+// The bytes Google billed for once, kept on disk so the next view costs nothing.
+pub mod photo_cache;
 
 // Integration Center — canonical CoreSwift spoke endpoints (fleet standard
 // /opt/swift/docs/integration-center-standard-2026-09-20.md).
