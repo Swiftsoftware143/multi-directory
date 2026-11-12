@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::Row;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
@@ -1149,6 +1150,55 @@ pub async fn get_city_page(
     .fetch_all(&s.db)
     .await?;
 
+    // THE CARD PICTURE (kanban t_d08ceaa8). The card used to read only `logo_url`/`cover_url`
+    // (and on this surface not even those — it hardcoded `None`), so a listing whose ONLY picture
+    // is an owner upload rendered a card with no picture while the owner portal promised "it
+    // becomes the main image on your public listing". `images` is loaded for the same rows and
+    // ONE rule picks the picture (`card_image`), the rule the business detail page also uses, so
+    // a Google Places resource name can never reach an `<img src>`.
+    let mut card_sources: HashMap<Uuid, (Value, Option<String>, Option<String>)> = HashMap::new();
+    {
+        let ids: Vec<Uuid> = businesses.iter().map(|b| b.0).collect();
+        if !ids.is_empty() {
+            // `= ANY($1)` returns rows in no particular order, so the billed-photo budget is
+            // spent below, walking `businesses` in PAGE order.
+            let pic_rows = sqlx::query(
+                "SELECT id, images, logo_url, cover_url FROM businesses WHERE id = ANY($1)",
+            )
+            .bind(&ids)
+            .fetch_all(&s.db)
+            .await?;
+            for r in &pic_rows {
+                card_sources.insert(
+                    r.try_get::<Uuid, _>("id")?,
+                    (
+                        r.try_get::<Option<Value>, _>("images")?
+                            .unwrap_or(Value::Null),
+                        r.try_get("logo_url")?,
+                        r.try_get("cover_url")?,
+                    ),
+                );
+            }
+        }
+    }
+    let mut proxy_budget = CARD_PHOTO_PROXY_BUDGET;
+    let mut card_pictures: HashMap<Uuid, Option<String>> = HashMap::new();
+    for b in &businesses {
+        let (images, logo, cover) =
+            card_sources
+                .get(&b.0)
+                .cloned()
+                .unwrap_or((Value::Null, None, None));
+        let pic = card_image(
+            b.0,
+            &images,
+            logo.as_deref(),
+            cover.as_deref(),
+            &mut proxy_budget,
+        );
+        card_pictures.insert(b.0, pic);
+    }
+
     let featured: Vec<BusinessCard> = businesses
         .into_iter()
         .map(
@@ -1183,7 +1233,7 @@ pub async fn get_city_page(
                     website,
                     address,
                     city,
-                    image_url: None,
+                    image_url: card_pictures.get(&id).cloned().flatten(),
                     latitude: lat,
                     longitude: lng,
                     is_claimed: false,
@@ -1629,7 +1679,7 @@ const UPLOADS_ROOT: &str = "/opt/swift/www/zaarhub.com/uploads";
 /// RESOURCE NAMES (`places/ChIJ.../photos/AWC...`) which are not fetchable URLs at all — an
 /// `<img src>` on one is a guaranteed broken image. A dead photo is worse than no photo, so a
 /// root-relative path counts only when the file is on disk.
-fn photo_is_renderable(url: &str) -> bool {
+pub(crate) fn photo_is_renderable(url: &str) -> bool {
     let u = url.trim();
     if u.starts_with("http://") || u.starts_with("https://") {
         return true;
@@ -1655,26 +1705,17 @@ fn photo_is_renderable(url: &str) -> bool {
 ///
 /// `MAX_PROXIED_PHOTOS` caps the second kind, because each one is a billed Google call on a cold
 /// view. The index passed to the proxy is the reference's real position in the array.
-fn image_urls(bid: Uuid, v: &Value) -> Vec<String> {
+pub(crate) fn image_urls(bid: Uuid, v: &Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut proxied = 0usize;
     if let Some(arr) = v.as_array() {
         for (idx, item) in arr.iter().enumerate() {
-            let url = match item {
-                Value::String(s) => Some(s.clone()),
-                Value::Object(o) => o
-                    .get("url")
-                    .or_else(|| o.get("photo_reference"))
-                    .and_then(|u| u.as_str())
-                    .map(str::to_string),
-                _ => None,
-            };
-            let Some(u) = url else { continue };
-            if photo_is_renderable(&u) {
-                if !out.contains(&u) {
-                    out.push(u);
+            let Some(u) = image_ref(item) else { continue };
+            if photo_is_renderable(u) {
+                if !out.iter().any(|seen| seen == u) {
+                    out.push(u.to_string());
                 }
-            } else if crate::handlers::place_photos::is_place_photo_name(&u)
+            } else if crate::handlers::place_photos::is_place_photo_name(u)
                 && crate::handlers::place_photos::within_budget(proxied)
             {
                 let src = crate::handlers::place_photos::proxy_path(bid, idx);
@@ -1686,6 +1727,91 @@ fn image_urls(bid: Uuid, v: &Value) -> Vec<String> {
         }
     }
     out
+}
+
+/// The reference one `images` entry holds: a plain string, or the `url` / `photo_reference`
+/// field of an object entry. `None` for anything else (never invented).
+fn image_ref(item: &Value) -> Option<&str> {
+    match item {
+        Value::String(s) => Some(s.as_str()),
+        Value::Object(o) => o
+            .get("url")
+            .or_else(|| o.get("photo_reference"))
+            .and_then(|u| u.as_str()),
+        _ => None,
+    }
+}
+
+/// How many Google place-photo PROXIES one list response may hand out.
+///
+/// A proxied card photo is a billed Google call on a cold view, and one city list carries up to
+/// 1,200 cards, so the billed path is spent only on the first cards that have nothing free to
+/// show (an owner upload, a real URL, a logo, a cover). Cards after that keep the letter avatar
+/// they had before. One pageful of populated cards; worst case ~24 calls per response.
+pub(crate) const CARD_PHOTO_PROXY_BUDGET: usize = 24;
+
+/// The picture for a business CARD (city list, search results, homepage rows).
+///
+/// `businesses.images` holds the owner's uploads and, for imported listings, Google Places photo
+/// RESOURCE NAMES. The list cards used to read only `logo_url`/`cover_url`, so a listing whose
+/// only picture was an owner upload rendered a card with no picture — while the owner portal
+/// promised "it becomes the main image on your public listing".
+///
+/// The order is deliberate: a reference that costs nothing to serve wins (the owner's own
+/// upload, a real logo/cover), and a Google place photo — not a URL, billed per cold view — is the
+/// last resort, through this app's own proxy and inside `proxy_budget` for the WHOLE response. A
+/// Places resource name therefore never reaches an `<img src>`, and when nothing renders the card
+/// keeps its letter avatar rather than showing a broken image.
+pub(crate) fn card_image(
+    bid: Uuid,
+    images: &Value,
+    logo: Option<&str>,
+    cover: Option<&str>,
+    proxy_budget: &mut usize,
+) -> Option<String> {
+    let arr = images.as_array();
+    // 1. The owner's OWN picture. A claimed listing is auto-enriched from Google Places at claim
+    //    time (`fetch_business_images_on_claim`, appended AFTER existing photos), so the owner's
+    //    upload is not always `images[0]` — and the portal promises the owner's picture is the
+    //    main one. A `/uploads/...` file this app stores and serves therefore wins.
+    if let Some(arr) = arr {
+        for item in arr {
+            if let Some(u) = image_ref(item) {
+                if u.trim().starts_with("/uploads/") && photo_is_renderable(u) {
+                    return Some(u.to_string());
+                }
+            }
+        }
+    }
+    // 2. A real logo / cover (the card's old source; unchanged for listings that have one).
+    for free in [logo, cover].into_iter().flatten() {
+        if photo_is_renderable(free) {
+            return Some(free.to_string());
+        }
+    }
+    let arr = arr?;
+    // 3. Any other reference the browser can load without a billed call (an imported URL).
+    for item in arr {
+        if let Some(u) = image_ref(item) {
+            if photo_is_renderable(u) {
+                return Some(u.to_string());
+            }
+        }
+    }
+    // 4. A Google place photo, via the proxy, inside the response budget.
+    if *proxy_budget == 0 {
+        return None;
+    }
+    for (idx, item) in arr.iter().enumerate() {
+        let Some(u) = image_ref(item) else { continue };
+        if crate::handlers::place_photos::is_place_photo_name(u)
+            && crate::handlers::place_photos::within_budget(idx)
+        {
+            *proxy_budget -= 1;
+            return Some(crate::handlers::place_photos::proxy_path(bid, idx));
+        }
+    }
+    None
 }
 
 /// GET /api/v1/zaarhub/business/:slug/:id — business detail page
@@ -2550,4 +2676,145 @@ pub async fn list_city_blog_posts(
         "count": count,
         "posts": posts,
     })))
+}
+
+#[cfg(test)]
+mod card_image_tests {
+    //! The card thumbnail rule (kanban t_d08ceaa8): an owner upload must reach the card, a
+    //! Google Places photo resource name must never reach an `<img src>`, and a listing with no
+    //! picture at all must keep its letter avatar (no invented image).
+    use super::*;
+
+    fn bid() -> Uuid {
+        Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap()
+    }
+
+    #[test]
+    fn owner_upload_becomes_the_card_image() {
+        let images = json!([
+            "/uploads/businesses/x/photo_1.png",
+            "https://cdn.example/p.png"
+        ]);
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        // The /uploads path only renders when the file really exists on disk, so this db row
+        // resolves to the second (absolute) reference; what matters is that `images` is read at
+        // all — the old card read logo/cover only and answered None here.
+        assert_eq!(
+            card_image(bid(), &images, None, None, &mut budget).as_deref(),
+            Some("https://cdn.example/p.png")
+        );
+        assert_eq!(
+            budget, CARD_PHOTO_PROXY_BUDGET,
+            "a free photo costs no budget"
+        );
+    }
+
+    #[test]
+    fn missing_upload_file_is_not_offered() {
+        let images = json!(["/uploads/businesses/definitely-not-here/photo_1.png"]);
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        assert_eq!(card_image(bid(), &images, None, None, &mut budget), None);
+    }
+
+    #[test]
+    fn logo_and_cover_keep_their_precedence() {
+        let images = json!(["https://cdn.example/owner-upload.png"]);
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        assert_eq!(
+            card_image(
+                bid(),
+                &images,
+                Some("https://cdn.example/logo.png"),
+                Some("https://cdn.example/cover.png"),
+                &mut budget
+            )
+            .as_deref(),
+            Some("https://cdn.example/logo.png")
+        );
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        assert_eq!(
+            card_image(
+                bid(),
+                &images,
+                None,
+                Some("https://cdn.example/cover.png"),
+                &mut budget
+            )
+            .as_deref(),
+            Some("https://cdn.example/cover.png")
+        );
+    }
+
+    #[test]
+    fn places_resource_name_goes_through_the_proxy_and_spends_the_budget() {
+        let images = json!(["places/ChIJabc/photos/AWCxyz"]);
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        let pic = card_image(bid(), &images, None, None, &mut budget);
+        assert_eq!(pic, Some(format!("/api/v1/place-photo/{}/0", bid())));
+        assert_eq!(budget, CARD_PHOTO_PROXY_BUDGET - 1);
+
+        // Exhausted budget: the card falls back to the letter avatar instead of billing Google.
+        let mut spent = 0usize;
+        assert_eq!(card_image(bid(), &images, None, None, &mut spent), None);
+    }
+
+    #[test]
+    fn the_owners_own_upload_wins_over_an_imported_photo() {
+        // A claimed listing is enriched from Google Places at claim time and that photo sits
+        // FIRST in `images`, so "images[0]" would hand the card the import instead of the
+        // owner's picture. The owner's own file must win — even over a logo.
+        let rel = format!(
+            "businesses/probe-card-image-{}/photo.png",
+            std::process::id()
+        );
+        let path = std::path::Path::new(UPLOADS_ROOT).join(&rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"png-bytes").unwrap();
+        let owned = format!("/uploads/{rel}");
+        let images = json!([
+            "https://maps.googleapis.com/maps/api/place/photo?x=1",
+            owned
+        ]);
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        assert_eq!(
+            card_image(
+                bid(),
+                &images,
+                Some("https://cdn.example/logo.png"),
+                None,
+                &mut budget
+            )
+            .as_deref(),
+            Some(owned.as_str())
+        );
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(path.parent().unwrap());
+    }
+
+    #[test]
+    fn object_entries_and_nothing_at_all() {
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        assert_eq!(
+            card_image(
+                bid(),
+                &json!([{ "url": "https://cdn.example/a.png" }]),
+                None,
+                None,
+                &mut budget
+            )
+            .as_deref(),
+            Some("https://cdn.example/a.png")
+        );
+        let mut budget = CARD_PHOTO_PROXY_BUDGET;
+        assert_eq!(
+            card_image(bid(), &Value::Null, None, None, &mut budget),
+            None
+        );
+        assert_eq!(card_image(bid(), &json!([]), None, None, &mut budget), None);
+        // A reference type nothing understands is dropped, never rendered.
+        assert_eq!(
+            card_image(bid(), &json!(["garbage"]), None, None, &mut budget),
+            None
+        );
+    }
 }

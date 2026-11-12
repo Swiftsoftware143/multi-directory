@@ -89,7 +89,12 @@ fn listing_json(r: &sqlx::postgres::PgRow) -> Value {
 /// `review_count`, `latitude`, `longitude`, `image_url`, `directory_slug`); the `business_name` /
 /// `coordinates_lat` / `coordinates_lng` spellings are kept so older consumers of `/zaarhub/search`
 /// keep working.
-fn search_result_json(r: &sqlx::postgres::PgRow) -> Value {
+///
+/// `image_url` comes from ONE rule — `zaarhub::card_image` — that the city-page cards use too:
+/// an owner upload (or any real logo/cover/URL) first, a billed Google place photo last and only
+/// inside `proxy_budget`. The old inline `CASE` read logo/cover only, so a listing whose only
+/// picture was an owner upload rendered a blank card (kanban t_d08ceaa8).
+fn search_result_json(r: &sqlx::postgres::PgRow, proxy_budget: &mut usize) -> Value {
     let id = r
         .try_get::<Uuid, _>("id")
         .map(|v| v.to_string())
@@ -97,6 +102,25 @@ fn search_result_json(r: &sqlx::postgres::PgRow) -> Value {
     let name = r.try_get::<String, _>("name").unwrap_or_default();
     let lat = r.try_get::<Option<f64>, _>("latitude").unwrap_or_default();
     let lng = r.try_get::<Option<f64>, _>("longitude").unwrap_or_default();
+    let images: Value = r
+        .try_get::<Option<Value>, _>("images")
+        .unwrap_or_default()
+        .unwrap_or(Value::Null);
+    let logo: Option<String> = r
+        .try_get::<Option<String>, _>("logo_url")
+        .unwrap_or_default();
+    let cover: Option<String> = r
+        .try_get::<Option<String>, _>("cover_url")
+        .unwrap_or_default();
+    let image_url = Uuid::parse_str(&id).ok().and_then(|bid| {
+        crate::handlers::zaarhub::card_image(
+            bid,
+            &images,
+            logo.as_deref(),
+            cover.as_deref(),
+            proxy_budget,
+        )
+    });
     json!({
         "id": id,
         "business_id": id,
@@ -114,7 +138,7 @@ fn search_result_json(r: &sqlx::postgres::PgRow) -> Value {
         "longitude": lng,
         "coordinates_lat": lat,
         "coordinates_lng": lng,
-        "image_url": r.try_get::<Option<String>, _>("image_url").unwrap_or_default(),
+        "image_url": image_url,
         "is_claimed": r.try_get::<Option<bool>, _>("claimed").unwrap_or_default().unwrap_or(false),
         "category": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
         "category_name": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
@@ -433,9 +457,7 @@ pub async fn search_listings(
                 b.rating, b.review_count, b.claimed, \
                 COALESCE(b.latitude, b.lat)  AS latitude, \
                 COALESCE(b.longitude, b.lng) AS longitude, \
-                CASE WHEN COALESCE(b.logo_url, b.cover_url) LIKE 'http%' \
-                       OR COALESCE(b.logo_url, b.cover_url) LIKE '/%' \
-                     THEN COALESCE(b.logo_url, b.cover_url) END AS image_url, \
+                b.images, b.logo_url, b.cover_url, \
                 dc.name AS category, dc.slug AS category_slug, \
                 d.slug AS directory_slug \
          FROM businesses b \
@@ -458,7 +480,11 @@ pub async fn search_listings(
     .fetch_all(&state.db)
     .await?;
 
-    let results: Vec<Value> = rows.iter().map(search_result_json).collect();
+    let mut proxy_budget = crate::handlers::zaarhub::CARD_PHOTO_PROXY_BUDGET;
+    let results: Vec<Value> = rows
+        .iter()
+        .map(|r| search_result_json(r, &mut proxy_budget))
+        .collect();
 
     // Deals attached to matching businesses — the screen renders a Deals strip under the businesses.
     let deal_rows = sqlx::query(concat!(

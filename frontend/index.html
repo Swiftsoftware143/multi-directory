@@ -2326,7 +2326,7 @@ function renderCityPage(d){
     bizHtml+=`
 <div class="zh-biz-card" onclick="location.hash='#/city/${encodeURIComponent(state.slug)}/biz/${b.id}'"${dataAttrs}>
   <div class="zh-biz-cover" style="background:linear-gradient(${coverGrad})">
-    ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'">':'<span class="letter">'+letter+'</span>'}
+    ${b.image_url?'<img src="'+esc(b.image_url)+'" alt="'+esc(b.name)+'" loading="lazy" decoding="async">':'<span class="letter">'+letter+'</span>'}
     ${b.category?'<span class="cat-tag">'+esc(b.category)+'</span>':''}
   </div>
   <div class="zh-biz-body">
@@ -2624,7 +2624,7 @@ function renderSearchResults(r){
         else{distBadge='<span class="zh-dist-badge">📍 '+b.distance_km.toFixed(1)+' km away</span>'}
       }
       h+='<div class="zh-biz-card" onclick="location.hash=\'#/city/'+b.directory_slug+'/biz/'+b.id+'\'">'+
-        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="">':esc((b.name||'?')[0]))+'</div>'+
+        '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="" loading="lazy" decoding="async">':esc((b.name||'?')[0]))+'</div>'+
         '<div class="zh-biz-body"><h4>'+bizLink(bizHref(b.directory_slug,b.slug),esc(b.name))+distBadge+'</h4>'+
         '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div>'+
         (b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':'')+
