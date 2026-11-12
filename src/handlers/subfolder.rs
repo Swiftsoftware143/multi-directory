@@ -1129,11 +1129,42 @@ pub(crate) async fn local_town_entries(
     .await
     .unwrap_or_default();
 
-    let home_key = crate::handlers::zaarhub::town_key(dir_city);
+    let own_key = crate::handlers::zaarhub::town_key(dir_city);
+    let total: i64 = rows.iter().map(|(_, _, c, _, _)| *c).sum();
+    // A NEIGHBOURHOOD directory is addressed by its POSTAL city, not by its own name: every
+    // Lake Nona listing says "Orlando, FL 32827", so no row ever matches the directory's own
+    // city and the whole local area used to collapse — no towns, no chips, no sitemap entries,
+    // and 0 counts in the panel while 15 Kissimmee listings sat in the directory. When no row
+    // carries the directory's own name, the postal city holding most of its listings IS the home
+    // town (and gets no separate town page, so the two cannot compete for one query).
+    let home_key = if rows.iter().any(|(k, _, _, _, _)| *k == own_key) {
+        own_key
+    } else {
+        rows.iter()
+            .find(|(_, _, count, _, _)| {
+                total > 0 && count.saturating_mul(100) >= total.saturating_mul(60)
+            })
+            .map(|(k, _, _, _, _)| k.clone())
+            .unwrap_or(own_key)
+    };
+    // The local centre: the home town's own position, else the centre of every listing the
+    // directory holds (so a neighbourhood still knows where it is).
     let centre: Option<(f64, f64)> = rows
         .iter()
         .find(|(k, _, _, _, _)| *k == home_key)
-        .and_then(|(_, _, _, la, lo)| la.zip(*lo));
+        .and_then(|(_, _, _, la, lo)| la.zip(*lo))
+        .or_else(|| {
+            let (mut weight, mut sx, mut sy) = (0.0f64, 0.0f64, 0.0f64);
+            for (_, _, count, la, lo) in rows.iter() {
+                if let (Some(a), Some(o)) = (la, lo) {
+                    let w = *count as f64;
+                    weight += w;
+                    sx += a * w;
+                    sy += o * w;
+                }
+            }
+            (weight > 0.0).then(|| (sx / weight, sy / weight))
+        });
 
     let mut out: Vec<TownEntry> = Vec::new();
     for (key, label, count, la, lo) in rows {

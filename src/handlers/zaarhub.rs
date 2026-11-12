@@ -949,6 +949,26 @@ pub async fn get_city_page(
         .filter(|c| !c.is_empty());
     let home_key = home_town.as_deref().map(town_key);
 
+    // A NEIGHBOURHOOD directory is addressed by its POSTAL city: every Lake Nona listing says
+    // "Orlando, FL 32827", so no row ever matches the directory's own name. The local area then
+    // came back EMPTY — no town chips, no filter, and every listing shown regardless of distance.
+    // When no row carries the directory's own name, the postal city that carries most of its
+    // listings IS its home town ("Lake Nona" publishes under Orlando). A directory that has its
+    // own row, or one with no dominant town, is unchanged.
+    let home_key = match home_key {
+        Some(k) if town_rows.iter().any(|(key, _, _, _, _)| *key == k) => Some(k),
+        other => {
+            let total: i64 = town_rows.iter().map(|(_, _, count, _, _)| *count).sum();
+            town_rows
+                .iter()
+                .find(|(_, _, count, _, _)| {
+                    total > 0 && count.saturating_mul(100) >= total.saturating_mul(60)
+                })
+                .map(|(key, _, _, _, _)| key.clone())
+                .or(other)
+        }
+    };
+
     // The directory's own town centre = the average position of its own listings, so no
     // per-directory coordinates column is needed and a city always knows where it is.
     let centre: Option<(f64, f64)> = home_key

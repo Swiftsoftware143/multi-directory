@@ -816,7 +816,7 @@ async fn discover_arm(
             let (cand_city, cand_state) = address_locality(&caddr);
             let cand_zip = zip_of(&caddr);
             let in_city = same_city(&cand_city, &city_short)
-                || (!cand_zip.is_empty() && city_zips.iter().any(|z| *z == cand_zip));
+                || (!cand_zip.is_empty() && city_zips.contains(&cand_zip));
             if !in_city {
                 skipped_outside += 1;
                 continue;
