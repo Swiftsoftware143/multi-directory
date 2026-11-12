@@ -560,7 +560,14 @@ function closeSuccess() {
 window.addEventListener('beforeunload',function(){stopScanner()});
 
 (function init(){
-  var saved=localStorage.getItem('scannerToken');
+  // The business portal lives on this same address and already holds a signed-in owner under
+  // `bizToken`. Arriving through its "Counter Scanner" door with no scanner sign-in of its own
+  // used to land the owner on a SECOND login form, so the door looked broken. Adopt the portal's
+  // token when it belongs to a real business; anything else (an operator, a shopper's wallet)
+  // still gets the scanner's own sign-in.
+  var own = localStorage.getItem('scannerToken');
+  var portal = own ? null : localStorage.getItem('bizToken');
+  var saved = own || portal;
   if(saved){
     _token=saved;
     _bizId=localStorage.getItem('scannerBizId')||'';
@@ -569,9 +576,11 @@ window.addEventListener('beforeunload',function(){stopScanner()});
     fetch(API+'/auth/me',{headers:{'Authorization':'Bearer '+saved}})
     .then(function(r){if(r.ok)return r.json();throw new Error('invalid')})
     .then(function(d){
+      if(portal && !(d.business_id || d.business_name)) throw new Error('not a business');
       _bizId=_bizId||d.business_id||d.id||'';
-      _bizName=_bizName||d.name||d.business_name||'Business';
+      _bizName=_bizName||d.business_name||d.name||'Business';
       _bizCategory=_bizCategory||d.category||d.business_category||'';
+      if(portal) setSession({access_token:saved}); // keep the scanner's own copy of this session
       showScanner();
     })
     .catch(function(){
