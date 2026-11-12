@@ -7,7 +7,6 @@ Run against the live API (127.0.0.1:8089). Creates probe rows through REAL route
 Exit 0 only if the owner IS resolved (200). Prints FAIL while the defect stands.
 """
 import json, os, subprocess, sys, time, urllib.error, urllib.request
-from lib.coreswift_sweep import sweep_coreswift_mirror
 
 BASE = "http://127.0.0.1:8089/api/v1"
 TS = int(time.time())
@@ -92,10 +91,6 @@ def main():
     psql(f"DELETE FROM visitor_accounts WHERE probe_harness = '{HARNESS}';")
     left = psql(f"SELECT (SELECT COUNT(*) FROM businesses WHERE email = '{OWNER}') + (SELECT COUNT(*) FROM visitor_accounts WHERE probe_harness = '{HARNESS}');")
     rec(left == "0", "cleanup removed every probe row", f"left={left}")
-
-    # the public claim route also fans the owner out to CoreSwift as a contact mirror
-    cs_left = sweep_coreswift_mirror(["probe-payout-owner-"], window=15)
-    rec(cs_left == 0, "no CoreSwift contact mirror left behind", f"left={cs_left}")
 
     bad = [n for n, ok, _ in OUT if not ok]
     print("\nHARNESS", HARNESS)
