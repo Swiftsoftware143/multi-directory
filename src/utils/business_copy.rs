@@ -82,18 +82,82 @@ fn article(trade: &str) -> &'static str {
     }
 }
 
-/// Trade phrase for the opener: lowercase the category unless it is an acronym.
+/// Category names that do NOT read as a countable noun ("a landscaping" is wrong). The phrase
+/// below is what the sentence uses instead. Categories absent from this table already read
+/// correctly with an article ("a dentist", "a tattoo parlor", "a coffee shop").
+pub const TRADE_NOUN: &[(&str, &str)] = &[
+    ("landscaping", "landscaping company"),
+    ("roofing", "roofing company"),
+    ("hvac", "HVAC contractor"),
+    ("cleaning services", "cleaning company"),
+    ("property management", "property management company"),
+    ("physical therapy", "physical therapy clinic"),
+    (
+        "child care & education",
+        "child care and education provider",
+    ),
+    ("maintenance & handyman", "maintenance and handyman service"),
+    ("screen enclosures", "screen enclosure company"),
+    ("dog daycare & boarding", "dog daycare and boarding service"),
+    ("special events & party planning", "event planning company"),
+    ("family entertainment", "family entertainment venue"),
+    ("home & decor", "home and decor shop"),
+    ("home & outdoor", "home and outdoor supplier"),
+    ("gifts & stationery", "gift shop"),
+    ("books, music & hobby", "hobby shop"),
+    (
+        "business & professional services",
+        "business services provider",
+    ),
+    ("professional", "professional services provider"),
+    ("health & wellness", "health and wellness provider"),
+    ("personal care", "personal care provider"),
+    (
+        "medical & health services",
+        "medical and health services provider",
+    ),
+    ("auto repair", "auto repair shop"),
+    ("car detailing & wash", "car detailing and wash shop"),
+    ("tire shops & oil change", "tire and oil-change shop"),
+    ("electronics repair & resale", "electronics repair shop"),
+    ("pizza", "pizza restaurant"),
+    ("american", "American restaurant"),
+    ("chinese", "Chinese restaurant"),
+    ("french", "French restaurant"),
+    ("indian", "Indian restaurant"),
+    ("italian", "Italian restaurant"),
+    ("japanese", "Japanese restaurant"),
+    ("mediterranean", "Mediterranean restaurant"),
+    ("mexican", "Mexican restaurant"),
+    ("seafood", "seafood restaurant"),
+    ("breakfast", "breakfast restaurant"),
+    ("fine dining", "fine-dining restaurant"),
+    ("catering", "catering company"),
+    ("food trucks", "food truck"),
+    ("food & drink", "food and drink business"),
+    ("specialty grocery & gourmet", "specialty grocery"),
+    // "Other" says nothing; leave the sentence without a trade rather than print "an other".
+    ("other", ""),
+];
+
+/// Trade phrase for the opener: a hand-written noun phrase where the raw category name would
+/// read badly, otherwise the lowercased category (acronyms keep their case).
 fn trade_phrase(category: Option<&str>) -> Option<String> {
     let c = non_empty(category)?;
+    let key = c.to_lowercase();
+    if let Some((_, phrase)) = TRADE_NOUN.iter().find(|(cat, _)| *cat == key) {
+        return if phrase.is_empty() {
+            None
+        } else {
+            Some(phrase.to_string())
+        };
+    }
     let letters: Vec<char> = c.chars().filter(|ch| ch.is_alphabetic()).collect();
     let is_acronym = !letters.is_empty() && letters.iter().all(|ch| ch.is_ascii_uppercase());
     if is_acronym {
         return Some(c.to_string());
     }
-    let lower = c.to_lowercase();
-    // "Personal Injury Lawyer" reads better as "... works as a personal injury lawyer"; a
-    // plural trade ("Bakeries & Dessert Shops") keeps its plural and drops the article.
-    Some(lower)
+    Some(c.to_lowercase())
 }
 
 fn is_plural(trade: &str) -> bool {
@@ -397,6 +461,25 @@ mod tests {
         let text = compose(&facts("Whale Roofing", Some("HVAC")), 0).unwrap();
         assert!(text.contains("an HVAC"), "{text}");
         assert!(!text.contains("hvac"));
+    }
+
+    #[test]
+    fn service_noun_categories_get_a_real_noun() {
+        let t = compose(&facts("Ben Turf Landscaping, LLC", Some("Landscaping")), 0).unwrap();
+        assert!(t.contains("a landscaping company"), "{t}");
+        let t = compose(&facts("Slice House", Some("Pizza")), 1).unwrap();
+        assert!(t.contains("a pizza restaurant"), "{t}");
+        let t = compose(&facts("Comfort Air", Some("HVAC")), 2).unwrap();
+        assert!(t.contains("an HVAC contractor"), "{t}");
+        let t = compose(&facts("Osto", Some("Property Management")), 1).unwrap();
+        assert!(t.contains("a property management company"), "{t}");
+    }
+
+    #[test]
+    fn unknown_category_names_for_no_trade_phrase() {
+        let t = compose(&facts("Something LLC", Some("Other")), 0).unwrap();
+        assert!(!t.contains("an other"));
+        assert!(t.contains("local business in Apopka, FL") || t.contains("based in Apopka, FL"));
     }
 
     #[test]
