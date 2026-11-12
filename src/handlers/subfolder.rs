@@ -1822,7 +1822,9 @@ pub async fn town_page(
         158,
     );
 
-    let items = list_town_businesses(pool, dir.id, &town.key, 100).await;
+    // The page's own copy says "N businesses", so it must render all N: a cap of 100 on a town
+    // with 148 listings (Melbourne on Palm Bay) advertised 148 and showed 100.
+    let items = list_town_businesses(pool, dir.id, &town.key, 1200).await;
     let cards: String = items
         .iter()
         .map(|b| card_html(&base, &dir.slug, b))

@@ -374,9 +374,10 @@ mod tests {
     #[test]
     fn display_src_maps_names_and_keeps_urls() {
         let id = Uuid::nil();
+        let expected = format!("/api/v1/place-photo/{id}/2");
         assert_eq!(
             display_src(id, 2, "places/ChIJa/photos/AWCb").as_deref(),
-            Some("/api/v1/place-photo/00000000-0000-0000-0000-000000000000/2")
+            Some(expected.as_str())
         );
         assert_eq!(
             display_src(id, 0, "https://cdn.example/x.jpg").as_deref(),

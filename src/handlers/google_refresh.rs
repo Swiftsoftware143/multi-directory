@@ -394,7 +394,7 @@ async fn run_batch(s: &AppState, directory_id: Uuid, opts: Opts) -> Result<Value
     if opts.update {
         match update_arm(s, &dir, &key, opts.max_update, &mut counts, &mut samples).await {
             Ok(claimed) => counts.skipped_claimed += claimed,
-            Err(e) => notes.push(format!("update arm: {e}")),
+            Err(e) => notes.push(format!("existing-row arm: {e}")),
         }
     }
 

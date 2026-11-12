@@ -781,10 +781,13 @@ mod tests {
         // plus the site-wide company identity (GET /zaarhub/company — site name, headquarters
         // city+state, contact email/phone; the footer on every page renders it, presentation
         // data only); if this changes, the census wants a look.
+        // plus the listing photo proxy (GET /place-photo/:business_id/:index — the hero/gallery
+        // <img> on a public listing carries no token, so the route must answer anonymously; it
+        // serves only published photos of an active listing and 404s everything else).
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            166,
-            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer)"
+            167,
+            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy)"
         );
     }
 }

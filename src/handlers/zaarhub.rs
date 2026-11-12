@@ -1139,7 +1139,10 @@ pub async fn get_city_page(
            WHERE b.directory_id = $1 AND b.is_active = true
              AND ($2::text[] IS NULL OR TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = ANY($2))
            ORDER BY b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST
-           LIMIT 500"#,
+           -- The city page renders ONE town at a time from this list, so the cap must exceed the
+           -- LARGEST local area, not the largest town: Palm Bay's area totals 505 listings and a
+           -- 500 cap silently hid 4 of its 308 home-town cards (the page counted 308, showed 304).
+           LIMIT 1200"#,
     )
     .bind(dir_id)
     .bind(town_filter.clone())

@@ -25,12 +25,18 @@ UPDATE satellite_towns k
               = TRIM(REGEXP_REPLACE(LOWER(k.town_key), '[^[:alnum:]]+', ' ', 'g'))
    );
 
--- 2. One row per town: keep the oldest (lowest id) of each normalised key per directory.
+-- 2. One row per town: keep the OLDEST row of each normalised key per directory. (A row survives
+--    only when no older sibling normalises to the same key. `min(uuid)` does not exist in
+--    Postgres, so the survivor is chosen from the (created_at, id) tuple, which does.)
 DELETE FROM satellite_towns d
- WHERE d.id NOT IN (
-       SELECT MIN(id)
-         FROM satellite_towns
-        GROUP BY directory_id, TRIM(REGEXP_REPLACE(LOWER(town_key), '[^[:alnum:]]+', ' ', 'g'))
+ WHERE EXISTS (
+       SELECT 1
+         FROM satellite_towns s
+        WHERE s.directory_id = d.directory_id
+          AND s.id <> d.id
+          AND (s.created_at, s.id) < (d.created_at, d.id)
+          AND TRIM(REGEXP_REPLACE(LOWER(s.town_key), '[^[:alnum:]]+', ' ', 'g'))
+              = TRIM(REGEXP_REPLACE(LOWER(d.town_key), '[^[:alnum:]]+', ' ', 'g'))
    );
 
 -- 3. Rewrite the survivors to the normalised key.
