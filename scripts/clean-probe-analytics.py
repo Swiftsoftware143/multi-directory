@@ -38,6 +38,34 @@ PROBE_URL_COL = ("({c} LIKE 'http://127.0.0.1:%' OR {c} LIKE 'http://localhost:%
 PROBE_VALUE = "(event_value ~* '^ZZ ' OR event_value ~* 'probe')"
 SESS_COLS = ("entry_url", "exit_url", "landing_page", "exit_page")
 
+# THE DECISIVE SIGNAL: the visitor's IP address. A customer never arrives from the box's own
+# loopback or from the box's own public address, so a session/event whose visitor IP is one of
+# these was made by our own proof runs. This catches the rows the URL rule cannot see — the
+# tracker stores many proof loads with NO url column filled at all (measured 2026-11-12:
+# 996 localhost + 457 box-public-IP sessions carried NULL url columns and survived the URL rule).
+LOOPBACK = ("'127.0.0.1'", "'::1'", "'localhost'")
+DEFAULT_BOX_IP = "209.222.97.179"
+
+
+def box_ips():
+    """Loopback plus this box's current public address (falls back to the known one offline)."""
+    ip = ""
+    try:
+        r = sh("curl", "-s", "-m", "5", "https://api.ipify.org")
+        ip = r.stdout.strip()
+    except Exception:
+        ip = ""
+    ips = list(LOOPBACK)
+    if ip and ip.replace(".", "").isdigit():
+        ips.append("'%s'" % ip)
+    elif "'%s'" % DEFAULT_BOX_IP not in ips:
+        ips.append("'%s'" % DEFAULT_BOX_IP)
+    return "(" + ", ".join(ips) + ")"
+
+
+def box_visitors():
+    return "(SELECT id FROM visitors WHERE ip_address IN %s)" % box_ips()
+
 
 def sh(*cmd):
     return subprocess.run(cmd, capture_output=True, text=True)
@@ -60,18 +88,26 @@ def psql(pw, sql):
 
 
 def sess_pred():
-    return " OR ".join(PROBE_URL_COL.format(c=c) for c in SESS_COLS)
+    """A session is ours when any of its four URL columns is a probe URL, OR its visitor came
+    from this box's own address. Both arms are objective; neither can match a real customer.
+    COALESCE(..., FALSE) is load-bearing: a session whose url columns and ip are NULL yields
+    NULL from the OR chain, and a bare NOT would then count it as neither probe nor real —
+    coalescing makes every row classify exactly once (NULL = unknown = kept)."""
+    return ("COALESCE((" + " OR ".join(PROBE_URL_COL.format(c=c) for c in SESS_COLS) +
+            f" OR visitor_id IN {box_visitors()}), FALSE)")
+
+
+def ev_pred():
+    return ("COALESCE((" + f"{PROBE_URL} OR {PROBE_VALUE} OR visitor_id IN {box_visitors()} "
+            f"OR session_id IN (SELECT id FROM visitor_sessions WHERE {sess_pred()})), FALSE)")
 
 
 def counts(pw):
     """Probe/real counts. An event is only "real" when it is not a probe event AND does not
-    belong to a probe session — an event recorded inside our own localhost session is ours,
-    whatever its own page_url says."""
-    ev_probe = psql(pw, f"SELECT count(*) FROM visitor_events ve WHERE {PROBE_URL} OR {PROBE_VALUE} "
-                        f"OR ve.session_id IN (SELECT id FROM visitor_sessions WHERE {sess_pred()});")
-    ev_real = psql(pw, f"SELECT count(*) FROM visitor_events ve WHERE NOT ({PROBE_URL} OR {PROBE_VALUE}) "
-                       f"AND (ve.session_id IS NULL OR ve.session_id NOT IN "
-                       f"(SELECT id FROM visitor_sessions WHERE {sess_pred()}));")
+    belong to a probe session — an event recorded inside our own session is ours, whatever its
+    own page_url says."""
+    ev_probe = psql(pw, f"SELECT count(*) FROM visitor_events WHERE {ev_pred()};")
+    ev_real = psql(pw, f"SELECT count(*) FROM visitor_events WHERE NOT ({ev_pred()});")
     ss_probe = psql(pw, f"SELECT count(*) FROM visitor_sessions WHERE {sess_pred()};")
     ss_real = psql(pw, f"SELECT count(*) FROM visitor_sessions WHERE NOT ({sess_pred()});")
     return int(ev_probe), int(ev_real), int(ss_probe), int(ss_real)
@@ -91,11 +127,10 @@ def main():
         return 0
     sql = (
         "BEGIN;"
-        f"DELETE FROM visitor_events WHERE {PROBE_URL} OR {PROBE_VALUE};"
-        f"DELETE FROM visitor_events WHERE session_id IN "
-        f"(SELECT id FROM visitor_sessions WHERE {sess_pred()});"
+        f"DELETE FROM visitor_events WHERE {ev_pred()};"
+        f"DELETE FROM visitor_events WHERE session_id IN (SELECT id FROM visitor_sessions WHERE {sess_pred()});"
         f"DELETE FROM visitor_sessions WHERE {sess_pred()};"
-        "DELETE FROM visitors v WHERE v.probe_harness IS NOT NULL"
+        "DELETE FROM visitors v WHERE (v.probe_harness IS NOT NULL OR v.ip_address IN " + box_ips() + ")"
         " AND NOT EXISTS (SELECT 1 FROM visitor_sessions s WHERE s.visitor_id = v.id)"
         " AND NOT EXISTS (SELECT 1 FROM visitor_events e WHERE e.visitor_id = v.id);"
         "COMMIT;"
