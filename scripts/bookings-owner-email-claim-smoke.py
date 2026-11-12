@@ -24,6 +24,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from lib.coreswift_sweep import sweep_coreswift_mirror
 
 BASE = os.environ.get("MD_BASE", "http://127.0.0.1:8089")
 AUD = os.environ.get("AUD", f"/opt/swift/audits/bookings-owner-claim-{time.strftime('%Y%m%d-%H%M%S')}")
@@ -222,6 +223,9 @@ def main():
     psql("DELETE FROM visitor_accounts WHERE email LIKE 'zz-bookings-owner-%@swiftsoftware.dev'")
     check("fixtures removed", psql(f"SELECT count(*) FROM businesses WHERE id='{bid}'") == "0")
 
+    cs_left = sweep_coreswift_mirror(["zz-bookings-owner-"], window=15)
+    check("no CoreSwift contact mirror left behind", cs_left == 0,
+          f"coreswift_contacts={cs_left}")
     verdict = "PASS" if not FAILS else "FAIL"
     with open(os.path.join(AUD, "proof.json"), "w") as fh:
         json.dump({"verdict": verdict, "passed": len(RESULTS) - len(FAILS),

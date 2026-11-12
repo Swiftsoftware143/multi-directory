@@ -32,6 +32,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from lib.coreswift_sweep import sweep_coreswift_mirror
 
 BASE = os.environ.get("MD_BASE", "http://127.0.0.1:8089")
 PORTAL_URL = os.environ.get("PORTAL_URL", BASE + "/portal")
@@ -242,6 +243,9 @@ def main():
         check("probe data fully removed",
               left in ("0", "") and left_claims in ("0", "") and left_people in ("0", ""),
               f"businesses={left} claims={left_claims} accounts={left_people}")
+    cs_left = sweep_coreswift_mirror(["zz-pending-"], window=15)
+    check("no CoreSwift contact mirror left behind", cs_left == 0,
+          f"coreswift_contacts={cs_left}")
 
     print("\nRESULT: " + ("PASS" if not FAILS else f"FAIL ({len(FAILS)} checks)"))
     if FAILS:

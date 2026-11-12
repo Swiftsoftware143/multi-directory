@@ -32,6 +32,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from lib.coreswift_sweep import sweep_coreswift_mirror
 
 BASE = os.environ.get("MD_BASE", "http://127.0.0.1:8089")
 HARNESS = {"X-Swift-Harness": "claim-notice-probe"}
@@ -207,6 +208,9 @@ def main():
         check("the probe listing was removed again", left == "0", f"before_sweep={swept} after={left}")
 
     print()
+    cs_left = sweep_coreswift_mirror(["zz-claimnotice-"], window=15)
+    check("no CoreSwift contact mirror left behind", cs_left == 0,
+          f"coreswift_contacts={cs_left}")
     print("RESULT:", "PASS" if not FAILS else f"FAIL ({len(FAILS)}): " + "; ".join(FAILS))
     return 1 if FAILS else 0
 

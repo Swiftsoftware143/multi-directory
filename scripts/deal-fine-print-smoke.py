@@ -30,6 +30,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from lib.coreswift_sweep import sweep_coreswift_mirror
 
 BASE = os.environ.get("MD_BASE", "http://127.0.0.1:8089")
 APP = "/opt/swift/apps/multi-directory"
@@ -248,6 +249,9 @@ def main():
     check("probe data fully removed", left == "0", f"remaining={left}")
 
     print()
+    cs_left = sweep_coreswift_mirror(["zz-deal-fineprint-"], window=15)
+    check("no CoreSwift contact mirror left behind", cs_left == 0,
+          f"coreswift_contacts={cs_left}")
     if FAILS:
         print(f"RESULT: FAIL ({len(FAILS)}): " + "; ".join(FAILS))
         return 1
