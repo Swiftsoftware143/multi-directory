@@ -338,8 +338,9 @@ pub fn start_description_backfill(db: PgPool) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1800));
         loop {
             interval.tick().await;
-            // Bounded passes so one sweep can never hold the pool for long.
-            for _ in 0..8 {
+            // Bounded passes so one sweep can never hold the pool for long, but generous enough
+            // that a whole directory converges in the first pass at boot (4,100 listings).
+            for _ in 0..40 {
                 if backfill_blank(&db, 500).await == 0 {
                     break;
                 }

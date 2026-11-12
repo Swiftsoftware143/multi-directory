@@ -3150,6 +3150,10 @@ pub async fn business_detail(
                 )
             }
         });
+    // The full paragraph belongs in the page body and in the LocalBusiness structured data; only
+    // the <meta>/Open Graph description is capped at 158 characters. Clipping the body to the
+    // meta window cut every real description off mid-sentence (t_6b831daa).
+    let description_body = strip_tags(description.trim());
     let description = clip(&description, 158);
     let og_image = ov
         .as_ref()
@@ -3292,7 +3296,7 @@ pub async fn business_detail(
             "@id": canonical,
             "name": name,
             "url": canonical,
-            "description": description,
+            "description": description_body,
             "address": {
                 "@type": "PostalAddress",
                 "streetAddress": address.clone().unwrap_or_default(),
@@ -3384,10 +3388,10 @@ pub async fn business_detail(
         ),
         _ => String::new(),
     };
-    let desc_html = if description.is_empty() {
+    let desc_html = if description_body.is_empty() {
         String::new()
     } else {
-        format!("<p class=\"lede\">{}</p>", h(&description))
+        format!("<p class=\"lede\">{}</p>", h(&description_body))
     };
     // The picture at the top of the page. Decorative when it is absent — the block disappears
     // rather than showing an empty frame.
