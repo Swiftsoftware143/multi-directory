@@ -12,6 +12,9 @@ Setup mints its own disposable listing + two real accounts and removes all of it
 Env: MD_BASE (default http://127.0.0.1:8089), SHOT_DIR
 Exit: 0 = PASS, 1 = FAIL.
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -51,6 +54,22 @@ def psql(sql):
         raise RuntimeError(f"psql failed: {r.stderr.strip()}\nSQL: {sql}")
     lines = [ln for ln in r.stdout.strip().splitlines() if not TAG.match(ln)]
     return lines[0] if lines else ""
+
+
+def mint_operator_token():
+    """super_admin JWT, the same shape the admin console uses. Secret never printed."""
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
 
 
 def http(method, path, body=None, token=None, extra_headers=None):
@@ -124,6 +143,20 @@ def main():
                  {"owner_email": owner_email, "owner_name": "ZZ Probe Owner",
                   "owner_phone": "4075550100"}, extra_headers=HARNESS)
     check("the owner claims the listing (public claim route)", st in (200, 201), f"status={st}")
+
+    # ── the operator approves the claim (the real flow since 2026-11-12) ─────────
+    # An address whose domain does not match the listing is stored INACTIVE until a human
+    # approves it from the Businesses screen, so this proof walks that same door.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    inactive = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the claim waits for a human decision (stored inactive)", inactive == "false",
+          f"is_active={inactive}")
+    op_tok = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op_tok)
+    check("the operator approves the claim from the Businesses screen", st in (200, 201),
+          f"status={st}")
+    active = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the approved claim makes the owner effective", active == "true", f"is_active={active}")
 
     st, tok = http("POST", "/api/v1/auth/login", {"email": customer_email, "password": pw})
     cust_token = (tok or {}).get("access_token") if isinstance(tok, dict) else None

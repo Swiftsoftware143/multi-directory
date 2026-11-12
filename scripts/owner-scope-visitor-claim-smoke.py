@@ -18,6 +18,9 @@ Run:  python3 scripts/owner-scope-visitor-claim-smoke.py
 Env:  MD_BASE (default http://127.0.0.1:8089), AUD
 Exit: 0 = PASS, 1 = FAIL.
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -83,6 +86,22 @@ def http(method, path, body=None, token=None, extra_headers=None):
             return e.code, raw
 
 
+def mint_operator_token():
+    """super_admin JWT, the same shape the admin console uses. Secret never printed."""
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+
+
 def check(label, ok, detail=""):
     print(("PASS  " if ok else "FAIL  ") + label + (f"  [{detail}]" if detail else ""))
     if not ok:
@@ -137,9 +156,28 @@ def main():
     check("the owner claims the listing with their email (POST /businesses/:id/claim)",
           st in (200, 201), f"status={st}")
     link = psql("SELECT coalesce(visitor_account_id::text,'NULL')||'|'||coalesce(user_id::text,'NULL') "
-                f"FROM claimed_businesses WHERE business_id='{bid}' AND is_active")
-    check("the fresh claim carries NO account id (email-only claim, as the public form creates)",
-          link == "NULL|NULL", f"claim={link}")
+                f"FROM claimed_businesses WHERE business_id='{bid}'")
+    check("the claim as written is email-only (both account id columns NULL)", link == "NULL|NULL",
+          f"claim={link}")
+
+    # ── the operator approves the claim (the flow since 2026-11-12) ──────────────
+    # A claimant whose address domain does not match the listing gets nothing until a human
+    # approves it from the Businesses screen. After approval the row keeps working for the owner
+    # even with NO account ids (the legacy/email-only shape this guard exists for), so the account
+    # ids are cleared again below and the email match is what must resolve the owner.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    inactive = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the claim waits for a human decision (stored inactive)", inactive == "false",
+          f"is_active={inactive}")
+    op_tok = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op_tok)
+    check("the operator approves the claim from the Businesses screen", st in (200, 201),
+          f"status={st}")
+    active = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the approved claim is ACTIVE", active == "true", f"is_active={active}")
+    # Back to the email-only shape: an approved claim with no account id must still resolve by
+    # the owner's address (that is the defect this proof guards).
+    psql(f"UPDATE claimed_businesses SET visitor_account_id=NULL, user_id=NULL WHERE id='{claim_id}'")
 
     # ── 3. the three owner-scoped handlers behind the guard ────────────────────
     routes = {

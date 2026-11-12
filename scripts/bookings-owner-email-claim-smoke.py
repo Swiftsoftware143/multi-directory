@@ -13,6 +13,9 @@ and exercises both the read (list) and the write (status change) as well as the 
 Run:  python3 scripts/bookings-owner-email-claim-smoke.py
 Exit: 0 = PASS, 1 = FAIL.
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -53,6 +56,22 @@ def psql(sql):
         raise RuntimeError(f"psql failed: {r.stderr.strip()}\nSQL: {sql}")
     lines = [ln for ln in r.stdout.strip().splitlines() if not TAG.match(ln)]
     return lines[0] if lines else ""
+
+
+def mint_operator_token():
+    """super_admin JWT, the same shape the admin console uses. Secret never printed."""
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
 
 
 def check(label, ok, detail=""):
@@ -123,8 +142,21 @@ def main():
                   "owner_phone": "4075550111"}, extra_headers=HARNESS)
     check("owner claims the listing through the public claim route", st in (200, 201), f"status={st}")
     claim = psql("SELECT COALESCE(user_id::text,'NULL')||'|'||COALESCE(visitor_account_id::text,'NULL') "
-                 f"FROM claimed_businesses WHERE business_id='{bid}' AND is_active")
-    check("the claim is email-only (both account id columns NULL)", claim == "NULL|NULL", claim)
+                 f"FROM claimed_businesses WHERE business_id='{bid}'")
+    check("the claim as written is email-only (both account id columns NULL)", claim == "NULL|NULL", claim)
+
+    # ── the operator approves the claim (the flow since 2026-11-12) ──────────────
+    # A claimant whose address domain does not match the listing gets no rights until a human
+    # approves it from the Businesses screen, so this proof walks that same door.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    inactive = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the claim waits for a human decision (stored inactive)", inactive == "false",
+          f"is_active={inactive}")
+    op_tok = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op_tok)
+    check("the operator approves the claim from the Businesses screen", st in (200, 201), f"status={st}")
+    active = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the approved claim is ACTIVE", active == "true", f"is_active={active}")
 
     st, cust = http("POST", "/api/v1/auth/login", {"email": cust_email, "password": pw})
     cust_token = (cust or {}).get("access_token") if isinstance(cust, dict) else None
