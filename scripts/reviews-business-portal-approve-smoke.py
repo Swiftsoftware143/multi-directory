@@ -66,6 +66,25 @@ def check(label, ok, detail=""):
         FAILS.append(label)
 
 
+def mint_operator_token():
+    """super_admin JWT, same shape the admin console uses. Secret never printed."""
+    import base64
+    import hashlib
+    import hmac
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+
+
 def http(method, path, body=None, token=None, extra_headers=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(BASE + path, data=data, method=method)
@@ -150,6 +169,15 @@ def main():
                  {"owner_email": owner_email, "owner_name": "ZZ Portal Owner",
                   "owner_phone": "4075550100"}, extra_headers=HARNESS)
     check("the owner can claim the listing (POST /businesses/:id/claim)", st in (200, 201), f"status={st}")
+
+    # A claim whose e-mail domain does not match the listing stays INACTIVE until an operator
+    # approves it from the Businesses screen (2026-11-12). The portal only shows an owner their own
+    # listing, so this proof walks that same door before the browser arm runs.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    op = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op)
+    check("the operator can approve the claim (POST /admin/claims/:id/approve)",
+          st in (200, 201), f"status={st}")
 
     # A harness claim must not deposit a row into the operator's real CRM pipeline: crm_deal_records
     # carries no business id, so a fake "… - Claimed (City)" deal is untraceable once written

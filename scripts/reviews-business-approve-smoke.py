@@ -19,6 +19,9 @@ The only direct DB writes are the probe's disposable business row and teardown.
 Run:  python3 scripts/reviews-business-approve-smoke.py
 Exit: 0 = PASS, 1 = FAIL.  Nothing is left behind on either path.
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -59,6 +62,22 @@ def psql(sql):
     # -At still prints the command tag after a RETURNING result; drop it.
     lines = [ln for ln in r.stdout.strip().splitlines() if not TAG.match(ln)]
     return lines[0] if lines else ""
+
+
+def mint_operator_token():
+    """super_admin JWT, same shape the admin console uses. Secret never printed."""
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
 
 
 def sweep_stale_probe_rows():
@@ -155,6 +174,22 @@ def main():
                     {"owner_email": owner_email, "owner_name": "ZZ Probe Owner",
                      "owner_phone": "4075550100"}, extra_headers=HARNESS)
     check("owner can claim the listing (POST /businesses/:id/claim)", st in (200, 201), f"status={st}")
+
+    # ── 2b. the operator approves the claim (the real flow since 2026-11-12) ─────
+    # A claim whose e-mail domain does not match the listing is stored INACTIVE with only its
+    # address confirmed; ownership is granted from the Businesses screen
+    # (POST /admin/claims/:id/approve). Nothing granted until a human does that — so this proof
+    # has to walk the same door a real owner walks.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    inactive = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the claim is stored INACTIVE until a human approves it", inactive == "false",
+          f"is_active={inactive}")
+    op = mint_operator_token()
+    st, _b = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op)
+    check("the operator can approve the claim (POST /admin/claims/:id/approve)",
+          st in (200, 201), f"status={st}")
+    active = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the approved claim becomes ACTIVE", active == "true", f"is_active={active}")
 
     # ── 3. a customer leaves a review (lands pending) ────────────────────────────
     st, tok_other = http("POST", "/api/v1/auth/login", {"email": other_email, "password": pw})

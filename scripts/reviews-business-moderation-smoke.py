@@ -105,6 +105,33 @@ def check(label, ok, detail=""):
         FAILS.append(label)
 
 
+def mint_operator_token():
+    """super_admin JWT, same shape the admin console uses. Secret never printed."""
+    import base64
+    import hashlib
+    import hmac
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+
+
+def approve_claim(business_id, label):
+    """A claim whose domain does not match the listing stays inactive until an operator approves it
+    from the Businesses screen (2026-11-12). Proof fixtures must walk that same door."""
+    cid = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{business_id}'")
+    st, _ = http("POST", f"/api/v1/admin/claims/{cid}/approve", {}, token=mint_operator_token())
+    check(label, st in (200, 201), f"status={st}")
+
+
 def public_ids(bid, query=""):
     st, pub = http("GET", f"/api/v1/reviews?business_id={bid}{query}")
     rows = ((pub or {}).get("data") or []) if isinstance(pub, dict) else []
@@ -150,6 +177,7 @@ def main():
                  {"owner_email": owner_email, "owner_name": "ZZ Revmod Owner",
                   "owner_phone": "4075550101"}, extra_headers=HARNESS)
     check("owner can claim the listing (POST /businesses/:id/claim)", st in (200, 201), f"status={st}")
+    approve_claim(bid, "the operator approves the owner's claim")
 
     # ── a customer leaves a review (lands pending) ──────────────────────────────
     st, tok_cust = http("POST", "/api/v1/auth/login", {"email": cust_email, "password": pw})
@@ -215,6 +243,7 @@ def main():
                  {"owner_email": owner_email, "owner_name": "ZZ Revmod Owner",
                   "owner_phone": "4075550101"}, extra_headers=HARNESS)
     check("the owner can claim the imported listing", st in (200, 201), f"status={st}")
+    approve_claim(imp_bid, "the operator approves the claim on the imported listing")
     st, imp_rev = http("POST", "/api/v1/reviews",
                        {"business_id": imp_bid, "rating": 2, "title": "Imported-listing probe",
                         "content": "Left by the moderation probe customer."}, token=cust_token)
