@@ -2406,6 +2406,22 @@ pub fn create_router(s: AppState) -> Router {
             post(crate::handlers::discovery_queue::set_category)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // W25 — Refresh from Google: one batched job that refreshes the city's unclaimed listings
+        // in place and adds what Google knows and the directory does not. Guarded inside the
+        // handler by assert_directory_admin, so the city's own admin (a buyer) can run it for
+        // their city while nobody else can.
+        .route(
+            "/zaarhub/admin/google-refresh/run",
+            post(crate::handlers::google_refresh::run),
+        )
+        .route(
+            "/zaarhub/admin/google-refresh/status",
+            get(crate::handlers::google_refresh::status),
+        )
+        .route(
+            "/zaarhub/admin/google-refresh/schedule",
+            put(crate::handlers::google_refresh::set_schedule),
+        )
         .route(
             "/ads/active/:directory_id",
             get(monetization::get_active_ads),
@@ -2495,6 +2511,13 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/cron/contact-intelligence",
             post(contact_intelligence::contact_intelligence_pipeline)
+                .route_layer(middleware::from_fn_with_state(s.clone(), cron_guard)),
+        )
+        // W25 — Refresh from Google: one scheduled batch per city that is due. Same identity
+        // rule as every other /cron/* trigger: internal key or a platform operator.
+        .route(
+            "/cron/google-refresh",
+            post(crate::handlers::google_refresh::cron_refresh)
                 .route_layer(middleware::from_fn_with_state(s.clone(), cron_guard)),
         )
         // ??? Content Queue routes (Phase 5 Task 3)

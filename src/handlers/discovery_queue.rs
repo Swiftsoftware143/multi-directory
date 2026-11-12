@@ -167,7 +167,7 @@ const TYPE_HINTS: &[(&str, &[&str])] = &[
 ];
 
 /// Slugify a business name for the `businesses.slug` column.
-fn slugify(s: &str) -> String {
+pub(crate) fn slugify(s: &str) -> String {
     let mut out: String = s
         .to_lowercase()
         .chars()
@@ -186,7 +186,7 @@ fn slugify(s: &str) -> String {
 
 /// Map Google Places `types` to the closest EXISTING directory category.
 /// Falls back to the category the admin picked when nothing matches.
-async fn map_category(
+pub(crate) async fn map_category(
     s: &AppState,
     directory_id: Uuid,
     types: &[String],

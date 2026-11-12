@@ -190,6 +190,33 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
       <p style="font-size:12px;color:var(--text-muted);margin:8px 0 12px">Franchise rows and rows already in the directory are <b>unticked by default</b> — tick one yourself to override. The category is auto-mapped from Google's types and can be changed per row before adding.</p>
       <div id="pop-queue"><div style="color:var(--text-muted);font-size:13px;padding:16px">Queue is empty — run a search above.</div></div>
     </div>
+
+    <div class="panel">
+      <h2>3 · Refresh from Google — keep the listings current</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+        One press does two jobs for the city picked above: it <b>updates the unclaimed listings in
+        place</b> from Google (address, phone, website, rating, map location — never a claimed
+        listing, never a duplicate, never a delete), and it <b>adds businesses Google knows in this
+        city that are not listed yet</b>. A second press cannot create a second copy of the same
+        business.
+      </p>
+      <div id="grf-status" style="font-size:13px;color:var(--text-muted);line-height:1.7">Pick a directory above to see this city's refresh state.</div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group"><label>How often should this run on its own?</label>
+          <select id="grf-schedule" onchange="saveRefreshSchedule()">
+            <option value="manual">Only when I press the button</option>
+            <option value="daily">Every day</option>
+            <option value="weekly">Every week</option>
+            <option value="monthly">Every month</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+          <button class="btn primary" id="grf-run" onclick="runGoogleRefresh()">Refresh this city now</button>
+          <button class="btn secondary" onclick="loadRefreshStatus()">Reload</button>
+        </div>
+      </div>
+      <div id="grf-result" style="font-size:13px;margin-top:10px"></div>
+    </div>
   </div>
 
   <div id="tab-queue" style="display:none">
@@ -620,6 +647,7 @@ function onPopDirectoryChange(){
   popDirectoryId=document.getElementById('pop-directory').value||'';
   try{localStorage.setItem('md_adm_pop_directory',popDirectoryId);}catch(e){}
   reloadQueue();
+  loadRefreshStatus();
 }
 function onPopCityChange(){refreshCityCentre();}
 function onPopCategoryChange(){
@@ -871,6 +899,61 @@ async function addSelectedToDirectory(){
     showToast(`Added ${d.added} business(es)`);
     await reloadQueue();
   }catch(e){statusEl.innerHTML='<span style="color:#dc2626">Add failed. Check console.</span>';console.error(e);}
+}
+// ── Refresh from Google (W25) ───────────────────────────────────────────────
+// One button that keeps a city's listings current. Nothing here is a mock: the status card reads
+// the last recorded run and the button calls the same endpoint the scheduler uses.
+async function loadRefreshStatus(){
+  const el=document.getElementById('grf-status'); if(!el)return;
+  if(!popDirectoryId){el.textContent='Pick a directory above first.';return;}
+  try{
+    const r=await fetch(`${API}/google-refresh/status?directory_id=${encodeURIComponent(popDirectoryId)}`);
+    const d=await r.json();
+    if(!r.ok){el.innerHTML=`<span style="color:#dc2626">${esc(d.error||'Could not read the refresh status')}</span>`;return;}
+    const sel=document.getElementById('grf-schedule'); if(sel)sel.value=d.schedule||'weekly';
+    let html=`<div style="display:flex;gap:18px;flex-wrap:wrap">
+      <span><b>${d.unclaimed||0}</b> listings this can refresh (unclaimed)</span>
+      <span><b>${d.with_place_id||0}</b> already matched to a Google place</span>
+      <span><b>${d.claimed||0}</b> claimed — never touched</span></div>`;
+    if(d.running)html+='<div style="margin-top:8px;color:#b45309">A refresh is running right now.</div>';
+    if(d.last_run){
+      const t=d.last_run.started_at?new Date(d.last_run.started_at).toLocaleString():'';
+      html+=`<div style="margin-top:8px">Last refresh ${esc(t)}: <b>${d.last_run.added}</b> added · <b>${d.last_run.updated}</b> updated · <b>${d.last_run.identified||0}</b> newly matched to Google · <b>${d.last_run.unchanged}</b> unchanged · <b>${d.last_run.unreachable}</b> could not reach Google.</div>`;
+    }else{
+      html+='<div style="margin-top:8px">No refresh has run for this city yet.</div>';
+    }
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span style="color:#dc2626">Could not read the refresh status. Check console.</span>';console.error(e);}
+}
+async function runGoogleRefresh(){
+  if(!popDirectoryId){showToast('Pick a directory first',true);return;}
+  const btn=document.getElementById('grf-run');
+  const out=document.getElementById('grf-result');
+  const label=btn.textContent; btn.disabled=true; btn.textContent='Refreshing…';
+  out.innerHTML='Talking to Google — refreshing this city\'s listings and looking for businesses that are not listed yet. This can take a minute.';
+  try{
+    const r=await fetch(`${API}/google-refresh/run`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId})});
+    const d=await r.json();
+    if(!r.ok){out.innerHTML=`<span style="color:#dc2626">${esc(d.error||'Refresh failed')}</span>`;return;}
+    const names=(d.samples||[]).filter(x=>x&&x.name).slice(0,8);
+    out.innerHTML=`<div style="font-weight:700;color:var(--green)">Refresh finished: ${d.added} added · ${d.updated} updated · ${d.identified||0} newly matched to Google · ${d.unchanged} already correct · ${d.unreachable} could not reach Google.</div>`+
+      (names.length?`<ul style="margin:8px 0 0 18px;font-size:12px">${names.map(x=>`<li>${esc(x.name)} — ${esc(x.result)}${x.why?(': '+esc(x.why)):''}</li>`).join('')}</ul>`:'')+
+      ((d.notes&&d.notes.length)?`<div style="margin-top:6px;color:#b45309">${esc(d.notes.join(' · '))}</div>`:'');
+    showToast(`Refreshed: ${d.updated} updated, ${d.added} added`);
+    await loadRefreshStatus();
+  }catch(e){out.innerHTML='<span style="color:#dc2626">Refresh failed. Check console.</span>';console.error(e);}
+  finally{btn.disabled=false;btn.textContent=label;}
+}
+async function saveRefreshSchedule(){
+  if(!popDirectoryId)return;
+  const v=document.getElementById('grf-schedule').value;
+  try{
+    const r=await fetch(`${API}/google-refresh/schedule`,{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,schedule:v})});
+    const d=await r.json();
+    showToast(r.ok?('Saved: this city refreshes '+d.schedule):(d.error||'Could not save the schedule'),!r.ok);
+  }catch(e){console.error(e);showToast('Could not save the schedule',true);}
 }
 // ── Content Schedule ────────────────────────────────────────────────────────
 // The backend has had a full content queue since Phase 5 (POST/GET/PUT/DELETE

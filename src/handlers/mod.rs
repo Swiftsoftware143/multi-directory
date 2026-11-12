@@ -15,6 +15,7 @@ pub mod directories;
 pub mod discovery_queue;
 pub mod domains;
 pub mod email;
+pub mod google_refresh;
 pub mod homepage_config;
 pub mod impersonate;
 pub mod import_export;
