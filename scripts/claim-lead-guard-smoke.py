@@ -12,7 +12,9 @@ This proof drives the REAL public claim route twice, with no harness header on e
   B. ordinary address (@swiftsoftware.net)          -> claim 201, exactly ONE deal row
 
 B is what stops the fix from being "leads silently stopped working". Teardown removes the
-listings, claims, visitor accounts and both deal rows; the run fails if anything is left.
+listings, claims, visitor accounts and both deal rows in multi_directory, AND the CoreSwift
+contact the claim route fans the owner out to (tag_assignments then contacts, polled across the
+fire-and-forget push window); the run fails if anything is left in either database.
 
 Run:  python3 scripts/claim-lead-guard-smoke.py
 Exit: 0 = PASS, 1 = FAIL.
@@ -166,6 +168,12 @@ def main():
 
     # ---- teardown ----------------------------------------------------------------------
     sweep()
+    # the CoreSwift mirror lands asynchronously (fire-and-forget server push): poll-delete
+    # across its window, then assert it is gone
+    sweep_coreswift(window=15)
+    cs_left = cssql("SELECT count(*) FROM contacts WHERE email LIKE 'zz-guard-%';")
+    check("no CoreSwift contact mirror left behind",
+          cs_left == ["0"], f"coreswift_contacts={cs_left}")
     left = psql("SELECT (SELECT count(*) FROM businesses WHERE probe_harness='" + MARK + "')"
                 "||'|'||(SELECT count(*) FROM claimed_businesses WHERE business_id IN "
                 "(SELECT id FROM businesses WHERE name LIKE 'ZZ Claim Lead Guard%'))"
