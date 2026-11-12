@@ -18,9 +18,19 @@ contact_field_values and link_clicks.
 Every prefix is a fixture-address prefix owned by one harness (`zz-review-owner-`, ...); nothing
 outside the reserved/fixture domains is ever matched.
 
-The sweep REPORTS what it removed (`CLEANED CoreSwift mirror: contacts=N`), so a harness run is
-its own non-vacuity proof: contacts>0 means the claim did fan a contact out and teardown removed
-it; contacts=0 means this harness never leaked. Silence on a clean run.
+The sweep REPORTS what it removed (`CLEANED CoreSwift mirror: contacts=N`).
+
+Since kanban t_436a26a0 the SERVER suppresses this mirror for fleet machinery
+(`probe_harness::classify_claim`: the `X-Swift-Harness` marker, or a reserved/fixture owner domain
+such as `@swiftsoftware.dev`), so a harness claim normally creates no contact at all and there is
+nothing to clean: **silence — no `CLEANED` line — is the expected, healthy result.** Keep calling
+the sweep anyway, as defence in depth: if the guard ever regresses, the contact is still removed
+instead of surviving into the operator's CRM.
+
+A harness must NEVER assert that a contact appeared in order to prove it did something — that
+would fail precisely because the leak is gone. The pass condition is the census AFTER teardown
+(`sweep_coreswift_mirror(...) == 0`), plus, where useful, the server's own
+`CoreSwift contact suppressed … origin=reserved-domain:<domain>` log line.
 """
 
 import re

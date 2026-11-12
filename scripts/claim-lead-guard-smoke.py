@@ -9,7 +9,11 @@ The fix: a claim whose address is on a reserved fixture domain never mirrors int
 This proof drives the REAL public claim route twice, with no harness header on either arm:
 
   A. reserved fixture address (@swiftsoftware.dev)  -> claim 201, ZERO deal rows
-  B. ordinary address (@swiftsoftware.net)          -> claim 201, exactly ONE deal row
+  B. ordinary address (@gulfcoastautorepairfl.com)  -> claim 201, exactly ONE deal row
+
+`@swiftsoftware.net` is ALSO a reserved fixture domain (kanban t_436a26a0: it was measured leaking
+into CoreSwift, and the shared `probe_harness::classify_claim` predicate covers it), so arm B uses
+a domain outside the reserved set that nobody in the fleet owns.
 
 B is what stops the fix from being "leads silently stopped working". Teardown removes the
 listings, claims, visitor accounts and both deal rows in multi_directory, AND the CoreSwift
@@ -158,7 +162,7 @@ def main():
     name_b = f"ZZ Claim Lead Guard B {ts}"
     bid_b = make_listing(directory_id, name_b, f"zz-guard-b-{ts}")
     check("disposable listing B created", bool(bid_b), f"biz={str(bid_b)[:8]}")
-    email_b = f"zz-guard-b-{ts}@swiftsoftware.net"
+    email_b = f"zz-guard-b-{ts}@gulfcoastautorepairfl.com"
     st, body = http("POST", f"/api/v1/businesses/{bid_b}/claim",
                     {"owner_email": email_b, "owner_name": "ZZ Guard Owner B",
                      "owner_phone": "4075550182"})

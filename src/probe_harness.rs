@@ -77,7 +77,7 @@ fn normalise(raw: &str) -> Option<String> {
 //
 //   * `example.com` / `test.com` / `x.com` — throwaway fleet addresses;
 //   * `invalid.test` — RFC 2606 `.invalid` + `.test` names;
-//   * `swiftsoftware.dev` — the fleet's own fixture domain.
+//   * `swiftsoftware.dev` / `swiftsoftware.net` — the fleet's own fixture domains.
 //
 // This is ONE list, consulted by ONE predicate (`classify_claim`), so every claim-path fan-out
 // answers "customer or fleet machinery?" identically. It used to be copy-pasted into the
@@ -87,13 +87,27 @@ fn normalise(raw: &str) -> Option<String> {
 
 /// Reserved/fixture owner domains. Nobody can receive mail on one of these, so an owner address
 /// whose domain is here is fleet machinery.
-pub const RESERVED_FIXTURE_DOMAINS: [&str; 5] = [
+///
+/// The first five are verbatim the list the `crm_deal_records` lead guard carried (that contract is
+/// unchanged); `swiftsoftware.net` was measured leaking into CoreSwift on t_a02f0cf4 and was the
+/// gap that opened this card — the fleet's own fixture domain, so it belongs here.
+pub const RESERVED_FIXTURE_DOMAINS: [&str; 6] = [
     "swiftsoftware.dev",
+    "swiftsoftware.net",
     "test.com",
     "example.com",
     "x.com",
     "invalid.test",
 ];
+
+/// TLDs reserved by RFC 2606 / RFC 6761: never delegated, so no owner can receive mail under them.
+/// Fleet fixtures use them heavily (`example.invalid`, `probe.invalid`, `swiftsoftware.test`), and
+/// a browser-driven proof on one of those domains must not mirror into CoreSwift either.
+const RESERVED_TLDS: [&str; 4] = ["test", "invalid", "example", "localhost"];
+
+/// RFC 2606 documentation domains that sit on a normal TLD (`example.net` / `example.org`), so the
+/// TLD rule above does not catch them.
+const RESERVED_DOC_DOMAINS: [&str; 3] = ["example.com", "example.net", "example.org"];
 
 /// The lowercase domain half of an address (`""` when there is no `@`).
 ///
@@ -106,15 +120,23 @@ pub fn email_domain(email: &str) -> String {
     }
 }
 
-/// The reserved fixture domain this address belongs to, if any.
-pub fn reserved_fixture_domain(email: &str) -> Option<&'static str> {
+/// The reserved fixture domain this address belongs to, if any (the domain itself, so a log line
+/// can name it).
+pub fn reserved_fixture_domain(email: &str) -> Option<String> {
     let domain = email_domain(email);
     if domain.is_empty() {
         return None;
     }
-    RESERVED_FIXTURE_DOMAINS
-        .into_iter()
-        .find(|reserved| domain == *reserved)
+    if RESERVED_FIXTURE_DOMAINS.contains(&domain.as_str())
+        || RESERVED_DOC_DOMAINS.contains(&domain.as_str())
+    {
+        return Some(domain);
+    }
+    let tld = domain.rsplit('.').next().unwrap_or("");
+    if RESERVED_TLDS.contains(&tld) {
+        return Some(domain);
+    }
+    None
 }
 
 /// Why a claim is — or is not — a real customer's.
@@ -125,7 +147,7 @@ pub enum ClaimOrigin {
     /// The request carried `X-Swift-Harness`; the value is the marker as stored.
     Harness(String),
     /// A browser-driven fixture: the owner address is on a reserved fixture domain.
-    ReservedDomain(&'static str),
+    ReservedDomain(String),
 }
 
 impl ClaimOrigin {
@@ -268,16 +290,21 @@ mod tests {
     /// dropping or adding a domain is a deliberate, reviewed change rather than a silent drift.
     #[test]
     fn the_reserved_list_is_exactly_the_measured_one() {
+        // The first five are verbatim the list the crm_deal_records guard carried; the sixth is
+        // the fleet fixture domain measured leaking into CoreSwift on t_a02f0cf4.
         assert_eq!(
             RESERVED_FIXTURE_DOMAINS,
             [
                 "swiftsoftware.dev",
+                "swiftsoftware.net",
                 "test.com",
                 "example.com",
                 "x.com",
                 "invalid.test"
             ]
         );
+        assert!(RESERVED_TLDS.contains(&"invalid"));
+        assert!(RESERVED_TLDS.contains(&"test"));
     }
 
     #[test]
@@ -291,6 +318,11 @@ mod tests {
             "a@b@Example.com",             // the LAST @ wins
             "owner@swiftsoftware.dev.",    // trailing root dot
             "  owner@swiftsoftware.dev  ", // surrounding spaces
+            "zz-proof@swiftsoftware.net",  // measured leaking on t_a02f0cf4
+            "zz-proof@swiftsoftware.test", // RFC 6761 .test
+            "zz-proof@example.invalid",    // RFC 2606 .invalid — the fleet's most common fixture
+            "zz-proof@probe.invalid",
+            "zz-proof@example.org", // RFC 2606 documentation names on a normal TLD
         ] {
             assert!(
                 reserved_fixture_domain(email).is_some(),
@@ -305,8 +337,9 @@ mod tests {
             "owner@gmail.com",
             "owner@zaarhub.com",
             "owner@palmbayautos.com",
-            "owner@notexample.com", // suffix-only match must NOT count
-            "owner@example.com.evil.test",
+            "owner@notexample.com",       // suffix-only match must NOT count
+            "owner@example.com.evil.net", // the reserved name is a LABEL, not a substring
+            "owner@invalid.example.net",  // ditto — `.example.net` is not a reserved TLD
             "no-at-sign",
             "",
         ] {
@@ -336,7 +369,7 @@ mod tests {
         // A browser proof cannot set the header — its reserved domain is the only signal.
         assert_eq!(
             classify_claim(None, "zz-proof@swiftsoftware.dev"),
-            ClaimOrigin::ReservedDomain("swiftsoftware.dev")
+            ClaimOrigin::ReservedDomain("swiftsoftware.dev".to_string())
         );
         assert!(!classify_claim(None, "zz-proof@swiftsoftware.dev").is_customer());
 
