@@ -1815,6 +1815,34 @@ pub async fn claim_business(
     ))
 }
 
+/// Why granting ownership can fail *before* anything is written.
+///
+/// `InvalidEmail` is the reachable one: a claim row whose stored address is not a usable login
+/// identity (an old claim, an import) cannot mint an owner account, so the operator is told to fix
+/// the address or reject the claim instead of being handed a raw 500.
+#[derive(Debug)]
+pub enum ClaimGrantError {
+    InvalidEmail(String),
+    Internal(String),
+    Db(sqlx::Error),
+}
+
+impl std::fmt::Display for ClaimGrantError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClaimGrantError::InvalidEmail(m) => write!(f, "unusable claim email: {m}"),
+            ClaimGrantError::Internal(m) => write!(f, "{m}"),
+            ClaimGrantError::Db(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl From<sqlx::Error> for ClaimGrantError {
+    fn from(e: sqlx::Error) -> Self {
+        ClaimGrantError::Db(e)
+    }
+}
+
 /// Grant OWNERSHIP of a listing to a claim — the single place a claim becomes effective.
 ///
 /// Two things pass a claim, and nothing else does:
@@ -1835,7 +1863,19 @@ pub async fn grant_claim_ownership(
     owner_name: Option<&str>,
     owner_phone: Option<&str>,
     method: &str,
-) -> Result<Option<String>, sqlx::Error> {
+) -> Result<Option<String>, ClaimGrantError> {
+    // The claim's address BECOMES the owner's login identity, so it must be an address before a
+    // single row changes. This used to be checked nowhere on this path: the listing was published
+    // and the claim made effective first, then `visitor_accounts_email_format_check` refused the
+    // account — leaving a listing marked owned that nobody could sign in to, and a 500 for the
+    // operator. Refusing here keeps the listing claimable and the message actionable.
+    let owner_email = crate::security::email_addr::normalize(owner_email)
+        .map_err(ClaimGrantError::InvalidEmail)?;
+
+    // ONE transaction. A claim that is effective (steps 1-3) without a login (step 4) is a listing
+    // its owner cannot open and no one else can claim; any failure below now rolls all of it back.
+    let mut tx = db.begin().await?;
+
     // 1. Ownership verification record (approved).
     sqlx::query(
         r#"INSERT INTO business_verifications (business_id, directory_id, method, status, verified_at)
@@ -1846,7 +1886,7 @@ pub async fn grant_claim_ownership(
     .bind(business_id)
     .bind(directory_id)
     .bind(method)
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
 
     // 2. The claim becomes EFFECTIVE (this is the flag every ownership query reads).
@@ -1856,7 +1896,7 @@ pub async fn grant_claim_ownership(
     )
     .bind(claim_id)
     .bind(method)
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
 
     // 3. Card B81: an approved claim adopts and PUBLISHES a pre-populated draft/prospect.
@@ -1865,19 +1905,22 @@ pub async fn grant_claim_ownership(
          updated_at = NOW() WHERE id = $1",
     )
     .bind(business_id)
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
 
     // 4. Owner login. An account that already exists keeps its own password — minting a new one
     //    and mailing it would lock the owner out of the account they already use.
     let existing: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM users WHERE lower(email) = lower($1) \
-         UNION ALL SELECT id FROM visitor_accounts WHERE lower(email) = lower($1) LIMIT 1",
+        "SELECT id FROM users WHERE lower(email) = $1 \
+         UNION ALL SELECT id FROM visitor_accounts WHERE lower(email) = $1 LIMIT 1",
     )
-    .bind(owner_email)
-    .fetch_optional(db)
+    .bind(&owner_email)
+    .fetch_optional(&mut *tx)
     .await?;
-    if existing.is_some() {
+
+    if let Some(_account) = existing {
+        // Steps 1-3 are the work; commit them before reporting "no new login".
+        tx.commit().await?;
         return Ok(None);
     }
 
@@ -1892,22 +1935,23 @@ pub async fn grant_claim_ownership(
     let password_hash = Argon2::default()
         .hash_password(temp_password.as_bytes(), &salt)
         .map(|h| h.to_string())
-        .unwrap_or_default();
-    if password_hash.is_empty() {
-        return Ok(None);
-    }
+        .map_err(|e| {
+            ClaimGrantError::Internal(format!("could not create the owner's login: {e}"))
+        })?;
     sqlx::query(
         r#"INSERT INTO visitor_accounts (email, password_hash, name, phone, directory_id, is_active, business_type)
            VALUES ($1, $2, $3, $4, $5, true, 'merchant')
            ON CONFLICT (email) DO NOTHING"#,
     )
-    .bind(owner_email)
+    .bind(&owner_email)
     .bind(&password_hash)
     .bind(owner_name.unwrap_or(""))
     .bind(owner_phone.unwrap_or(""))
     .bind(directory_id)
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
+
+    tx.commit().await?;
 
     // 5. Card B49 — the directory's BUSINESS signup reward once the login exists. Best-effort.
     if let Some(aid) = sqlx::query_scalar::<_, Uuid>(

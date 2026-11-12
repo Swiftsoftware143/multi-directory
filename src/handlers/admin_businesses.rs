@@ -280,7 +280,20 @@ pub async fn approve_claim(
         owner_phone.as_deref(),
         "manual",
     )
-    .await?;
+    .await
+    .map_err(|e| match e {
+        // A claim whose stored address is not a usable login cannot be approved into an owner.
+        // Say so (and say nothing changed) instead of letting the refusal surface as a bare 500
+        // after the listing had already been published and locked.
+        crate::handlers::visitors::ClaimGrantError::InvalidEmail(m) => {
+            AppError::Validation(format!(
+                "This claim's email address cannot be used to sign in ({m}). Nothing was changed — \
+                 correct the claimant's address or reject the claim, then approve again."
+            ))
+        }
+        crate::handlers::visitors::ClaimGrantError::Internal(m) => AppError::Internal(m),
+        crate::handlers::visitors::ClaimGrantError::Db(e) => AppError::Database(e),
+    })?;
 
     // Tell the owner — approval they are never told about is a listing they cannot use.
     let signin = match temp_password.as_deref() {
