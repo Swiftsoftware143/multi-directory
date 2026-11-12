@@ -58,13 +58,16 @@ ENV_FILE = os.path.join(APP, ".env")
 
 def mint_operator_token():
     """super_admin JWT, the shape the admin panel uses. Secret never printed."""
-    secret = None
-    for line in open(ENV_FILE):
-        s = line.strip()
-        if s.startswith("JWT_SECRET="):
-            secret = s.split("=", 1)[1].strip().strip('"')
+    # The running container's environment is the source of truth (a repo .env can be stale),
+    # so read it there first and fall back to the repo file only if the container has none.
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
     if not secret:
-        sys.exit("JWT_SECRET not found in " + ENV_FILE)
+        for line in open(ENV_FILE):
+            s = line.strip()
+            if s.startswith("JWT_SECRET="):
+                secret = s.split("=", 1)[1].strip().strip('"')
+    if not secret:
+        sys.exit("JWT_SECRET not found in the multidirectory container or " + ENV_FILE)
     b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
     now = int(time.time())
     msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
@@ -172,12 +175,23 @@ def main():
                   "owner_phone": "4075550100"}, extra_headers=HARNESS)
     check("the owner can claim the listing (POST /businesses/:id/claim)", st in (200, 201), f"status={st}")
 
+    # ── the operator approves the claim (the flow since 2026-11-12) ──────────────
+    # An address whose domain does not match the listing gets the portal's owner controls only
+    # after a human approves it from the Businesses screen, so the browser arm walks that door.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    op_tok = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op_tok)
+    check("the operator approves the claim (POST /admin/claims/:id/approve)", st in (200, 201),
+          f"status={st}")
+    active = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the approved claim is ACTIVE", active == "true", f"is_active={active}")
+
     # ── the browser arm: the owner sets fine print FROM THE SCREEN ─────────────
     deal_out = os.path.join(AUD, "deal-id.txt")
     env = dict(os.environ, PORTAL_URL=BASE + "/portal", PUBLIC_URL=BASE, OWNER_EMAIL=owner_email,
                PW=pw, FINE_PRINT=fine, TITLE=title, SHOT_DIR=AUD, DEAL_OUT=deal_out,
                CHROME_PATH=chrome_path(), NODE_PATH=NODE_PATH)
-    r = sh("node", BROWSER, env=env)
+    r = sh("node", BROWSER, env=env, timeout=240)
     with open(os.path.join(AUD, "browser.log"), "w") as fh:
         fh.write(r.stdout + r.stderr)
     print(r.stdout.strip())

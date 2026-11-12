@@ -174,6 +174,13 @@ def main():
                   "owner_phone": "4075550101"}, extra_headers=HARNESS)
     check("the owner claims the listing through the real public claim route",
           st in (200, 201), f"status={st}")
+    # A claimant whose address domain does not match the listing is stored INACTIVE until an
+    # operator approves it from the Businesses screen (2026-11-12), so this proof walks that door.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    op_tok = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op_tok)
+    check("the operator approves the claim (POST /admin/claims/:id/approve)", st in (200, 201),
+          f"status={st}")
     claim_shape = psql(
         "SELECT (visitor_account_id IS NOT NULL)::text || '|' || (user_id IS NOT NULL)::text "
         f"FROM claimed_businesses WHERE business_id='{bid}' AND is_active ORDER BY created_at LIMIT 1")

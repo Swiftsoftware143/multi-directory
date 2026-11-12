@@ -27,6 +27,9 @@ untouched by the same rule (no invented baseline).
 Run:  python3 scripts/reviews-imported-baseline-with-our-reviews-smoke.py
 Exit: 0 = PASS, 1 = FAIL.  Nothing is left behind on either path.
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -101,6 +104,22 @@ def http(method, path, body=None, token=None, extra_headers=None):
             return e.code, raw
 
 
+def mint_operator_token():
+    """super_admin JWT, the same shape the admin console uses. Secret never printed."""
+    secret = sh("docker", "exec", "multidirectory", "printenv", "JWT_SECRET").stdout.strip()
+    if not secret:
+        sys.exit("JWT_SECRET not available from the multidirectory container")
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+    now = int(time.time())
+    msg = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({
+        "sub": "00000000-0000-0000-0000-000000000002",
+        "tid": "00000000-0000-0000-0000-000000000001",
+        "role": "super_admin", "exp": now + 1200, "iat": now,
+        "aud": "multidirectory-api", "iss": "multidirectory"})
+    return msg + "." + base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), msg.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+
+
 def check(label, ok, detail=""):
     print(("PASS  " if ok else "FAIL  ") + label + (f"  [{detail}]" if detail else ""))
     if not ok:
@@ -157,6 +176,17 @@ def main():
                  {"owner_email": owner_email, "owner_name": "ZZ ImpBase Owner",
                   "owner_phone": "4075550101"}, extra_headers=HARNESS)
     check("the owner can claim the listing (POST /businesses/:id/claim)", st in (200, 201), f"status={st}")
+
+    # ── the operator approves the claim (the flow since 2026-11-12) ──────────────
+    # A claimant whose address domain does not match the listing holds no owner rights until a
+    # human approves it from the Businesses screen, so the proof walks that same door.
+    claim_id = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{bid}'")
+    op_tok = mint_operator_token()
+    st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op_tok)
+    check("the operator approves the claim (POST /admin/claims/:id/approve)", st in (200, 201),
+          f"status={st}")
+    active = psql(f"SELECT is_active::text FROM claimed_businesses WHERE id='{claim_id}'")
+    check("the approved claim is ACTIVE", active == "true", f"is_active={active}")
 
     st, tok_owner = http("POST", "/api/v1/auth/login", {"email": owner_email, "password": pw})
     check("the owner can sign in", st == 200 and "access_token" in (tok_owner or {}), f"status={st}")
@@ -216,6 +246,9 @@ def main():
     st, _ = http("POST", f"/api/v1/businesses/{plain}/claim",
                  {"owner_email": owner_email, "owner_name": "ZZ ImpBase Owner",
                   "owner_phone": "4075550101"}, extra_headers=HARNESS)
+    plain_claim = psql(f"SELECT id FROM claimed_businesses WHERE business_id='{plain}'")
+    st, _ = http("POST", f"/api/v1/admin/claims/{plain_claim}/approve", {}, token=op_tok)
+    check("the operator approves the plain listing's claim too", st in (200, 201), f"status={st}")
     st, prev = http("POST", "/api/v1/reviews",
                     {"business_id": plain, "rating": 4, "title": "Plain probe",
                      "content": "Plain listing probe."}, token=cust_token)

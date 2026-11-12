@@ -249,12 +249,16 @@ pub async fn send_claim_verification_email(
 
 /// Card B76 — tell the platform admin a claim is waiting for MANUAL review (the domain did not
 /// match, so it was not auto-accepted). Best-effort: an unconfigured transport logs and moves on.
+///
+/// Returns `Ok(true)` when the notice was handed to the carrier, `Ok(false)` when it was
+/// deliberately skipped because the claim belongs to a test/proof record — the caller must not
+/// report "sent" for a skip (the console and the log have to tell the truth).
 pub async fn send_claim_review_notice(
     admin_email: &str,
     business_name: &str,
     claimant_email: &str,
     link: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     // Test/proof records must NEVER email the admin (David, 2026-11-05).
     // The verification harness creates "Proof Cafe"/"ZZ …" businesses claimed from
     // @example.test addresses; each run was firing a real claim email. Skip them.
@@ -268,7 +272,8 @@ pub async fn send_claim_review_notice(
         || ce.starts_with("zz-")
         || ce.starts_with("scan-proof-");
     if test_business || test_email {
-        return Ok(());
+        tracing::info!("[claim] manual-review notice skipped: test/proof record ({business_name})");
+        return Ok(false);
     }
     let subject = format!("Claim needs review: {business_name}");
     let html = format!(
@@ -285,7 +290,9 @@ pub async fn send_claim_review_notice(
     let text = format!(
         "Claim needs manual review\n\n{business_name} was claimed by {claimant_email}.\nReview: {link}\n"
     );
-    send_rendered_email(admin_email, &subject, &html, Some(&text)).await
+    send_rendered_email(admin_email, &subject, &html, Some(&text))
+        .await
+        .map(|_| true)
 }
 
 /// Is `email` an address that can never receive mail? `ADMIN_EMAIL` ships with the placeholder

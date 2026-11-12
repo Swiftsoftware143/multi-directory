@@ -1773,7 +1773,11 @@ pub async fn claim_business(
                     match crate::email::send_claim_review_notice(&admin, &bn, &claimant, &link)
                         .await
                     {
-                        Ok(()) => tracing::info!("[claim] manual-review notice sent to {admin}"),
+                        Ok(true) => tracing::info!("[claim] manual-review notice sent to {admin}"),
+                        Ok(false) => tracing::info!(
+                            "[claim] manual-review notice skipped: test/proof record — the claim \
+                             is still waiting in the Businesses screen"
+                        ),
                         Err(e) => {
                             tracing::warn!("[claim] manual-review notice NOT sent to {admin}: {e}")
                         }
