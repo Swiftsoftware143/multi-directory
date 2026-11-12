@@ -10,7 +10,8 @@
 //!   - Attempts email discovery if missing
 //!
 //! Writes results to `data_enrichment_logs` with source='monthly_pipeline'.
-//! Updates `businesses.updated_at` and `businesses.enriched_at`.
+//! Updates `businesses.enriched_at` only — never `updated_at`, which drives the sitemap's
+//! `lastmod` and must move only when a rendered field changes.
 
 use axum::{extract::State, response::IntoResponse, Json};
 use reqwest::Client;
@@ -77,7 +78,7 @@ pub async fn contact_intelligence_pipeline(
              FROM businesses b \
              LEFT JOIN claimed_businesses cb ON cb.business_id = b.id \
              WHERE cb.id IS NULL \
-               AND (b.updated_at < NOW() - INTERVAL '30 days' OR b.enriched_at IS NULL) \
+               AND (b.enriched_at < NOW() - INTERVAL '30 days' OR b.enriched_at IS NULL) \
              ORDER BY b.id \
              LIMIT $1 OFFSET $2",
         )
@@ -183,13 +184,16 @@ pub async fn contact_intelligence_pipeline(
                 overall_success = false;
             }
 
-            // ── Update business timestamps ──
-            if let Err(e) = sqlx::query(
-                "UPDATE businesses SET updated_at = NOW(), enriched_at = NOW() WHERE id = $1",
-            )
-            .bind(biz.id)
-            .execute(&state.db)
-            .await
+            // ── Update the bookkeeping timestamp only ──
+            // `businesses.updated_at` is the sitemap's `lastmod` and means "this listing's page
+            // changed". This pass writes NO rendered field (it logs findings to
+            // data_enrichment_logs), so stamping `updated_at` here would tell Google that every
+            // unclaimed listing changed on the enrichment cadence — a bulk identical-microsecond
+            // stamp across cities with nothing new on the page. Only `enriched_at` moves.
+            if let Err(e) = sqlx::query("UPDATE businesses SET enriched_at = NOW() WHERE id = $1")
+                .bind(biz.id)
+                .execute(&state.db)
+                .await
             {
                 tracing::error!("Failed to update timestamp for business {}: {}", biz.id, e);
                 overall_success = false;
