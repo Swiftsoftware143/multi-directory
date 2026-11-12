@@ -1799,6 +1799,23 @@ pub async fn push_lead_to_coreswift(
         return Ok(None);
     }
 
+    // Same predicate as the claim path (t_f57a3ef3), applied at the SOURCE so every lead
+    // fan-out (bookings, submissions, onboarding survey, entity sync) is covered and a new
+    // caller cannot leak by accident. A reserved/fixture address is fleet machinery, never a
+    // customer: no contact in the operator's CRM. The signup handlers classify with the
+    // `X-Swift-Harness` marker too; here the address is the only signal available.
+    if let Some(email) = lead.email.as_deref() {
+        let origin = crate::probe_harness::classify_claim(None, email);
+        if !origin.is_customer() {
+            tracing::info!(
+                "[lead] CoreSwift lead suppressed for {}: origin={}",
+                email,
+                origin.log_class()
+            );
+            return Ok(None);
+        }
+    }
+
     let Some(conn) = resolve_lead_conn(db, tenant_id, directory_id).await? else {
         tracing::debug!(
             "[coreswift] lead push skipped: CoreSwift not connected (tenant {:?}, directory {:?})",
