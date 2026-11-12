@@ -16,9 +16,11 @@ Run:  python3 scripts/reviews-business-portal-approve-smoke.py
 Env:  MD_BASE (default http://127.0.0.1:8089), AUD, CHROME_PATH, NODE_PATH
 Exit: 0 = PASS, 1 = FAIL.
 """
+import atexit
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -34,6 +36,71 @@ AUD = os.environ.get("AUD", f"/opt/swift/audits/zz-review-portal-approve-{time.s
 HARNESS = {"X-Swift-Harness": "review-portal-approve-probe"}
 MARK = "review-portal-approve-probe"
 FAILS = []
+
+# ── crash-proof teardown ───────────────────────────────────────────────────────────────────────
+# A probe run that dies must still leave nothing behind. Two live residues proved the old shape
+# wrong (both publicly served and in the live sitemap): `probe-b-approve-*` from a crashed run, and
+# `zz-review-portal-probe-*` from a run that COMPLETED but never reached its last DELETE. So:
+#   * the fixture is created is_active=false and stays invisible to the public surfaces for the whole
+#     run (the portal keys off claimed_businesses.is_active, so the browser arm still works);
+#   * every id is recorded the moment it exists, and ONE idempotent reap (scripts/md-fixture-reap.py)
+#     runs from atexit — normal return, sys.exit, an uncaught exception and SIGTERM/SIGINT/SIGHUP all
+#     reach it. A SIGKILL cannot be caught, so `sweep_stale_probe_rows()` at start and the cron reap
+#     (`md-fixture-reap.py --stale-min 30`, every 15 min) catch that case.
+REAP = "/opt/swift/scripts/md-fixture-reap.py"
+FIX = {"biz": None, "emails": [], "done": False}
+
+
+def reap_fixture(label=""):
+    """Idempotent. Deletes the fixture by EXACT id (never by LIKE), then proves the row is gone."""
+    if FIX["done"]:
+        return 0
+    FIX["done"] = True
+    biz = FIX["biz"]
+    if not biz:
+        return 0
+    vids = []
+    for em in FIX["emails"]:
+        try:
+            v = psql(f"SELECT id FROM visitor_accounts WHERE lower(email)=lower('{em}')")
+            if v:
+                vids.append(v)
+        except Exception:  # noqa: BLE001 - teardown must not raise
+            pass
+    cmd = ["python3", REAP, "--business-id", biz]
+    for v in vids:
+        cmd += ["--visitor-id", v]
+    r = sh(*cmd)
+    if r.returncode != 0:
+        print(f"CLEANUP ERROR ({label}): {r.stderr.strip()[:300]}")
+        FAILS.append("cleanup")
+        return 1
+    try:
+        psql("DELETE FROM crm_deal_records WHERE title ~ '^ZZ Portal Review Probe Co [0-9]+ - Claimed'")
+    except Exception:  # noqa: BLE001
+        pass
+    left = int(psql(f"SELECT count(*) FROM businesses WHERE id='{biz}'") or 0)
+    if left == 0:
+        print(f"PASS  probe fixture torn down by id ({label or 'atexit'})")
+    else:
+        print(f"FAIL  probe fixture torn down by id ({label or 'atexit'})  rows_left={left}")
+        FAILS.append("teardown")
+    return 0 if left == 0 else 1
+
+
+def _exit_on_signal(signum, _frame):
+    """Turn a signal into a normal exit so atexit (and therefore the reap) still runs."""
+    print(f"SIGNAL {signum}: tearing the fixture down before exiting")
+    raise SystemExit(128 + signum)
+
+
+for _s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    try:
+        signal.signal(_s, _exit_on_signal)
+    except (ValueError, OSError):
+        pass
+atexit.register(reap_fixture, "atexit")
+
 
 
 def sh(*cmd, **kw):
@@ -121,15 +188,18 @@ def chrome_path():
 
 
 def sweep_stale_probe_rows():
-    """A run that died before teardown must not leave junk behind."""
-    psql("DELETE FROM reviews WHERE business_id IN "
-         f"(SELECT id FROM businesses WHERE probe_harness='{MARK}')")
-    psql("DELETE FROM claimed_businesses WHERE business_id IN "
-         f"(SELECT id FROM businesses WHERE probe_harness='{MARK}')")
-    psql(f"DELETE FROM businesses WHERE probe_harness='{MARK}'")
-    psql("DELETE FROM visitor_accounts WHERE email LIKE 'zz-review-portal-%@swiftsoftware.dev'")
-    # Belt and braces for a run against a binary older than the no-harness-deal guard: this fixture
-    # names its claim deal exactly, so it can be traced back and removed.
+    """A run that died before teardown must not leave junk behind — this is the start-of-run net
+    for a SIGKILL (which no handler can catch) and for fixtures older than a live proof can be."""
+    r = sh("python3", REAP, "--stale-min", "30")
+    if r.returncode != 0:
+        print(f"WARN  stale-fixture sweep: {r.stderr.strip()[:200]}")
+    # Same-harness leftovers at any age a live run cannot exceed: this MARK belongs to this script
+    # alone, so a row carrying it older than 5 minutes is a dead run's fixture, not a concurrent one.
+    old = psql("SELECT string_agg(id::text, ' ') FROM businesses "
+               f"WHERE probe_harness='{MARK}' AND created_at < now() - interval '5 minutes'")
+    if old:
+        for bid in old.split():
+            sh("python3", REAP, "--business-id", bid)
     psql("DELETE FROM crm_deal_records WHERE title ~ '^ZZ Portal Review Probe Co [0-9]+ - Claimed'")
 
 
@@ -158,13 +228,20 @@ def main():
     check("both accounts exist in the database", bool(owner_vid and cust_vid))
 
     directory_id = psql("SELECT id FROM directories ORDER BY name LIMIT 1")
+    dir_slug = psql(f"SELECT slug FROM directories WHERE id='{directory_id}'")
     slug = f"zz-review-portal-probe-{ts}"
     deals_before = int(psql("SELECT count(*) FROM crm_deal_records") or 0)
+    # is_active=false: the listing is invisible on the public page, the sitemap and search for the
+    # whole run, so a run that dies between here and the reap can never leave something indexable.
+    # The portal keys off claimed_businesses.is_active, so the owner's screen still works.
     bid = psql(
-        "INSERT INTO businesses (directory_id, name, slug, city, state, status, rating, review_count, probe_harness) "
-        f"VALUES ('{directory_id}', 'ZZ Portal Review Probe Co {ts}', '{slug}', 'Orlando', 'FL', 'active', 0, 0, "
-        f"'{MARK}') RETURNING id")
+        "INSERT INTO businesses (directory_id, name, slug, city, state, status, is_active, "
+        "rating, review_count, probe_harness) "
+        f"VALUES ('{directory_id}', 'ZZ Portal Review Probe Co {ts}', '{slug}', 'Orlando', 'FL', "
+        f"'active', false, 0, 0, '{MARK}') RETURNING id")
     check("disposable listing created", bool(bid))
+    FIX["biz"] = bid
+    FIX["emails"] = [owner_email, cust_email]
 
     st, _ = http("POST", f"/api/v1/businesses/{bid}/claim",
                  {"owner_email": owner_email, "owner_name": "ZZ Portal Owner",
@@ -179,6 +256,16 @@ def main():
     st, _ = http("POST", f"/api/v1/admin/claims/{claim_id}/approve", {}, token=op)
     check("the operator can approve the claim (POST /admin/claims/:id/approve)",
           st in (200, 201), f"status={st}")
+
+    # Approval PUBLISHES the listing (businesses.is_active = true). Put it back out of public view
+    # for the rest of the proof: the browser arm needs the portal, not a public page.
+    psql(f"UPDATE businesses SET is_active = false WHERE id='{bid}'")
+    hidden = psql(f"SELECT is_active FROM businesses WHERE id='{bid}'")
+    check("the fixture stays out of public view while the proof runs", hidden == "f",
+          f"is_active={hidden}")
+    page = sh("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", "10",
+              f"{BASE}/{dir_slug}/businesses/{slug}").stdout.strip()
+    check("its public page is not served during the proof", page == "404", f"status={page}")
 
     # A harness claim must not deposit a row into the operator's real CRM pipeline: crm_deal_records
     # carries no business id, so a fake "… - Claimed (City)" deal is untraceable once written
@@ -222,18 +309,12 @@ def main():
     check("the approved review is now visible to a logged-out visitor", rid in pub_ids,
           f"status={st} ids={len(pub_ids)}")
 
-    # ── teardown ───────────────────────────────────────────────────────────────
-    psql(f"DELETE FROM reviews WHERE business_id='{bid}'")
-    psql(f"DELETE FROM claimed_businesses WHERE business_id='{bid}'")
-    psql(f"DELETE FROM businesses WHERE id='{bid}'")
-    psql("DELETE FROM crm_deal_records WHERE title ~ '^ZZ Portal Review Probe Co [0-9]+ - Claimed'")
-    for vid in (owner_vid, cust_vid):
-        if vid:
-            psql(f"DELETE FROM visitor_accounts WHERE id='{vid}'")
-    left = psql(f"SELECT (SELECT count(*) FROM businesses WHERE id='{bid}')"
-                f"+ (SELECT count(*) FROM visitor_accounts WHERE email IN ('{owner_email}','{cust_email}'))"
-                f"+ (SELECT count(*) FROM claimed_businesses WHERE business_id='{bid}')")
-    check("probe data fully removed", left == "0", f"remaining={left}")
+    # ── teardown ───────────────────────────────────────────────────────────────────────────────
+    # One idempotent reap by exact id (children found from the DB's own FKs, plus uploads). It also
+    # runs from atexit, so this is the normal path and the crash path taking the same code.
+    reap_fixture("end of run")
+    left = psql(f"SELECT (SELECT count(*) FROM businesses WHERE id='{bid}')")
+    check("probe listing gone from the database", left == "0", f"remaining={left}")
 
     print()
     cs_left = sweep_coreswift_mirror(["zz-review-portal-"], window=15)
