@@ -68,6 +68,97 @@ fn normalise(raw: &str) -> Option<String> {
     Some(marker)
 }
 
+// ── Reserved / fixture owner domains ─────────────────────────────────────────────────────────
+//
+// A HEADER alone is not enough to recognise fleet machinery. A browser-driven proof (a headless
+// Chrome walking the real claim form) cannot set `X-Swift-Harness`, so its claim arrives looking
+// exactly like a customer's. Every fleet fixture signs up on a reserved domain instead — nobody
+// can receive mail there, so no real owner can be behind one:
+//
+//   * `example.com` / `test.com` / `x.com` — throwaway fleet addresses;
+//   * `invalid.test` — RFC 2606 `.invalid` + `.test` names;
+//   * `swiftsoftware.dev` — the fleet's own fixture domain.
+//
+// This is ONE list, consulted by ONE predicate (`classify_claim`), so every claim-path fan-out
+// answers "customer or fleet machinery?" identically. It used to be copy-pasted into the
+// `crm_deal_records` lead guard only, and the CoreSwift mirror (contact + tag-sync list add) sat
+// outside it — so each new claim-driving harness leaked a real-looking contact into someone
+// else's CRM until someone remembered to patch that harness (kanban t_436a26a0).
+
+/// Reserved/fixture owner domains. Nobody can receive mail on one of these, so an owner address
+/// whose domain is here is fleet machinery.
+pub const RESERVED_FIXTURE_DOMAINS: [&str; 5] = [
+    "swiftsoftware.dev",
+    "test.com",
+    "example.com",
+    "x.com",
+    "invalid.test",
+];
+
+/// The lowercase domain half of an address (`""` when there is no `@`).
+///
+/// The LAST `@` wins (`a@b@c.com` → `c.com`), a trailing root dot is dropped, and the whole
+/// comparison is ASCII-lowercase — `Owner@EXAMPLE.com.` is the reserved domain, not a customer.
+pub fn email_domain(email: &str) -> String {
+    match email.rsplit_once('@') {
+        Some((_, domain)) => domain.trim().trim_end_matches('.').to_ascii_lowercase(),
+        None => String::new(),
+    }
+}
+
+/// The reserved fixture domain this address belongs to, if any.
+pub fn reserved_fixture_domain(email: &str) -> Option<&'static str> {
+    let domain = email_domain(email);
+    if domain.is_empty() {
+        return None;
+    }
+    RESERVED_FIXTURE_DOMAINS
+        .into_iter()
+        .find(|reserved| domain == *reserved)
+}
+
+/// Why a claim is — or is not — a real customer's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimOrigin {
+    /// No harness marker and a normal owner domain: behave exactly as before.
+    Customer,
+    /// The request carried `X-Swift-Harness`; the value is the marker as stored.
+    Harness(String),
+    /// A browser-driven fixture: the owner address is on a reserved fixture domain.
+    ReservedDomain(&'static str),
+}
+
+impl ClaimOrigin {
+    /// `true` only for a real customer — the sole case where a claim-path fan-out may run.
+    pub fn is_customer(&self) -> bool {
+        matches!(self, ClaimOrigin::Customer)
+    }
+
+    /// Stable, greppable class for a log line / census:
+    /// `customer`, `harness:<marker>`, `reserved-domain:<domain>`.
+    pub fn log_class(&self) -> String {
+        match self {
+            ClaimOrigin::Customer => "customer".to_string(),
+            ClaimOrigin::Harness(marker) => format!("harness:{marker}"),
+            ClaimOrigin::ReservedDomain(domain) => format!("reserved-domain:{domain}"),
+        }
+    }
+}
+
+/// The ONE claim-origin predicate for the whole claim path. Every fan-out that leaves
+/// multi-directory (the `crm_deal_records` lead, the CoreSwift contact mirror, the tag-sync list
+/// add) consults this, so a new fan-out cannot be added outside the guard by accident and the two
+/// existing guards cannot drift apart.
+pub fn classify_claim(probe: Option<&str>, owner_email: &str) -> ClaimOrigin {
+    if let Some(marker) = probe {
+        return ClaimOrigin::Harness(marker.to_string());
+    }
+    if let Some(domain) = reserved_fixture_domain(owner_email) {
+        return ClaimOrigin::ReservedDomain(domain);
+    }
+    ClaimOrigin::Customer
+}
+
 /// The client IP for a request, preferring the edge proxy's headers over the socket peer.
 ///
 /// Multi-Directory binds `127.0.0.1:8089` behind nginx (`X-Real-IP` + `X-Forwarded-For`, see the
@@ -169,5 +260,106 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert("user-agent", HeaderValue::from_static("curl/8.5.0"));
         assert_eq!(user_agent(&h).as_deref(), Some("curl/8.5.0"));
+    }
+
+    // ── the claim-origin predicate (kanban t_436a26a0) ───────────────────────────────────────
+
+    /// The reserved list is the contract every claim-path fan-out consults — spell it out, so
+    /// dropping or adding a domain is a deliberate, reviewed change rather than a silent drift.
+    #[test]
+    fn the_reserved_list_is_exactly_the_measured_one() {
+        assert_eq!(
+            RESERVED_FIXTURE_DOMAINS,
+            [
+                "swiftsoftware.dev",
+                "test.com",
+                "example.com",
+                "x.com",
+                "invalid.test"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_reserved_domain_is_recognised_however_it_is_spelled() {
+        for email in [
+            "zz-claim-1@swiftsoftware.dev",
+            "Owner@Example.COM",
+            "zz-guard-9@TEST.com",
+            "probe@x.com",
+            "someone@invalid.test",
+            "a@b@Example.com",             // the LAST @ wins
+            "owner@swiftsoftware.dev.",    // trailing root dot
+            "  owner@swiftsoftware.dev  ", // surrounding spaces
+        ] {
+            assert!(
+                reserved_fixture_domain(email).is_some(),
+                "expected a reserved domain: {email:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_real_domain_is_not_reserved() {
+        for email in [
+            "owner@gmail.com",
+            "owner@zaarhub.com",
+            "owner@palmbayautos.com",
+            "owner@notexample.com", // suffix-only match must NOT count
+            "owner@example.com.evil.test",
+            "no-at-sign",
+            "",
+        ] {
+            assert!(
+                reserved_fixture_domain(email).is_none(),
+                "expected a real/unknown domain: {email:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_an_unmarked_real_domain_owner_is_a_customer() {
+        // Nothing marks it and the domain is real: every fan-out runs exactly as before.
+        assert_eq!(
+            classify_claim(None, "owner@gmail.com"),
+            ClaimOrigin::Customer
+        );
+        assert!(classify_claim(None, "owner@gmail.com").is_customer());
+
+        // A harness marker alone is enough, whatever the domain.
+        assert_eq!(
+            classify_claim(Some("zz-harness"), "owner@gmail.com"),
+            ClaimOrigin::Harness("zz-harness".to_string())
+        );
+        assert!(!classify_claim(Some("zz-harness"), "owner@gmail.com").is_customer());
+
+        // A browser proof cannot set the header — its reserved domain is the only signal.
+        assert_eq!(
+            classify_claim(None, "zz-proof@swiftsoftware.dev"),
+            ClaimOrigin::ReservedDomain("swiftsoftware.dev")
+        );
+        assert!(!classify_claim(None, "zz-proof@swiftsoftware.dev").is_customer());
+
+        // The marker wins the label when both say fleet machinery (the log stays honest about why).
+        assert_eq!(
+            classify_claim(Some("zz-harness"), "zz-proof@example.com"),
+            ClaimOrigin::Harness("zz-harness".to_string())
+        );
+    }
+
+    #[test]
+    fn the_log_class_names_the_reason() {
+        assert_eq!(
+            classify_claim(None, "owner@gmail.com").log_class(),
+            "customer"
+        );
+        assert_eq!(
+            classify_claim(Some("zz-harness"), "owner@gmail.com").log_class(),
+            "harness:zz-harness"
+        );
+        assert_eq!(
+            classify_claim(None, "zz-proof@swiftsoftware.dev").log_class(),
+            "reserved-domain:swiftsoftware.dev"
+        );
     }
 }

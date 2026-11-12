@@ -1418,6 +1418,13 @@ pub async fn claim_business(
     // Header only; NULL for every real claim (the row is byte-identical to before).
     let probe = crate::probe_harness::from_headers(&headers);
 
+    // ONE claim-origin predicate for the whole claim path (kanban t_436a26a0): a harness marker OR
+    // an owner address on a reserved fixture domain means fleet machinery, and nothing from this
+    // claim may fan out into another application. The `crm_deal_records` lead has been behind this
+    // guard since item 18; the CoreSwift mirror (contact + tag-sync list add) used to sit outside
+    // it, so every new claim-driving harness left a real-looking CRM contact behind.
+    let claim_origin = crate::probe_harness::classify_claim(probe.as_deref(), &owner_email);
+
     let cb = sqlx::query_as::<_, ClaimedBusiness>(
         "INSERT INTO claimed_businesses (business_id, owner_email, owner_name, owner_phone, probe_harness) VALUES ($1, $2, $3, $4, $5) RETURNING *"
     )
@@ -1429,13 +1436,23 @@ pub async fn claim_business(
     .fetch_one(&s.db)
     .await?;
 
-    // Push to CoreSwift CRM (fire-and-forget, log on failure)
+    // Push to CoreSwift CRM (fire-and-forget, log on failure) — CUSTOMER claims only. This is the
+    // mirror that leaked: a fixture claim created a contact on the directory's CoreSwift tenant,
+    // and nothing in multi_directory's own teardown could reach it.
     let db = s.db.clone();
     let biz_id = business_id;
     let email = owner_email.clone();
     let name = req.owner_name.clone();
     let phone = req.owner_phone.clone();
+    let push_origin = claim_origin.clone();
     tokio::spawn(async move {
+        if !push_origin.is_customer() {
+            tracing::info!(
+                "[claim] CoreSwift contact suppressed for business {biz_id} — origin={}",
+                push_origin.log_class()
+            );
+            return;
+        }
         match crate::coreswift::push_claimed_business(
             &db,
             biz_id,
@@ -1457,7 +1474,15 @@ pub async fn claim_business(
     let ts_email = owner_email.clone();
     let ts_name = req.owner_name.clone();
     let ts_phone = req.owner_phone.clone();
+    let ts_origin = claim_origin.clone();
     tokio::spawn(async move {
+        if !ts_origin.is_customer() {
+            tracing::info!(
+                "[claim] CoreSwift tag-sync suppressed for business {ts_biz_id} — origin={}",
+                ts_origin.log_class()
+            );
+            return;
+        }
         let biz_info = sqlx::query_as::<_, (Uuid, String)>(
             "SELECT b.directory_id, COALESCE(b.city, d.slug, '') FROM businesses b LEFT JOIN directories d ON d.id = b.directory_id WHERE b.id = $1"
         )
@@ -1509,30 +1534,15 @@ pub async fn claim_business(
     // Business claim only creates the claim record; loyalty is opt-in via the portal.
     // Loyalty auto-registration was removed per owner directive (July 25, 2026).
 
-    // Create a CRM deal record in the default pipeline — but NEVER for a fleet-harness claim.
+    // Create a CRM deal record in the default pipeline — but NEVER for fleet machinery.
     // crm_deal_records is the operator's real sales pipeline and a deal row carries no business id,
-    // so a probe that claims a listing used to deposit a permanent "… - Claimed (City)" row that
+    // so a probe that claimed a listing used to deposit a permanent "… - Claimed (City)" row that
     // nothing could trace back to its fixture (item 18 swept 14 on 2026-10-16, 5 more the same
-    // afternoon). The claim row already carries the harness marker (`probe`, from
-    // `X-Swift-Harness`), so skip the mirror for it — the same way demand_analytics keeps harness
-    // traffic out of the operator's figures. A real claim (`probe` is None) is unchanged.
-    // A browser-driven proof cannot set the `X-Swift-Harness` header, so its claim arrives looking
-    // exactly like a real owner's. Every fleet fixture signs up with one of the reserved domains
-    // below (nobody else can receive mail there), so a claim from one also skips the operator's
-    // sales pipeline. Measured 2026-11-05: browser claim proofs had left 6 real-looking
-    // "<business> - Claimed (<city>)" leads in crm_deal_records (item 18 swept them).
-    let fixture_domain = {
-        let d = owner_email
-            .split('@')
-            .nth(1)
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        matches!(
-            d.as_str(),
-            "swiftsoftware.dev" | "test.com" | "example.com" | "x.com" | "invalid.test"
-        )
-    };
-    if probe.is_none() && !fixture_domain {
+    // afternoon). This used to be a second, hand-copied predicate; it is now `claim_origin` — the
+    // same one the CoreSwift mirror above consults (kanban t_436a26a0), so the two can never drift.
+    // Measured 2026-11-05: browser claim proofs had left 6 real-looking leads here; a browser proof
+    // cannot set `X-Swift-Harness`, which is why the reserved-domain half of the predicate matters.
+    if claim_origin.is_customer() {
         let _ = create_claim_deal(
             &s.db,
             business_id,
