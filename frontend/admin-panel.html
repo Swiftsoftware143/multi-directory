@@ -12388,6 +12388,9 @@
 
     // Card B90 availability indicator: per-row hours cache + the row currently open in the editor.
     var bizHoursCache = {};
+    // A one-shot note for #bz-status: set before load(), applied when the refreshed list lands so
+    // the reload's own "Loading…"/blank never wipes the outcome the operator must read.
+    var bzNote = null;
     // Card B90 response-time indicator: per-row note cache + the row open in the editor.
     var bizRtCache = {};
     var hoursEditing = null;
@@ -12492,7 +12495,13 @@
         });
         html += '</tbody></table>';
         el.innerHTML = html;
-        document.getElementById('bz-status').textContent = '';
+        var sEl = document.getElementById('bz-status');
+        if (bzNote) {
+          if (bzNote.html) sEl.innerHTML = bzNote.html; else sEl.textContent = bzNote.text;
+          bzNote = null;
+        } else {
+          sEl.textContent = '';
+        }
       }).catch(function (e) {
         document.getElementById('bz-status').textContent = 'Failed: ' + e.message;
       });
@@ -12680,11 +12689,31 @@
     function decideClaim(id, action, biz) {
       var msg = action === 'approve'
         ? 'Approve ownership of "' + biz + '"? The claimant becomes the owner, the listing is published and they are emailed their sign-in details.'
-        : 'Reject this ownership claim on "' + biz + '"? The listing is freed so its real owner can claim it.';
+        : 'Reject this ownership claim on "' + biz + '"? The listing is freed so its real owner can claim it, and the claimant is told the claim was not verified.';
       if (!window.confirm(msg)) return;
       var st = document.getElementById('bz-status');
       if (st) st.textContent = (action === 'approve' ? 'Approving…' : 'Rejecting…');
-      postApi('/admin/claims/' + encodeURIComponent(id) + '/' + action).then(function () {
+      postApi('/admin/claims/' + encodeURIComponent(id) + '/' + action).then(function (r) {
+        r = r || {};
+        // The screen must say what really happened: an approval whose sign-in email failed leaves
+        // the owner locked out, so the operator is handed the temporary password to pass on.
+        // The note is queued for the reload that follows, which would otherwise blank it.
+        if (action === 'approve') {
+          if (r.email_sent === false) {
+            bzNote = { html: 'Approved, but the sign-in email could NOT be sent to ' +
+              esc(r.owner_email || 'the owner') + '. ' +
+              (r.temp_password
+                ? 'Give the owner this temporary password by hand: <b>' + esc(r.temp_password) +
+                  '</b> — they must change it after they sign in.'
+                : 'Ask the owner to use “Forgot password” on the business portal.') };
+          } else {
+            bzNote = { text: 'Approved. Sign-in details emailed to ' + (r.owner_email || 'the owner') + '.' };
+          }
+        } else {
+          bzNote = { text: r.email_sent === false
+            ? 'Claim rejected and the listing is free again — but the claimant could NOT be emailed.'
+            : 'Claim rejected, the listing is free again, and the claimant has been told.' };
+        }
         load();
       }).catch(function (e) {
         if (st) st.textContent = 'Failed: ' + e.message;

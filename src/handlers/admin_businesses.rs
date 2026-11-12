@@ -320,21 +320,37 @@ color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:
     };
     let db = s.db.clone();
     let to = owner_email.clone();
-    tokio::spawn(async move {
-        match crate::email::send_rendered_email_for_directory(
-            &db,
-            directory_id,
-            &to,
-            "Your listing is approved",
-            &html,
-            Some(&text),
-        )
-        .await
-        {
-            Ok(()) => tracing::info!("[claim] approval email sent to {to}"),
-            Err(e) => tracing::warn!("[claim] approval email NOT sent to {to}: {e}"),
+    // Await the send so the operator's screen can say whether the sign-in actually left. A
+    // fire-and-forget send reported "approved" whether the owner was told or not, and an owner who
+    // is never told their temporary password cannot sign in at all.
+    let send_result = crate::email::send_rendered_email_for_directory(
+        &db,
+        directory_id,
+        &to,
+        "Your listing is approved",
+        &html,
+        Some(&text),
+    )
+    .await;
+    let email_error = match &send_result {
+        Ok(()) => {
+            tracing::info!("[claim] approval email sent to {to}");
+            None
         }
-    });
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::warn!("[claim] approval email NOT sent to {to}: {msg}");
+            Some(msg.chars().take(200).collect::<String>())
+        }
+    };
+    let email_sent = email_error.is_none();
+    // Only hand the temporary password back to the operator when the email could NOT be sent —
+    // otherwise the owner has it in their inbox and the credential stays out of the response.
+    let relay_password = if !email_sent {
+        temp_password.clone()
+    } else {
+        None
+    };
 
     Ok(Json(json!({
         "ok": true,
@@ -342,6 +358,9 @@ color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:
         "owner_email": owner_email,
         "already_approved": false,
         "account_created": temp_password.is_some(),
+        "email_sent": email_sent,
+        "email_error": email_error,
+        "temp_password": relay_password,
     })))
 }
 
@@ -353,16 +372,19 @@ pub async fn reject_claim(
     State(s): State<AppState>,
     Path(claim_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let row = sqlx::query_as::<_, (Uuid, String, bool)>(
-        r#"SELECT cb.business_id, cb.owner_email, (cb.verified_at IS NOT NULL)
-           FROM claimed_businesses cb WHERE cb.id = $1"#,
+    let row = sqlx::query_as::<_, (Uuid, String, bool, Option<Uuid>, String)>(
+        r#"SELECT cb.business_id, cb.owner_email, (cb.verified_at IS NOT NULL),
+                  b.directory_id, b.name
+           FROM claimed_businesses cb
+           JOIN businesses b ON b.id = cb.business_id
+           WHERE cb.id = $1"#,
     )
     .bind(claim_id)
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound("that claim no longer exists".to_string()))?;
 
-    let (business_id, owner_email, approved) = row;
+    let (business_id, owner_email, approved, directory_id, biz_name) = row;
     if approved {
         // An approved claim is ownership: refuse instead of silently stripping a real owner.
         return Err(AppError::Validation(
@@ -378,7 +400,57 @@ pub async fn reject_claim(
     tracing::info!(
         "[claim] operator rejected the claim by {owner_email} on business {business_id}"
     );
-    Ok(Json(
-        json!({"ok": true, "business_id": business_id, "rejected": true}),
-    ))
+
+    // Close the loop with the claimant: they were told a human would review their claim, so a
+    // silent rejection leaves them waiting forever. Best-effort — the decision already stands.
+    let html = format!(
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>\
+<body style=\"font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:20px;\">\
+<div style=\"background:#f8f9fa;border-radius:12px;padding:32px;text-align:center;\">\
+<h1 style=\"color:#1e293b;margin:0 0 8px;\">We could not verify your claim</h1>\
+<p style=\"color:#64748b;font-size:14px;margin:0 0 16px;\">{biz_name}</p>\
+<p style=\"color:#1e293b;font-size:14px;\">We were not able to confirm that <b>{owner_email}</b> \
+belongs to this business, so the listing has not been handed over. The listing is still free to be \
+claimed again.</p>\
+<p style=\"color:#1e293b;font-size:14px;\">To claim it, start the claim again from the listing page \
+using an email address on the business's own website domain, or reply to this message with proof \
+that you run the business.</p>\
+<p style=\"margin:24px 0;\"><a href=\"https://zaarhub.com\" style=\"background:#6366f1;color:#fff;\
+text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;\">Back to ZaarHub</a></p>\
+</div></body></html>"
+    );
+    let text = format!(
+        "We could not verify your claim on {biz_name}. The listing has not been handed over and is \
+         still free to claim. Re-claim it from the listing page using an email address on the \
+         business's own website domain, or reply with proof that you run the business."
+    );
+    let db = s.db.clone();
+    let to = owner_email.clone();
+    let email_sent = match crate::email::send_rendered_email_for_directory(
+        &db,
+        directory_id,
+        &to,
+        "Your claim was not verified",
+        &html,
+        Some(&text),
+    )
+    .await
+    {
+        Ok(()) => {
+            tracing::info!("[claim] rejection notice sent to {to}");
+            true
+        }
+        Err(e) => {
+            tracing::warn!("[claim] rejection notice NOT sent to {to}: {e}");
+            false
+        }
+    };
+
+    Ok(Json(json!({
+        "ok": true,
+        "business_id": business_id,
+        "owner_email": owner_email,
+        "rejected": true,
+        "email_sent": email_sent,
+    })))
 }
