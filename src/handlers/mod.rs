@@ -40,6 +40,8 @@ pub mod data_company;
 pub mod provider_keys_handler;
 // Places responses: HTTP status + Google's own status/error, never swallowed (card B78).
 pub mod places_client;
+// A stored Google photo NAME is not a URL; this turns it into real image bytes on demand.
+pub mod place_photos;
 
 // Integration Center — canonical CoreSwift spoke endpoints (fleet standard
 // /opt/swift/docs/integration-center-standard-2026-09-20.md).

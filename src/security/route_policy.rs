@@ -99,6 +99,16 @@ pub const INTERNAL_KEY_HEADER: &str = "x-internal-key";
 pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     // --- /ads --------------------------------------------------------
     ("GET", "/ads/active/:directory_id", "ads"),
+    // --- /place-photo ------------------------------------------------
+    // A listing's photo, when the stored reference is a Google photo NAME that no browser can
+    // load directly. Anonymous by design: it is an image on a public listing page, and a
+    // logged-out visitor (and a crawler) must be able to fetch it. It only ever serves a picture
+    // already published with a LIVE listing — an unpublished row answers 404.
+    (
+        "GET",
+        "/place-photo/:business_id/:index",
+        "public-listing-photo",
+    ),
     // --- /api-keys ---------------------------------------------------
     // The endpoint's own credential IS the API key (read from the Authorization header), so it
     // cannot also require a session JWT — that made it uncallable (401 for every caller). The

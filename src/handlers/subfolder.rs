@@ -2495,7 +2495,7 @@ pub async fn business_detail(
     let by_uuid = Uuid::parse_str(ident).ok();
     let fetched = sqlx::query(
         "SELECT id, name, slug, description, category_id, address, city, state, zip, phone, \
-                website, logo_url, cover_url, rating, review_count, latitude, longitude, featured \
+                website, logo_url, cover_url, images, rating, review_count, latitude, longitude, featured \
          FROM businesses WHERE directory_id = $1 AND is_active = true \
            AND (lower(slug) = lower($2) OR ($3::uuid IS NOT NULL AND id = $3::uuid)) LIMIT 1",
     )
@@ -2571,6 +2571,30 @@ pub async fn business_detail(
     let website: Option<String> = row.try_get("website").unwrap_or(None);
     let logo: Option<String> = row.try_get("logo_url").unwrap_or(None);
     let cover: Option<String> = row.try_get("cover_url").unwrap_or(None);
+    // The listing's own photo (card W24 part 2). A Google Places photo NAME is not a URL, so an
+    // imported listing had nothing to render and this page showed no picture at all. The app's
+    // own /api/v1/place-photo proxy turns that name into bytes on demand; only a real http(s)
+    // URL or that proxy path is ever used here, never a path that could 404.
+    let images_json: serde_json::Value = row.try_get("images").unwrap_or(serde_json::Value::Null);
+    let hero_src: Option<String> = images_json.as_array().and_then(|arr| {
+        arr.iter().enumerate().find_map(|(i, item)| {
+            let raw = match item {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Object(o) => o
+                    .get("url")
+                    .or_else(|| o.get("photo_reference"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_default(),
+                _ => return None,
+            };
+            crate::handlers::place_photos::display_src(biz_id, i, &raw).filter(|src| {
+                src.starts_with("https://")
+                    || src.starts_with("http://")
+                    || src.starts_with("/api/v1/place-photo/")
+            })
+        })
+    });
     let rating: f64 = row
         .try_get::<Option<f64>, _>("rating")
         .unwrap_or(None)
@@ -2795,6 +2819,15 @@ pub async fn business_detail(
     let og_image = ov
         .as_ref()
         .and_then(|o| o.og_image.clone())
+        .or_else(|| {
+            hero_src.as_ref().map(|s| {
+                if s.starts_with('/') {
+                    format!("{}{}", base.trim_end_matches('/'), s)
+                } else {
+                    s.clone()
+                }
+            })
+        })
         .or_else(|| logo.clone())
         .or_else(|| cover.clone());
 
@@ -3021,6 +3054,16 @@ pub async fn business_detail(
     } else {
         format!("<p class=\"lede\">{}</p>", h(&description))
     };
+    // The picture at the top of the page. Decorative when it is absent — the block disappears
+    // rather than showing an empty frame.
+    let hero_html = match &hero_src {
+        Some(s) => format!(
+            "<img src=\"{}\" alt=\"{}\" loading=\"lazy\" style=\"width:100%;max-height:420px;object-fit:cover;border-radius:14px;margin:0 0 18px\">",
+            h(s),
+            h(&name)
+        ),
+        None => String::new(),
+    };
 
     // Expose this page's own business + directory to the injected visitor tracker, so a
     // click or scroll lands attributed instead of directory-less / category-less ("unknown").
@@ -3037,6 +3080,7 @@ pub async fn business_detail(
     let body = format!(
         r#"{start}{ctx}{crumbs}
 <div class="detail">
+{hero}
 {logo}
 <h1>{name}</h1>
 {rating_html}
@@ -3057,6 +3101,7 @@ pub async fn business_detail(
         ),
         crumbs = breadcrumbs(&crumb_pairs),
         logo = logo_html,
+        hero = hero_html,
         name = h(&name),
         rating_html = rating_html,
         desc_html = desc_html,

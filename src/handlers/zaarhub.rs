@@ -1580,12 +1580,23 @@ fn photo_is_renderable(url: &str) -> bool {
 }
 
 /// Accepts both shapes a photos column takes in this database: `["url", ...]` and
-/// `[{"url": ...}, ...]`, and keeps only references that will actually render (see
-/// `photo_is_renderable`). Nothing is ever invented or substituted.
-fn image_urls(v: &Value) -> Vec<String> {
+/// `[{"url": ...}, ...]`, and keeps only references that will actually render.
+///
+/// Three kinds of reference live in that column and they render differently (2026-11-12):
+///   * an absolute/`/uploads` URL — kept as-is, but only when it really loads
+///     (`photo_is_renderable`);
+///   * a Google Places photo RESOURCE NAME (`places/…/photos/…`) — not a URL, so it is rewritten
+///     to this app's own `/api/v1/place-photo/<business>/<index>` proxy. Before this, those were
+///     dropped and 3,883 listings showed "No photos yet" while their photo was in the database;
+///   * anything else — dropped. Nothing is ever invented or substituted.
+///
+/// `MAX_PROXIED_PHOTOS` caps the second kind, because each one is a billed Google call on a cold
+/// view. The index passed to the proxy is the reference's real position in the array.
+fn image_urls(bid: Uuid, v: &Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
+    let mut proxied = 0usize;
     if let Some(arr) = v.as_array() {
-        for item in arr {
+        for (idx, item) in arr.iter().enumerate() {
             let url = match item {
                 Value::String(s) => Some(s.clone()),
                 Value::Object(o) => o
@@ -1595,9 +1606,18 @@ fn image_urls(v: &Value) -> Vec<String> {
                     .map(str::to_string),
                 _ => None,
             };
-            if let Some(u) = url {
-                if photo_is_renderable(&u) && !out.contains(&u) {
+            let Some(u) = url else { continue };
+            if photo_is_renderable(&u) {
+                if !out.contains(&u) {
                     out.push(u);
+                }
+            } else if crate::handlers::place_photos::is_place_photo_name(&u)
+                && crate::handlers::place_photos::within_budget(proxied)
+            {
+                let src = crate::handlers::place_photos::proxy_path(bid, idx);
+                if !out.contains(&src) {
+                    out.push(src);
+                    proxied += 1;
                 }
             }
         }
@@ -1695,6 +1715,7 @@ pub async fn get_business_detail(
             category_id: r.try_get("category_id")?,
             category_name: None,
             images: image_urls(
+                r.try_get::<Uuid, _>("id")?,
                 &r.try_get::<Option<Value>, _>("images")?
                     .unwrap_or(Value::Null),
             ),

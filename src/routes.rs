@@ -2218,6 +2218,14 @@ pub fn create_router(s: AppState) -> Router {
         // data (site name, headquarters city+state, contact email/phone) so the footer on every
         // page can render the same value the owner entered once. Read-only, no secrets.
         .route("/zaarhub/company", get(zaarhub::company_info))
+        // The listing's own photo, when the stored reference is a Google photo NAME
+        // (`places/…/photos/…`) that no browser can load directly. Public: it is a picture on a
+        // public page. Answers 404 when the photo cannot be fetched, so the page hides the frame
+        // instead of showing a broken image.
+        .route(
+            "/place-photo/:business_id/:index",
+            get(place_photos::place_photo),
+        )
         .route(
             "/zaarhub/business/:slug/:id",
             get(zaarhub::get_business_detail),
