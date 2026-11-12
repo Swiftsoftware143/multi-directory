@@ -55,7 +55,6 @@ def reap_fixture(label=""):
     """Idempotent. Deletes the fixture by EXACT id (never by LIKE), then proves the row is gone."""
     if FIX["done"]:
         return 0
-    FIX["done"] = True
     biz = FIX["biz"]
     if not biz:
         return 0
@@ -81,16 +80,24 @@ def reap_fixture(label=""):
         pass
     left = int(psql(f"SELECT count(*) FROM businesses WHERE id='{biz}'") or 0)
     if left == 0:
-        print(f"PASS  probe fixture torn down by id ({label or 'atexit'})")
+        FIX["done"] = True
+        print(f"PASS  probe fixture torn down by id ({label or 'atexit'})", flush=True)
     else:
-        print(f"FAIL  probe fixture torn down by id ({label or 'atexit'})  rows_left={left}")
+        print(f"FAIL  probe fixture torn down by id ({label or 'atexit'})  rows_left={left}", flush=True)
         FAILS.append("teardown")
     return 0 if left == 0 else 1
 
 
 def _exit_on_signal(signum, _frame):
-    """Turn a signal into a normal exit so atexit (and therefore the reap) still runs."""
-    print(f"SIGNAL {signum}: tearing the fixture down before exiting")
+    """Turn a signal into a normal exit so the fixture is swept. The reap runs HERE, not only from
+    atexit: a signal that lands while the interpreter is unwinding can skip atexit (measured — the
+    first version printed the SIGNAL line and left the row), and a cleanup path that depends on
+    shutdown timing is exactly the kind of teardown this card exists to remove."""
+    print(f"SIGNAL {signum}: tearing the fixture down before exiting", flush=True)
+    try:
+        reap_fixture(f"signal {signum}")
+    except BaseException as e:  # noqa: BLE001 - never let teardown mask the signal
+        print(f"CLEANUP ERROR (signal): {e}", flush=True)
     raise SystemExit(128 + signum)
 
 
