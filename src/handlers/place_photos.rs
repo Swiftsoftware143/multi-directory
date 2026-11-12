@@ -134,12 +134,20 @@ enum MediaOutcome {
     Failed(String),
 }
 
-fn image_response(bytes: Vec<u8>, content_type: String, verdict: &'static str) -> Response {
+fn image_response(
+    bytes: Vec<u8>,
+    content_type: String,
+    verdict: &'static str,
+    max_age_secs: u64,
+) -> Response {
     let mut resp = (
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, content_type),
-            (header::CACHE_CONTROL, "public, max-age=604800".to_string()),
+            (
+                header::CACHE_CONTROL,
+                format!("public, max-age={max_age_secs}"),
+            ),
         ],
         Body::from(bytes),
     )
@@ -298,7 +306,7 @@ pub async fn place_photo(
             business = %business_id, index, bytes = bytes.len(),
             "place photo served from the disk cache"
         );
-        return Ok(image_response(bytes, ct, "hit"));
+        return Ok(image_response(bytes, ct, "hit", cfg.ttl_secs));
     }
 
     // 2. Cold: one request fetches a given photo. A second request for the same photo (two
@@ -311,7 +319,7 @@ pub async fn place_photo(
                 tokio::time::sleep(photo_cache::WAIT_STEP).await;
                 if let Some((bytes, ct)) = photo_cache::peek(&cfg, &name).await {
                     photo_cache::note_hit(bytes.len());
-                    return Ok(image_response(bytes, ct, "hit"));
+                    return Ok(image_response(bytes, ct, "hit", cfg.ttl_secs));
                 }
             }
             None
@@ -344,7 +352,7 @@ pub async fn place_photo(
                     business = %business_id, index, key = %label, bytes = bytes.len(),
                     "place photo served from the stored reference"
                 );
-                return Ok(image_response(bytes, ct, "miss"));
+                return Ok(image_response(bytes, ct, "miss", cfg.ttl_secs));
             }
             MediaOutcome::InvalidName => {
                 // Stored references expire (see the module note). Re-resolve from the place id.
@@ -360,7 +368,7 @@ pub async fn place_photo(
                                 business = %business_id, index, key = %label, bytes = bytes.len(),
                                 "place photo served after refreshing an expired reference"
                             );
-                            return Ok(image_response(bytes, ct, "miss"));
+                            return Ok(image_response(bytes, ct, "miss", cfg.ttl_secs));
                         }
                         MediaOutcome::InvalidName => {
                             last_error = format!("{label}: refreshed name also refused")

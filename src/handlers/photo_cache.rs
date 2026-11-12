@@ -41,8 +41,10 @@ use serde_json::{json, Value};
 pub const DEFAULT_TTL_SECS: u64 = 7 * 24 * 3600;
 /// Google Maps Platform terms cap photo caching at 30 days. Keep one day of slack.
 pub const MAX_TTL_SECS: u64 = 29 * 24 * 3600;
-/// 512 MiB holds ~5,000 photos at a typical 100 KB, i.e. every card in several cities.
-pub const DEFAULT_MAX_BYTES: u64 = 512 * 1024 * 1024;
+/// 2 GiB: one warm city is ~300 photos at ~380 KB (~115 MB), so this holds every photo in a
+/// ten-city network (the fleet's ceiling) with room to spare, while still being a hard bound on a
+/// 1.3 TB disk. LRU eviction covers anything beyond it.
+pub const DEFAULT_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MIN_MAX_BYTES: u64 = 1024 * 1024;
 const MAX_MAX_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 /// Evict down to this percentage of the cap, so the next few hundred stores do not each evict.
