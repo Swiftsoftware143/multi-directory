@@ -17,12 +17,18 @@ contact_field_values and link_clicks.
 
 Every prefix is a fixture-address prefix owned by one harness (`zz-review-owner-`, ...); nothing
 outside the reserved/fixture domains is ever matched.
+
+The sweep REPORTS what it removed (`CLEANED CoreSwift mirror: contacts=N`), so a harness run is
+its own non-vacuity proof: contacts>0 means the claim did fan a contact out and teardown removed
+it; contacts=0 means this harness never leaked. Silence on a clean run.
 """
 
+import re
 import subprocess
 import time
 
 PSQL = ["/opt/swift/bin/swift-psql.sh", "coreswift_crm", "-t", "-A", "-c"]
+_TAG = re.compile(r"^DELETE (\d+)$")
 
 
 def cssql(query, timeout=40):
@@ -31,6 +37,16 @@ def cssql(query, timeout=40):
     if r.returncode != 0:
         raise RuntimeError(f"coreswift psql failed: {r.stderr.strip()[:300]}")
     return [ln for ln in r.stdout.strip().splitlines() if ln]
+
+
+def _deleted(out):
+    """Rows removed, from the psql command tag (`DELETE 3`)."""
+    n = 0
+    for ln in out:
+        m = _TAG.match(ln.strip())
+        if m:
+            n += int(m.group(1))
+    return n
 
 
 def _where(prefixes):
@@ -48,19 +64,31 @@ def sweep_coreswift_mirror(prefixes, window=0):
     """Delete the CoreSwift contact mirror for these fixture prefixes; return what is left.
 
     Pass `window` (seconds) in teardown: the claim's cross-app push is fire-and-forget, so a
-    single delete can beat the contact to the table.
+    single delete can beat the contact to the table. Prints one CLEANED line when rows were
+    removed — that line is the evidence the claim really did mirror into CoreSwift.
     """
     if isinstance(prefixes, str):
         prefixes = [prefixes]
     where = _where(prefixes)
+    contacts_deleted = 0
+    tags_deleted = 0
     deadline = time.time() + window
     while True:
-        cssql(
+        tags_deleted += _deleted(cssql(
             "DELETE FROM tag_assignments WHERE entity_type='contact' AND entity_id IN "
             "(SELECT id FROM contacts WHERE %s);" % where
-        )
-        cssql("DELETE FROM contacts WHERE %s;" % where)
+        ))
+        gone = _deleted(cssql("DELETE FROM contacts WHERE %s;" % where))
+        contacts_deleted += gone
+        if gone:
+            # one more pass right away: the push may still land a moment later
+            deadline = max(deadline, time.time() + min(window, 4))
         if time.time() >= deadline:
             break
         time.sleep(2)
+    if contacts_deleted:
+        print(
+            "CLEANED CoreSwift mirror: contacts=%d tag_assignments=%d prefixes=%s"
+            % (contacts_deleted, tags_deleted, ",".join(prefixes))
+        )
     return count_coreswift_mirror(prefixes)
