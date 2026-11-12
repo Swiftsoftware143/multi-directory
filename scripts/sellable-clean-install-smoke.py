@@ -19,6 +19,19 @@ asserts the teardown actually happened.
 
 Run:  python3 scripts/sellable-clean-install-smoke.py
 Exit: 0 = PASS, 1 = FAIL.
+
+CoreSwift: the probe strips every CORESWIFT_* variable (a throwaway install must never
+register a workspace in the real CRM) and points CORESWIFT_URL at a CLOSED port, so the run
+proves the install works with no CoreSwift at all. To additionally exercise the path that
+used to abort the server — provisioning reaches the app with a REACHABLE CoreSwift and no
+internal key — start the stand-in and point the probe at it:
+
+    python3 scripts/coreswift-stub.py 17872 &
+    MD_PROBE_CORESWIFT_URL=http://127.0.0.1:17872 python3 scripts/sellable-clean-install-smoke.py
+
+That variant must stay 37/37 and the probe log must show
+`[provision] CORESWIFT_INTERNAL_KEY not configured - skipping` (verified 2026-11-11, commit
+eda8f6d; the pre-fix binary aborted with a panic at src/coreswift.rs:21).
 """
 import json
 import os
