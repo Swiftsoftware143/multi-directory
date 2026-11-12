@@ -1115,14 +1115,23 @@ pub(crate) async fn local_town_entries(
     }
 
     let rows: Vec<(String, String, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
-        r#"SELECT LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) AS town_key,
-                  MIN(TRIM(SPLIT_PART(TRIM(b.city), ',', 1))) AS town_label,
-                  COUNT(*)::bigint,
-                  AVG(b.latitude), AVG(b.longitude)
-           FROM businesses b
-           WHERE b.directory_id = $1 AND b.is_active = true
-             AND b.city IS NOT NULL AND TRIM(b.city) <> ''
-           GROUP BY 1"#,
+        r#"SELECT town_key,
+                  (ARRAY_AGG(town_label ORDER BY n DESC, town_label))[1] AS town_label,
+                  SUM(n)::bigint AS n,
+                  SUM(n * lat) / NULLIF(SUM(n), 0),
+                  SUM(n * lon) / NULLIF(SUM(n), 0)
+           FROM (
+               SELECT TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) AS town_key,
+                      TRIM(SPLIT_PART(TRIM(b.city), ',', 1)) AS town_label,
+                      COUNT(*)::bigint AS n,
+                      AVG(b.latitude) AS lat,
+                      AVG(b.longitude) AS lon
+               FROM businesses b
+               WHERE b.directory_id = $1 AND b.is_active = true
+                 AND b.city IS NOT NULL AND TRIM(b.city) <> ''
+               GROUP BY 1, 2
+           ) s
+           GROUP BY town_key"#,
     )
     .bind(dir_id)
     .fetch_all(pool)
@@ -1710,7 +1719,7 @@ async fn city_nav_html(pool: &PgPool, dir: &DirectoryRec, base: &str, canonical:
 async fn list_town_businesses(
     pool: &PgPool,
     dir_id: Uuid,
-    town_label: &str,
+    town_key: &str,
     limit: i64,
 ) -> Vec<BizCard> {
     /// Compile-time form of the shared column list (gate rule 5d). MUST stay
@@ -1728,12 +1737,12 @@ async fn list_town_businesses(
         " FROM businesses b \
          LEFT JOIN directory_categories dc ON dc.id = b.category_id \
          WHERE b.directory_id = $1 AND b.is_active = true \
-           AND lower(btrim(split_part(b.city, ',', 1))) = lower($2) \
+           AND TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = $2 \
          ORDER BY b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
          LIMIT $3"
     ))
     .bind(dir_id)
-    .bind(town_label)
+    .bind(town_key)
     .bind(limit)
     .fetch_all(pool)
     .await;
@@ -1813,7 +1822,7 @@ pub async fn town_page(
         158,
     );
 
-    let items = list_town_businesses(pool, dir.id, &town.label, 100).await;
+    let items = list_town_businesses(pool, dir.id, &town.key, 100).await;
     let cards: String = items
         .iter()
         .map(|b| card_html(&base, &dir.slug, b))
@@ -3429,7 +3438,7 @@ pub async fn blog_post_page(
         let towns = local_town_entries(pool, dir.id, &dir.city).await;
         if let Some(town) = towns.iter().find(|t| t.key == key) {
             town_label_for_schema = Some(town.label.clone());
-            let items = list_town_businesses(pool, dir.id, &town.label, 6).await;
+            let items = list_town_businesses(pool, dir.id, &town.key, 6).await;
             let lis: String = items
                 .iter()
                 .map(|b| {

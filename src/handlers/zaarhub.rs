@@ -142,9 +142,29 @@ pub struct LocalTown {
     pub distance_km: f64,
 }
 
-/// `"Palm Bay, FL"` -> `"palm bay"`: the key two rows must share to be the same town.
+/// `"St. Cloud, FL"` -> `"st cloud"`: the key two rows must share to be the same town.
+///
+/// Punctuation and runs of whitespace are collapsed, so one town the importer spelled two
+/// ways ("St. Cloud" and "St Cloud") is ONE town — one chip and one count — instead of two
+/// chips that split a city's listings between them. The same normalisation is written as
+/// `TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g'))`
+/// in the SQL that groups and filters by town; the two must stay equivalent.
 pub(crate) fn town_key(raw: &str) -> String {
-    raw.split(',').next().unwrap_or("").trim().to_lowercase()
+    let town = raw.split(',').next().unwrap_or("").trim();
+    let mut out = String::with_capacity(town.len());
+    let mut gap = false;
+    for ch in town.chars() {
+        if ch.is_alphanumeric() {
+            if gap && !out.is_empty() {
+                out.push(' ');
+            }
+            out.extend(ch.to_lowercase());
+            gap = false;
+        } else {
+            gap = true;
+        }
+    }
+    out
 }
 
 /// Great-circle distance in km between two points.
@@ -929,14 +949,23 @@ pub async fn get_city_page(
     // one city. A business imported from another town must never be counted or shown as if it
     // were in this city (a Melbourne FL business listed under Palm Bay).
     let town_rows: Vec<(String, String, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
-        r#"SELECT LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) AS town_key,
-                  MIN(TRIM(SPLIT_PART(TRIM(b.city), ',', 1))) AS town_label,
-                  COUNT(*)::bigint,
-                  AVG(b.latitude), AVG(b.longitude)
-           FROM businesses b
-           WHERE b.directory_id = $1 AND b.is_active = true
-             AND b.city IS NOT NULL AND TRIM(b.city) <> ''
-           GROUP BY 1"#,
+        r#"SELECT town_key,
+                  (ARRAY_AGG(town_label ORDER BY n DESC, town_label))[1] AS town_label,
+                  SUM(n)::bigint AS n,
+                  SUM(n * lat) / NULLIF(SUM(n), 0),
+                  SUM(n * lon) / NULLIF(SUM(n), 0)
+           FROM (
+               SELECT TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) AS town_key,
+                      TRIM(SPLIT_PART(TRIM(b.city), ',', 1)) AS town_label,
+                      COUNT(*)::bigint AS n,
+                      AVG(b.latitude) AS lat,
+                      AVG(b.longitude) AS lon
+               FROM businesses b
+               WHERE b.directory_id = $1 AND b.is_active = true
+                 AND b.city IS NOT NULL AND TRIM(b.city) <> ''
+               GROUP BY 1, 2
+           ) s
+           GROUP BY town_key"#,
     )
     .bind(dir_id)
     .fetch_all(&s.db)
@@ -1108,7 +1137,7 @@ pub async fn get_city_page(
            FROM businesses b
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND b.is_active = true
-             AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2))
+             AND ($2::text[] IS NULL OR TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = ANY($2))
            ORDER BY b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST
            LIMIT 500"#,
     )
@@ -1317,13 +1346,13 @@ pub async fn get_city_page(
     let categories = sqlx::query_as::<_, (Uuid, String, String, Option<i64>, Option<String>, Option<String>)>(
         r#"SELECT c.id, c.name, c.slug,
                   (SELECT COUNT(*) FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true
-                     AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2))) as biz_count,
+                     AND ($2::text[] IS NULL OR TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = ANY($2))) as biz_count,
                   c.icon, c.group_name
            FROM directory_categories c
            WHERE c.slug IN ('fitness-studio','day-spa','dentist','real-estate-agent','hair-salon','auto-repair','plumber')
               OR c.parent_id IN (SELECT id FROM directory_categories WHERE slug IN ('fine-dining','food-drink'))  -- Fine Dining / Food & Drink children (resolved by slug, never a copied id)
               OR EXISTS (SELECT 1 FROM businesses b WHERE b.category_id = c.id AND b.directory_id = $1 AND b.is_active = true
-                     AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2)))
+                     AND ($2::text[] IS NULL OR TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = ANY($2)))
            ORDER BY
              CASE c.slug
                WHEN 'fitness-studio' THEN 0 WHEN 'day-spa' THEN 1 WHEN 'dentist' THEN 2
@@ -1377,7 +1406,7 @@ pub async fn get_city_page(
                JOIN directory_categories c ON c.id = b.category_id
                WHERE b.directory_id = $1 AND b.is_active = true
                  AND c.slug = ANY($2)
-                 AND ($3::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($3))"#,
+                 AND ($3::text[] IS NULL OR TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = ANY($3))"#,
         )
         .bind(dir_id)
         .bind(&dining_slugs)
@@ -1484,7 +1513,7 @@ pub async fn get_city_page(
            FROM businesses b
            LEFT JOIN directory_categories dc ON dc.id = b.category_id
            WHERE b.directory_id = $1 AND b.is_active = true
-             AND ($2::text[] IS NULL OR LOWER(SPLIT_PART(TRIM(b.city), ',', 1)) = ANY($2))
+             AND ($2::text[] IS NULL OR TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = ANY($2))
              AND b.rating IS NOT NULL AND b.review_count > 0
            ORDER BY b.rating DESC, b.review_count DESC
            LIMIT 8"#,

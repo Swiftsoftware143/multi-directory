@@ -69,10 +69,12 @@ pub struct UpdateBlogPostRequest {
     pub town_key: Option<String>,
 }
 
-/// `"  Melbourne "` -> `"melbourne"`; empty (or the literal "none" the portal's
-/// empty option posts) -> `None`.
+/// `"  St. Cloud "` -> `"st cloud"`; empty (or the literal "none" the portal's
+/// empty option posts) -> `None`. Uses the SAME normalisation as the town keys the
+/// city/town pages are built from, so an article filed to a town is filed to the
+/// town as the directory knows it (`zaarhub::town_key`, punctuation-blind).
 fn normalise_town_key(raw: &str) -> Option<String> {
-    let key = raw.trim().to_lowercase();
+    let key = crate::handlers::zaarhub::town_key(raw);
     if key.is_empty() || key == "none" {
         None
     } else {

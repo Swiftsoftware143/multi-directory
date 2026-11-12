@@ -2255,6 +2255,10 @@ function renderCityPage(d){
   // city, so a business from another town can never be read as if it were in this city. The API
   // already limits the cards to this city's local area; these chips pick one town inside it.
   var towns=(Array.isArray(d.local_towns))?d.local_towns:[]
+  // One town, one key: the server groups towns punctuation-blind ("St. Cloud" and "St Cloud"
+  // are one town), so the chips and the card filter below must normalise the same way — a
+  // chip labelled "St. Cloud" would otherwise hide the listings spelled "St Cloud".
+  var townKeyFn=function(v){return String(v||'').split(',')[0].toLowerCase().replace(/[^0-9a-z\u00c0-\u024f]+/g,' ').trim()}
   var homeTown=d.home_town?String(d.home_town).trim():(towns.length?String(towns[0].name||'').trim():'')
   var selTown=(state.filterTown==='__all__')?'':(state.filterTown||homeTown)
   var townRowHtml=''
@@ -2267,12 +2271,12 @@ function renderCityPage(d){
       townChip('All towns','__all__',state.filterTown==='__all__',0)
     for(var tj=0;tj<towns.length;tj++){
       var tName=String(towns[tj].name||'').trim()
-      townRowHtml+=townChip(tName,tName,tName.toLowerCase()===selTown.toLowerCase(),towns[tj].count)
+      townRowHtml+=townChip(tName,tName,townKeyFn(tName)===townKeyFn(selTown),towns[tj].count)
     }
     townRowHtml+='</div>'
   }
   if(towns.length&&selTown){
-    biz=biz.filter(function(b){return String(b.city||'').split(',')[0].trim().toLowerCase()===selTown.toLowerCase()})
+    biz=biz.filter(function(b){return townKeyFn(b.city)===townKeyFn(selTown)})
   }
   var nbNames=[]
   var nbSrc=d.featured_businesses||[]
@@ -2377,7 +2381,7 @@ function renderCityPage(d){
   // same zh-biz-card component as the grid below; only listings with a real review history.
   var cityTopRated=d.top_rated||[]
   // W22: the strip is headed by ONE town's name, so it may only list that town's businesses.
-  if(towns.length&&selTown){cityTopRated=cityTopRated.filter(function(x){return String(x.city||'').split(',')[0].trim().toLowerCase()===selTown.toLowerCase()})}
+  if(towns.length&&selTown){cityTopRated=cityTopRated.filter(function(x){return townKeyFn(x.city)===townKeyFn(selTown)})}
   var cityTopRatedHtml=''
   for(var ctr=0;ctr<cityTopRated.length;ctr++){
     var ctrB=cityTopRated[ctr]
