@@ -629,6 +629,10 @@ async fn update_arm(
             continue;
         }
 
+        // t_6b831daa: this row's `enriched_at` was just stamped; keep the description present
+        // and factual from the row's own fields.
+        crate::utils::business_copy::ensure_description(&s.db, bid).await;
+
         if changed {
             counts.updated += 1;
             let fields: Vec<&str> = [
@@ -858,6 +862,7 @@ async fn discover_arm(
             let (cat_id, cat_name) = crate::handlers::discovery_queue::map_category(
                 s,
                 dir.id,
+                &cname,
                 &types,
                 Some(cat_fallback_id),
                 Some(cat.clone()),
@@ -916,6 +921,10 @@ async fn discover_arm(
             match inserted {
                 Ok(Some(new_id)) => {
                     counts.added += 1;
+                    // t_6b831daa: a fresh listing must not land with a NULL description (that is
+                    // how 4,099 pages came to share one canned sentence). Fill it from the facts
+                    // this insert just stored.
+                    crate::utils::business_copy::ensure_description(&s.db, new_id).await;
                     samples.push(json!({
                         "business_id": new_id,
                         "name": cname,

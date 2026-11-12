@@ -195,6 +195,10 @@ pub async fn contact_intelligence_pipeline(
                 overall_success = false;
             }
 
+            // t_6b831daa: this pipeline stamps `enriched_at`, so the description must exist by
+            // the time it returns — composed from facts, never invented.
+            crate::utils::business_copy::ensure_description(&state.db, biz.id).await;
+
             if overall_success {
                 total_successes += 1;
             } else {

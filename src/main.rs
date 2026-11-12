@@ -173,6 +173,10 @@ async fn main() {
     // Start background reminder cron
     reminders::start_reminder_cron(state.db.clone());
 
+    // Listing descriptions: fill blanks from each row's own facts at boot and every 30 minutes
+    // (kanban t_6b831daa — 4,099 of 4,100 live detail pages shipped with no description at all).
+    utils::business_copy::start_description_backfill(state.db.clone());
+
     // Photo cache: seed the served-from-disk map from the cache directory so a restart does not
     // make a fully warmed city look cold (which would spend a page's cold-miss budget on photos
     // that are already free).

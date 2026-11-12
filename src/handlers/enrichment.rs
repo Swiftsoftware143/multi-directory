@@ -1353,6 +1353,13 @@ pub async fn run_cycle(
                 .await;
             }
         }
+
+        // t_6b831daa: `enriched_at` says this listing has been enriched — make that true of the
+        // description too, composed from the row's own facts (deterministic, zero API spend).
+        // Before this, the cycle stamped `enriched_at` on 493 rows whose description stayed blank.
+        if crate::utils::business_copy::ensure_description(db, b.id).await {
+            fields_filled += 1;
+        }
     }
 
     let status = if errors > 0 {

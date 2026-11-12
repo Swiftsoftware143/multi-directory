@@ -144,16 +144,32 @@ async fn import_business_row(
         .unwrap_or_default();
     let images_json = serde_json::to_value(&images).unwrap_or(json!([]));
 
-    // Try to find matching category_id by name
+    // Try to find matching category_id by name. Categories are installed network-wide
+    // (`directory_id IS NULL`) with an optional directory-specific override, so a lookup scoped
+    // to the directory alone silently dropped every CSV category (t_6b831daa).
     let cat_id: Option<uuid::Uuid> = if !category.is_empty() {
-        sqlx::query_scalar(
-            "SELECT id FROM directory_categories WHERE directory_id = $1 AND name = $2 LIMIT 1",
+        let found: Option<(uuid::Uuid, String)> = sqlx::query_as(
+            "SELECT id, name FROM directory_categories \
+             WHERE (directory_id = $1 OR directory_id IS NULL) AND lower(name) = lower($2) \
+             ORDER BY (directory_id IS NOT NULL) DESC LIMIT 1",
         )
         .bind(directory_id)
-        .bind(category)
+        .bind(category.trim())
         .fetch_optional(db)
-        .await?
-        .flatten()
+        .await?;
+        match found {
+            // A file may not file a business under a trade its own name contradicts.
+            Some((_, cat_name))
+                if crate::utils::category_guard::contradicts(name, &[], &cat_name) =>
+            {
+                tracing::warn!(
+                    "[import] {name}: refusing category '{cat_name}' — the business name contradicts it"
+                );
+                None
+            }
+            Some((id, _)) => Some(id),
+            None => None,
+        }
     } else {
         None
     };

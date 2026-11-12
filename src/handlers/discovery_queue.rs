@@ -189,6 +189,7 @@ pub(crate) fn slugify(s: &str) -> String {
 pub(crate) async fn map_category(
     s: &AppState,
     directory_id: Uuid,
+    biz_name: &str,
     types: &[String],
     fallback_id: Option<Uuid>,
     fallback_name: Option<String>,
@@ -233,11 +234,32 @@ pub(crate) async fn map_category(
                     .iter()
                     .any(|h| nl.contains(h.to_lowercase().as_str() as &str))
             {
+                // t_6b831daa: a Google type hint must not file a listing under a trade its own
+                // name contradicts (a tattoo studio is not a "health"/"beauty" match for
+                // Fitness Studio just because both sit under a broad type).
+                if crate::utils::category_guard::contradicts(biz_name, types, name) {
+                    continue;
+                }
                 return (Some(*id), Some(name.clone()));
             }
         }
     }
 
+    // Nothing the Google types point at matched a category. Before stamping the search term's
+    // category on the listing (the defect that filed CPA firms under Personal Injury Lawyer and
+    // a gym under Landscaping), prefer the category the NAME itself names.
+    if let Some(idx) = crate::utils::category_guard::best_category(biz_name, types, &cats) {
+        return (Some(cats[idx].0), Some(cats[idx].1.clone()));
+    }
+
+    // The search term's category is only usable when the listing's own vocabulary does not
+    // contradict it. Otherwise leave the listing uncategorised — an honest blank beats a wrong
+    // trade on a public page and in its title.
+    if let Some(fb) = fallback_name.as_deref() {
+        if crate::utils::category_guard::contradicts(biz_name, types, fb) {
+            return (None, None);
+        }
+    }
     (fallback_id, fallback_name)
 }
 
@@ -342,6 +364,7 @@ pub async fn push_results(
         let (cat_id, cat_name) = map_category(
             &s,
             req.directory_id,
+            &name,
             &types,
             req.category_id,
             req.category.clone(),
