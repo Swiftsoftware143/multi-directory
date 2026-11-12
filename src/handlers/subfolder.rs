@@ -16,7 +16,7 @@
 //! derived value and every query failure degrades to "not found" rather than
 //! a 500.
 
-use crate::brand_theme::BrandTheme;
+use crate::brand_theme::{site_headquarters, BrandTheme};
 use axum::body::{to_bytes, Body};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
@@ -821,7 +821,18 @@ fn shell_start(
     )
 }
 
-fn shell_end(site_name: &str) -> String {
+fn shell_end(site_name: &str, hq: Option<&str>) -> String {
+    // The company address is ONE value for the whole company (zaarhub_site_config.headquarters,
+    // entered once in Branding). It belongs in the footer so it reaches EVERY public page — the
+    // city hub, its businesses/blog/deals pages, business listings and articles — instead of only
+    // the city hero. Rendered server-side so a crawler sees it without JavaScript.
+    let hq_line = match hq.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(v) => format!(
+            "<p class=\"zh-hq\" style=\"margin:0 0 6px\">\u{1f3e2} Headquarters: {}</p>",
+            h(v)
+        ),
+        None => String::new(),
+    };
     format!(
         "{js}</div><footer><div class=\"zh-fnav\">\
 <a href=\"/\">Home</a>\
@@ -831,8 +842,9 @@ fn shell_end(site_name: &str) -> String {
 <a href=\"/distributor\">Supplier login</a>\
 <a href=\"/legal/terms\">Terms</a>\
 <a href=\"/legal/privacy\">Privacy</a></div>\
-<p>\u{00a9} {year} {site} \u{2014} local business directory</p></footer></body></html>",
+{hq_line}<p>\u{00a9} {year} {site} \u{2014} local business directory</p></footer></body></html>",
         js = NEWSLETTER_JS,
+        hq_line = hq_line,
         year = chrono::Utc::now().format("%Y"),
         site = h(site_name)
     )
@@ -1737,6 +1749,7 @@ pub async fn town_page(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
     let canonical = format!("{}/{}/{}", base, dir.slug, town.slug);
     let label = format!("{} Businesses", town.label);
 
@@ -1885,7 +1898,7 @@ pub async fn town_page(
         articles = articles_block,
         siblings = siblings_block,
         explore = explore,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
     Some(html_response(StatusCode::OK, body))
 }
@@ -2062,6 +2075,7 @@ pub async fn businesses_page(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
 
     let params = parse_query(query);
     let page = params
@@ -2234,7 +2248,7 @@ pub async fn businesses_page(
         cards = cards,
         pager = pager,
         explore = explore,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     Some(html_response(StatusCode::OK, body))
@@ -2348,6 +2362,7 @@ pub async fn category_page(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
     let canonical = format!("{}/{}/{}", base, dir.slug, cat_slug);
     let label = format!("{} in {}, {}", cat_name, dir.city, dir.state);
 
@@ -2452,7 +2467,7 @@ pub async fn category_page(
         chips = chips,
         dir = h(&dir.slug),
         explore = explore,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     Some(html_response(StatusCode::OK, body))
@@ -2475,6 +2490,7 @@ pub async fn business_detail(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
 
     let by_uuid = Uuid::parse_str(ident).ok();
     let fetched = sqlx::query(
@@ -3061,7 +3077,7 @@ pub async fn business_detail(
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&city),
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     Some(html_response(StatusCode::OK, body))
@@ -3084,6 +3100,7 @@ pub async fn article_page(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
 
     let row = sqlx::query(
         "SELECT id, title, slug, meta_description, content, keyword, business_id, created_at, updated_at \
@@ -3240,7 +3257,7 @@ pub async fn article_page(
         dslug = h(&dir.slug),
         city = h(&dir.city),
         explore = explore,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     Some(html_response(StatusCode::OK, body))
@@ -3263,6 +3280,7 @@ pub async fn blog_post_page(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
 
     let row = sqlx::query(
         "SELECT id, title, slug, excerpt, content, meta_title, meta_description, canonical_url, \
@@ -3527,7 +3545,7 @@ pub async fn blog_post_page(
         dslug = h(&dir.slug),
         city = h(&dir.city),
         explore = explore,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     // robots_meta is respected by injecting the override into the served head.
@@ -3556,6 +3574,7 @@ pub async fn blog_list_page(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
     let canonical = format!("{}/{}/blog", base, dir.slug);
 
     let ov = seo_override(pool, "city_blog", dir.id).await;
@@ -3814,7 +3833,7 @@ pub async fn blog_list_page(
         dslug = h(&dir.slug),
         city = h(&dir.city),
         explore = explore,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     Some(html_response(StatusCode::OK, body))
@@ -3841,6 +3860,7 @@ pub async fn deals_page(
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
     let canonical = format!("{}/{}/deals", base, dir.slug);
 
     let ov = seo_override(pool, "city_deals", dir.id).await;
@@ -4086,7 +4106,7 @@ pub async fn deals_page(
         dslug = h(&dir.slug),
         city = h(&dir.city),
         explore = explore,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     Some(html_response(StatusCode::OK, body))
@@ -4394,6 +4414,7 @@ async fn render_programmatic_page(
 
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, dir).await;
+    let hq = site_headquarters(pool).await;
     let theme = theme_for(pool, dir).await;
     let canonical = format!("{}/{}/{}", base, dir.slug, p_slug);
 
@@ -4505,7 +4526,7 @@ catch(e){{}}}})();</script>",
         dslug = h(&dir.slug),
         city = h(&dir.city),
         beacon = beacon,
-        end = shell_end(&site),
+        end = shell_end(&site, hq.as_deref()),
     );
 
     PageRender::Rendered(html_response(StatusCode::OK, body))

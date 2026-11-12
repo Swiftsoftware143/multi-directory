@@ -2200,6 +2200,10 @@ pub fn create_router(s: AppState) -> Router {
         // ??? ZaarHub community frontend API (non-overlapping legacy routes, others migrated to zaarhub_cities)
         .route("/zaarhub/activity", get(zaarhub::get_activity))
         .route("/zaarhub/homepage", get(zaarhub::get_homepage))
+        // Company identity for the site-wide footer (card 15 follow-up): public presentation
+        // data (site name, headquarters city+state, contact email/phone) so the footer on every
+        // page can render the same value the owner entered once. Read-only, no secrets.
+        .route("/zaarhub/company", get(zaarhub::company_info))
         .route(
             "/zaarhub/business/:slug/:id",
             get(zaarhub::get_business_detail),

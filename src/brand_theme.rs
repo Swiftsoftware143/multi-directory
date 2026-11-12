@@ -405,6 +405,20 @@ pub async fn default_brand_name(pool: &PgPool) -> String {
         .unwrap_or_else(|| "Directory".to_string())
 }
 
+/// The company's Headquarters — ONE value for the whole company, entered once by the owner in
+/// Branding (`zaarhub_site_config.headquarters`, city + state as free text). Every public page
+/// renders it, so no page has to hardcode an address. `None` when the owner has not set it.
+pub async fn site_headquarters(pool: &PgPool) -> Option<String> {
+    let hq: Option<String> = sqlx::query_scalar(
+        "SELECT COALESCE(NULLIF(trim(headquarters), ''), '') FROM zaarhub_site_config LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    hq.filter(|s| !s.trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

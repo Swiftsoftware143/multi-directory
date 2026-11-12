@@ -422,6 +422,33 @@ pub async fn get_activity(
     Ok(Json(items))
 }
 
+/// `GET /zaarhub/company` — the public company identity rendered in the site footer of every
+/// page. Card 15 follow-up: `headquarters` reached only each city's *home* page, because the
+/// city hero was the only surface that read it, so a visitor on a city's businesses, blog,
+/// deals or a business page saw no company address at all. Presentation data only — exactly
+/// the values the owner enters once in Branding; nothing operator-only is exposed.
+pub async fn company_info(State(s): State<AppState>) -> ApiResult<Json<Value>> {
+    let row: Option<(
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT site_name, headquarters, contact_email, contact_phone \
+             FROM zaarhub_site_config LIMIT 1",
+    )
+    .fetch_optional(&s.db)
+    .await?;
+    let (site_name, headquarters, contact_email, contact_phone) =
+        row.unwrap_or((None, None, None, None));
+    Ok(Json(json!({
+        "site_name": site_name,
+        "headquarters": headquarters,
+        "contact_email": contact_email,
+        "contact_phone": contact_phone,
+    })))
+}
+
 /// GET /api/v1/zaarhub/homepage — full homepage data for the ZaarHub network homepage
 /// If a network slug is provided, scopes data to that network
 pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {

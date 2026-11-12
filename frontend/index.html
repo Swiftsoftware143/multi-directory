@@ -1339,8 +1339,31 @@ function renderShell(){
       <a href="mailto:support&#64;zaarhub.com">Contact</a>
     </div>
   </div>
-  <div class="zh-footer-bottom">© ${new Date().getFullYear()} ZaarHub — Discover & Support Your Local Community</div>
+  <div class="zh-footer-bottom"><span id="zh-hq-line" style="display:none">🏢 Headquarters: <span id="zh-hq-value"></span><br></span>© ${new Date().getFullYear()} ZaarHub — Discover & Support Your Local Community</div>
 </div>`
+  zhFillCompany()
+}
+
+// The company address is ONE value for the whole site (zaarhub_site_config.headquarters, entered
+// once in Branding). The city hero only exists on a city's home page, so the footer is the surface
+// that carries it on every page — a city's businesses, blog, deals, and each business page.
+// Cached for the session; a failed fetch simply leaves the line hidden.
+var __zhCompanyP = null
+function zhFillCompany(){
+  function paint(d){
+    if(!d || !d.headquarters) return
+    var line=document.getElementById('zh-hq-line')
+    var val=document.getElementById('zh-hq-value')
+    if(line && val){ val.textContent=d.headquarters; line.style.display='block' }
+  }
+  if(window.__zhCompany){ paint(window.__zhCompany); return }
+  if(!__zhCompanyP){
+    __zhCompanyP = fetch('/api/v1/zaarhub/company')
+      .then(function(r){ return r.ok ? r.json() : null })
+      .then(function(d){ window.__zhCompany=d; return d })
+      .catch(function(){ return null })
+  }
+  __zhCompanyP.then(paint)
 }
 
 function toggleMobile(){

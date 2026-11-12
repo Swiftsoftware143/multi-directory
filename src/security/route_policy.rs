@@ -404,6 +404,7 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/zaarhub/business/:slug/:id", "zaarhub-public"),
     ("GET", "/zaarhub/categories", "zaarhub-public"),
     ("GET", "/zaarhub/cities", "zaarhub-public"),
+    ("GET", "/zaarhub/company", "zaarhub-public"),
     ("GET", "/zaarhub/cities/:slug", "zaarhub-public"),
     ("GET", "/zaarhub/cities/:slug/blog-posts", "zaarhub-public"),
     ("GET", "/zaarhub/cities/:slug/listings", "zaarhub-public"),
@@ -767,10 +768,13 @@ mod tests {
         // plus its listing-scoped twin (GET /businesses/:id/reviews, the call
         // business-detail.html makes FIRST and used to 404 into a fallback); if this changes,
         // the census wants a look.
+        // plus the site-wide company identity (GET /zaarhub/company — site name, headquarters
+        // city+state, contact email/phone; the footer on every page renders it, presentation
+        // data only); if this changes, the census wants a look.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            165,
-            "allowlist size moved off the measured 158 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews)"
+            166,
+            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer)"
         );
     }
 }
