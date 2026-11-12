@@ -115,10 +115,6 @@ def main():
     check("the live programme and directory resolve", bool(directory_id) and bool(program_id),
           f"program={program_id[:8]} earn_rate={earn_rate} checkin={per_checkin} min_redeem={min_redeem}")
 
-    before = {t: one(f"SELECT count(*) FROM {t}") for t in
-              ("visitor_accounts", "loyalty_members", "loyalty_activity", "loyalty_scans",
-               "loyalty_checkins", "businesses")}
-
     slug = f"zz-scan-probe-{ts}"
     bid = one(
         "INSERT INTO businesses (directory_id, name, slug, city, state, status, rating, review_count, probe_harness) "
@@ -248,11 +244,18 @@ def main():
     psql(f"DELETE FROM loyalty_members WHERE id='{mem}'")
     psql(f"DELETE FROM visitor_accounts WHERE id='{va}'")
     psql(f"DELETE FROM businesses WHERE id='{bid}'")
-    after = {t: one(f"SELECT count(*) FROM {t}") for t in before}
-    drift = {k: (before[k], after[k]) for k in before if before[k] != after[k]}
-    check("probe data fully removed (no residue)", not drift, f"drift={drift}")
-    with open(os.path.join(AUD, "residue.txt"), "w") as f:
-        f.write("before=" + json.dumps(before) + "\nafter=" + json.dumps(after) + "\n")
+    # Residue is scoped to the probe's OWN rows (by id/member_id), not whole-table counts:
+    # other smoke probes run concurrently against the same live DB, so a before/after table
+    # delta would flag THEIR fixture churn as ours. This matches the reviews probes' pattern.
+    left = one(
+        f"SELECT (SELECT count(*) FROM businesses WHERE id='{bid}')"
+        f" + (SELECT count(*) FROM visitor_accounts WHERE id='{va}')"
+        f" + (SELECT count(*) FROM loyalty_members WHERE id='{mem}')"
+        f" + (SELECT count(*) FROM loyalty_activity WHERE member_id='{mem}')"
+        f" + (SELECT count(*) FROM loyalty_scans WHERE member_id='{mem}')"
+        f" + (SELECT count(*) FROM loyalty_checkins WHERE member_id='{mem}')"
+    )
+    check("probe data fully removed (no residue)", left == "0", f"remaining={left}")
 
     print()
     if FAILS:
