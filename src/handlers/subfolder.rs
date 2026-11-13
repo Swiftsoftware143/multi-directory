@@ -3175,17 +3175,28 @@ pub async fn business_detail(
         None => None,
     };
 
-    // Related listings, in two honest groups (kanban t_b2f7201e).
+    // Related listings, in two honest groups (kanban t_b2f7201e, t_cc8e4bf7).
     //
-    // Before: ONE query ORDERed same-category first and took LIMIT 6 over the whole directory —
-    // ordering, not filtering. Measured 2026-11-13: 1,236 of 4,100 active listings sit in a
-    // (directory, city, category) group of fewer than six, so roughly 30% of detail pages filled
-    // the grid with other trades under the heading "More {category} in {city}" — which is how a
-    // blow-dry bar, a gym and a lounge came to be announced as "More Landscaping in Winter
-    // Garden". Now the same-category group is a FILTERED query, and only the rows it returns are
-    // ever printed under that heading. Whatever is needed to reach six cards comes under the
-    // neutral heading "Other businesses in {city}", which claims nothing about the trade.
-    fn related_card(r: &sqlx::postgres::PgRow) -> BizCard {
+    // Before t_b2f7201e: ONE query ORDERed same-category first and took LIMIT 6 over the whole
+    // directory — ordering, not filtering. Measured 2026-11-13: 1,236 of 4,100 active listings
+    // sit in a (directory, city, category) group of fewer than six, so roughly 30% of detail
+    // pages filled the grid with other trades under the heading "More {category} in {city}" —
+    // which is how a blow-dry bar, a gym and a lounge came to be announced as "More Landscaping
+    // in Winter Garden". Now the same-category group is a FILTERED query, and only the rows it
+    // returns are printed under that heading.
+    //
+    // t_cc8e4bf7: the trade was then true but the CITY was not. A directory carries nearby
+    // towns as inventory — 1,256 of 4,100 active listings have another postal city than their
+    // directory, so a grid could print a Clermont address under "in Winter Garden", a false
+    // statement on the page. Each card now records whether its own postal city is the
+    // directory's (same `norm_city` rule the city hub ranks by), and a group's heading names
+    // the city ONLY when every card under it is in that city; one out-of-city card widens the
+    // heading to "in and around {city}", which is true of both.
+    //
+    // Why not simply drop the out-of-city cards: Lake Nona is a neighbourhood of Orlando, so
+    // none of its 398 listings has Lake Nona as postal city — a strict in-city filter would
+    // empty 398 pages. The cards stay; the claim is widened exactly when it has to be.
+    fn related_card(r: &sqlx::postgres::PgRow, dir_city: &str) -> BizCard {
         BizCard {
             name: r.try_get("name").unwrap_or_default(),
             slug: r.try_get("slug").unwrap_or_default(),
@@ -3199,18 +3210,25 @@ pub async fn business_detail(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
-            // Not selected by these queries and not a city hub — the related grid stays a
-            // name/rating grid.
-            in_city: false,
+            // The card's own postal city, compared with the directory's under the same rule the
+            // city hub ranks by. This is what the heading is allowed to claim.
+            in_city: norm_city(
+                &r.try_get::<Option<String>, _>("city")
+                    .unwrap_or(None)
+                    .unwrap_or_default(),
+            ) == dir_city,
             // Not selected by these queries — the related grid stays a name/rating grid.
             description: None,
         }
     }
 
+    let dir_city = norm_city(&dir.city);
+
     let mut same: Vec<BizCard> = Vec::new();
     if let Some(cat_id) = category_id {
         match sqlx::query(
-            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, dc.name AS category \
+            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, b.city, \
+                    dc.name AS category \
              FROM businesses b \
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
              WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
@@ -3230,7 +3248,7 @@ pub async fn business_detail(
         .fetch_all(pool)
         .await
         {
-            Ok(rows) => same = rows.iter().map(related_card).collect(),
+            Ok(rows) => same = rows.iter().map(|r| related_card(r, &dir_city)).collect(),
             Err(e) => {
                 // Decorative section: never fail the page over it, but never swallow it silently
                 // either (that is how the related-table export gap stayed invisible).
@@ -3243,7 +3261,8 @@ pub async fn business_detail(
     let slots = 6usize.saturating_sub(same.len());
     if slots > 0 {
         match sqlx::query(
-            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, dc.name AS category \
+            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, b.city, \
+                    dc.name AS category \
              FROM businesses b \
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
              WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
@@ -3265,7 +3284,7 @@ pub async fn business_detail(
         .fetch_all(pool)
         .await
         {
-            Ok(rows) => other = rows.iter().map(related_card).collect(),
+            Ok(rows) => other = rows.iter().map(|r| related_card(r, &dir_city)).collect(),
             Err(e) => {
                 eprintln!("related filler query failed for {biz_id}: {e}");
             }
@@ -3283,7 +3302,15 @@ pub async fn business_detail(
         )
         .await
     } else {
-        let group = |heading: &str, rows: &[BizCard]| {
+        // A heading names the city only when EVERY card under it is in that city; a single
+        // out-of-city card widens it to "in and around {city}", which is true of both
+        // (t_cc8e4bf7). An in-city grid therefore keeps saying "in {city}".
+        let group = |title: &str, rows: &[BizCard]| {
+            let heading = if rows.iter().all(|b| b.in_city) {
+                format!("{title} in {}", h(&city))
+            } else {
+                format!("{title} in and around {}", h(&city))
+            };
             format!(
                 "<div class=\"explore-group\"><h3>{}</h3><div class=\"grid\">{}</div></div>",
                 heading,
@@ -3295,20 +3322,15 @@ pub async fn business_detail(
         };
         let mut groups = String::new();
         if !same.is_empty() {
-            // Every card in this grid holds the subject's category — the heading is a fact.
             groups.push_str(&group(
-                &format!(
-                    "More {} in {}",
-                    h(category.as_deref().unwrap_or("")),
-                    h(&city)
-                ),
+                &format!("More {}", h(category.as_deref().unwrap_or(""))),
                 &same,
             ));
         }
         if !other.is_empty() {
             // Filler never borrows the subject's category: a neutral heading that is true of
             // every card under it.
-            groups.push_str(&group(&format!("Other businesses in {}", h(&city)), &other));
+            groups.push_str(&group("Other businesses", &other));
         }
         let mut chips = String::new();
         if let Some(cs) = &category_slug {
