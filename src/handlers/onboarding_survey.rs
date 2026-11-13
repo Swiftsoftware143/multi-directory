@@ -658,7 +658,23 @@ fn missing_required(config: &SurveyConfig, answers: &[Value]) -> Vec<String> {
     missing
 }
 
-/// A string value for a hub custom field (arrays are joined, objects serialised).
+/// "palm   bay" -> "Palm Bay", "ST. CLOUD" -> "St. Cloud". Collapses whitespace and
+/// keeps punctuation, so a typed city yields one stable CoreSwift tag.
+fn title_city(raw: &str) -> String {
+    raw.split_whitespace()
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(first) => {
+                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn field_value_string(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -877,11 +893,26 @@ pub async fn public_submit_survey(
     })?;
 
     // Normalise the answers into the stored array shape
-    let answers = normalize_answers(&req.answers);
+    let mut answers = normalize_answers(&req.answers);
     if answers.is_empty() {
         return Err(AppError::Validation(
             "No answers were submitted".to_string(),
         ));
+    }
+
+    // A typed city is free text and CoreSwift's tag uniqueness is CASE-SENSITIVE
+    // (unique on tenant_id + name), so "palm bay" and "Palm Bay" would become two tags.
+    // Normalise the city answer once, here, so the stored answer, the CRM city field and
+    // the tag all carry the same spelling.
+    for a in answers.iter_mut() {
+        if a.get("question_id").and_then(|v| v.as_str()) == Some("city") {
+            if let Some(raw) = a.get("value").and_then(|v| v.as_str()) {
+                let tidy = title_city(raw);
+                if !tidy.is_empty() {
+                    a["value"] = Value::String(tidy);
+                }
+            }
+        }
     }
 
     // Required questions must actually be answered
