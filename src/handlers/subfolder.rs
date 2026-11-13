@@ -3087,6 +3087,27 @@ pub async fn business_detail(
         .unwrap_or(None)
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| dir.state.clone());
+    // t_f81118f7: the paragraph on this page already names the business's OWN town (a satellite
+    // listing legitimately sits in a neighbouring town of the directory — 1,271 of the 4,100
+    // active rows), so a title built from the DIRECTORY city contradicted its own lede on the
+    // same URL. The directory city stays canonical for the route, the canonical URL and the
+    // breadcrumbs; only the locality named as the business's place uses the record's own town,
+    // and only when that town names a different place. A record with a truncated city ("Palm"
+    // for "Palm Bay") is treated as the same place, so served-city titles are unchanged.
+    let title_city: String = match &rec_city {
+        Some(rc) => {
+            let town = rc.split(',').next().unwrap_or(rc.as_str()).trim();
+            let same = town.is_empty()
+                || town.eq_ignore_ascii_case(&city)
+                || city.to_lowercase().starts_with(&town.to_lowercase());
+            if same {
+                city.clone()
+            } else {
+                town.to_string()
+            }
+        }
+        None => city.clone(),
+    };
     let zip: Option<String> = row.try_get("zip").unwrap_or(None);
     let phone: Option<String> = row.try_get("phone").unwrap_or(None);
     let website: Option<String> = row.try_get("website").unwrap_or(None);
@@ -3421,8 +3442,8 @@ pub async fn business_detail(
         .and_then(|o| o.title.clone())
         .or(fb_title)
         .unwrap_or_else(|| match &category {
-            Some(c) => format!("{} — {} in {}, {} | {}", name, c, city, state, site),
-            None => format!("{} in {}, {} | {}", name, city, state, site),
+            Some(c) => format!("{} — {} in {}, {} | {}", name, c, title_city, state, site),
+            None => format!("{} in {}, {} | {}", name, title_city, state, site),
         });
 
     let description = ov
@@ -3595,7 +3616,9 @@ pub async fn business_detail(
             "address": {
                 "@type": "PostalAddress",
                 "streetAddress": address.clone().unwrap_or_default(),
-                "addressLocality": city,
+                // The LOCATION of the business is its own town, not the directory's (t_f81118f7);
+                // `areaServed` below stays the directory's city, which is the area it serves.
+                "addressLocality": title_city,
                 "addressRegion": state,
                 "postalCode": zip.clone().unwrap_or_default(),
             },
