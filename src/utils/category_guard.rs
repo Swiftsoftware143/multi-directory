@@ -471,11 +471,14 @@ pub const CLUSTERS: &[(&str, &str)] = &[
     ("coffee", "food"),
     ("pizza", "food"),
     // A tree surgeon and a landscape contractor are the same trade in practice; so is a
-    // property manager and a real-estate agency.
+    // property manager and a real-estate agency. In this market "air conditioning & plumbing" is
+    // one company more often than not, so neither label contradicts the other.
     ("landscaping", "grounds"),
     ("tree", "grounds"),
     ("realestate", "realty"),
     ("property_mgmt", "realty"),
+    ("hvac", "mechanical"),
+    ("plumber", "mechanical"),
 ];
 
 /// Google Places type -> family. Only SPECIFIC provider types appear here. Broad types
@@ -486,18 +489,15 @@ pub const CLUSTERS: &[(&str, &str)] = &[
 pub const TYPE_FAMILIES: &[(&str, &str)] = &[
     ("gym", "fitness"),
     ("fitness_center", "fitness"),
-    ("sports_complex", "fitness"),
-    ("sports_activity_location", "fitness"),
-    ("sports_school", "fitness"),
     ("tattoo_parlor", "tattoo"),
     ("body_art_service", "tattoo"),
     ("hair_care", "hair"),
     ("hair_salon", "hair"),
     ("beauty_salon", "hair"),
     ("spa", "spa"),
-    ("wellness_center", "spa"),
     ("beauty", "spa"),
     ("massage", "spa"),
+    ("swimming_pool", "pool"),
     ("dentist", "dentist"),
     ("dental_clinic", "dentist"),
     ("plumber", "plumber"),
@@ -684,13 +684,19 @@ pub fn category_family(category_name: &str) -> Option<&'static str> {
 
 /// Words of a category name that can defend a listing when they appear in its OWN name —
 /// `Select Physical Therapy` is a physical-therapy clinic whatever Places tags it.
+///
+/// Generic heads are excluded on purpose: "studio" sits in Fitness Studio, in every hair studio
+/// and in Tattoo Parlor's neighbours, so letting it defend a category would make "High Class Ink
+/// Studio" a supported Fitness Studio. Only a word that names the trade counts.
 fn category_words(category_name: &str) -> Vec<String> {
+    const GENERIC: &[&str] = &[
+        "shops", "shop", "services", "service", "other", "studio", "studios", "center", "centre",
+        "care", "day", "the", "and", "repair",
+    ];
     category_name
         .to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| {
-            w.len() >= 4 && !matches!(*w, "shops" | "shop" | "services" | "service" | "other")
-        })
+        .filter(|w| w.len() >= 3 && !GENERIC.contains(w))
         .map(str::to_string)
         .collect()
 }
@@ -837,6 +843,27 @@ mod tests {
             "Buena Vista Watersports",
             &types(&["tourist_attraction", "school", "sports_coaching"]),
             "Fitness Studio"
+        ));
+        // a stretch studio is tagged wellness_center, a kayak rental sports_activity_location:
+        // neither says "this is a day spa" or "this is a gym"
+        assert!(!contradicts(
+            "Stretch Zone",
+            &types(&["wellness_center", "health"]),
+            "Fitness Studio"
+        ));
+        assert!(!contradicts(
+            "Get Up And Go Kayaking - Rock Springs",
+            &types(&["tourist_attraction", "sports_activity_location"]),
+            "Boat Charter"
+        ));
+    }
+
+    #[test]
+    fn heating_and_plumbing_are_one_mechanical_trade() {
+        assert!(!contradicts(
+            "Rule The Air",
+            &types(&["plumber", "general_contractor"]),
+            "HVAC"
         ));
     }
 
