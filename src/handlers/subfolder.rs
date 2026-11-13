@@ -4881,12 +4881,53 @@ pub async fn sitemap(
     ));
 
     // Site-wide landing pages that are real content (200 anonymous, linked from listing pages) but
-    // are not derived from a table. /claim was live and linked yet never listed here.
-    xml.push_str(&format!(
-        "  <url><loc>{}/claim</loc>{}</url>\n",
-        h(&base),
-        lastmod_xml(site_lastmod)
-    ));
+    // are not derived from a table row. Before W52 only the homepage and /claim were listed, so
+    // every other top-level content page was invisible to Google. The PREFERRED URL of each page
+    // is listed: extensionless where the router serves an extensionless alias, `.html` where the
+    // file is the only form served. A new top-level content page belongs here.
+    const TOP_LEVEL_CONTENT_PAGES: &[&str] = &[
+        "/claim",
+        "/grow",
+        "/legal-terms",
+        "/zaarhub",
+        "/rfq-marketplace",
+        "/coop-hub",
+        "/lead-exchange",
+        "/submit-business.html",
+        "/guide.html",
+        "/rfq.html",
+        "/hotel-savings/faq",
+        "/hotel-savings/terms",
+    ];
+    for page in TOP_LEVEL_CONTENT_PAGES {
+        xml.push_str(&format!(
+            "  <url><loc>{}{}</loc>{}</url>\n",
+            h(&base),
+            h(page),
+            lastmod_xml(site_lastmod)
+        ));
+    }
+
+    // Legal pages are DB-driven (zaarhub_legal_pages), so their slugs are discovered from data
+    // rather than hardcoded: every published system-tenant legal page gets an entry matching the
+    // `/legal/<slug>` route (terms, privacy, contact, disclaimer, loyalty, …).
+    let legal_slugs: Vec<(String,)> = sqlx::query_as(
+        "SELECT slug FROM zaarhub_legal_pages \
+         WHERE tenant_id = $1 AND is_published = true AND coalesce(slug,'') <> '' \
+         ORDER BY display_order ASC, slug ASC",
+    )
+    .bind(crate::system_tenant::system_tenant_uuid())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    for (slug,) in &legal_slugs {
+        xml.push_str(&format!(
+            "  <url><loc>{}/legal/{}</loc>{}</url>\n",
+            h(&base),
+            h(slug),
+            lastmod_xml(site_lastmod)
+        ));
+    }
 
     let dirs = sqlx::query(
         "SELECT id, slug, city, updated_at FROM directories WHERE status = 'active' ORDER BY slug",
