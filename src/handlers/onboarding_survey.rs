@@ -848,15 +848,17 @@ pub async fn public_submit_survey(
     Json(req): Json<SubmitSurveyRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Resolve directory by slug
-    let dir =
-        sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM directories WHERE slug = $1")
-            .bind(&slug)
-            .fetch_optional(&s.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
+    let dir = sqlx::query_as::<_, (Uuid, String, Option<String>)>(
+        "SELECT id, name, city FROM directories WHERE slug = $1",
+    )
+    .bind(&slug)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Directory not found".to_string()))?;
 
     let directory_id = dir.0;
     let directory_name = dir.1;
+    let directory_city = dir.2.unwrap_or_default();
     let audience = audience_or_default(req.audience.as_deref());
 
     // Look up the PUBLISHED questionnaire for this audience
@@ -910,6 +912,19 @@ pub async fn public_submit_survey(
                 }
             }
         }
+    }
+
+    // ── City tag: the three onboarding lists are account-level, so the city is what
+    // tells one directory's responders from another. Sent as the plain display name;
+    // CoreSwift auto-creates a tag it has never seen, so a brand-new city needs no setup.
+    let city_tag = directory_city
+        .split(',')
+        .next()
+        .unwrap_or(&directory_city)
+        .trim()
+        .to_string();
+    if !city_tag.is_empty() && !all_tags.iter().any(|existing| existing == &city_tag) {
+        all_tags.push(city_tag);
     }
 
     // ── Who is answering? (visitor token, else an explicit visitor id) ──
