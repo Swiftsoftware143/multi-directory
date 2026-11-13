@@ -130,9 +130,14 @@ pub async fn create_network(
         )));
     }
 
+    // W53 — record WHO created this network (the operator whose token reached this route).
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &s.config.jwt_secret)?;
+    let owner_id = crate::handlers::tenant_scope::caller_user(&claims)?;
+
     let network = sqlx::query_as::<_, Network>(
-        r#"INSERT INTO networks (name, slug, description, root_domain, status)
-           VALUES ($1, $2, $3, $4, $5)
+        r#"INSERT INTO networks (name, slug, description, root_domain, status, owner_id)
+           VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING *"#,
     )
     .bind(&req.name)
@@ -140,6 +145,7 @@ pub async fn create_network(
     .bind(&req.description)
     .bind(&root_domain)
     .bind(req.status.unwrap_or_else(|| "active".to_string()))
+    .bind(owner_id)
     .fetch_one(&s.db)
     .await?;
 

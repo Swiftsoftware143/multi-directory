@@ -256,9 +256,14 @@ pub async fn create_directory(
         template_engine::default_color_scheme()
     };
 
+    // W53 — record WHO created this directory. The platform operator (the only caller allowed
+    // past the guard above) is its owner; a NULL owner leaves the directory unreachable from
+    // every ownership-scoped surface (MCP key_auth, tenant_scope) the moment it is created.
+    let owner_id = tenant_scope::caller_user(&claims)?;
+
     let mut directory = sqlx::query_as::<_, Directory>(
-        r#"INSERT INTO directories (name, slug, description, status, template, color_scheme, network_id, url_type, url_value, custom_domain, city, template_config, head_injection, body_injection, footer_injection, email_signature_html, email_signature_text, state, support_email, contact_email, contact_phone, legal_name, industry_slug)
-           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+        r#"INSERT INTO directories (name, slug, description, status, template, color_scheme, network_id, url_type, url_value, custom_domain, city, template_config, head_injection, body_injection, footer_injection, email_signature_html, email_signature_text, state, support_email, contact_email, contact_phone, legal_name, industry_slug, owner_id)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
            RETURNING *"#
     )
     .bind(&req.name)
@@ -284,6 +289,7 @@ pub async fn create_directory(
     .bind(&req.contact_phone)
     .bind(&req.legal_name)
     .bind(&industry_slug)
+    .bind(owner_id)
     .fetch_one(&s.db)
     .await?;
 
@@ -291,14 +297,15 @@ pub async fn create_directory(
     if network_mode == "new_network" {
         let network_slug = format!("network-{}", slug);
         let network = sqlx::query_as::<_, crate::models::Network>(
-            r#"INSERT INTO networks (name, slug, description, root_domain)
-               VALUES ($1, $2, $3, $4)
+            r#"INSERT INTO networks (name, slug, description, root_domain, owner_id)
+               VALUES ($1, $2, $3, $4, $5)
                RETURNING *"#,
         )
         .bind(&req.name)
         .bind(&network_slug)
         .bind(&req.description)
         .bind(&custom_domain)
+        .bind(owner_id)
         .fetch_one(&s.db)
         .await?;
 
