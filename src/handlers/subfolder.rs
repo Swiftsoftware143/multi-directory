@@ -1495,7 +1495,7 @@ pub(crate) async fn local_town_entries(
                  AND b.city IS NOT NULL AND TRIM(b.city) <> ''
                GROUP BY 1, 2
            ) s
-           GROUP BY town_key"#,
+           GROUP BY town_key ORDER BY town_key"#,
     )
     .bind(dir_id)
     .fetch_all(pool)
@@ -1575,7 +1575,14 @@ pub(crate) async fn local_town_entries(
             key,
         });
     }
-    out.sort_by(|a, b| b.is_home.cmp(&a.is_home).then(b.count.cmp(&a.count)));
+    // Equal counts would otherwise keep whatever order the aggregate returned, and the sitemap
+    // emits towns in this order — a row UPDATE could reshuffle two pages with the same count.
+    out.sort_by(|a, b| {
+        b.is_home
+            .cmp(&a.is_home)
+            .then(b.count.cmp(&a.count))
+            .then_with(|| a.slug.cmp(&b.slug))
+    });
     out
 }
 
@@ -4862,7 +4869,8 @@ pub async fn sitemap(
         let biz: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
             "SELECT slug, GREATEST(updated_at, content_updated_at) AS updated_at FROM businesses \
              WHERE directory_id = $1 AND is_active = true \
-             AND coalesce(slug,'') <> '' ORDER BY rating DESC NULLS LAST LIMIT 20000",
+             AND coalesce(slug,'') <> '' \
+             ORDER BY rating DESC NULLS LAST, slug, id LIMIT 20000",
         )
         .bind(dir_id)
         .fetch_all(pool)
@@ -4876,7 +4884,7 @@ pub async fn sitemap(
         let arts: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
             "SELECT slug, updated_at FROM business_articles WHERE directory_id = $1 \
              AND status = 'published' AND coalesce(slug,'') <> '' \
-             ORDER BY created_at DESC LIMIT 5000",
+             ORDER BY created_at DESC, slug, id LIMIT 5000",
         )
         .bind(dir_id)
         .fetch_all(pool)
@@ -4892,7 +4900,7 @@ pub async fn sitemap(
         )> = sqlx::query_as(
             "SELECT slug, updated_at, created_at FROM blog_posts WHERE directory_id = $1 \
              AND coalesce(published, true) = true AND coalesce(slug,'') <> '' \
-             ORDER BY created_at DESC LIMIT 5000",
+             ORDER BY created_at DESC, slug, id LIMIT 5000",
         )
         .bind(dir_id)
         .fetch_all(pool)
