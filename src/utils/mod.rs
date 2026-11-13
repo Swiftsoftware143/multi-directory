@@ -3,6 +3,7 @@
 pub mod business_copy;
 pub mod category_backfill;
 pub mod category_guard;
+pub mod contact_backfill;
 pub mod cta_resolver;
 pub mod franchise;
 pub mod opening_hours;

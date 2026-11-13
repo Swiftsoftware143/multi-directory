@@ -356,6 +356,17 @@ pub async fn place_details(
     .execute(&state.db)
     .await?;
 
+    // t_774bf5ce: the cache and the listing were filled by separate passes, so a listing whose
+    // cache row gained a phone or a website stayed blank on its page for ever. Fill the exact
+    // place id's listing in this same request — empty columns only, never the operator's own value.
+    crate::utils::contact_backfill::fill_for_place(
+        &state.db,
+        &q.place_id,
+        phone.as_deref(),
+        website.as_deref(),
+    )
+    .await;
+
     Ok(Json(
         serde_json::json!({ "place": result, "cached": false, "is_franchise": is_franchise }),
     ))

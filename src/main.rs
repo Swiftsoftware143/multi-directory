@@ -187,6 +187,49 @@ async fn main() {
         }
     }
 
+    // One-shot fill of an empty `businesses.phone` / `businesses.website` from the Places cache
+    // (kanban t_774bf5ce). `--apply` writes; without it the pass only reports the plan, so what is
+    // about to change can be read before anything moves. No Google call is made — cached values
+    // only, matched by exact place id or by normalised name + street + the listing's own city.
+    if cli.get(1).map(String::as_str) == Some("fill-contact") {
+        let apply = cli.iter().any(|a| a == "--apply");
+        match crate::utils::contact_backfill::run(&pool, apply).await {
+            Ok((r, changes)) => {
+                for c in &changes {
+                    println!("{}", c.line());
+                }
+                println!(
+                    "fill-contact: scanned={} website_empty={} phone_empty={} \
+                     website_recovered={} phone_recovered={} website_filled={} phone_filled={} \
+                     by_place_id={} by_name_street={} website_city_disagree={} \
+                     phone_city_disagree={} website_no_match={} phone_no_match={} \
+                     after_website_empty={} after_phone_empty={} applied={}",
+                    r.scanned,
+                    r.website_empty,
+                    r.phone_empty,
+                    r.website_recovered,
+                    r.phone_recovered,
+                    r.website_filled,
+                    r.phone_filled,
+                    r.by_place_id,
+                    r.by_name_street,
+                    r.website_city_disagree,
+                    r.phone_city_disagree,
+                    r.website_no_match,
+                    r.phone_no_match,
+                    r.after_website_empty,
+                    r.after_phone_empty,
+                    apply
+                );
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("fill-contact: failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     let state = AppState::new(pool, config.clone());
 
     // kanban t_0b3cce4d — the brand host of every directory comes from DATA
