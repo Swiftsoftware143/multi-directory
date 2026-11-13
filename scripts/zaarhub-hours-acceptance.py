@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Re-runnable acceptance probe for opening hours on zaarhub listing pages (kanban t_2b630e2a).
 
-Read-only against the live site and the DB. Prints one line per URL plus a PASS/FAIL summary.
-Exit 0 only when every check passes.
+Read-only against the live site and the DB. Prints one line per URL plus a PASS/FAIL summary,
+and fails if any row changed while the pages were served.
 
-  python3 zaarhub-hours-acceptance.py            # 20 pages with hours + 5 without
-  python3 zaarhub-hours-acceptance.py --list f   # one URL per line, expect hours
+  python3 zaarhub-hours-acceptance.py                 # the fixed 20 + 5 sample below
+  python3 zaarhub-hours-acceptance.py --list urls.txt # one URL per line, all expected to show hours
+
+The fixed sample was chosen 2026-11-13 from the DB: two listings per city root across all ten
+roots that resolve to a cached schedule, and five whose only cache row has an empty
+opening_hours (so they must render no block and no placeholder).
 """
+import json
 import re
 import subprocess
 import sys
@@ -14,15 +19,49 @@ import urllib.request
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+WITH_HOURS = [
+    "https://zaarhub.com/apopka/businesses/a-nails-spa-ChIJ35Z1",
+    "https://zaarhub.com/apopka/businesses/a-soft-touch-in-family-dental-care-ChIJhS9U",
+    "https://zaarhub.com/boca-raton/businesses/001-salon-ChIJ92t9",
+    "https://zaarhub.com/boca-raton/businesses/4ever-young-med-spa-wellness-center-boca-raton-ChIJ8e4R",
+    "https://zaarhub.com/hollywood/businesses/3-island-g-s-mobile-cuisine-ChIJccQe",
+    "https://zaarhub.com/hollywood/businesses/7-tables-on-the-beach-authentic-peruvian-cuisine-ChIJZUUd",
+    "https://zaarhub.com/lake-nona/businesses/4-rivers-catering-ChIJg8KY",
+    "https://zaarhub.com/lake-nona/businesses/407-cafe-ChIJW-yI",
+    "https://zaarhub.com/palm-bay/businesses/1-tom-plumber-melbourne-ChIJ03NI",
+    "https://zaarhub.com/palm-bay/businesses/321-boat-rentals-club-ChIJDZ3Z",
+    "https://zaarhub.com/palm-coast/businesses/1st-point-realty-of-fl-inc-ChIJUfh1",
+    "https://zaarhub.com/palm-coast/businesses/5th-element-palm-coast-ChIJd3i3",
+    "https://zaarhub.com/pompano-beach/businesses/100-chiropractic-pompano-beach-ChIJqW-W",
+    "https://zaarhub.com/pompano-beach/businesses/360-roofing-services-inc-ChIJ925b",
+    "https://zaarhub.com/st-cloud/businesses/3-lil-birds-tattoo-gallery-ChIJxW0V",
+    "https://zaarhub.com/st-cloud/businesses/40-thieves-tattoo-and-art-gallery-llc-ChIJwyOv",
+    "https://zaarhub.com/st-petersburg/businesses/1-tom-plumber-ChIJh3K8",
+    "https://zaarhub.com/st-petersburg/businesses/10-stars-property-management-greater-clearwater-st-petersburg-tampa-bay-ChIJd0sJ",
+    "https://zaarhub.com/winter-garden/businesses/4-paws-animal-clinic-ChIJVVVV",
+    "https://zaarhub.com/winter-garden/businesses/a-budget-tree-service-ChIJu57o",
+]
+
+# Every cache row matching these businesses has an empty opening_hours.
+NO_HOURS = [
+    "https://zaarhub.com/apopka/businesses/a-h-gantt-cpa-associates-pa-ChIJ4eCr",
+    "https://zaarhub.com/apopka/businesses/china-s-sunday-table-ChIJPW3e",
+    "https://zaarhub.com/apopka/businesses/gmgm-accounting-services-ChIJFfTT",
+    "https://zaarhub.com/apopka/businesses/green-valley-landscape-management-ChIJq6q6",
+    "https://zaarhub.com/apopka/businesses/limbachia-pari-dc-ChIJQRit",
+]
+
 
 def fetch(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (builds-hours-acceptance)"})
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "Mozilla/5.0 (builds-hours-acceptance)"}
+    )
     with urllib.request.urlopen(req, timeout=30) as r:
         return r.status, r.read().decode("utf-8", "replace")
 
 
 def hours_block(html):
-    """Return the rendered hours as a compact string, or '' when the page has no block."""
+    """The rendered hours as a compact string, or '' when the page has no block."""
     if 'class="row hours"' not in html:
         return ""
     if "Open 24 hours" in html:
@@ -36,10 +75,9 @@ def hours_block(html):
 
 
 def jsonld_hours(html):
-    """Return the openingHoursSpecification list from the LocalBusiness block, or None."""
+    """openingHoursSpecification from the LocalBusiness block, or None."""
     for blob in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S):
         if "LocalBusiness" in blob and "openingHoursSpecification" in blob:
-            import json
             try:
                 data = json.loads(blob)
             except Exception:
@@ -77,13 +115,15 @@ def check(url, expect_hours):
             problems.append("no openingHoursSpecification")
     else:
         if hours:
-            problems.append("hours block on an unlinked page")
-        if "Hours unknown" in html or "hours unknown" in html.lower():
+            problems.append("hours block on a listing with no cached hours")
+        if "hours unknown" in html.lower():
             problems.append("placeholder text")
         if ld:
             problems.append("openingHoursSpecification without hours")
-    print(f"{'OK ' if not problems else 'FAIL'} {url} | {hours or '-'} | ld={'yes' if ld else 'no'}"
-          + (f" | {'; '.join(problems)}" if problems else ""))
+    print(
+        f"{'OK ' if not problems else 'FAIL'} {url} | {hours or '-'} | ld={'yes' if ld else 'no'}"
+        + (f" | {'; '.join(problems)}" if problems else "")
+    )
     return not problems
 
 
@@ -91,30 +131,23 @@ def db_fingerprint():
     out = subprocess.run(
         ["bash", "/root/.hermes/profiles/builds/cache/scratch/qmd.sh", "-tA", "-F", "|", "-c",
          "select 'businesses', count(*), md5(string_agg(b::text,'|' order by b.id)) from businesses b "
-         "union all select 'google_places_cache', count(*), md5(string_agg(c::text,'|' order by c.id)) from google_places_cache c"],
+         "union all select 'google_places_cache', count(*), md5(string_agg(c::text,'|' order by c.id)) "
+         "from google_places_cache c"],
         capture_output=True, text=True, timeout=180)
     return out.stdout.strip()
 
 
 def main():
-    urls = []
+    with_hours, no_hours = WITH_HOURS, NO_HOURS
     if len(sys.argv) >= 3 and sys.argv[1] == "--list":
-        urls = [u.strip() for u in open(sys.argv[2]) if u.strip()]
-    else:
-        base = "/root/.hermes/profiles/builds/cache/scratch"
-        urls = [u.strip() for u in open(f"{base}/sample20.txt") if u.strip()]
-    for u in urls:
-        pass
+        with_hours = [u.strip() for u in open(sys.argv[2]) if u.strip()]
+        no_hours = []
     before = db_fingerprint()
     ok = True
-    for u in urls:
+    for u in with_hours:
         ok &= check(u, expect_hours=True)
-    nofile = "/root/.hermes/profiles/builds/cache/scratch/nohours20.txt"
-    try:
-        for u in [x.strip() for x in open(nofile) if x.strip()]:
-            ok &= check(u, expect_hours=False)
-    except FileNotFoundError:
-        pass
+    for u in no_hours:
+        ok &= check(u, expect_hours=False)
     after = db_fingerprint()
     print("db before:", before.replace("\n", " ; "))
     print("db after :", after.replace("\n", " ; "))
