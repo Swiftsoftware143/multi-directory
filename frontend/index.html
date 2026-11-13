@@ -3622,6 +3622,27 @@ async function loadBizPage(){
   }
 }
 
+// Weekly opening hours (card B90): Google's schedule, persisted into business_meta.meta_data.hours
+// by the Google refresh job. The shape is ONE open/close pair per day in the listing's own
+// timezone (`{"tz":"America/New_York","mon":{"open":"11:00","close":"21:00"},"sun":null}`), and a
+// null or missing day means closed. Printed as weekday rows in 12-hour time, which is what Google
+// publishes ("Monday: 11:00 AM – 9:00 PM"); a listing with no hours renders no block at all.
+var ZH_HOURS_DAYS=[['mon','Monday'],['tue','Tuesday'],['wed','Wednesday'],['thu','Thursday'],['fri','Friday'],['sat','Saturday'],['sun','Sunday']]
+function zhFmtHour(t){var p=String(t).split(':'),h=parseInt(p[0],10),m=p[1]||'00',ap=h>=12?'PM':'AM';h=h%12;if(h===0)h=12;return h+':'+m+' '+ap}
+function zhHoursHtml(h){
+  if(!h||typeof h!=='object'||Array.isArray(h))return ''
+  var known=false
+  var rows=ZH_HOURS_DAYS.map(function(d){
+    var v=h[d[0]],s
+    if(v&&v.open&&v.close){known=true;s=zhFmtHour(v.open)+' – '+zhFmtHour(v.close)}
+    else{s='Closed'}
+    return '<tr><td style="padding:2px 16px 2px 0;color:var(--text-light)">'+d[1]+'</td><td>'+s+'</td></tr>'
+  }).join('')
+  if(!known)return ''
+  return '<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🕐 Hours</h3>'+
+    '<table style="border-collapse:collapse;font-size:.85rem">'+rows+'</table></div>'
+}
+
 function renderBizPage(d){
   var b=d;var bizId=b.id||state.bizId
   // Demand attribution: while a business page is on screen the tracker tags every event
@@ -3715,7 +3736,7 @@ function renderBizPage(d){
   '<div class="zh-section"><div class="zh-section-inner"><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px"><div>'+
   (b.description?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">About</h3><p style="color:var(--text-light);line-height:1.7">'+esc(b.description)+'</p></div>':'')+
   (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(b.address)+'<br>'+esc(b.city)+', '+esc(b.state)+'</p>'+walkLine+'</div>':'')+
-  (d.hours?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🕐 Hours</h3><p style="color:var(--text-light);white-space:pre-wrap;font-size:.85rem">'+esc(JSON.stringify(b.hours,null,2))+'</p></div>':'')+
+  zhHoursHtml(b.hours)+
   '</div><div>'+
   (d.deals&&d.deals.length?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🎁 Current Deals</h3>'+d.deals.map(function(dl){return '<div style="background:var(--bg-teal);padding:14px;border-radius:8px;margin-bottom:8px"><strong>'+esc(dl.title)+'</strong>'+(dl.deal_price?'<div style="color:var(--teal);font-weight:700;margin-top:4px">$'+esc(dl.deal_price)+(dl.original_price?' <span style="text-decoration:line-through;color:var(--text-muted)">$'+esc(dl.original_price)+'</span>':'')+'</div>':'')+(dl.description?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(dl.description)+'</div>':'')+'</div>'}).join('')+'</div>':'')+
   '<!-- Reviews Section --><div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">Reviews</h3><div id="zhReviewTiers" style="border:1px solid var(--border-light);border-radius:12px;overflow:hidden;margin-bottom:12px">'+reviewTiers+'</div><button id="zhSubmitReviewBtn" onclick="zhToggleReviewForm()" style="padding:10px 20px;background:var(--teal);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.85rem;margin-bottom:16px">✍️ Submit a Review</button><div id="zhCommunityReviews"><h4 style="margin-bottom:6px;font-size:.95rem;font-weight:600">Community Reviews ('+cCount+')</h4>'+
