@@ -358,6 +358,9 @@ pub struct PopulateCategoryResult {
     pub total_found: usize,
     pub created: usize,
     pub skipped_duplicate: usize,
+    /// Added as a listing but NOT filed under the requested category: the provider record named no
+    /// decided trade, so the listing is a local business with no trade (kanban t_0f61ea40).
+    pub unfiled: usize,
     pub failed: usize,
     pub errors: Vec<String>,
 }
@@ -429,6 +432,7 @@ pub async fn populate_category(
 
     let mut created = 0usize;
     let mut skipped = 0usize;
+    let mut unfiled = 0usize;
     let mut failed = 0usize;
     let mut errors = Vec::new();
 
@@ -485,6 +489,23 @@ pub async fn populate_category(
             .get("user_ratings_total")
             .and_then(|v| v.as_i64())
             .map(|i| i as i32);
+        // THE TRUTH RULE (kanban t_0f61ea40): this endpoint stamps the SEARCH TERM's category on
+        // every result it returns, which is how a property-management company came to be published
+        // as "Landscaping in Winter Garden". The provider record in hand says what the business
+        // actually is, so a result is filed under `cat_name` only when that record decides it —
+        // the same rule the retire sweep applies. Everything else is still listed, as a local
+        // business with no trade, which is exactly what we can prove about it.
+        let types: Vec<String> = place
+            .get("types")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|t| t.as_str())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let filed = crate::utils::category_guard::is_decided(&name, &types, &cat_name);
         let latitude = place
             .get("geometry")
             .and_then(|g| g.get("location"))
@@ -506,7 +527,7 @@ pub async fn populate_category(
         .bind(dir_id)
         .bind(&name)
         .bind(&slug)
-        .bind(cat_id)
+        .bind(if filed { Some(cat_id) } else { None })
         .bind(address)
         .bind(city)
         .bind(state_zip)
@@ -524,6 +545,9 @@ pub async fn populate_category(
                 let rows_affected: u64 = r.rows_affected();
                 if rows_affected > 0 {
                     created += 1;
+                    if !filed {
+                        unfiled += 1;
+                    }
                 } else {
                     skipped += 1;
                 }
@@ -543,6 +567,9 @@ pub async fn populate_category(
         total_found: results.len(),
         created,
         skipped_duplicate: skipped,
+        // Added as a listing but not filed under the requested category: the provider record named
+        // no decided trade, so it stays a local business with no trade (kanban t_0f61ea40).
+        unfiled,
         failed,
         errors,
     })))

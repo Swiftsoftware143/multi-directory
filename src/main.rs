@@ -187,6 +187,50 @@ async fn main() {
         }
     }
 
+    // The truth rule (kanban t_0f61ea40): a listing whose trade is not DECIDED by identity-grade
+    // evidence must not carry a trade — never "<Trade> in <city>", never on `/<city>/<trade>`.
+    // `--apply` clears those categories (and re-renders the paragraphs this app wrote for them).
+    // Without it the pass prints the split first: the class is measured, not blind-cleared.
+    if cli.get(1).map(String::as_str) == Some("retire-undecided") {
+        let apply = cli.iter().any(|a| a == "--apply");
+        let list = cli.iter().any(|a| a == "--list");
+        match crate::utils::category_backfill::retire_undecided(&pool, apply).await {
+            Ok((r, retired)) => {
+                if list {
+                    for c in &retired {
+                        println!("{}", c.line());
+                    }
+                }
+                let mut by_from: std::collections::BTreeMap<&str, usize> =
+                    std::collections::BTreeMap::new();
+                for c in &retired {
+                    *by_from.entry(c.category.as_str()).or_default() += 1;
+                }
+                println!(
+                    "retire-undecided: scanned={} decided={} undecided={} no_record={} \
+                     contradicted={} generic={} retired={} copy_rewritten={} applied={}",
+                    r.scanned,
+                    r.decided,
+                    r.undecided,
+                    r.no_record,
+                    r.contradicted,
+                    r.generic,
+                    r.retired,
+                    r.copy_rewritten,
+                    apply
+                );
+                for (from, n) in by_from {
+                    println!("  from {from}: {n}");
+                }
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("retire-undecided: failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // One-shot fill of an empty `businesses.phone` / `businesses.website` from the Places cache
     // (kanban t_774bf5ce). `--apply` writes; without it the pass only reports the plan, so what is
     // about to change can be read before anything moves. No Google call is made — cached values

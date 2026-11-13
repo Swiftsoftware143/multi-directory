@@ -731,6 +731,17 @@ pub fn verdict(name: &str, types: &[String], category_name: &str) -> Verdict {
     Verdict::Contradicted(implied)
 }
 
+/// THE TRUTH RULE, in one place: a trade is DECIDED only when identity-grade evidence names it.
+///
+/// `Supported` is the only decided verdict. `Unknown` means no evidence, or evidence pointing two
+/// ways — absence of evidence is *undecided*, never "the nearest guess". `Contradicted` means the
+/// evidence names a different trade, which the re-file pass resolves; either way the listing must
+/// not be presented as the assigned trade. Callers that decide whether to render or file a trade
+/// (the mint gate, the retire sweep, page copy) ask this and nothing else.
+pub fn is_decided(name: &str, types: &[String], category_name: &str) -> bool {
+    matches!(verdict(name, types, category_name), Verdict::Supported)
+}
+
 /// True when the category names a trade the business's own name/types contradict.
 pub fn contradicts(name: &str, types: &[String], category_name: &str) -> bool {
     matches!(

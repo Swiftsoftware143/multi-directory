@@ -127,12 +127,10 @@ impl PlaceIndex {
         index
     }
 
-    /// Union of the provider types from every arm that matches — never first-match-wins, so
-    /// conflicting cached evidence still lands on `Verdict::Unknown` instead of silently picking a
-    /// winner. Each arm contributes ONE record: its most recently cached match (place id as the
-    /// tiebreak), so an older duplicate row for the same name cannot drag a stale trade into the
-    /// union.
-    fn types_for(
+    /// The cached records whose identity matches this listing — the union of every arm. Empty
+    /// means we hold NO record for the business at all, which is a different reportable fact from
+    /// "we hold a record and it names no trade".
+    fn matched(
         &self,
         place_id: &str,
         name: &str,
@@ -140,7 +138,7 @@ impl PlaceIndex {
         phone: &str,
         website: &str,
         address: &str,
-    ) -> Vec<String> {
+    ) -> std::collections::BTreeSet<usize> {
         let mut picked: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
 
         // Arm 0: the exact place id. No name requirement — the id IS the identity.
@@ -156,10 +154,10 @@ impl PlaceIndex {
         // website alone are not evidence: 41 cache phones are shared by more than one name.
         let nk = norm_name(name);
         if nk.is_empty() {
-            return self.types_of(&picked);
+            return picked;
         }
         let Some(ids) = self.by_name.get(&nk) else {
-            return self.types_of(&picked);
+            return picked;
         };
         let city_lc = city.trim().to_lowercase();
         let phone10 = digits_last10(phone);
@@ -181,6 +179,39 @@ impl PlaceIndex {
                 picked.insert(i);
             }
         }
+        picked
+    }
+
+    /// True when the cache holds any identity-matched record for this listing.
+    fn has_record(
+        &self,
+        place_id: &str,
+        name: &str,
+        city: &str,
+        phone: &str,
+        website: &str,
+        address: &str,
+    ) -> bool {
+        !self
+            .matched(place_id, name, city, phone, website, address)
+            .is_empty()
+    }
+
+    /// Union of the provider types from every arm that matches — never first-match-wins, so
+    /// conflicting cached evidence still lands on `Verdict::Unknown` instead of silently picking a
+    /// winner. Each arm contributes ONE record: its most recently cached match (place id as the
+    /// tiebreak), so an older duplicate row for the same name cannot drag a stale trade into the
+    /// union.
+    fn types_for(
+        &self,
+        place_id: &str,
+        name: &str,
+        city: &str,
+        phone: &str,
+        website: &str,
+        address: &str,
+    ) -> Vec<String> {
+        let picked = self.matched(place_id, name, city, phone, website, address);
         self.types_of(&picked)
     }
 
@@ -269,8 +300,45 @@ fn split_csv(csv: &str) -> Vec<String> {
         .collect()
 }
 
-/// Walk every active listing. With `apply` false nothing is written — the caller prints the plan.
-pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Change>), sqlx::Error> {
+/// One active listing, with exactly the fields the guard judges it by.
+#[derive(Debug, Clone)]
+struct Listing {
+    id: Uuid,
+    directory_id: Option<Uuid>,
+    name: String,
+    place_id: String,
+    phone: String,
+    website: String,
+    address: String,
+    category: String,
+    dir_city: String,
+}
+
+impl Listing {
+    fn types(&self, places: &PlaceIndex) -> Vec<String> {
+        places.types_for(
+            &self.place_id,
+            &self.name,
+            &self.dir_city,
+            &self.phone,
+            &self.website,
+            &self.address,
+        )
+    }
+
+    fn has_record(&self, places: &PlaceIndex) -> bool {
+        places.has_record(
+            &self.place_id,
+            &self.name,
+            &self.dir_city,
+            &self.phone,
+            &self.website,
+            &self.address,
+        )
+    }
+}
+
+async fn load_listings(db: &PgPool) -> Result<Vec<Listing>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT b.id, b.directory_id, b.name, coalesce(b.place_id, '') AS place_id, \
                 coalesce(b.phone, '') AS phone, coalesce(b.website, '') AS website, \
@@ -284,26 +352,39 @@ pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Change>), sqlx
     )
     .fetch_all(db)
     .await?;
+    Ok(rows
+        .iter()
+        .map(|row| Listing {
+            id: row.try_get("id").unwrap_or_default(),
+            directory_id: row.try_get("directory_id").unwrap_or(None),
+            name: row.try_get("name").unwrap_or_default(),
+            place_id: row.try_get("place_id").unwrap_or_default(),
+            phone: row.try_get("phone").unwrap_or_default(),
+            website: row.try_get("website").unwrap_or_default(),
+            address: row.try_get("address").unwrap_or_default(),
+            category: row.try_get("category").unwrap_or_default(),
+            dir_city: row.try_get("dir_city").unwrap_or_default(),
+        })
+        .collect())
+}
 
+/// Walk every active listing. With `apply` false nothing is written — the caller prints the plan.
+pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Change>), sqlx::Error> {
+    let listings = load_listings(db).await?;
     let places = PlaceIndex::load(db).await?;
 
     let mut report = Report {
-        scanned: rows.len(),
+        scanned: listings.len(),
         ..Default::default()
     };
     let mut changes: Vec<Change> = Vec::new();
     let mut ids: Vec<(Uuid, Uuid, String)> = Vec::new(); // (business, directory, old category)
 
-    for row in &rows {
-        let id: Uuid = row.try_get("id")?;
-        let name: String = row.try_get("name").unwrap_or_default();
-        let place_id: String = row.try_get("place_id").unwrap_or_default();
-        let phone: String = row.try_get("phone").unwrap_or_default();
-        let website: String = row.try_get("website").unwrap_or_default();
-        let address: String = row.try_get("address").unwrap_or_default();
-        let category: String = row.try_get("category").unwrap_or_default();
-        let dir_city: String = row.try_get("dir_city").unwrap_or_default();
-        let directory_id: Option<Uuid> = row.try_get("directory_id").unwrap_or(None);
+    for row in &listings {
+        let id = row.id;
+        let name = row.name.clone();
+        let category = row.category.clone();
+        let directory_id = row.directory_id;
 
         // A generic bucket ("Other", "Professional") is an honest label and is never checked; a
         // listing with no category at all has nothing to contradict.
@@ -311,7 +392,7 @@ pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Change>), sqlx
             report.generic += 1;
             continue;
         }
-        let types = places.types_for(&place_id, &name, &dir_city, &phone, &website, &address);
+        let types = row.types(&places);
         match category_guard::verdict(&name, &types, &category) {
             Verdict::Supported => report.supported += 1,
             Verdict::Unknown => report.unknown += 1,
@@ -379,6 +460,135 @@ pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Change>), sqlx
     Ok((report, changes))
 }
 
+/// The truth rule applied to the whole corpus: a listing whose trade no identity-grade evidence
+/// names must not carry a trade at all.
+///
+/// `category_id` IS the decision ("this listing's trade is X"), so an undecided listing is one
+/// with `category_id IS NULL`. Clearing it is what makes the rule hold on every surface at once —
+/// page title, meta, H1, body copy, breadcrumb, category chips, the "More <trade>" heading and
+/// membership of `/<city>/<trade>` all derive from that one column, so a cleared row behaves as a
+/// local business everywhere without a second render path to keep in sync.
+///
+/// Evidence is the same union-of-arms provider record the re-file pass uses, plus the listing's own
+/// name (`category_guard::is_decided`). Rows the evidence SUPPORTS are left untouched: "no
+/// trade-bearing Google type" is not the same as "no evidence", and blind-clearing the class would
+/// delete legitimate listings.
+#[derive(Debug, Default)]
+pub struct UndecidedReport {
+    /// Active listings that carry a trade category — the class under judgement.
+    pub scanned: usize,
+    /// Legitimate: name or provider types name the trade. Left alone.
+    pub decided: usize,
+    /// No evidence at all. This count is the one that must not be written over blindly.
+    pub undecided: usize,
+    /// Evidence names a different trade; `audit-categories --apply` re-files these, not this pass.
+    pub contradicted: usize,
+    /// Generic buckets ("Other", "Professional") — an honest label, never a trade claim.
+    pub generic: usize,
+    /// Undecided AND no cached provider record exists for this identity (nothing could be known).
+    pub no_record: usize,
+    /// Categories cleared by this pass (only moves with `apply`).
+    pub retired: usize,
+    /// Stored paragraphs rewritten from "<trade> company" to the local-business form.
+    pub copy_rewritten: usize,
+}
+
+/// One listing whose trade is being taken away, with the reason — evidence a human can re-check.
+#[derive(Debug, Clone)]
+pub struct Retired {
+    pub name: String,
+    pub city: String,
+    pub category: String,
+    pub reason: &'static str,
+}
+
+impl Retired {
+    pub fn line(&self) -> String {
+        format!(
+            "{:<27} {:<46} {:<20} [{}]",
+            self.category,
+            self.name.chars().take(46).collect::<String>(),
+            self.city.chars().take(20).collect::<String>(),
+            self.reason
+        )
+    }
+}
+
+pub async fn retire_undecided(
+    db: &PgPool,
+    apply: bool,
+) -> Result<(UndecidedReport, Vec<Retired>), sqlx::Error> {
+    let listings = load_listings(db).await?;
+    let places = PlaceIndex::load(db).await?;
+
+    let mut report = UndecidedReport::default();
+    let mut retired: Vec<Retired> = Vec::new();
+    let mut ids: Vec<(Uuid, String)> = Vec::new(); // (business, old category)
+
+    for row in &listings {
+        if category_guard::category_family(&row.category).is_none() {
+            if !row.category.trim().is_empty() {
+                report.generic += 1;
+            }
+            continue;
+        }
+        report.scanned += 1;
+        let types = row.types(&places);
+        match category_guard::verdict(&row.name, &types, &row.category) {
+            Verdict::Supported => report.decided += 1,
+            Verdict::Contradicted(_) => report.contradicted += 1,
+            Verdict::Unknown => {
+                report.undecided += 1;
+                let has_record = row.has_record(&places);
+                if !has_record {
+                    report.no_record += 1;
+                }
+                retired.push(Retired {
+                    name: row.name.clone(),
+                    city: row.dir_city.clone(),
+                    category: row.category.clone(),
+                    reason: if has_record {
+                        "provider types name no trade"
+                    } else {
+                        "no provider record"
+                    },
+                });
+                ids.push((row.id, row.category.clone()));
+            }
+        }
+    }
+
+    if !apply {
+        return Ok((report, retired));
+    }
+
+    for (id, old_category) in ids {
+        let cleared = sqlx::query(
+            "UPDATE businesses SET category_id = NULL, updated_at = NOW() \
+              WHERE id = $1 AND category_id IS NOT NULL",
+        )
+        .bind(id)
+        .execute(db)
+        .await
+        .map(|r| r.rows_affected())
+        .unwrap_or(0);
+        if cleared == 0 {
+            continue;
+        }
+        report.retired += 1;
+        // The stored paragraph is the app's own render of the old category; it says
+        // "<trade> company", so it has to be re-rendered now that the trade is gone. Only text
+        // that is provably ours under the old category is touched.
+        if crate::utils::business_copy::rewrite_for_category_change(db, id, Some(&old_category))
+            .await
+        {
+            report.copy_rewritten += 1;
+        }
+    }
+
+    Ok((report, retired))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,6 +611,67 @@ mod tests {
             cached_ts: 0.0,
             types: types.iter().map(|t| t.to_string()).collect(),
         }
+    }
+
+    /// The measured case (kanban t_0f61ea40): RealManage Winter Garden's cached record carries no
+    /// trade-bearing Google type and its name carries no trade word. Nothing decides "Landscaping",
+    /// so the listing must not claim it — and because the record EXISTS, the reason is "no trade",
+    /// not "no record": the two are different and both are reportable.
+    #[test]
+    fn a_record_with_no_trade_type_decides_no_trade() {
+        let index = PlaceIndex::build(vec![cached(
+            "ChIJwS5zpMV-54gRbBb_9io52Pc",
+            "RealManage Winter Garden",
+            "270 W Plant St #340, Winter Garden, FL 34787, USA",
+            "(866) 473-2573",
+            "https://www.realmanage.com",
+            &["service", "point_of_interest", "establishment"],
+        )]);
+        let types = index.types_for(
+            "",
+            "RealManage Winter Garden",
+            "Winter Garden",
+            "(866) 473-2573",
+            "",
+            "270 W Plant St #340",
+        );
+        assert!(
+            index.has_record(
+                "",
+                "RealManage Winter Garden",
+                "Winter Garden",
+                "(866) 473-2573",
+                "",
+                ""
+            ),
+            "the cached record is the identity match"
+        );
+        assert!(!crate::utils::category_guard::is_decided(
+            "RealManage Winter Garden",
+            &types,
+            "Landscaping"
+        ));
+    }
+
+    /// A listing whose own name names the trade keeps it, generic provider types and all: absence
+    /// of a Google trade type is not absence of evidence, and clearing these would be a wrong write.
+    #[test]
+    fn the_listings_own_name_decides_the_trade() {
+        let types = vec![
+            "service".to_string(),
+            "point_of_interest".to_string(),
+            "establishment".to_string(),
+        ];
+        assert!(crate::utils::category_guard::is_decided(
+            "Palm Bay Lawn Landscaping",
+            &types,
+            "Landscaping"
+        ));
+        assert!(!crate::utils::category_guard::is_decided(
+            "Palm Bay Lawn Landscaping",
+            &types,
+            "Pool Service"
+        ));
     }
 
     fn sparky_row() -> CacheRow {
