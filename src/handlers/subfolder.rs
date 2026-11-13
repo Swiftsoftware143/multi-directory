@@ -3196,6 +3196,10 @@ pub async fn business_detail(
     // Why not simply drop the out-of-city cards: Lake Nona is a neighbourhood of Orlando, so
     // none of its 398 listings has Lake Nona as postal city — a strict in-city filter would
     // empty 398 pages. The cards stay; the claim is widened exactly when it has to be.
+    //
+    // Both queries rank in-city rows first (the same ordering rule the city hub uses), so a page
+    // that HAS six same-category neighbours of its own city shows them and keeps the precise
+    // "in {city}" heading; only pages that genuinely run out borrow and widen.
     fn related_card(r: &sqlx::postgres::PgRow, dir_city: &str) -> BizCard {
         BizCard {
             name: r.try_get("name").unwrap_or_default(),
@@ -3233,7 +3237,10 @@ pub async fn business_detail(
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
              WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
                AND b.category_id = $3 AND coalesce(b.slug, '') <> '' \
-             ORDER BY CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
+             ORDER BY CASE WHEN replace(regexp_replace(lower(split_part(coalesce(b.city, ''), \
+                                          ',', 1)), '[^a-z]', '', 'g'), 'saint', 'st') = $6 \
+                           THEN 0 ELSE 1 END, \
+                      CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
                             AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL \
                        THEN (b.latitude - $4::float8) ^ 2 + (b.longitude - $5::float8) ^ 2 \
                        ELSE 1e9 END, \
@@ -3245,6 +3252,7 @@ pub async fn business_detail(
         .bind(cat_id)
         .bind(lat)
         .bind(lng)
+        .bind(&dir_city)
         .fetch_all(pool)
         .await
         {
@@ -3268,18 +3276,22 @@ pub async fn business_detail(
              WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
                AND coalesce(b.slug, '') <> '' \
                AND ($3::uuid IS NULL OR b.category_id IS DISTINCT FROM $3) \
-             ORDER BY CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
+             ORDER BY CASE WHEN replace(regexp_replace(lower(split_part(coalesce(b.city, ''), \
+                                          ',', 1)), '[^a-z]', '', 'g'), 'saint', 'st') = $6 \
+                           THEN 0 ELSE 1 END, \
+                      CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
                             AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL \
                        THEN (b.latitude - $4::float8) ^ 2 + (b.longitude - $5::float8) ^ 2 \
                        ELSE 1e9 END, \
                       b.rating DESC NULLS LAST, b.review_count DESC \
-             LIMIT $6",
+             LIMIT $7",
         )
         .bind(dir.id)
         .bind(biz_id)
         .bind(category_id)
         .bind(lat)
         .bind(lng)
+        .bind(&dir_city)
         .bind(slots as i64)
         .fetch_all(pool)
         .await
