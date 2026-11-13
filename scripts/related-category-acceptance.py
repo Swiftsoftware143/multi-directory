@@ -126,7 +126,10 @@ def main():
     for dir_slug, slug, cat, grp in pages:
         url = f"{BASE}/{dir_slug}/businesses/{slug}"
         try:
-            with urllib.request.urlopen(url, timeout=30) as r:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0 (builds-related-acceptance)"}
+            )
+            with urllib.request.urlopen(req, timeout=30) as r:
                 status = r.status
                 page = r.read().decode("utf-8", "replace")
         except Exception as e:  # noqa: BLE001 - a failed fetch is a failure of this probe

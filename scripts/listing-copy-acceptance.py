@@ -12,90 +12,48 @@ Exit 0 = pass. Prints one line per check; nothing else.
 Usage:  python3 scripts/listing-copy-acceptance.py [--pages 50]
         (needs docker access to the swift-postgres container)
 """
+import html
+import os
 import re
 import subprocess
 import sys
 import urllib.request
+from pathlib import Path
 
 DB_CONTAINER = "swift-postgres"
 DB_USER = "swift"
 DB_NAME = "multi_directory"
 SITE = "https://zaarhub.com"
 
-# Mirrors src/utils/category_guard.rs — keep in sync.
-FAM = {
-    "tattoo": ["tattoo", "ink studio", "ink studios", "ink lab"],
-    "fitness": ["gym", "fitness", "hotworx", "crossfit", "pilates", "yoga", "orangetheory",
-                "anytime fitness", "planet fitness", "la fitness", "esporta", "crunch fitness",
-                "burn boot camp", "f45", "9round", "title boxing", "jiu jitsu", "jiu-jitsu",
-                "martial arts", "kickboxing"],
-    "landscaping": ["landscaping", "landscape", "lawn care", "lawncare", "lawn service", "lawn"],
-    "dentist": ["dental", "dentist", "orthodont", "endodont", "periodont"],
-    "plumber": ["plumbing", "plumber", "rooter"],
-    "roofing": ["roofing", "roofer"],
-    "hvac": ["hvac", "air conditioning", "heating and air", "heating & air", "air & heat",
-             "cooling & heating"],
-    "hair": ["hair", "barber", "great clips", "supercuts", "sport clips", "blowout", "styling"],
-    "medical_spa": ["med spa", "medical spa", "medspa", "aesthetics", "injectables", "botox"],
-    "spa": ["day spa", "spa &", "spa and", "& spa", " spa"],
-    "chiro": ["chiro"],
-    "physical_therapy": ["physical therapy", "physiotherapy"],
-    "vet": ["veterinary", "vet clinic", "animal hospital", "pet hospital", "animal clinic",
-            "animal medical"],
-    "groomer": ["groomer", "grooming", "pet groom", "dog groom"],
-    "pizza": ["pizza", "pizzeria"],
-    "bakery": ["bakery", "bake shop", "patisserie", "pastry"],
-    "coffee": ["coffee", "espresso", "roasters", "cafe", "café", "tea house"],
-    "accountant": ["cpa", "accounting", "tax service", "bookkeeping", "tax &", "tax and"],
-    "lawyer": ["law office", "law firm", "lawyer", "attorney", "injury", "legal"],
-    "realestate": ["realty", "real estate", "realtor"],
-    "property_mgmt": ["property management"],
-    "pool": ["pool service", "pool cleaning", "pool care", "pools", "pool cleaners", "pool "],
-    "tree": ["tree service", "tree care", "arborist", "tree removal", "tree trimming"],
-    "cleaning": ["cleaning", "cleaners", "janitorial", "maid service", "maids", "pressure washing"],
-    "electrician": ["electric", "electrical"],
-    "auto": ["auto repair", "automotive", "mechanic", "tire", "oil change", "transmission",
-             "brake", "collision", "body shop", "car wash", "detailing"],
-    "boat": ["boat", "charter", "sailing", "marina"],
-    "childcare": ["daycare", "day care", "preschool", "montessori", "learning center",
-                  "kids academy"],
-}
-CATFAM = {
-    "tattoo parlor": "tattoo", "fitness studio": "fitness", "landscaping": "landscaping",
-    "dentist": "dentist", "plumber": "plumber", "roofing": "roofing", "hvac": "hvac",
-    "hair salon": "hair", "day spa": "spa", "medical spa": "medical_spa",
-    "chiropractor": "chiro", "physical therapy": "physical_therapy", "veterinarian": "vet",
-    "pet groomer": "groomer", "pizza": "pizza", "bakeries & dessert shops": "bakery",
-    "coffee shop": "coffee", "accountant": "accountant",
-    "personal injury lawyer": "lawyer", "real estate agent": "realestate",
-    "property management": "property_mgmt", "pool service": "pool", "tree service": "tree",
-    "cleaning services": "cleaning", "electrician": "electrician", "auto repair": "auto",
-    "tire shops & oil change": "auto", "car detailing & wash": "auto", "boat charter": "boat",
-    "child care & education": "childcare", "dog daycare & boarding": "childcare",
-}
-CLUSTERS = [("hair", "beauty"), ("spa", "beauty"), ("medical_spa", "beauty"),
-            ("chiro", "therapy"), ("physical_therapy", "therapy"), ("vet", "animal"),
-            ("groomer", "animal"), ("bakery", "food"), ("coffee", "food"), ("pizza", "food")]
-TEMPLATE = re.compile(r"is a local business in .*? offering |View address, phone number, "
-                      r"website and reviews\.")
+# Category contradictions are judged by the app's OWN rule: `multidirectory audit-categories`
+# runs category_guard::verdict over every listing (name + cached Places types + the family map,
+# with the clusters and the name-defence rule) and prints `contradicted=<n>`. A second
+# hand-maintained vocabulary here drifts out of sync with the code that actually files listings —
+# it already had, and reported a physical-therapy clinic as a spa because the token " spa" appears
+# inside "Spanish River".
+BINARY = str(Path(__file__).resolve().parent.parent / "target" / "release" / "multidirectory")
+TEMPLATE = re.compile(r"is a local business in .*? offering |View address, phone number, ")
 
 
-def cluster(family):
-    for a, b in CLUSTERS:
-        if a == family:
-            return b
-    return family
+def db_url():
+    return subprocess.run(
+        ["docker", "exec", "multidirectory", "sh", "-lc", 'echo "$DATABASE_URL"'],
+        capture_output=True, text=True,
+    ).stdout.strip()
 
 
-def contradicts(name, category):
-    n = " " + name.lower() + " "
-    implied = {f for f, toks in FAM.items() for t in toks if t in n}
-    if "pool" in implied:
-        implied.discard("cleaning")
-    fam = CATFAM.get(category.strip().lower())
-    if not implied or fam is None:
-        return False
-    return cluster(fam) not in {cluster(i) for i in implied}
+def audit_contradictions():
+    """:returns (count, sample lines); count is -1 when the audit itself could not run."""
+    run = subprocess.run(
+        [BINARY, "audit-categories"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "DATABASE_URL": db_url()},
+    )
+    m = re.search(r"contradicted=(\d+)", run.stdout)
+    if not m:
+        return -1, [run.stderr.strip()[:200]]
+    return int(m.group(1)), [ln for ln in run.stdout.splitlines() if " -> " in ln]
 
 
 def db_password():
@@ -140,14 +98,15 @@ def main():
         print("FAIL: enrichment claims a listing was enriched while its description is blank")
         ok = False
 
-    rows = q("""SELECT b.name, COALESCE(c.name,'') FROM businesses b
-          LEFT JOIN directory_categories c ON c.id = b.category_id
-          WHERE COALESCE(b.is_active,true) AND COALESCE(b.status,'active')='active'""", pw)
-    bad = [(n, c) for n, c in rows if contradicts(n, c)]
-    print(f"category/name contradictions: {len(bad)} of {len(rows)}")
-    for n, c in bad[:10]:
-        print(f"  {n} -> {c}")
-    if bad:
+    total_rows = int(q("""SELECT count(*) FROM businesses
+          WHERE COALESCE(is_active,true) AND COALESCE(status,'active')='active'""", pw)[0][0])
+    contradicted, samples = audit_contradictions()
+    print(f"category/name/type contradictions: {contradicted} of {total_rows}")
+    for line in samples[:10]:
+        print("  " + line)
+    if contradicted != 0:
+        # -1 means the audit could not run: an unproven zero is not a pass.
+        print("FAIL: the category audit did not prove zero contradictions")
         ok = False
 
     pages = q(f"""WITH ranked AS (
@@ -177,12 +136,13 @@ def main():
         if md and TEMPLATE.search(md.group(1)):
             template += 1
         c = re.search(r"🏷️\s*(?:<a[^>]*>)?([^<]+)", body)
-        page_cat = c.group(1).strip() if c else cat
-        if contradicts(name, page_cat):
+        page_cat = html.unescape(c.group(1).strip()) if c else cat
+        # Whatever lede the page carries, the category it PRINTS must be the one the row holds.
+        if page_cat != cat:
             contra += 1
-            print(f"  contradiction on {url}: {name} -> {page_cat}")
+            print(f"  category mismatch on {url}: {name} renders '{page_cat}', row holds '{cat}'")
     print(f"live detail pages: {fetched}/{len(pages)} fetched, {lede} with a real paragraph, "
-          f"{template} still on the template sentence, {contra} name/category contradictions")
+          f"{template} still on the template sentence, {contra} category mismatches")
     if fetched == 0 or lede < fetched * 0.95 or template or contra:
         ok = False
 
