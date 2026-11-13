@@ -2955,7 +2955,7 @@ pub async fn business_detail(
     let by_uuid = Uuid::parse_str(ident).ok();
     let fetched = sqlx::query(
         "SELECT id, name, slug, description, category_id, address, city, state, zip, phone, \
-                website, logo_url, cover_url, images, rating, review_count, latitude, longitude, featured \
+                website, logo_url, cover_url, images, rating, review_count, latitude, longitude, featured, place_id \
          FROM businesses WHERE directory_id = $1 AND is_active = true \
            AND (lower(slug) = lower($2) OR ($3::uuid IS NOT NULL AND id = $3::uuid)) LIMIT 1",
     )
@@ -3065,6 +3065,20 @@ pub async fn business_detail(
         .unwrap_or(0);
     let lat: Option<f64> = row.try_get("latitude").unwrap_or(None);
     let lng: Option<f64> = row.try_get("longitude").unwrap_or(None);
+
+    // Hours (kanban t_2b630e2a). `google_places_cache.opening_hours` has held real weekly periods
+    // all along and nothing read it, so ~4,100 pages told a visitor nothing about when the business
+    // is open. Place id first (exact, but on only 353 of 4,100 rows), then normalised name + the
+    // listing's street line (3,885), then name + city. Read-only: no row is written, no Google call.
+    let place_id: Option<String> = row.try_get("place_id").unwrap_or(None);
+    let business_hours = crate::utils::opening_hours::lookup(
+        pool,
+        place_id.as_deref(),
+        &name,
+        address.as_deref(),
+        rec_city.as_deref().unwrap_or(city.as_str()),
+    )
+    .await;
 
     // Category label (best-effort; falls back to the business category id).
     let category_id: Option<Uuid> = row.try_get("category_id").unwrap_or(None);
@@ -3460,6 +3474,10 @@ pub async fn business_detail(
         if !review_ld.is_empty() {
             lb["review"] = serde_json::json!(review_ld);
         }
+        // Same parser the block uses, so the structured data and the visible hours always agree.
+        if let Some(spec) = business_hours.as_ref().and_then(|w| w.jsonld()) {
+            lb["openingHoursSpecification"] = spec;
+        }
         jsonld.push(lb);
         jsonld.push(breadcrumb_ld(&crumb_pairs));
     }
@@ -3543,6 +3561,12 @@ pub async fn business_detail(
         dir.id, track_ctx
     );
 
+    // No hours resolved -> empty string -> no block and no placeholder.
+    let hours_html = business_hours
+        .as_ref()
+        .map(|w| w.html())
+        .unwrap_or_default();
+
     let body = format!(
         r#"{start}{ctx}{crumbs}
 <div class="detail">
@@ -3553,6 +3577,7 @@ pub async fn business_detail(
 {desc_html}
 <div class="row">{cat}</div>
 {rows}
+{hours_html}
 <p class="row"><a href="{base}/{dslug}/businesses">← All businesses in {city}</a></p>
 </div>
 {reviews}
@@ -3583,6 +3608,7 @@ pub async fn business_detail(
             _ => String::new(),
         },
         rows = rows,
+        hours_html = hours_html,
         reviews = reviews_html,
         related = related_html,
         base = h(&base),
