@@ -480,6 +480,42 @@ fn v1_place_split(place: &Value) -> (Value, Value) {
             serde_json::json!({ "weekday_text": days }),
         );
     }
+    // The exact periods, in the LEGACY shape (`open.day` 0 = Sunday, `open.time` "HHMM"), so the
+    // one hours converter downstream reads v1 and legacy answers identically. v1 gives
+    // `{hour, minute}` per boundary; nothing is invented — a boundary that is not a whole pair is
+    // dropped, and the converter refuses to write a partial week.
+    if let Some(periods) = dig(place, &["regularOpeningHours", "periods"]).and_then(Value::as_array)
+    {
+        let mapped: Vec<Value> = periods
+            .iter()
+            .filter_map(|p| {
+                let bound = |k: &str| -> Option<Value> {
+                    let b = p.get(k)?;
+                    let day = b.get("day").and_then(Value::as_i64)?;
+                    let hour = b.get("hour").and_then(Value::as_i64)?;
+                    let minute = b.get("minute").and_then(Value::as_i64).unwrap_or(0);
+                    if !(0..=24).contains(&hour) || !(0..=59).contains(&minute) {
+                        return None;
+                    }
+                    Some(serde_json::json!({
+                        "day": day,
+                        "time": format!("{:02}{:02}", hour, minute),
+                    }))
+                };
+                Some(serde_json::json!({ "open": bound("open")?, "close": bound("close")? }))
+            })
+            .collect();
+        if !mapped.is_empty() {
+            let mut oh = det
+                .get("opening_hours")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = oh.as_object_mut() {
+                obj.insert("periods".into(), Value::Array(mapped));
+            }
+            det.insert("opening_hours".into(), oh);
+        }
+    }
     if let Some(comps) = place.get("addressComponents").and_then(Value::as_array) {
         let mapped: Vec<Value> = comps
             .iter()

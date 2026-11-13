@@ -93,6 +93,8 @@ struct Counts {
     unchanged: usize,
     unreachable: usize,
     skipped_claimed: usize,
+    /// Listings whose weekly opening hours were stored for the first time (card B90).
+    hours: usize,
 }
 
 struct Opts {
@@ -417,6 +419,7 @@ async fn run_batch(s: &AppState, directory_id: Uuid, opts: Opts) -> Result<Value
     let details = json!({
         "samples": samples.into_iter().take(20).collect::<Vec<_>>(),
         "notes": notes,
+        "hours_written": counts.hours,
     });
 
     let _ = sqlx::query(
@@ -448,6 +451,7 @@ async fn run_batch(s: &AppState, directory_id: Uuid, opts: Opts) -> Result<Value
         "unchanged": counts.unchanged,
         "unreachable": counts.unreachable,
         "skipped_claimed": counts.skipped_claimed,
+        "hours_written": counts.hours,
         "samples": details["samples"],
         "notes": notes,
     }))
@@ -471,16 +475,21 @@ async fn update_arm(
     .map_err(|e| e.to_string())?;
 
     // Oldest-refreshed first, so repeated runs walk the whole city instead of re-doing page one.
+    // `has_hours` is read in the same query (one row per listing — `business_meta` is unique on
+    // (business_id, template)) so the hours decision costs no extra round trip.
     let rows = sqlx::query(
-        "SELECT id, name, address, city, state, zip, phone, website, latitude, longitude, \
-                rating, review_count, place_id \
-         FROM businesses \
-         WHERE directory_id = $1 AND is_active = true AND NOT COALESCE(claimed, false) \
-         ORDER BY enriched_at NULLS FIRST, enriched_at ASC, id \
+        "SELECT b.id, b.name, b.address, b.city, b.state, b.zip, b.phone, b.website, \
+                b.latitude, b.longitude, b.rating, b.review_count, b.place_id, \
+                COALESCE(m.meta_data ? 'hours' OR m.meta_data ? 'opening_hours', false) AS has_hours \
+         FROM businesses b \
+         LEFT JOIN business_meta m ON m.business_id = b.id AND m.template = $3 \
+         WHERE b.directory_id = $1 AND b.is_active = true AND NOT COALESCE(b.claimed, false) \
+         ORDER BY b.enriched_at NULLS FIRST, b.enriched_at ASC, b.id \
          LIMIT $2",
     )
     .bind(dir.id)
     .bind(max)
+    .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
     .fetch_all(&s.db)
     .await
     .map_err(|e| format!("could not read the listings: {e}"))?;
@@ -559,6 +568,22 @@ async fn update_arm(
                 .and_then(Value::as_i64)
                 .map(|v| v as i32),
         );
+        // Opening hours: this same lookup already returned them (legacy `opening_hours`, or the v1
+        // fallback normalised into it) — reading them costs no further Google call and no field
+        // mask change. They are only ever ADDED: a listing whose operator set hours (or that a
+        // previous run already filled) keeps what it has.
+        let tz_state = if bstate.trim().is_empty() {
+            dir.state.as_str()
+        } else {
+            bstate.as_str()
+        };
+        let new_hours = if row.get::<bool, _>("has_hours") {
+            None
+        } else {
+            answer
+                .get("opening_hours")
+                .and_then(|oh| weekly_hours_from_google(oh, tz_for_state(tz_state)))
+        };
         // Identity is stamped only when the row has none, and never when another listing in this
         // directory already holds that place id (that is a duplicate to merge, not to steal).
         let mut new_place: Option<String> = None;
@@ -590,7 +615,8 @@ async fn update_arm(
             || new_lat.is_some()
             || new_lng.is_some()
             || new_rating.is_some()
-            || new_reviews.is_some();
+            || new_reviews.is_some()
+            || new_hours.is_some();
         let touched = changed || new_place.is_some();
 
         let res = sqlx::query(
@@ -633,6 +659,29 @@ async fn update_arm(
         // and factual from the row's own fields.
         crate::utils::business_copy::ensure_description(&s.db, bid).await;
 
+        // Store the hours this run just harvested. The WHERE on the conflict path makes the write
+        // strictly additive: if the listing gained hours (operator or a concurrent run) since the
+        // read, nothing is overwritten.
+        if let Some(ref hours) = new_hours {
+            let stored = sqlx::query(
+                r#"INSERT INTO business_meta (business_id, template, meta_data)
+                   VALUES ($1, $2, jsonb_build_object('hours', $3::jsonb))
+                   ON CONFLICT (business_id, template) DO UPDATE
+                     SET meta_data = business_meta.meta_data || jsonb_build_object('hours', $3::jsonb),
+                         updated_at = NOW()
+                     WHERE NOT (business_meta.meta_data ? 'hours' OR business_meta.meta_data ? 'opening_hours')"#,
+            )
+            .bind(bid)
+            .bind(crate::template_engine::TEMPLATE_BUSINESS_DETAIL)
+            .bind(hours)
+            .execute(&s.db)
+            .await
+            .map_err(|e| format!("could not store opening hours: {e}"))?;
+            if stored.rows_affected() > 0 {
+                counts.hours += 1;
+            }
+        }
+
         if changed {
             counts.updated += 1;
             let fields: Vec<&str> = [
@@ -641,6 +690,7 @@ async fn update_arm(
                 new_site.is_some().then_some("website"),
                 (new_lat.is_some() || new_lng.is_some()).then_some("map location"),
                 new_rating.is_some().then_some("rating"),
+                new_hours.is_some().then_some("opening hours"),
                 new_place.is_some().then_some("Google identity"),
             ]
             .into_iter()
@@ -1090,6 +1140,156 @@ async fn search_places(
     Ok(out)
 }
 
+/// IANA zone for a US state code, used only to place "Open now" on the public page. A state that
+/// is unknown yields `None` and the page keeps its existing Eastern default rather than being
+/// handed a guessed zone.
+fn tz_for_state(state: &str) -> Option<&'static str> {
+    match state.trim().to_ascii_uppercase().as_str() {
+        "CT" | "DC" | "DE" | "FL" | "GA" | "IN" | "KY" | "MA" | "MD" | "ME" | "MI" | "NC"
+        | "NH" | "NJ" | "NY" | "OH" | "PA" | "RI" | "SC" | "VA" | "VT" | "WV" => {
+            Some("America/New_York")
+        }
+        "AL" | "AR" | "IA" | "IL" | "KS" | "LA" | "MN" | "MO" | "MS" | "ND" | "NE" | "OK"
+        | "SD" | "TN" | "TX" | "WI" => Some("America/Chicago"),
+        "AZ" => Some("America/Phoenix"),
+        "CO" | "ID" | "MT" | "NM" | "UT" | "WY" => Some("America/Denver"),
+        "CA" | "NV" | "OR" | "WA" => Some("America/Los_Angeles"),
+        "AK" => Some("America/Anchorage"),
+        "HI" => Some("Pacific/Honolulu"),
+        _ => None,
+    }
+}
+
+/// Day keys in Google's `periods[].open.day` order (0 = Sunday).
+const HOUR_DAY_KEYS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/// One open/close span, in minutes after midnight, tagged with the day it OPENS on.
+#[derive(Debug, Clone, Copy)]
+struct Span {
+    day: i64,
+    open: i32,
+    close: i32,
+    close_day: i64,
+}
+
+/// `"0900"` (legacy) or `"09:00"` → minutes after midnight. `None` when the value is not a time,
+/// so a malformed answer is refused instead of being rounded into a plausible-looking hour.
+fn minutes_of(v: &Value) -> Option<i32> {
+    let s = v.as_str()?.trim();
+    let digits: String = s.chars().filter(char::is_ascii_digit).collect();
+    if digits.is_empty() || digits.len() > 4 {
+        return None;
+    }
+    let n: i32 = digits.parse().ok()?;
+    let (h, m) = if digits.len() <= 2 {
+        (n, 0)
+    } else {
+        (n / 100, n % 100)
+    };
+    if !(0..=24).contains(&h) || !(0..=59).contains(&m) {
+        return None;
+    }
+    Some(h * 60 + m)
+}
+
+fn hhmm(minutes: i32) -> String {
+    let m = minutes.clamp(0, 23 * 60 + 59);
+    format!("{:02}:{:02}", m / 60, m % 60)
+}
+
+/// One `periods[]` entry → a span. A close boundary that carries no `day` is read as the same day
+/// (Google omits it for same-day spans).
+fn read_span(p: &Value) -> Option<Span> {
+    let day = p.pointer("/open/day")?.as_i64()?;
+    let open = minutes_of(p.pointer("/open/time")?)?;
+    let close = minutes_of(p.pointer("/close/time")?)?;
+    let close_day = p
+        .pointer("/close/day")
+        .and_then(Value::as_i64)
+        .unwrap_or(day);
+    // A close of 00:00 on the following day is "midnight, end of that day" — expressible as
+    // 23:59 on the same day, which keeps the page's "open now" arithmetic correct.
+    if close_day != day && close == 0 {
+        return Some(Span {
+            day,
+            open,
+            close: 23 * 60 + 59,
+            close_day: day,
+        });
+    }
+    Some(Span {
+        day,
+        open,
+        close,
+        close_day,
+    })
+}
+
+/// Google's `opening_hours` (legacy shape — the v1 fallback is normalised into it) → the weekly
+/// shape the public business page already renders:
+/// `{"tz":"America/New_York","mon":{"open":"09:00","close":"17:00"},"sun":null}`.
+///
+/// A day is written only when it can be stated truthfully, because one open/close pair per day is
+/// all the shape holds:
+/// - Google listed no period for the day → `null` (Google says closed);
+/// - exactly one same-day span → that span;
+/// - several spans → merged ONLY when each opens exactly when the previous closed;
+/// - a span that runs into the next day (close day ≠ open day) → the day is left OUT (unknown),
+///   never flattened into a closing time it does not have;
+/// - any period that cannot be read → `None` for the whole listing, so a partial week is never
+///   written and a closed day is never invented.
+pub fn weekly_hours_from_google(oh: &Value, tz: Option<&str>) -> Option<Value> {
+    let periods = oh.get("periods").and_then(Value::as_array)?;
+    if periods.is_empty() {
+        return None;
+    }
+    let mut spans: Vec<Span> = Vec::with_capacity(periods.len());
+    for p in periods {
+        spans.push(read_span(p)?);
+    }
+
+    let mut out = serde_json::Map::new();
+    if let Some(tz) = tz {
+        out.insert("tz".into(), Value::String(tz.to_string()));
+    }
+    let mut any_hours = false;
+    for (day, key) in HOUR_DAY_KEYS.iter().enumerate() {
+        let mut day_spans: Vec<Span> = spans
+            .iter()
+            .copied()
+            .filter(|s| s.day.rem_euclid(7) as usize == day)
+            .collect();
+        if day_spans.is_empty() {
+            out.insert((*key).into(), Value::Null);
+            continue;
+        }
+        day_spans.sort_by_key(|s| s.open);
+        let start = day_spans[0].open;
+        let mut end = day_spans[0].close;
+        let mut expressible = day_spans[0].close_day.rem_euclid(7) == day as i64;
+        for s in day_spans.iter().skip(1) {
+            if s.close_day.rem_euclid(7) != day as i64 || s.open != end {
+                expressible = false;
+                break;
+            }
+            end = s.close;
+        }
+        if !expressible || end <= start {
+            // Leave the day unknown rather than publish a closing time Google did not give.
+            continue;
+        }
+        any_hours = true;
+        out.insert(
+            (*key).into(),
+            json!({ "open": hhmm(start), "close": hhmm(end) }),
+        );
+    }
+    if !any_hours {
+        return None;
+    }
+    Some(Value::Object(out))
+}
+
 /// `"<name>, <address>"`, falling back to city/state/zip when the row has no address — the same
 /// rule enrichment uses (`build_places_query`), restated here because the row is a raw sqlx row.
 fn places_query(name: &str, address: &str, row: &sqlx::postgres::PgRow) -> String {
@@ -1301,5 +1501,97 @@ async fn is_due(s: &AppState, directory_id: Uuid, schedule: &str) -> Result<bool
     match last {
         None => Ok(true),
         Some(t) => Ok((chrono::Utc::now() - t).num_days() >= days),
+    }
+}
+
+#[cfg(test)]
+mod hours_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// One legacy period: day numbers as Google sends them (0 = Sunday), times as "HHMM".
+    fn p(open_day: i64, open: &str, close_day: i64, close: &str) -> Value {
+        json!({
+            "open": { "day": open_day, "time": open },
+            "close": { "day": close_day, "time": close },
+        })
+    }
+
+    #[test]
+    fn single_span_and_closed_day() {
+        let oh = json!({ "periods": [p(1, "0900", 1, "1700")] });
+        let h = weekly_hours_from_google(&oh, Some("America/New_York")).expect("hours");
+        assert_eq!(h["tz"], "America/New_York");
+        assert_eq!(h["mon"]["open"], "09:00");
+        assert_eq!(h["mon"]["close"], "17:00");
+        // Google listed no period on Sunday → it says closed, which is what gets written.
+        assert!(h["sun"].is_null());
+        assert!(h["tue"].is_null());
+    }
+
+    #[test]
+    fn split_shift_with_a_gap_is_left_unknown() {
+        // 11:00–14:00 and 17:00–21:00 cannot be one open/close pair: the day is omitted, not
+        // flattened into 11:00–21:00 (which would claim the business is open at 3pm).
+        let oh = json!({ "periods": [
+            p(3, "1100", 3, "1400"), p(3, "1700", 3, "2100"), p(1, "0900", 1, "1700")
+        ]});
+        let h = weekly_hours_from_google(&oh, None).expect("the Monday span is expressible");
+        assert!(h.get("wed").is_none());
+        assert_eq!(h["mon"]["close"], "17:00");
+    }
+
+    #[test]
+    fn contiguous_split_shift_is_merged() {
+        let oh = json!({ "periods": [p(5, "0900", 5, "1200"), p(5, "1200", 5, "1700")] });
+        let h = weekly_hours_from_google(&oh, None).expect("hours");
+        assert_eq!(h["fri"]["open"], "09:00");
+        assert_eq!(h["fri"]["close"], "17:00");
+    }
+
+    #[test]
+    fn span_running_past_midnight_leaves_that_day_unknown() {
+        let oh = json!({ "periods": [p(6, "2200", 0, "0200"), p(1, "0900", 1, "1700")] });
+        let h = weekly_hours_from_google(&oh, None).expect("hours");
+        assert!(h.get("sat").is_none());
+        assert_eq!(h["mon"]["close"], "17:00");
+    }
+
+    #[test]
+    fn closing_at_midnight_becomes_end_of_the_day() {
+        let oh = json!({ "periods": [p(4, "1000", 5, "0000")] });
+        let h = weekly_hours_from_google(&oh, None).expect("hours");
+        assert_eq!(h["thu"]["open"], "10:00");
+        assert_eq!(h["thu"]["close"], "23:59");
+    }
+
+    #[test]
+    fn unreadable_period_writes_nothing_at_all() {
+        let oh = json!({ "periods": [p(1, "0900", 1, "1700"), json!({ "open": { "day": 2 }, "close": { "day": 2, "time": "1700" } })] });
+        assert!(weekly_hours_from_google(&oh, None).is_none());
+        // No periods at all (e.g. a listing with no published hours) → nothing written.
+        assert!(weekly_hours_from_google(
+            &json!({ "weekday_text": ["Monday: 9:00 AM – 5:00 PM"] }),
+            None
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn padded_and_colon_times_both_read() {
+        let oh = json!({ "periods": [
+            { "open": { "day": 2, "time": "0930" }, "close": { "day": 2, "time": "17:30" } }
+        ]});
+        let h = weekly_hours_from_google(&oh, None).expect("hours");
+        assert_eq!(h["tue"]["open"], "09:30");
+        assert_eq!(h["tue"]["close"], "17:30");
+    }
+
+    #[test]
+    fn timezone_comes_from_the_state() {
+        assert_eq!(tz_for_state("fl"), Some("America/New_York"));
+        assert_eq!(tz_for_state(" AZ "), Some("America/Phoenix"));
+        assert_eq!(tz_for_state(""), None);
+        assert_eq!(tz_for_state("ON"), None);
     }
 }
