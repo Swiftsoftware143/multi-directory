@@ -346,8 +346,11 @@ pub async fn ensure_description(db: &PgPool, id: Uuid) -> bool {
         return false;
     };
 
+    // `content_updated_at`, not `updated_at`: this write changes the paragraph a visitor reads,
+    // and the sitemap's <lastmod> is built from it (kanban t_23332bb8 — the 2026-11-13 sweep
+    // filled 4,099 blanks and moved no timestamp, so those URLs kept advertising July).
     match sqlx::query(
-        "UPDATE businesses SET description = $2 \
+        "UPDATE businesses SET description = $2, content_updated_at = NOW() \
          WHERE id = $1 AND (description IS NULL OR btrim(description) = '')",
     )
     .bind(id)
