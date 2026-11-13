@@ -331,10 +331,17 @@ pub async fn pipeline_ingest(
             if let Some(existing_data) = existing_row {
                 let merged = merge_business(&existing_data, biz);
                 // Update with merged fields
+                // A merge that rewrites the rendered description MUST move the copy clock
+                // (`content_updated_at`), the same way utils/business_copy.rs does — otherwise a
+                // copy-freshness reader sees the import as "no change" (kanban t_21cc6fcd).
+                // Guarded on DISTINCT FROM so an idempotent re-import claims no copy change.
                 let _ = sqlx::query(
                     "UPDATE businesses SET name=$1, description=$2, phone=$3, email=$4, website=$5, \
                      address=$6, city=$7, state=$8, zip=$9, latitude=$10, longitude=$11, \
-                     rating=$12, review_count=$13, updated_at=NOW() WHERE id=$14"
+                     rating=$12, review_count=$13, \
+                     content_updated_at = CASE WHEN description IS DISTINCT FROM $2 \
+                                               THEN NOW() ELSE content_updated_at END, \
+                     updated_at=NOW() WHERE id=$14"
                 )
                 .bind(merged.get("name").and_then(|v| v.as_str()))
                 .bind(merged.get("description").and_then(|v| v.as_str()))

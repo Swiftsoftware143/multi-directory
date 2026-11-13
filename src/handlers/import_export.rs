@@ -198,6 +198,10 @@ async fn import_business_row(
             "UPDATE businesses SET
                 name = COALESCE(NULLIF($2, ''), name),
                 description = COALESCE(NULLIF($3, ''), description),
+                -- only a real copy change moves the copy clock (kanban t_21cc6fcd)
+                content_updated_at = CASE
+                    WHEN COALESCE(NULLIF($3, ''), description) IS DISTINCT FROM description
+                    THEN NOW() ELSE content_updated_at END,
                 address = COALESCE(NULLIF($4, ''), address),
                 city = COALESCE(NULLIF($5, ''), city),
                 state = COALESCE(NULLIF($6, ''), state),

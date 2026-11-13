@@ -546,6 +546,8 @@ pub async fn update_business(
            name = COALESCE($1, name),
            slug = COALESCE($2, slug),
            description = COALESCE($3, description),
+           content_updated_at = CASE WHEN COALESCE($3, description) IS DISTINCT FROM description
+                                     THEN NOW() ELSE content_updated_at END,
            category_id = COALESCE($4, category_id),
            address = COALESCE($5, address),
            city = COALESCE($6, city),

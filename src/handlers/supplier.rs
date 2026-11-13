@@ -153,6 +153,8 @@ pub async fn update_supplier_profile(
     sqlx::query(
         "UPDATE businesses SET name=COALESCE($1,name), email=COALESCE($2,email), \
          phone=COALESCE($3,phone), website=COALESCE($4,website), description=COALESCE($5,description), \
+         content_updated_at = CASE WHEN COALESCE($5, description) IS DISTINCT FROM description \
+                                   THEN NOW() ELSE content_updated_at END, \
          updated_at=NOW() WHERE id = $6 \
          AND business_type = ANY($7)"
     )

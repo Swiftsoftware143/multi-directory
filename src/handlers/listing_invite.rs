@@ -323,6 +323,9 @@ pub async fn complete_listing_invite(
         "UPDATE businesses SET \
              name        = COALESCE(NULLIF($2, ''), name), \
              description = COALESCE(NULLIF($3, ''), description), \
+             content_updated_at = CASE \
+                 WHEN COALESCE(NULLIF($3, ''), description) IS DISTINCT FROM description \
+                 THEN NOW() ELSE content_updated_at END, \
              address     = COALESCE(NULLIF($4, ''), address), \
              city        = COALESCE(NULLIF($5, ''), city), \
              state       = COALESCE(NULLIF($6, ''), state), \
