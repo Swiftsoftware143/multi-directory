@@ -1885,26 +1885,30 @@ const NAV_CSS: &str = "<style>\
 .zh-navbar .zh-quicknav .chip{margin:0;flex:0 0 auto}\
 </style>";
 
-/// A single compact band of onward links: one scrollable row, capped so the strip
-/// never pushes the page's own hero down. Used on the two SPA surfaces (network
-/// home and city page), where the page below renders its own layout.
-fn compact_explore(links: Vec<(String, String)>) -> String {
+/// A single compact band of onward links: one scrollable row, capped PER GROUP so
+/// the strip never pushes the page's own hero down and a long first group (e.g. a
+/// network's cities) can never crowd the entry points that follow it out of the
+/// row. The row is `overflow-x:auto`, so extra chips scroll sideways at no extra
+/// height. Used on the two SPA surfaces (network home and city page).
+fn compact_explore_groups(groups: &[Vec<(String, String)>], per_group_cap: usize) -> String {
     let mut chips = String::new();
-    let mut seen = 0usize;
-    for (label, href) in links {
-        if seen >= 8 {
-            break;
+    for links in groups {
+        let mut in_group = 0usize;
+        for (label, href) in links {
+            if in_group >= per_group_cap {
+                break;
+            }
+            let tag = format!("href=\"{}\"", h(href));
+            if chips.contains(&tag) {
+                continue;
+            }
+            chips.push_str(&format!(
+                "<a class=\"chip\" href=\"{}\">{}</a>",
+                h(href),
+                h(label)
+            ));
+            in_group += 1;
         }
-        let tag = format!("href=\"{}\"", h(&href));
-        if chips.contains(&tag) {
-            continue;
-        }
-        chips.push_str(&format!(
-            "<a class=\"chip\" href=\"{}\">{}</a>",
-            h(&href),
-            h(&label)
-        ));
-        seen += 1;
     }
     if chips.is_empty() {
         return String::new();
@@ -1977,12 +1981,11 @@ pub async fn home_nav_html(pool: &PgPool) -> String {
         });
     }
 
-    // One compact scrollable row: cities first, then the owner entry points.
-    let mut flat: Vec<(String, String)> = Vec::new();
-    for g in &groups {
-        flat.extend(g.links.iter().cloned());
-    }
-    let explore = compact_explore(flat);
+    // One compact scrollable row: every city the network publishes, then the owner
+    // entry points. The cap is PER GROUP, so a network with many cities still shows
+    // its entry points; growth past the cap scrolls instead of growing the strip.
+    let group_links: Vec<Vec<(String, String)>> = groups.iter().map(|g| g.links.clone()).collect();
+    let explore = compact_explore_groups(&group_links, 12);
     nav_strip(
         "<div class=\"crumbs\" aria-label=\"Breadcrumb\"><span>ZaarHub home</span></div>",
         &explore,
@@ -1995,11 +1998,12 @@ pub async fn home_nav_html(pool: &PgPool) -> String {
 async fn city_nav_html(pool: &PgPool, dir: &DirectoryRec, base: &str, canonical: &str) -> String {
     let crumbs = breadcrumbs(&[("ZaarHub", &format!("{}/", base)), (&dir.name, canonical)]);
     // One compact row (categories first) so the city's own hero stays in view.
+    // Same 8-chip budget as before: this surface is unchanged by the home fix.
     let mut flat: Vec<(String, String)> = Vec::new();
     for g in city_relationships(pool, dir, base, canonical, 3).await {
         flat.extend(g.links);
     }
-    nav_strip(&crumbs, &compact_explore(flat))
+    nav_strip(&crumbs, &compact_explore_groups(&[flat], 8))
 }
 
 /// The active businesses of ONE town, in the same order the city grid uses.
@@ -4577,7 +4581,8 @@ pub async fn sitemap(
         // at least two active listings are advertised: a one-listing category page is
         // thin content, and the sitemap must never publish a URL that renders empty.
         let cats: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-            "SELECT dc.slug, GREATEST(MAX(b.updated_at), MAX(dc.created_at)) AS lastmod \
+            "SELECT dc.slug, GREATEST(MAX(GREATEST(b.updated_at, b.content_updated_at)), \
+                                     MAX(dc.created_at)) AS lastmod \
              FROM directory_categories dc \
              JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
              WHERE b.directory_id = $1 AND coalesce(dc.slug,'') <> '' \
@@ -4588,9 +4593,13 @@ pub async fn sitemap(
         .await
         .unwrap_or_default();
 
-        // Businesses (subfolder URLs).
+        // Businesses (subfolder URLs). `lastmod` is the date the copy a visitor reads changed:
+        // GREATEST(updated_at, content_updated_at) — updated_at alone missed the description
+        // writes (kanban t_23332bb8). The same values feed `biz_ts`, so the city hub and the
+        // /businesses index inherit a listing's copy change instead of lagging behind it.
         let biz: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-            "SELECT slug, updated_at FROM businesses WHERE directory_id = $1 AND is_active = true \
+            "SELECT slug, GREATEST(updated_at, content_updated_at) AS updated_at FROM businesses \
+             WHERE directory_id = $1 AND is_active = true \
              AND coalesce(slug,'') <> '' ORDER BY rating DESC NULLS LAST LIMIT 20000",
         )
         .bind(dir_id)
