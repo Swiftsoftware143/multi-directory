@@ -753,6 +753,17 @@ fn city_hub_html(
     } else {
         format!("{}, {}", h(&dir.city), h(&dir.state))
     };
+    // A hub with no in-city listing cannot honestly say "businesses in <city>": every card on
+    // it is a neighbouring town's (Lake Nona has no postal city of its own — its rows are
+    // Orlando and Kissimmee, which is correct data, not a bad import). Because in-city ranks
+    // first, "no card in `top` is in-city" means the directory has none at all. Say "in and
+    // around <City>" there instead, and never hardcode the city — it comes from the row.
+    let any_in_city = top.iter().any(|b| b.in_city);
+    let where_phrase = if any_in_city {
+        place.clone()
+    } else {
+        format!("and around {}", h(&dir.city))
+    };
     let mut out = String::with_capacity(4096);
     // The shell's full-screen splash is normally removed by the app at boot; without
     // JavaScript it would sit on top of this content forever, so hide it only then.
@@ -768,7 +779,7 @@ fn city_hub_html(
         "{} local business{} in {}, with ratings, addresses and contact details.",
         total,
         if total == 1 { "" } else { "es" },
-        place
+        where_phrase
     );
     if let Some(d) = dir.description.as_deref() {
         let d = clip(&strip_tags(d), 220);
@@ -808,7 +819,7 @@ fn city_hub_html(
     if !top.is_empty() {
         out.push_str(&format!(
             "<h2 style=\"font-size:1.15rem;font-weight:700;color:#0f172a;margin:0 0 10px\">Top-rated businesses in {}</h2>",
-            place
+            where_phrase
         ));
         out.push_str("<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin:0 0 18px\">");
         for b in top {
@@ -859,10 +870,10 @@ fn city_hub_html(
     }
 
     out.push_str(&format!(
-        "<p style=\"margin:0 0 26px\"><a href=\"/{slug}/businesses\" style=\"color:#ea580c;font-weight:600;text-decoration:none\">See all {total} businesses in {place} →</a></p>",
+        "<p style=\"margin:0 0 26px\"><a href=\"/{slug}/businesses\" style=\"color:#ea580c;font-weight:600;text-decoration:none\">See all {total} businesses in {where_phrase} →</a></p>",
         slug = dir.slug,
         total = total,
-        place = place
+        where_phrase = where_phrase
     ));
     let _ = site; // the brand is already in the page's <title>/head; not repeated in the body
     out.push_str("</div>");
@@ -1197,11 +1208,34 @@ struct BizCard {
     rating: f64,
     review_count: i32,
     address: Option<String>,
+    /// True when this business's postal city is the directory's own city. City hubs rank
+    /// these FIRST (card t_6d3b0919): the page is sold to advertisers as a city audience, so
+    /// the top of it has to be that city. Out-of-city rows stay on the page below as inventory.
+    in_city: bool,
     /// The business's own short description. Optional everywhere: a business that never filled
     /// it in still gets a card. The city hub prints it (card CITY-HUB-TEXT, 2026-11-12) because
     /// a grid of names and star counts is thin content for a crawler and little help to a
     /// visitor deciding whom to call.
     description: Option<String>,
+}
+
+/// Normalise a postal city for comparison with a directory's own city.
+///
+/// `businesses.city` holds the place locality ("Apopka"), `directories.city` holds a display
+/// value ("Apopka, FL"), and one place is spelled "St. Cloud", "St Cloud" and "Saint Cloud"
+/// across the two tables — so a bare `=` matches almost nothing. Split on the first comma
+/// (drop the state suffix), lowercase, keep ASCII letters only, fold "saint" to "st".
+///
+/// The SQL `city_rank` macro below applies the SAME rule to `b.city` and compares against a
+/// BOUND parameter (gate rule 5d: no run-time SQL assembly). Change one, change both.
+fn norm_city(s: &str) -> String {
+    let head = s.split(',').next().unwrap_or("");
+    let letters: String = head
+        .chars()
+        .filter(|c| c.is_ascii_alphabetic())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    letters.replace("saint", "st")
 }
 
 async fn list_businesses(
@@ -1222,6 +1256,21 @@ async fn list_businesses(
         };
     }
 
+    /// In-city rank (0 = the directory's own city, 1 = elsewhere). Same normalisation as
+    /// `norm_city`, `$p` is the bound parameter holding the *normalised* directory city.
+    macro_rules! city_rank {
+        ($p:literal) => {
+            concat!(
+                "CASE WHEN replace(regexp_replace(lower(split_part(coalesce(b.city,''), ',', 1)), \
+                 '[^a-z]', '', 'g'), 'saint', 'st') = ",
+                $p,
+                " THEN 0 ELSE 1 END"
+            )
+        };
+    }
+
+    let dir_city = norm_city(&dir.city);
+
     let rows = if let Some(cat) = category {
         sqlx::query(concat!(
             "SELECT ",
@@ -1230,13 +1279,16 @@ async fn list_businesses(
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
              WHERE b.directory_id = $1 AND b.is_active = true \
                AND lower(coalesce(dc.name,'')) = lower($2) \
-             ORDER BY b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
+             ORDER BY ",
+            city_rank!("$5"),
+            " ASC, b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
              LIMIT $3 OFFSET $4"
         ))
         .bind(dir.id)
         .bind(cat)
         .bind(limit)
         .bind(offset)
+        .bind(&dir_city)
         .fetch_all(pool)
         .await
     } else {
@@ -1246,12 +1298,15 @@ async fn list_businesses(
             " FROM businesses b \
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
              WHERE b.directory_id = $1 AND b.is_active = true \
-             ORDER BY b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
+             ORDER BY ",
+            city_rank!("$4"),
+            " ASC, b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
              LIMIT $2 OFFSET $3"
         ))
         .bind(dir.id)
         .bind(limit)
         .bind(offset)
+        .bind(&dir_city)
         .fetch_all(pool)
         .await
     };
@@ -1260,10 +1315,12 @@ async fn list_businesses(
     for r in rows.unwrap_or_default() {
         let name: String = r.try_get("name").unwrap_or_default();
         let category: Option<String> = r.try_get("category").unwrap_or(None);
+        let city: Option<String> = r.try_get("city").unwrap_or(None);
         out.push(BizCard {
             name,
             slug: r.try_get("slug").unwrap_or_default(),
             category,
+            in_city: norm_city(city.as_deref().unwrap_or("")) == dir_city,
             rating: r
                 .try_get::<Option<f64>, _>("rating")
                 .unwrap_or(None)
@@ -2073,6 +2130,8 @@ async fn list_town_businesses(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
+            // Every row here already passed the town filter above, so it IS in this town.
+            in_city: true,
             description: r.try_get("description").unwrap_or(None),
         });
     }
@@ -3082,6 +3141,9 @@ pub async fn business_detail(
                     .unwrap_or(None)
                     .unwrap_or(0),
                 address: r.try_get("address").unwrap_or(None),
+                // Not selected by this query and not a city hub — the related grid stays a
+                // name/rating grid.
+                in_city: false,
                 // Not selected by this query — the related grid stays a name/rating grid.
                 description: None,
             })
