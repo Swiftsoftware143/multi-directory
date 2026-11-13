@@ -2479,6 +2479,34 @@ pub async fn directory_home(
 // Businesses list — GET /<slug>/businesses
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Resolve a `?category=` value to the category row that owns it.
+///
+/// Accepts a NAME or a SLUG, case-insensitively, and applies the accept-both rule the category
+/// page (`/{city}/{category-slug}`) and the business detail page already use: a directory's own
+/// row wins over the network-wide one. The resolved NAME is what the listing is filtered by, and
+/// it is what the canonical link carries — so `?category=bars-breweries` and
+/// `?category=Bars & Breweries` collapse onto one canonical URL and the filtered view lists
+/// exactly what the category page lists.
+///
+/// `None` means the value names no category this directory can see. The caller then filters on
+/// the literal value, which matches nothing — there is no silent unfiltered fallback (same rule
+/// as the API's `?category=`).
+async fn resolve_category(pool: &PgPool, dir: &DirectoryRec, raw: &str) -> Option<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT dc.name FROM directory_categories dc \
+         WHERE (lower(dc.name) = lower($1) OR lower(dc.slug) = lower($1)) \
+           AND (dc.directory_id = $2 OR dc.directory_id IS NULL) \
+         ORDER BY dc.directory_id NULLS LAST LIMIT 1",
+    )
+    .bind(raw)
+    .bind(dir.id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|n| !n.trim().is_empty())
+}
+
 pub async fn businesses_page(
     pool: &PgPool,
     host: Option<&str>,
@@ -2501,20 +2529,51 @@ pub async fn businesses_page(
         .filter(|p| *p > 0)
         .unwrap_or(1);
     let per = 24i64;
-    let category = params.get("category").cloned().filter(|c| !c.is_empty());
-
-    let canonical = if page > 1 {
-        format!("{}/{}/businesses?page={}", base, dir.slug, page)
-    } else {
-        format!("{}/{}/businesses", base, dir.slug)
+    // `?category=` accepts a name or a slug and is resolved to the category row the category
+    // page would use (directory's own row wins over the network-wide one). Until this was
+    // resolved the COUNT asked for a `businesses.category` column that has never existed: the
+    // query errored, `unwrap_or(0)` turned that into a total of 0, and the URL rendered an
+    // empty grid while the category page listed the same businesses.
+    let raw_category = params
+        .get("category")
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty());
+    let resolved_category = match &raw_category {
+        Some(v) => resolve_category(pool, &dir, v).await,
+        None => None,
     };
+    // The value the listing is actually filtered by: the resolved category's own name, or the
+    // raw value when it names nothing (which then matches no row, honestly, instead of quietly
+    // showing every business).
+    let category: Option<String> = resolved_category.or_else(|| raw_category.clone());
+
+    // One query-string builder for the canonical and the pager, so the two can never disagree
+    // about the parameter order or encoding (`Bars & Breweries` must go out as `%26`).
+    let page_href = |p: i64| -> String {
+        let mut q: Vec<String> = Vec::new();
+        if let Some(c) = &category {
+            q.push(format!("category={}", urlencode(c)));
+        }
+        if p > 1 {
+            q.push(format!("page={}", p));
+        }
+        let base_url = format!("{}/{}/businesses", base, dir.slug);
+        if q.is_empty() {
+            base_url
+        } else {
+            format!("{}?{}", base_url, q.join("&"))
+        }
+    };
+    let canonical = page_href(page);
 
     let total: i64 = {
         let q = if category.is_some() {
-            "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND is_active = true \
-             AND lower(coalesce(category::text,'')) = lower($2)"
+            "SELECT COUNT(*) FROM businesses b \
+             LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+             WHERE b.directory_id = $1 AND b.is_active = true \
+               AND lower(coalesce(dc.name,'')) = lower($2)"
         } else {
-            "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND is_active = true"
+            "SELECT COUNT(*) FROM businesses b WHERE b.directory_id = $1 AND b.is_active = true"
         };
         if let Some(c) = &category {
             sqlx::query_scalar(q)
@@ -2585,26 +2644,16 @@ pub async fn businesses_page(
     let cards: String = items.iter().map(|b| card_html(&dir.slug, b)).collect();
     let total_pages = ((total as f64) / (per as f64)).ceil().max(1.0) as i64;
     let mut pager = String::new();
-    let qs_cat = category
-        .as_ref()
-        .map(|c| format!("&category={}", urlencode(c)))
-        .unwrap_or_default();
     if page > 1 {
         pager.push_str(&format!(
-            "<a class=\"btn\" href=\"{base}/{slug}/businesses?page={p}{cat}\">← Previous</a>",
-            base = h(&base),
-            slug = h(&dir.slug),
-            p = page - 1,
-            cat = qs_cat
+            "<a class=\"btn\" href=\"{}\">← Previous</a>",
+            h(&page_href(page - 1))
         ));
     }
     if page < total_pages {
         pager.push_str(&format!(
-            "<a class=\"btn\" href=\"{base}/{slug}/businesses?page={p}{cat}\">Next →</a>",
-            base = h(&base),
-            slug = h(&dir.slug),
-            p = page + 1,
-            cat = qs_cat
+            "<a class=\"btn\" href=\"{}\">Next →</a>",
+            h(&page_href(page + 1))
         ));
     }
     let pager = if pager.is_empty() {
@@ -2653,7 +2702,7 @@ pub async fn businesses_page(
         crumbs = breadcrumbs(&[
             (&site, &format!("{}/", base)),
             (&dir.name, &format!("{}/{}/", base, dir.slug)),
-            ("Businesses", &canonical),
+            ("Businesses", &format!("{}/{}/businesses", base, dir.slug)),
         ]),
         label = h(&label),
         n = total,
