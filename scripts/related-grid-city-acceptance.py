@@ -45,8 +45,8 @@ CARD_RE = re.compile(
     r'<div class="meta">.*?</div>(?:<div class="meta">(?P<addr>.*?)</div>)?',
     re.S,
 )
-# "..., Clermont, FL 34711, USA" -> Clermont
-ADDR_CITY_RE = re.compile(r",\s*([^,]+?)\s*,\s*FL\s*\d{5}")
+# "4001 Avalon Rd, Winter Garden, FL 34787" -> Winter Garden; "Apopka, FL 32712" -> Apopka
+ADDR_CITY_RE = re.compile(r"(?:^|,)\s*([^,]+?)\s*,\s*FL\s*\d{5}")
 TAG_RE = re.compile(r"<[^>]+>")
 
 fails = []
