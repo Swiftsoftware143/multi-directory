@@ -746,6 +746,7 @@ fn city_hub_html(
     total: i64,
     top: &[BizCard],
     intro: Option<&str>,
+    cat_chips: &str,
 ) -> String {
     let place = if dir.state.trim().is_empty() {
         h(&dir.city)
@@ -790,6 +791,18 @@ fn city_hub_html(
                 h(para)
             ));
         }
+    }
+
+    // BROWSE BY CATEGORY — the internal-link half of the city page. Real anchors to every
+    // category page that has listings here, rendered server-side (the SPA's own chip row is a
+    // JS string, so before this the served HTML carried no /<city>/<category> link at all).
+    if !cat_chips.is_empty() {
+        out.push_str(&format!(
+            "<h2 style=\"font-size:1.15rem;font-weight:700;color:#0f172a;margin:0 0 10px\">Browse {} by category</h2>\
+<div style=\"display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px\">{}</div>",
+            h(&dir.city),
+            cat_chips
+        ));
     }
 
     if !top.is_empty() {
@@ -1266,7 +1279,15 @@ async fn list_businesses(
     out
 }
 
-fn card_html(base: &str, dir_slug: &str, b: &BizCard) -> String {
+/// One listing card for a server-rendered grid.
+///
+/// The href is ROOT-RELATIVE (`/city/businesses/slug`), the same form the city hub
+/// has always used. Absolute hrefs made the category pages' listing invisible to
+/// every anchor-count gate that looks for `href="/<city>/businesses/`, and a
+/// relative link is also the safe form when the same page is served on more than
+/// one host name. The canonical/JSON-LD URLs stay absolute — they are built from
+/// `base` by the caller.
+fn card_html(dir_slug: &str, b: &BizCard) -> String {
     let cat = b
         .category
         .as_ref()
@@ -1278,8 +1299,7 @@ fn card_html(base: &str, dir_slug: &str, b: &BizCard) -> String {
         .map(|a| format!("<div class=\"meta\">{}</div>", h(a)))
         .unwrap_or_default();
     format!(
-        "<a class=\"card\" href=\"{base}/{dir}/businesses/{slug}\"><h3>{name}</h3><div class=\"meta\">{cat}<span class=\"stars\">★ {rating:.1}</span> ({reviews})</div>{addr}</a>",
-        base = h(base),
+        "<a class=\"card\" href=\"/{dir}/businesses/{slug}\"><h3>{name}</h3><div class=\"meta\">{cat}<span class=\"stars\">★ {rating:.1}</span> ({reviews})</div>{addr}</a>",
         dir = h(dir_slug),
         slug = h(&b.slug),
         name = h(&b.name),
@@ -2117,10 +2137,7 @@ pub async fn town_page(
     // The page's own copy says "N businesses", so it must render all N: a cap of 100 on a town
     // with 148 listings (Melbourne on Palm Bay) advertised 148 and showed 100.
     let items = list_town_businesses(pool, dir.id, &town.key, 1200).await;
-    let cards: String = items
-        .iter()
-        .map(|b| card_html(&base, &dir.slug, b))
-        .collect();
+    let cards: String = items.iter().map(|b| card_html(&dir.slug, b)).collect();
 
     // W30(b): the articles filed to THIS town are reachable from its page — the town
     // is a real browse surface, not just a list of shops.
@@ -2386,10 +2403,14 @@ pub async fn directory_home(
     // components — carrying only the city's own <head> and (card W36) a
     // server-rendered trail + onward links that work without JavaScript.
     let nav_html = city_nav_html(pool, &dir, &base, &canonical).await;
+    // Category links, server-rendered into the city page's own block: the SPA builds its
+    // hero chips from a JS string, so without this the served HTML linked to no category
+    // page at all and every /<city>/<category> URL depended on the sitemap for discovery.
+    let cat_chips = city_category_chips(pool, &dir, 16).await;
     // The city's own listings in the served HTML — see city_hub_html: they live inside
     // `#app`, which the SPA replaces on boot, so only non-JavaScript readers and crawlers
     // ever see them and no visitor gets the list twice.
-    let app_html = city_hub_html(&dir, &site, total, &top, city_intro.as_deref());
+    let app_html = city_hub_html(&dir, &site, total, &top, city_intro.as_deref(), &cat_chips);
     let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id, &nav_html, &app_html);
 
     Some(html_response(StatusCode::OK, body))
@@ -2502,10 +2523,7 @@ pub async fn businesses_page(
         jsonld,
     };
 
-    let cards: String = items
-        .iter()
-        .map(|b| card_html(&base, &dir.slug, b))
-        .collect();
+    let cards: String = items.iter().map(|b| card_html(&dir.slug, b)).collect();
     let total_pages = ((total as f64) / (per as f64)).ceil().max(1.0) as i64;
     let mut pager = String::new();
     let qs_cat = category
@@ -2539,7 +2557,7 @@ pub async fn businesses_page(
     // Category links: the businesses index is the hub every category page hangs off,
     // so this block is what makes the category pages reachable by a crawler and by a
     // visitor (and passes the city page's inbound links down to every category).
-    let cat_chips = category_chips(pool, &dir, &base, None).await;
+    let cat_chips = category_chips(pool, &dir, None).await;
     // Towns: the crawl path from the businesses hub DOWN to each satellite town page
     // (W26). Real <a href> links, so every town is one hop from the city's business
     // index — and the city is one hop back up from the town.
@@ -2595,16 +2613,11 @@ pub async fn businesses_page(
 // Category page — GET /<slug>/<category-slug>
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Links to every category that has listings in this directory. The internal-link
-/// backbone: the businesses index links here once, and every category page links to
-/// its siblings, so no category page is an orphan and every listing below inherits
-/// the inbound links of its category.
-async fn category_chips(
-    pool: &PgPool,
-    dir: &DirectoryRec,
-    base: &str,
-    exclude: Option<&str>,
-) -> String {
+/// Every category that has at least one active listing in this directory, ordered by
+/// listing count. ONE query behind every category-link surface (the category page's
+/// sibling chips and the city hub's category chips), so the two can never disagree
+/// about which categories exist or how many listings sit under each.
+async fn category_rows(pool: &PgPool, dir: &DirectoryRec) -> Vec<(String, String, i64)> {
     let rows = sqlx::query(
         "SELECT dc.slug, dc.name, COUNT(b.id) AS n \
          FROM directory_categories dc \
@@ -2617,21 +2630,75 @@ async fn category_chips(
     .fetch_all(pool)
     .await
     .unwrap_or_default();
-    let mut out = String::new();
+    let mut out = Vec::with_capacity(rows.len());
     for r in &rows {
         let s: String = r.try_get("slug").unwrap_or_default();
         let name: String = r.try_get("name").unwrap_or_default();
         let n: i64 = r.try_get("n").unwrap_or(0);
-        if s.is_empty() || name.is_empty() || exclude == Some(s.as_str()) {
+        if s.is_empty() || name.is_empty() {
+            continue;
+        }
+        out.push((s, name, n));
+    }
+    out
+}
+
+/// Links to every category that has listings in this directory. The internal-link
+/// backbone: the businesses index links here once, and every category page links to
+/// its siblings, so no category page is an orphan and every listing below inherits
+/// the inbound links of its category.
+///
+/// Root-relative hrefs (`/city/category`) — the same origin-independent form the
+/// city hub's listing cards use.
+async fn category_chips(pool: &PgPool, dir: &DirectoryRec, exclude: Option<&str>) -> String {
+    let mut out = String::new();
+    for (s, name, n) in category_rows(pool, dir).await {
+        if exclude == Some(s.as_str()) {
             continue;
         }
         out.push_str(&format!(
-            "<a class=\"chip\" href=\"{}/{}/{}\">{} ({})</a>",
-            h(base),
+            "<a class=\"chip\" href=\"/{}/{}\">{} ({})</a>",
             h(&dir.slug),
             h(&s),
             h(&name),
             n
+        ));
+    }
+    out
+}
+
+/// The city hub's server-rendered category row: the ten-to-twenty categories with the
+/// most listings behind real `<a href="/city/category">` anchors.
+///
+/// Until this existed the hub's chips were a JavaScript string built into the SPA hero
+/// (`zh-category-pill`), so a crawler and a script-free visitor got the city's listings
+/// but no internal link to a single category page — every category URL in all ten cities
+/// had to be discovered from the sitemap alone. Rendered inline-styled because this block
+/// lives inside the SPA shell's `#app`, which does not load the SSR page CSS.
+async fn city_category_chips(pool: &PgPool, dir: &DirectoryRec, cap: usize) -> String {
+    let rows = category_rows(pool, dir).await;
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for (s, name, n) in rows.iter().take(cap) {
+        out.push_str(&format!(
+            "<a href=\"/{}/{}\" style=\"display:inline-flex;align-items:center;gap:6px;padding:7px 14px;\
+background:#fff;border:1px solid #e2e8f0;border-radius:100px;color:#0f172a;font-size:.85rem;\
+font-weight:600;text-decoration:none\">{}<span style=\"color:#64748b;font-weight:500\">({})</span></a>",
+            h(&dir.slug),
+            h(s),
+            h(name),
+            n
+        ));
+    }
+    if rows.len() > cap {
+        out.push_str(&format!(
+            "<a href=\"/{}/businesses\" style=\"display:inline-flex;align-items:center;padding:7px 14px;\
+background:#ea580c;border-radius:100px;color:#fff;font-size:.85rem;font-weight:600;\
+text-decoration:none\">All {} categories →</a>",
+            h(&dir.slug),
+            rows.len()
         ));
     }
     out
@@ -2749,11 +2816,8 @@ pub async fn category_page(
         jsonld,
     };
 
-    let cards: String = items
-        .iter()
-        .map(|b| card_html(&base, &dir.slug, b))
-        .collect();
-    let chips = category_chips(pool, &dir, &base, Some(&cat_slug)).await;
+    let cards: String = items.iter().map(|b| card_html(&dir.slug, b)).collect();
+    let chips = category_chips(pool, &dir, Some(&cat_slug)).await;
 
     let explore = explore_block(
         pool,
@@ -3041,10 +3105,7 @@ pub async fn business_detail(
         )
         .await
     } else {
-        let cards: Vec<String> = related
-            .iter()
-            .map(|b| card_html(&base, &dir.slug, b))
-            .collect();
+        let cards: Vec<String> = related.iter().map(|b| card_html(&dir.slug, b)).collect();
         let heading = match &category {
             Some(c) => format!("More {} in {}", h(c), h(&city)),
             None => format!("Similar businesses in {}", h(&city)),
