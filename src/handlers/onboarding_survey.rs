@@ -915,12 +915,25 @@ pub async fn public_submit_survey(
     }
 
     // ── City tag: the three onboarding lists are account-level, so the city is what
-    // tells one directory's responders from another. Sent as the plain display name;
-    // CoreSwift auto-creates a tag it has never seen, so a brand-new city needs no setup.
-    let city_tag = directory_city
+    // tells one directory's responders from another. A city the respondent typed wins
+    // (someone on the wrong page, or a business serving another town); otherwise the
+    // page's own city. CoreSwift auto-creates a tag it has never seen, so a new city
+    // needs no setup.
+    let answered_city = answers
+        .iter()
+        .find(|a| a.get("question_id").and_then(|v| v.as_str()) == Some("city"))
+        .and_then(|a| a.get("value"))
+        .map(field_value_string)
+        .unwrap_or_default();
+    let city_source = if answered_city.trim().is_empty() {
+        directory_city.clone()
+    } else {
+        answered_city
+    };
+    let city_tag = city_source
         .split(',')
         .next()
-        .unwrap_or(&directory_city)
+        .unwrap_or(&city_source)
         .trim()
         .to_string();
     if !city_tag.is_empty() && !all_tags.iter().any(|existing| existing == &city_tag) {
