@@ -445,13 +445,24 @@ pub fn start_description_backfill(db: PgPool) {
 }
 
 /// Re-render paragraphs this module authored, so they pick up a grown fact set (hours,
-/// kanban t_2b630e2a). Ownership is proven, never assumed: the stored text must equal exactly
-/// what `compose` produces from the same row, same seed and WITHOUT hours. Copy an owner wrote
-/// or edited cannot match, and is never touched.
+/// kanban t_2b630e2a) and a category that changed after the paragraph was written
+/// (kanban t_b2f7201e — a re-filed listing kept saying "is a landscaping company").
+///
+/// Ownership is proven, never assumed: the stored text must equal exactly what `compose`
+/// produces from the same row and seed. Two shapes are possible, written before hours joined the
+/// fact set and written after, so both are tried; and because the category itself may have moved
+/// since, every category in the catalogue is tried too. Text an owner wrote or edited matches no
+/// composition of this row, and is never touched.
 ///
 /// One-shot (`refresh-copy` CLI), not a timer: after the first pass it would only re-read.
 /// Returns (rewritten, already_current, not_ours).
 pub async fn refresh_machine_copy(db: &PgPool) -> (usize, usize, usize) {
+    // Every category name, for the ownership test only — the written text uses the row's own.
+    let categories: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM directory_categories ORDER BY name")
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
     let rows = match sqlx::query(
         "SELECT b.id, b.name, b.description, b.place_id, \
                 COALESCE(NULLIF(btrim(b.city), ''), d.city, '') AS city, \
@@ -516,18 +527,32 @@ pub async fn refresh_machine_copy(db: &PgPool) -> (usize, usize, usize) {
         };
 
         let seed = seed_for(id);
-        let legacy = compose(
-            &Facts {
-                hours: None,
-                ..facts
-            },
-            seed,
-        );
-        let Some(legacy) = legacy else {
-            not_ours += 1;
-            continue;
+        let stored = existing.trim();
+        // Ownership test: does the stored text equal a composition of THIS row's own facts and
+        // seed? Both hours shapes are tried, and — because a listing can be re-filed after its
+        // paragraph was written — every catalogue category is tried before we call it not ours.
+        let written_as = |cat: Option<&str>, with_hours: bool| {
+            compose(
+                &Facts {
+                    category: cat,
+                    hours: if with_hours { hours.as_ref() } else { None },
+                    ..facts
+                },
+                seed,
+            )
+            .as_deref()
+                == Some(stored)
         };
-        if existing.trim() != legacy {
+        let mut owned = written_as(facts.category, true) || written_as(facts.category, false);
+        if !owned {
+            for c in &categories {
+                if written_as(Some(c.as_str()), true) || written_as(Some(c.as_str()), false) {
+                    owned = true;
+                    break;
+                }
+            }
+        }
+        if !owned {
             not_ours += 1;
             continue;
         }
@@ -535,7 +560,7 @@ pub async fn refresh_machine_copy(db: &PgPool) -> (usize, usize, usize) {
             not_ours += 1;
             continue;
         };
-        if fresh == existing.trim() {
+        if fresh == stored {
             current += 1;
             continue;
         }
@@ -632,23 +657,26 @@ pub async fn rewrite_for_category_change(
         hours: hours.as_ref(),
     };
     let seed = seed_for(id);
-    let Some(legacy) = compose(
-        &Facts {
-            category: old_category,
-            hours: None,
-            ..facts
-        },
-        seed,
-    ) else {
-        return false;
+    let stored = existing.trim();
+    let as_old = |with_hours: bool| {
+        compose(
+            &Facts {
+                category: old_category,
+                hours: if with_hours { hours.as_ref() } else { None },
+                ..facts
+            },
+            seed,
+        )
+        .as_deref()
+            == Some(stored)
     };
-    if existing.trim() != legacy {
+    if !as_old(true) && !as_old(false) {
         return false;
     }
     let Some(fresh) = compose(&facts, seed) else {
         return false;
     };
-    if fresh == existing.trim() {
+    if fresh == stored {
         return false;
     }
     sqlx::query(
