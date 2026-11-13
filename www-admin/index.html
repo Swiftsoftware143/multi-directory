@@ -207,7 +207,8 @@ var NAV_ITEMS=[
   {id:'ledgers',label:'🏪 Business Ledgers',icon:''},
   {id:'logs',label:'📜 Clearing Logs',icon:''},
   {id:'scan',label:'🛒 Scan Simulator',icon:''},
-  {id:'expire',label:'⏳ Expire Points',icon:''}
+  {id:'expire',label:'⏳ Expire Points',icon:''},
+  {id:'mcp',label:'🔌 MCP',icon:''}
 ];
 function renderNav(){
   var nav=document.getElementById('nav');nav.innerHTML='';
@@ -228,6 +229,7 @@ function loadView(id){
   else if(id==='logs')loadLogs();
   else if(id==='scan')renderScan();
   else if(id==='expire')renderExpire();
+  else if(id==='mcp')loadMcp();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -458,6 +460,127 @@ async function doExpire(){
       '<div class="text-xs text-slate-400 mt-1">Cutoff: '+esc(d.cutoff||'-')+'</div></div>';
     toast('Expiry complete','success');
   }catch(e){r.innerHTML='<div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-600">'+esc(e.message)+'</div>';}
+}
+
+// ─────────────────────────────────────────────────────────────
+// MCP — internal fleet surface (read-only)
+// ─────────────────────────────────────────────────────────────
+var MCP_TOOLS=[
+  ['multi_directory_list_directories','Directories with city/state, the locations they serve and their listing count.'],
+  ['multi_directory_search_listings','Search business listings by name or description, optionally by category or directory.'],
+  ['multi_directory_listing_count','Total business listings visible to this credential, optionally scoped to one directory.'],
+  ['multi_directory_subscriber_count','Newsletter subscriber totals, optionally scoped to one directory.']
+];
+var MCP_CONFIG_TEXT='{\n'
+ +'  "mcpServers": {\n'
+ +'    "multi-directory": {\n'
+ +'      "url": "https://hooks.swiftsoftware.net/mcp",\n'
+ +'      "headers": { "Authorization": "Bearer YOUR_API_KEY" }\n'
+ +'    }\n'
+ +'  }\n'
+ +'}';
+var MCP_LAST_KEY='';
+
+async function mcpReq(path, opts){
+  opts=opts||{};
+  opts.headers=opts.headers||{};
+  if(TOKEN) opts.headers['Authorization']='Bearer '+TOKEN;
+  var res=await fetch('/api/v1'+path, opts);
+  var data=null;
+  try{ data=await res.json(); }catch(e){}
+  if(!res.ok){
+    var msg=(data&&(data.error||data.message||data.detail))?(data.error||data.message||data.detail):('HTTP '+res.status);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function loadMcp(){
+  var v=document.getElementById('view');
+  v.innerHTML=
+    '<div class="card"><h3 class="font-bold text-slate-800 mb-1">MCP — connect your AI tools</h3>'+
+    '<p class="text-sm text-slate-500 mb-4">This is an <b>internal fleet surface</b> for Multi-Directory (ZaarHub) — not a customer feature. Point an internal MCP client at the endpoint below with this admin’s API key as the Bearer token. Read-only, and scoped to the directories this admin owns.</p>'+
+    '<div class="border border-slate-200 rounded-lg p-4 mb-3">'+
+      '<div class="label">Endpoint</div>'+
+      '<div class="flex items-center gap-2 flex-wrap">'+
+        '<code class="px-2 py-1 bg-slate-100 rounded text-xs">https://hooks.swiftsoftware.net/mcp</code>'+
+        '<button class="btn btn-outline btn-sm" onclick="mcpClip(\'https://hooks.swiftsoftware.net/mcp\')">Copy</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="border border-slate-200 rounded-lg p-4 mb-3">'+
+      '<div class="label">Your token</div>'+
+      '<p class="text-xs text-slate-400 mb-2">The MCP server accepts this admin’s API key as a Bearer token. It is listed here by prefix only — the secret is never shown until you Reveal it (which re-asks for your password). Treat it like a password.</p>'+
+      '<div id="mcp-key-list" class="mb-2"></div>'+
+      '<div id="mcp-key-out"></div>'+
+    '</div>'+
+    '<div class="border border-slate-200 rounded-lg p-4 mb-3">'+
+      '<div class="label">What it can read</div>'+
+      '<ul class="text-xs text-slate-600 leading-6 pl-4 list-disc">'+mcpToolsHtml()+'</ul>'+
+      '<p class="text-xs text-slate-400 mt-2">Every tool is a SELECT. There is no write tool and no free-form SQL door.</p>'+
+    '</div>'+
+    '<div class="border border-slate-200 rounded-lg p-4 mb-3">'+
+      '<div class="label">Connect</div>'+
+      '<p class="text-xs text-slate-400 mb-2">Paste into your MCP client config (Claude Desktop / Cursor). Replace YOUR_API_KEY with this admin’s key.</p>'+
+      '<pre class="text-xs bg-slate-900 text-slate-100 p-3 rounded overflow-x-auto">'+esc(MCP_CONFIG_TEXT)+'</pre>'+
+      '<button class="btn btn-outline btn-sm mt-2" onclick="mcpClip(MCP_CONFIG_TEXT)">Copy config</button>'+
+    '</div>'+
+    '</div>';
+  mcpLoadKey();
+}
+function mcpToolsHtml(){
+  return MCP_TOOLS.map(function(t){
+    return '<li><code class="text-indigo-600">'+esc(t[0])+'</code> — '+esc(t[1])+'</li>';
+  }).join('');
+}
+function mcpClip(t){
+  var ok=false;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t); ok=true; } }catch(e){}
+  if(!ok){ try{ var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); ok=document.execCommand('copy'); document.body.removeChild(ta); }catch(e){} }
+  toast(ok?'Copied':'Could not copy automatically — select and press Ctrl+C', ok?'success':'error');
+}
+function mcpLoadKey(){
+  var box=document.getElementById('mcp-key-list'); if(!box) return;
+  mcpReq('/me/api-keys').then(function(d){
+    var ks=(d&&d.keys)||[];
+    var live=ks.filter(function(k){return k.is_active;});
+    if(!live.length){ box.innerHTML='<p class="text-sm text-slate-400">No active API keys yet.</p>'; return; }
+    var h='';
+    live.forEach(function(k){
+      h+='<div class="flex items-center justify-between gap-2 py-2 border-b border-slate-100">'+
+        '<span class="text-sm"><strong>'+esc(k.name||'API key')+'</strong> '+
+        '<code class="text-xs text-indigo-600">'+esc(k.prefix)+'&hellip;</code></span>'+
+        '<span class="text-xs whitespace-nowrap">'+
+        '<a href="#" class="text-blue-600 mr-2" onclick="event.preventDefault();mcpReveal(\''+k.id+'\',false)">Reveal</a>'+
+        '<a href="#" class="text-blue-600 mr-2" onclick="event.preventDefault();mcpReveal(\''+k.id+'\',true)">Copy</a>'+
+        '<a href="#" class="text-amber-600" onclick="event.preventDefault();mcpRegen(\''+k.id+'\')">Regenerate</a>'+
+        '</span></div>';
+    });
+    box.innerHTML=h;
+  }).catch(function(e){ box.innerHTML='<p class="text-sm text-red-500">'+esc(e.message||'Could not load API keys')+'</p>'; });
+}
+function mcpReveal(id,copyOnly){
+  var pw=prompt('Enter your account password to reveal this key');
+  if(pw===null) return;
+  mcpReq('/me/api-keys/'+id+'/reveal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}).then(function(r){
+    var tok=r.key||'';
+    if(copyOnly){ mcpClip(tok); return; }
+    mcpShow('You can reveal this key again any time.',tok);
+  }).catch(function(e){ toast(e.message||'Could not reveal the key — check the password'); });
+}
+function mcpShow(note,tok){
+  MCP_LAST_KEY=tok;
+  var box=document.getElementById('mcp-key-out'); if(!box) return;
+  box.innerHTML='<div class="flex items-center gap-2 flex-wrap bg-blue-50 border border-blue-200 rounded p-2">'+
+    '<input readonly value="'+esc(tok)+'" class="input flex-1 text-xs" onfocus="this.select()">'+
+    '<button class="btn btn-sm" onclick="mcpClip(MCP_LAST_KEY)">Copy</button>'+
+    (note?'<span class="text-xs text-slate-600">'+esc(note)+'</span>':'')+'</div>';
+}
+function mcpRegen(id){
+  if(!confirm('Regenerate this key? The old key stops working immediately, so anything using it — including any connected MCP client — must be updated with the new one.')) return;
+  mcpReq('/me/api-keys/'+id+'/regenerate',{method:'POST'}).then(function(r){
+    mcpShow('The old key no longer works. Use this new one in your MCP client.',r.key);
+    mcpLoadKey();
+  }).catch(function(e){ toast(e.message||'Could not regenerate the key'); });
 }
 
 // ─────────────────────────────────────────────────────────────
