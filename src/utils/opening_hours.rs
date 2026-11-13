@@ -245,46 +245,89 @@ impl Week {
         Some(Value::Array(specs))
     }
 
-    /// One short factual phrase for the description generator ("open 11 AM – 11 PM daily",
-    /// "open until 8 PM on weekdays", "closed on Sunday"). `None` when the week says nothing
-    /// worth repeating.
-    #[allow(dead_code)] // wired into the description fact set once the block is proven live
+    /// One short factual phrase for the description generator, always carrying the times:
+    /// "open 11 AM – 11 PM seven days a week", "open 8 AM – 8 PM on weekdays and closed on
+    /// Saturday and Sunday", "open around the clock". `None` when nothing is open at all.
     pub fn summary(&self) -> Option<String> {
         if self.is_24_7() {
-            return Some("open 24 hours".to_string());
+            return Some("open around the clock".to_string());
         }
-        let weekdays_same =
-            self.days[0..5].iter().all(|d| *d == self.days[0]) && !self.days[0].is_empty();
-        if weekdays_same {
-            let span = &self.days[0];
-            let hours = span.iter().map(Span::text).collect::<Vec<_>>().join(", ");
-            let weekend_all_same = self.days[5..7].iter().all(|d| *d == self.days[5]);
-            if weekend_all_same && self.days[5] == self.days[0] {
-                return Some(format!("open {hours} seven days a week"));
+        // Days that share a schedule are described together.
+        let mut groups: Vec<(Vec<Span>, Vec<&'static str>)> = Vec::new();
+        for (i, d) in self.days.iter().enumerate() {
+            if d.is_empty() {
+                continue;
             }
-            if weekend_all_same && self.days[5].is_empty() {
-                return Some(format!("open {hours} on weekdays"));
+            match groups.iter_mut().find(|(g, _)| g == d) {
+                Some((_, days)) => days.push(DAY_LABELS[i]),
+                None => groups.push((d.clone(), vec![DAY_LABELS[i]])),
             }
-            return Some(format!("open {hours} Monday to Friday"));
         }
+        if groups.is_empty() {
+            return None;
+        }
+        groups.sort_by_key(|(_, days)| std::cmp::Reverse(days.len()));
+        let (spans, days) = &groups[0];
+        let hours = spans.iter().map(Span::text).collect::<Vec<_>>().join(", ");
+        let mut phrase = format!("open {hours} {}", day_phrase(days));
         let closed: Vec<&str> = DAY_LABELS
             .iter()
             .enumerate()
             .filter(|(i, _)| self.days[*i].is_empty())
             .map(|(_, l)| *l)
             .collect();
-        if closed.len() == 7 {
-            return None;
+        match closed.len() {
+            0 => {
+                if groups.len() > 1 {
+                    let others: Vec<&str> = groups[1..]
+                        .iter()
+                        .flat_map(|(_, d)| d.iter().copied())
+                        .collect();
+                    phrase.push_str(&format!(", with different hours on {}", list_and(&others)));
+                }
+            }
+            _ => phrase.push_str(&format!(" and closed on {}", list_and(&closed))),
         }
-        if closed.len() == 1 {
-            return Some(format!("closed on {}", closed[0]));
-        }
-        if !closed.is_empty() {
-            return Some(format!("closed on {} and {}", closed[0], closed[1]));
-        }
-        let first = self.days.iter().flatten().next()?;
-        Some(format!("open {} on its open days", first.text()))
+        Some(phrase)
     }
+}
+
+/// "a", "a and b", "a, b and c".
+fn list_and(items: &[&'static str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [rest @ .., last] => format!("{} and {}", rest.join(", "), last),
+    }
+}
+
+/// "seven days a week", "on weekdays", "Monday to Friday", "on Monday".
+fn day_phrase(days: &[&'static str]) -> String {
+    let mut idx: Vec<usize> = days
+        .iter()
+        .filter_map(|d| DAY_LABELS.iter().position(|x| x == d))
+        .collect();
+    idx.sort_unstable();
+    if idx.len() == 7 {
+        return "seven days a week".to_string();
+    }
+    if idx == [0, 1, 2, 3, 4] {
+        return "on weekdays".to_string();
+    }
+    let consecutive = idx.windows(2).all(|w| w[1] == w[0] + 1);
+    if idx.len() >= 3 && consecutive {
+        return format!(
+            "{} to {}",
+            DAY_LABELS[idx[0]],
+            DAY_LABELS[idx[idx.len() - 1]]
+        );
+    }
+    if idx.len() == 1 {
+        return format!("on {}", DAY_LABELS[idx[0]]);
+    }
+    let names: Vec<&str> = idx.iter().map(|i| DAY_LABELS[*i]).collect();
+    let (last, rest) = names.split_last().expect("non-empty");
+    format!("on {} and {}", rest.join(", "), last)
 }
 
 fn hhmm(mins: i32) -> String {

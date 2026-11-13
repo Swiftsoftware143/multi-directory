@@ -134,6 +134,19 @@ async fn main() {
         }
     }
 
+    // One-shot re-render of the paragraphs this app authored, so they carry the listing's
+    // opening hours now that the fact set includes them (kanban t_2b630e2a). Only text that is
+    // provably ours (an exact match for the pre-hours composition of the same row) is rewritten;
+    // owner-written copy is never touched.
+    if cli.get(1).map(String::as_str) == Some("refresh-copy") {
+        let (rewritten, current, not_ours) =
+            crate::utils::business_copy::refresh_machine_copy(&pool).await;
+        println!(
+            "refresh-copy: rewritten={rewritten} already_current={current} not_ours={not_ours}"
+        );
+        std::process::exit(0);
+    }
+
     let state = AppState::new(pool, config.clone());
 
     // kanban t_0b3cce4d — the brand host of every directory comes from DATA

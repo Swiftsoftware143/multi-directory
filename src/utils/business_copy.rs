@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 /// The facts a description may state. Every field except `name` is optional because real
 /// imports are incomplete.
+#[derive(Clone, Copy)]
 pub struct Facts<'a> {
     pub name: &'a str,
     pub category: Option<&'a str>,
@@ -30,6 +31,9 @@ pub struct Facts<'a> {
     pub website: Option<&'a str>,
     pub rating: Option<f64>,
     pub review_count: i32,
+    /// The listing's real opening week, when one resolved from the cache (kanban t_2b630e2a).
+    /// `None` means the paragraph says nothing about hours rather than guessing.
+    pub hours: Option<&'a crate::utils::opening_hours::Week>,
 }
 
 fn non_empty(v: Option<&str>) -> Option<&str> {
@@ -241,6 +245,17 @@ pub fn compose(f: &Facts, seed: u64) -> Option<String> {
         _ => {}
     }
 
+    // Opening hours — the one differentiating fact the row already holds (kanban t_2b630e2a).
+    // The phrase always carries the times, and the frame rotates with the same seed so the
+    // paragraph is not four restatements of name + address + rating.
+    if let Some(hours) = f.hours.and_then(|w| w.summary()) {
+        out.push(match (v + 1) % 3 {
+            0 => format!("It is {hours}."),
+            1 => format!("You will find it {hours}."),
+            _ => format!("Expect it to be {hours}."),
+        });
+    }
+
     // Street address.
     if let Some(a) = non_empty(f.address) {
         let mut addr = tidy_address(a);
@@ -291,7 +306,7 @@ pub fn seed_for(id: Uuid) -> u64 {
 /// Returns true when a row was written.
 pub async fn ensure_description(db: &PgPool, id: Uuid) -> bool {
     let row = sqlx::query(
-        "SELECT b.name, b.description, \
+        "SELECT b.name, b.description, b.place_id, \
                 COALESCE(NULLIF(btrim(b.city), ''), d.city, '') AS city, \
                 COALESCE(NULLIF(btrim(b.state), ''), d.state, '') AS state, \
                 b.address, b.zip, b.phone, b.website, b.rating, b.review_count, \
@@ -329,6 +344,18 @@ pub async fn ensure_description(db: &PgPool, id: Uuid) -> bool {
     let rating: Option<f64> = row.try_get("rating").unwrap_or(None);
     let review_count: i32 = row.try_get("review_count").unwrap_or(0);
     let category: Option<String> = row.try_get("category").unwrap_or(None);
+    let place_id: Option<String> = row.try_get("place_id").unwrap_or(None);
+
+    // Hours are a stored fact, read from the cache the same way the detail page reads them
+    // (kanban t_2b630e2a) — never invented, and absent when no cache row resolves.
+    let hours = crate::utils::opening_hours::lookup(
+        db,
+        place_id.as_deref(),
+        &name,
+        address.as_deref(),
+        &city,
+    )
+    .await;
 
     let facts = Facts {
         name: &name,
@@ -341,6 +368,7 @@ pub async fn ensure_description(db: &PgPool, id: Uuid) -> bool {
         website: website.as_deref(),
         rating,
         review_count,
+        hours: hours.as_ref(),
     };
     let Some(text) = compose(&facts, seed_for(id)) else {
         return false;
@@ -416,6 +444,127 @@ pub fn start_description_backfill(db: PgPool) {
     });
 }
 
+/// Re-render paragraphs this module authored, so they pick up a grown fact set (hours,
+/// kanban t_2b630e2a). Ownership is proven, never assumed: the stored text must equal exactly
+/// what `compose` produces from the same row, same seed and WITHOUT hours. Copy an owner wrote
+/// or edited cannot match, and is never touched.
+///
+/// One-shot (`refresh-copy` CLI), not a timer: after the first pass it would only re-read.
+/// Returns (rewritten, already_current, not_ours).
+pub async fn refresh_machine_copy(db: &PgPool) -> (usize, usize, usize) {
+    let rows = match sqlx::query(
+        "SELECT b.id, b.name, b.description, b.place_id, \
+                COALESCE(NULLIF(btrim(b.city), ''), d.city, '') AS city, \
+                COALESCE(NULLIF(btrim(b.state), ''), d.state, '') AS state, \
+                b.address, b.zip, b.phone, b.website, b.rating, b.review_count, \
+                c.name AS category \
+         FROM businesses b \
+         LEFT JOIN directory_categories c ON c.id = b.category_id \
+         LEFT JOIN directories d ON d.id = b.directory_id \
+         WHERE COALESCE(b.is_active, true) AND b.description IS NOT NULL \
+           AND btrim(b.description) <> '' \
+         ORDER BY b.id",
+    )
+    .fetch_all(db)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("[description] refresh could not list rows: {e}");
+            return (0, 0, 0);
+        }
+    };
+
+    let (mut rewritten, mut current, mut not_ours) = (0usize, 0usize, 0usize);
+    for row in rows {
+        let id: Uuid = match row.try_get("id") {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+        let existing: String = row.try_get("description").unwrap_or_default();
+        let name: String = row.try_get("name").unwrap_or_default();
+        let city: String = row.try_get("city").unwrap_or_default();
+        let state: String = row.try_get("state").unwrap_or_default();
+        let address: Option<String> = row.try_get("address").unwrap_or(None);
+        let place_id: Option<String> = row.try_get("place_id").unwrap_or(None);
+        let zip: Option<String> = row.try_get("zip").unwrap_or(None);
+        let phone: Option<String> = row.try_get("phone").unwrap_or(None);
+        let website: Option<String> = row.try_get("website").unwrap_or(None);
+        let category: Option<String> = row.try_get("category").unwrap_or(None);
+
+        let hours = crate::utils::opening_hours::lookup(
+            db,
+            place_id.as_deref(),
+            &name,
+            address.as_deref(),
+            &city,
+        )
+        .await;
+
+        let facts = Facts {
+            name: &name,
+            category: category.as_deref(),
+            city: &city,
+            state: &state,
+            address: address.as_deref(),
+            zip: zip.as_deref(),
+            phone: phone.as_deref(),
+            website: website.as_deref(),
+            rating: row.try_get::<Option<f64>, _>("rating").unwrap_or(None),
+            review_count: row.try_get::<i32, _>("review_count").unwrap_or(0),
+            hours: hours.as_ref(),
+        };
+
+        let seed = seed_for(id);
+        let legacy = compose(
+            &Facts {
+                hours: None,
+                ..facts
+            },
+            seed,
+        );
+        let Some(legacy) = legacy else {
+            not_ours += 1;
+            continue;
+        };
+        if existing.trim() != legacy {
+            not_ours += 1;
+            continue;
+        }
+        let Some(fresh) = compose(&facts, seed) else {
+            not_ours += 1;
+            continue;
+        };
+        if fresh == existing.trim() {
+            current += 1;
+            continue;
+        }
+        let written = sqlx::query(
+            "UPDATE businesses SET description = $2, content_updated_at = NOW() \
+             WHERE id = $1 AND description = $3",
+        )
+        .bind(id)
+        .bind(&fresh)
+        .bind(&existing)
+        .execute(db)
+        .await
+        .map(|r| r.rows_affected())
+        .unwrap_or(0);
+        if written > 0 {
+            rewritten += 1;
+        }
+    }
+    if rewritten > 0 {
+        tracing::info!(
+            rewritten,
+            current,
+            not_ours,
+            "[description] refreshed machine copy"
+        );
+    }
+    (rewritten, current, not_ours)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +581,7 @@ mod tests {
             website: Some("https://www.fineinkstudios.com/?utm_source=googleplaces"),
             rating: Some(5.0),
             review_count: 1124,
+            hours: None,
         }
     }
 
@@ -447,6 +597,27 @@ mod tests {
         assert!(text.contains("fineinkstudios.com"));
         assert!(!text.contains("utm_source"));
         assert!(!text.contains("USA"));
+    }
+
+    #[test]
+    fn hours_are_stated_when_known_and_absent_when_not() {
+        let week = crate::utils::opening_hours::from_google(&serde_json::json!({"periods":
+            (1..=5).map(|d| serde_json::json!({
+                "open": {"day": d, "hour": 9, "minute": 0},
+                "close": {"day": d, "hour": 17, "minute": 0}
+            })).collect::<Vec<_>>()
+        }))
+        .expect("week");
+        let with = Facts {
+            hours: Some(&week),
+            ..facts("Fine Ink Studios", Some("Tattoo Parlor"))
+        };
+        let text = compose(&with, 7).unwrap();
+        assert!(text.contains("9 AM – 5 PM"), "{text}");
+        assert!(text.contains("weekdays"), "{text}");
+        let without = compose(&facts("Fine Ink Studios", Some("Tattoo Parlor")), 7).unwrap();
+        assert!(!without.contains("9 AM"), "{without}");
+        assert_ne!(text, without);
     }
 
     #[test]
@@ -503,6 +674,7 @@ mod tests {
             website: None,
             rating: Some(5.0),
             review_count: 341,
+            hours: None,
         };
         let text = compose(&f, 3).unwrap();
         assert!(text.contains("Whale Roofing & Construction"));

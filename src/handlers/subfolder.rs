@@ -518,8 +518,8 @@ Find a local business in {n_cities} {region} cities</h1>\
 <p style=\"margin:0 0 12px;max-width:70ch\">ZaarHub is a local business directory organised city by \
 city: {place_phrase}. Between them these {n_cities} directories hold {total} active listings \u{2014} \
 restaurants and cafés, dentists, hair salons, tattoo studios, gyms, contractors, law firms, med spas \
-and more \u{2014} each with its address, phone number, opening hours, category and the customer \
-rating it has earned.</p>\
+and more \u{2014} each with its address, phone number, category and the customer \
+rating it has earned, plus opening hours wherever the business publishes them.</p>\
 <p style=\"margin:0 0 12px;max-width:70ch\">Every city below is its own directory with its own front \
 page, its own category pages, local articles and weekly deals, so the business you find is one that \
 actually serves your street rather than the nearest big-city list. Pick the town you live in, choose \
