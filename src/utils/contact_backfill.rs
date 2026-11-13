@@ -1,11 +1,14 @@
 //! Fill `businesses.phone` / `businesses.website` from the Places cache (kanban t_774bf5ce).
 //!
-//! Measured 2026-11-13 on the live DB: 329 active listings carry an empty website and 184 an
-//! empty phone while `google_places_cache` already holds the value for 19 of the website rows
-//! (16 by exact place id, 3 by normalised name + street line + city) and 20 of the phone rows
-//! (17 + 3). The detail template renders only `businesses.website` / `businesses.phone`, so a
-//! listing whose cache row carries the site shows nothing: the cache is filled, the listing is
-//! not. Same one-way wiring gap as `enriched_at` stamped without writing the field.
+//! Measured 2026-11-13 on the live DB: 329 active listings carried an empty website and 184 an
+//! empty phone while `google_places_cache` already held the value for 16 of the website rows and
+//! 17 of the phone rows — every one by exact place id. The name+street arm of the guarded match
+//! added nothing (the three rows it reached were place-id matches too), which is the honest answer
+//! to "could a looser join have found more": the 17/26 in the card came from a name-only join that
+//! pairs a business with a same-named business elsewhere. The detail template renders only
+//! `businesses.website` / `businesses.phone`, so a listing whose cache row carried the site showed
+//! nothing: the cache was filled, the listing was not. Same one-way wiring gap as `enriched_at`
+//! stamped without writing the field.
 //!
 //! Two rules encoded here:
 //!   * **never a bare name match.** Duplicate business names across the ten cities are real, so a
@@ -15,7 +18,9 @@
 //!     when the street matches — stricter than the hours join, and rows a street match would reach
 //!     in another city are reported as left alone rather than filled.
 //!   * **never overwrite the operator's own value.** Only `NULL`/blank columns are written; the
-//!     `UPDATE` carries that condition too, so a concurrent operator edit wins the race.
+//!     `UPDATE` carries that condition too, so a concurrent operator edit wins the race. A
+//!     **claimed** listing is skipped entirely — a blank phone there may be a deliberate choice,
+//!     the same rule the refresh pipeline applies.
 //!
 //! The pass is one-shot and read-mostly: `run(db, false)` reports the plan, `run(db, true)` writes.
 //! No Google call is made — cached values only.
@@ -36,6 +41,10 @@ pub struct Report {
     pub phone_filled: usize,
     pub by_place_id: usize,
     pub by_name_street: usize,
+    /// Claimed listings left alone: their blank contact is the operator's own record.
+    pub skipped_claimed: usize,
+    pub claimed_website_empty: usize,
+    pub claimed_phone_empty: usize,
     /// Left alone: name + street matched a cache row that carries the value, but the cached
     /// address does not name the listing's own city (a duplicate name in another city).
     pub website_city_disagree: i64,
@@ -255,7 +264,10 @@ pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Filled>), Stri
     };
 
     let rows = sqlx::query(
-        "SELECT id, name, address, city, place_id FROM businesses \
+        "SELECT id, name, address, city, place_id, coalesce(claimed, false) AS claimed, \
+                coalesce(trim(phone), '') = '' AS p_empty, \
+                coalesce(trim(website), '') = '' AS w_empty \
+         FROM businesses \
          WHERE is_active AND (coalesce(trim(phone), '') = '' OR coalesce(trim(website), '') = '') \
          ORDER BY name, id",
     )
@@ -272,21 +284,27 @@ pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Filled>), Stri
         let place_id: Option<String> = row.try_get("place_id").ok();
         let place_id = place_id.filter(|p| !p.trim().is_empty());
         report.scanned += 1;
+        let p_empty = row.try_get::<bool, _>("p_empty").unwrap_or(false);
+        let w_empty = row.try_get::<bool, _>("w_empty").unwrap_or(false);
+
+        // A claimed listing belongs to its operator: a blank phone or website may be a deliberate
+        // choice, so the pass never fills one. Same rule the refresh pipeline applies.
+        if row.try_get::<bool, _>("claimed").unwrap_or(false) {
+            report.skipped_claimed += 1;
+            if p_empty {
+                report.claimed_phone_empty += 1;
+            }
+            if w_empty {
+                report.claimed_website_empty += 1;
+            }
+            continue;
+        }
 
         let mut phone: Option<String> = None;
         let mut website: Option<String> = None;
         let mut tiers: Vec<(Field, bool, String)> = Vec::new();
 
-        // The listing's stored values decide what may be touched — never the cache.
-        let cur: (String, String) = sqlx::query_as(
-            "SELECT coalesce(trim(phone), ''), coalesce(trim(website), '') FROM businesses WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_one(db)
-        .await
-        .map_err(|e| format!("read listing: {e}"))?;
-
-        if cur.0.is_empty() {
+        if p_empty {
             if let Some((value, by_place)) = lookup(
                 db,
                 Field::Phone,
@@ -301,7 +319,7 @@ pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Filled>), Stri
                 tiers.push((Field::Phone, by_place, value));
             }
         }
-        if cur.1.is_empty() {
+        if w_empty {
             if let Some((value, by_place)) = lookup(
                 db,
                 Field::Website,
@@ -372,11 +390,16 @@ pub async fn run(db: &PgPool, apply: bool) -> Result<(Report, Vec<Filled>), Stri
         }
     }
 
-    report.website_no_match =
-        (report.website_empty - report.website_recovered as i64 - report.website_city_disagree)
-            .max(0);
-    report.phone_no_match =
-        (report.phone_empty - report.phone_recovered as i64 - report.phone_city_disagree).max(0);
+    report.website_no_match = (report.website_empty
+        - report.website_recovered as i64
+        - report.website_city_disagree
+        - report.claimed_website_empty as i64)
+        .max(0);
+    report.phone_no_match = (report.phone_empty
+        - report.phone_recovered as i64
+        - report.phone_city_disagree
+        - report.claimed_phone_empty as i64)
+        .max(0);
 
     if apply {
         let after = census(db).await?;
@@ -409,6 +432,7 @@ pub async fn fill_for_place(
             phone = CASE WHEN coalesce(trim(phone), '') = '' THEN $2 ELSE phone END, \
             website = CASE WHEN coalesce(trim(website), '') = '' THEN $3 ELSE website END \
          WHERE place_id = $1 \
+           AND NOT COALESCE(claimed, false) \
            AND (coalesce(trim(phone), '') = '' OR coalesce(trim(website), '') = '')",
     )
     .bind(place_id)

@@ -201,7 +201,8 @@ async fn main() {
                 println!(
                     "fill-contact: scanned={} website_empty={} phone_empty={} \
                      website_recovered={} phone_recovered={} website_filled={} phone_filled={} \
-                     by_place_id={} by_name_street={} website_city_disagree={} \
+                     by_place_id={} by_name_street={} skipped_claimed={} \
+                     website_city_disagree={} \
                      phone_city_disagree={} website_no_match={} phone_no_match={} \
                      after_website_empty={} after_phone_empty={} applied={}",
                     r.scanned,
@@ -213,6 +214,7 @@ async fn main() {
                     r.phone_filled,
                     r.by_place_id,
                     r.by_name_street,
+                    r.skipped_claimed,
                     r.website_city_disagree,
                     r.phone_city_disagree,
                     r.website_no_match,
