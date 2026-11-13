@@ -1243,6 +1243,28 @@ pub fn weekly_hours_from_google(oh: &Value, tz: Option<&str>) -> Option<Value> {
     if periods.is_empty() {
         return None;
     }
+
+    // Google says "open 24 hours" with ONE period that has an opening time of 0000 and no close
+    // boundary at all. That is a full week, not a malformed entry — refusing it would leave every
+    // 24/7 business (towing, plumbing, gyms, pharmacies) with no hours forever.
+    if periods.len() == 1 && periods[0].pointer("/close").is_none() {
+        let opens_midnight = periods[0]
+            .pointer("/open/time")
+            .and_then(minutes_of)
+            .map(|m| m == 0)
+            .unwrap_or(false);
+        if opens_midnight {
+            let mut out = serde_json::Map::new();
+            if let Some(tz) = tz {
+                out.insert("tz".into(), Value::String(tz.to_string()));
+            }
+            for key in HOUR_DAY_KEYS {
+                out.insert(key.into(), json!({ "open": "00:00", "close": "23:59" }));
+            }
+            return Some(Value::Object(out));
+        }
+    }
+
     let mut spans: Vec<Span> = Vec::with_capacity(periods.len());
     for p in periods {
         spans.push(read_span(p)?);
@@ -1575,6 +1597,17 @@ mod hours_tests {
             None
         )
         .is_none());
+    }
+
+    #[test]
+    fn open_24_hours_is_a_full_week() {
+        // Google's own encoding of "Open 24 hours": one period, 0000, no close boundary.
+        let oh = json!({ "periods": [ { "open": { "day": 0, "time": "0000" } } ] });
+        let h = weekly_hours_from_google(&oh, Some("America/New_York")).expect("full week");
+        for day in HOUR_DAY_KEYS {
+            assert_eq!(h[day]["open"], "00:00", "{day}");
+            assert_eq!(h[day]["close"], "23:59", "{day}");
+        }
     }
 
     #[test]
