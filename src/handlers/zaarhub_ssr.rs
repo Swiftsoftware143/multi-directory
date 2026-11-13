@@ -1199,7 +1199,12 @@ pub async fn render_legal_page(
             r.try_get::<String, _>("content").unwrap_or_default(),
         ),
         None => {
-            return axum::response::Html("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Page Not Found | ZaarHub</title><style>body{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}h1{font-size:48px;color:#2b3255}a{color:#f27f2f}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Page not found.</p><a href=\"/zaarhub\">← Back to ZaarHub</a></div></body></html>".to_string());
+            // A legal slug that does not exist is a REAL 404. It used to answer 200 with a
+            // "Page Not Found" body, which is a soft 404: Google keeps the URL and crawls it
+            // forever. One line, no soft 404s from this route again.
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::response::Html("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Page Not Found | ZaarHub</title><style>body{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}h1{font-size:48px;color:#2b3255}a{color:#f27f2f}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Page not found.</p><a href=\"/zaarhub\">← Back to ZaarHub</a></div></body></html>".to_string()));
         }
     };
 
@@ -1222,8 +1227,10 @@ pub async fn render_legal_page(
     legal_links.push(("Add your business", "/submit-business.html"));
 
     let footer = footer_html(&state.db).await;
-    axum::response::Html(format!(
-        r#"<!DOCTYPE html>
+    (
+        axum::http::StatusCode::OK,
+        axum::response::Html(format!(
+            r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -1261,13 +1268,14 @@ footer a{{color:#f27f2f;text-decoration:none}}
 {footer}
 {cookie_banner}
 </body></html>"#,
-        title = h(&title),
-        slug = h(&slug),
-        crumbs = crumb_bar(&[("ZaarHub", "/"), (title.as_str(), "")]),
-        content = content,
-        explore = explore_section(&legal_links),
-        footer = footer,
-        cookie_banner = COOKIE_BANNER,
-        shell = shell_chrome(None, ""),
-    ))
+            title = h(&title),
+            slug = h(&slug),
+            crumbs = crumb_bar(&[("ZaarHub", "/"), (title.as_str(), "")]),
+            content = content,
+            explore = explore_section(&legal_links),
+            footer = footer,
+            cookie_banner = COOKIE_BANNER,
+            shell = shell_chrome(None, ""),
+        )),
+    )
 }

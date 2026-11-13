@@ -3209,6 +3209,25 @@ pub fn create_router(s: AppState) -> Router {
                         }
                     }
 
+                    // Friendly top-level aliases → their canonical page. A 301 keeps the
+                    // link equity on the real URL and stops these three from being hard
+                    // 404s (the content exists at /legal/* and /zaarhub).
+                    for (from, to) in [
+                        ("/about", "/legal/about"),
+                        ("/contact", "/legal/contact"),
+                        ("/businesses", "/zaarhub"),
+                    ] {
+                        if path.trim_end_matches('/') == from {
+                            return Ok::<_, std::convert::Infallible>(
+                                axum::response::Response::builder()
+                                    .status(axum::http::StatusCode::MOVED_PERMANENTLY)
+                                    .header(axum::http::header::LOCATION, to)
+                                    .body(axum::body::Body::empty())
+                                    .unwrap(),
+                            );
+                        }
+                    }
+
                     // ??? ZaarHub: Business owner landing page
                     if path == "/grow" || path == "/grow/" {
                         let grow_path = std::path::Path::new(&frontend).join("grow.html");
