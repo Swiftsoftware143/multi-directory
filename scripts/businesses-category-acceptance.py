@@ -37,7 +37,9 @@ CARD_RE = re.compile(
     r'<a class="card" href="/(?P<city>[^/"]+)/businesses/(?P<slug>[^"]+)"><h3>(?P<name>.*?)</h3>'
     r'<div class="meta">(?:<span class="meta">(?P<cat>.*?)</span> · )?<span class="stars">'
 )
-LEDE_RE = re.compile(r'<p class="lede">(?P<n>\d+) businesses · page (?P<page>\d+) of (?P<pages>\d+)')
+LEDE_RE = re.compile(
+    r'<p class="lede">(?P<n>\d+) (?P<word>business(?:es)?) · page (?P<page>\d+) of (?P<pages>\d+)'
+)
 CANON_RE = re.compile(r'<link rel="canonical" href="(?P<url>[^"]+)"')
 ITEMS_RE = re.compile(r'"numberOfItems":(?P<n>\d+)')
 NEXT_RE = re.compile(r'<a class="btn" href="(?P<href>[^"]+)">Next →</a>')
@@ -144,6 +146,17 @@ def probe_pair(city, name):
         bool(lede) and int(lede.group("n")) == expect,
         "lede " + (lede.group("n") if lede else "(missing)") + " vs DB " + str(expect),
     )
+    want_word = "business" if expect == 1 else "businesses"
+    check(
+        tag + " lede reads naturally",
+        bool(lede) and lede.group("word") == want_word,
+        "lede says "
+        + ((lede.group("n") + " " + lede.group("word")) if lede else "(missing)")
+        + ", want "
+        + str(expect)
+        + " "
+        + want_word,
+    )
     items = ITEMS_RE.search(page)
     check(
         tag + " JSON-LD numberOfItems",
@@ -245,12 +258,26 @@ def probe_unknown(city):
     )
 
 
+def pick_thin():
+    """A category with exactly one listing, so the singular copy is exercised too."""
+    rows = db(
+        "SELECT d.slug, dc.name FROM businesses b "
+        "JOIN directories d ON d.id = b.directory_id "
+        "JOIN directory_categories dc ON dc.id = b.category_id "
+        "WHERE b.is_active = true GROUP BY 1, 2 HAVING count(*) = 1 ORDER BY 1, 2 LIMIT 1"
+    )
+    return (rows[0][0], rows[0][1]) if rows else None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pairs", type=int, default=6)
     args = ap.parse_args()
 
     pairs = pick_pairs(args.pairs)
+    thin = pick_thin()
+    if thin and thin not in [(c, n) for c, n, _ in pairs]:
+        pairs.append((thin[0], thin[1], 1))
     print("pairs picked from the DB: " + ", ".join(c + "/" + n + " (" + str(k) + ")" for c, n, k in pairs))
     for city, name, _ in pairs:
         probe_pair(city, name)

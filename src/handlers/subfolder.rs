@@ -2685,7 +2685,7 @@ pub async fn businesses_page(
     let body = format!(
         r#"{start}{crumbs}
 <h1>{label}</h1>
-<p class="lede">{n} businesses · page {page} of {pages}</p>
+<p class="lede">{n} {biz_word} · page {page} of {pages}</p>
 <div class="grid">{cards}</div>
 <h2>Browse by category</h2>
 <div class="chips">{cat_chips}</div>
@@ -2706,6 +2706,7 @@ pub async fn businesses_page(
         ]),
         label = h(&label),
         n = total,
+        biz_word = if total == 1 { "business" } else { "businesses" },
         page = page,
         pages = total_pages,
         cards = cards,
