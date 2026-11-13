@@ -3016,7 +3016,9 @@ pub async fn business_detail(
     let by_uuid = Uuid::parse_str(ident).ok();
     let fetched = sqlx::query(
         "SELECT id, name, slug, description, category_id, address, city, state, zip, phone, \
-                website, logo_url, cover_url, images, rating, review_count, latitude, longitude, featured, place_id \
+                website, logo_url, cover_url, images, rating, review_count, latitude, longitude, featured, place_id, \
+                (SELECT walk_score FROM business_walk_scores w WHERE w.business_id = businesses.id) AS ws_walk, \
+                (SELECT bike_score FROM business_walk_scores w WHERE w.business_id = businesses.id) AS ws_bike \
          FROM businesses WHERE directory_id = $1 AND is_active = true \
            AND (lower(slug) = lower($2) OR ($3::uuid IS NOT NULL AND id = $3::uuid)) LIMIT 1",
     )
@@ -3147,6 +3149,10 @@ pub async fn business_detail(
         .unwrap_or(0);
     let lat: Option<f64> = row.try_get("latitude").unwrap_or(None);
     let lng: Option<f64> = row.try_get("longitude").unwrap_or(None);
+    // Walk Score — cached per business in business_walk_scores, rendered on the business page
+    // only (never the homepage or result cards): our own numbers, no vendor widget or link.
+    let ws_walk: Option<i32> = row.try_get("ws_walk").unwrap_or(None);
+    let ws_bike: Option<i32> = row.try_get("ws_bike").unwrap_or(None);
 
     // Hours (kanban t_2b630e2a). `google_places_cache.opening_hours` has held real weekly periods
     // all along and nothing read it, so ~4,100 pages told a visitor nothing about when the business
@@ -3691,6 +3697,17 @@ pub async fn business_detail(
             "<div class=\"row\">🗺️ <a href=\"https://maps.google.com/?q={},{}&amp;query_place_id=\" rel=\"noopener nofollow\" target=\"_blank\">View on the map</a></div>",
             la, ln
         ));
+    }
+    // Location block: the walkability numbers sit under the address/map, only when cached.
+    let walk = ws_walk.unwrap_or(0);
+    let bike = ws_bike.unwrap_or(0);
+    if walk > 0 {
+        let label = if bike > 0 {
+            format!("Walk {} · Bike {}", walk, bike)
+        } else {
+            format!("Walk {}", walk)
+        };
+        rows.push_str(&format!("<div class=\"row\">🚶 {}</div>", h(&label)));
     }
     let rating_html = if rating > 0.0 {
         format!(
