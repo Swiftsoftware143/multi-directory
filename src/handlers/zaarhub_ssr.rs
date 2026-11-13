@@ -1247,6 +1247,7 @@ header .inner{{max-width:900px;margin:0 auto;display:flex;justify-content:space-
 header .logo{{font-size:20px;font-weight:800;color:white;text-decoration:none}}header .logo span{{color:#f27f2f}}
 header nav a{{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;font-weight:500;margin-left:16px}}
 .page{{max-width:900px;margin:0 auto;padding:40px 20px}}
+.page h1{{font-size:34px;font-weight:800;margin:0 0 20px;color:#2b3255}}
 .page h2{{font-size:28px;font-weight:800;margin-bottom:24px;color:#2b3255}}
 .page h3{{font-size:18px;font-weight:700;margin:24px 0 8px;color:#1a1a2e}}
 .page p{{margin-bottom:16px;color:#4b5563;font-size:15px}}
@@ -1263,7 +1264,7 @@ footer a{{color:#f27f2f;text-decoration:none}}
 {shell}
 <header><div class="inner"><a href="/zaarhub" class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
 {crumbs}
-<div class="page">{content}</div>
+<div class="page"><h1>{title}</h1>{content}</div>
 {explore}
 {footer}
 {cookie_banner}
