@@ -2590,7 +2590,11 @@ pub async fn businesses_page(
     let items = list_businesses(pool, &dir, category.as_deref(), per, (page - 1) * per).await;
 
     let label = match &category {
-        Some(c) => format!("{} Businesses in {}, {}", c, dir.city, dir.state),
+        // The category view's H1 is the same label the category page
+        // (`/{city}/{category-slug}`) uses for the same set of businesses — "Dentist Businesses
+        // in ..." reads badly for names that are already plural ("Bars & Breweries Businesses")
+        // and split the two surfaces' strongest on-page signal.
+        Some(c) => format!("{} in {}, {}", c, dir.city, dir.state),
         None => format!("All Local Businesses in {}, {}", dir.city, dir.state),
     };
     // B119: a category-page pattern (`{category} in {city} | ZaarHub`) applies only when a

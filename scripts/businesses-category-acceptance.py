@@ -43,6 +43,7 @@ LEDE_RE = re.compile(
 CANON_RE = re.compile(r'<link rel="canonical" href="(?P<url>[^"]+)"')
 ITEMS_RE = re.compile(r'"numberOfItems":(?P<n>\d+)')
 NEXT_RE = re.compile(r'<a class="btn" href="(?P<href>[^"]+)">Next →</a>')
+H1_RE = re.compile(r"<h1>(?P<h1>.*?)</h1>", re.S)
 
 fails = []
 
@@ -192,6 +193,22 @@ def probe_pair(city, name):
             tag + " ?category=<slug> == ?category=<name>",
             a == b and bool(a),
             "slug form " + str(len(b)) + " cards, name form " + str(len(a)) + " cards",
+        )
+        # The two surfaces show the same businesses, so they must carry the same headline.
+        cat_status, cat_page = get(BASE + "/" + city + "/" + slug)
+        mine = H1_RE.search(page)
+        theirs = H1_RE.search(cat_page)
+        check(
+            tag + " H1 matches the category page",
+            cat_status == 200
+            and bool(mine)
+            and bool(theirs)
+            and html.unescape(mine.group("h1")).strip() == html.unescape(theirs.group("h1")).strip()
+            and name.lower() in html.unescape(mine.group("h1")).lower(),
+            "filtered "
+            + (html.unescape(mine.group("h1")).strip()[:60] if mine else "?")
+            + " / category "
+            + (html.unescape(theirs.group("h1")).strip()[:60] if theirs else "?"),
         )
 
     # paging keeps the filter
