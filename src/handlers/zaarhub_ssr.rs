@@ -644,7 +644,7 @@ pub async fn render_cities_index(
         let desc: Option<String> = r.try_get("description").unwrap_or(None);
         let count: i64 = r.try_get("listing_count").unwrap_or(0);
         cities_html.push_str(&format!(
-            r#"<a href="/zaarhub/{slug}" class="city-card">
+            r#"<a href="/{slug}" class="city-card">
       <h2>{name} <span class="count">{count}+</span></h2>
       <p>{desc}</p>
       <span class="arrow">Browse →</span>
