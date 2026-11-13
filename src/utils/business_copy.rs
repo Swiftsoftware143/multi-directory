@@ -565,10 +565,108 @@ pub async fn refresh_machine_copy(db: &PgPool) -> (usize, usize, usize) {
     (rewritten, current, not_ours)
 }
 
+/// Re-render ONE listing's machine copy after its category changed (kanban t_b2f7201e).
+///
+/// A re-filed listing would otherwise keep saying "a landscaping business" in the paragraph this
+/// module wrote for it. Ownership is still proven, never assumed: the stored text must equal
+/// exactly what `compose` produces from the same row and seed with the OLD category and no hours.
+/// An owner-written paragraph cannot match and is never touched. Returns true when rewritten.
+pub async fn rewrite_for_category_change(
+    db: &PgPool,
+    id: Uuid,
+    old_category: Option<&str>,
+) -> bool {
+    let row = match sqlx::query(
+        "SELECT b.name, b.description, b.place_id, \
+                COALESCE(NULLIF(btrim(b.city), ''), d.city, '') AS city, \
+                COALESCE(NULLIF(btrim(b.state), ''), d.state, '') AS state, \
+                b.address, b.zip, b.phone, b.website, b.rating, b.review_count, \
+                c.name AS category \
+         FROM businesses b \
+         LEFT JOIN directory_categories c ON c.id = b.category_id \
+         LEFT JOIN directories d ON d.id = b.directory_id \
+         WHERE b.id = $1",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    {
+        Ok(Some(r)) => r,
+        _ => return false,
+    };
+
+    let existing: String = row.try_get("description").unwrap_or_default();
+    if existing.trim().is_empty() {
+        return false;
+    }
+    let name: String = row.try_get("name").unwrap_or_default();
+    let city: String = row.try_get("city").unwrap_or_default();
+    let state: String = row.try_get("state").unwrap_or_default();
+    let address: Option<String> = row.try_get("address").unwrap_or(None);
+    let place_id: Option<String> = row.try_get("place_id").unwrap_or(None);
+    let zip: Option<String> = row.try_get("zip").unwrap_or(None);
+    let phone: Option<String> = row.try_get("phone").unwrap_or(None);
+    let website: Option<String> = row.try_get("website").unwrap_or(None);
+    let category: Option<String> = row.try_get("category").unwrap_or(None);
+
+    let hours = crate::utils::opening_hours::lookup(
+        db,
+        place_id.as_deref(),
+        &name,
+        address.as_deref(),
+        &city,
+    )
+    .await;
+
+    let facts = Facts {
+        name: &name,
+        category: category.as_deref(),
+        city: &city,
+        state: &state,
+        address: address.as_deref(),
+        zip: zip.as_deref(),
+        phone: phone.as_deref(),
+        website: website.as_deref(),
+        rating: row.try_get::<Option<f64>, _>("rating").unwrap_or(None),
+        review_count: row.try_get::<i32, _>("review_count").unwrap_or(0),
+        hours: hours.as_ref(),
+    };
+    let seed = seed_for(id);
+    let Some(legacy) = compose(
+        &Facts {
+            category: old_category,
+            hours: None,
+            ..facts
+        },
+        seed,
+    ) else {
+        return false;
+    };
+    if existing.trim() != legacy {
+        return false;
+    }
+    let Some(fresh) = compose(&facts, seed) else {
+        return false;
+    };
+    if fresh == existing.trim() {
+        return false;
+    }
+    sqlx::query(
+        "UPDATE businesses SET description = $2, content_updated_at = NOW() \
+         WHERE id = $1 AND description = $3",
+    )
+    .bind(id)
+    .bind(&fresh)
+    .bind(&existing)
+    .execute(db)
+    .await
+    .map(|r| r.rows_affected() > 0)
+    .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn facts<'a>(name: &'a str, cat: Option<&'a str>) -> Facts<'a> {
         Facts {
             name,

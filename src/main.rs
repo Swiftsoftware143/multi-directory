@@ -147,6 +147,46 @@ async fn main() {
         std::process::exit(0);
     }
 
+    // One-shot re-file of listings whose own name and cached Places types contradict the category
+    // they were published under (kanban t_b2f7201e). `--apply` writes; without it the pass only
+    // reports the plan, so what is about to change can be read before anything moves.
+    if cli.get(1).map(String::as_str) == Some("audit-categories") {
+        let apply = cli.iter().any(|a| a == "--apply");
+        match crate::utils::category_backfill::run(&pool, apply).await {
+            Ok((r, changes)) => {
+                for c in &changes {
+                    println!("{}", c.line());
+                }
+                let mut by_from: std::collections::BTreeMap<&str, usize> =
+                    std::collections::BTreeMap::new();
+                for c in &changes {
+                    *by_from.entry(c.from.as_str()).or_default() += 1;
+                }
+                println!(
+                    "audit-categories: scanned={} supported={} unknown={} generic={} \
+                     contradicted={} refiled={} unresolved={} copy_rewritten={} applied={}",
+                    r.scanned,
+                    r.supported,
+                    r.unknown,
+                    r.generic,
+                    r.contradicted,
+                    r.refiled,
+                    r.unresolved,
+                    r.copy_rewritten,
+                    apply
+                );
+                for (from, n) in by_from {
+                    println!("  from {from}: {n}");
+                }
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("audit-categories: failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     let state = AppState::new(pool, config.clone());
 
     // kanban t_0b3cce4d — the brand host of every directory comes from DATA

@@ -1,6 +1,7 @@
 //! Utility modules for Multi-Directory Rust backend.
 
 pub mod business_copy;
+pub mod category_backfill;
 pub mod category_guard;
 pub mod cta_resolver;
 pub mod franchise;

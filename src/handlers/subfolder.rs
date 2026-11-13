@@ -3168,62 +3168,103 @@ pub async fn business_detail(
         None => None,
     };
 
-    // Related listings: same category first, then nearest (when we know where this one is),
-    // then best rated. Every card is a real crawlable href to that listing's own page, so a
-    // crawler arriving at any business can walk on to its neighbours instead of dead-ending,
-    // and a shopper always has somewhere to go next.
-    let related: Vec<BizCard> = match sqlx::query(
-        "SELECT b.name, b.slug, b.rating, b.review_count, b.address, dc.name AS category \
-         FROM businesses b \
-         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
-         WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
-           AND coalesce(b.slug, '') <> '' \
-         ORDER BY CASE WHEN $3::uuid IS NOT NULL AND b.category_id = $3::uuid THEN 0 ELSE 1 END, \
-                  CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
+    // Related listings, in two honest groups (kanban t_b2f7201e).
+    //
+    // Before: ONE query ORDERed same-category first and took LIMIT 6 over the whole directory —
+    // ordering, not filtering. Measured 2026-11-13: 1,236 of 4,100 active listings sit in a
+    // (directory, city, category) group of fewer than six, so roughly 30% of detail pages filled
+    // the grid with other trades under the heading "More {category} in {city}" — which is how a
+    // blow-dry bar, a gym and a lounge came to be announced as "More Landscaping in Winter
+    // Garden". Now the same-category group is a FILTERED query, and only the rows it returns are
+    // ever printed under that heading. Whatever is needed to reach six cards comes under the
+    // neutral heading "Other businesses in {city}", which claims nothing about the trade.
+    fn related_card(r: &sqlx::postgres::PgRow) -> BizCard {
+        BizCard {
+            name: r.try_get("name").unwrap_or_default(),
+            slug: r.try_get("slug").unwrap_or_default(),
+            category: r.try_get("category").unwrap_or(None),
+            rating: r
+                .try_get::<Option<f64>, _>("rating")
+                .unwrap_or(None)
+                .unwrap_or(0.0),
+            review_count: r
+                .try_get::<Option<i32>, _>("review_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            address: r.try_get("address").unwrap_or(None),
+            // Not selected by these queries and not a city hub — the related grid stays a
+            // name/rating grid.
+            in_city: false,
+            // Not selected by these queries — the related grid stays a name/rating grid.
+            description: None,
+        }
+    }
+
+    let mut same: Vec<BizCard> = Vec::new();
+    if let Some(cat_id) = category_id {
+        match sqlx::query(
+            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, dc.name AS category \
+             FROM businesses b \
+             LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+             WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
+               AND b.category_id = $3 AND coalesce(b.slug, '') <> '' \
+             ORDER BY CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
                             AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL \
                        THEN (b.latitude - $4::float8) ^ 2 + (b.longitude - $5::float8) ^ 2 \
                        ELSE 1e9 END, \
-                  b.rating DESC NULLS LAST, b.review_count DESC \
-         LIMIT 6",
-    )
-    .bind(dir.id)
-    .bind(biz_id)
-    .bind(category_id)
-    .bind(lat)
-    .bind(lng)
-    .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows
-            .iter()
-            .map(|r| BizCard {
-                name: r.try_get("name").unwrap_or_default(),
-                slug: r.try_get("slug").unwrap_or_default(),
-                category: r.try_get("category").unwrap_or(None),
-                rating: r
-                    .try_get::<Option<f64>, _>("rating")
-                    .unwrap_or(None)
-                    .unwrap_or(0.0),
-                review_count: r
-                    .try_get::<Option<i32>, _>("review_count")
-                    .unwrap_or(None)
-                    .unwrap_or(0),
-                address: r.try_get("address").unwrap_or(None),
-                // Not selected by this query and not a city hub — the related grid stays a
-                // name/rating grid.
-                in_city: false,
-                // Not selected by this query — the related grid stays a name/rating grid.
-                description: None,
-            })
-            .collect(),
-        Err(e) => {
-            // Decorative section: never fail the page over it, but never swallow it silently
-            // either (that is how the related-table export gap stayed invisible).
-            eprintln!("related businesses query failed for {biz_id}: {e}");
-            Vec::new()
+                      b.rating DESC NULLS LAST, b.review_count DESC \
+             LIMIT 6",
+        )
+        .bind(dir.id)
+        .bind(biz_id)
+        .bind(cat_id)
+        .bind(lat)
+        .bind(lng)
+        .fetch_all(pool)
+        .await
+        {
+            Ok(rows) => same = rows.iter().map(related_card).collect(),
+            Err(e) => {
+                // Decorative section: never fail the page over it, but never swallow it silently
+                // either (that is how the related-table export gap stayed invisible).
+                eprintln!("related same-category query failed for {biz_id}: {e}");
+            }
         }
-    };
-    let related_html = if related.is_empty() {
+    }
+
+    let mut other: Vec<BizCard> = Vec::new();
+    let slots = 6usize.saturating_sub(same.len());
+    if slots > 0 {
+        match sqlx::query(
+            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, dc.name AS category \
+             FROM businesses b \
+             LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+             WHERE b.directory_id = $1 AND b.is_active = true AND b.id <> $2 \
+               AND coalesce(b.slug, '') <> '' \
+               AND ($3::uuid IS NULL OR b.category_id IS DISTINCT FROM $3) \
+             ORDER BY CASE WHEN $4::float8 IS NOT NULL AND $5::float8 IS NOT NULL \
+                            AND b.latitude IS NOT NULL AND b.longitude IS NOT NULL \
+                       THEN (b.latitude - $4::float8) ^ 2 + (b.longitude - $5::float8) ^ 2 \
+                       ELSE 1e9 END, \
+                      b.rating DESC NULLS LAST, b.review_count DESC \
+             LIMIT $6",
+        )
+        .bind(dir.id)
+        .bind(biz_id)
+        .bind(category_id)
+        .bind(lat)
+        .bind(lng)
+        .bind(slots as i64)
+        .fetch_all(pool)
+        .await
+        {
+            Ok(rows) => other = rows.iter().map(related_card).collect(),
+            Err(e) => {
+                eprintln!("related filler query failed for {biz_id}: {e}");
+            }
+        }
+    }
+    let related_html = if same.is_empty() && other.is_empty() {
         // No neighbours to show as cards: fall back to the shared block so the page
         // still cannot dead-end (card W36).
         explore_block(
@@ -3235,14 +3276,33 @@ pub async fn business_detail(
         )
         .await
     } else {
-        let cards: Vec<String> = related.iter().map(|b| card_html(&dir.slug, b)).collect();
-        let heading = match &category {
-            Some(c) => format!("More {} in {}", h(c), h(&city)),
-            None => format!("Similar businesses in {}", h(&city)),
+        let group = |heading: &str, rows: &[BizCard]| {
+            format!(
+                "<div class=\"explore-group\"><h3>{}</h3><div class=\"grid\">{}</div></div>",
+                heading,
+                rows.iter()
+                    .map(|b| card_html(&dir.slug, b))
+                    .collect::<Vec<_>>()
+                    .join("")
+            )
         };
-        // The card grid sits inside the one shared "Keep exploring" section, together
-        // with the city's browse levels, so this page offers both a next listing and a
-        // way back up — never a dead end (card W36).
+        let mut groups = String::new();
+        if !same.is_empty() {
+            // Every card in this grid holds the subject's category — the heading is a fact.
+            groups.push_str(&group(
+                &format!(
+                    "More {} in {}",
+                    h(category.as_deref().unwrap_or("")),
+                    h(&city)
+                ),
+                &same,
+            ));
+        }
+        if !other.is_empty() {
+            // Filler never borrows the subject's category: a neutral heading that is true of
+            // every card under it.
+            groups.push_str(&group(&format!("Other businesses in {}", h(&city)), &other));
+        }
         let mut chips = String::new();
         if let Some(cs) = &category_slug {
             chips.push_str(&format!(
@@ -3273,10 +3333,9 @@ pub async fn business_detail(
         ));
         format!(
             "<section class=\"explore\" aria-label=\"Keep exploring\"><h2>Keep exploring</h2>\
-             <div class=\"explore-group\"><h3>{}</h3><div class=\"grid\">{}</div></div>\
+             {}\
              <div class=\"explore-group\"><h3>Browse {}</h3><div class=\"chips\">{}</div></div></section>",
-            heading,
-            cards.join(""),
+            groups,
             h(&city),
             chips
         )
