@@ -51,7 +51,7 @@ jobs:
       - name: Run migrations
         run: |
           for f in src/migrations/*.sql; do
-            PGPASSWORD=SwiftSecure2026! psql -h localhost -U swift -d multidirectory_test -f "$f" 2>/dev/null || true
+            PGPASSWORD=SwiftSecure2026! psql -v ON_ERROR_STOP=1 -h localhost -U swift -d multidirectory_test -f "$f"
           done
       - name: cargo test
         run: cargo test
