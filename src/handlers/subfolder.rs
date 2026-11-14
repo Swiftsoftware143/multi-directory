@@ -838,8 +838,8 @@ fn city_hub_html(
             } else {
                 meta.push("No reviews yet".to_string());
             }
-            if let Some(a) = b.address.as_deref().filter(|a| !a.trim().is_empty()) {
-                meta.push(h(a));
+            if b.address.as_deref().is_some_and(|a| !a.trim().is_empty()) {
+                meta.push(h(&b.display_address()));
             }
             // Short description (requirement 2: name, category, short description, link).
             // Clipped so a business that pasted its whole history cannot blow the grid apart.
@@ -1208,6 +1208,9 @@ struct BizCard {
     rating: f64,
     review_count: i32,
     address: Option<String>,
+    /// The business's own postal city (as stored), used to strip the redundant city from
+    /// an in-city address on that city's own pages.
+    city: Option<String>,
     /// True when this business's postal city is the directory's own city. City hubs rank
     /// these FIRST (card t_6d3b0919): the page is sold to advertisers as a city audience, so
     /// the top of it has to be that city. Out-of-city rows stay on the page below as inventory.
@@ -1217,6 +1220,39 @@ struct BizCard {
     /// a grid of names and star counts is thin content for a crawler and little help to a
     /// visitor deciding whom to call.
     description: Option<String>,
+}
+
+impl BizCard {
+    /// The stored `address` is Google's full "street, City, ST ZIP, USA" string. On the page
+    /// for that same city the city name and country are redundant — the page header and
+    /// breadcrumb already name the city — so an in-city listing prints "street, ST ZIP" while
+    /// an out-of-city listing keeps its full address (its city is the one signal that it is a
+    /// different town — card W22). The match is case-insensitive and anchored to a
+    /// "comma + space" prefix so a street named after the city ("Palm Bay Rd NE") is never eaten.
+    fn display_address(&self) -> String {
+        let address = match self.address.as_deref() {
+            Some(a) => a.trim(),
+            None => return String::new(),
+        };
+        if !self.in_city {
+            return address.to_string();
+        }
+        let mut out = address.to_string();
+        for country in [", USA", ", US"] {
+            if out.to_ascii_uppercase().ends_with(country) {
+                out.truncate(out.len() - country.len());
+                break;
+            }
+        }
+        if let Some(c) = self.city.as_deref().filter(|c| !c.trim().is_empty()) {
+            let pat = format!(", {}", c.trim());
+            let lower = out.to_ascii_lowercase();
+            if let Some(pos) = lower.find(&pat.to_ascii_lowercase()) {
+                out.replace_range(pos..pos + pat.len(), "");
+            }
+        }
+        out.trim().to_string()
+    }
 }
 
 /// Normalise a postal city for comparison with a directory's own city.
@@ -1330,6 +1366,7 @@ async fn list_businesses(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
+            city,
             description: r.try_get("description").unwrap_or(None),
         });
     }
@@ -1352,8 +1389,9 @@ fn card_html(dir_slug: &str, b: &BizCard) -> String {
         .unwrap_or_default();
     let addr = b
         .address
-        .as_ref()
-        .map(|a| format!("<div class=\"meta\">{}</div>", h(a)))
+        .as_deref()
+        .filter(|a| !a.trim().is_empty())
+        .map(|_| format!("<div class=\"meta\">{}</div>", h(&b.display_address())))
         .unwrap_or_default();
     format!(
         "<a class=\"card\" href=\"/{dir}/businesses/{slug}\"><h3>{name}</h3><div class=\"meta\">{cat}<span class=\"stars\">★ {rating:.1}</span> ({reviews})</div>{addr}</a>",
@@ -2137,6 +2175,7 @@ async fn list_town_businesses(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
+            city: r.try_get("city").unwrap_or(None),
             // Every row here already passed the town filter above, so it IS in this town.
             in_city: true,
             description: r.try_get("description").unwrap_or(None),
@@ -3241,6 +3280,7 @@ pub async fn business_detail(
                 .unwrap_or(None)
                 .unwrap_or(0),
             address: r.try_get("address").unwrap_or(None),
+            city: r.try_get("city").unwrap_or(None),
             // The card's own postal city, compared with the directory's under the same rule the
             // city hub ranks by. This is what the heading is allowed to claim.
             in_city: norm_city(
