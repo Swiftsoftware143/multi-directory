@@ -1,0 +1,12 @@
+# Pin the toolchain so CI and the build box compile the same code with the same compiler.
+#
+# Why this file exists: on rustc 1.100.0 (2026-11-09) `sqlx-postgres` 0.7.4 fails to build with 15
+# type-inference errors (rust-lang/rust#148922). That is a dependency problem, not a problem in this
+# repo — the same commit compiles cleanly on 1.97.1, which is what the fleet builds with. Pinning
+# keeps CI honest and stops a toolchain release from turning the board red overnight.
+#
+# Remove the pin when sqlx is upgraded to 0.8.x and the crate compiles on current stable.
+[toolchain]
+channel = "1.97.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
