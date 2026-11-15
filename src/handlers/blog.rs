@@ -763,6 +763,48 @@ pub async fn publish_blog_post_handler(
     let claims = caller(&s, &headers)?;
     tenant_scope::assert_directory_content_writer(&s.db, &claims, dir_id).await?;
 
+    // Guardrails run on every publish, not only on a draft: an edited post, a bulk action and
+    // a manual button all pass through here. A block refuses; a hold needs a named reviewer.
+    if req.publish_now.unwrap_or(true) {
+        let report = crate::guardrails::run(&s.db, id)
+            .await
+            .map_err(AppError::Internal)?;
+        let reviewed: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT reviewed_by FROM blog_posts WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&s.db)
+                .await?;
+        let reviewer = reviewed.and_then(|(r,)| r).unwrap_or_default();
+        match report.outcome {
+            crate::guardrails::Outcome::Block => {
+                let failed: Vec<String> = report
+                    .checks
+                    .iter()
+                    .filter(|c| c.outcome == crate::guardrails::Outcome::Block)
+                    .map(|c| format!("{} ({})", c.check, c.detail))
+                    .collect();
+                return Err(AppError::Validation(format!(
+                    "Guardrails blocked this post: {}",
+                    failed.join("; ")
+                )));
+            }
+            crate::guardrails::Outcome::Hold if reviewer.trim().is_empty() => {
+                return Err(AppError::Validation(format!(
+                    "Held for review: quality score {} (checks: {}). A reviewer must approve it first.",
+                    report.quality_score,
+                    report
+                        .checks
+                        .iter()
+                        .filter(|c| c.outcome != crate::guardrails::Outcome::Pass)
+                        .map(|c| format!("{}: {}", c.check, c.detail))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                )));
+            }
+            _ => {}
+        }
+    }
+
     let post = if req.publish_now.unwrap_or(true) {
         sqlx::query_as::<_, BlogPostExt>(
             "UPDATE blog_posts SET published = true, scheduled_at = NULL, updated_at = NOW() WHERE id = $1 RETURNING id, title, slug, excerpt, content, directory_id, published, scheduled_at, template_id, template_data, is_master, master_post_id, blog_category, tags, meta_description, feature_image, created_at, updated_at"
@@ -882,13 +924,95 @@ pub async fn distribute_blog_post(
     Ok((StatusCode::CREATED, Json(result)))
 }
 
-/// POST /api/v1/blog/process-scheduled — publish due scheduled posts
+/// POST /api/v1/blog/process-scheduled — publish due scheduled posts, and auto-publish drafts
+/// that passed guardrails in a directory set to `auto` (never more than its daily cap).
 pub async fn process_scheduled_posts_handler(
     State(s): State<AppState>,
 ) -> ApiResult<impl IntoResponse> {
-    let r = sqlx::query("UPDATE blog_posts SET published = true, scheduled_at = NULL, updated_at = NOW() WHERE scheduled_at IS NOT NULL AND scheduled_at <= NOW() AND published = false")
-        .execute(&s.db).await?;
-    Ok(Json(serde_json::json!({"published": r.rows_affected()})))
+    let due: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM blog_posts \
+         WHERE published = false AND scheduled_at IS NOT NULL AND scheduled_at <= now() \
+         ORDER BY scheduled_at ASC LIMIT 50",
+    )
+    .fetch_all(&s.db)
+    .await?;
+
+    let mut published = 0usize;
+    let mut held: Vec<String> = Vec::new();
+
+    for (id,) in due {
+        let report = match crate::guardrails::run(&s.db, id).await {
+            Ok(r) => r,
+            Err(e) => {
+                held.push(format!("{id}: guardrails unavailable ({e})"));
+                continue;
+            }
+        };
+        let reviewer: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT reviewed_by FROM blog_posts WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&s.db)
+                .await?;
+        let reviewed = reviewer
+            .and_then(|(r,)| r)
+            .map(|r| !r.trim().is_empty())
+            .unwrap_or(false);
+        let may = report.outcome == crate::guardrails::Outcome::Pass
+            || (report.outcome == crate::guardrails::Outcome::Hold && reviewed);
+        if may {
+            sqlx::query(
+                "UPDATE blog_posts SET published = true, scheduled_at = NULL, updated_at = NOW() \
+                 WHERE id = $1",
+            )
+            .bind(id)
+            .execute(&s.db)
+            .await?;
+            published += 1;
+        } else {
+            held.push(format!(
+                "{id}: {} (score {})",
+                report.outcome.as_str(),
+                report.quality_score
+            ));
+        }
+    }
+
+    // Auto-publish: drafts that scored a pass in a directory that opted in, inside its cap.
+    let autos: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT p.id, p.directory_id FROM blog_posts p \
+         JOIN directories d ON d.id = p.directory_id \
+         WHERE p.published = false AND p.scheduled_at IS NULL \
+           AND p.guardrail_outcome = 'pass' AND d.blog_publish_mode = 'auto' \
+         ORDER BY p.created_at ASC LIMIT 50",
+    )
+    .fetch_all(&s.db)
+    .await?;
+    let mut auto_published = 0usize;
+    for (id, dir_id) in autos {
+        let cap: i32 =
+            sqlx::query_scalar("SELECT blog_auto_publish_daily_cap FROM directories WHERE id = $1")
+                .bind(dir_id)
+                .fetch_one(&s.db)
+                .await
+                .unwrap_or(0);
+        let today = crate::guardrails::published_today(&s.db, dir_id)
+            .await
+            .unwrap_or(i64::MAX);
+        if cap <= 0 || today >= cap as i64 {
+            continue;
+        }
+        sqlx::query("UPDATE blog_posts SET published = true, updated_at = NOW() WHERE id = $1")
+            .bind(id)
+            .execute(&s.db)
+            .await?;
+        auto_published += 1;
+    }
+
+    Ok(Json(serde_json::json!({
+        "published": published,
+        "auto_published": auto_published,
+        "held": held,
+    })))
 }
 
 fn render_template_str(template: &str, data: &Value) -> String {
@@ -986,4 +1110,225 @@ pub async fn update_community_post(
     .await?;
 
     Ok(Json(json!({"status": "updated"})))
+}
+
+// ── Guardrails: per-directory settings, the review queue, and the reviewer's decision ──
+
+#[derive(Debug, Deserialize)]
+pub struct GuardrailSettingsRequest {
+    pub publish_mode: Option<String>, // "review" | "auto"
+    pub auto_publish_daily_cap: Option<i32>,
+    pub min_quality_score: Option<i32>,
+    pub ai_disclosure: Option<bool>,
+    pub guardrail_settings: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GuardrailSettingsResponse {
+    pub directory_id: Uuid,
+    pub publish_mode: String,
+    pub auto_publish_daily_cap: i32,
+    pub min_quality_score: i32,
+    pub ai_disclosure: bool,
+    pub guardrail_settings: serde_json::Value,
+}
+
+/// GET /api/v1/admin/directories/:id/blog-guardrails
+pub async fn get_blog_guardrails_handler(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, id).await?;
+    let row = sqlx::query_as::<_, (String, i32, i32, bool, serde_json::Value)>(
+        "SELECT blog_publish_mode, blog_auto_publish_daily_cap, blog_min_quality_score, \
+                blog_ai_disclosure, blog_guardrail_settings \
+         FROM directories WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Directory not found".into()))?;
+    Ok(Json(GuardrailSettingsResponse {
+        directory_id: id,
+        publish_mode: row.0,
+        auto_publish_daily_cap: row.1,
+        min_quality_score: row.2,
+        ai_disclosure: row.3,
+        guardrail_settings: row.4,
+    }))
+}
+
+/// PUT /api/v1/admin/directories/:id/blog-guardrails
+pub async fn put_blog_guardrails_handler(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(req): Json<GuardrailSettingsRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, id).await?;
+    let mode = req
+        .publish_mode
+        .as_deref()
+        .map(|m| m.trim().to_lowercase())
+        .unwrap_or_default();
+    if !mode.is_empty() && mode != "review" && mode != "auto" {
+        return Err(AppError::Validation(
+            "publish_mode must be 'review' or 'auto'".into(),
+        ));
+    }
+    let cap = req.auto_publish_daily_cap.unwrap_or(3);
+    if !(0..=50).contains(&cap) {
+        return Err(AppError::Validation(
+            "auto_publish_daily_cap must be 0-50".into(),
+        ));
+    }
+    let min_score = req.min_quality_score.unwrap_or(70);
+    if !(0..=100).contains(&min_score) {
+        return Err(AppError::Validation(
+            "min_quality_score must be 0-100".into(),
+        ));
+    }
+    sqlx::query(
+        "UPDATE directories SET \
+            blog_publish_mode = COALESCE(NULLIF($2,''), blog_publish_mode), \
+            blog_auto_publish_daily_cap = $3, \
+            blog_min_quality_score = $4, \
+            blog_ai_disclosure = COALESCE($5, blog_ai_disclosure), \
+            blog_guardrail_settings = COALESCE($6, blog_guardrail_settings), \
+            updated_at = now() \
+         WHERE id = $1",
+    )
+    .bind(id)
+    .bind(if mode.is_empty() { String::new() } else { mode })
+    .bind(cap)
+    .bind(min_score)
+    .bind(req.ai_disclosure)
+    .bind(req.guardrail_settings)
+    .execute(&s.db)
+    .await?;
+    get_blog_guardrails_handler(State(s), headers, Path(id)).await
+}
+
+/// GET /api/v1/admin/blog/review-queue?directory_id=
+pub async fn blog_review_queue_handler(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let claims = caller(&s, &headers)?;
+    let dir = q
+        .get("directory_id")
+        .and_then(|v| Uuid::parse_str(v).ok())
+        .ok_or_else(|| AppError::Validation("directory_id is required".into()))?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, dir).await?;
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<i32>,
+            chrono::DateTime<Utc>,
+        ),
+    >(
+        "SELECT id, coalesce(title,''), guardrail_outcome, quality_score, \
+                coalesce(guardrail_checked_at, created_at) \
+         FROM blog_posts \
+         WHERE directory_id = $1 AND published = false \
+           AND guardrail_outcome IS NOT NULL AND guardrail_outcome <> 'pass' \
+         ORDER BY coalesce(guardrail_checked_at, created_at) DESC LIMIT 100",
+    )
+    .bind(dir)
+    .fetch_all(&s.db)
+    .await?;
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, title, outcome, score, at)| {
+            json!({"id": id, "title": title, "outcome": outcome, "quality_score": score, "checked_at": at})
+        })
+        .collect();
+    Ok(Json(json!({"directory_id": dir, "items": items})))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReviewDecisionRequest {
+    pub decision: String, // "approve" | "reject"
+    pub reviewer: Option<String>,
+}
+
+/// POST /api/v1/blog-posts/:id/review — a named person accepts (or rejects) a held post
+pub async fn review_blog_post_handler(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(req): Json<ReviewDecisionRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let dir_of: Option<(Uuid,)> =
+        sqlx::query_as("SELECT directory_id FROM blog_posts WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?;
+    let dir_id = dir_of
+        .ok_or_else(|| AppError::NotFound("Blog post not found".into()))?
+        .0;
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, dir_id).await?;
+
+    let decision = req.decision.trim().to_lowercase();
+    if decision != "approve" && decision != "reject" {
+        return Err(AppError::Validation(
+            "decision must be 'approve' or 'reject'".into(),
+        ));
+    }
+    let reviewer = match req
+        .reviewer
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+    {
+        Some(r) => r.to_string(),
+        None => sqlx::query_scalar::<_, String>(
+            "SELECT coalesce(nullif(name,''), email) FROM users WHERE id::text = $1",
+        )
+        .bind(&claims.sub)
+        .fetch_optional(&s.db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| claims.sub.clone()),
+    };
+
+    if decision == "approve" {
+        // Re-run first: an edit since the check must not ride on an old pass.
+        let report = crate::guardrails::run(&s.db, id)
+            .await
+            .map_err(AppError::Internal)?;
+        if report.outcome == crate::guardrails::Outcome::Block {
+            return Err(AppError::Validation(
+                "A blocked post cannot be approved; fix the failing checks first.".into(),
+            ));
+        }
+        sqlx::query(
+            "UPDATE blog_posts SET reviewed_by = $2, reviewed_at = now(), updated_at = now() WHERE id = $1",
+        )
+        .bind(id)
+        .bind(&reviewer)
+        .execute(&s.db)
+        .await?;
+        Ok(Json(
+            json!({"status": "approved", "reviewer": reviewer, "quality_score": report.quality_score}),
+        ))
+    } else {
+        sqlx::query(
+            "UPDATE blog_posts SET reviewed_by = NULL, reviewed_at = NULL, published = false, \
+                    status = 'draft', updated_at = now() WHERE id = $1",
+        )
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+        Ok(Json(json!({"status": "rejected"})))
+    }
 }

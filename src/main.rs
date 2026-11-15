@@ -12,6 +12,7 @@
 mod coreswift;
 mod email;
 mod entitlements;
+mod guardrails;
 mod reminders;
 mod walk_scores;
 

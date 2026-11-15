@@ -113,6 +113,7 @@
     <button class="tab-btn" onclick="switchTab('links')">🔗 Internal Links</button>
     <button class="tab-btn" onclick="switchTab('aeo')">📊 AEO Scoring</button>
     <button class="tab-btn" onclick="switchTab('schema')">🏗️ Schema Markup</button>
+    <button class="tab-btn" onclick="switchTab('guardrails')">🛡️ Guardrails</button>
   </div>
 
   <!-- DECAY TAB -->
@@ -192,6 +193,31 @@
   </div>
 </div>
 
+
+  <div id="tab-guardrails" class="tab-content">
+    <div class="card">
+      <h2>Publishing guardrails</h2>
+      <p style="color:var(--text-secondary);font-size:.85rem">Every draft is checked. Review is the default; auto-publish only ever publishes a post that passed, and never more than the daily cap.</p>
+      <label style="display:block;margin:10px 0">Directory <select id="g-dir" onchange="loadGuardrails()"></select></label>
+      <label style="display:block;margin:10px 0">Publish mode
+        <select id="g-mode">
+          <option value="review">Review first (default)</option>
+          <option value="auto">Auto-publish posts that pass</option>
+        </select>
+      </label>
+      <label style="display:block;margin:10px 0">Auto-publish daily cap <input id="g-cap" type="number" min="0" max="50" style="width:80px"></label>
+      <label style="display:block;margin:10px 0">Minimum quality score <input id="g-min" type="number" min="0" max="100" style="width:80px"></label>
+      <label style="display:block;margin:10px 0"><input id="g-ai" type="checkbox"> Add an AI-assistance note to published posts</label>
+      <button class="btn-primary" onclick="saveGuardrails()">Save settings</button>
+      <span style="margin-left:12px;font-size:.8rem;color:var(--text-secondary)" id="g-status"></span>
+    </div>
+    <div class="card">
+      <h2>Review queue</h2>
+      <table><thead><tr><th>Post</th><th>Outcome</th><th>Score</th><th></th></tr></thead>
+      <tbody id="g-queue"><tr><td colspan="4" style="color:var(--text-secondary)">Nothing held.</td></tr></tbody></table>
+    </div>
+  </div>
+
 <script>
 const API = '/api/v1';
 let token = '';
@@ -233,7 +259,79 @@ function switchTab(name) {
     scanDecay();
   } else if (name === 'aeo') {
     loadAeoReport();
+  } else if (name === 'guardrails') {
+    loadGuardrails();
   }
+}
+
+
+// ── GUARDRAILS ──
+async function loadDirs() {
+  const sel = document.getElementById('g-dir');
+  if (sel.options.length) return;
+  try {
+    const data = await api('GET', '/directories');
+    const list = Array.isArray(data) ? data : (data.directories || data.items || []);
+    sel.innerHTML = list.map(d => `<option value="${d.id}">${d.name || d.slug}</option>`).join('');
+  } catch (e) { /* the panel opens without a directory list */ }
+}
+
+async function loadGuardrails() {
+  await loadDirs();
+  const id = document.getElementById('g-dir').value;
+  if (!id) return;
+  try {
+    const s = await api('GET', `/admin/directories/${id}/blog-guardrails`);
+    document.getElementById('g-mode').value = s.publish_mode;
+    document.getElementById('g-cap').value = s.auto_publish_daily_cap;
+    document.getElementById('g-min').value = s.min_quality_score;
+    document.getElementById('g-ai').checked = !!s.ai_disclosure;
+    document.getElementById('g-status').textContent = '';
+  } catch (e) { document.getElementById('g-status').textContent = e.message; }
+  loadQueue();
+}
+
+async function saveGuardrails() {
+  const id = document.getElementById('g-dir').value;
+  if (!id) return;
+  try {
+    await api('PUT', `/admin/directories/${id}/blog-guardrails`, {
+      publish_mode: document.getElementById('g-mode').value,
+      auto_publish_daily_cap: Number(document.getElementById('g-cap').value),
+      min_quality_score: Number(document.getElementById('g-min').value),
+      ai_disclosure: document.getElementById('g-ai').checked,
+    });
+    document.getElementById('g-status').textContent = 'Saved';
+    toast('Guardrail settings saved', 'success');
+  } catch (e) { document.getElementById('g-status').textContent = e.message; }
+}
+
+async function loadQueue() {
+  const id = document.getElementById('g-dir').value;
+  if (!id) return;
+  const body = document.getElementById('g-queue');
+  try {
+    const q = await api('GET', `/admin/blog/review-queue?directory_id=${id}`);
+    if (!q.items || !q.items.length) {
+      body.innerHTML = '<tr><td colspan="4" style="color:var(--text-secondary)">Nothing held.</td></tr>';
+      return;
+    }
+    body.innerHTML = q.items.map(i => `<tr>
+      <td>${(i.title || '(untitled)').slice(0, 70)}</td>
+      <td>${i.outcome}</td><td>${i.quality_score ?? ''}</td>
+      <td><button class="btn-primary" onclick="reviewPost('${i.id}','approve')">Approve</button>
+          <button class="btn-secondary" onclick="reviewPost('${i.id}','reject')">Reject</button></td></tr>`).join('');
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="4">${e.message}</td></tr>`;
+  }
+}
+
+async function reviewPost(id, decision) {
+  try {
+    await api('POST', `/blog-posts/${id}/review`, { decision });
+    toast(decision === 'approve' ? 'Approved' : 'Sent back to draft', 'success');
+    loadQueue();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ── DECAY ──

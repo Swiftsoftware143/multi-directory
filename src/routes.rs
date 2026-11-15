@@ -537,6 +537,10 @@ pub fn create_router(s: AppState) -> Router {
             "/blog-posts/:id/publish",
             post(blog::publish_blog_post_handler),
         )
+        .route(
+            "/blog-posts/:id/review",
+            post(blog::review_blog_post_handler),
+        )
         .route("/blog-posts/scheduled", get(blog::list_scheduled_posts))
         .route("/blog/distribute", post(blog::distribute_blog_post))
         .route(
@@ -2584,6 +2588,15 @@ pub fn create_router(s: AppState) -> Router {
         .route(
             "/admin/directories/:id/survey",
             get(onboarding_survey::get_survey_config).put(onboarding_survey::upsert_survey_config),
+        )
+        // Blog guardrails: review/auto mode, the daily cap, the minimum score and the queue.
+        .route(
+            "/admin/directories/:id/blog-guardrails",
+            get(blog::get_blog_guardrails_handler).put(blog::put_blog_guardrails_handler),
+        )
+        .route(
+            "/admin/blog/review-queue",
+            get(blog::blog_review_queue_handler),
         )
         .route(
             "/admin/directories/:id/survey/toggle",

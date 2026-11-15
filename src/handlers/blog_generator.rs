@@ -301,6 +301,20 @@ pub async fn generate_for_directory(
         let _ = inject_media(s, post_id, &title, &fields, tpl).await;
     }
 
+    // Guardrails run on every new post, including "publish now" generation. A draft is scored
+    // and queued; a post asked to publish immediately is pulled back unless it passes.
+    if let Ok(report) = crate::guardrails::run(&s.db, post_id).await {
+        if publish && report.outcome != crate::guardrails::Outcome::Pass {
+            let _ = sqlx::query(
+                "UPDATE blog_posts SET published = false, status = 'draft', updated_at = NOW() \
+                 WHERE id = $1",
+            )
+            .bind(post_id)
+            .execute(&s.db)
+            .await;
+        }
+    }
+
     Ok(GeneratedPost {
         id: post_id,
         title,
