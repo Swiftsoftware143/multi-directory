@@ -115,6 +115,7 @@
     <button class="tab-btn" onclick="switchTab('schema')">🏗️ Schema Markup</button>
     <button class="tab-btn" onclick="switchTab('guardrails')">🛡️ Guardrails</button>
     <button class="tab-btn" onclick="switchTab('facts')">📌 Business facts</button>
+    <button class="tab-btn" onclick="switchTab('search')">🔎 Search Console & GA4</button>
   </div>
 
   <!-- DECAY TAB -->
@@ -261,6 +262,27 @@
     </div>
   </div>
 
+
+  <div id="tab-search" class="tab-content">
+    <div class="card">
+      <h2>Connect Search Console + GA4</h2>
+      <p style="color:var(--text-secondary);font-size:.85rem">One connection per city. Credentials are encrypted and tested before they are stored. Search Console gives real queries, positions and decay; GA4 gives real traffic.</p>
+      <label style="display:block;margin:8px 0">Directory <select id="s-dir" onchange="loadSearchStatus()"></select></label>
+      <label style="display:block;margin:8px 0">Search Console property <input id="s-site" style="width:320px" placeholder="sc-domain:zaarhub.com"></label>
+      <label style="display:block;margin:8px 0">GA4 property id (optional) <input id="s-ga4" style="width:160px" placeholder="123456789"></label>
+      <label style="display:block;margin:8px 0">OAuth client id <input id="s-cid" style="width:420px"></label>
+      <label style="display:block;margin:8px 0">OAuth client secret <input id="s-secret" type="password" style="width:320px"></label>
+      <label style="display:block;margin:8px 0">Refresh token <input id="s-refresh" type="password" style="width:420px"></label>
+      <button class="btn-primary" onclick="connectSearch()">Connect</button>
+      <button class="btn-secondary" onclick="syncSearch()">Sync now</button>
+      <span style="margin-left:12px;font-size:.8rem;color:var(--text-secondary)" id="s-status"></span>
+    </div>
+    <div class="card">
+      <h2>What the data says</h2>
+      <div id="s-summary" style="font-size:.85rem;color:var(--text-secondary)">Connect and sync to see queries, opportunities and traffic.</div>
+    </div>
+  </div>
+
 <script>
 const API = '/api/v1';
 let token = '';
@@ -306,10 +328,85 @@ function switchTab(name) {
     loadGuardrails();
   } else if (name === 'facts') {
     loadFacts();
+  } else if (name === 'search') {
+    loadSearchStatus();
   }
 }
 
 
+
+
+// ── SEARCH CONSOLE + GA4 ──
+async function loadSearchDirs() {
+  const sel = document.getElementById('s-dir');
+  if (sel.options.length) return;
+  try {
+    const data = await api('GET', '/directories');
+    const list = Array.isArray(data) ? data : (data.directories || data.items || []);
+    sel.innerHTML = list.map(d => `<option value="${d.id}">${d.name || d.slug}</option>`).join('');
+  } catch (e) {}
+}
+
+async function loadSearchStatus() {
+  await loadSearchDirs();
+  const id = document.getElementById('s-dir').value;
+  if (!id) return;
+  try {
+    const st = await api('GET', `/admin/directories/${id}/search-insights`);
+    document.getElementById('s-status').textContent = st.connected
+      ? `connected to ${st.site_url} · ${st.query_rows} query rows · last sync ${st.last_sync_at || 'never'}`
+      : 'not connected';
+    if (st.connected) loadSearchSummary();
+  } catch (e) { document.getElementById('s-status').textContent = e.message; }
+}
+
+async function connectSearch() {
+  const id = document.getElementById('s-dir').value;
+  const body = {
+    site_url: document.getElementById('s-site').value.trim(),
+    ga4_property_id: document.getElementById('s-ga4').value.trim() || null,
+    client_id: document.getElementById('s-cid').value.trim(),
+    client_secret: document.getElementById('s-secret').value,
+    refresh_token: document.getElementById('s-refresh').value,
+  };
+  if (!body.site_url || !body.client_id || !body.client_secret || !body.refresh_token) {
+    document.getElementById('s-status').textContent = 'Fill in the property, client id, secret and refresh token.';
+    return;
+  }
+  try {
+    const r = await api('POST', `/admin/directories/${id}/search-insights/connect`, body);
+    document.getElementById('s-status').textContent = 'connected — property access: ' + (r.property_access && r.property_access.ok ? 'yes' : JSON.stringify(r.property_access));
+    document.getElementById('s-secret').value = '';
+    document.getElementById('s-refresh').value = '';
+    loadSearchStatus();
+  } catch (e) { document.getElementById('s-status').textContent = e.message; }
+}
+
+async function syncSearch() {
+  const id = document.getElementById('s-dir').value;
+  if (!id) return;
+  document.getElementById('s-status').textContent = 'syncing…';
+  try {
+    const r = await api('POST', `/admin/directories/${id}/search-insights/sync?days=28`);
+    document.getElementById('s-status').textContent = `synced: ${r.gsc_rows} query rows, ${r.ga4_rows} GA4 rows, ${r.opportunities_queued} queued, ${r.posts_flagged_for_refresh} flagged` + (r.errors && r.errors.length ? ' — ' + r.errors.join(' | ') : '');
+    loadSearchSummary();
+  } catch (e) { document.getElementById('s-status').textContent = e.message; }
+}
+
+async function loadSearchSummary() {
+  const id = document.getElementById('s-dir').value;
+  if (!id) return;
+  try {
+    const s = await api('GET', `/admin/directories/${id}/search-insights/summary`);
+    const q = (s.top_queries || []).slice(0, 8).map(x => `<li>${x.query} — ${x.clicks} clicks, pos ${Number(x.position).toFixed(1)}</li>`).join('');
+    const o = (s.opportunities || []).slice(0, 8).map(x => `<li>${x.query} — pos ${Number(x.position).toFixed(1)}, ${x.impressions} impressions</li>`).join('');
+    const t = (s.top_pages_by_sessions || []).slice(0, 8).map(x => `<li>${x.page} — ${x.sessions} sessions</li>`).join('');
+    document.getElementById('s-summary').innerHTML =
+      `<h3>Top queries (28d)</h3><ul>${q || '<li>none yet</li>'}</ul>` +
+      `<h3>Opportunities (position 8-20)</h3><ul>${o || '<li>none yet</li>'}</ul>` +
+      `<h3>Top pages by sessions</h3><ul>${t || '<li>none yet</li>'}</ul>`;
+  } catch (e) {}
+}
 
 // ── BUSINESS FACTS ──
 async function loadFactDirs() {

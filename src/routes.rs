@@ -2607,6 +2607,23 @@ pub fn create_router(s: AppState) -> Router {
             "/admin/business-facts/:id",
             axum::routing::put(business_facts::update_fact).delete(business_facts::delete_fact),
         )
+        // Search Console + GA4: the real feedback loop (queries, decay, traffic).
+        .route(
+            "/admin/directories/:id/search-insights/connect",
+            post(search_insights::connect),
+        )
+        .route(
+            "/admin/directories/:id/search-insights/sync",
+            post(search_insights::sync),
+        )
+        .route(
+            "/admin/directories/:id/search-insights/summary",
+            get(search_insights::summary),
+        )
+        .route(
+            "/admin/directories/:id/search-insights",
+            get(search_insights::status),
+        )
         .route(
             "/admin/directories/:id/survey/toggle",
             post(onboarding_survey::toggle_survey),

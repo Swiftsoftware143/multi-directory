@@ -30,6 +30,7 @@ pub mod reports;
 pub mod reviews;
 pub mod satellite;
 pub mod search;
+pub mod search_insights;
 pub mod seo;
 pub mod seo_submission;
 pub mod submissions;
