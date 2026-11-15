@@ -208,6 +208,18 @@
       <label style="display:block;margin:10px 0">Auto-publish daily cap <input id="g-cap" type="number" min="0" max="50" style="width:80px"></label>
       <label style="display:block;margin:10px 0">Minimum quality score <input id="g-min" type="number" min="0" max="100" style="width:80px"></label>
       <label style="display:block;margin:10px 0"><input id="g-ai" type="checkbox"> Add an AI-assistance note to published posts</label>
+      <label style="display:block;margin:10px 0">Plagiarism checker
+        <select id="g-plag">
+          <option value="">Not connected</option>
+          <option value="winston">Winston AI</option>
+          <option value="copyleaks">Copyleaks</option>
+          <option value="originality">Originality.ai</option>
+          <option value="plagiarismcheck">PlagiarismCheck.org</option>
+          <option value="copyscape">Copyscape</option>
+        </select>
+      </label>
+      <label style="display:block;margin:10px 0">Hold over <input id="g-hold" type="number" min="1" max="100" style="width:70px">% matching</label>
+      <label style="display:block;margin:10px 0">Block over <input id="g-block" type="number" min="1" max="100" style="width:70px">% matching</label>
       <button class="btn-primary" onclick="saveGuardrails()">Save settings</button>
       <span style="margin-left:12px;font-size:.8rem;color:var(--text-secondary)" id="g-status"></span>
     </div>
@@ -286,6 +298,10 @@ async function loadGuardrails() {
     document.getElementById('g-cap').value = s.auto_publish_daily_cap;
     document.getElementById('g-min').value = s.min_quality_score;
     document.getElementById('g-ai').checked = !!s.ai_disclosure;
+    const gs = s.guardrail_settings || {};
+    document.getElementById('g-plag').value = gs.plagiarism_provider || '';
+    document.getElementById('g-hold').value = gs.plagiarism_hold_pct ?? 5;
+    document.getElementById('g-block').value = gs.plagiarism_block_pct ?? 15;
     document.getElementById('g-status').textContent = '';
   } catch (e) { document.getElementById('g-status').textContent = e.message; }
   loadQueue();
@@ -300,6 +316,11 @@ async function saveGuardrails() {
       auto_publish_daily_cap: Number(document.getElementById('g-cap').value),
       min_quality_score: Number(document.getElementById('g-min').value),
       ai_disclosure: document.getElementById('g-ai').checked,
+      guardrail_settings: {
+        plagiarism_provider: document.getElementById('g-plag').value,
+        plagiarism_hold_pct: Number(document.getElementById('g-hold').value),
+        plagiarism_block_pct: Number(document.getElementById('g-block').value),
+      },
     });
     document.getElementById('g-status').textContent = 'Saved';
     toast('Guardrail settings saved', 'success');

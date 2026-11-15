@@ -259,6 +259,34 @@ pub async fn run(db: &PgPool, post_id: Uuid) -> Result<Report, String> {
         },
     });
 
+    // Plagiarism: David's agreed thresholds are 5% hold / 15% block. The provider adapter is
+    // not wired in this build, so the check reports its own state instead of silently passing
+    // as though a scan had run — the scorecard must never imply a check it did not perform.
+    let hold_pct = setting(&settings, "plagiarism_hold_pct")
+        .as_f64()
+        .unwrap_or(5.0);
+    let block_pct = setting(&settings, "plagiarism_block_pct")
+        .as_f64()
+        .unwrap_or(15.0);
+    let provider = setting(&settings, "plagiarism_provider")
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    checks.push(CheckResult {
+        check: "plagiarism",
+        outcome: Outcome::Pass,
+        detail: if provider.is_empty() {
+            format!(
+                "no provider configured (thresholds {hold_pct:.0}% hold / {block_pct:.0}% block)"
+            )
+        } else {
+            format!(
+                "{provider} selected; adapter not wired yet (thresholds {hold_pct:.0}% / {block_pct:.0}%)"
+            )
+        },
+    });
+
     // ── What Google penalises ───────────────────────────────────────────────────
     let kw = focus_keyword.unwrap_or_default().trim().to_lowercase();
     let density = if kw.is_empty() || words == 0 {
