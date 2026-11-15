@@ -259,9 +259,10 @@ pub async fn run(db: &PgPool, post_id: Uuid) -> Result<Report, String> {
         },
     });
 
-    // Plagiarism: David's agreed thresholds are 5% hold / 15% block. The provider adapter is
-    // not wired in this build, so the check reports its own state instead of silently passing
-    // as though a scan had run — the scorecard must never imply a check it did not perform.
+    // Plagiarism: David's agreed thresholds are 5% hold / 15% block. A real provider scan runs
+    // when Winston AI is selected; when it cannot run (no provider, no key, vendor error) the
+    // check reports its own state and stays `pass` — the scorecard must never imply a check it
+    // did not perform, and a vendor outage must never block a publish.
     let hold_pct = setting(&settings, "plagiarism_hold_pct")
         .as_f64()
         .unwrap_or(5.0);
@@ -273,19 +274,48 @@ pub async fn run(db: &PgPool, post_id: Uuid) -> Result<Report, String> {
         .unwrap_or("")
         .trim()
         .to_string();
-    checks.push(CheckResult {
-        check: "plagiarism",
-        outcome: Outcome::Pass,
-        detail: if provider.is_empty() {
-            format!(
+    let plagiarism = if provider.is_empty() {
+        CheckResult {
+            check: "plagiarism",
+            outcome: Outcome::Pass,
+            detail: format!(
                 "no provider configured (thresholds {hold_pct:.0}% hold / {block_pct:.0}% block)"
-            )
-        } else {
-            format!(
+            ),
+        }
+    } else if provider != "winston" {
+        CheckResult {
+            check: "plagiarism",
+            outcome: Outcome::Pass,
+            detail: format!(
                 "{provider} selected; adapter not wired yet (thresholds {hold_pct:.0}% / {block_pct:.0}%)"
-            )
-        },
-    });
+            ),
+        }
+    } else {
+        match scan_winston(db, directory_id, &text).await {
+            Ok(pct) => {
+                let outcome = if pct > block_pct {
+                    Outcome::Block
+                } else if pct > hold_pct {
+                    Outcome::Hold
+                } else {
+                    Outcome::Pass
+                };
+                CheckResult {
+                    check: "plagiarism",
+                    outcome,
+                    detail: format!(
+                        "Winston AI: {pct:.0}% matching (limits {hold_pct:.0}% hold / {block_pct:.0}% block)"
+                    ),
+                }
+            }
+            Err(e) => CheckResult {
+                check: "plagiarism",
+                outcome: Outcome::Pass,
+                detail: format!("Winston AI selected but scan skipped: {e}"),
+            },
+        }
+    };
+    checks.push(plagiarism);
 
     // Business facts: a draft that ignores the business's own details is generic copy.
     let (facts_used, facts_total) =
@@ -579,6 +609,68 @@ pub async fn run(db: &PgPool, post_id: Uuid) -> Result<Report, String> {
 
     let _ = mode; // review/auto is applied by the caller that publishes
     Ok(report)
+}
+
+/// Scan `text` for plagiarism through Winston AI (`/v2/plagiarism`). The endpoint and key are
+/// resolved the way this directory reads every other provider (own -> network -> platform, with
+/// the official URL as the fallback) — nothing is hardcoded, and a stand-in endpoint can be
+/// pointed at for testing. `Err` means the scan did not run: the caller must report it as
+/// "skipped", never as a pass.
+async fn scan_winston(db: &PgPool, directory_id: Uuid, text: &str) -> Result<f64, String> {
+    const PROVIDER: &str = "winston";
+    if text.chars().count() < 100 {
+        return Err("draft too short to scan (Winston needs 100+ characters)".to_string());
+    }
+
+    let api_key = crate::handlers::provider_keys_handler::resolve_provider_key_for_directory(
+        db,
+        Some(directory_id),
+        PROVIDER,
+    )
+    .await
+    .ok_or_else(|| "no Winston AI key (add it in Provider Keys)".to_string())?;
+
+    let url = match crate::handlers::provider_keys_handler::resolve_provider_base_url_for_directory(
+        db,
+        Some(directory_id),
+        PROVIDER,
+    )
+    .await
+    {
+        Some(base) => {
+            let trimmed = base.trim().trim_end_matches('/').to_string();
+            if trimmed.ends_with("/v2/plagiarism") {
+                trimmed
+            } else {
+                format!("{trimmed}/v2/plagiarism")
+            }
+        }
+        None => "https://api.gowinston.ai/v2/plagiarism".to_string(),
+    };
+
+    let body = json!({ "text": text, "language": "auto" });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("scan returned HTTP {}", resp.status()));
+    }
+
+    let data: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("bad response: {e}"))?;
+
+    data["result"]["score"]
+        .as_f64()
+        .ok_or_else(|| "response missing result.score".to_string())
 }
 
 /// How many posts this directory has published today (for the auto-publish daily cap).
