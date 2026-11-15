@@ -294,14 +294,20 @@ pub async fn run(db: &PgPool, post_id: Uuid) -> Result<Report, String> {
     } else {
         lower.matches(&kw).count() as f64 * 100.0 / words as f64
     };
+    let density_limit = setting(&settings, "keyword_density_pct")
+        .as_f64()
+        .unwrap_or(5.0);
     checks.push(CheckResult {
         check: "keyword_stuffing",
-        outcome: if density > 4.0 {
+        outcome: if density > density_limit {
             Outcome::Hold
         } else {
             Outcome::Pass
         },
-        detail: format!("keyword density {:.2}%", density),
+        detail: format!(
+            "keyword density {:.2}% (limit {:.1}%)",
+            density, density_limit
+        ),
     });
 
     // Near-duplicates: same directory, 3-word shingles, Jaccard similarity.
