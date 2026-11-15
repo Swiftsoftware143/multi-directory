@@ -4607,6 +4607,16 @@ pub async fn blog_list_page(
         end = shell_end(&site, hq.as_deref()),
     );
 
+    // Nothing to read yet: keep the URL reachable but out of the index. A 404 would throw
+    // the URL away; noindex holds the option and reverses the moment a post is published.
+    let body = if items.is_empty() {
+        body.replace(
+            "<meta name=\"robots\" content=\"index,follow,max-image-preview:large\">",
+            "<meta name=\"robots\" content=\"noindex,follow\">",
+        )
+    } else {
+        body
+    };
     Some(html_response(StatusCode::OK, body))
 }
 
@@ -5100,12 +5110,16 @@ pub async fn sitemap(
         ));
         // The server-rendered city blog index and deals index — the two
         // sub-paths Google should index per city (subfolder canonical form).
-        xml.push_str(&format!(
-            "  <url><loc>{base}/{slug}/blog</loc>{lm}</url>\n",
-            base = h(&base),
-            slug = h(&dslug),
-            lm = lastmod_xml(blog_ts)
-        ));
+        // A blog index with no published posts is a ~190-word navigation shell; listing it
+        // invites a thin-content verdict, so it is listed only once it has something to read.
+        if !blogs.is_empty() {
+            xml.push_str(&format!(
+                "  <url><loc>{base}/{slug}/blog</loc>{lm}</url>\n",
+                base = h(&base),
+                slug = h(&dslug),
+                lm = lastmod_xml(blog_ts)
+            ));
+        }
         xml.push_str(&format!(
             "  <url><loc>{base}/{slug}/deals</loc>{lm}</url>\n",
             base = h(&base),
@@ -5197,7 +5211,16 @@ pub fn robots(host: Option<&str>, proto: &str, fallback_domain: &str) -> Respons
          Allow: /\n\
          Disallow: /api/\n\
          Disallow: /admin/\n\
-         Disallow: /auth/\n",
+         Disallow: /auth/\n\
+         # Public, anonymous catalogue reads — the city pages paint their listings from\n\
+         # these. With them blocked, Google's renderer saw 18 of 437 businesses and called\n\
+         # the page thin. Longest-match wins, so every other /api/ path stays blocked.\n\
+         Allow: /api/v1/zaarhub/cities\n\
+         Allow: /api/v1/zaarhub/homepage\n\
+         Allow: /api/v1/zaarhub/search\n\
+         Allow: /api/v1/deals\n\
+         Allow: /api/v1/events\n\
+         Allow: /api/v1/ads/\n",
     );
     if let Some(brand) = crate::seo_canonical::sitemap_origin(host) {
         body.push_str(&format!("\nSitemap: {}/sitemap.xml\n", brand));
