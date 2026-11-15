@@ -287,6 +287,19 @@ pub async fn run(db: &PgPool, post_id: Uuid) -> Result<Report, String> {
         },
     });
 
+    // Business facts: a draft that ignores the business's own details is generic copy.
+    let (facts_used, facts_total) =
+        crate::handlers::business_facts::usage(db, directory_id, &lower).await;
+    checks.push(CheckResult {
+        check: "business_facts",
+        outcome: Outcome::Pass,
+        detail: if facts_total == 0 {
+            "no facts recorded yet".to_string()
+        } else {
+            format!("used {facts_used} of {facts_total} recorded facts")
+        },
+    });
+
     // ── What Google penalises ───────────────────────────────────────────────────
     let kw = focus_keyword.unwrap_or_default().trim().to_lowercase();
     let density = if kw.is_empty() || words == 0 {
@@ -492,6 +505,9 @@ pub async fn run(db: &PgPool, post_id: Uuid) -> Result<Report, String> {
         score += 10;
     }
     if author_ok {
+        score += 10;
+    }
+    if facts_total > 0 && facts_used > 0 {
         score += 10;
     }
     let sources = Regex::new(r#"(?i)<a\b[^>]*href="https?://"#)

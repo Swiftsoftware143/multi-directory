@@ -2598,6 +2598,15 @@ pub fn create_router(s: AppState) -> Router {
             "/admin/blog/review-queue",
             get(blog::blog_review_queue_handler),
         )
+        // Business facts — the first-hand details drafts must use.
+        .route(
+            "/admin/directories/:id/business-facts",
+            get(business_facts::list_facts).post(business_facts::create_fact),
+        )
+        .route(
+            "/admin/business-facts/:id",
+            axum::routing::put(business_facts::update_fact).delete(business_facts::delete_fact),
+        )
         .route(
             "/admin/directories/:id/survey/toggle",
             post(onboarding_survey::toggle_survey),

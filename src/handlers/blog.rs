@@ -23,7 +23,7 @@ use crate::AppState;
 /// not guarantee `auth_guard` injected an `Extension<Claims>` (per-router layering, and the public
 /// allowlist returns before injection). Reading the token here holds wherever the route lives, and
 /// a missing/expired token answers 401 instead of panicking into a 500.
-fn caller(s: &AppState, headers: &HeaderMap) -> Result<Claims, AppError> {
+pub(crate) fn caller(s: &AppState, headers: &HeaderMap) -> Result<Claims, AppError> {
     tenant_scope::claims_from_headers(headers, &s.config.jwt_secret)
 }
 

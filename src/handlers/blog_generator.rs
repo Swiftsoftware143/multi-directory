@@ -248,12 +248,16 @@ pub async fn generate_for_directory(
 
     let filled_template = fill_template(&tpl.content_template, &fields);
     let merge_fields_str = serde_json::to_string(&tpl.merge_fields).unwrap_or_default();
+    // First-hand details beat generic copy: the business's own services, areas, prices and
+    // quotes go into the prompt, and the quality score checks that the draft used them.
+    let facts = crate::handlers::business_facts::for_prompt(&s.db, dir_id, None, 12).await;
     let prompt = build_llm_prompt(
         &filled_template,
         &fields,
         word_count,
         provider,
         &merge_fields_str,
+        &facts,
     );
 
     // Call the LLM — the key AND the endpoint are the ones THIS directory reads.
@@ -427,12 +431,14 @@ pub async fn regenerate_blog_post(
         .unwrap_or("deepseek-chat");
 
     let filled_template = fill_template(&tpl.content_template, &fields);
+    let facts = crate::handlers::business_facts::for_prompt(&s.db, dir_id, None, 12).await;
     let prompt = build_llm_prompt(
         &filled_template,
         &fields,
         tpl.word_count.unwrap_or(1000),
         provider,
         "{}",
+        &facts,
     );
 
     match call_llm(&s.db, provider, model, &prompt, Some(dir_id)).await {
@@ -554,6 +560,7 @@ fn build_llm_prompt(
     word_count: i32,
     _provider: &str,
     _merge_fields_schema: &str,
+    facts: &[String],
 ) -> String {
     let keyword = fields.get("focus_keyword").cloned().unwrap_or_default();
     let city = fields.get("city").cloned().unwrap_or_default();
@@ -574,12 +581,24 @@ REQUIREMENTS:
 - Focus keyword: "{}"
 - Target location/city: "{}"
 - Industry/service: "{}"
-
+{}
 TEMPLATE TO FILL:
 {}
 
 Generate the complete HTML blog post now. Start with an <h1> title tag."#,
-        word_count, keyword, city, industry, filled_template
+        word_count,
+        keyword,
+        city,
+        industry,
+        if facts.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\nREAL DETAILS FROM THIS BUSINESS — use at least two of them where they fit, and never invent facts that are not here:\n- {}\n",
+                facts.join("\n- ")
+            )
+        },
+        filled_template
     )
 }
 

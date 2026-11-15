@@ -114,6 +114,7 @@
     <button class="tab-btn" onclick="switchTab('aeo')">📊 AEO Scoring</button>
     <button class="tab-btn" onclick="switchTab('schema')">🏗️ Schema Markup</button>
     <button class="tab-btn" onclick="switchTab('guardrails')">🛡️ Guardrails</button>
+    <button class="tab-btn" onclick="switchTab('facts')">📌 Business facts</button>
   </div>
 
   <!-- DECAY TAB -->
@@ -230,6 +231,36 @@
     </div>
   </div>
 
+
+  <div id="tab-facts" class="tab-content">
+    <div class="card">
+      <h2>Business facts</h2>
+      <p style="color:var(--text-secondary);font-size:.85rem">Real details drafting must use — services, areas served, prices, jobs done, owner quotes, credentials. Two or more go into every draft, and the quality score checks they were used.</p>
+      <label style="display:block;margin:10px 0">Directory <select id="f-dir" onchange="loadFacts()"></select></label>
+      <label style="display:block;margin:10px 0">Kind
+        <select id="f-kind">
+          <option value="service">Service</option>
+          <option value="area">Area served</option>
+          <option value="price">Price / rate</option>
+          <option value="job">Real job</option>
+          <option value="quote">Owner quote</option>
+          <option value="credential">Credential / licence</option>
+          <option value="differentiator">What makes them different</option>
+          <option value="photo">Photo note</option>
+        </select>
+      </label>
+      <label style="display:block;margin:10px 0">Fact<br><textarea id="f-content" rows="3" style="width:100%;max-width:620px" placeholder="e.g. Emergency call-outs within 60 minutes across Apopka and Altamonte Springs"></textarea></label>
+      <label style="display:block;margin:10px 0">Source (optional) <input id="f-source" style="width:320px" placeholder="owner interview, invoice, Google profile…"></label>
+      <button class="btn-primary" onclick="addFact()">Add fact</button>
+      <span style="margin-left:12px;font-size:.8rem;color:var(--text-secondary)" id="f-status"></span>
+    </div>
+    <div class="card">
+      <h2>Recorded facts</h2>
+      <table><thead><tr><th>Kind</th><th>Fact</th><th></th></tr></thead>
+      <tbody id="f-list"><tr><td colspan="3" style="color:var(--text-secondary)">None yet.</td></tr></tbody></table>
+    </div>
+  </div>
+
 <script>
 const API = '/api/v1';
 let token = '';
@@ -273,9 +304,62 @@ function switchTab(name) {
     loadAeoReport();
   } else if (name === 'guardrails') {
     loadGuardrails();
+  } else if (name === 'facts') {
+    loadFacts();
   }
 }
 
+
+
+// ── BUSINESS FACTS ──
+async function loadFactDirs() {
+  const sel = document.getElementById('f-dir');
+  if (sel.options.length) return;
+  try {
+    const data = await api('GET', '/directories');
+    const list = Array.isArray(data) ? data : (data.directories || data.items || []);
+    sel.innerHTML = list.map(d => `<option value="${d.id}">${d.name || d.slug}</option>`).join('');
+  } catch (e) {}
+}
+
+async function loadFacts() {
+  await loadFactDirs();
+  const id = document.getElementById('f-dir').value;
+  if (!id) return;
+  const body = document.getElementById('f-list');
+  try {
+    const r = await api('GET', `/admin/directories/${id}/business-facts`);
+    if (!r.items || !r.items.length) {
+      body.innerHTML = '<tr><td colspan="3" style="color:var(--text-secondary)">None yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = r.items.map(f => `<tr>
+      <td>${f.kind}</td><td>${(f.content || '').slice(0, 110)}</td>
+      <td><button class="btn-secondary" onclick="deleteFact('${f.id}')">Delete</button></td></tr>`).join('');
+  } catch (e) { body.innerHTML = `<tr><td colspan="3">${e.message}</td></tr>`; }
+}
+
+async function addFact() {
+  const id = document.getElementById('f-dir').value;
+  const content = document.getElementById('f-content').value.trim();
+  if (!id || content.length < 8) { document.getElementById('f-status').textContent = 'Write the fact first.'; return; }
+  try {
+    await api('POST', `/admin/directories/${id}/business-facts`, {
+      kind: document.getElementById('f-kind').value,
+      content,
+      source: document.getElementById('f-source').value.trim() || null,
+    });
+    document.getElementById('f-content').value = '';
+    document.getElementById('f-source').value = '';
+    document.getElementById('f-status').textContent = 'Added';
+    loadFacts();
+  } catch (e) { document.getElementById('f-status').textContent = e.message; }
+}
+
+async function deleteFact(fid) {
+  try { await api('DELETE', `/admin/business-facts/${fid}`); loadFacts(); }
+  catch (e) { toast(e.message, 'error'); }
+}
 
 // ── GUARDRAILS ──
 async function loadDirs() {
