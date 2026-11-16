@@ -675,7 +675,7 @@ function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/
    name. Google's formatted address already contains '…, City, ST ZIP, USA', so when the
    business's OWN city equals the one being viewed, drop that city (and the trailing ', USA')
    so the card reads '4228 Harbor City Blvd, FL 32901' rather than '…, Melbourne, FL 32901'. */
-function zhAddrClean(addr,city){if(!addr)return '';var a=String(addr);if(city){var re=new RegExp(',?\\s*'+String(city).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*,?','gi');a=a.replace(re,function(m){return m.indexOf(',')>=0?',':' '})}a=a.replace(/,\s*USA\s*$/i,'').replace(/^\s*,\s*|\s*,\s*$/g,'').trim();return a}
+function zhAddrClean(addr,city){if(!addr)return '';var a=String(addr);if(city){var re=new RegExp(',\\s*'+String(city).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*,?','gi');a=a.replace(re,function(m){return m.indexOf(',')>=0?',':' '})}a=a.replace(/,\s*USA\s*$/i,'').replace(/^\s*,\s*|\s*,\s*$/g,'').trim();return a}
 /* SEO: a business card must link to its REAL, server-rendered page
    /<city>/businesses/<business-slug> (correct title, description, canonical and
    structured data) so search engines can crawl and rank it. Before this, every
