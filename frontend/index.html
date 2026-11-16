@@ -671,6 +671,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 // ── Helpers ──
 async function g(url){var ctrl=new AbortController();var timer=setTimeout(function(){ctrl.abort()},15000);try{var r=await fetch('/api/v1'+url,{signal:ctrl.signal});if(!r.ok){let e=await r.json().catch(()=>({}));throw new Error(e.message||e.error||'Request failed')}clearTimeout(timer);return r.json()}catch(e){clearTimeout(timer);throw e}}
 function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+/* David's redundancy rule: a listing on its own city's page must not repeat the town
+   name. Google's formatted address already contains '…, City, ST ZIP, USA', so when the
+   business's OWN city equals the one being viewed, drop that city (and the trailing ', USA')
+   so the card reads '4228 Harbor City Blvd, FL 32901' rather than '…, Melbourne, FL 32901'. */
+function zhAddrClean(addr,city){if(!addr)return '';var a=String(addr);if(city){var re=new RegExp(',?\\s*'+String(city).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*,?','gi');a=a.replace(re,function(m){return m.indexOf(',')>=0?',':' '})}a=a.replace(/,\s*USA\s*$/i,'').replace(/^\s*,\s*|\s*,\s*$/g,'').trim();return a}
 /* SEO: a business card must link to its REAL, server-rendered page
    /<city>/businesses/<business-slug> (correct title, description, canonical and
    structured data) so search engines can crawl and rank it. Before this, every
@@ -2342,7 +2347,7 @@ function renderCityPage(d){
     <div class="badges">${badges}</div>
     <h4>${bizLink(bizHref(state.slug,b.slug),esc(b.name))}${distBadge}</h4>
     <div><span class="zh-rating">${stars}</span> <span class="num" style="color:var(--text-light);font-size:.78rem">${reviewCount?reviewCount+' reviews':''}</span></div>
-    ${b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':''}
+    ${b.address?'<div class="addr">📍 '+esc(zhAddrClean(b.address,b.city))+'</div>':''}
     <div class="zh-biz-actions-row" onclick="event.stopPropagation()">
       ${b.phone?'<a href="tel:'+esc(b.phone)+'" class="action">📞 Call</a>':''}
       ${b.address?'<a href="https://www.google.com/maps/search/'+encodeURIComponent(b.address)+'" target="_blank" class="action" onclick="event.stopPropagation()">🗺️ Directions</a>':''}
@@ -2636,7 +2641,7 @@ function renderSearchResults(r){
         '<div class="zh-biz-img" style="background:'+(i%2===0?'var(--primary-light)':'var(--accent-light)')+'">'+esc((b.name||'?')[0])+(b.image_url?'<img src="'+esc(b.image_url)+'" alt="" loading="lazy" decoding="async" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove();var c=this.parentNode&&this.parentNode.querySelector(\'.zh-photo-credit\');if(c)c.remove();">':'')+(b.image_url&&b.image_url.indexOf('/api/v1/place-photo/')===0?'<span class="zh-photo-credit">Photo: Google</span>':'')+'</div>'+
         '<div class="zh-biz-body"><h4>'+bizLink(bizHref(b.directory_slug,b.slug),esc(b.name))+distBadge+'</h4>'+
         '<div class="stars">'+stars+' <span style="color:var(--text-light);font-size:.78rem">'+(b.review_count||0)+' reviews</span></div>'+
-        (b.address?'<div class="addr">📍 '+esc(b.address)+'</div>':'')+
+        (b.address?'<div class="addr">📍 '+esc(zhAddrClean(b.address,b.city))+'</div>':'')+
         (b.city?'<div class="addr">🏙️ '+esc(b.city)+'</div>':'')+
         '<div class="zh-biz-actions">'+(b.phone?'<a href="tel:'+esc(b.phone)+'" class="action">📞 Call</a>':'')+
         '</div></div></div>'
@@ -3735,7 +3740,7 @@ function renderBizPage(d){
   photoHtml+
   '<div class="zh-section"><div class="zh-section-inner"><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px"><div>'+
   (b.description?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">About</h3><p style="color:var(--text-light);line-height:1.7">'+esc(b.description)+'</p></div>':'')+
-  (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(b.address)+'<br>'+esc(b.city)+', '+esc(b.state)+'</p>'+walkLine+'</div>':'')+
+  (b.address?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">📍 Location</h3><p style="color:var(--text-light)">'+esc(zhAddrClean(b.address,b.city))+'<br>'+esc(b.city)+', '+esc(b.state)+'</p>'+walkLine+'</div>':'')+
   zhHoursHtml(b.hours)+
   '</div><div>'+
   (d.deals&&d.deals.length?'<div style="margin-bottom:24px"><h3 style="margin-bottom:8px;font-size:1.1rem;font-weight:600">🎁 Current Deals</h3>'+d.deals.map(function(dl){return '<div style="background:var(--bg-teal);padding:14px;border-radius:8px;margin-bottom:8px"><strong>'+esc(dl.title)+'</strong>'+(dl.deal_price?'<div style="color:var(--teal);font-weight:700;margin-top:4px">$'+esc(dl.deal_price)+(dl.original_price?' <span style="text-decoration:line-through;color:var(--text-muted)">$'+esc(dl.original_price)+'</span>':'')+'</div>':'')+(dl.description?'<div style="font-size:.85rem;color:var(--text-light);margin-top:4px">'+esc(dl.description)+'</div>':'')+'</div>'}).join('')+'</div>':'')+
