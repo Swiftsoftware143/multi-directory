@@ -136,7 +136,7 @@ pub async fn list_blog_posts(
 
     let rows = sqlx::query(
         "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at, \
-                coalesce(status, 'published') AS status, town_key \
+                coalesce(status, 'published') AS status, town_key, focus_keyword \
          FROM blog_posts \
          WHERE ($1::uuid IS NULL OR directory_id = $1) \
            AND ($2::uuid[] IS NULL OR directory_id = ANY($2)) \
@@ -162,6 +162,7 @@ pub async fn list_blog_posts(
                 "updated_at": r.try_get::<Option<DateTime<Utc>>, _>("updated_at").unwrap_or(None),
                 "status": r.try_get::<String, _>("status").unwrap_or_else(|_| "published".into()),
                 "town_key": r.try_get::<Option<String>, _>("town_key").unwrap_or(None),
+                "focus_keyword": r.try_get::<Option<String>, _>("focus_keyword").unwrap_or(None),
             })
         })
         .collect();
@@ -298,12 +299,15 @@ pub async fn update_blog_post(
 
     // Town + status are not on the lean struct above: read them on their own so the
     // model keeps serving the endpoints that never needed them.
-    let (existing_town, existing_status): (Option<String>, Option<String>) =
-        sqlx::query_as("SELECT town_key, status FROM blog_posts WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&s.db)
-            .await?
-            .unwrap_or((None, None));
+    let (existing_town, existing_status, existing_focus_keyword): (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = sqlx::query_as("SELECT town_key, status, focus_keyword FROM blog_posts WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .unwrap_or((None, None, None));
 
     // W30(b): absent field = keep the town; empty string = make the article city-wide.
     let town_key: Option<String> = match req.town_key.as_deref() {
@@ -334,17 +338,23 @@ pub async fn update_blog_post(
         req.published.unwrap_or(existing.published.unwrap_or(true))
     };
 
-    let focus_keyword: Option<String> = req
-        .focus_keyword
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+    // Absent = keep the keyword; empty string = clear it (mirrors town_key).
+    let focus_keyword: Option<String> = match req.focus_keyword.as_deref() {
+        None => existing_focus_keyword,
+        Some(raw) => {
+            let key = raw.trim().to_string();
+            if key.is_empty() {
+                None
+            } else {
+                Some(key)
+            }
+        }
+    };
 
     let post = sqlx::query_as::<_, BlogPost>(
         "UPDATE blog_posts SET title = $1, slug = $2, excerpt = $3, content = $4, published = $5, \
                 status = $6, town_key = $7, \
-                focus_keyword = COALESCE($8, focus_keyword), updated_at = NOW() WHERE id = $9 \
+                focus_keyword = $8, updated_at = NOW() WHERE id = $9 \
          RETURNING id, title, slug, excerpt, content, directory_id, published, created_at, updated_at ",
     )
     .bind(&title)
