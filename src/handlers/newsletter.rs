@@ -1106,20 +1106,34 @@ pub async fn send_newsletter(
             .build(),
     };
 
-    // Fetch dir slug for unsubscribe link
-    let dir_slug: Option<String> =
-        sqlx::query_as::<_, (String,)>("SELECT slug FROM directories WHERE id = $1")
-            .bind(n.directory_id)
-            .fetch_optional(&s.db)
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?
-            .map(|r| r.0);
+    // Fetch dir slug + brand host for the unsubscribe link. The directory's public
+    // host is its network's brand domain (`networks.root_domain`) — cities are
+    // FOLDERS on that domain (`https://<brand>/<slug>`), never subdomains; the old
+    // `https://<slug>.<base_domain>` form is a retired subdomain that no longer
+    // resolves (verified: palm-bay.directory.swiftsoftware.net is dead).
+    let dir_info: Option<(String, String)> = sqlx::query_as(
+        "SELECT d.slug, COALESCE(n.root_domain, '') FROM directories d \
+         LEFT JOIN networks n ON n.id = d.network_id WHERE d.id = $1",
+    )
+    .bind(n.directory_id)
+    .fetch_optional(&s.db)
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .map(|r: (String, String)| r);
 
-    let base_url = format!(
-        "https://{}.{}",
-        dir_slug.as_deref().unwrap_or("directory"),
-        s.config.base_domain
-    );
+    let dir_slug = dir_info
+        .as_ref()
+        .map(|d| d.0.as_str())
+        .unwrap_or("directory");
+    let brand_host = dir_info
+        .as_ref()
+        .map(|d| d.1.trim())
+        .filter(|h| !h.is_empty());
+
+    let base_url = match brand_host {
+        Some(host) => format!("https://{}/{}", host, dir_slug),
+        None => format!("https://{}.{}", dir_slug, s.config.base_domain),
+    };
 
     let mut sent = 0u64;
     let mut failed = 0u64;
