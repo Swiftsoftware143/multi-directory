@@ -569,7 +569,7 @@
         <a href="#sc-blog-section">📰 Blog Templates</a>
         <a href="#sc-news-section">✉️ Newsletters</a>
         <a href="#sc-land-section">🚀 Landing Pages</a>
-        <a href="#developer-api-section">🧩 API Access &amp; Webhooks</a>
+        <a href="#developer-api-section" id="nav-developer-api">🧩 API Access &amp; Webhooks</a>
         <a href="#articles-section">📰 Sponsored Articles</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty</a>
@@ -11305,7 +11305,16 @@
     function akFmt(dt) { if (!dt) return '—'; try { return new Date(dt).toLocaleString(); } catch (e) { return '—'; } }
     function akStatus(id, msg, ok) { var el = document.getElementById(id); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
 
-    function loadApiAccess() { loadApiKeys(); if (akIsOperator()) loadWebhooks(); }
+    function loadApiAccess() {
+      // David 2026-11-11: customers (visitor accounts) hold no API key, so the whole card and its
+      // nav entry are hidden for them — only business, supplier and staff accounts see a key screen.
+      if (user && user.role === 'visitor') {
+        var card = document.getElementById('developer-api-section'); if (card) card.style.display = 'none';
+        var nav = document.getElementById('nav-developer-api'); if (nav) nav.style.display = 'none';
+        return;
+      }
+      loadApiKeys(); if (akIsOperator()) loadWebhooks();
+    }
 
     function akIsOperator() { return !!(user && user.role === 'super_admin'); }
 

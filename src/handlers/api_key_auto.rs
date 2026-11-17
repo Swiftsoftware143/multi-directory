@@ -98,6 +98,15 @@ fn caller(
 ) -> Result<(crate::auth::models::Claims, Uuid, Option<Uuid>), AppError> {
     let claims =
         crate::handlers::tenant_scope::claims_from_headers(headers, &state.config.jwt_secret)?;
+    // David 2026-11-11: customers (visitor accounts) hold NO API key — business and supplier
+    // accounts keep theirs, a shopper has no system of its own to integrate. Refuse before any
+    // lookup so a visitor can never list, reveal or rotate a key even if one were ever minted.
+    if crate::auth::middleware::is_visitor(&claims) {
+        return Err(AppError::Forbidden(
+            "Customer accounts don't hold API keys — only business and supplier accounts do."
+                .to_string(),
+        ));
+    }
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
     let tenant_id = claims.tid.parse::<Uuid>().ok().filter(|t| !t.is_nil());
     Ok((claims, user_id, tenant_id))
