@@ -67,6 +67,8 @@ pub struct UpdateBlogPostRequest {
     pub status: Option<String>,
     /// W30(b): absent = leave the town unchanged; empty string = make the article city-wide.
     pub town_key: Option<String>,
+    /// The phrase the article is written for; empty string clears it.
+    pub focus_keyword: Option<String>,
 }
 
 /// `"  St. Cloud "` -> `"st cloud"`; empty (or the literal "none" the portal's
@@ -332,9 +334,17 @@ pub async fn update_blog_post(
         req.published.unwrap_or(existing.published.unwrap_or(true))
     };
 
+    let focus_keyword: Option<String> = req
+        .focus_keyword
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
     let post = sqlx::query_as::<_, BlogPost>(
         "UPDATE blog_posts SET title = $1, slug = $2, excerpt = $3, content = $4, published = $5, \
-                status = $6, town_key = $7, updated_at = NOW() WHERE id = $8 \
+                status = $6, town_key = $7, \
+                focus_keyword = COALESCE($8, focus_keyword), updated_at = NOW() WHERE id = $9 \
          RETURNING id, title, slug, excerpt, content, directory_id, published, created_at, updated_at ",
     )
     .bind(&title)
@@ -344,6 +354,7 @@ pub async fn update_blog_post(
     .bind(published)
     .bind(&status)
     .bind(&town_key)
+    .bind(&focus_keyword)
     .bind(id)
     .fetch_one(&s.db)
     .await?;

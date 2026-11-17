@@ -1346,6 +1346,51 @@ function townLabel(key){
   return key||'';
 }
 var __blogRows=[];
+
+// ── Keyword analysis (admin side): words, keyword count/density, highlighted preview ──
+var BP_STOP = {'the':1,'and':1,'for':1,'that':1,'with':1,'this':1,'from':1,'your':1,'you':1,'are':1,'was':1,'have':1,'has':1,'will':1,'can':1,'not':1,'but':1,'they':1,'their':1,'our':1,'its':1,'all':1,'more':1,'than':1,'when':1,'what':1,'how':1,'who':1,'why':1,'into':1,'about':1,'over':1,'also':1,'just':1,'out':1,'get':1,'one':1,'two':1};
+function bpPlain(html){
+  var d=document.createElement('div'); d.innerHTML=html||'';
+  return (d.textContent||'').replace(/\s+/g,' ').trim();
+}
+function bpWords(html){ var t=bpPlain(html); return t?t.split(' ').length:0; }
+function bpTerms(text){
+  var m={}, w=text.toLowerCase().match(/[a-z][a-z\-]{3,}/g)||[];
+  w.forEach(function(x){ if(!BP_STOP[x]) m[x]=(m[x]||0)+1; });
+  return Object.keys(m).map(function(k){return [k,m[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+}
+function bpAnalyse(){
+  var ta=document.getElementById('bp_content'); if(!ta) return;
+  var kw=(document.getElementById('bp_focus')||{}).value||'';
+  kw=kw.trim();
+  var text=bpPlain(ta.value);
+  var words=text?text.split(' ').length:0;
+  var lower=text.toLowerCase(), k=kw.toLowerCase();
+  var hits=k?lower.split(k).length-1:0;
+  var density=words&&hits?(hits*100/words):0;
+  var terms=bpTerms(text);
+  var el=document.getElementById('bp_analysis');
+  if(el){
+    el.innerHTML='<b>'+words+'</b> words · focus keyword <b>'+hits+'</b> time'+(hits===1?'':'s')+
+      (kw?(' · density <b>'+density.toFixed(2)+'%</b>'):' · no focus keyword set')+
+      '<div style="margin-top:4px">Top terms: '+(terms.length?terms.map(function(t){return t[0]+' ('+t[1]+')';}).join(', '):'—')+'</div>';
+  }
+  var pv=document.getElementById('bp_preview');
+  if(pv){
+    var html=esc(ta.value);
+    if((document.getElementById('bp_highlight')||{}).checked){
+      var marks=[kw].concat(terms.slice(0,4).map(function(t){return t[0];})).filter(function(x){return x&&x.length>2;});
+      marks.forEach(function(term){
+        try{
+          var re=new RegExp('('+term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
+          html=html.replace(re,'<mark style="background:#fde68a">$1</mark>');
+        }catch(e){}
+      });
+    }
+    pv.innerHTML=html;
+  }
+}
+
 function renderBlog(){
   var el=document.getElementById('pageContent');
   el.innerHTML='<div style="text-align:center;padding:40px">'+spinner()+'</div>';
@@ -1356,10 +1401,10 @@ function renderBlog(){
       el.innerHTML=
       '<div class="card-header"><h3>✍️ Blog Posts</h3><div class="header-actions"><a href="/api/v1/d/'+CUR_DIR.slug+'/blog" class="btn btn-secondary btn-sm" target="_blank">👁 View Blog</a><button class="btn btn-primary btn-sm" onclick="showAddBlogPost()">+ New Post</button></div></div>'+
       '<div class="table-wrap"><table>'+
-        '<tr><th>Title</th><th>Town</th><th>Status</th><th>Created</th><th>Actions</th></tr>'+
-        (data.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">No posts yet</td></tr>':
+        '<tr><th>Title</th><th>Words</th><th>Town</th><th>Status</th><th>Created</th><th>Actions</th></tr>'+
+        (data.length===0?'<tr><td colspan="6" style="text-align:center;color:var(--text-secondary)">No posts yet</td></tr>':
         data.map(function(p,i){
-          return '<tr><td>'+esc(p.title||'')+'</td><td>'+(p.town_key?esc(townLabel(p.town_key)):'<span style="color:var(--text-secondary)">City-wide</span>')+'</td><td><span class="badge '+((p.status||'draft')==='published'?'published':'draft')+'">'+esc(p.status||'draft')+'</span></td><td>'+(p.created_at?new Date(p.created_at).toLocaleDateString():'—')+'</td>'+
+          return '<tr><td>'+esc(p.title||'')+'</td><td>'+bpWords(p.content||'')+'</td><td>'+(p.town_key?esc(townLabel(p.town_key)):'<span style="color:var(--text-secondary)">City-wide</span>')+'</td><td><span class="badge '+((p.status||'draft')==='published'?'published':'draft')+'">'+esc(p.status||'draft')+'</span></td><td>'+(p.created_at?new Date(p.created_at).toLocaleDateString():'—')+'</td>'+
           '<td><button class="btn btn-secondary btn-sm" onclick="showEditBlogPost('+i+')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteBlogPost(&quot;'+esc(String(p.id||''))+'&quot;)">🗑️</button></td></tr>';
         }).join(''))+
       '</table></div>';
@@ -1388,7 +1433,8 @@ function saveBlogPost(){
     content:document.getElementById('bp_content').value,
     directory_id:CUR_DIR.id,
     town_key:document.getElementById('bp_town').value,
-    status:document.getElementById('bp_status').value
+    status:document.getElementById('bp_status').value,
+    focus_keyword:document.getElementById('bp_focus') ? document.getElementById('bp_focus').value : ''
   };
   closeModal();
   po('/blog-posts?directory_id='+encodeURIComponent(CUR_DIR.id),body,function(){toast('Post created','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
@@ -1402,11 +1448,16 @@ function showEditBlogPost(i){
       '<div class="form-group"><label>Title</label><input id="bp_title" value="'+esc(bp.title||'')+'"></div>'+
       '<div class="form-group"><label>Slug</label><input id="bp_slug" value="'+esc(bp.slug||'')+'"></div>'+
       '<div class="form-group"><label>Excerpt</label><textarea id="bp_excerpt" rows="2">'+esc(bp.excerpt||'')+'</textarea></div>'+
-      '<div class="form-group"><label>Content</label><textarea id="bp_content" rows="8">'+esc(bp.content||'')+'</textarea></div>'+
+      '<div class="form-group"><label>Content</label><textarea id="bp_content" rows="8" oninput="bpAnalyse()">'+esc(bp.content||'')+'</textarea></div>'+
+      '<div class="form-group"><label>Focus keyword</label><input id="bp_focus" value="'+esc(bp.focus_keyword||'')+'" placeholder="e.g. plumber cost in Apopka" oninput="bpAnalyse()"></div>'+
+      '<div class="form-group"><label>Keyword analysis</label><div id="bp_analysis" style="font-size:.85rem;color:var(--text-secondary)"></div>'+
+      '<div id="bp_preview" style="max-height:220px;overflow:auto;border:1px solid var(--border);padding:8px;margin-top:6px;font-size:.9rem"></div>'+
+      '<label style="display:block;margin-top:6px"><input type="checkbox" id="bp_highlight" onchange="bpAnalyse()"> Highlight keywords in the preview</label></div>'+
       '<div class="form-group"><label>Town</label><select id="bp_town">'+townOptions(bp.town_key||'')+'</select><span class="help-text">Pick a town to publish this article on that town\'s page too.</span></div>'+
       '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft" '+((bp.status||'published')==='draft'?'selected':'')+'>Draft</option><option value="published" '+((bp.status||'published')==='published'?'selected':'')+'>Published</option></select></div>'+
       '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateBlogPost(&quot;'+esc(String(bp.id||''))+'&quot;)">Update</button></div>'
     );
+    setTimeout(bpAnalyse, 0);
   });
 }
 function updateBlogPost(id){
@@ -1416,7 +1467,8 @@ function updateBlogPost(id){
     excerpt:document.getElementById('bp_excerpt').value,
     content:document.getElementById('bp_content').value,
     town_key:document.getElementById('bp_town').value,
-    status:document.getElementById('bp_status').value
+    status:document.getElementById('bp_status').value,
+    focus_keyword:document.getElementById('bp_focus') ? document.getElementById('bp_focus').value : ''
   };
   closeModal();
   pu('/blog-posts/'+id,body,function(){toast('Post updated','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
