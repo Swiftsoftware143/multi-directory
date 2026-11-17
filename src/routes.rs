@@ -3428,6 +3428,32 @@ pub fn create_router(s: AppState) -> Router {
                         file_path = file_path.join("index.html");
                     }
 
+                    // Guides are role-scoped server-side (David): the supplier,
+                    // admin and business guides must be refused — not merely
+                    // hidden — to anyone without the matching role. `session_gate`
+                    // (the outermost layer) already verified a presented bearer
+                    // token or `zaarhub_session` cookie and left the caller's
+                    // `Claims` in the extensions, so an anonymous or customer
+                    // request is refused here before the file is read.
+                    if let Some(required) = guide_required_roles(&clean_path) {
+                        let claims = req
+                            .extensions()
+                            .get::<crate::auth::models::Claims>()
+                            .cloned();
+                        if !guide_access_allowed(&_pool_for_host, claims.as_ref(), required).await {
+                            return Ok::<_, std::convert::Infallible>(
+                                axum::response::Response::builder()
+                                    .status(axum::http::StatusCode::FORBIDDEN)
+                                    .header(
+                                        axum::http::header::CONTENT_TYPE,
+                                        "text/html; charset=utf-8",
+                                    )
+                                    .body(axum::body::Body::from(GUIDE_FORBIDDEN_HTML))
+                                    .unwrap(),
+                            );
+                        }
+                    }
+
                     if file_path.exists() && file_path.is_file() {
                         if let Ok(content) = tokio::fs::read(&file_path).await {
                             let ext =
@@ -3935,11 +3961,21 @@ async fn session_gate(
     mut req: axum::extract::Request,
     next: middleware::Next,
 ) -> axum::response::Response {
+    // The session may arrive as a bearer token (fetch/API) or as the
+    // `zaarhub_session` cookie (full-page navigation to a guide, which cannot
+    // set an Authorization header). Prefer the header, fall back to the cookie
+    // so server-side role-scoped pages can see who is asking.
     let presented = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
+        .map(str::to_string)
+        .or_else(|| session_cookie_token(req.headers()).map(|t| format!("Bearer {t}")));
+
+    // A live session is echoed back as an HttpOnly cookie so a later full-page
+    // navigation carries the same identity; a dead one is cleared.
+    let mut live_token: Option<String> = None;
+    let mut clear_cookie = false;
 
     if let Some(raw) = presented {
         let token = raw
@@ -3967,8 +4003,11 @@ async fn session_gate(
                             {
                                 req.headers_mut()
                                     .insert(axum::http::header::AUTHORIZATION, value);
+                                live_token = Some(fresh);
                             }
                         }
+                    } else {
+                        live_token = Some(token.clone());
                     }
                     req.extensions_mut().insert(SessionValidated);
                     req.extensions_mut().insert(claims);
@@ -3980,13 +4019,30 @@ async fn session_gate(
                         req.uri().path()
                     );
                     req.headers_mut().remove(axum::http::header::AUTHORIZATION);
+                    clear_cookie = true;
                 }
                 crate::auth::middleware::SessionVerdict::Unknown => {}
             }
         }
     }
 
-    next.run(req).await
+    let mut resp = next.run(req).await;
+
+    if let Some(token) = live_token {
+        if let Ok(value) = axum::http::HeaderValue::from_str(&session_cookie_value(&token)) {
+            resp.headers_mut()
+                .insert(axum::http::header::SET_COOKIE, value);
+        }
+    }
+    if clear_cookie {
+        if let Ok(value) = axum::http::HeaderValue::from_str(
+            "zaarhub_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0",
+        ) {
+            resp.headers_mut()
+                .insert(axum::http::header::SET_COOKIE, value);
+        }
+    }
+    resp
 }
 
 /// Card B52 — role gate for PLATFORM-OPERATOR-ONLY routes.
@@ -4059,6 +4115,143 @@ fn is_asset_path(path: &str) -> bool {
             | "xml"
             | "webmanifest"
     )
+}
+
+/// A guide file name maps to the roles allowed to open it; `None` means the
+/// guide is public (the visitor/customer surface). This is the "server-side"
+/// half of role scoping — David's rule: typing the supplier/admin guide URL
+/// while logged out or as a customer must be refused here, not merely hidden
+/// from a menu.
+pub fn guide_required_roles(clean_path: &str) -> Option<&'static [&'static str]> {
+    if !clean_path.starts_with("guides/") {
+        return None;
+    }
+    let name = clean_path.rsplit('/').next().unwrap_or(clean_path);
+    match name {
+        "supplier-guide.html" => Some(&["supplier"]),
+        "admin-guide.html" => Some(&["super_admin", "admin"]),
+        "business-owner-guide.html" | "merchant-guide.html" => Some(&["business_owner"]),
+        "api-keys-setup.html" => Some(&["business_owner", "supplier"]),
+        _ => None,
+    }
+}
+
+/// `role` is the authenticated caller's role (`None` = anonymous). The platform
+/// operator (`super_admin`) may open every guide; anyone else must hold one of
+/// the guide's required roles.
+pub fn guide_role_allowed(role: Option<&str>, required: &[&str]) -> bool {
+    match role {
+        Some("super_admin") => true,
+        Some(r) => required.contains(&r),
+        None => false,
+    }
+}
+
+/// Full access decision for a restricted guide, including the "supplier" case.
+///
+/// "supplier" is not a role: a supplier is any principal that has claimed a
+/// supplier-type business (the same join the supplier portal uses), and such
+/// principals carry the ordinary `visitor` shape. So when a guide requires
+/// `supplier`, the role fast-path cannot answer it — resolve it from the DB.
+async fn guide_access_allowed(
+    db: &sqlx::PgPool,
+    claims: Option<&crate::auth::models::Claims>,
+    required: &[&str],
+) -> bool {
+    let Some(claims) = claims else {
+        return false;
+    };
+    if guide_role_allowed(Some(claims.role.as_str()), required) {
+        return true;
+    }
+    if required.contains(&"supplier") {
+        if let Ok(sub) = uuid::Uuid::parse_str(&claims.sub) {
+            if crate::handlers::b2b::resolve_supplier_business(db, sub)
+                .await
+                .is_ok()
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The session may reach the server as a bearer token (fetch/API) or as the
+/// `zaarhub_session` cookie (full-page navigation to a guide, which cannot set
+/// an Authorization header). Pull the cookie token out of the header map.
+fn session_cookie_token(headers: &axum::http::HeaderMap) -> Option<String> {
+    let cookie = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
+    for part in cookie.split(';') {
+        let part = part.trim();
+        if let Some(v) = part.strip_prefix("zaarhub_session=") {
+            let v = v.trim().trim_matches('"');
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn session_cookie_value(token: &str) -> String {
+    format!("zaarhub_session={token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400")
+}
+
+/// Page served when a guide is requested without its required role.
+const GUIDE_FORBIDDEN_HTML: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Guide restricted</title></head><body style=\"font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#0f172a\"><div style=\"max-width:440px;text-align:center;padding:24px\"><h1 style=\"font-size:1.4rem\">This guide is for a different account type</h1><p style=\"color:#475569\">Sign in with the right account to open it.</p><p><a href=\"/guides/index.html\" style=\"color:#f27f2f\">Read the guides</a> &middot; <a href=\"/\" style=\"color:#f27f2f\">ZaarHub home</a></p></div></body></html>";
+
+#[cfg(test)]
+mod guide_scope_tests {
+    use super::{guide_required_roles, guide_role_allowed};
+
+    #[test]
+    fn scoped_guides_require_their_role() {
+        assert_eq!(
+            guide_required_roles("guides/supplier-guide.html"),
+            Some(&["supplier"][..])
+        );
+        assert_eq!(
+            guide_required_roles("guides/admin-guide.html"),
+            Some(&["super_admin", "admin"][..])
+        );
+        assert_eq!(
+            guide_required_roles("guides/business-owner-guide.html"),
+            Some(&["business_owner"][..])
+        );
+        assert_eq!(
+            guide_required_roles("guides/merchant-guide.html"),
+            Some(&["business_owner"][..])
+        );
+        assert_eq!(
+            guide_required_roles("guides/api-keys-setup.html"),
+            Some(&["business_owner", "supplier"][..])
+        );
+    }
+
+    #[test]
+    fn public_and_customer_guides_stay_open() {
+        for p in [
+            "guides/index.html",
+            "guides/visitor-guide.html",
+            "guides/participant-guide.html",
+            "guides/loyalty-guide.html",
+            "guides/sign-in-guide.html",
+            "guide.html",
+        ] {
+            assert_eq!(guide_required_roles(p), None, "{p} should stay public");
+        }
+    }
+
+    #[test]
+    fn role_match_is_exact_and_operator_overrides() {
+        let supplier = guide_required_roles("guides/supplier-guide.html").unwrap();
+        assert!(guide_role_allowed(Some("supplier"), supplier));
+        assert!(!guide_role_allowed(Some("visitor"), supplier));
+        assert!(!guide_role_allowed(Some("business_owner"), supplier));
+        assert!(!guide_role_allowed(None, supplier));
+        assert!(guide_role_allowed(Some("super_admin"), supplier));
+    }
 }
 
 #[cfg(test)]
