@@ -1178,13 +1178,19 @@ async fn build_newsletter_render(
     s: &AppState,
     n: &Newsletter,
 ) -> Result<(NewsletterRender, String), AppError> {
-    let dir_info: Option<(String, String)> =
-        sqlx::query_as("SELECT name, slug FROM directories WHERE id = $1")
-            .bind(n.directory_id)
-            .fetch_optional(&s.db)
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?
-            .map(|r: (String, String)| r);
+    // The directory's public host is its network's brand domain
+    // (`networks.root_domain`) — the ONE host that ranks. Cities are FOLDERS on
+    // that domain (`https://<brand>/<slug>`), never subdomains; the old
+    // `https://<slug>.<base_domain>` form pointed at a retired subdomain.
+    let dir_info: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT d.name, d.slug, COALESCE(n.root_domain, '') FROM directories d \
+         LEFT JOIN networks n ON n.id = d.network_id WHERE d.id = $1",
+    )
+    .bind(n.directory_id)
+    .fetch_optional(&s.db)
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .map(|r: (String, String, String)| r);
 
     let dir_name = dir_info
         .as_ref()
@@ -1195,7 +1201,14 @@ async fn build_newsletter_render(
         .as_ref()
         .map(|d| d.1.as_str())
         .unwrap_or("directory");
-    let dir_url = format!("https://{}.{}", dir_slug, s.config.base_domain);
+    let brand_host = dir_info
+        .as_ref()
+        .map(|d| d.2.trim())
+        .filter(|h| !h.is_empty());
+    let dir_url = match brand_host {
+        Some(host) => format!("https://{}/{}", host, dir_slug),
+        None => format!("https://{}.{}", dir_slug, s.config.base_domain),
+    };
 
     let mut sections: Vec<serde_json::Value> = Vec::new();
     let mut html_parts: Vec<String> = Vec::new();
