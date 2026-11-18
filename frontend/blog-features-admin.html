@@ -207,6 +207,10 @@
           <option value="auto">Auto-publish posts that pass</option>
         </select>
       </label>
+      <label style="display:block;margin:10px 0">Byline shown on every post
+        <input id="g-editorial" type="text" placeholder="ZaarHub Editorial Team" style="width:260px">
+        <span style="display:block;color:var(--text-secondary);font-size:.8rem">The publishing credit and the author in structured data. Leave blank to use "&lt;brand&gt; Editorial Team".</span>
+      </label>
       <label style="display:block;margin:10px 0">Auto-publish daily cap <input id="g-cap" type="number" min="0" max="50" style="width:80px"></label>
       <label style="display:block;margin:10px 0">Minimum quality score <input id="g-min" type="number" min="0" max="100" style="width:80px"></label>
       <label style="display:block;margin:10px 0"><input id="g-ai" type="checkbox"> Add an AI-assistance note to published posts</label>
@@ -479,6 +483,7 @@ async function loadGuardrails() {
     document.getElementById('g-cap').value = s.auto_publish_daily_cap;
     document.getElementById('g-min').value = s.min_quality_score;
     document.getElementById('g-ai').checked = !!s.ai_disclosure;
+    document.getElementById('g-editorial').value = s.editorial_name || '';
     const gs = s.guardrail_settings || {};
     document.getElementById('g-plag').value = gs.plagiarism_provider || '';
     document.getElementById('g-hold').value = gs.plagiarism_hold_pct ?? 5;
@@ -497,6 +502,7 @@ async function saveGuardrails() {
       auto_publish_daily_cap: Number(document.getElementById('g-cap').value),
       min_quality_score: Number(document.getElementById('g-min').value),
       ai_disclosure: document.getElementById('g-ai').checked,
+      editorial_name: document.getElementById('g-editorial').value,
       guardrail_settings: {
         plagiarism_provider: document.getElementById('g-plag').value,
         plagiarism_hold_pct: Number(document.getElementById('g-hold').value),

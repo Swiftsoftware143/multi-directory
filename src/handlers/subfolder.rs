@@ -4053,6 +4053,22 @@ pub async fn blog_post_page(
     let site = brand_name_for(pool, &dir).await;
     let hq = site_headquarters(pool).await;
 
+    // Byline credit set per directory in the admin panel; the brand is the fallback.
+    let editorial: String = sqlx::query_scalar(
+        "SELECT coalesce(zaarhub_config->>'blog_editorial_name','') FROM directories WHERE id = $1",
+    )
+    .bind(dir.id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+    let team = if editorial.trim().is_empty() {
+        format!("{} Editorial Team", site)
+    } else {
+        editorial.trim().to_string()
+    };
+
     let row = sqlx::query(
         "SELECT id, title, slug, excerpt, content, meta_title, meta_description, canonical_url, \
                 robots_meta, featured_image_url, author_name, blog_category, created_at, updated_at, \
@@ -4231,7 +4247,7 @@ pub async fn blog_post_page(
             "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
             // Published by the directory's in-house team, not an individual: the
             // organisation is the author, and no person is credited by name.
-            "author": {"@type": "Organization", "name": format!("{} Editorial Team", site)},
+            "author": {"@type": "Organization", "name": team.clone()},
             "publisher": {"@type": "Organization", "name": site},
             "contentLocation": {
                 "@type": "City",
@@ -4260,7 +4276,7 @@ pub async fn blog_post_page(
         .map(|d| d.format("%B %-d, %Y").to_string())
         .unwrap_or_default();
     // The in-house editorial team takes the credit; individual authors are not named.
-    let byline = format!(" · By {} Editorial Team", h(&site));
+    let byline = format!(" · By {}", h(&team));
     let cat_html = category
         .as_ref()
         .filter(|c| !c.is_empty() && c.as_str() != "general")

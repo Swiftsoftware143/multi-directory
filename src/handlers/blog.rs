@@ -1142,6 +1142,8 @@ pub struct GuardrailSettingsRequest {
     pub min_quality_score: Option<i32>,
     pub ai_disclosure: Option<bool>,
     pub guardrail_settings: Option<serde_json::Value>,
+    /// Credit shown under each post ("ZaarHub Editorial Team"), stored per directory.
+    pub editorial_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1152,6 +1154,7 @@ pub struct GuardrailSettingsResponse {
     pub min_quality_score: i32,
     pub ai_disclosure: bool,
     pub guardrail_settings: serde_json::Value,
+    pub editorial_name: String,
 }
 
 /// GET /api/v1/admin/directories/:id/blog-guardrails
@@ -1162,9 +1165,10 @@ pub async fn get_blog_guardrails_handler(
 ) -> ApiResult<impl IntoResponse> {
     let claims = caller(&s, &headers)?;
     tenant_scope::assert_directory_content_writer(&s.db, &claims, id).await?;
-    let row = sqlx::query_as::<_, (String, i32, i32, bool, serde_json::Value)>(
+    let row = sqlx::query_as::<_, (String, i32, i32, bool, serde_json::Value, String)>(
         "SELECT blog_publish_mode, blog_auto_publish_daily_cap, blog_min_quality_score, \
-                blog_ai_disclosure, blog_guardrail_settings \
+                blog_ai_disclosure, blog_guardrail_settings, \
+                coalesce(zaarhub_config->>'blog_editorial_name','') \
          FROM directories WHERE id = $1",
     )
     .bind(id)
@@ -1178,6 +1182,7 @@ pub async fn get_blog_guardrails_handler(
         min_quality_score: row.2,
         ai_disclosure: row.3,
         guardrail_settings: row.4,
+        editorial_name: row.5,
     }))
 }
 
@@ -1219,6 +1224,8 @@ pub async fn put_blog_guardrails_handler(
             blog_min_quality_score = $4, \
             blog_ai_disclosure = COALESCE($5, blog_ai_disclosure), \
             blog_guardrail_settings = COALESCE($6, blog_guardrail_settings), \
+            zaarhub_config = CASE WHEN $7::text IS NULL THEN zaarhub_config ELSE \
+                jsonb_set(coalesce(zaarhub_config,'{}'::jsonb), '{blog_editorial_name}', to_jsonb($7::text), true) END, \
             updated_at = now() \
          WHERE id = $1",
     )
@@ -1228,6 +1235,12 @@ pub async fn put_blog_guardrails_handler(
     .bind(min_score)
     .bind(req.ai_disclosure)
     .bind(req.guardrail_settings)
+    .bind(
+        req.editorial_name
+            .as_deref()
+            .map(str::trim)
+            .map(|v| v.to_string()),
+    )
     .execute(&s.db)
     .await?;
     get_blog_guardrails_handler(State(s), headers, Path(id)).await
