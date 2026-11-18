@@ -4264,7 +4264,35 @@ pub async fn blog_post_page(
     let cat_html = category
         .as_ref()
         .filter(|c| !c.is_empty() && c.as_str() != "general")
-        .map(|c| format!("<div class=\"row\">🏷️ {}</div>", h(c)))
+        .map(|c| {
+            format!(
+                "<div class=\"row\">🏷️ <a href=\"{}/{}/blog/category/{}\">{}</a></div>",
+                h(&base),
+                h(&dir.slug),
+                h(&blog_slug(c)),
+                h(c)
+            )
+        })
+        .unwrap_or_default();
+    let tags_html = post_tags
+        .as_ref()
+        .map(|ts| {
+            ts.iter()
+                .filter(|t| !t.trim().is_empty())
+                .map(|t| {
+                    format!(
+                        "<a href=\"{}/{}/blog/tag/{}\">{}</a>",
+                        h(&base),
+                        h(&dir.slug),
+                        h(&blog_slug(t)),
+                        h(t)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("<div class=\"row\">🔖 {}</div>", s))
         .unwrap_or_default();
     let img_html = featured
         .as_ref()
@@ -4324,6 +4352,7 @@ pub async fn blog_post_page(
 <h1>{h1}</h1>
 <p class="lede">{date}{byline} · {reading} min read</p>
 {cat}
+{tags}
 {content}
 {related}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← More about {city}</a></p>
@@ -4350,6 +4379,7 @@ pub async fn blog_post_page(
         date = h(&date_label),
         byline = byline,
         cat = cat_html,
+        tags = tags_html,
         content = format!("{}{}", safe_content, town_biz_html),
         reading = reading_minutes,
         related = related_html,
@@ -4368,6 +4398,239 @@ pub async fn blog_post_page(
 // ─────────────────────────────────────────────────────────────────────────────
 // City blog index — GET /<slug>/blog  (server-rendered, no JS required)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────
+// Category and tag archives — GET /<city>/blog/(category|tag)/<slug>
+// ───────────────────────────────────────
+
+/// Lower-case, hyphenated form of a category or tag, so a URL survives the
+/// free text an editor typed ("Home Services" and "home-services" agree).
+fn blog_slug(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut dash = false;
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            dash = false;
+        } else if !dash && !out.is_empty() {
+            out.push('-');
+            dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+pub async fn blog_archive_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    slug: &str,
+    kind: &str,
+    value: &str,
+) -> Option<Response<Body>> {
+    let dir = load_directory(pool, slug).await?;
+    let theme = theme_for(pool, &dir).await;
+    let base = origin(host, proto, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
+    let want = blog_slug(value);
+
+    let rows = sqlx::query(
+        "SELECT slug, title, excerpt, created_at, scheduled_at, featured_image_url, \
+                blog_category, tags, author_name \
+         FROM blog_posts \
+         WHERE directory_id = $1 AND published = true AND status = 'published' \
+           AND (scheduled_at IS NULL OR scheduled_at <= NOW()) \
+         ORDER BY COALESCE(scheduled_at, created_at) DESC LIMIT 300",
+    )
+    .bind(dir.id)
+    .fetch_all(pool)
+    .await
+    .ok()?;
+
+    struct Item {
+        title: String,
+        url: String,
+        excerpt: Option<String>,
+        image: Option<String>,
+        label: String,
+    }
+    let mut items: Vec<Item> = Vec::new();
+    let mut display = String::new();
+    for r in &rows {
+        let matched = if kind == "category" {
+            let c: Option<String> = r.try_get("blog_category").unwrap_or(None);
+            match c {
+                Some(c) if blog_slug(&c) == want => {
+                    if display.is_empty() {
+                        display = c.clone();
+                    }
+                    true
+                }
+                _ => false,
+            }
+        } else {
+            let tags: Option<Vec<String>> = r.try_get("tags").unwrap_or(None);
+            match tags {
+                Some(t) => {
+                    if let Some(hit) = t.iter().find(|x| blog_slug(x) == want) {
+                        if display.is_empty() {
+                            display = hit.clone();
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                None => false,
+            }
+        };
+        if !matched {
+            continue;
+        }
+        let post_slug: String = r.try_get("slug").unwrap_or_default();
+        if post_slug.trim().is_empty() {
+            continue;
+        }
+        let title: String = r.try_get("title").unwrap_or_default();
+        let excerpt: Option<String> = r.try_get("excerpt").unwrap_or(None);
+        let image: Option<String> = r.try_get("featured_image_url").unwrap_or(None);
+        let created: Option<chrono::DateTime<chrono::Utc>> =
+            r.try_get("created_at").unwrap_or(None);
+        let scheduled: Option<chrono::DateTime<chrono::Utc>> =
+            r.try_get("scheduled_at").unwrap_or(None);
+        let date = scheduled.or(created);
+        let label = date
+            .map(|d| d.format("%B %-d, %Y").to_string())
+            .unwrap_or_default();
+        items.push(Item {
+            title,
+            url: format!("{}/{}/blog/{}", base, dir.slug, post_slug),
+            excerpt: excerpt.filter(|e| !e.trim().is_empty()),
+            image: image.filter(|i| !i.trim().is_empty()),
+            label,
+        });
+    }
+
+    // An archive with nothing in it is a 404, not an empty page.
+    if items.is_empty() {
+        return Some(not_found_page("There is nothing filed under that yet."));
+    }
+
+    if display.is_empty() {
+        display = value.replace('-', " ");
+        if let Some(first) = display.get(0..1) {
+            display = format!("{}{}", first.to_uppercase(), &display[1..]);
+        }
+    }
+    let kind_word = if kind == "tag" { "Tag" } else { "Category" };
+    let canonical = format!("{}/{}/blog/{}/{}", base, dir.slug, kind, want);
+    let heading = format!("{}: {}", kind_word, display);
+    let thin = items.len() < 3;
+
+    let cards: String = items
+        .iter()
+        .map(|it| {
+            let img = it
+                .image
+                .as_ref()
+                .map(|i| {
+                    format!(
+                        "<img src=\"{}\" alt=\"{}\" loading=\"lazy\" style=\"width:100%;height:auto;border-radius:8px\">",
+                        h(i),
+                        h(&it.title)
+                    )
+                })
+                .unwrap_or_default();
+            let excerpt = it
+                .excerpt
+                .as_ref()
+                .map(|e| format!("<p>{}</p>", h(e)))
+                .unwrap_or_default();
+            format!(
+                "<article class=\"card\" style=\"margin-bottom:20px\">{img}<h2 style=\"margin:8px 0 4px\"><a href=\"{url}\">{title}</a></h2><div class=\"muted\">{date}</div>{excerpt}</article>",
+                img = img,
+                url = h(&it.url),
+                title = h(&it.title),
+                date = h(&it.label),
+                excerpt = excerpt
+            )
+        })
+        .collect();
+
+    let seo = Seo {
+        title: format!("{} | {} {}", heading, dir.city, site),
+        description: format!(
+            "Every {} post filed under {} in {}.",
+            dir.city, display, site
+        ),
+        canonical: canonical.clone(),
+        og_type: "website".to_string(),
+        og_image: items.first().and_then(|i| i.image.clone()),
+        jsonld: vec![serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            "name": heading,
+            "url": canonical,
+            "isPartOf": {"@type": "Blog", "name": format!("{} Blog", dir.city)},
+            "mainEntity": {
+                "@type": "ItemList",
+                "numberOfItems": items.len(),
+                "itemListElement": items.iter().enumerate().map(|(i, it)| serde_json::json!({
+                    "@type": "ListItem",
+                    "position": i + 1,
+                    "url": it.url,
+                    "name": it.title
+                })).collect::<Vec<_>>()
+            }
+        })],
+    };
+
+    // Thin archives stay reachable but are not offered to search engines.
+    let mut start = shell_start(
+        &seo,
+        &site,
+        Some((dir.slug.as_str(), dir.name.as_str())),
+        &theme,
+    );
+    if thin {
+        start = start.replace(
+            "content=\"index,follow,max-image-preview:large\"",
+            "content=\"noindex,follow\"",
+        );
+    }
+
+    let body = format!(
+        r#"{start}{crumbs}
+<main class="container" style="max-width:820px;margin:0 auto;padding:24px 16px">
+<h1>{heading}</h1>
+<p class="muted">{count} post(s) in {city}.</p>
+{cards}
+<p class="row" style="margin-top:24px"><a href="{base}/{dslug}/blog">← All {city} blog posts</a></p>
+</main>
+{end}"#,
+        start = start,
+        crumbs = breadcrumbs(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            (
+                &format!("{} Blog", dir.city),
+                &format!("{}/{}/blog", base, dir.slug),
+            ),
+            (&display, &canonical),
+        ]),
+        heading = h(&heading),
+        count = items.len(),
+        city = h(&dir.city),
+        cards = cards,
+        base = h(&base),
+        dslug = h(&dir.slug),
+        end = shell_end(&site, hq.as_deref()),
+    );
+
+    Some(html_response(StatusCode::OK, body))
+}
 
 /// The city's published blog posts as real HTML so the page is indexable and
 /// usable when JavaScript never runs. The post predicate is deliberately the
@@ -5575,6 +5838,12 @@ pub async fn try_render(
                 business_detail(pool, host, proto, fallback_domain, slug, segs[2]).await
             }
             [_, "articles", a] => article_page(pool, host, proto, fallback_domain, slug, a).await,
+            [_, "blog", "category", c] => {
+                blog_archive_page(pool, host, proto, fallback_domain, slug, "category", c).await
+            }
+            [_, "blog", "tag", t] => {
+                blog_archive_page(pool, host, proto, fallback_domain, slug, "tag", t).await
+            }
             [_, "blog", b] => blog_post_page(pool, host, proto, fallback_domain, slug, b).await,
             // A single segment is normally a directory home. When no such
             // directory exists and the request host IS a directory
