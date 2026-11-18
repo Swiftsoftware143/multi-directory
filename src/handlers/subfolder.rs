@@ -4056,7 +4056,7 @@ pub async fn blog_post_page(
     let row = sqlx::query(
         "SELECT id, title, slug, excerpt, content, meta_title, meta_description, canonical_url, \
                 robots_meta, featured_image_url, author_name, blog_category, created_at, updated_at, \
-                town_key \
+                town_key, tags \
          FROM blog_posts WHERE directory_id = $1 AND slug = $2 \
            AND coalesce(published, true) = true LIMIT 1",
     )
@@ -4105,7 +4105,8 @@ pub async fn blog_post_page(
     let canonical_override: Option<String> = row.try_get("canonical_url").unwrap_or(None);
     let robots_meta: Option<String> = row.try_get("robots_meta").unwrap_or(None);
     let featured: Option<String> = row.try_get("featured_image_url").unwrap_or(None);
-    let author_name: Option<String> = row.try_get("author_name").unwrap_or(None);
+    let _author_name: Option<String> = row.try_get("author_name").unwrap_or(None);
+    let post_tags: Option<Vec<String>> = row.try_get("tags").unwrap_or(None);
     let category: Option<String> = row.try_get("blog_category").unwrap_or(None);
     let created: Option<chrono::DateTime<chrono::Utc>> = row.try_get("created_at").unwrap_or(None);
     let updated: Option<chrono::DateTime<chrono::Utc>> = row.try_get("updated_at").unwrap_or(None);
@@ -4228,7 +4229,9 @@ pub async fn blog_post_page(
             "datePublished": published,
             "dateModified": updated.map(|d| d.to_rfc3339()).unwrap_or_else(|| published.clone()),
             "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
-            "author": {"@type": "Organization", "name": author_name.clone().unwrap_or_else(|| site.clone())},
+            // Published by the directory's in-house team, not an individual: the
+            // organisation is the author, and no person is credited by name.
+            "author": {"@type": "Organization", "name": format!("{} Editorial Team", site)},
             "publisher": {"@type": "Organization", "name": site},
             "contentLocation": {
                 "@type": "City",
@@ -4256,10 +4259,8 @@ pub async fn blog_post_page(
     let date_label = created
         .map(|d| d.format("%B %-d, %Y").to_string())
         .unwrap_or_default();
-    let byline = author_name
-        .as_ref()
-        .map(|a| format!(" · By {}", h(a)))
-        .unwrap_or_default();
+    // The in-house editorial team takes the credit; individual authors are not named.
+    let byline = format!(" · By {} Editorial Team", h(&site));
     let cat_html = category
         .as_ref()
         .filter(|c| !c.is_empty() && c.as_str() != "general")
@@ -4279,14 +4280,52 @@ pub async fn blog_post_page(
     let neighbours = neighbour_links(pool, &dir, &base, created, &canonical).await;
     let explore = explore_block(pool, &dir, &base, &canonical, neighbours).await;
 
+    // Reading time: readers and Google both use it, and it is one line of maths.
+    let word_count = strip_tags(&safe_content).split_whitespace().count();
+    let reading_minutes = word_count.div_ceil(200).max(1);
+
+    // Related reading: same category first, then shared tags; never the post itself.
+    let related: Vec<(String, String)> = sqlx::query_as(
+        "SELECT slug, coalesce(title,'') FROM blog_posts \
+         WHERE directory_id = $1 AND coalesce(published, true) = true AND slug <> $2 \
+           AND (($3::text IS NOT NULL AND $3 <> '' AND blog_category = $3) \
+                OR (tags IS NOT NULL AND tags && $4::text[])) \
+         ORDER BY created_at DESC LIMIT 4",
+    )
+    .bind(dir.id)
+    .bind(post_slug)
+    .bind(category.clone())
+    .bind(post_tags.clone())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let related_html = if related.is_empty() {
+        String::new()
+    } else {
+        let items: String = related
+            .iter()
+            .map(|(s, t)| {
+                format!(
+                    "<li><a href=\"{}/{}/blog/{}\">{}</a></li>",
+                    h(&base),
+                    h(&dir.slug),
+                    h(s),
+                    h(t)
+                )
+            })
+            .collect();
+        format!("<aside class=\"related\"><h2>Related reading</h2><ul>{items}</ul></aside>")
+    };
+
     let body = format!(
         r#"{start}{crumbs}
 <article class="detail article-body">
 {img}
 <h1>{h1}</h1>
-<p class="lede">{date}{byline}</p>
+<p class="lede">{date}{byline} · {reading} min read</p>
 {cat}
 {content}
+{related}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← More about {city}</a></p>
 </article>
 {explore}
@@ -4312,6 +4351,8 @@ pub async fn blog_post_page(
         byline = byline,
         cat = cat_html,
         content = format!("{}{}", safe_content, town_biz_html),
+        reading = reading_minutes,
+        related = related_html,
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
