@@ -55,6 +55,10 @@ pub struct CreateBlogPostRequest {
     /// `draft` / `published`. The portal's New Post form sends this; it used to be
     /// dropped, so a post saved as a draft went live immediately.
     pub status: Option<String>,
+    /// Guides: this post is a pillar ("the city homeowner's guide").
+    pub is_pillar: Option<bool>,
+    /// Guides: the pillar this post belongs under; empty string clears it.
+    pub pillar_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +73,9 @@ pub struct UpdateBlogPostRequest {
     pub town_key: Option<String>,
     /// The phrase the article is written for; empty string clears it.
     pub focus_keyword: Option<String>,
+    pub is_pillar: Option<bool>,
+    /// Empty string clears the guide link; absent leaves it unchanged.
+    pub pillar_id: Option<String>,
 }
 
 /// `"  St. Cloud "` -> `"st cloud"`; empty (or the literal "none" the portal's
@@ -136,7 +143,8 @@ pub async fn list_blog_posts(
 
     let rows = sqlx::query(
         "SELECT id, title, slug, excerpt, content, directory_id, published, created_at, updated_at, \
-                coalesce(status, 'published') AS status, town_key, focus_keyword \
+                coalesce(status, 'published') AS status, town_key, focus_keyword, \
+                is_pillar, pillar_id \
          FROM blog_posts \
          WHERE ($1::uuid IS NULL OR directory_id = $1) \
            AND ($2::uuid[] IS NULL OR directory_id = ANY($2)) \
@@ -163,6 +171,8 @@ pub async fn list_blog_posts(
                 "status": r.try_get::<String, _>("status").unwrap_or_else(|_| "published".into()),
                 "town_key": r.try_get::<Option<String>, _>("town_key").unwrap_or(None),
                 "focus_keyword": r.try_get::<Option<String>, _>("focus_keyword").unwrap_or(None),
+                "is_pillar": r.try_get::<bool, _>("is_pillar").unwrap_or(false),
+                "pillar_id": r.try_get::<Option<Uuid>, _>("pillar_id").unwrap_or(None),
             })
         })
         .collect();
@@ -211,6 +221,41 @@ pub async fn list_directory_blog_posts(
     Ok(Json(posts))
 }
 
+/// Guide wiring shared by create and update: the pillar flag, and the pillar a
+/// post belongs under. A post can never be its own pillar.
+async fn apply_guide_fields(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+    is_pillar: Option<bool>,
+    pillar_id: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    if let Some(flag) = is_pillar {
+        sqlx::query("UPDATE blog_posts SET is_pillar = $2 WHERE id = $1")
+            .bind(id)
+            .bind(flag)
+            .execute(pool)
+            .await?;
+    }
+    if let Some(raw) = pillar_id {
+        let val: Option<Uuid> = {
+            let t = raw.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Uuid::parse_str(t).ok()
+            }
+        };
+        sqlx::query(
+            "UPDATE blog_posts SET pillar_id = $2 WHERE id = $1 AND ($2 IS NULL OR $2 <> id)",
+        )
+        .bind(id)
+        .bind(val)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
 /// POST /api/v1/blog-posts — create a blog post
 pub async fn create_blog_post(
     State(s): State<AppState>,
@@ -253,6 +298,8 @@ pub async fn create_blog_post(
     .bind(&status)
     .fetch_one(&s.db)
     .await?;
+
+    apply_guide_fields(&s.db, post.id, req.is_pillar, req.pillar_id.as_deref()).await?;
 
     Ok((StatusCode::CREATED, Json(post)))
 }
@@ -368,6 +415,8 @@ pub async fn update_blog_post(
     .bind(id)
     .fetch_one(&s.db)
     .await?;
+
+    apply_guide_fields(&s.db, id, req.is_pillar, req.pillar_id.as_deref()).await?;
 
     Ok(Json(post))
 }
@@ -1155,6 +1204,42 @@ pub struct GuardrailSettingsResponse {
     pub ai_disclosure: bool,
     pub guardrail_settings: serde_json::Value,
     pub editorial_name: String,
+}
+
+/// GET /api/v1/admin/directories/:id/blog-guides
+/// The pillar posts an editor can file a supporting post under.
+#[derive(Debug, Serialize)]
+pub struct GuideOption {
+    pub id: Uuid,
+    pub title: String,
+    pub slug: String,
+    pub published: bool,
+}
+
+pub async fn list_blog_guides_handler(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let claims = caller(&s, &headers)?;
+    tenant_scope::assert_directory_content_writer(&s.db, &claims, id).await?;
+    let rows = sqlx::query_as::<_, (Uuid, String, String, bool)>(
+        "SELECT id, title, slug, coalesce(published, false) \
+         FROM blog_posts WHERE directory_id = $1 AND is_pillar = true ORDER BY title",
+    )
+    .bind(id)
+    .fetch_all(&s.db)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, title, slug, published)| GuideOption {
+                id,
+                title,
+                slug,
+                published,
+            })
+            .collect::<Vec<_>>(),
+    ))
 }
 
 /// GET /api/v1/admin/directories/:id/blog-guardrails

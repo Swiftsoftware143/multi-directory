@@ -2591,6 +2591,10 @@ pub fn create_router(s: AppState) -> Router {
         )
         // Blog guardrails: review/auto mode, the daily cap, the minimum score and the queue.
         .route(
+            "/admin/directories/:id/blog-guides",
+            get(blog::list_blog_guides_handler),
+        )
+        .route(
             "/admin/directories/:id/blog-guardrails",
             get(blog::get_blog_guardrails_handler).put(blog::put_blog_guardrails_handler),
         )

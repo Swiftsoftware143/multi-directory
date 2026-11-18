@@ -1439,6 +1439,19 @@ function saveBlogPost(){
   closeModal();
   po('/blog-posts?directory_id='+encodeURIComponent(CUR_DIR.id),body,function(){toast('Post created','success');renderBlog();},function(){toast('Failed','error');renderBlog();});
 }
+function loadGuideOptions(dirId, selected, selfId){
+  if(!dirId) return;
+  g('/admin/directories/'+dirId+'/blog-guides', function(rows){
+    var sel=document.getElementById('bp_pillar'); if(!sel) return;
+    sel.innerHTML='<option value="">Not part of a guide</option>';
+    (rows||[]).forEach(function(r){
+      if(selfId && r.id===selfId) return;
+      var o=document.createElement('option'); o.value=r.id;
+      o.textContent=r.title+(r.published?'':' (draft)'); sel.appendChild(o);
+    });
+    sel.value=selected||'';
+  });
+}
 function showEditBlogPost(i){
   var bp=__blogRows[i];
   if(!bp){toast('Not found','error');return;}
@@ -1454,10 +1467,13 @@ function showEditBlogPost(i){
       '<div id="bp_preview" style="max-height:220px;overflow:auto;border:1px solid var(--border);padding:8px;margin-top:6px;font-size:.9rem"></div>'+
       '<label style="display:block;margin-top:6px"><input type="checkbox" id="bp_highlight" onchange="bpAnalyse()"> Highlight keywords in the preview</label></div>'+
       '<div class="form-group"><label>Town</label><select id="bp_town">'+townOptions(bp.town_key||'')+'</select><span class="help-text">Pick a town to publish this article on that town\'s page too.</span></div>'+
+      '<div class="form-group"><label><input type="checkbox" id="bp_is_pillar" '+((bp.is_pillar)?'checked':'')+'> This post is a guide (hub page)</label><span class="hint" style="display:block;color:var(--text-secondary);font-size:.8rem">A guide gathers supporting posts beneath it.</span></div>'+
+      '<div class="form-group"><label>Part of a guide</label><select id="bp_pillar"><option value="">Not part of a guide</option></select></div>'+
       '<div class="form-group"><label>Status</label><select id="bp_status"><option value="draft" '+((bp.status||'published')==='draft'?'selected':'')+'>Draft</option><option value="published" '+((bp.status||'published')==='published'?'selected':'')+'>Published</option></select></div>'+
       '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="updateBlogPost(&quot;'+esc(String(bp.id||''))+'&quot;)">Update</button></div>'
     );
     setTimeout(bpAnalyse, 0);
+    loadGuideOptions(bp.directory_id, bp.pillar_id||'', bp.id);
   });
 }
 function updateBlogPost(id){
@@ -1468,7 +1484,9 @@ function updateBlogPost(id){
     content:document.getElementById('bp_content').value,
     town_key:document.getElementById('bp_town').value,
     status:document.getElementById('bp_status').value,
-    focus_keyword:document.getElementById('bp_focus') ? document.getElementById('bp_focus').value : ''
+    focus_keyword:document.getElementById('bp_focus') ? document.getElementById('bp_focus').value : '',
+    is_pillar: document.getElementById('bp_is_pillar') ? document.getElementById('bp_is_pillar').checked : false,
+    pillar_id: document.getElementById('bp_pillar') ? document.getElementById('bp_pillar').value : ''
   };
   closeModal();
   pu('/blog-posts/'+id,body,function(){toast('Post updated','success');renderBlog();},function(){toast('Failed','error');renderBlog();});

@@ -558,6 +558,17 @@
   </div>
 </div>
 
+
+<h3>Reader-facing blog (city sites)</h3>
+<div class="card">
+  <p>Each city's blog lives at <code>/&lt;city&gt;/blog</code> and inherits that directory's brand — colours, fonts, header and navigation — so it needs no separate theme.</p>
+  <p><span class="badge get">GET</span> <code>/&lt;city&gt;/blog/category/&lt;slug&gt;</code> — category archive (thin archives are <code>noindex</code>; empty ones are 404)</p>
+  <p><span class="badge get">GET</span> <code>/&lt;city&gt;/blog/tag/&lt;slug&gt;</code> — tag archive</p>
+  <p>Posts carry an editorial-team byline (editable per directory under <em>Blog features → Publishing guardrails</em>), reading time, related posts, and links to their category and tags.</p>
+  <p>Guides: a post marked <em>This post is a guide (hub page)</em> lists the posts filed under it (<em>Part of a guide</em>), and each of those links back automatically.</p>
+  <p><span class="badge get">GET</span> <code>/api/v1/admin/directories/:id/blog-guides</code> — guide posts an article can be filed under</p>
+</div>
+
 <h3>Posts CRUD</h3>
 <div class="card">
   <p><span class="badge get">GET</span> <code>/api/v1/blog-posts</code> &mdash; List all posts</p>

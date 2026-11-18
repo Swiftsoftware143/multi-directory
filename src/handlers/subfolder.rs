@@ -4072,7 +4072,7 @@ pub async fn blog_post_page(
     let row = sqlx::query(
         "SELECT id, title, slug, excerpt, content, meta_title, meta_description, canonical_url, \
                 robots_meta, featured_image_url, author_name, blog_category, created_at, updated_at, \
-                town_key, tags \
+                town_key, tags, is_pillar, pillar_id \
          FROM blog_posts WHERE directory_id = $1 AND slug = $2 \
            AND coalesce(published, true) = true LIMIT 1",
     )
@@ -4123,6 +4123,8 @@ pub async fn blog_post_page(
     let featured: Option<String> = row.try_get("featured_image_url").unwrap_or(None);
     let _author_name: Option<String> = row.try_get("author_name").unwrap_or(None);
     let post_tags: Option<Vec<String>> = row.try_get("tags").unwrap_or(None);
+    let is_pillar: bool = row.try_get("is_pillar").unwrap_or(false);
+    let pillar_id: Option<Uuid> = row.try_get("pillar_id").unwrap_or(None);
     let category: Option<String> = row.try_get("blog_category").unwrap_or(None);
     let created: Option<chrono::DateTime<chrono::Utc>> = row.try_get("created_at").unwrap_or(None);
     let updated: Option<chrono::DateTime<chrono::Utc>> = row.try_get("updated_at").unwrap_or(None);
@@ -4314,7 +4316,7 @@ pub async fn blog_post_page(
         .as_ref()
         .map(|f| {
             format!(
-                "<img src=\"{}\" alt=\"{}\" style=\"width:100%;border-radius:14px;margin-bottom:18px\" loading=\"lazy\">",
+                "<img src=\"{}\" alt=\"{}\" style=\"width:100%;border-radius:14px;margin-bottom:18px\" loading=\"eager\" fetchpriority=\"high\">",
                 h(f),
                 h(&title_raw)
             )
@@ -4327,6 +4329,61 @@ pub async fn blog_post_page(
     // Reading time: readers and Google both use it, and it is one line of maths.
     let word_count = strip_tags(&safe_content).split_whitespace().count();
     let reading_minutes = word_count.div_ceil(200).max(1);
+
+    // Guides: a pillar lists its supporting posts; a supporting post points up.
+    let guide_html = if is_pillar {
+        let supporters: Vec<(String, String)> = sqlx::query_as(
+            "SELECT slug, coalesce(title,'') FROM blog_posts \
+             WHERE pillar_id = $1 AND coalesce(published, false) = true AND status = 'published' \
+             ORDER BY created_at",
+        )
+        .bind(post_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        if supporters.is_empty() {
+            String::new()
+        } else {
+            let items: String = supporters
+                .iter()
+                .map(|(s, t)| {
+                    format!(
+                        "<li><a href=\"{}/{}/blog/{}\">{}</a></li>",
+                        h(&base),
+                        h(&dir.slug),
+                        h(s),
+                        h(t)
+                    )
+                })
+                .collect();
+            format!(
+                "<aside class=\"guide-box\" style=\"border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin:18px 0\"><strong>In this guide</strong><ul>{items}</ul></aside>"
+            )
+        }
+    } else if let Some(pid) = pillar_id {
+        let pillar: Option<(String, String)> = sqlx::query_as(
+            "SELECT slug, coalesce(title,'') FROM blog_posts \
+             WHERE id = $1 AND coalesce(published, false) = true LIMIT 1",
+        )
+        .bind(pid)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        pillar
+            .map(|(ps, pt)| {
+                format!(
+                    "<aside class=\"guide-box\" style=\"border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:14px 0\">Part of the guide: <a href=\"{}/{}/blog/{}\"><strong>{}</strong></a></aside>",
+                    h(&base),
+                    h(&dir.slug),
+                    h(&ps),
+                    h(&pt)
+                )
+            })
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
 
     // Related reading: same category first, then shared tags; never the post itself.
     let related: Vec<(String, String)> = sqlx::query_as(
@@ -4369,6 +4426,7 @@ pub async fn blog_post_page(
 <p class="lede">{date}{byline} · {reading} min read</p>
 {cat}
 {tags}
+{guide}
 {content}
 {related}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}">← More about {city}</a></p>
@@ -4396,6 +4454,7 @@ pub async fn blog_post_page(
         byline = byline,
         cat = cat_html,
         tags = tags_html,
+        guide = guide_html,
         content = format!("{}{}", safe_content, town_biz_html),
         reading = reading_minutes,
         related = related_html,

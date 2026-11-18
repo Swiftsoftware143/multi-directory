@@ -1092,6 +1092,63 @@ a:hover{text-decoration:underline}
   </div>
 </div>
 
+
+<div class="card" id="city-blog">
+  <h3><span class="emoji">📝</span> 18. City Blog &amp; Guides</h3>
+  <p>Every city has its own blog at <code>/&lt;city&gt;/blog</code>. It is not a separate site and has no theme of
+     its own: it inherits the city's colours, fonts, header and navigation automatically, so it always looks like
+     part of the directory.</p>
+
+  <h4>Writing a post</h4>
+  <ul>
+    <li>Open the business portal, choose the city, then <strong>Blog</strong>. The list shows a <strong>word count</strong> per article.</li>
+    <li>The editor has a <strong>focus keyword</strong> field. Under the text a panel shows the word count, how many
+      times the keyword appears, its density and the article's top terms. Tick <strong>Highlight keywords</strong>
+      to see them marked in a preview.</li>
+    <li>Post pages show the byline, a reading time, related posts, and links to their category and tags.</li>
+  </ul>
+
+  <h4>The byline</h4>
+  <p>Posts are credited to the city's editorial team, never to an individual. Change the credit at
+     <strong>Admin → Blog features → Publishing guardrails → Byline shown on every post</strong>. Leave it blank
+     to use <code>&lt;brand&gt; Editorial Team</code>. The same name is used in the article's structured data, so the
+     visible byline and what search engines read can never disagree.</p>
+
+  <h4>Categories and tags</h4>
+  <ul>
+    <li>Each post has one category and any number of tags, both editable in the post editor.</li>
+    <li>They produce real pages: <code>/&lt;city&gt;/blog/category/&lt;name&gt;</code> and <code>/&lt;city&gt;/blog/tag/&lt;name&gt;</code>.</li>
+    <li>An archive with fewer than three posts works normally for readers but is marked <code>noindex</code>, so thin pages
+      never reach search results. An archive with no posts is a normal 404.</li>
+  </ul>
+
+  <h4>Guides (a hub post with supporting posts)</h4>
+  <ol>
+    <li>Write the main article — for example "The Palm Bay homeowner's guide".</li>
+    <li>In the post editor tick <strong>This post is a guide (hub page)</strong> and save.</li>
+    <li>Open each supporting post and choose the guide under <strong>Part of a guide</strong>.</li>
+    <li>The guide now shows <strong>In this guide</strong> with every supporting post, and each supporting post shows
+      <strong>Part of the guide</strong> linking back. Both lists update themselves — nothing needs re-linking when a
+      post is added, renamed or unpublished.</li>
+  </ol>
+  <p>A guide is the natural home for cost guides, permit and how-to articles, neighbourhood guides and seasonal
+     advice. One strong guide per city beats dozens of near-identical articles.</p>
+
+  <h4>Related posts</h4>
+  <p>At the foot of each article the system picks up to four related posts from the same city — same category first,
+     then shared tags. Nothing is chosen by hand and no other city's posts ever appear.</p>
+
+  <div class="tip-box">
+    <strong>✅ Before publishing a guide:</strong> confirm every number is either from the directory's own data or a
+    named source, and that the article links to the city's listings and to its guide. Drafts are written by AI only
+    from supplied facts — a draft is never published on its own.
+  </div>
+
+  <h4>For developers</h4>
+  <p><span class="badge get">GET</span> <code>/api/v1/admin/directories/:id/blog-guides</code> — the guide posts a
+     supporting article can be filed under.</p>
+</div>
+
 <a href="/guides/index.html" class="back-link">← Back to All Guides</a>
 
 </div>
