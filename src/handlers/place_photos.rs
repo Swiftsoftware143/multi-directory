@@ -384,6 +384,14 @@ async fn respond(s: &AppState, business_id: Uuid, index: usize) -> Result<Respon
         return Ok(image_response(bytes, ct, "hit", cfg.ttl_secs));
     }
 
+    // COST GATE (pre-launch): a cold photo is three BILLED Google requests. Until the
+    // directory launches, only photos already on disk are served; a miss answers 404 so
+    // the page hides the frame. Billed fetching is switched back on by creating
+    // /opt/swift/state/place-photo-upstream.enabled — no rebuild, no restart.
+    if !std::path::Path::new("/opt/swift/state/place-photo-upstream.enabled").exists() {
+        return Err(not_found());
+    }
+
     // 2. Cold: one request fetches a given photo. A second request for the same photo (two
     //    visitors at once, or a page requested twice in parallel) waits briefly for the first to
     //    store it instead of paying Google for the same call again.
