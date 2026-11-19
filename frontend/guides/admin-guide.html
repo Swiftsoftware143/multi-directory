@@ -221,6 +221,22 @@ a:hover{text-decoration:underline}
   </div>
 </div>
 
+<!-- 2b. Role-based dashboard scoping -->
+<div class="card" id="role-scoping">
+  <h3><span class="emoji">👁️</span> 2b. Who sees what — the four roles and their dashboards</h3>
+  <p>Every ZaarHub account is exactly one role, and every screen and every query is scoped to that role <strong>on the server</strong> — never filtered in the browser. No role can ever read another role's data. What a person sees depends only on who they signed in as:</p>
+  <ul>
+    <li><strong>Customer</strong> — their own account only: their points, their saved businesses, their own reviews, and the deals available to them. They never see any business's or supplier's private data.</li>
+    <li><strong>Business owner</strong> — their own business only: its performance, reviews, profile and data. They cannot see another business's numbers, nor any customer's private details.</li>
+    <li><strong>Supplier</strong> — their own supplier profile and the enquiries sent to them. Nothing else.</li>
+    <li><strong>Admin</strong> — the whole network: every directory, business, customer, supplier, transaction and setting.</li>
+  </ul>
+  <p>The account menu (top-right corner) opens the right screen for whoever is signed in — a customer never sees business tools, a business owner never sees admin tools, and sign-out lives in the same menu. A guide or screen that belongs to a different role is refused by the server, not merely hidden.</p>
+  <div class="tip-box">
+    <strong>💡 Tip:</strong> If a team member can't see a screen you can, check which role they signed in as — that is the only thing that changes what appears.
+  </div>
+</div>
+
 <!-- 3. Tenant Management -->
 <div class="card">
   <h3><span class="emoji">👥</span> 3. Tenant Management</h3>
