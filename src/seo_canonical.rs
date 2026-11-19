@@ -4,7 +4,7 @@
 //! host (ZaarHub = `zaarhub.com`). That brand host is the only host that ranks; every
 //! public page canonicalises absolutely to it no matter which host served the page;
 //! only the brand host advertises a sitemap. The factory host
-//! (`directory.swiftsoftware.net`) is the factory's home: public pages there are
+//! (`directory.mcontrol.fyi`) is the factory's home: public pages there are
 //! `noindex` and it never advertises a sitemap, while `/admin*` and `/api/` are
 //! untouched so the admin console keeps working.
 //!
@@ -30,7 +30,7 @@ use std::sync::{OnceLock, RwLock};
 
 /// The FACTORY host: the directory-creation software and its admin console live
 /// here. It never ranks (public paths are `noindex`) but must keep working.
-pub const FACTORY_HOST: &str = "directory.swiftsoftware.net";
+pub const FACTORY_HOST: &str = "directory.mcontrol.fyi";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Brand hosts (data)
@@ -724,11 +724,11 @@ mod tests {
             Target::Brand("zaarhub.com".into())
         );
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/apopka", &b),
+            resolve(Some("directory.mcontrol.fyi"), "/apopka", &b),
             Target::Brand("zaarhub.com".into())
         );
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/", &b),
+            resolve(Some("directory.mcontrol.fyi"), "/", &b),
             Target::Brand("zaarhub.com".into())
         );
         // Mapped domains and dev hosts keep their own origin.
@@ -747,20 +747,20 @@ mod tests {
         );
         // On the factory host, the path decides — never a default.
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/naples", &b),
+            resolve(Some("directory.mcontrol.fyi"), "/naples", &b),
             Target::Brand("swiftlist.com".into())
         );
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/apopka", &b),
+            resolve(Some("directory.mcontrol.fyi"), "/apopka", &b),
             Target::Brand("zaarhub.com".into())
         );
         // Ambiguous path on the factory host: fail safe, not a guess.
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/", &b),
+            resolve(Some("directory.mcontrol.fyi"), "/", &b),
             Target::Unresolved
         );
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/unknown-thing", &b),
+            resolve(Some("directory.mcontrol.fyi"), "/unknown-thing", &b),
             Target::Unresolved
         );
     }
@@ -769,22 +769,18 @@ mod tests {
     fn no_brand_host_is_fail_safe() {
         let none = BrandHosts::default();
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/apopka", &none),
+            resolve(Some("directory.mcontrol.fyi"), "/apopka", &none),
             Target::Unresolved
         );
         assert_eq!(
-            resolve(Some("directory.swiftsoftware.net"), "/", &none),
+            resolve(Some("directory.mcontrol.fyi"), "/", &none),
             Target::Unresolved
         );
         // No host advertises a sitemap when no brand host is set.
-        assert_eq!(
-            sitemap_host(Some("directory.swiftsoftware.net"), &none),
-            None
-        );
+        assert_eq!(sitemap_host(Some("directory.mcontrol.fyi"), &none), None);
         assert_eq!(sitemap_host(Some("zaarhub.com"), &none), None);
         // …and no canonical is emitted at all.
-        let html =
-            "<head><link rel=\"canonical\" href=\"https://directory.swiftsoftware.net/apopka\">\
+        let html = "<head><link rel=\"canonical\" href=\"https://directory.mcontrol.fyi/apopka\">\
                     <meta property=\"og:url\" content=\"https://zaarhub.com/apopka\"></head>";
         let out = strip_canonical(html);
         assert!(!out.contains("canonical"));
@@ -799,7 +795,7 @@ mod tests {
             Some("zaarhub.com".to_string())
         );
         assert_eq!(sitemap_host(Some("www.zaarhub.com"), &b), None);
-        assert_eq!(sitemap_host(Some("directory.swiftsoftware.net"), &b), None);
+        assert_eq!(sitemap_host(Some("directory.mcontrol.fyi"), &b), None);
         assert_eq!(sitemap_host(Some("127.0.0.1"), &b), None);
         assert_eq!(sitemap_host(None, &b), None);
     }
@@ -816,12 +812,12 @@ mod tests {
     #[test]
     fn repoints_existing_host_derived_canonical() {
         let html = concat!(
-            "<head><link rel=\"canonical\" href=\"https://directory.swiftsoftware.net/apopka\">",
-            "<meta property=\"og:url\" content=\"https://directory.swiftsoftware.net/apopka\"></head>"
+            "<head><link rel=\"canonical\" href=\"https://directory.mcontrol.fyi/apopka\">",
+            "<meta property=\"og:url\" content=\"https://directory.mcontrol.fyi/apopka\"></head>"
         );
         let out = pin_html(html, "/apopka", "https://zaarhub.com");
         assert!(out.contains("href=\"https://zaarhub.com/apopka\""));
-        assert!(!out.contains("directory.swiftsoftware.net"));
+        assert!(!out.contains("directory.mcontrol.fyi"));
         // no duplicate tags
         assert_eq!(out.matches("rel=\"canonical\"").count(), 1);
         assert_eq!(out.matches("og:url").count(), 1);

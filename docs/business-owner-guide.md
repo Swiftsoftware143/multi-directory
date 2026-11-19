@@ -1,6 +1,6 @@
 # Business Owner Guide
 
-Sign into your dashboard through your city's directory page at `directory.swiftsoftware.net`.
+Sign into your dashboard through your city's directory page at `directory.mcontrol.fyi`.
 
 ## Your Dashboard
 Manage your listing, run deals, publish articles, engage with your community. The portal has tabs across the top: Dashboard, ZaarCash, Vouchers, Referrals, Rewards, PIN, Scanner, Pledges, Offers, Legal, **Settings**, and Surveys.

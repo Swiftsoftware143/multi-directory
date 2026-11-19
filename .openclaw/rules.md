@@ -31,7 +31,7 @@
 ### 3. Full Feature Journey Required
 - A feature is NOT done until backend + admin UI are both connected
 - Verify: admin page loads → feature is visible → API returns correct data
-- "It works on localhost" is not sufficient — smoke test through `https://directory.swiftsoftware.net`
+- "It works on localhost" is not sufficient — smoke test through `https://directory.mcontrol.fyi`
 
 ### 4. Directory-Specific Architecture
 - This is a **listing/search engine** — not a SaaS with user subscriptions
@@ -46,9 +46,9 @@
 - Smoke test the app after restart
 
 ### 6. Routing
-- Main domain: `https://directory.swiftsoftware.net` — serves the directory listing + admin
+- Main domain: `https://directory.mcontrol.fyi` — serves the directory listing + admin
 - NO `app.*` or `admin.*` subdomains — it's a single-site architecture
-- Admin panel is at `https://directory.swiftsoftware.net/admin`
+- Admin panel is at `https://directory.mcontrol.fyi/admin`
 
 ### 7. No Dead Endpoints
 - Every API route in `main.rs`/`routes.rs` must have a corresponding frontend caller
@@ -93,6 +93,6 @@ After EVERY deploy, run through the appropriate checklist:
 - Admin credentials: `swiftsoftware143@yahoo.com` / `<REDACTED-ROTATED-2026-09-16>`
 - After EVERY deploy: verify admin login works
 - For SaaS apps: `https://admin.{domain}/` must accept these credentials
-- For Multi-Directory: `https://directory.swiftsoftware.net/admin` must accept these credentials
+- For Multi-Directory: `https://directory.mcontrol.fyi/admin` must accept these credentials
 - If admin login returns 401/422/500 — deployment is BROKEN, roll back immediately
 - This applies across ALL 7 apps — no exceptions

@@ -10,7 +10,7 @@
 # answers 200 at the API but is broken in a real browser on the real hostname).
 #
 # Usage:  bash scripts/scanner-e2e-public.sh            # default https://zaarhub.com
-#         MD_PUBLIC_BASE=https://directory.swiftsoftware.net bash scripts/scanner-e2e-public.sh
+#         MD_PUBLIC_BASE=https://directory.mcontrol.fyi bash scripts/scanner-e2e-public.sh
 # Exit:   0 = PASS, 1 = FAIL.  Evidence (screenshots + browser-proof.json + out.txt) lands in AUD.
 set -u
 cd "$(dirname "$0")/.." || exit 2

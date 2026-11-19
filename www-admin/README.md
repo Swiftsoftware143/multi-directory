@@ -1,6 +1,6 @@
 # www-admin/ — Clearinghouse Admin SPA (ZaarHub)
 
-**Served at:** `https://zaarhub.com/admin/` and `https://directory.swiftsoftware.net/admin/`
+**Served at:** `https://zaarhub.com/admin/` and `https://directory.mcontrol.fyi/admin/`
 **Served from:** `/opt/swift/nginx/www-admin/multidirectory/` (nginx vhost
 `/opt/swift/nginx/sites/multi-directory.conf`, `location /admin/ { alias ... }`).
 
@@ -13,7 +13,7 @@ Note the two different slugs — do not "fix" either one:
 
 ## Source of truth
 
-* **Public site (`zaarhub.com`, `directory.swiftsoftware.net`): the repo tree
+* **Public site (`zaarhub.com`, `directory.mcontrol.fyi`): the repo tree
   `frontend/`.** nginx proxies every path to the Multi-Directory Rust service on port 8089,
   which serves the bind-mounted `frontend/` directory (container path
   `/opt/swift/multidirectory-rust/frontend` → host `/opt/swift/apps/multi-directory/frontend`).

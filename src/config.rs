@@ -59,8 +59,8 @@ impl AppConfig {
         let template_dir =
             std::env::var("TEMPLATE_DIR").unwrap_or_else(|_| "./templates".to_string());
 
-        let base_domain = std::env::var("BASE_DOMAIN")
-            .unwrap_or_else(|_| "directory.swiftsoftware.net".to_string());
+        let base_domain =
+            std::env::var("BASE_DOMAIN").unwrap_or_else(|_| "directory.mcontrol.fyi".to_string());
 
         let admin_email =
             std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@example.com".to_string());

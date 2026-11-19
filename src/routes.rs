@@ -2853,7 +2853,7 @@ pub fn create_router(s: AppState) -> Router {
                         let is_app = host == &app_domain
                             || host == &www_domain
                             || host == "localhost"
-                            || host == "directory.swiftsoftware.net"
+                            || host == "directory.mcontrol.fyi"
                             || host.starts_with("127.0.0.1")
                             || host.starts_with("192.168.")
                             || host.starts_with("10.");
@@ -3741,7 +3741,7 @@ pub fn create_router(s: AppState) -> Router {
             crate::beacon_middleware::inject_tracking_beacon,
         ))
         // kanban t_f97664fe — ONE canonical public host. Three hostnames serve this
-        // app (zaarhub.com, www.zaarhub.com, directory.swiftsoftware.net, the last
+        // app (zaarhub.com, www.zaarhub.com, directory.mcontrol.fyi, the last
         // being the factory's home). Documents rendered by the app already build a
         // pinned canonical; this pins the ones served as static files, which build
         // no url server-side at all — the SPA shell at `/` and `/portal` most of all.

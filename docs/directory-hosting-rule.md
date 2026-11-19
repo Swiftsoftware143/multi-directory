@@ -11,7 +11,7 @@ Fleet copy (same rule, operations view): `/opt/swift/docs/fleet-directory-brand-
 3. Public pages **canonicalise absolutely** to the brand host, no matter which host served them:
    `<link rel="canonical" href="https://<brand-host>/<path>">`, `og:url` and `twitter:url` the same.
 4. Only the brand host **advertises a sitemap** (one `Sitemap:` line in its `robots.txt`).
-5. The factory subdomain (`directory.swiftsoftware.net`) is the factory's **home**: its public
+5. The factory subdomain (`directory.mcontrol.fyi`) is the factory's **home**: its public
    pages are `X-Robots-Tag: noindex` and it never advertises a sitemap. It must never appear in
    search results.
 6. The factory **admin must keep working** on that subdomain: `/admin/`, `/admin-panel`, admin
@@ -44,7 +44,7 @@ A directory is **not launched** until this passes on its live hosts:
 ```bash
 scripts/seo-launch-check.sh <brand-host> <factory-host> [deep-path]
 # e.g.
-scripts/seo-launch-check.sh zaarhub.com directory.swiftsoftware.net /apopka
+scripts/seo-launch-check.sh zaarhub.com directory.mcontrol.fyi /apopka
 ```
 
 It answers pass/fail on: absolute canonical identical on every host (brand, `www`, factory) for
@@ -62,7 +62,7 @@ The deep path defaults to the first non-root URL in the brand host's own sitemap
    It must be a bare domain, e.g. `zaarhub.com` (no scheme, no `www`).
 3. Point DNS + nginx at the app (`zaarhub.com` and `www.zaarhub.com`, the latter 301 to the apex)
    and purge any cached `robots.txt` at the edge.
-4. Run `scripts/seo-launch-check.sh <brand-host> directory.swiftsoftware.net <deep-path>`.
+4. Run `scripts/seo-launch-check.sh <brand-host> directory.mcontrol.fyi <deep-path>`.
 5. Only then is the directory launched. If the check fails because the canonical is missing, the
    brand host is not set — that is the fail-safe doing its job, not a bug.
 

@@ -3,7 +3,7 @@
 #
 #   scripts/seo-launch-check.sh <brand-host> <factory-host> [deep-path]
 #
-# e.g. scripts/seo-launch-check.sh zaarhub.com directory.swiftsoftware.net /apopka
+# e.g. scripts/seo-launch-check.sh zaarhub.com directory.mcontrol.fyi /apopka
 #
 # THE RULE (David, 2026-11-10 — docs/directory-hosting-rule.md):
 #   1. every public page canonicalises ABSOLUTELY to the directory's own brand host,

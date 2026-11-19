@@ -14,7 +14,7 @@ loopback, because the whole point of the change is what a crawler sees at the ed
      urls and carries no junk path                                       (item 4)
   4. www.zaarhub.com answers ONE 301 to https://zaarhub.com, path and query preserved
                                                                          (item 1)
-  5. the FACTORY is unbroken on directory.swiftsoftware.net: admin shell, static admin
+  5. the FACTORY is unbroken on directory.mcontrol.fyi: admin shell, static admin
      alias, /admin-panel and an authenticated admin read all still work  (item 1)
   6. /visitor and /zaarhub-offer.html are noindex; /claim is still indexable
   7. real public pages still answer 200 on the primary host
@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 
 PRIMARY = "https://zaarhub.com"
-FACTORY = "https://directory.swiftsoftware.net"
+FACTORY = "https://directory.mcontrol.fyi"
 WWW = "https://www.zaarhub.com"
 HOSTS = [PRIMARY, WWW, FACTORY]
 UA = "Mozilla/5.0 (compatible; md-seo-probe/1.0)"
@@ -165,7 +165,7 @@ def main():
     sm = [ln for ln in text.splitlines() if ln.lower().startswith("sitemap:")]
     check(
         status == 200 and sm == [],
-        "directory.swiftsoftware.net robots.txt advertises NO sitemap",
+        "directory.mcontrol.fyi robots.txt advertises NO sitemap",
         str(sm),
     )
     check("Disallow: /admin/" in text, "factory robots.txt still disallows /admin/")

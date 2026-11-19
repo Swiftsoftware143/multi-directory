@@ -1110,7 +1110,7 @@ pub async fn send_newsletter(
     // host is its network's brand domain (`networks.root_domain`) — cities are
     // FOLDERS on that domain (`https://<brand>/<slug>`), never subdomains; the old
     // `https://<slug>.<base_domain>` form is a retired subdomain that no longer
-    // resolves (verified: palm-bay.directory.swiftsoftware.net is dead).
+    // resolves (verified: palm-bay.directory.mcontrol.fyi is dead).
     let dir_info: Option<(String, String)> = sqlx::query_as(
         "SELECT d.slug, COALESCE(n.root_domain, '') FROM directories d \
          LEFT JOIN networks n ON n.id = d.network_id WHERE d.id = $1",

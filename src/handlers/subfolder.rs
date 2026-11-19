@@ -90,7 +90,7 @@ pub fn origin(host: Option<&str>, proto: &str, fallback: &str) -> String {
     // kanban t_0b3cce4d — ONE canonical host PER DIRECTORY, resolved from
     // `networks.root_domain` (data), never from a compile-time constant. This app
     // (and this vhost) serves the public directory on several hostnames: the brand
-    // host, its `www`, and directory.swiftsoftware.net. The last one is ALSO the
+    // host, its `www`, and directory.mcontrol.fyi. The last one is ALSO the
     // factory's home — the software that creates directories, plus its admin console
     // — so it keeps answering and is never redirected away. Deriving the origin from
     // the request Host made each hostname self-canonicalise the same page, which is

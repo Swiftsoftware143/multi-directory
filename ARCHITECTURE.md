@@ -53,7 +53,7 @@ path when a referred customer moves onto a paid plan:
 
 | App | Path | Port | Service | Domain |
 |-----|------|------|---------|--------|
-| Multi-Directory | `/opt/swift/multidirectory-rust` | 3001 | multidirectory | directory.swiftsoftware.net |
+| Multi-Directory | `/opt/swift/multidirectory-rust` | 3001 | multidirectory | directory.mcontrol.fyi |
 | CoreSwift CRM | `/opt/swift/coreswift` | 8084 | coreswift-crm | coreswiftcrm.com |
 | FunnelSwift | `/opt/swift/funnelswift` | 8080 | funnelswift | funnelswift.net |
 | IncentiveSwift | `/opt/swift/incentiveswift` | 8083 | incentiveswift-api | incentiveswift.com |

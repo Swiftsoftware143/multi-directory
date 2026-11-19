@@ -151,7 +151,7 @@ def main():
     # 5) RSS (already claimed these before the fix — keep it honest)
     code, xml = http(f"{PUBLIC}/api/v1/public/directories/{CITY}/articles.xml")
     check("the articles RSS advertises the article", code == "200" and SLUG in xml, f"status={code}")
-    check("the RSS advertises only the live host", f"{CITY}.directory.swiftsoftware.net" not in xml)
+    check("the RSS advertises only the live host", f"{CITY}.directory.mcontrol.fyi" not in xml)
 
     # 6) real browser: browse -> click -> on screen
     env = dict(os.environ, PUBLIC=PUBLIC, CITY=CITY, SLUG=SLUG, TITLE=TITLE, MARKER=MARKER,
