@@ -685,14 +685,15 @@ function bizHref(citySlug,bizSlug){if(!citySlug||!bizSlug)return '';return '/'+e
 function bizLink(href,label){return href?('<a class="zh-biz-link" href="'+href+'" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none">'+label+'</a>'):label}
 // Where a rating came from. `review_count` is a COMBINATION of the listing's imported public-listing
 // aggregate and our own approved reviews (the API also sends the two halves separately). Printing the
-// combined number as if it were ZaarHub's own made the page contradict itself — "199 reviews" in the
-// header, "ZaarHub Reviews (0)" in the panel. Every place that prints a review count uses this.
+// combined number as if it were the directory's own community reviews made the page contradict itself
+// — "199 reviews" in the header, "Community Reviews (0)" in the panel. Every place that prints a
+// review count uses this, with GENERIC labels (Google / community) rather than a directory brand.
 function reviewByline(d){
   if(!d)return ''
   var ours=(typeof d.zaarhub_review_count==='number')?d.zaarhub_review_count:((d.reviews&&d.reviews.length)||0)
   var imported=d.imported_review_count||0
   if(imported>0){
-    return (ours>0?ours+' ZaarHub review'+(ours===1?'':'s')+' · ':'')+Number(imported).toLocaleString()+' from public listings'
+    return (ours>0?ours+' community review'+(ours===1?'':'s')+' · ':'')+Number(imported).toLocaleString()+' from Google'
   }
   var rc=(typeof d.review_count==='number')?d.review_count:ours
   return rc+' review'+(rc===1?'':'s')
@@ -2933,7 +2934,7 @@ function renderDealDetail(d){
       else starsStr+='☆'
     }
     ratingHtml='<span class="bizsnap-stars">'+starsStr+'</span><span class="bizsnap-rating-num">'+bizRating.toFixed(1)+'</span>'
-    if(bizReviewCount>0)ratingHtml+='<span class="bizsnap-review-count" title="Some ratings come from public business listings until a ZaarHub customer reviews this place">('+reviewByline(d)+')</span>'
+    if(bizReviewCount>0)ratingHtml+='<span class="bizsnap-review-count" title="Some ratings come from Google until a community member reviews this place">('+reviewByline(d)+')</span>'
   }
   var verifiedBadge=bizVerified?'<span class="bizsnap-verified">✅ Verified</span>':''
   var locationStr=''

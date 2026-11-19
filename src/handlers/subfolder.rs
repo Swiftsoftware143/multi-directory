@@ -3055,7 +3055,7 @@ pub async fn business_detail(
     let by_uuid = Uuid::parse_str(ident).ok();
     let fetched = sqlx::query(
         "SELECT id, name, slug, description, category_id, address, city, state, zip, phone, \
-                website, logo_url, cover_url, images, rating, review_count, latitude, longitude, featured, place_id, \
+                website, logo_url, cover_url, images, rating, review_count, imported_review_count, imported_rating, latitude, longitude, featured, place_id, \
                 (SELECT walk_score FROM business_walk_scores w WHERE w.business_id = businesses.id) AS ws_walk, \
                 (SELECT bike_score FROM business_walk_scores w WHERE w.business_id = businesses.id) AS ws_bike \
          FROM businesses WHERE directory_id = $1 AND is_active = true \
@@ -3186,6 +3186,15 @@ pub async fn business_detail(
         .try_get::<Option<i32>, _>("review_count")
         .unwrap_or(None)
         .unwrap_or(0);
+    // Imported public-listing aggregate (migration 171): split out so the page can NAME the
+    // source instead of printing the combined number as the directory's own reviews.
+    let imported_reviews: i32 = row
+        .try_get::<Option<i32>, _>("imported_review_count")
+        .unwrap_or(None)
+        .unwrap_or(0);
+    let imported_rating: Option<f64> = row
+        .try_get::<Option<f64>, _>("imported_rating")
+        .unwrap_or(None);
     let lat: Option<f64> = row.try_get("latitude").unwrap_or(None);
     let lng: Option<f64> = row.try_get("longitude").unwrap_or(None);
     // Walk Score — cached per business in business_walk_scores, rendered on the business page
@@ -3582,6 +3591,18 @@ pub async fn business_detail(
             Vec::new()
         }
     };
+    // Community reviews are capped at 10 above for display, so the real count and average come
+    // from the same sub-select the API uses (card W23) — the page must never print a truncated
+    // average as the real one, and it must never present the imported Google aggregate as if it
+    // were this directory's own community reviews.
+    let (native_reviews, community_rating): (i64, Option<f64>) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM reviews WHERE business_id = $1 AND status = 'approved'), \
+                (SELECT AVG(rating)::double precision FROM reviews WHERE business_id = $1 AND status = 'approved')",
+    )
+    .bind(biz_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or((0, None));
     let stars_for = |r: i32| -> String {
         let full = r.clamp(0, 5) as usize;
         format!("{}{}", "★".repeat(full), "☆".repeat(5 - full))
@@ -3624,7 +3645,7 @@ pub async fn business_detail(
             ));
         }
         format!(
-            "<section class=\"reviews\" aria-label=\"Customer reviews\"><h2>Reviews</h2>{}</section>",
+            "<section class=\"reviews\" aria-label=\"Customer reviews\"><h2>Community Reviews</h2>{}</section>",
             cards
         )
     };
@@ -3749,16 +3770,57 @@ pub async fn business_detail(
         };
         rows.push_str(&format!("<div class=\"row\">🚶 {}</div>", h(&label)));
     }
-    let rating_html = if rating > 0.0 {
+    // Review provenance (work-queue items 1–2, card W23): the header used to print the
+    // COMBINED `review_count` — the listing's imported Google aggregate plus our own community
+    // rows — as if it were this page's own reviews while the section below listed none of them
+    // ("★ 4.9 · 60,708 reviews" over an empty panel). Each source now gets its own
+    // generically-labelled row, and a Submit-a-Review control ties them to the write-review
+    // flow instead of leaving the claim dangling.
+    let g_count = if imported_reviews > 0 {
+        imported_reviews
+    } else {
+        // Pre-migration rows (migration 171 never backfilled imported_review_count): the Google
+        // portion is the combined `review_count` minus our own community rows — 0 for a
+        // native-only listing, the full count for a Google-only one. Without this a native-only
+        // listing would show its own community count twice, once mislabelled "Google reviews".
+        (reviews as i64 - native_reviews).max(0) as i32
+    };
+    let g_rating = if imported_reviews > 0 {
+        imported_rating.unwrap_or(rating)
+    } else {
+        rating
+    };
+    let google_html = if g_count > 0 && g_rating > 0.0 {
         format!(
-            "<div class=\"row\"><span class=\"stars\">★ {:.1}</span> · {} {}</div>",
-            rating,
-            reviews,
-            if reviews == 1 { "review" } else { "reviews" }
+            "<div class=\"row\"><span class=\"stars\">★ {:.1}</span> · {} Google {}</div>",
+            g_rating,
+            g_count,
+            if g_count == 1 { "review" } else { "reviews" }
         )
     } else {
         String::new()
     };
+    let community_html = if native_reviews > 0 {
+        let cr = community_rating.unwrap_or(0.0);
+        format!(
+            "<div class=\"row\"><span class=\"stars\">★ {:.1}</span> · {} community {}</div>",
+            cr,
+            native_reviews,
+            if native_reviews == 1 {
+                "review"
+            } else {
+                "reviews"
+            },
+        )
+    } else {
+        "<div class=\"row\">No community reviews yet — be the first.</div>".to_string()
+    };
+    let submit_html = format!(
+        "<a href=\"{}/visitor?redirect={}\" style=\"display:inline-block;margin-top:10px;padding:9px 18px;background:#0d9488;color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:.92rem\">✍️ Submit a Review</a>",
+        h(&base),
+        h(&format!("/{}/businesses/{}", dir.slug, biz_slug)),
+    );
+    let rating_html = format!("{google_html}{community_html}{submit_html}");
     let logo_html = match &logo {
         Some(l) if !l.is_empty() => format!(
             "<img src=\"{}\" alt=\"{}\" style=\"width:84px;height:84px;border-radius:16px;object-fit:cover;float:right\">",

@@ -1006,7 +1006,7 @@ function renderReviews() {
     // Do not deny the header rating: it can come from public listings data with no ZaarHub rows.
     const rc = Number((bizData && bizData.review_count) || 0);
     container.innerHTML = rc > 0
-      ? '<div class="no-reviews">No ZaarHub reviews yet. The rating above is this business\'s rating from public listings — be the first to review it here!</div>'
+      ? '<div class="no-reviews">No community reviews yet. The rating above is this business\'s rating from Google — be the first to review it here!</div>'
       : '<div class="no-reviews">No reviews yet. Be the first to review!</div>';
     return;
   }
