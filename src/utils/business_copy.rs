@@ -31,6 +31,10 @@ pub struct Facts<'a> {
     pub website: Option<&'a str>,
     pub rating: Option<f64>,
     pub review_count: i32,
+    /// The imported Google aggregate (NULL for pre-migration rows and community-only listings).
+    pub imported_review_count: Option<i32>,
+    /// Our own approved community reviews — the rows a visitor actually reads on the page.
+    pub native_review_count: i32,
     /// The listing's real opening week, when one resolved from the cache (kanban t_2b630e2a).
     /// `None` means the paragraph says nothing about hours rather than guessing.
     pub hours: Option<&'a crate::utils::opening_hours::Week>,
@@ -224,24 +228,38 @@ pub fn compose(f: &Facts, seed: u64) -> Option<String> {
         (None, None) => out.push(format!("{name} is listed in the ZaarHub directory.")),
     }
 
-    // Reputation — only the number the row actually carries.
-    match (f.rating.filter(|r| *r > 0.0), f.review_count) {
+    // Reputation — name the source honestly. The imported Google aggregate may call itself
+    // "Google reviews", but a listing whose only rows are our own community reviews must never
+    // be mislabelled Google's. Pre-migration rows (imported_review_count NULL, no native rows)
+    // fall back to `review_count - native` — the same rule the business-page header uses (W23).
+    let google_n = match f.imported_review_count {
+        Some(c) if c > 0 => c,
+        _ => (f.review_count - f.native_review_count).max(0),
+    };
+    let (label, n) = if google_n > 0 {
+        ("Google", google_n)
+    } else if f.native_review_count > 0 {
+        ("community", f.native_review_count)
+    } else {
+        ("", 0)
+    };
+    match (f.rating.filter(|r| *r > 0.0), n) {
         (Some(r), n) if n > 0 => out.push(match v {
             1 => format!(
-                "Customers rate it {r:.1} out of 5 across {} Google reviews.",
+                "Customers rate it {r:.1} out of 5 across {} {label} reviews.",
                 comma(n)
             ),
             2 => format!(
-                "It holds {} Google reviews with an average of {r:.1} stars.",
+                "It holds {} {label} reviews with an average of {r:.1} stars.",
                 comma(n)
             ),
             _ => format!(
-                "It carries a {r:.1}-star rating from {} Google reviews.",
+                "It carries a {r:.1}-star rating from {} {label} reviews.",
                 comma(n)
             ),
         }),
         (Some(r), _) => out.push(format!("It is rated {r:.1} stars.")),
-        (None, n) if n > 0 => out.push(format!("It has {} Google reviews on file.", comma(n))),
+        (None, n) if n > 0 => out.push(format!("It has {} {label} reviews on file.", comma(n))),
         _ => {}
     }
 
@@ -310,6 +328,8 @@ pub async fn ensure_description(db: &PgPool, id: Uuid) -> bool {
                 COALESCE(NULLIF(btrim(b.city), ''), d.city, '') AS city, \
                 COALESCE(NULLIF(btrim(b.state), ''), d.state, '') AS state, \
                 b.address, b.zip, b.phone, b.website, b.rating, b.review_count, \
+                b.imported_review_count, \
+                (SELECT COUNT(*) FROM reviews r WHERE r.business_id = b.id AND r.status = 'approved') AS native_review_count, \
                 c.name AS category \
          FROM businesses b \
          LEFT JOIN directory_categories c ON c.id = b.category_id \
@@ -343,6 +363,8 @@ pub async fn ensure_description(db: &PgPool, id: Uuid) -> bool {
     let website: Option<String> = row.try_get("website").unwrap_or(None);
     let rating: Option<f64> = row.try_get("rating").unwrap_or(None);
     let review_count: i32 = row.try_get("review_count").unwrap_or(0);
+    let imported_review_count: Option<i32> = row.try_get("imported_review_count").unwrap_or(None);
+    let native_review_count: i32 = row.try_get::<i64, _>("native_review_count").unwrap_or(0) as i32;
     let category: Option<String> = row.try_get("category").unwrap_or(None);
     let place_id: Option<String> = row.try_get("place_id").unwrap_or(None);
 
@@ -368,6 +390,8 @@ pub async fn ensure_description(db: &PgPool, id: Uuid) -> bool {
         website: website.as_deref(),
         rating,
         review_count,
+        imported_review_count,
+        native_review_count,
         hours: hours.as_ref(),
     };
     let Some(text) = compose(&facts, seed_for(id)) else {
@@ -468,6 +492,8 @@ pub async fn refresh_machine_copy(db: &PgPool) -> (usize, usize, usize) {
                 COALESCE(NULLIF(btrim(b.city), ''), d.city, '') AS city, \
                 COALESCE(NULLIF(btrim(b.state), ''), d.state, '') AS state, \
                 b.address, b.zip, b.phone, b.website, b.rating, b.review_count, \
+                b.imported_review_count, \
+                (SELECT COUNT(*) FROM reviews r WHERE r.business_id = b.id AND r.status = 'approved') AS native_review_count, \
                 c.name AS category \
          FROM businesses b \
          LEFT JOIN directory_categories c ON c.id = b.category_id \
@@ -523,6 +549,10 @@ pub async fn refresh_machine_copy(db: &PgPool) -> (usize, usize, usize) {
             website: website.as_deref(),
             rating: row.try_get::<Option<f64>, _>("rating").unwrap_or(None),
             review_count: row.try_get::<i32, _>("review_count").unwrap_or(0),
+            imported_review_count: row
+                .try_get::<Option<i32>, _>("imported_review_count")
+                .unwrap_or(None),
+            native_review_count: row.try_get::<i64, _>("native_review_count").unwrap_or(0) as i32,
             hours: hours.as_ref(),
         };
 
@@ -606,6 +636,8 @@ pub async fn rewrite_for_category_change(
                 COALESCE(NULLIF(btrim(b.city), ''), d.city, '') AS city, \
                 COALESCE(NULLIF(btrim(b.state), ''), d.state, '') AS state, \
                 b.address, b.zip, b.phone, b.website, b.rating, b.review_count, \
+                b.imported_review_count, \
+                (SELECT COUNT(*) FROM reviews r WHERE r.business_id = b.id AND r.status = 'approved') AS native_review_count, \
                 c.name AS category \
          FROM businesses b \
          LEFT JOIN directory_categories c ON c.id = b.category_id \
@@ -654,6 +686,10 @@ pub async fn rewrite_for_category_change(
         website: website.as_deref(),
         rating: row.try_get::<Option<f64>, _>("rating").unwrap_or(None),
         review_count: row.try_get::<i32, _>("review_count").unwrap_or(0),
+        imported_review_count: row
+            .try_get::<Option<i32>, _>("imported_review_count")
+            .unwrap_or(None),
+        native_review_count: row.try_get::<i64, _>("native_review_count").unwrap_or(0) as i32,
         hours: hours.as_ref(),
     };
     let seed = seed_for(id);
@@ -707,6 +743,8 @@ mod tests {
             website: Some("https://www.fineinkstudios.com/?utm_source=googleplaces"),
             rating: Some(5.0),
             review_count: 1124,
+            imported_review_count: None,
+            native_review_count: 0,
             hours: None,
         }
     }
@@ -800,11 +838,55 @@ mod tests {
             website: None,
             rating: Some(5.0),
             review_count: 341,
+            imported_review_count: None,
+            native_review_count: 0,
             hours: None,
         };
         let text = compose(&f, 3).unwrap();
         assert!(text.contains("Whale Roofing & Construction"));
         assert!(text.contains("341"));
         assert!(text.contains("(561) 467-7946"));
+    }
+
+    #[test]
+    fn community_only_reviews_are_never_mislabelled_google() {
+        // A listing whose only rows are our own community reviews must say "community", not
+        // "Google" — the mislabel that made a native-only page claim Google's aggregate (W23).
+        let community = Facts {
+            name: "Face It Aesthetics",
+            category: Some("Med Spa"),
+            city: "Pompano Beach",
+            state: "FL",
+            address: None,
+            zip: None,
+            phone: None,
+            website: None,
+            rating: Some(5.0),
+            review_count: 2,
+            imported_review_count: None,
+            native_review_count: 2,
+            hours: None,
+        };
+        for seed in [0u64, 1, 2] {
+            let text = compose(&community, seed).unwrap();
+            assert!(
+                text.contains("community reviews"),
+                "community-only listing mislabelled: {text}"
+            );
+            assert!(!text.contains("Google reviews"), "wrong source: {text}");
+        }
+
+        // A Google-imported listing keeps the "Google reviews" trust signal.
+        let google = Facts {
+            imported_review_count: Some(60_708),
+            native_review_count: 0,
+            rating: Some(4.9),
+            review_count: 60_708,
+            ..community
+        };
+        for seed in [0u64, 1, 2] {
+            let text = compose(&google, seed).unwrap();
+            assert!(text.contains("Google reviews"), "lost source: {text}");
+        }
     }
 }
