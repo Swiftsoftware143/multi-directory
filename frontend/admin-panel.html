@@ -13572,10 +13572,15 @@
       });
     }
 
-    function switchTo(accountId, accountName, btn) {
+    // A row is opened by ITS OWN handle: a portfolio company (kind 'directory') is opened by
+    // directory id and the server resolves it to that company's OWN account — never the owner's
+    // shared one — while an account row is opened by its tenant id. Sending a directory id as a
+    // tenant id is the "button that does nothing" the requirement forbids.
+    function switchTo(target, accountName, btn, kind) {
       if (btn) { btn.disabled = true; btn.textContent = 'Switching…'; }
       status('Minting a support session for ' + accountName + '…');
-      fetchJson('POST', '/admin/impersonate', { tenant_id: accountId }).then(function (r) {
+      var body = (kind === 'directory') ? { directory_id: target } : { tenant_id: target };
+      fetchJson('POST', '/admin/impersonate', body).then(function (r) {
         if (!r || !r.token) throw new Error('The server did not return a session token.');
         // Save the operator's own session FIRST, then take the tenant's.
         var prev = tok();
@@ -13598,8 +13603,9 @@
     function actionCell(t) {
       if (t.is_platform) return '<span class="feature-subtitle">—</span>';
       if (!t.has_account) return '<span class="feature-subtitle">No account</span>';
-      return '<button class="btn btn-sm btn-primary" type="button" data-ss-tenant="' + esc(t.id) +
-             '" data-ss-name="' + esc(t.name) + '">Sign in as</button>';
+      return '<button class="btn btn-sm btn-primary" type="button" data-ss-target="' + esc(t.id) +
+             '" data-ss-kind="' + esc(t.kind || 'tenant') + '" data-ss-name="' + esc(t.name) +
+             '">Sign in as</button>';
     }
 
     function tableHtml(rows, showCounts, nameCol) {
@@ -13619,8 +13625,8 @@
     }
 
     function wireButtons(list) {
-      Array.prototype.forEach.call(list.querySelectorAll('button[data-ss-tenant]'), function (b) {
-        b.onclick = function () { switchTo(b.getAttribute('data-ss-tenant'), b.getAttribute('data-ss-name'), b); };
+      Array.prototype.forEach.call(list.querySelectorAll('button[data-ss-target]'), function (b) {
+        b.onclick = function () { switchTo(b.getAttribute('data-ss-target'), b.getAttribute('data-ss-name'), b, b.getAttribute('data-ss-kind')); };
       });
     }
 

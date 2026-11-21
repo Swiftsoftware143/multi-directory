@@ -443,25 +443,43 @@ pub async fn list_tenants(State(s): State<AppState>, headers: HeaderMap) -> ApiR
         "has_account": platform.try_get::<bool, _>("has_account").unwrap_or(false),
     })];
 
+    // The account behind a directory — resolved with the SAME rule `directory_account` uses when the
+    // panel asks to open it, so the button the screen shows and the door it reaches can never
+    // disagree: the directory's OWN tenant when that is a real tenant of this app, else a CUSTOMER
+    // owner's tenant, else nothing. A directory whose owner is the platform has no account of its
+    // own — it is reported `has_account = false` and the panel says "No account"; no tenant is
+    // invented or minted for it.
     let dir_rows = sqlx::query(
-        "SELECT d.id, d.name, d.slug \
-         FROM directories d JOIN users u ON u.id = d.owner_id \
-         WHERE u.tenant_id = $1 ORDER BY d.name",
+        "WITH owned AS ( \
+             SELECT d.id, d.name, d.slug, \
+                    CASE WHEN d.coreswift_tenant_id IS NOT NULL \
+                              AND d.coreswift_tenant_id <> $1 \
+                              AND EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.coreswift_tenant_id) \
+                         THEN d.coreswift_tenant_id \
+                         WHEN u.tenant_id <> $1 THEN u.tenant_id \
+                         ELSE NULL END AS account_id \
+               FROM directories d JOIN users u ON u.id = d.owner_id \
+              WHERE u.tenant_id = $1) \
+         SELECT o.id, o.name, o.slug, o.account_id, \
+                COALESCE((SELECT EXISTS(SELECT 1 FROM users au \
+                                         WHERE au.tenant_id = o.account_id AND au.is_active)), false) AS has_account \
+           FROM owned o ORDER BY o.name",
     )
     .bind(system)
     .fetch_all(&s.db)
     .await?;
 
     for r in &dir_rows {
-        // A directory's only account link is `owner_id → users.tenant_id`. Every directory here is
-        // owned by a platform-tenant user, so its "own tenant" IS the platform — it has no account
-        // of its own, and `has_account` is false by construction. No tenant is invented or minted.
+        let account: Option<Uuid> = r.try_get("account_id").ok().flatten();
+        let has_account = r.try_get::<bool, _>("has_account").unwrap_or(false) && account.is_some();
         portfolio.push(json!({
             "kind": "directory",
             "id": r.try_get::<Uuid, _>("id").unwrap_or_else(|_| Uuid::nil()).to_string(),
+            // The row's OWN account, when it has one. `null` = nothing behind it (acceptance 4).
+            "account_id": account.map(|a| a.to_string()),
             "name": r.try_get::<String, _>("name").unwrap_or_default(),
             "slug": r.try_get::<String, _>("slug").unwrap_or_default(),
-            "has_account": false,
+            "has_account": has_account,
         }));
     }
 
