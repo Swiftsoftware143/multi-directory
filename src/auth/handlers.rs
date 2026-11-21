@@ -143,7 +143,7 @@ pub async fn register(
         attempt += 1;
         if attempt > 16 {
             return Err(AppError::Duplicate(
-                "Could not find a free workspace slug — try a different directory name".to_string(),
+                "Could not find a free account slug — try a different directory name".to_string(),
             ));
         }
         slug = if attempt <= 8 {
@@ -157,7 +157,7 @@ pub async fn register(
         };
     }
 
-    // ── ONE transaction: the workspace, its admin user AND that account's API key ─────────────
+    // ── ONE transaction: the account, its admin user AND that account's API key ─────────────
     // Kanban t_7863696b: an account is not provisioned until it holds a key. Minting inside this
     // transaction means a rolled-back signup leaves no orphan key and a committed signup can never
     // end without one.
@@ -173,8 +173,7 @@ pub async fn register(
     .await
     .map_err(|e| match &e {
         sqlx::Error::Database(dbe) if dbe.is_unique_violation() => AppError::Duplicate(
-            "A workspace with this slug already exists — try a different directory name"
-                .to_string(),
+            "An account with this slug already exists — try a different directory name".to_string(),
         ),
         _ => e.into(),
     })?;

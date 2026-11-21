@@ -2408,10 +2408,21 @@
            revealed by script for role super_admin and hidden for everyone else. -->
       <div class="feature-card" id="support-sessions-section" style="display:none">
         <h3>🔑 Support Sessions</h3>
-        <p class="feature-subtitle">Sign in <b>as</b> a directory owner to see exactly what they see and reproduce a support report — without ever being handed their password. The session is a <b>1-hour</b> token scoped to that one tenant: it carries <b>their</b> role, never yours, and every switch is logged with both identities.</p>
+        <p class="feature-subtitle">Sign in <b>as</b> a customer to see exactly what they see and reproduce a support report — without ever being handed their password. The session is a <b>1-hour</b> token scoped to that one account: it carries <b>their</b> role, never yours, and every switch is logged with both identities.</p>
         <div class="pk-controls" style="margin-bottom:10px">
           <button class="btn btn-ghost btn-sm" type="button" onclick="window.__mdSupportLoad()">↻ Refresh</button>
           <span class="feature-status" id="ss-status"></span>
+        </div>
+        <!-- kanban t_b21028e0 — your own companies are NOT customers: they live apart from the
+             customer list, and each one that has no account of its own says so instead of showing
+             a button that does nothing. -->
+        <div class="section-label">Your companies</div>
+        <div id="portfolio-list"></div>
+        <div class="section-label">Customers</div>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <label style="font-size:.85rem;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="ss-include-portfolio" onchange="window.__mdSupportLoad()"> Include your own companies
+          </label>
         </div>
         <div id="ss-list"></div>
       </div>
@@ -13561,17 +13572,17 @@
       });
     }
 
-    function switchTo(tenantId, tenantName, btn) {
+    function switchTo(accountId, accountName, btn) {
       if (btn) { btn.disabled = true; btn.textContent = 'Switching…'; }
-      status('Minting a support session for ' + tenantName + '…');
-      fetchJson('POST', '/admin/impersonate', { tenant_id: tenantId }).then(function (r) {
+      status('Minting a support session for ' + accountName + '…');
+      fetchJson('POST', '/admin/impersonate', { tenant_id: accountId }).then(function (r) {
         if (!r || !r.token) throw new Error('The server did not return a session token.');
         // Save the operator's own session FIRST, then take the tenant's.
         var prev = tok();
         if (prev) { lsSet(OP_TOKEN, prev); lsSet(OP_USER, ls('md_admin_user') || 'null'); }
         lsSet('md_admin_token', r.token);
         lsSet('md_admin_user', JSON.stringify(r.user || {}));
-        lsSet(SUPPORT_KEY, (r.tenant && r.tenant.name) || tenantName);
+        lsSet(SUPPORT_KEY, (r.tenant && r.tenant.name) || accountName);
         location.reload();
       }).catch(function (e) {
         status(e.message || 'Could not start the support session.', true);
@@ -13579,36 +13590,74 @@
       });
     }
 
-    function renderTenants(tenants) {
-      var list = document.getElementById('ss-list');
-      if (!list) return;
-      if (!tenants.length) { list.innerHTML = '<p class="feature-subtitle">No tenants yet.</p>'; return; }
-      var h = '<div class="table-wrap"><table><tr><th>Tenant</th><th>Slug</th><th>Accounts</th><th>Directories owned</th><th></th></tr>';
-      tenants.forEach(function (t) {
-        var badge = t.is_platform ? ' <span class="badge">your own tenant</span>' : '';
+    function num(v) { return (v === undefined || v === null) ? '—' : esc(v); }
+
+    // The action cell: the operator's own account is not a switch target (they are already in it);
+    // a company with no account behind it says so instead of showing a button that would 400
+    // (acceptance 4).
+    function actionCell(t) {
+      if (t.is_platform) return '<span class="feature-subtitle">—</span>';
+      if (!t.has_account) return '<span class="feature-subtitle">No account</span>';
+      return '<button class="btn btn-sm btn-primary" type="button" data-ss-tenant="' + esc(t.id) +
+             '" data-ss-name="' + esc(t.name) + '">Sign in as</button>';
+    }
+
+    function tableHtml(rows, showCounts, nameCol) {
+      var h = '<div class="table-wrap"><table><tr><th>' + (nameCol || 'Account') + '</th><th>Slug</th>';
+      if (showCounts) h += '<th>Accounts</th><th>Directories owned</th>';
+      h += '<th></th></tr>';
+      rows.forEach(function (t) {
+        var badge = t.is_platform ? ' <span class="badge">your account</span>'
+                 : (t.kind === 'directory' ? ' <span class="badge">your company</span>' : '');
         var inactive = t.is_active ? '' : ' <span class="badge" style="background:rgba(239,68,68,.18);color:#f87171">inactive</span>';
-        var action = t.is_platform
-          ? '<span class="feature-subtitle">—</span>'
-          : '<button class="btn btn-sm btn-primary" type="button" data-ss-tenant="' + esc(t.id) + '" data-ss-name="' + esc(t.name) + '">Sign in as</button>';
-        h += '<tr><td>' + esc(t.name) + badge + inactive + '</td><td>' + esc(t.slug) + '</td><td>' +
-             esc(t.users) + '</td><td>' + esc(t.directories) + '</td><td>' + action + '</td></tr>';
+        h += '<tr><td>' + esc(t.name) + badge + inactive + '</td><td>' + esc(t.slug) + '</td>';
+        if (showCounts) h += '<td>' + num(t.users) + '</td><td>' + num(t.directories) + '</td>';
+        h += '<td>' + actionCell(t) + '</td></tr>';
       });
       h += '</table></div>';
-      list.innerHTML = h;
+      return h;
+    }
+
+    function wireButtons(list) {
       Array.prototype.forEach.call(list.querySelectorAll('button[data-ss-tenant]'), function (b) {
         b.onclick = function () { switchTo(b.getAttribute('data-ss-tenant'), b.getAttribute('data-ss-name'), b); };
       });
     }
 
+    function renderPortfolio(portfolio) {
+      var list = document.getElementById('portfolio-list');
+      if (!list) return;
+      if (!portfolio.length) { list.innerHTML = '<p class="feature-subtitle">No companies yet.</p>'; return; }
+      list.innerHTML = tableHtml(portfolio, false, 'Company');
+      wireButtons(list);
+    }
+
+    function renderCustomers(tenants, portfolio, includePortfolio) {
+      var list = document.getElementById('ss-list');
+      if (!list) return;
+      var rows = tenants.slice();
+      if (includePortfolio) rows = rows.concat(portfolio);
+      if (!rows.length) { list.innerHTML = '<p class="feature-subtitle">No customers yet.</p>'; return; }
+      list.innerHTML = tableHtml(rows, true, 'Account');
+      wireButtons(list);
+    }
+
+    function includePortfolioChecked() {
+      var cb = document.getElementById('ss-include-portfolio');
+      return !!(cb && cb.checked);
+    }
+
     function load() {
       if (ls(SUPPORT_KEY)) return; // a support session is active: only the banner applies
-      status('Loading tenants…');
+      status('Loading accounts…');
       fetchJson('GET', '/admin/tenants').then(function (d) {
         var tenants = (d && d.tenants) || [];
-        renderTenants(tenants);
-        status(tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + '.', false);
+        var portfolio = (d && d.portfolio) || [];
+        renderPortfolio(portfolio);
+        renderCustomers(tenants, portfolio, includePortfolioChecked());
+        status(tenants.length + ' customer' + (tenants.length === 1 ? '' : 's') + '.', false);
       }).catch(function (e) {
-        status(e.message || 'Could not load tenants.', true);
+        status(e.message || 'Could not load accounts.', true);
       });
     }
 

@@ -330,37 +330,96 @@ pub async fn stop_impersonation(
     })))
 }
 
-/// GET /api/v1/admin/tenants — the operator's pick-list: every tenant, with the counts needed to
-/// choose the right one (and whether it is the platform's own).
+/// GET /api/v1/admin/tenants — the operator's pick-list, split into two halves (kanban t_b21028e0):
+///
+/// * `tenants`   — the CUSTOMER list: every tenant EXCEPT the platform's own. The owner's own
+///   companies never appear here (acceptance 2).
+/// * `portfolio` — the owner's own companies: the platform tenant itself, then every directory
+///   owned by a user in the platform tenant. Each entry carries `has_account` (computed
+///   server-side — never guessed from a count client-side) so the panel can render "No account"
+///   instead of a dead "Open" button (acceptance 4).
+///
+/// `has_account` is TRUE for a tenant when it has at least one ACTIVE user — the same predicate
+/// `POST /admin/impersonate` uses before minting. For a directory it is TRUE only when the
+/// directory resolves to its OWN tenant, distinct from the platform's. A directory's only tenant
+/// link is `owner_id → users.tenant_id`; every portfolio directory is owned by a platform-tenant
+/// user, so its "own tenant" IS the platform and it has no distinct account of its own. It is
+/// reported with `has_account = false` and the panel says "No account" — no tenant is invented or
+/// minted for it (acceptance 3 + 4).
 pub async fn list_tenants(State(s): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
     require_operator(&headers, &s)?;
 
+    let system = crate::system_tenant::system_tenant_uuid();
+
+    // Customer list — every tenant that is NOT the platform's own.
     let rows = sqlx::query(
         "SELECT t.id, t.name, t.slug, t.is_active, \
                 (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS users, \
                 (SELECT COUNT(*) FROM directories d JOIN users du ON du.id = d.owner_id \
-                  WHERE du.tenant_id = t.id) AS directories \
-         FROM tenants t ORDER BY t.name",
+                  WHERE du.tenant_id = t.id) AS directories, \
+                EXISTS(SELECT 1 FROM users au WHERE au.tenant_id = t.id AND au.is_active) AS has_account \
+         FROM tenants t WHERE t.id <> $1 ORDER BY t.name",
     )
+    .bind(system)
     .fetch_all(&s.db)
     .await?;
 
-    let system = crate::system_tenant::system_tenant_uuid();
     let tenants: Vec<Value> = rows
         .iter()
         .map(|r| {
-            let id = r.try_get::<Uuid, _>("id").unwrap_or_else(|_| Uuid::nil());
             json!({
-                "id": id.to_string(),
+                "id": r.try_get::<Uuid, _>("id").unwrap_or_else(|_| Uuid::nil()).to_string(),
                 "name": r.try_get::<String, _>("name").unwrap_or_default(),
                 "slug": r.try_get::<String, _>("slug").unwrap_or_default(),
                 "is_active": r.try_get::<bool, _>("is_active").unwrap_or(false),
                 "users": r.try_get::<i64, _>("users").unwrap_or(0),
                 "directories": r.try_get::<i64, _>("directories").unwrap_or(0),
-                "is_platform": id == system,
+                "is_platform": false,
+                "has_account": r.try_get::<bool, _>("has_account").unwrap_or(false),
             })
         })
         .collect();
 
-    Ok(Json(json!({ "tenants": tenants })))
+    // Portfolio — the platform tenant's own account first, then the owner's own directories.
+    let platform = sqlx::query(
+        "SELECT name, slug, \
+                EXISTS(SELECT 1 FROM users u WHERE u.tenant_id = t.id AND u.is_active) AS has_account \
+         FROM tenants t WHERE t.id = $1",
+    )
+    .bind(system)
+    .fetch_one(&s.db)
+    .await?;
+
+    let mut portfolio: Vec<Value> = vec![json!({
+        "kind": "tenant",
+        "id": system.to_string(),
+        "name": platform.try_get::<String, _>("name").unwrap_or_default(),
+        "slug": platform.try_get::<String, _>("slug").unwrap_or_default(),
+        "is_platform": true,
+        "has_account": platform.try_get::<bool, _>("has_account").unwrap_or(false),
+    })];
+
+    let dir_rows = sqlx::query(
+        "SELECT d.id, d.name, d.slug \
+         FROM directories d JOIN users u ON u.id = d.owner_id \
+         WHERE u.tenant_id = $1 ORDER BY d.name",
+    )
+    .bind(system)
+    .fetch_all(&s.db)
+    .await?;
+
+    for r in &dir_rows {
+        // A directory's only account link is `owner_id → users.tenant_id`. Every directory here is
+        // owned by a platform-tenant user, so its "own tenant" IS the platform — it has no account
+        // of its own, and `has_account` is false by construction. No tenant is invented or minted.
+        portfolio.push(json!({
+            "kind": "directory",
+            "id": r.try_get::<Uuid, _>("id").unwrap_or_else(|_| Uuid::nil()).to_string(),
+            "name": r.try_get::<String, _>("name").unwrap_or_default(),
+            "slug": r.try_get::<String, _>("slug").unwrap_or_default(),
+            "has_account": false,
+        }));
+    }
+
+    Ok(Json(json!({ "tenants": tenants, "portfolio": portfolio })))
 }
