@@ -242,7 +242,7 @@ impl WorkspaceDeprovision {
             WorkspaceDeprovision::NotProvisioned => json!({
                 "status": "not_provisioned",
                 "clean": true,
-                "detail": "It never had a CoreSwift workspace, so there was nothing to remove there.",
+                "detail": "It never had a CoreSwift account, so there was nothing to remove there.",
             }),
             WorkspaceDeprovision::Deprovisioned {
                 tenant_id,
@@ -256,20 +256,20 @@ impl WorkspaceDeprovision {
                 "users_removed": users_removed,
                 "contacts_removed": contacts_removed,
                 "lists_removed": lists_removed,
-                "detail": "Its CoreSwift workspace was removed with it.",
+                "detail": "Its CoreSwift account was removed with it.",
             }),
             WorkspaceDeprovision::AlreadyGone { tenant_id } => json!({
                 "status": "already_gone",
                 "clean": true,
                 "tenant_id": tenant_id.to_string(),
-                "detail": "Its CoreSwift workspace was already gone, so nothing was left behind.",
+                "detail": "Its CoreSwift account was already gone, so nothing was left behind.",
             }),
             WorkspaceDeprovision::StillLive { tenant_id, reason } => json!({
                 "status": "still_live",
                 "clean": false,
                 "tenant_id": tenant_id.to_string(),
                 "detail": format!(
-                    "The records here are deleted, but the CoreSwift workspace behind this one was \
+                    "The records here are deleted, but the CoreSwift account behind this one was \
                      NOT removed — CoreSwift said: {reason}. It is still live under that id and \
                      needs removing at CoreSwift. Nothing in Multi-Directory was affected."
                 ),

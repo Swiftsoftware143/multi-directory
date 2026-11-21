@@ -75,36 +75,80 @@ fn require_operator(headers: &HeaderMap, s: &AppState) -> Result<Claims, AppErro
     Ok(claims)
 }
 
+/// Resolve a DIRECTORY to the account behind it — the company's OWN account, never the owner's
+/// shared one.
+///
+/// A directory carries two references: `coreswift_tenant_id` (its own account) and
+/// `owner_id → users.tenant_id` (who owns the row). For a portfolio directory the owner is a
+/// platform user, so resolving to the owner opens the OPERATOR'S OWN account — a button that looks
+/// like nothing happened (kanban t_69916cb4). So:
+///
+/// 1. `coreswift_tenant_id`, when it is a real tenant of this app and not the platform's own;
+/// 2. otherwise the owner's tenant, when the owner is a CUSTOMER (not the platform);
+/// 3. otherwise refuse by name — a company with nothing behind it says so (acceptance 4).
+async fn directory_account(
+    s: &AppState,
+    did: Option<Uuid>,
+    slug: Option<&str>,
+) -> Result<Uuid, AppError> {
+    let system = crate::system_tenant::system_tenant_uuid();
+    let row = if let Some(id) = did {
+        sqlx::query(
+            "SELECT d.coreswift_tenant_id, u.tenant_id AS owner_tenant, \
+                    EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.coreswift_tenant_id) AS own_is_tenant \
+             FROM directories d LEFT JOIN users u ON u.id = d.owner_id WHERE d.id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+    } else if let Some(sl) = slug {
+        sqlx::query(
+            "SELECT d.coreswift_tenant_id, u.tenant_id AS owner_tenant, \
+                    EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.coreswift_tenant_id) AS own_is_tenant \
+             FROM directories d LEFT JOIN users u ON u.id = d.owner_id WHERE d.slug = $1",
+        )
+        .bind(sl)
+        .fetch_optional(&s.db)
+        .await?
+    } else {
+        return Err(AppError::BadRequest("tenant_id is required".to_string()));
+    };
+
+    let row = row.ok_or_else(|| AppError::NotFound("That directory does not exist".to_string()))?;
+    let own: Option<Uuid> = row.try_get("coreswift_tenant_id").ok().flatten();
+    let own_is_tenant: bool = row.try_get("own_is_tenant").unwrap_or(false);
+    let owner: Option<Uuid> = row.try_get("owner_tenant").ok().flatten();
+
+    if own_is_tenant {
+        if let Some(t) = own {
+            if t != system {
+                return Ok(t);
+            }
+        }
+    }
+    match owner {
+        Some(t) if t != system => Ok(t),
+        _ => Err(AppError::BadRequest(
+            "That company has no account of its own to sign in as".to_string(),
+        )),
+    }
+}
+
 /// Resolve which tenant the operator is asking for, from whichever handle they gave.
 async fn resolve_target(s: &AppState, req: &ImpersonateRequest) -> Result<Uuid, AppError> {
     if let Some(t) = req.tenant_id.or(req.account_id) {
         return Ok(t);
     }
-    if let Some(did) = req.directory_id {
-        let owner_tenant = sqlx::query_scalar::<_, Uuid>(
-            "SELECT u.tenant_id FROM directories d JOIN users u ON u.id = d.owner_id \
-             WHERE d.id = $1",
+    if req.directory_id.is_some() || req.directory_slug.is_some() {
+        return directory_account(
+            s,
+            req.directory_id,
+            req.directory_slug
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty()),
         )
-        .bind(did)
-        .fetch_optional(&s.db)
-        .await?;
-        return owner_tenant.ok_or_else(|| {
-            AppError::NotFound("That directory has no owner account to sign in as".to_string())
-        });
-    }
-    if let Some(slug) = req.directory_slug.as_deref().map(str::trim) {
-        if !slug.is_empty() {
-            let owner_tenant = sqlx::query_scalar::<_, Uuid>(
-                "SELECT u.tenant_id FROM directories d JOIN users u ON u.id = d.owner_id \
-                 WHERE d.slug = $1",
-            )
-            .bind(slug)
-            .fetch_optional(&s.db)
-            .await?;
-            return owner_tenant.ok_or_else(|| {
-                AppError::NotFound("That directory has no owner account to sign in as".to_string())
-            });
-        }
+        .await;
     }
     Err(AppError::BadRequest("tenant_id is required".to_string()))
 }
