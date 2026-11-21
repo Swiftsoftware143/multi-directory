@@ -85,6 +85,12 @@ pub struct ScheduleRequest {
     pub schedule: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RadiusRequest {
+    pub directory_id: Uuid,
+    pub radius_m: i64,
+}
+
 #[derive(Debug, Default)]
 struct Counts {
     added: usize,
@@ -138,6 +144,7 @@ pub async fn run(
     Json(req): Json<RunRequest>,
 ) -> ApiResult<impl IntoResponse> {
     assert_directory_admin(&s.db, &claims, req.directory_id).await?;
+    let stored_radius = radius_of(&s, req.directory_id).await?;
     let opts = Opts {
         update: req.update.unwrap_or(true),
         discover: req.discover.unwrap_or(true),
@@ -148,7 +155,7 @@ pub async fn run(
         max_add: req.max_add.unwrap_or(DEFAULT_MAX_ADD).clamp(0, HARD_CAP),
         radius_m: req
             .radius_m
-            .unwrap_or(DEFAULT_RADIUS_M)
+            .unwrap_or(stored_radius)
             .clamp(1_000, MAX_RADIUS_M),
         trigger: "manual".to_string(),
     };
@@ -170,6 +177,7 @@ pub async fn status(
     assert_directory_admin(&s.db, &claims, q.directory_id).await?;
 
     let schedule = schedule_of(&s, q.directory_id).await?;
+    let radius_m = radius_of(&s, q.directory_id).await?;
 
     let totals: (i64, i64, i64) = sqlx::query_as(
         "SELECT COUNT(*) FILTER (WHERE COALESCE(claimed, false)), \
@@ -213,6 +221,7 @@ pub async fn status(
         Some((id, trigger, added, updated, identified, unchanged, unreachable, started)) => json!({
             "directory_id": q.directory_id,
             "schedule": schedule,
+            "radius_m": radius_m,
             "running": running > 0,
             "claimed": totals.0,
             "unclaimed": totals.1,
@@ -231,6 +240,7 @@ pub async fn status(
         None => json!({
             "directory_id": q.directory_id,
             "schedule": schedule,
+            "radius_m": radius_m,
             "running": running > 0,
             "claimed": totals.0,
             "unclaimed": totals.1,
@@ -277,14 +287,50 @@ pub async fn set_schedule(
     ))
 }
 
+/// PUT /api/v1/zaarhub/admin/google-refresh/radius — metres around the city centre for discovery.
+///
+/// Stored per directory so a scheduled refresh (and every future one-click run) keeps the same
+/// catchment instead of silently resetting to the 12 km default.
+pub async fn set_radius(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<RadiusRequest>,
+) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin(&s.db, &claims, req.directory_id).await?;
+    let radius_m = req.radius_m.clamp(1_000, MAX_RADIUS_M);
+    let updated = sqlx::query(
+        // Same two nested jsonb_set calls as set_schedule: the parent `google_refresh` object must
+        // exist before the key inside it, or the write is a silent no-op.
+        "UPDATE directories SET zaarhub_config = jsonb_set( \
+             jsonb_set(COALESCE(zaarhub_config, '{}'::jsonb), \
+                       '{google_refresh}', \
+                       COALESCE(zaarhub_config->'google_refresh', '{}'::jsonb), true), \
+             '{google_refresh,radius_m}', to_jsonb($2::bigint), true), \
+         updated_at = NOW() WHERE id = $1",
+    )
+    .bind(req.directory_id)
+    .bind(radius_m)
+    .execute(&s.db)
+    .await?
+    .rows_affected();
+
+    if updated == 0 {
+        return Err(AppError::NotFound("directory not found".into()));
+    }
+    Ok(Json(
+        json!({ "directory_id": req.directory_id, "radius_m": radius_m }),
+    ))
+}
+
 /// POST /api/v1/cron/google-refresh — start every city that is DUE, in the background.
 ///
 /// Returns as soon as the work is queued (a batch of cities takes minutes; the scheduler must
 /// not sit on the connection). Each city's run is written to `google_refresh_runs` either way,
 /// so a silent failure is visible in the panel afterwards.
 pub async fn cron_refresh(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let rows: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT d.id, COALESCE(d.zaarhub_config->'google_refresh'->>'schedule', 'weekly') \
+    let rows: Vec<(Uuid, String, Option<i64>)> = sqlx::query_as(
+        "SELECT d.id, COALESCE(d.zaarhub_config->'google_refresh'->>'schedule', 'weekly'), \
+                (d.zaarhub_config->'google_refresh'->>'radius_m')::bigint \
          FROM directories d \
          WHERE COALESCE(d.status, 'active') <> 'deleted' \
            AND COALESCE(zaarhub_config->'google_refresh'->>'schedule', 'weekly') <> 'manual'",
@@ -292,10 +338,15 @@ pub async fn cron_refresh(State(s): State<AppState>) -> ApiResult<impl IntoRespo
     .fetch_all(&s.db)
     .await?;
 
-    let mut due: Vec<Uuid> = Vec::new();
-    for (id, schedule) in rows {
+    let mut due: Vec<(Uuid, i64)> = Vec::new();
+    for (id, schedule, radius_m) in rows {
         if is_due(&s, id, &schedule).await.unwrap_or(false) {
-            due.push(id);
+            due.push((
+                id,
+                radius_m
+                    .unwrap_or(DEFAULT_RADIUS_M)
+                    .clamp(1_000, MAX_RADIUS_M),
+            ));
         }
     }
     let count = due.len();
@@ -304,12 +355,13 @@ pub async fn cron_refresh(State(s): State<AppState>) -> ApiResult<impl IntoRespo
         // One task, cities sequentially: a burst of parallel Google batches would burn the quota
         // and slow every other screen down.
         tokio::spawn(async move {
-            for id in due {
+            for (id, radius_m) in due {
                 if let Err(e) = run_batch(
                     &state,
                     id,
                     Opts {
                         trigger: "scheduled".into(),
+                        radius_m,
                         ..Opts::default()
                     },
                 )
@@ -1503,6 +1555,20 @@ async fn schedule_of(s: &AppState, directory_id: Uuid) -> Result<String, AppErro
     .await?
     .flatten();
     Ok(normalize_schedule(raw.as_deref().unwrap_or("weekly")).unwrap_or_else(|| "weekly".into()))
+}
+
+/// The stored discovery radius for a directory, clamped to the same bounds the run endpoint
+/// enforces. Falls back to the default when the city has never saved one.
+async fn radius_of(s: &AppState, directory_id: Uuid) -> Result<i64, AppError> {
+    let raw: Option<i64> = sqlx::query_scalar(
+        "SELECT (zaarhub_config->'google_refresh'->>'radius_m')::bigint \
+         FROM directories WHERE id = $1",
+    )
+    .bind(directory_id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+    Ok(raw.unwrap_or(DEFAULT_RADIUS_M).clamp(1_000, MAX_RADIUS_M))
 }
 
 /// Is a city's scheduled refresh due? `manual` is never due; anything else counts from the last

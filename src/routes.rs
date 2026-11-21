@@ -2448,6 +2448,10 @@ pub fn create_router(s: AppState) -> Router {
             put(crate::handlers::google_refresh::set_schedule),
         )
         .route(
+            "/zaarhub/admin/google-refresh/radius",
+            put(crate::handlers::google_refresh::set_radius),
+        )
+        .route(
             "/ads/active/:directory_id",
             get(monetization::get_active_ads),
         )

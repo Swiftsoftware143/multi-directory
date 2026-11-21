@@ -210,6 +210,10 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
             <option value="monthly">Every month</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>Discovery radius — metres from the city centre</label>
+          <input type="number" id="grf-radius" min="1000" max="50000" step="500" value="12000" onchange="saveRefreshRadius()">
+        </div>
         <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
           <button class="btn primary" id="grf-run" onclick="runGoogleRefresh()">Refresh this city now</button>
           <button class="btn secondary" onclick="loadRefreshStatus()">Reload</button>
@@ -911,6 +915,7 @@ async function loadRefreshStatus(){
     const d=await r.json();
     if(!r.ok){el.innerHTML=`<span style="color:#dc2626">${esc(d.error||'Could not read the refresh status')}</span>`;return;}
     const sel=document.getElementById('grf-schedule'); if(sel)sel.value=d.schedule||'weekly';
+    const rad=document.getElementById('grf-radius'); if(rad)rad.value=(d.radius_m!=null?d.radius_m:12000);
     let html=`<div style="display:flex;gap:18px;flex-wrap:wrap">
       <span><b>${d.unclaimed||0}</b> listings this can refresh (unclaimed)</span>
       <span><b>${d.with_place_id||0}</b> already matched to a Google place</span>
@@ -954,6 +959,18 @@ async function saveRefreshSchedule(){
     const d=await r.json();
     showToast(r.ok?('Saved: this city refreshes '+d.schedule):(d.error||'Could not save the schedule'),!r.ok);
   }catch(e){console.error(e);showToast('Could not save the schedule',true);}
+}
+async function saveRefreshRadius(){
+  if(!popDirectoryId)return;
+  const el=document.getElementById('grf-radius');
+  const v=parseInt(el.value,10);
+  if(!Number.isFinite(v)||v<1000||v>50000){showToast('Radius must be between 1,000 and 50,000 metres',true);return;}
+  try{
+    const r=await fetch(`${API}/google-refresh/radius`,{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,radius_m:v})});
+    const d=await r.json();
+    showToast(r.ok?('Saved: discovery radius '+d.radius_m+' m'):(d.error||'Could not save the radius'),!r.ok);
+  }catch(e){console.error(e);showToast('Could not save the radius',true);}
 }
 // ── Content Schedule ────────────────────────────────────────────────────────
 // The backend has had a full content queue since Phase 5 (POST/GET/PUT/DELETE
