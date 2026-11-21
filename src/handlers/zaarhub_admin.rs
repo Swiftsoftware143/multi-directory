@@ -766,6 +766,85 @@ pub struct ActivateDirectoryRequest {
     pub tenant_name: Option<String>,
 }
 
+/// Mint a tenant with its one `admin` login, inside the caller's transaction.
+///
+/// ONE writer for every operator-minted account on this surface (kanban t_9479f495). Two doors use
+/// it — the sale handover ([`activate_directory`]) and the portfolio-company door
+/// ([`portfolio_account`]) — so the account shape cannot drift between them. `is_portfolio` is an
+/// ARGUMENT rather than something each caller has to remember to set: an account minted for one of
+/// the owner's own companies is marked at birth, which is the only thing that keeps it out of the
+/// Customers list (`tenants.is_portfolio`, migration 199). An account minted for a company that was
+/// sold to a buyer is NOT marked, because that buyer is a customer.
+///
+/// Returns `(tenant_id, user_id, tenant_slug)`; the caller owns the commit.
+async fn mint_tenant_with_admin(
+    conn: &mut sqlx::PgConnection,
+    tenant_name: &str,
+    owner_name: &str,
+    owner_email: &str,
+    password_hash: &str,
+    is_portfolio: bool,
+) -> Result<(Uuid, Uuid, String), AppError> {
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    let base: String = tenant_name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let base = base.trim_matches('-').to_string();
+    let base: String = if base.is_empty() {
+        "directory".to_string()
+    } else {
+        base.chars().take(40).collect()
+    };
+    let suffix = user_id.simple().to_string();
+
+    let mut tenant_slug = base.clone();
+    let slug_taken = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tenants WHERE slug = $1")
+        .bind(&tenant_slug)
+        .fetch_one(&mut *conn)
+        .await?;
+    if slug_taken > 0 {
+        tenant_slug = format!("{base}-{}", &suffix[..8]);
+    }
+
+    sqlx::query(
+        "INSERT INTO tenants (id, name, slug, is_active, is_portfolio, created_at, updated_at) \
+         VALUES ($1, $2, $3, true, $4, $5, $5)",
+    )
+    .bind(tenant_id)
+    .bind(tenant_name)
+    .bind(&tenant_slug)
+    .bind(is_portfolio)
+    .bind(now)
+    .execute(&mut *conn)
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(dbe) if dbe.is_unique_violation() => AppError::Duplicate(
+            "An account with this slug already exists — try a different name".into(),
+        ),
+        _ => e.into(),
+    })?;
+
+    sqlx::query(
+        "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, \
+         created_at, updated_at) VALUES ($1, $2, $3, $4, $5, 'admin', true, $6, $6)",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(owner_email)
+    .bind(password_hash)
+    .bind(owner_name)
+    .bind(now)
+    .execute(&mut *conn)
+    .await?;
+
+    Ok((tenant_id, user_id, tenant_slug))
+}
+
 /// POST /api/v1/zaarhub/admin/directories/:slug/activate — operator-only.
 ///
 /// The sale handover step: creates the buyer's own tenant + `admin` login and points
@@ -848,56 +927,19 @@ pub async fn activate_directory(
         .filter(|t| !t.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| format!("{owner_name}'s Directory"));
-    let tenant_id = Uuid::new_v4();
-    let user_id = Uuid::new_v4();
-    let now = chrono::Utc::now();
-
-    let base: String = tenant_name
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    let base = base.trim_matches('-').to_string();
-    let base: String = if base.is_empty() {
-        "directory".to_string()
-    } else {
-        base.chars().take(40).collect()
-    };
-    let suffix = user_id.simple().to_string();
 
     let mut tx = state.db.begin().await?;
 
-    let mut tenant_slug = base.clone();
-    let slug_taken = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tenants WHERE slug = $1")
-        .bind(&tenant_slug)
-        .fetch_one(&mut *tx)
-        .await?;
-    if slug_taken > 0 {
-        tenant_slug = format!("{base}-{}", &suffix[..8]);
-    }
-
-    sqlx::query(
-        "INSERT INTO tenants (id, name, slug, is_active, created_at, updated_at) \
-         VALUES ($1, $2, $3, true, $4, $4)",
+    // The buyer's account, minted by the ONE writer. `is_portfolio = false`: a directory sold to a
+    // customer IS a customer, so its account belongs in the Customers list.
+    let (tenant_id, user_id, tenant_slug) = mint_tenant_with_admin(
+        &mut tx,
+        &tenant_name,
+        &owner_name,
+        &owner_email,
+        &password_hash,
+        false,
     )
-    .bind(tenant_id)
-    .bind(&tenant_name)
-    .bind(&tenant_slug)
-    .bind(now)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, \
-         created_at, updated_at) VALUES ($1, $2, $3, $4, $5, 'admin', true, $6, $6)",
-    )
-    .bind(user_id)
-    .bind(tenant_id)
-    .bind(&owner_email)
-    .bind(&password_hash)
-    .bind(&owner_name)
-    .bind(now)
-    .execute(&mut *tx)
     .await?;
 
     let updated = sqlx::query(
@@ -937,6 +979,219 @@ pub async fn activate_directory(
             "slug": tenant_slug,
         },
         "login_url": "/admin-panel.html",
+    })))
+}
+
+// ── A portfolio company's OWN account (kanban t_9479f495) ──
+
+#[derive(Deserialize)]
+pub struct PortfolioAccountRequest {
+    /// Name of the login this company's account starts with.
+    pub owner_name: String,
+    /// That login's address. Globally unique — login resolves by email.
+    pub owner_email: String,
+    pub owner_password: String,
+    /// Optional account name; defaults to the company's (directory's) own name.
+    #[serde(default)]
+    pub tenant_name: Option<String>,
+}
+
+/// POST /api/v1/zaarhub/admin/portfolio/:id/account — operator-only, IDEMPOTENT.
+///
+/// Gives ONE of the owner's own companies (`directories` row owned by a platform-tenant user) an
+/// account of its own: a `tenants` row marked `is_portfolio`, its `admin` login, and the link
+/// `directories.account_tenant_id`. A second press returns `created: false` and mints nothing.
+///
+/// The marker is the whole point. A portfolio company's account is necessarily a `tenants` row, so
+/// without `is_portfolio` it reappears inside the Customers list the moment it exists — the
+/// separation only ever held while no company had an account. This door therefore cannot mint a
+/// plain tenant: `is_portfolio = true` is passed to the ONE account writer, and the customer-list
+/// read excludes it by default.
+///
+/// It refuses, by name, the two directories it must not touch: one with no owner (that is the SALE
+/// handover — `POST /zaarhub/admin/directories/:slug/activate`, and its account belongs in the
+/// Customers list), and one already owned by a customer (it has an account of its own already).
+pub async fn portfolio_account(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(directory_id): Path<Uuid>,
+    Json(req): Json<PortfolioAccountRequest>,
+) -> ApiResult<Json<Value>> {
+    let claims =
+        crate::handlers::tenant_scope::claims_from_headers(&headers, &state.config.jwt_secret)?;
+    if !crate::handlers::tenant_scope::is_platform_operator(&claims) {
+        return Err(AppError::Forbidden(
+            "Platform operator access required".to_string(),
+        ));
+    }
+    let system = crate::system_tenant::system_tenant_uuid();
+
+    let owner_name = req.owner_name.trim().to_string();
+    if owner_name.is_empty() {
+        return Err(AppError::Validation("Admin name is required".into()));
+    }
+    let owner_email =
+        crate::security::email_addr::normalize(&req.owner_email).map_err(AppError::Validation)?;
+    if req.owner_password.len() < 8 {
+        return Err(AppError::Validation(
+            "Admin password must be at least 8 characters".into(),
+        ));
+    }
+    if req.owner_password.len() > 256 {
+        return Err(AppError::Validation("Admin password is too long".into()));
+    }
+
+    let mut tx = state.db.begin().await?;
+
+    // Lock the row FIRST: two operators pressing the button together must not mint two accounts.
+    let directory = sqlx::query(
+        "SELECT id, name, slug, owner_id, account_tenant_id FROM directories WHERE id = $1 FOR \
+         UPDATE",
+    )
+    .bind(directory_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("That company does not exist".to_string()))?;
+    let directory_name: String = directory.try_get("name")?;
+    let directory_slug: String = directory.try_get("slug")?;
+    let owner_id: Option<Uuid> = directory.try_get("owner_id").ok().flatten();
+    let linked: Option<Uuid> = directory.try_get("account_tenant_id").ok().flatten();
+
+    let owner_id = owner_id.ok_or_else(|| {
+        AppError::BadRequest(
+            "This company has no owner yet — hand it to a buyer with Sell / activate instead; that \
+             account is a customer's"
+                .to_string(),
+        )
+    })?;
+    let owner_tenant: Option<Uuid> =
+        sqlx::query_scalar("SELECT tenant_id FROM users WHERE id = $1")
+            .bind(owner_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if owner_tenant != Some(system) {
+        return Err(AppError::BadRequest(
+            "This company already belongs to a customer account — it has an account of its own"
+                .to_string(),
+        ));
+    }
+
+    // IDEMPOTENT ARM — already linked to a real account of this app: report it, mint nothing.
+    if let Some(account_id) = linked {
+        let existing = sqlx::query(
+            "SELECT name, slug, is_active, \
+                    EXISTS(SELECT 1 FROM users u WHERE u.tenant_id = t.id AND u.is_active) AS \
+                    has_account \
+             FROM tenants t WHERE t.id = $1",
+        )
+        .bind(account_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(a) = existing {
+            return Ok(Json(json!({
+                "created": false,
+                "directory": { "id": directory_id, "name": directory_name, "slug": directory_slug },
+                "account": {
+                    "id": account_id,
+                    "name": a.try_get::<String, _>("name").unwrap_or_default(),
+                    "slug": a.try_get::<String, _>("slug").unwrap_or_default(),
+                    "is_active": a.try_get::<bool, _>("is_active").unwrap_or(true),
+                    "is_portfolio": true,
+                },
+                "has_account": a.try_get::<bool, _>("has_account").unwrap_or(false),
+                "note": "This company already has its own account — nothing was minted.",
+            })));
+        }
+    }
+
+    let taken = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+        .bind(&owner_email)
+        .fetch_one(&mut *tx)
+        .await?;
+    if taken > 0 {
+        return Err(AppError::Duplicate(format!(
+            "An account already exists for {owner_email} — use a different login address."
+        )));
+    }
+
+    use argon2::{
+        password_hash::{rand_core::OsRng, SaltString},
+        Argon2, PasswordHasher,
+    };
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(req.owner_password.as_bytes(), &salt)
+        .map_err(|e| AppError::Hash(e.to_string()))?
+        .to_string();
+
+    let tenant_name = req
+        .tenant_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| directory_name.clone());
+
+    // The company's account, minted by the ONE writer with the portfolio marker SET.
+    let (tenant_id, user_id, tenant_slug) = mint_tenant_with_admin(
+        &mut tx,
+        &tenant_name,
+        &owner_name,
+        &owner_email,
+        &password_hash,
+        true,
+    )
+    .await?;
+
+    let updated = sqlx::query(
+        "UPDATE directories SET account_tenant_id = $1, updated_at = NOW() \
+         WHERE id = $2 AND account_tenant_id IS NULL",
+    )
+    .bind(tenant_id)
+    .bind(directory_id)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::Duplicate(
+            "This company was given an account by another request — nothing was changed.".into(),
+        ));
+    }
+
+    // The audit trail, in this app's own event table. `tenant_id` is the platform's: the operator
+    // acted, not the company.
+    sqlx::query(
+        "INSERT INTO directory_events (event_type, entity_type, entity_id, directory_id, tenant_id, \
+         actor_id, data) VALUES ('portfolio_account_minted', 'directory', $1, $1, $2, $3, $4)",
+    )
+    .bind(directory_id)
+    .bind(system)
+    .bind(claims.sub.parse::<Uuid>().ok())
+    .bind(json!({
+        "account_tenant_id": tenant_id,
+        "account_name": tenant_name,
+        "admin_user_id": user_id,
+        "admin_email": owner_email,
+    }))
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(json!({
+        "created": true,
+        "directory": { "id": directory_id, "name": directory_name, "slug": directory_slug },
+        "account": {
+            "id": tenant_id,
+            "name": tenant_name,
+            "slug": tenant_slug,
+            "is_active": true,
+            "is_portfolio": true,
+        },
+        "admin": { "id": user_id, "name": owner_name, "email": owner_email, "role": "admin" },
+        "has_account": true,
+        "login_url": "/admin-panel.html",
+        "note": "The company now has its own account. It is the owner's own company, so it stays \
+                 out of the Customers list.",
     })))
 }
 

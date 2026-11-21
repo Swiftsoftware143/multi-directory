@@ -2397,6 +2397,15 @@ pub fn create_router(s: AppState) -> Router {
             post(zaarhub_admin::activate_directory)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // Portfolio-company accounts (kanban t_9479f495): give ONE of the owner's own companies an
+        // account of its own. The minted tenant is marked `is_portfolio`, so it never appears in the
+        // Customers list — the marker is what keeps the separation true once a company has an
+        // account at all. Operator-only and idempotent (a second press mints nothing).
+        .route(
+            "/admin/portfolio/:id/account",
+            post(zaarhub_admin::portfolio_account)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // Round 5 T3 - discovery queue: persisted per directory, franchise-filtered,
         // deduped against the directory's own businesses.
         .route(

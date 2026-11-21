@@ -27,7 +27,11 @@
 //!   success it cannot enforce would be a lie" — and the cost was measured: a support bearer kept
 //!   answering 200 for the rest of its hour after the operator had left, from any tab that held it.
 
-use axum::{extract::State, http::HeaderMap, Json};
+use axum::{
+    extract::{Query, State},
+    http::HeaderMap,
+    Json,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
@@ -94,7 +98,8 @@ async fn directory_account(
     let system = crate::system_tenant::system_tenant_uuid();
     let row = if let Some(id) = did {
         sqlx::query(
-            "SELECT d.coreswift_tenant_id, u.tenant_id AS owner_tenant, \
+            "SELECT d.account_tenant_id, d.coreswift_tenant_id, u.tenant_id AS owner_tenant, \
+                    EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.account_tenant_id) AS account_is_tenant, \
                     EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.coreswift_tenant_id) AS own_is_tenant \
              FROM directories d LEFT JOIN users u ON u.id = d.owner_id WHERE d.id = $1",
         )
@@ -103,7 +108,8 @@ async fn directory_account(
         .await?
     } else if let Some(sl) = slug {
         sqlx::query(
-            "SELECT d.coreswift_tenant_id, u.tenant_id AS owner_tenant, \
+            "SELECT d.account_tenant_id, d.coreswift_tenant_id, u.tenant_id AS owner_tenant, \
+                    EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.account_tenant_id) AS account_is_tenant, \
                     EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.coreswift_tenant_id) AS own_is_tenant \
              FROM directories d LEFT JOIN users u ON u.id = d.owner_id WHERE d.slug = $1",
         )
@@ -115,14 +121,22 @@ async fn directory_account(
     };
 
     let row = row.ok_or_else(|| AppError::NotFound("That directory does not exist".to_string()))?;
+    // The company's OWN account, in the order the pick-list resolves it (see `list_tenants`):
+    // `account_tenant_id` first — the column this card added, so minting an account never has to
+    // borrow `coreswift_tenant_id`, which is the CoreSwift workspace the booking integration dials —
+    // then a legacy `coreswift_tenant_id` that happens to name a tenant of THIS app.
+    let account: Option<Uuid> = row.try_get("account_tenant_id").ok().flatten();
+    let account_is_tenant: bool = row.try_get("account_is_tenant").unwrap_or(false);
     let own: Option<Uuid> = row.try_get("coreswift_tenant_id").ok().flatten();
     let own_is_tenant: bool = row.try_get("own_is_tenant").unwrap_or(false);
     let owner: Option<Uuid> = row.try_get("owner_tenant").ok().flatten();
 
-    if own_is_tenant {
-        if let Some(t) = own {
-            if t != system {
-                return Ok(t);
+    for (candidate, is_tenant) in [(account, account_is_tenant), (own, own_is_tenant)] {
+        if is_tenant {
+            if let Some(t) = candidate {
+                if t != system {
+                    return Ok(t);
+                }
             }
         }
     }
@@ -374,10 +388,30 @@ pub async fn stop_impersonation(
     })))
 }
 
+/// Query for the pick-list. `?include_portfolio=1` is the explicit ask for the operator's own
+/// companies' ACCOUNTS to appear in the customer list (badged); anything else keeps them out.
+#[derive(Deserialize, Default)]
+pub struct TenantsQuery {
+    #[serde(default)]
+    pub include_portfolio: Option<String>,
+}
+
+impl TenantsQuery {
+    fn wants_portfolio(&self) -> bool {
+        matches!(
+            self.include_portfolio.as_deref().map(str::trim),
+            Some("1") | Some("true") | Some("yes")
+        )
+    }
+}
+
 /// GET /api/v1/admin/tenants — the operator's pick-list, split into two halves (kanban t_b21028e0):
 ///
-/// * `tenants`   — the CUSTOMER list: every tenant EXCEPT the platform's own. The owner's own
-///   companies never appear here (acceptance 2).
+/// * `tenants`   — the CUSTOMER list: every tenant EXCEPT the platform's own, and except any tenant
+///   marked `is_portfolio` — the account of one of the owner's own companies (kanban t_9479f495).
+///   The owner's own companies never appear here (acceptance 2), and that holds on the ACCOUNT side
+///   too, not just by directory ownership: `?include_portfolio=1` is the explicit ask for those rows,
+///   which arrive carrying `is_portfolio: true` so the screen badges them as the owner's.
 /// * `portfolio` — the owner's own companies: the platform tenant itself, then every directory
 ///   owned by a user in the platform tenant. Each entry carries `has_account` (computed
 ///   server-side — never guessed from a count client-side) so the panel can render "No account"
@@ -390,21 +424,35 @@ pub async fn stop_impersonation(
 /// user, so its "own tenant" IS the platform and it has no distinct account of its own. It is
 /// reported with `has_account = false` and the panel says "No account" — no tenant is invented or
 /// minted for it (acceptance 3 + 4).
-pub async fn list_tenants(State(s): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
+pub async fn list_tenants(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<TenantsQuery>,
+) -> ApiResult<Json<Value>> {
     require_operator(&headers, &s)?;
 
     let system = crate::system_tenant::system_tenant_uuid();
+    let include_portfolio = q.wants_portfolio();
 
-    // Customer list — every tenant that is NOT the platform's own.
+    // Customer list — every tenant that is NOT the platform's own, and NOT a portfolio account.
+    //
+    // The exclusion is the point of this card (kanban t_9479f495). Separation by DIRECTORY ownership
+    // only holds until a portfolio company is given an account of its own: that account is a
+    // `tenants` row, so `WHERE t.id <> <platform>` alone would hand the owner's own company straight
+    // back into the Customers list. `tenants.is_portfolio` is the marker, and only an explicit
+    // `?include_portfolio=1` lets those rows through — badged, so the screen can never present the
+    // owner's company as a customer by accident.
     let rows = sqlx::query(
-        "SELECT t.id, t.name, t.slug, t.is_active, \
+        "SELECT t.id, t.name, t.slug, t.is_active, t.is_portfolio, \
                 (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS users, \
                 (SELECT COUNT(*) FROM directories d JOIN users du ON du.id = d.owner_id \
                   WHERE du.tenant_id = t.id) AS directories, \
                 EXISTS(SELECT 1 FROM users au WHERE au.tenant_id = t.id AND au.is_active) AS has_account \
-         FROM tenants t WHERE t.id <> $1 ORDER BY t.name",
+         FROM tenants t WHERE t.id <> $1 AND ($2::boolean OR t.is_portfolio = false) \
+         ORDER BY t.name",
     )
     .bind(system)
+    .bind(include_portfolio)
     .fetch_all(&s.db)
     .await?;
 
@@ -419,6 +467,9 @@ pub async fn list_tenants(State(s): State<AppState>, headers: HeaderMap) -> ApiR
                 "users": r.try_get::<i64, _>("users").unwrap_or(0),
                 "directories": r.try_get::<i64, _>("directories").unwrap_or(0),
                 "is_platform": false,
+                // TRUE only on the rows `?include_portfolio=1` let through — the owner's own
+                // company accounts. The screen badges these, it never counts them as customers.
+                "is_portfolio": r.try_get::<bool, _>("is_portfolio").unwrap_or(false),
                 "has_account": r.try_get::<bool, _>("has_account").unwrap_or(false),
             })
         })
@@ -452,7 +503,11 @@ pub async fn list_tenants(State(s): State<AppState>, headers: HeaderMap) -> ApiR
     let dir_rows = sqlx::query(
         "WITH owned AS ( \
              SELECT d.id, d.name, d.slug, \
-                    CASE WHEN d.coreswift_tenant_id IS NOT NULL \
+                    CASE WHEN d.account_tenant_id IS NOT NULL \
+                              AND d.account_tenant_id <> $1 \
+                              AND EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.account_tenant_id) \
+                         THEN d.account_tenant_id \
+                         WHEN d.coreswift_tenant_id IS NOT NULL \
                               AND d.coreswift_tenant_id <> $1 \
                               AND EXISTS(SELECT 1 FROM tenants ct WHERE ct.id = d.coreswift_tenant_id) \
                          THEN d.coreswift_tenant_id \

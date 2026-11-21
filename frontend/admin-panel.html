@@ -2415,13 +2415,15 @@
         </div>
         <!-- kanban t_b21028e0 — your own companies are NOT customers: they live apart from the
              customer list, and each one that has no account of its own says so instead of showing
-             a button that does nothing. -->
+             a button that does nothing. kanban t_9479f495 — the SAME rule now holds on the account
+             side: a company that has been given its own account is marked as yours server-side, so
+             it never appears below unless you tick this box, and then it is badged as yours. -->
         <div class="section-label">Your companies</div>
         <div id="portfolio-list"></div>
         <div class="section-label">Customers</div>
         <div class="pk-controls" style="margin-bottom:10px">
           <label style="font-size:.85rem;display:flex;align-items:center;gap:6px;cursor:pointer">
-            <input type="checkbox" id="ss-include-portfolio" onchange="window.__mdSupportLoad()"> Include your own companies
+            <input type="checkbox" id="ss-include-portfolio" onchange="window.__mdSupportLoad()"> Include your own companies&rsquo; accounts (badged)
           </label>
         </div>
         <div id="ss-list"></div>
@@ -13599,10 +13601,19 @@
 
     // The action cell: the operator's own account is not a switch target (they are already in it);
     // a company with no account behind it says so instead of showing a button that would 400
-    // (acceptance 4).
+    // (acceptance 4) — and, for one of the owner's OWN companies, offers the ONE door that gives it
+    // an account (kanban t_9479f495). That door marks the account `is_portfolio`, so the company
+    // never reappears in the Customers list.
     function actionCell(t) {
       if (t.is_platform) return '<span class="feature-subtitle">—</span>';
-      if (!t.has_account) return '<span class="feature-subtitle">No account</span>';
+      if (!t.has_account) {
+        if (t.kind === 'directory') {
+          return '<span class="feature-subtitle">No account</span> ' +
+                 '<button class="btn btn-sm btn-primary" type="button" data-pa-id="' + esc(t.id) +
+                 '" data-pa-name="' + esc(t.name) + '">Give it an account</button>';
+        }
+        return '<span class="feature-subtitle">No account</span>';
+      }
       return '<button class="btn btn-sm btn-primary" type="button" data-ss-target="' + esc(t.id) +
              '" data-ss-kind="' + esc(t.kind || 'tenant') + '" data-ss-name="' + esc(t.name) +
              '">Sign in as</button>';
@@ -13614,7 +13625,7 @@
       h += '<th></th></tr>';
       rows.forEach(function (t) {
         var badge = t.is_platform ? ' <span class="badge">your account</span>'
-                 : (t.kind === 'directory' ? ' <span class="badge">your company</span>' : '');
+                 : ((t.is_portfolio || t.kind === 'directory') ? ' <span class="badge">your company</span>' : '');
         var inactive = (t.is_active === false) ? ' <span class="badge" style="background:rgba(239,68,68,.18);color:#f87171">inactive</span>' : '';
         h += '<tr><td>' + esc(t.name) + badge + inactive + '</td><td>' + esc(t.slug) + '</td>';
         if (showCounts) h += '<td>' + num(t.users) + '</td><td>' + num(t.directories) + '</td>';
@@ -13628,6 +13639,9 @@
       Array.prototype.forEach.call(list.querySelectorAll('button[data-ss-target]'), function (b) {
         b.onclick = function () { switchTo(b.getAttribute('data-ss-target'), b.getAttribute('data-ss-name'), b, b.getAttribute('data-ss-kind')); };
       });
+      Array.prototype.forEach.call(list.querySelectorAll('button[data-pa-id]'), function (b) {
+        b.onclick = function () { openAccountModal(b.getAttribute('data-pa-id'), b.getAttribute('data-pa-name')); };
+      });
     }
 
     function renderPortfolio(portfolio) {
@@ -13638,15 +13652,89 @@
       wireButtons(list);
     }
 
-    function renderCustomers(tenants, portfolio, includePortfolio) {
+    function renderCustomers(tenants) {
       var list = document.getElementById('ss-list');
       if (!list) return;
+      // The SERVER decides what a customer is (kanban t_9479f495). With the toggle off, portfolio
+      // accounts never leave the endpoint at all; with it on they arrive already marked
+      // `is_portfolio` and are BADGED, never counted as customers. Nothing is merged here any more:
+      // a client-side merge is exactly how the owner's own company would end up back in the
+      // Customers list the moment it had an account.
       var rows = tenants.slice();
-      if (includePortfolio) rows = rows.concat(portfolio);
       if (!rows.length) { list.innerHTML = '<p class="feature-subtitle">No customers yet.</p>'; return; }
       list.innerHTML = tableHtml(rows, true, 'Account');
       wireButtons(list);
     }
+
+    // ── Give one of the owner's own companies its own account (kanban t_9479f495) ──
+    // The only door to POST /admin/portfolio/:id/account. The account it mints is marked
+    // `is_portfolio` server-side, so pressing this can never put the owner's company back into the
+    // Customers list; pressing it twice mints nothing (the server answers created:false).
+    function openAccountModal(id, name) {
+      var old = document.getElementById('md-pa-overlay');
+      if (old) old.remove();
+      var overlay = document.createElement('div');
+      overlay.id = 'md-pa-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+      overlay.innerHTML =
+        '<div style="width:100%;max-width:540px;background:var(--bg-card,#0f172a);border:1px solid var(--border,#1e293b);border-radius:14px;padding:22px;color:var(--text,#e2e8f0);max-height:90vh;overflow:auto">' +
+          '<h3 style="margin:0 0 4px;font-size:1.15rem">Give &ldquo;' + esc(name) + '&rdquo; its own account</h3>' +
+          '<p style="margin:0 0 14px;font-size:.85rem;color:var(--text-secondary,#94a3b8)">Creates an account for this ONE company, with its own admin login. It is <b>your</b> company, so the account is marked as yours and stays out of the Customers list. Pressing this again after it exists changes nothing.</p>' +
+          '<input id="md-pa-name" class="pk-input" placeholder="Admin name" style="width:100%;margin-bottom:8px">' +
+          '<input id="md-pa-email" class="pk-input" type="email" placeholder="Login email for this company" style="width:100%;margin-bottom:8px">' +
+          '<input id="md-pa-pass" class="pk-input" type="password" placeholder="Password (at least 8 characters)" style="width:100%;margin-bottom:8px">' +
+          '<input id="md-pa-tenant" class="pk-input" placeholder="Account name (optional — defaults to the company name)" style="width:100%;margin-bottom:12px">' +
+          '<div id="md-pa-msg" style="font-size:.82rem;margin-bottom:10px;color:var(--text-secondary,#94a3b8)"></div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<button type="button" class="btn btn-ghost" id="md-pa-cancel">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" id="md-pa-submit">Create account</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      document.getElementById('md-pa-cancel').onclick = function () { overlay.remove(); };
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+      document.getElementById('md-pa-submit').onclick = function () { submitAccount(id, overlay); };
+    }
+
+    function submitAccount(id, overlay) {
+      var name = (document.getElementById('md-pa-name').value || '').trim();
+      var email = (document.getElementById('md-pa-email').value || '').trim();
+      var pass = document.getElementById('md-pa-pass').value || '';
+      var tenant = (document.getElementById('md-pa-tenant').value || '').trim();
+      var msg = document.getElementById('md-pa-msg');
+      var btn = document.getElementById('md-pa-submit');
+      if (!name || !email || !pass) {
+        msg.style.color = '#fca5a5';
+        msg.textContent = 'Name, login email and password are all required.';
+        return;
+      }
+      if (pass.length < 8) {
+        msg.style.color = '#fca5a5';
+        msg.textContent = 'Password must be at least 8 characters.';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Creating…';
+      msg.style.color = 'var(--text-secondary,#94a3b8)';
+      msg.textContent = 'Creating this company’s own account…';
+      var body = { owner_name: name, owner_email: email, owner_password: pass };
+      if (tenant) body.tenant_name = tenant;
+      fetchJson('POST', '/admin/portfolio/' + encodeURIComponent(id) + '/account', body)
+        .then(function (r) {
+          overlay.remove();
+          status((r && r.created === false)
+            ? 'That company already had its own account — nothing was minted.'
+            : 'Account created for “' + name + '”. It stays out of the Customers list.', false);
+          load();
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.textContent = 'Create account';
+          msg.style.color = '#fca5a5';
+          msg.textContent = err.message || 'Could not create the account.';
+        });
+    }
+    window.__mdPortfolioAccount = openAccountModal;
 
     function includePortfolioChecked() {
       var cb = document.getElementById('ss-include-portfolio');
@@ -13655,13 +13743,18 @@
 
     function load() {
       if (ls(SUPPORT_KEY)) return; // a support session is active: only the banner applies
-      status('Loading accounts…');
-      fetchJson('GET', '/admin/tenants').then(function (d) {
+      var withPortfolio = includePortfolioChecked();
+      status(withPortfolio ? 'Loading customers and your own accounts…' : 'Loading accounts…');
+      fetchJson('GET', '/admin/tenants' + (withPortfolio ? '?include_portfolio=1' : '')).then(function (d) {
         var tenants = (d && d.tenants) || [];
         var portfolio = (d && d.portfolio) || [];
         renderPortfolio(portfolio);
-        renderCustomers(tenants, portfolio, includePortfolioChecked());
-        status(tenants.length + ' customer' + (tenants.length === 1 ? '' : 's') + '.', false);
+        renderCustomers(tenants);
+        var mine = 0;
+        tenants.forEach(function (t) { if (t.is_portfolio) mine++; });
+        var customers = tenants.length - mine;
+        status(customers + ' customer' + (customers === 1 ? '' : 's') +
+               (mine ? ' · ' + mine + ' of your own (badged)' : '') + '.', false);
       }).catch(function (e) {
         status(e.message || 'Could not load accounts.', true);
       });
