@@ -1,6 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
+<script>
+(function(){var t='light';try{t=localStorage.getItem('md-portal-theme')||'';if(!t)t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}catch(e){t='light';}document.documentElement.setAttribute('data-theme',t);})();
+</script>
 <meta charset="UTF-8">
 <meta name="robots" content="noindex,follow">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -8,7 +11,8 @@
 <title>Directory Portal</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--purple:#7c3aed;--purple-light:#a78bfa;--purple-bg:#f5f3ff;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--sidebar:#0f172a;--sidebar-text:#94a3b8;--sidebar-active:#a78bfa;--danger:#ef4444;--danger-hover:#dc2626;--success:#22c55e;--warning:#f59e0b;--info:#3b82f6}
+:root{color-scheme:light;--purple:#7c3aed;--purple-light:#a78bfa;--purple-bg:#f5f3ff;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--sidebar:#0f172a;--sidebar-text:#94a3b8;--sidebar-active:#a78bfa;--danger:#ef4444;--danger-hover:#dc2626;--success:#22c55e;--warning:#f59e0b;--info:#3b82f6;--dark:#0f172a}
+html[data-theme="dark"]{color-scheme:dark;--purple:#a78bfa;--purple-bg:#241a3d;--bg:#0f172a;--card:#1f2937;--text:#e5e7eb;--text-secondary:#9ca3af;--border:#374151;--sidebar:#0b1220;--sidebar-text:#94a3b8;--dark:#0b1220}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
 a{color:var(--purple);text-decoration:none}a:hover{text-decoration:underline}
 .login-container{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,var(--dark) 0%,#1a3a6b 100%);width:100%}
@@ -136,6 +140,14 @@ var PAGE_TITLES={'dashboard':'Dashboard','listings':'Listings','categories':'Cat
 function navigate(p){CP=p;history.pushState({page:p},'',location.pathname+'#'+p);renderApp();}
 
 // ── Login / Init ───────────────────────────────────────
+function toggleTheme(){
+  var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
+  var next=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  try{localStorage.setItem('md-portal-theme',next);}catch(e){}
+  var b=document.getElementById('theme-toggle');
+  if(b) b.textContent = next==='dark'?'☀️ Day mode':'🌙 Night mode';
+}
 function logout(){localStorage.removeItem('token');localStorage.removeItem('user');render();}
 
 function init(){
@@ -223,6 +235,7 @@ function renderApp(){
     '<div class="sidebar-footer">'+
       '<div class="dir-name">'+(CUR_DIR?esc(CUR_DIR.name):'')+'</div>'+
       '<div><a onclick="logout()">🚪 Sign Out</a></div>'+
+      '<div style="margin-top:10px"><a id="theme-toggle" onclick="toggleTheme()">'+(document.documentElement.getAttribute('data-theme')==='dark'?'☀️ Day mode':'🌙 Night mode')+'</a></div>'+
     '</div>'+
   '</div>'+
   '<div class="main">'+

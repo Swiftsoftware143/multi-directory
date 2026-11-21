@@ -1,6 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
+<script>
+(function(){var t='light';try{t=localStorage.getItem('md-portal-theme')||'';if(!t)t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}catch(e){t='light';}document.documentElement.setAttribute('data-theme',t);})();
+</script>
 <meta charset="UTF-8">
 <meta name="robots" content="noindex,follow">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -8,7 +11,8 @@
 <title>Business Portal - ZaarHub</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;--secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;--dark:#2b3255;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+:root{color-scheme:light;--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#fef3e7;--secondary:#116dc0;--secondary-hover:#0e5ca5;--secondary-light:#e8f0fe;--dark:#2b3255;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b}
+html[data-theme="dark"]{color-scheme:dark;--primary:#f27f2f;--primary-hover:#e06e1a;--primary-light:#3a2a1c;--secondary:#3b82f6;--secondary-hover:#60a5fa;--secondary-light:#16263a;--dark:#0b1220;--bg:#0f172a;--card:#1f2937;--text:#e5e7eb;--text-secondary:#9ca3af;--border:#374151;--danger:#f87171;--success:#34d399;--warning:#fbbf24}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
 a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
 
@@ -194,6 +198,7 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <a href="/guides/index.html" target="_blank" style="color:var(--primary);font-size:1.3rem;cursor:pointer;text-decoration:none;" title="Help &amp; Guides">❓</a>
+      <button class="logout-btn" id="theme-toggle" onclick="toggleTheme()">🌙 Night mode</button>
       <button class="logout-btn" onclick="doLogout()">🚪 Sign Out</button>
     </div>
   </div>
@@ -1059,6 +1064,14 @@ async function doRegister() {
   }
 }
 
+function toggleTheme() {
+  var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  var next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('md-portal-theme', next); } catch (e) {}
+  var b = document.getElementById('theme-toggle');
+  if (b) b.textContent = next === 'dark' ? '☀️ Day mode' : '🌙 Night mode';
+}
 function doLogout() {
   localStorage.removeItem('bizToken');
   localStorage.removeItem('bizUser');
