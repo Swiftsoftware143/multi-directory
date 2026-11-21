@@ -374,12 +374,14 @@ pub async fn set_industry(
 
     let updated = sqlx::query(
         // Same nested jsonb_set as set_radius/set_schedule: create the parent object first, then
-        // the key inside it. Clearing stores a JSON null, which `->>'industry_id'` reads as unset.
+        // the key inside it. Clearing uses `COALESCE(..., 'null'::jsonb)` because `to_jsonb(NULL)`
+        // is SQL NULL, and `jsonb_set(…, NULL)` returns NULL — which would wipe the WHOLE
+        // zaarhub_config (radius + schedule) instead of just the industry key.
         "UPDATE directories SET zaarhub_config = jsonb_set( \
              jsonb_set(COALESCE(zaarhub_config, '{}'::jsonb), \
                        '{google_refresh}', \
                        COALESCE(zaarhub_config->'google_refresh', '{}'::jsonb), true), \
-             '{google_refresh,industry_id}', to_jsonb($2::text), true), \
+             '{google_refresh,industry_id}', COALESCE(to_jsonb($2::text), 'null'::jsonb), true), \
          updated_at = NOW() WHERE id = $1",
     )
     .bind(req.directory_id)
