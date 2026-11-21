@@ -15,6 +15,7 @@
     if (m) m.setAttribute('content', t === 'light' ? '#f6f7fb' : '#12121a');
   })();
   </script>
+  <script>window.__copy = function (txt, btn) { function done() { if (btn) { var o = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(function () { btn.textContent = o; }, 1500); } } if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, done); } else { try { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done(); } catch (e) {} } };</script>
   <meta charset="UTF-8">
   <meta name="robots" content="noindex,follow">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -609,6 +610,7 @@
         <a href="#sc-blog-section">📰 Blog Templates</a>
         <a href="#sc-news-section">✉️ Newsletters</a>
         <a href="#sc-land-section">🚀 Landing Pages</a>
+        <a href="#mcp-section" id="nav-mcp">🤖 MCP / Bot Access</a>
         <a href="#developer-api-section" id="nav-developer-api">🧩 API Access &amp; Webhooks</a>
         <a href="#articles-section">📰 Sponsored Articles</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
@@ -1315,6 +1317,30 @@
         <div style="font-weight:600;font-size:.9rem;margin:14px 0 6px">Tracking numbers</div>
         <div id="cl-numbers"></div>
         <div class="feature-status" id="cl-status"></div>
+      </div>
+
+      <!-- 🤖 MCP / Bot Access — the two endpoints a bot needs, plus a pointer to the key it
+           is authorised with. Access is scoped by the key's owner (directory owner -> their
+           directory; operator -> every directory), which the app enforces server-side. -->
+      <div class="feature-card" id="mcp-section">
+        <h3>🤖 MCP / Bot Access</h3>
+        <p class="feature-subtitle">Connect a bot to run the directory. A bot's key only reaches the
+          directory(ies) its owner controls — it can never touch another owner's directory.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;margin:14px 0">
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-weight:600;margin-bottom:4px">Read — MCP endpoint</div>
+            <code style="word-break:break-all;font-size:.8rem">https://mcp.swiftsoftware.net/mcp</code>
+            <div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="window.__copy('https://mcp.swiftsoftware.net/mcp', this)">Copy</button></div>
+          </div>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-weight:600;margin-bottom:4px">Write — API endpoint</div>
+            <code style="word-break:break-all;font-size:.8rem">https://zaarhub.com/api/v1</code>
+            <div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="window.__copy('https://zaarhub.com/api/v1', this)">Copy</button></div>
+          </div>
+        </div>
+        <p style="font-size:.85rem;color:var(--text-secondary)">Give the bot both endpoints plus an API key —
+          the key is what scopes it. Issue one in <a href="#developer-api-section" style="color:var(--accent)">API Access &amp; Webhooks</a>.
+          A directory owner's key reaches only their own directory; the operator's key reaches every directory.</p>
       </div>
 
       <!-- 🧩 API Access & Webhooks (B91 / B117 gap #4) — /api-keys and /webhooks carry a full
