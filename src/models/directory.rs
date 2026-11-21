@@ -29,6 +29,10 @@ pub struct Directory {
     pub custom_domain: Option<String>,
     pub city: Option<String>,
     pub state: Option<String>,
+    /// Homepage long-term city nav (work-queue line 52a): REGION + COUNTRY sit beside STATE so
+    /// the future region -> state -> city drill-down is stored from day one, never backfilled.
+    pub region: Option<String>,
+    pub country: Option<String>,
     pub support_email: Option<String>,
     pub contact_email: Option<String>,
     pub contact_phone: Option<String>,
@@ -57,6 +61,8 @@ pub struct CreateDirectoryRequest {
     pub color_scheme: Option<serde_json::Value>,
     pub city: Option<String>,
     pub state: Option<String>,
+    pub region: Option<String>,
+    pub country: Option<String>,
     pub support_email: Option<String>,
     pub contact_email: Option<String>,
     pub contact_phone: Option<String>,
@@ -90,6 +96,8 @@ pub struct UpdateDirectoryRequest {
     pub color_scheme: Option<serde_json::Value>,
     pub city: Option<String>,
     pub state: Option<String>,
+    pub region: Option<String>,
+    pub country: Option<String>,
     pub support_email: Option<String>,
     pub contact_email: Option<String>,
     pub contact_phone: Option<String>,

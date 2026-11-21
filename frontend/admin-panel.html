@@ -703,6 +703,8 @@
             </div>
             <div class="em-field"><label>City</label><input id="dr-city" placeholder="Palm Bay"></div>
             <div class="em-field"><label>State</label><input id="dr-state" placeholder="FL"></div>
+            <div class="em-field"><label>Region</label><input id="dr-region" placeholder="Southeast"></div>
+            <div class="em-field"><label>Country</label><input id="dr-country" placeholder="United States"></div>
             <div class="em-field"><label>Support email</label><input id="dr-support" placeholder="support@…"></div>
             <div class="em-field" style="grid-column:1/-1"><label>Description</label><input id="dr-desc" placeholder="What this directory is about"></div>
           </div>
@@ -12125,6 +12127,8 @@
       setv('dr-slug', d ? d.slug : '');
       setv('dr-city', d ? d.city : '');
       setv('dr-state', d ? d.state : '');
+      setv('dr-region', d ? d.region : '');
+      setv('dr-country', d ? d.country : '');
       setv('dr-support', d ? d.support_email : '');
       setv('dr-desc', d ? d.description : '');
       setv('dr-domain', d ? d.custom_domain : '');
@@ -12169,6 +12173,7 @@
       txt('dr-editor-status', 'Saving…');
       if (editingSlug) {
         var body = { name: name, city: val('dr-city'), state: val('dr-state'),
+                     region: val('dr-region'), country: val('dr-country'),
                      support_email: val('dr-support'), description: val('dr-desc'),
                      status: document.getElementById('dr-status-sel').value };
         api('PUT', '/directories/' + encodeURIComponent(editingSlug), body).then(function () {
@@ -12182,6 +12187,7 @@
       var payload = { name: name, description: val('dr-desc'),
                       status: document.getElementById('dr-status-sel').value,
                       city: val('dr-city'), state: val('dr-state'),
+                      region: val('dr-region'), country: val('dr-country'),
                       support_email: val('dr-support'), network_mode: m };
       var slug = val('dr-slug');
       if (slug) payload.slug = slug;
