@@ -91,6 +91,13 @@ pub struct RadiusRequest {
     pub radius_m: i64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct IndustryRequest {
+    pub directory_id: Uuid,
+    /// `directory_categories.id` to discover, or `None`/empty to clear back to auto (top categories).
+    pub industry_id: Option<String>,
+}
+
 #[derive(Debug, Default)]
 struct Counts {
     added: usize,
@@ -178,6 +185,7 @@ pub async fn status(
 
     let schedule = schedule_of(&s, q.directory_id).await?;
     let radius_m = radius_of(&s, q.directory_id).await?;
+    let industry = industry_of(&s, q.directory_id).await?;
 
     let totals: (i64, i64, i64) = sqlx::query_as(
         "SELECT COUNT(*) FILTER (WHERE COALESCE(claimed, false)), \
@@ -222,6 +230,8 @@ pub async fn status(
             "directory_id": q.directory_id,
             "schedule": schedule,
             "radius_m": radius_m,
+            "industry_id": industry.as_ref().map(|(id, _)| *id),
+            "industry": industry.as_ref().map(|(_, name)| name.clone()),
             "running": running > 0,
             "claimed": totals.0,
             "unclaimed": totals.1,
@@ -241,6 +251,8 @@ pub async fn status(
             "directory_id": q.directory_id,
             "schedule": schedule,
             "radius_m": radius_m,
+            "industry_id": industry.as_ref().map(|(id, _)| *id),
+            "industry": industry.as_ref().map(|(_, name)| name.clone()),
             "running": running > 0,
             "claimed": totals.0,
             "unclaimed": totals.1,
@@ -320,6 +332,70 @@ pub async fn set_radius(
     Ok(Json(
         json!({ "directory_id": req.directory_id, "radius_m": radius_m }),
     ))
+}
+
+/// PUT /api/v1/zaarhub/admin/google-refresh/industry — the single category discovery searches for.
+///
+/// Set to a `directory_categories.id` to focus discovery on that one industry (work-queue line 43:
+/// the import shape is INDUSTRY + CITY + RADIUS), or empty to clear it and return to the
+/// top-categories sweep. Stored per directory, so a scheduled refresh honours it too.
+pub async fn set_industry(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<IndustryRequest>,
+) -> ApiResult<impl IntoResponse> {
+    assert_directory_admin(&s.db, &claims, req.directory_id).await?;
+    let raw = req
+        .industry_id
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    // Resolve the id to a real category name first — an id that no longer exists (or belongs to
+    // another directory) must not be stored as a dead search term.
+    let name: Option<String> = match raw.as_deref() {
+        Some(id) => {
+            let parsed = Uuid::parse_str(id).map_err(|_| {
+                AppError::BadRequest("industry_id must be a valid category id".into())
+            })?;
+            Some(
+                sqlx::query_scalar(
+                    "SELECT name FROM directory_categories \
+                     WHERE id = $1 AND (directory_id IS NULL OR directory_id = $2) LIMIT 1",
+                )
+                .bind(parsed)
+                .bind(req.directory_id)
+                .fetch_optional(&s.db)
+                .await?
+                .ok_or_else(|| AppError::NotFound("category not found".into()))?,
+            )
+        }
+        None => None,
+    };
+
+    let updated = sqlx::query(
+        // Same nested jsonb_set as set_radius/set_schedule: create the parent object first, then
+        // the key inside it. Clearing stores a JSON null, which `->>'industry_id'` reads as unset.
+        "UPDATE directories SET zaarhub_config = jsonb_set( \
+             jsonb_set(COALESCE(zaarhub_config, '{}'::jsonb), \
+                       '{google_refresh}', \
+                       COALESCE(zaarhub_config->'google_refresh', '{}'::jsonb), true), \
+             '{google_refresh,industry_id}', to_jsonb($2::text), true), \
+         updated_at = NOW() WHERE id = $1",
+    )
+    .bind(req.directory_id)
+    .bind(raw.as_deref())
+    .execute(&s.db)
+    .await?
+    .rows_affected();
+
+    if updated == 0 {
+        return Err(AppError::NotFound("directory not found".into()));
+    }
+    Ok(Json(json!({
+        "directory_id": req.directory_id,
+        "industry_id": raw,
+        "industry": name,
+    })))
 }
 
 /// POST /api/v1/cron/google-refresh — start every city that is DUE, in the background.
@@ -848,17 +924,23 @@ async fn discover_arm(
         city_zips
     };
 
-    let cats: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT c.id, c.name FROM directory_categories c \
-         LEFT JOIN businesses b ON b.category_id = c.id AND b.directory_id = $1 \
-         WHERE c.directory_id IS NULL OR c.directory_id = $1 \
-         GROUP BY c.id, c.name ORDER BY COUNT(b.id) DESC, c.name LIMIT $2",
-    )
-    .bind(dir.id)
-    .bind(DISCOVER_CATEGORIES)
-    .fetch_all(&s.db)
-    .await
-    .map_err(|e| e.to_string())?;
+    // The configured industry, when the admin has saved one, replaces the top-categories sweep
+    // with a single focused search (work-queue line 43: INDUSTRY + CITY + RADIUS). An unset or
+    // unresolvable industry falls back to the existing top-N sweep.
+    let cats: Vec<(Uuid, String)> = match industry_of(s, dir.id).await.map_err(|e| e.to_string())? {
+        Some((id, name)) => vec![(id, name)],
+        None => sqlx::query_as(
+            "SELECT c.id, c.name FROM directory_categories c \
+             LEFT JOIN businesses b ON b.category_id = c.id AND b.directory_id = $1 \
+             WHERE c.directory_id IS NULL OR c.directory_id = $1 \
+             GROUP BY c.id, c.name ORDER BY COUNT(b.id) DESC, c.name LIMIT $2",
+        )
+        .bind(dir.id)
+        .bind(DISCOVER_CATEGORIES)
+        .fetch_all(&s.db)
+        .await
+        .map_err(|e| e.to_string())?,
+    };
 
     let mut seen: HashSet<String> = HashSet::new();
     let mut errors: Vec<String> = Vec::new();
@@ -1569,6 +1651,34 @@ async fn radius_of(s: &AppState, directory_id: Uuid) -> Result<i64, AppError> {
     .await?
     .flatten();
     Ok(raw.unwrap_or(DEFAULT_RADIUS_M).clamp(1_000, MAX_RADIUS_M))
+}
+
+/// The configured discovery industry for a directory as a `(category id, name)` pair, or `None`
+/// when the city has none saved (discovery then sweeps the top categories). A stored id that no
+/// longer resolves is treated as unset — never as a reason to search a dead name.
+async fn industry_of(s: &AppState, directory_id: Uuid) -> Result<Option<(Uuid, String)>, AppError> {
+    let raw: Option<String> = sqlx::query_scalar(
+        "SELECT zaarhub_config->'google_refresh'->>'industry_id' FROM directories WHERE id = $1",
+    )
+    .bind(directory_id)
+    .fetch_optional(&s.db)
+    .await?
+    .flatten();
+    let Some(raw) = raw.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let Ok(id) = Uuid::parse_str(&raw) else {
+        return Ok(None);
+    };
+    let cat: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, name FROM directory_categories \
+         WHERE id = $1 AND (directory_id IS NULL OR directory_id = $2) LIMIT 1",
+    )
+    .bind(id)
+    .bind(directory_id)
+    .fetch_optional(&s.db)
+    .await?;
+    Ok(cat)
 }
 
 /// Is a city's scheduled refresh due? `manual` is never due; anything else counts from the last

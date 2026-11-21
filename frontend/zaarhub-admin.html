@@ -214,6 +214,10 @@ header nav a{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;fon
           <label>Discovery radius — metres from the city centre</label>
           <input type="number" id="grf-radius" min="1000" max="50000" step="500" value="12000" onchange="saveRefreshRadius()">
         </div>
+        <div class="form-group">
+          <label>Industry — the category to discover (blank = auto top categories)</label>
+          <select id="grf-industry" onchange="saveRefreshIndustry()"><option value="">Auto (top categories)</option></select>
+        </div>
         <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
           <button class="btn primary" id="grf-run" onclick="runGoogleRefresh()">Refresh this city now</button>
           <button class="btn secondary" onclick="loadRefreshStatus()">Reload</button>
@@ -411,6 +415,7 @@ let popAllCategories = [];
 let popCityLatLng = {};
 let queueSnap = { items: [], counts: {} };
 let popDirectoryId = '';
+let refreshIndustryId = '';
 
 async function init(){await loadLegalPages();await loadSiteConfig();setupBrandingForm();loadPopCities();loadPopCategories();loadGPlacesKey();loadPopDirectories();loadMergeFields();
   const cqWhen=document.getElementById('cq-when');
@@ -645,7 +650,19 @@ async function loadPopCategories(){
     let html='<option value="">— Select category —</option>';
     leaves.forEach(c=>{html+=`<option value="${esc(c.id)}">${esc(c.name)}</option>`;});
     document.getElementById('pop-category').innerHTML=html;
+    renderIndustryOptions();
   }catch(e){console.error(e);document.getElementById('pop-category').innerHTML='<option value="">Failed to load categories</option>';}
+}
+// Populate the refresh panel's Industry dropdown from the same leaf categories, then re-apply the
+// directory's saved selection. Idempotent — safe to call whenever `popAllCategories` is ready.
+function renderIndustryOptions(){
+  const ind=document.getElementById('grf-industry');
+  if(!ind)return;
+  const leaves=popAllCategories.filter(c=>c.directory_id===null);
+  let h='<option value="">Auto (top categories)</option>';
+  leaves.forEach(c=>{h+=`<option value="${esc(c.id)}">${esc(c.name)}</option>`;});
+  ind.innerHTML=h;
+  ind.value=refreshIndustryId||'';
 }
 function onPopDirectoryChange(){
   popDirectoryId=document.getElementById('pop-directory').value||'';
@@ -916,6 +933,7 @@ async function loadRefreshStatus(){
     if(!r.ok){el.innerHTML=`<span style="color:#dc2626">${esc(d.error||'Could not read the refresh status')}</span>`;return;}
     const sel=document.getElementById('grf-schedule'); if(sel)sel.value=d.schedule||'weekly';
     const rad=document.getElementById('grf-radius'); if(rad)rad.value=(d.radius_m!=null?d.radius_m:12000);
+    refreshIndustryId=d.industry_id||''; renderIndustryOptions();
     let html=`<div style="display:flex;gap:18px;flex-wrap:wrap">
       <span><b>${d.unclaimed||0}</b> listings this can refresh (unclaimed)</span>
       <span><b>${d.with_place_id||0}</b> already matched to a Google place</span>
@@ -971,6 +989,17 @@ async function saveRefreshRadius(){
     const d=await r.json();
     showToast(r.ok?('Saved: discovery radius '+d.radius_m+' m'):(d.error||'Could not save the radius'),!r.ok);
   }catch(e){console.error(e);showToast('Could not save the radius',true);}
+}
+async function saveRefreshIndustry(){
+  if(!popDirectoryId)return;
+  const el=document.getElementById('grf-industry');
+  const v=(el&&el.value)?el.value:'';
+  try{
+    const r=await fetch(`${API}/google-refresh/industry`,{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({directory_id:popDirectoryId,industry_id:v||null})});
+    const d=await r.json();
+    showToast(r.ok?(v?('Saved: discovery focuses on '+d.industry):('Saved: discovery is back to auto (top categories)')):(d.error||'Could not save the industry'),!r.ok);
+  }catch(e){console.error(e);showToast('Could not save the industry',true);}
 }
 // ── Content Schedule ────────────────────────────────────────────────────────
 // The backend has had a full content queue since Phase 5 (POST/GET/PUT/DELETE
