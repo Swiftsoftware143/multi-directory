@@ -1449,16 +1449,32 @@ function filterCity(slug,el){
 }
 
 // ── Search Page ──
+function setSearchCategory(v){
+  state.filterCategory=v
+  loadSearchResults()
+}
+
 async function loadSearchResults(){
   var q=state.searchQuery
   var el=document.getElementById('zh-content')
+  // The INDUSTRY (category) filter list comes from the homepage payload; on a search
+  // deep-link it may not be loaded yet, so fetch it once and reuse it thereafter.
+  if(!state.homepageData){try{state.homepageData=await g('/zaarhub/homepage')}catch(e){state.homepageData=null}}
+  var cats=(state.homepageData&&state.homepageData.categories)||[]
+  var catOpts='<option value="">All industries</option>'
+  for(var i=0;i<cats.length;i++){var c=cats[i];catOpts+='<option value="'+esc(c.slug)+'"'+(state.filterCategory===c.slug?' selected':'')+'>'+esc(c.name)+'</option>'}
   el.innerHTML=`
 <div class="zh-search-hero">
   <div class="zh-search-hero-inner">
-    <h1>🔍 Searching: "${esc(q)}"</h1>
+    <h1>${q?'🔍 Searching: "'+esc(q)+'"':'🔍 Browse businesses'}</h1>
     <div class="zh-search-bar" style="max-width:100%">
       <span class="icon">🔍</span>
       <input type="text" value="${esc(q)}" onkeydown="onSearchInput(event)" placeholder="Search..." style="width:100%;padding:12px 16px 12px 44px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.95rem;outline:none;background:rgba(255,255,255,.1);color:#fff">
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <label for="zh-search-cat" style="color:#fff;font-size:.8rem;font-weight:600">Industry</label>
+      <select id="zh-search-cat" onchange="setSearchCategory(this.value)" style="padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;outline:none;background:rgba(255,255,255,.1);color:#fff">${catOpts}</select>
+      ${state.filterCategory?'<button onclick="setSearchCategory(\'\')" style="padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.8rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer">✕ Clear</button>':''}
     </div>
   </div>
 </div>
