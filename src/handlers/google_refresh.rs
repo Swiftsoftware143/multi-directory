@@ -108,6 +108,10 @@ struct Counts {
     skipped_claimed: usize,
     /// Listings whose weekly opening hours were stored for the first time (card B90).
     hours: usize,
+    /// Businesses filed into a satellite town instead of skipped, when the city's "add satellite
+    /// cities" switch is on (work-queue line 45). Reported separately so the panel can tell a
+    /// satellite filing from a plain add.
+    filed_satellite: usize,
 }
 
 struct Opts {
@@ -550,6 +554,7 @@ async fn run_batch(s: &AppState, directory_id: Uuid, opts: Opts) -> Result<Value
         "samples": samples.into_iter().take(20).collect::<Vec<_>>(),
         "notes": notes,
         "hours_written": counts.hours,
+        "filed_satellite": counts.filed_satellite,
     });
 
     let _ = sqlx::query(
@@ -582,6 +587,7 @@ async fn run_batch(s: &AppState, directory_id: Uuid, opts: Opts) -> Result<Value
         "unreachable": counts.unreachable,
         "skipped_claimed": counts.skipped_claimed,
         "hours_written": counts.hours,
+        "filed_satellite": counts.filed_satellite,
         "samples": details["samples"],
         "notes": notes,
     }))
@@ -876,6 +882,32 @@ async fn discover_arm(
         return Err("this city has no city name set, so there is nothing to search around".into());
     }
 
+    // Line 45 — the "add satellite cities" switch: OFF confines discovery to the city itself;
+    // ON lets the radius reach into the satellite towns around it. Read once so every candidate
+    // in this run is judged by the same value (a mid-run edit cannot half-apply).
+    let include_satellite: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT COALESCE(include_satellite_towns, true) FROM directories WHERE id = $1",
+    )
+    .bind(dir.id)
+    .fetch_optional(&s.db)
+    .await
+    .map_err(|e| e.to_string())?
+    .unwrap_or(true);
+
+    // The cities that are directories of their own (W28's rule): a business whose own town is
+    // one of these belongs to that directory, never to a satellite town of this one.
+    let hub_cities: Vec<String> = sqlx::query_scalar::<_, String>(
+        "SELECT city FROM directories WHERE city IS NOT NULL AND id <> $1",
+    )
+    .bind(dir.id)
+    .fetch_all(&s.db)
+    .await
+    .map_err(|e| e.to_string())?
+    .into_iter()
+    .filter(|c| !c.trim().is_empty())
+    .map(|c| crate::handlers::zaarhub::town_key(&c))
+    .collect();
+
     let centre: Option<(Option<f64>, Option<f64>)> = sqlx::query_as(
         "SELECT AVG(latitude), AVG(longitude) FROM businesses \
          WHERE directory_id = $1 AND is_active = true AND latitude IS NOT NULL",
@@ -1008,8 +1040,24 @@ async fn discover_arm(
             let in_city = same_city(&cand_city, &city_short)
                 || (!cand_zip.is_empty() && city_zips.contains(&cand_zip));
             if !in_city {
-                skipped_outside += 1;
-                continue;
+                // Line 45 — when the "add satellite cities" switch is ON, a business just outside
+                // the city boundary but inside the local area is filed under its OWN town (which
+                // becomes a satellite town of this directory) instead of being skipped. OFF keeps
+                // the import confined to the city itself.
+                if is_satellite_filing(
+                    include_satellite,
+                    &cand_city,
+                    &hub_cities,
+                    cand.get("lat").and_then(Value::as_f64),
+                    cand.get("lng").and_then(Value::as_f64),
+                    lat,
+                    lng,
+                ) {
+                    counts.filed_satellite += 1;
+                } else {
+                    skipped_outside += 1;
+                    continue;
+                }
             }
 
             if crate::handlers::businesses::find_business_by_identity(
@@ -1546,6 +1594,35 @@ fn same_city(a: &str, b: &str) -> bool {
     !ka.is_empty() && ka == kb
 }
 
+/// Does a candidate business just outside the city belong in a satellite town of this directory?
+/// (work-queue line 45). `town` is the candidate's own city; `cand_lat`/`cand_lng` are the
+/// candidate's coordinates and `centre_lat`/`centre_lng` the directory's centre. A business
+/// qualifies only when the switch is on, its town is not a directory of its own, and it sits
+/// inside the local area — otherwise it is skipped, exactly as when the switch is off.
+fn is_satellite_filing(
+    include_satellite: bool,
+    town: &str,
+    hub_cities: &[String],
+    cand_lat: Option<f64>,
+    cand_lng: Option<f64>,
+    centre_lat: f64,
+    centre_lng: f64,
+) -> bool {
+    if !include_satellite || town.trim().is_empty() {
+        return false;
+    }
+    if hub_cities.contains(&crate::handlers::zaarhub::town_key(town)) {
+        return false;
+    }
+    match (cand_lat, cand_lng) {
+        (Some(a), Some(o)) => {
+            crate::handlers::zaarhub::haversine_km(centre_lat, centre_lng, a, o)
+                <= crate::handlers::zaarhub::LOCAL_AREA_KM
+        }
+        _ => false,
+    }
+}
+
 /// The 5-digit ZIP in a Google formatted address (`"…, Orlando, FL 32827, USA"` ⇒ `"32827"`).
 fn zip_of(address: &str) -> String {
     let parts: Vec<&str> = address.split(',').map(str::trim).collect();
@@ -1804,5 +1881,100 @@ mod hours_tests {
         assert_eq!(tz_for_state(" AZ "), Some("America/Phoenix"));
         assert_eq!(tz_for_state(""), None);
         assert_eq!(tz_for_state("ON"), None);
+    }
+}
+
+#[cfg(test)]
+mod satellite_filing_tests {
+    use super::is_satellite_filing;
+
+    // Palm Bay-ish centre; a candidate ~2 km away is well inside LOCAL_AREA_KM (40 km),
+    // a candidate ~1.2° south (~130 km) is well outside it.
+    const CENTRE: (f64, f64) = (28.08, -80.61);
+
+    fn hubs(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn switch_off_confines_to_city() {
+        // Toggle OFF: even a nearby, non-hub town is NOT filed — the import is confined.
+        assert!(!is_satellite_filing(
+            false,
+            "Melbourne",
+            &hubs(&["orlando"]),
+            Some(28.10),
+            Some(-80.63),
+            CENTRE.0,
+            CENTRE.1,
+        ));
+    }
+
+    #[test]
+    fn empty_town_is_skipped() {
+        assert!(!is_satellite_filing(
+            true,
+            "   ",
+            &[],
+            Some(28.10),
+            Some(-80.63),
+            CENTRE.0,
+            CENTRE.1,
+        ));
+    }
+
+    #[test]
+    fn a_hub_city_is_not_a_satellite() {
+        // Melbourne is itself a directory (a hub) → belongs to that directory, never here.
+        assert!(!is_satellite_filing(
+            true,
+            "Melbourne",
+            &hubs(&["melbourne"]),
+            Some(28.10),
+            Some(-80.63),
+            CENTRE.0,
+            CENTRE.1,
+        ));
+    }
+
+    #[test]
+    fn satellite_within_local_area_is_filed() {
+        assert!(is_satellite_filing(
+            true,
+            "Melbourne",
+            &hubs(&["orlando"]),
+            Some(28.10),
+            Some(-80.63),
+            CENTRE.0,
+            CENTRE.1,
+        ));
+    }
+
+    #[test]
+    fn missing_coordinates_are_skipped() {
+        // No map location → cannot prove it is inside the local area → not filed.
+        assert!(!is_satellite_filing(
+            true,
+            "Melbourne",
+            &[],
+            None,
+            Some(-80.63),
+            CENTRE.0,
+            CENTRE.1,
+        ));
+    }
+
+    #[test]
+    fn outside_the_local_area_is_skipped() {
+        // ~130 km south of Palm Bay — too far to be a satellite town.
+        assert!(!is_satellite_filing(
+            true,
+            "Fort Lauderdale",
+            &[],
+            Some(27.0),
+            Some(-80.0),
+            CENTRE.0,
+            CENTRE.1,
+        ));
     }
 }
