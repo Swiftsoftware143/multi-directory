@@ -161,13 +161,18 @@ pub async fn list_businesses(
 
     let (total,): (i64,) = count_qb.build_query_as::<(i64,)>().fetch_one(&s.db).await?;
 
-    // Sort
+    // Sort — reassigned businesses (local_priority = 0, moved in from another
+    // directory per work-queue line 41) always sink to the bottom; the hub's own
+    // listings sort first. The leading boolean key leaves every non-reassigned
+    // business in its existing secondary-sort order.
     let order_by = match qs.sort.as_deref() {
-        Some("rating") => "b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST",
-        Some("newest") => "b.created_at DESC",
-        Some("oldest") => "b.created_at ASC",
-        Some("name") => "b.name ASC",
-        _ => "b.name ASC",
+        Some("rating") => {
+            "(COALESCE(b.local_priority, 3) = 0) ASC, b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST"
+        }
+        Some("newest") => "(COALESCE(b.local_priority, 3) = 0) ASC, b.created_at DESC",
+        Some("oldest") => "(COALESCE(b.local_priority, 3) = 0) ASC, b.created_at ASC",
+        Some("name") => "(COALESCE(b.local_priority, 3) = 0) ASC, b.name ASC",
+        _ => "(COALESCE(b.local_priority, 3) = 0) ASC, b.name ASC",
     };
 
     // Data query — same compile-time head and the same predicate set as the count above.

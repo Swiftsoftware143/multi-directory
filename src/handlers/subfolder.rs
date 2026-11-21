@@ -2151,7 +2151,7 @@ async fn list_town_businesses(
          LEFT JOIN directory_categories dc ON dc.id = b.category_id \
          WHERE b.directory_id = $1 AND b.is_active = true \
            AND TRIM(REGEXP_REPLACE(LOWER(SPLIT_PART(TRIM(b.city), ',', 1)), '[^[:alnum:]]+', ' ', 'g')) = $2 \
-         ORDER BY b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
+         ORDER BY (COALESCE(b.local_priority, 3) = 0) ASC, b.featured DESC NULLS LAST, b.rating DESC NULLS LAST, b.review_count DESC \
          LIMIT $3"
     ))
     .bind(dir_id)
