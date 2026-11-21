@@ -520,7 +520,7 @@ function showNearToast(msg,duration){
 (function(){var s=document.createElement('style');s.textContent='@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}.zh-near-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--primary);color:#fff;border-radius:100px;font-size:.78rem;font-weight:600;white-space:nowrap}.zh-near-badge .close{cursor:pointer;opacity:.7;margin-left:4px}.zh-near-badge .close:hover{opacity:1}.zh-dist-badge{font-size:.72rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px;margin-left:6px}';document.head.appendChild(s)})()
 
 // ── State ──
-let state={page:'home',cities:[],homepageData:null,slug:'',searchQuery:'',filterCategory:'',loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
+let state={page:'home',cities:[],homepageData:null,searchCities:null,slug:'',searchQuery:'',filterCategory:'',filterCity:'',cityCentre:null,cityRadius:25000,loading:true,user:null,authUser:null,roleMode:'resident',userLat:null,userLng:null,nearRadius:5000,isNearActive:false}
 
 // ── Collections (localStorage) ──
 function loadCollections(){try{var r=localStorage.getItem('zh_collections');return r?JSON.parse(r):[]}catch(e){return[]}}
@@ -1453,6 +1453,19 @@ function setSearchCategory(v){
   state.filterCategory=v
   loadSearchResults()
 }
+function setSearchCity(slug){
+  state.filterCity=slug
+  state.cityCentre=null
+  if(slug){
+    var cities=state.searchCities||[]
+    for(var i=0;i<cities.length;i++){var cc=cities[i];var cslug=cc.city_slug||cc.slug;if(cslug===slug){if(cc.latitude!=null&&cc.longitude!=null){state.cityCentre={lat:cc.latitude,lng:cc.longitude}}break}}
+  }
+  loadSearchResults()
+}
+function setSearchRadius(m){
+  state.cityRadius=m
+  loadSearchResults()
+}
 
 async function loadSearchResults(){
   var q=state.searchQuery
@@ -1460,9 +1473,23 @@ async function loadSearchResults(){
   // The INDUSTRY (category) filter list comes from the homepage payload; on a search
   // deep-link it may not be loaded yet, so fetch it once and reuse it thereafter.
   if(!state.homepageData){try{state.homepageData=await g('/zaarhub/homepage')}catch(e){state.homepageData=null}}
-  var cats=(state.homepageData&&state.homepageData.categories)||[]
+  if(!state.searchCities){try{var cj=await g('/zaarhub/cities');state.searchCities=(cj&&cj.cities)||[]}catch(e){state.searchCities=[]}}
+  var cats=(state.homepageData&&state.homepageData.category_pills)||[]
+  var cities=state.searchCities||[]
   var catOpts='<option value="">All industries</option>'
   for(var i=0;i<cats.length;i++){var c=cats[i];catOpts+='<option value="'+esc(c.slug)+'"'+(state.filterCategory===c.slug?' selected':'')+'>'+esc(c.name)+'</option>'}
+  var cityOpts='<option value="">All cities</option>'
+  for(var j=0;j<cities.length;j++){var ct=cities[j];var cslug=ct.city_slug||ct.slug;var cname=ct.city_name||ct.name;cityOpts+='<option value="'+esc(cslug)+'"'+(state.filterCity===cslug?' selected':'')+'>'+esc(cname)+'</option>'}
+  var radiusSel=''
+  if(state.filterCity){
+    radiusSel='<label for="zh-search-radius" style="color:#fff;font-size:.8rem;font-weight:600">Radius</label>'+
+      '<select id="zh-search-radius" onchange="setSearchRadius(parseInt(this.value))" style="padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;outline:none;background:rgba(255,255,255,.1);color:#fff">'+
+      '<option value="1000"'+(state.cityRadius===1000?' selected':'')+'>Within 1km of centre</option>'+
+      '<option value="5000"'+(state.cityRadius===5000?' selected':'')+'>Within 5km of centre</option>'+
+      '<option value="10000"'+(state.cityRadius===10000?' selected':'')+'>Within 10km of centre</option>'+
+      '<option value="25000"'+(state.cityRadius===25000?' selected':'')+'>Within 25km of centre</option>'+
+      '</select>'
+  }
   el.innerHTML=`
 <div class="zh-search-hero">
   <div class="zh-search-hero-inner">
@@ -1475,6 +1502,10 @@ async function loadSearchResults(){
       <label for="zh-search-cat" style="color:#fff;font-size:.8rem;font-weight:600">Industry</label>
       <select id="zh-search-cat" onchange="setSearchCategory(this.value)" style="padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;outline:none;background:rgba(255,255,255,.1);color:#fff">${catOpts}</select>
       ${state.filterCategory?'<button onclick="setSearchCategory(\'\')" style="padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.8rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer">✕ Clear</button>':''}
+      <label for="zh-search-city" style="color:#fff;font-size:.8rem;font-weight:600">City</label>
+      <select id="zh-search-city" onchange="setSearchCity(this.value)" style="padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.85rem;outline:none;background:rgba(255,255,255,.1);color:#fff">${cityOpts}</select>
+      ${state.filterCity?'<button onclick="setSearchCity(\'\')" style="padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:100px;font-size:.8rem;background:rgba(255,255,255,.1);color:#fff;cursor:pointer">✕ Clear</button>':''}
+      ${radiusSel}
     </div>
   </div>
 </div>
@@ -1486,7 +1517,10 @@ async function loadSearchResults(){
 
   try{
     var params='q='+encodeURIComponent(q)+'&category='+encodeURIComponent(state.filterCategory);
-    if(state.isNearActive&&state.userLat&&state.userLng){
+    if(state.filterCity){
+      params+='&city='+encodeURIComponent(state.filterCity);
+      if(state.cityCentre){params+='&lat='+state.cityCentre.lat+'&lng='+state.cityCentre.lng+'&radius='+state.cityRadius;}
+    }else if(state.isNearActive&&state.userLat&&state.userLng){
       params+='&lat='+state.userLat+'&lng='+state.userLng+'&radius='+state.nearRadius;
     }
     var r=await g('/zaarhub/search?'+params)
@@ -1524,6 +1558,17 @@ function renderSearchResults(r){
     if(biz.length){showNearToast('📍 Found '+biz.length+' businesses near you',2500)}
   }
 
+  // City-centre badge (CITY + RADIUS filter)
+  if(state.filterCity){
+    var cityName=state.filterCity
+    var clist=state.searchCities||[]
+    for(var ci=0;ci<clist.length;ci++){var cslug=clist[ci].city_slug||clist[ci].slug;if(cslug===state.filterCity){cityName=clist[ci].city_name||clist[ci].name;break}}
+    var crad=state.cityRadius>=25000?'25km':state.cityRadius>=10000?'10km':state.cityRadius>=5000?'5km':'1km'
+    nearHtml+='<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<span class="zh-near-badge">🏙️ '+esc(cityName)+' <small>(within '+crad+' of centre)</small>'+
+      '<span class="close" onclick="setSearchCity(\'\')" title="Clear">✕</span></span></div>'
+  }
+
   if(!biz.length&&!deals.length){
     var msg=state.isNearActive?'<p style="color:var(--text-light);margin-top:8px">Try expanding your search radius or browse by category</p>':''
     el.innerHTML='<div style="text-align:center;padding:60px 24px"><div style="font-size:3rem;margin-bottom:12px">🔍</div><h3 style="margin-bottom:6px">No results found</h3>'+msg+'</div>'
@@ -1545,6 +1590,10 @@ function renderSearchResults(r){
         var distKm=haversineKm(state.userLat,state.userLng,b.latitude,b.longitude)
         if(distKm<1){distBadge='<span class="zh-dist-badge">📍 '+(distKm*1000).toFixed(0)+' m away</span>'}
         else{distBadge='<span class="zh-dist-badge">📍 '+distKm.toFixed(1)+' km away</span>'}
+      }else if(state.filterCity&&state.cityCentre&&b.latitude&&b.longitude){
+        var cdistKm=haversineKm(state.cityCentre.lat,state.cityCentre.lng,b.latitude,b.longitude)
+        if(cdistKm<1){distBadge='<span class="zh-dist-badge">📍 '+(cdistKm*1000).toFixed(0)+' m away</span>'}
+        else{distBadge='<span class="zh-dist-badge">📍 '+cdistKm.toFixed(1)+' km away</span>'}
       }else if(b.distance_km){
         if(b.distance_km<1){distBadge='<span class="zh-dist-badge">📍 '+(b.distance_km*1000).toFixed(0)+' m away</span>'}
         else{distBadge='<span class="zh-dist-badge">📍 '+b.distance_km.toFixed(1)+' km away</span>'}

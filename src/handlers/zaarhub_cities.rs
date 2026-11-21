@@ -400,7 +400,8 @@ pub async fn search_listings(
     let (lat, lng, radius) = (params.lat, params.lng, params.radius);
 
     // A blank box is not a filter: with nothing to search on, answer empty rather than list everything.
-    if search_term.is_empty() && category.is_empty() {
+    // A CITY alone IS a filter (browse that city / its centre-radius catchment), so it keeps the query live.
+    if search_term.is_empty() && category.is_empty() && city.is_empty() {
         return Ok(Json(json!({
             "results": [],
             "deals": [],
