@@ -1165,6 +1165,33 @@ a:hover{text-decoration:underline}
      supporting article can be filed under.</p>
 </div>
 
+
+<div class="card" id="night-day">
+  <h3><span class="emoji">🌓</span> 25. Night and day mode</h3>
+  <p>Every console has a <strong>Night mode / Day mode</strong> switch so it is not stuck in one look. It lives in the
+     header of the admin panel and each portal: <code>/admin-panel</code>, <code>/portal</code>, <code>/visitor</code>,
+     <code>/supplier</code>.</p>
+  <ul>
+    <li>Click <strong>☀️ Day mode</strong> or <strong>🌙 Night mode</strong> to flip it.</li>
+    <li>The choice is remembered between visits and survives signing out.</li>
+    <li>Until a person chooses, the console follows the device's own light/dark setting — no one is handed the wrong theme.</li>
+    <li>There is no flash on load: the theme is applied before the page paints.</li>
+  </ul>
+</div>
+
+<div class="card" id="mcp-bot">
+  <h3><span class="emoji">🤖</span> 26. MCP / Bot Access</h3>
+  <p>Multi-Directory is administered by bots over two doors. The admin panel's <strong>🤖 MCP / Bot Access</strong> tab
+     shows both addresses, and <strong>🧩 API Access &amp; Webhooks</strong> is where the key comes from.</p>
+  <ul>
+    <li><strong>Read — MCP endpoint:</strong> <code>https://mcp.swiftsoftware.net/mcp</code></li>
+    <li><strong>Write — API endpoint:</strong> <code>https://zaarhub.com/api/v1</code></li>
+  </ul>
+  <p>Give a bot both addresses plus an <strong>API key</strong>. The key is what keeps directories separate: a directory
+     owner's key reaches only their own directory; the operator's key reaches every directory. A bot for one directory
+     can never control another.</p>
+</div>
+
 <a href="/guides/index.html" class="back-link">← Back to All Guides</a>
 
 </div>
