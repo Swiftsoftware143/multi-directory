@@ -652,6 +652,14 @@ a.zh-city-card{display:block;text-decoration:none;color:inherit}
 .zh-skip-link:focus{left:0;outline:3px solid #fbbf24}
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
 </style>
+<style>
+.zh-account-wrap{position:relative;flex-shrink:0}
+.zh-account-menu{position:absolute;right:0;top:calc(100% + 10px);min-width:230px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);z-index:1000;overflow:hidden;text-align:left}
+.zh-account-item{display:block;width:100%;padding:11px 16px;font-size:.86rem;color:#111827;text-decoration:none;text-align:left;background:none;border:0;cursor:pointer;transition:background .15s;font-family:inherit;box-sizing:border-box}
+.zh-account-item:hover{background:#f1f5f9}
+.zh-account-signout{border-top:1px solid #e2e8f0;color:#dc2626;font-weight:600}
+.zh-account-signout:hover{background:#fef2f2;color:#b91c1c}
+</style>
 
 <div class="zh-loading-full" id="splash-load">
   <div class="zh-logo-load" style="margin-bottom:4px"><span class="logo-emoji-splash">🌐</span> Zaar<span>Hub</span> <span style="font-weight:400;font-size:.9rem;color:#94a3b8">Community</span></div>
@@ -1283,9 +1291,12 @@ function renderShell(){
     <button class="zh-notif-bell" onclick="location.hash='#/notifications'" title="Notifications" style="background:none;border:none;cursor:pointer">
       🔔<span class="zh-notif-dot" id="zh-notif-dot"></span>
     </button>
-    <a href="/visitor" class="zh-btn-primary" id="zh-signin-btn" style="padding:8px 18px;font-size:.82rem;background:var(--primary);color:#fff;border-radius:100px;white-space:nowrap;flex-shrink:0">
-      👤 Sign In
-    </a>
+    <div class="zh-account-wrap" id="zh-account-wrap">
+      <a href="/visitor" class="zh-btn-primary" id="zh-signin-btn" onclick="return zhAccountClick(event)" style="padding:8px 18px;font-size:.82rem;background:var(--primary);color:#fff;border-radius:100px;white-space:nowrap;flex-shrink:0;cursor:pointer">
+        👤 Sign In
+      </a>
+      <div class="zh-account-menu" id="zh-account-menu" style="display:none"></div>
+    </div>
     <div class="zh-role-switcher" id="zh-role-switcher" style="display:none">
       <button class="active" data-role="resident" onclick="switchRole('resident',this)">Resident View</button>
       <button data-role="owner" onclick="switchRole('owner',this)">Owner Dashboard</button>
@@ -4120,6 +4131,43 @@ function currentShopper(){
   }catch(e){return null}
 }
 function showAuthModal(){window.location.href='/visitor'}
+function zhCurrentUser(){return currentShopper()||state.authUser}
+function zhHasOwnerAccounts(){
+  var u=zhCurrentUser()
+  if(!u)return false
+  if(u.is_business_owner===true)return true
+  return !!(u.owner_accounts&&u.owner_accounts.length>0)
+}
+function zhAccountClick(e){
+  if(!zhCurrentUser())return true
+  if(e&&e.preventDefault)e.preventDefault()
+  var m=document.getElementById('zh-account-menu')
+  if(m)m.style.display=(m.style.display==='none')?'block':'none'
+  return false
+}
+function renderAccountMenu(){
+  var m=document.getElementById('zh-account-menu')
+  var u=zhCurrentUser()
+  if(!m)return
+  if(!u){m.style.display='none';return}
+  var h=[]
+  h.push('<a class="zh-account-item" href="/visitor">👤 My Account</a>')
+  h.push('<a class="zh-account-item" href="#/saved">❤️ Saved Places</a>')
+  h.push('<a class="zh-account-item" href="#/deals">🎁 Deals &amp; Perks</a>')
+  if(zhHasOwnerAccounts())h.push('<a class="zh-account-item" href="/portal">💼 Owner Dashboard</a>')
+  h.push('<button class="zh-account-item zh-account-signout" onclick="zhSignOut()">🚪 Sign Out</button>')
+  m.innerHTML=h.join('')
+}
+function zhSignOut(){
+  try{['visitorToken','visitorInfo','zh_token','zh_user','authUser'].forEach(function(k){localStorage.removeItem(k)})}catch(e){}
+  window.location.href='/'
+}
+document.addEventListener('click',function(e){
+  var wrap=document.getElementById('zh-account-wrap')
+  var m=document.getElementById('zh-account-menu')
+  if(m&&wrap&&!wrap.contains(e.target)){m.style.display='none'}
+  else if(m&&e.target&&e.target.closest&&e.target.closest('.zh-account-item')){m.style.display='none'}
+})
 try{Object.defineProperty(window,'authUser',{get:currentShopper,configurable:true})}catch(e){}
 // Initialize role mode
 state.roleMode=getRoleMode()
@@ -4132,8 +4180,9 @@ setTimeout(function(){
   var switcher=document.getElementById('zh-role-switcher')
   if(signinBtn){
     if(_authUser){
-      signinBtn.innerHTML='👤 '+esc(_authUser.name||'My Account')
+      signinBtn.innerHTML='👤 '+esc(_authUser.name||'My Account')+' ▾'
       signinBtn.href='/visitor'
+      renderAccountMenu()
     }
   }
   // Check if user has owner accounts (placeholder logic)

@@ -143,6 +143,7 @@ pub struct VisitorAccountResponse {
     pub directory_id: Option<Uuid>,
     pub is_active: bool,
     pub created_at: chrono::DateTime<Utc>,
+    pub is_business_owner: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -611,6 +612,7 @@ pub async fn visitor_register(
                 directory_id: visitor.directory_id,
                 is_active: visitor.is_active,
                 created_at: visitor.created_at,
+                is_business_owner: false,
             },
         })),
     ))
@@ -672,6 +674,12 @@ pub async fn visitor_login(
     };
     let token = create_token(&claims, &s.config.jwt_secret)?;
 
+    // Line 47 (account entry): a visitor who has claimed a business is also a business owner, so
+    // the account menu can offer the owner dashboard from the same top-right entry point.
+    let is_business_owner = crate::auth::handlers::claimed_business_for(&s.db, visitor.id)
+        .await
+        .is_some();
+
     Ok(Json(json!({
         "access_token": token,
         "token_type": "Bearer",
@@ -684,6 +692,7 @@ pub async fn visitor_login(
             directory_id: visitor.directory_id,
             is_active: visitor.is_active,
             created_at: visitor.created_at,
+            is_business_owner,
         },
     })))
 }
@@ -775,6 +784,10 @@ pub async fn visitor_profile(
         Vec::new()
     });
 
+    let is_business_owner = crate::auth::handlers::claimed_business_for(&s.db, visitor.id)
+        .await
+        .is_some();
+
     Ok(Json(json!({
         "visitor": {
             "id": visitor.id,
@@ -784,6 +797,7 @@ pub async fn visitor_profile(
             "directory_id": visitor.directory_id,
             "is_active": visitor.is_active,
             "created_at": visitor.created_at,
+            "is_business_owner": is_business_owner,
         },
         "saved_deals": saved_deals.into_iter().map(|(id, title, desc, discount, img)| {
             json!({
