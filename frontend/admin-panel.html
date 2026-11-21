@@ -13609,7 +13609,7 @@
       rows.forEach(function (t) {
         var badge = t.is_platform ? ' <span class="badge">your account</span>'
                  : (t.kind === 'directory' ? ' <span class="badge">your company</span>' : '');
-        var inactive = t.is_active ? '' : ' <span class="badge" style="background:rgba(239,68,68,.18);color:#f87171">inactive</span>';
+        var inactive = (t.is_active === false) ? ' <span class="badge" style="background:rgba(239,68,68,.18);color:#f87171">inactive</span>' : '';
         h += '<tr><td>' + esc(t.name) + badge + inactive + '</td><td>' + esc(t.slug) + '</td>';
         if (showCounts) h += '<td>' + num(t.users) + '</td><td>' + num(t.directories) + '</td>';
         h += '<td>' + actionCell(t) + '</td></tr>';
