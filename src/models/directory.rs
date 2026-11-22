@@ -279,6 +279,15 @@ pub struct UpdateBusinessRequest {
     /// CoreSwift booking calendar widget on/off per business. Absent leaves the stored value
     /// untouched (partial update never wipes it); `false` turns it off; `true` turns it on.
     pub booking_widget_enabled: Option<bool>,
+    /// Ecosystem widgets (work-queue "ECOSYSTEM WIDGETS", increment 2): the operator turns the
+    /// IncentiveSwift campaign widget on/off per business. Absent leaves the stored value
+    /// untouched; `false` turns it off; `true` turns it on.
+    pub incentive_widget_enabled: Option<bool>,
+    /// The business's external id in IncentiveSwift — the campaign slug the widget embeds.
+    /// An empty/whitespace string CLEARS it (so the widget has nothing to render and the
+    /// operator can drop the link without deleting the row); omitting the field leaves the
+    /// stored value untouched.
+    pub incentive_campaign_slug: Option<String>,
 }
 
 /// Distinguish a field that is ABSENT from one explicitly set to JSON `null`. Plain

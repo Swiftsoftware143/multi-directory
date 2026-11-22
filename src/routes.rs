@@ -2480,6 +2480,11 @@ pub fn create_router(s: AppState) -> Router {
         )
         // ? Public booking page (no auth required, also outside the auth middleware)
         .route("/book/:slug/:business_id", get(booking_page::booking_page))
+        // ? Public IncentiveSwift campaign widget (no auth required, outside the auth middleware)
+        .route(
+            "/campaign/:slug/:business_id",
+            get(campaign_widget::campaign_widget),
+        )
         // ? Stage 5: Service Booking system (visitor booking flow)
         .route(
             "/bookings",

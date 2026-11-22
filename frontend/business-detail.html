@@ -317,6 +317,18 @@ a:hover{text-decoration:underline}
             style="width:100%;height:940px;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>
         </div>
 
+        <!-- 🎁 Special Offer (ecosystem widget, work-queue "ECOSYSTEM WIDGETS" increment 2).
+             When the operator has flipped incentive_widget_enabled AND set a campaign slug, the
+             IncentiveSwift campaign is embedded so the visitor captures the offer INSIDE the
+             directory instead of being hyperlinked off-site. Off (or blank slug) = no widget,
+             no empty box. -->
+        <div class="card" id="incentiveWidgetCard" style="display:none">
+          <div class="card-title">🎁 Special Offer</div>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Take a moment to unlock this business's current offer.</p>
+          <iframe id="incentiveWidgetFrame" title="Special offer" loading="lazy"
+            style="width:100%;height:460px;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>
+        </div>
+
         <!-- Business Hours -->
         <div class="card">
           <div class="card-title">🕐 Business Hours</div>
@@ -841,6 +853,23 @@ function renderBusiness() {
     } else {
       bwCard.style.display = 'none';
       bwFrame.src = '';
+    }
+  }
+
+  // 🎁 Special Offer — ecosystem widget increment 2: when the operator enabled the IncentiveSwift
+  // campaign widget AND set a campaign slug, embed it inline so the visitor captures the offer
+  // INSIDE the directory. Off (or a legacy `business_listings` row) leaves the card hidden — no
+  // widget, no empty box.
+  const iwCard = document.getElementById('incentiveWidgetCard');
+  const iwFrame = document.getElementById('incentiveWidgetFrame');
+  if (iwCard && iwFrame) {
+    if (b.incentive_widget_enabled && b.incentive_campaign_slug) {
+      const dirSlug = b.directory_slug || 'z';
+      iwFrame.src = '/api/v1/campaign/' + encodeURIComponent(dirSlug) + '/' + encodeURIComponent(b.id || '');
+      iwCard.style.display = '';
+    } else {
+      iwCard.style.display = 'none';
+      iwFrame.src = '';
     }
   }
 

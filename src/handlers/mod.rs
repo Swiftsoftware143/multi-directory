@@ -61,6 +61,7 @@ pub mod booking_page;
 pub mod bookings;
 pub mod business_articles;
 pub mod business_dashboard;
+pub mod campaign_widget;
 pub mod checkout_handler;
 pub mod content_seo;
 pub mod coop;

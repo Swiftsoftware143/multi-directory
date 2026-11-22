@@ -1679,6 +1679,11 @@ struct BizDetail {
     /// Ecosystem widgets (work-queue "ECOSYSTEM WIDGETS"): the operator turned the CoreSwift
     /// booking calendar widget on for this business. FALSE for `business_listings` rows.
     booking_widget_enabled: bool,
+    /// Ecosystem widgets (work-queue "ECOSYSTEM WIDGETS", increment 2): the operator turned the
+    /// IncentiveSwift campaign widget on for this business. FALSE for `business_listings` rows.
+    incentive_widget_enabled: bool,
+    /// The business's IncentiveSwift campaign slug (its external id there). None when unset.
+    incentive_campaign_slug: Option<String>,
 }
 
 /// Where uploaded business images actually live (the container mounts this path at the
@@ -1900,7 +1905,9 @@ pub async fn get_business_detail(
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
                       b.licensed, b.insured, b.neighbourhood,
-                      COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled
+                      COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled,
+                      COALESCE(b.incentive_widget_enabled, false) AS incentive_widget_enabled,
+                      b.incentive_campaign_slug AS incentive_campaign_slug
                FROM businesses b
                WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true
                  AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
@@ -1918,7 +1925,9 @@ pub async fn get_business_detail(
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
                       b.licensed, b.insured, b.neighbourhood,
-                      COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled
+                      COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled,
+                      COALESCE(b.incentive_widget_enabled, false) AS incentive_widget_enabled,
+                      b.incentive_campaign_slug AS incentive_campaign_slug
                FROM businesses b
                WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true
                  AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
@@ -1967,6 +1976,10 @@ pub async fn get_business_detail(
             booking_widget_enabled: r
                 .try_get::<Option<bool>, _>("booking_widget_enabled")?
                 .unwrap_or(false),
+            incentive_widget_enabled: r
+                .try_get::<Option<bool>, _>("incentive_widget_enabled")?
+                .unwrap_or(false),
+            incentive_campaign_slug: r.try_get("incentive_campaign_slug")?,
         }
     } else if let Ok(bid) = Uuid::parse_str(&id) {
         let r = sqlx::query(
@@ -2030,6 +2043,8 @@ pub async fn get_business_detail(
             business_id: r.try_get("business_id")?,
             is_listing: true,
             booking_widget_enabled: false,
+            incentive_widget_enabled: false,
+            incentive_campaign_slug: None,
         }
     } else {
         return Err(AppError::NotFound("Business not found".to_string()));
@@ -2295,6 +2310,9 @@ pub async fn get_business_detail(
         "neighbourhood": biz.neighbourhood,
         // Ecosystem widgets: CoreSwift booking calendar switch (off = no widget, no empty box).
         "booking_widget_enabled": biz.booking_widget_enabled,
+        // Ecosystem widgets increment 2: IncentiveSwift campaign widget (off/blank slug = none).
+        "incentive_widget_enabled": biz.incentive_widget_enabled,
+        "incentive_campaign_slug": biz.incentive_campaign_slug,
         "source": if biz.is_listing { "listing" } else { "business" },
         "images": photos.clone(),
         "photos": photos,

@@ -72,6 +72,8 @@ FROM (
            b.insured,
            b.neighbourhood,
            COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled,
+           COALESCE(b.incentive_widget_enabled, false) AS incentive_widget_enabled,
+           b.incentive_campaign_slug AS incentive_campaign_slug,
            (SELECT bm.meta_data->'hours' FROM business_meta bm
              WHERE bm.business_id = b.id AND bm.meta_data ? 'hours' LIMIT 1) AS hours,
            (SELECT bm.meta_data->>'response_time' FROM business_meta bm

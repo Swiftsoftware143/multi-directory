@@ -149,6 +149,8 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/blog/internal-links/suggestions", "suggestions"),
     // --- /book -------------------------------------------------------
     ("GET", "/book/:slug/:business_id", "booking-page"),
+    // --- /campaign (IncentiveSwift widget) ---------------------------
+    ("GET", "/campaign/:slug/:business_id", "campaign-widget"),
     // --- /bookings ---------------------------------------------------
     ("POST", "/bookings", "booking-create"),
     // --- /bookmarks --------------------------------------------------
