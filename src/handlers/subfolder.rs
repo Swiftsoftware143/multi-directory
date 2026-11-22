@@ -2713,6 +2713,28 @@ async fn resolve_category(pool: &PgPool, dir: &DirectoryRec, raw: &str) -> Optio
     .filter(|n| !n.trim().is_empty())
 }
 
+/// Crawlable category-page slug for a programmatic page's SERVICE name (work queue
+/// PROGRAMMATIC PAGES line 76: "internal links ... up to the category page"). Matches
+/// the service's own name against `directory_categories` (directory-scoped first, then
+/// global), the same name-keyed join `list_businesses` uses. Returns `None` when the
+/// service spans several categories (e.g. "Restaurant") or has no category, so the
+/// programmatic page never links a 404.
+async fn category_slug_for(pool: &PgPool, dir: &DirectoryRec, name: &str) -> Option<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT dc.slug FROM directory_categories dc \
+         WHERE lower(dc.name) = lower($1) \
+           AND (dc.directory_id = $2 OR dc.directory_id IS NULL) \
+         ORDER BY dc.directory_id NULLS LAST LIMIT 1",
+    )
+    .bind(name)
+    .bind(dir.id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|s| !s.trim().is_empty())
+}
+
 pub async fn businesses_page(
     pool: &PgPool,
     host: Option<&str>,
@@ -6468,6 +6490,24 @@ async fn render_programmatic_page(
         )
     };
 
+    // "Up to the category page" internal link (work queue PROGRAMMATIC PAGES line 76).
+    // Only when the service maps to a real category page; omitted otherwise so the
+    // page never links a 404 (e.g. "Restaurant" spans several food categories).
+    let cat_link = match service_name.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(svc) => match category_slug_for(pool, dir, svc).await {
+            Some(cat_slug) => format!(
+                "<a href=\"{}/{}/{}\">All {} businesses in {}</a> &middot; ",
+                h(&base),
+                h(&dir.slug),
+                h(&cat_slug),
+                h(svc),
+                h(&dir.city)
+            ),
+            None => String::new(),
+        },
+        None => String::new(),
+    };
+
     // The beacon `POST /programmatic-pages/:page_id/track` was written for.
     // The endpoint is auth-exempt for POST only (see `auth_guard`).
     let beacon = format!(
@@ -6495,7 +6535,7 @@ catch(e){{}}}})();</script>",
 {local_area}
 {content}
 {business_list}
-<p class="row" style="margin-top:24px"><a href="{base}/{dslug}/businesses">Browse {city} businesses</a> &middot; <a href="{base}/{dslug}">More about {city}</a></p>
+<p class="row" style="margin-top:24px">{cat_link}<a href="{base}/{dslug}/businesses">Browse {city} businesses</a> &middot; <a href="{base}/{dslug}">More about {city}</a></p>
 </article>
 {beacon}
 {end}"#,
@@ -6512,6 +6552,7 @@ catch(e){{}}}})();</script>",
         local_area = local_area,
         content = crate::template_engine::sanitize_html(&content),
         business_list = business_list,
+        cat_link = cat_link,
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
