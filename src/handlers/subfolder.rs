@@ -78,6 +78,103 @@ fn strip_tags(s: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// State geography — US state code → name, and a generic slugifier (work-queue
+// line 52: the long-term city nav's crawlable state level). A directory can
+// live anywhere in the world, so an unknown code is slugified as-is rather
+// than dropped — never hardcode a directory's own region/country.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const US_STATE_NAMES: &[(&str, &str)] = &[
+    ("AL", "Alabama"),
+    ("AK", "Alaska"),
+    ("AZ", "Arizona"),
+    ("AR", "Arkansas"),
+    ("CA", "California"),
+    ("CO", "Colorado"),
+    ("CT", "Connecticut"),
+    ("DE", "Delaware"),
+    ("DC", "District of Columbia"),
+    ("FL", "Florida"),
+    ("GA", "Georgia"),
+    ("HI", "Hawaii"),
+    ("ID", "Idaho"),
+    ("IL", "Illinois"),
+    ("IN", "Indiana"),
+    ("IA", "Iowa"),
+    ("KS", "Kansas"),
+    ("KY", "Kentucky"),
+    ("LA", "Louisiana"),
+    ("ME", "Maine"),
+    ("MD", "Maryland"),
+    ("MA", "Massachusetts"),
+    ("MI", "Michigan"),
+    ("MN", "Minnesota"),
+    ("MS", "Mississippi"),
+    ("MO", "Missouri"),
+    ("MT", "Montana"),
+    ("NE", "Nebraska"),
+    ("NV", "Nevada"),
+    ("NH", "New Hampshire"),
+    ("NJ", "New Jersey"),
+    ("NM", "New Mexico"),
+    ("NY", "New York"),
+    ("NC", "North Carolina"),
+    ("ND", "North Dakota"),
+    ("OH", "Ohio"),
+    ("OK", "Oklahoma"),
+    ("OR", "Oregon"),
+    ("PA", "Pennsylvania"),
+    ("RI", "Rhode Island"),
+    ("SC", "South Carolina"),
+    ("SD", "South Dakota"),
+    ("TN", "Tennessee"),
+    ("TX", "Texas"),
+    ("UT", "Utah"),
+    ("VT", "Vermont"),
+    ("VA", "Virginia"),
+    ("WA", "Washington"),
+    ("WV", "West Virginia"),
+    ("WI", "Wisconsin"),
+    ("WY", "Wyoming"),
+];
+
+/// Full display name for a state code ("FL" → "Florida"). A two-letter code
+/// that is not a known US state (or a longer value already a full name) is
+/// returned unchanged.
+fn us_state_name(code: &str) -> String {
+    let c = code.trim();
+    if c.len() == 2 {
+        let up = c.to_ascii_uppercase();
+        if let Some((_, name)) = US_STATE_NAMES.iter().find(|(cc, _)| *cc == up) {
+            return (*name).to_string();
+        }
+    }
+    c.to_string()
+}
+
+/// Lowercase slug from arbitrary text: alphanumerics stay, everything else
+/// collapses to a single `-`. "New York" → "new-york", "FL" → "fl".
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = true;
+    for ch in s.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    out.trim_end_matches('-').to_string()
+}
+
+/// The crawlable slug for a directory's stored state code ("FL" → "florida").
+fn state_slug(code: &str) -> String {
+    slugify(&us_state_name(code))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Origin / URL construction — derived from the request Host, never hardcoded.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -961,6 +1058,69 @@ fn inject_city_document(
     match with_nav.rfind("</body>") {
         Some(pos) => {
             eprintln!("subfolder: homepage shell has no empty #app — city listings appended at <body> end");
+            format!("{}{}{}", &with_nav[..pos], app_html, &with_nav[pos..])
+        }
+        None => format!("{}{}", with_nav, app_html),
+    }
+}
+
+/// Like `inject_city_document` but for a NETWORK-level page (the all-cities
+/// index and the state drill-down) that is not tied to one directory: no
+/// `window.__dir_id` attribution is set, and the same `<head>` rewrite, nav
+/// marker and `#app` content injection are applied so the page shares the
+/// homepage's markup, CSS and theme byte-for-byte.
+fn inject_static_document(
+    spa_html: &str,
+    seo: &Seo,
+    site_name: &str,
+    theme: &BrandTheme,
+    nav_html: &str,
+    app_html: &str,
+) -> String {
+    let head = head_html(seo, site_name);
+    let theme_tag = format!("<style id=\"brand-theme\">{}</style>", theme.css_block());
+    let base = strip_first_between(spa_html, "<title", "</title>");
+    let with_head = match base.rfind("</head>") {
+        Some(pos) => {
+            let mut out = String::with_capacity(base.len() + head.len() + theme_tag.len());
+            out.push_str(&base[..pos]);
+            out.push_str(&head);
+            out.push_str(&theme_tag);
+            out.push_str(&base[pos..]);
+            out
+        }
+        None => base,
+    };
+    const MARKER: &str = "<!--ZH-NAV-->";
+    let with_nav = match with_head.find(MARKER) {
+        Some(pos) => format!(
+            "{}{}{}",
+            &with_head[..pos],
+            nav_html,
+            &with_head[pos + MARKER.len()..]
+        ),
+        None => match body_open_end(&with_head) {
+            Some(pos) => {
+                eprintln!(
+                    "subfolder: homepage shell has no ZH-NAV marker — nav injected at <body>"
+                );
+                format!("{}{}{}", &with_head[..pos], nav_html, &with_head[pos..])
+            }
+            None => with_head,
+        },
+    };
+    const APP_ANCHOR: &str = "<div id=\"app\"></div>";
+    if let Some(pos) = with_nav.find(APP_ANCHOR) {
+        return format!(
+            "{}<div id=\"app\">{}</div>{}",
+            &with_nav[..pos],
+            app_html,
+            &with_nav[pos + APP_ANCHOR.len()..]
+        );
+    }
+    match with_nav.rfind("</body>") {
+        Some(pos) => {
+            eprintln!("subfolder: homepage shell has no empty #app — network content appended at <body> end");
             format!("{}{}{}", &with_nav[..pos], app_html, &with_nav[pos..])
         }
         None => format!("{}{}", with_nav, app_html),
@@ -2086,7 +2246,7 @@ pub async fn home_nav_html(pool: &PgPool) -> String {
     }
 
     let mut links: Vec<(String, String)> = Vec::new();
-    push_link(&mut links, "All cities", "/zaarhub", "/");
+    push_link(&mut links, "All cities", "/cities", "/");
     push_link(&mut links, "Customer sign in", "/visitor", "/");
     push_link(&mut links, "Business login", "/portal", "/");
     push_link(
@@ -5911,13 +6071,284 @@ pub fn not_found_page(msg: &str) -> Response<Body> {
 <body style=\"font-family:system-ui,-apple-system,sans-serif;max-width:640px;margin:80px auto;padding:0 24px;line-height:1.6\">\
 <style>.zh-nf-link{{display:inline-block;padding:6px 12px;border:1px solid #cbd5e1;border-radius:999px;color:#0f172a;text-decoration:none}}.zh-nf-link:hover{{border-color:#f27f2f;color:#f27f2f}}</style>\
 <nav class=\"zh-crumbs\" aria-label=\"Breadcrumb\" style=\"font-size:13px;color:#6b7280\"><a href=\"/\" style=\"color:#f27f2f;text-decoration:none\">ZaarHub</a> <span style=\"opacity:.5;margin:0 6px\">&#8250;</span> <span aria-current=\"page\">Page not found</span></nav><h1 style=\"font-size:1.6rem\">Page not found</h1><p>{}</p>\
-<ul style=\"list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:20px\"><li><a href=\"/\" class=\"zh-nf-link\">Go to the homepage</a></li><li><a href=\"/zaarhub\" class=\"zh-nf-link\">Browse all cities</a></li><li><a href=\"/guides/index.html\" class=\"zh-nf-link\">Read the guides</a></li><li><a href=\"/claim.html\" class=\"zh-nf-link\">Claim your business</a></li></ul></body></html>",
+<ul style=\"list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:20px\"><li><a href=\"/\" class=\"zh-nf-link\">Go to the homepage</a></li><li><a href=\"/cities\" class=\"zh-nf-link\">Browse all cities</a></li><li><a href=\"/guides/index.html\" class=\"zh-nf-link\">Read the guides</a></li><li><a href=\"/claim.html\" class=\"zh-nf-link\">Claim your business</a></li></ul></body></html>",
         h(msg)
     );
     let mut r = html_response(StatusCode::NOT_FOUND, body);
     r.headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     r
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Network city nav — the all-cities index and the state drill-down (work-queue
+// line 52 b/c/d). Two crawlable pages that link EVERY active city, so the
+// long-term region → state → city navigation needs no rework at ~100 cities.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The brand name for network-level pages (home / all-cities / state). The
+/// active network's name wins, then the platform default — never the request
+/// host, never a compile-time literal.
+async fn home_brand_name(pool: &PgPool) -> String {
+    let name: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM networks WHERE status = 'active' \
+         ORDER BY (slug = 'zaarhub') DESC, created_at LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    if let Some(n) = name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        return n;
+    }
+    crate::brand_theme::default_brand_name(pool).await
+}
+
+/// One active directory's geography, for the index and state pages.
+struct GeoCity {
+    slug: String,
+    city: String,
+    state: String,
+    region: String,
+}
+
+/// Active directories with their geography, ordered alphabetically by city.
+async fn geo_cities(pool: &PgPool) -> Vec<GeoCity> {
+    let rows = sqlx::query(
+        "SELECT slug, city, COALESCE(NULLIF(btrim(state), ''), 'FL') AS state, \
+                COALESCE(NULLIF(btrim(region), ''), '') AS region \
+         FROM directories \
+         WHERE (status = 'active' OR status IS NULL) \
+           AND slug IS NOT NULL AND slug <> '' \
+           AND city IS NOT NULL AND city <> '' \
+         ORDER BY city ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| eprintln!("subfolder: geo-cities query failed: {e}"))
+    .unwrap_or_default();
+
+    let mut out = Vec::new();
+    for r in rows {
+        let slug: String = r.try_get("slug").unwrap_or_default();
+        let city: String = r.try_get("city").unwrap_or_default();
+        if slug.is_empty() || city.is_empty() {
+            continue;
+        }
+        out.push(GeoCity {
+            slug,
+            city,
+            state: r.try_get("state").unwrap_or_default(),
+            region: r.try_get("region").unwrap_or_default(),
+        });
+    }
+    out
+}
+
+/// The crawlable city-card markup shared by the index and state pages.
+fn geo_city_card(c: &GeoCity, state_name: &str) -> String {
+    let meta = if c.region.is_empty() {
+        state_name.to_string()
+    } else {
+        format!("{} · {}", state_name, h(&c.region))
+    };
+    format!(
+        "<a href=\"/{slug}\" style=\"display:block;padding:14px 16px;border:1px solid #e5e7eb;\
+border-radius:12px;text-decoration:none;color:inherit;background:#fff\">\
+<strong style=\"display:block;font-size:1rem\">{city}</strong>\
+<span style=\"font-size:.85rem;color:#6b7280\">{meta} &#8594;</span></a>",
+        slug = h(&c.slug),
+        city = h(&c.city),
+        meta = meta
+    )
+}
+
+/// GET `/cities` — the alphabetical city index, the SEO safety net: one
+/// crawlable page that links every active city and each state page.
+async fn cities_index_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    spa_html: &str,
+) -> Option<Response<Body>> {
+    let cities = geo_cities(pool).await;
+    if cities.is_empty() {
+        return None;
+    }
+    let base = origin(host, proto, fallback_domain);
+    let site = home_brand_name(pool).await;
+    let theme = crate::brand_theme::theme_for_home(pool).await;
+    let canonical = format!("{}/cities", base);
+    let n = cities.len();
+
+    let title = format!("All Cities | {}", site);
+    let description = clip(
+        &format!(
+            "Browse every local business directory on {} — {} cities, each with its own listings, reviews and deals.",
+            site, n
+        ),
+        158,
+    );
+
+    // Distinct states, in first-appearance (alphabetical city) order, so the
+    // state drill-down pages are reachable from the index.
+    let mut state_codes: Vec<&str> = Vec::new();
+    for c in &cities {
+        if !state_codes.contains(&c.state.as_str()) {
+            state_codes.push(c.state.as_str());
+        }
+    }
+    let mut state_chips = String::new();
+    for code in &state_codes {
+        let name = us_state_name(code);
+        state_chips.push_str(&format!(
+            "<a href=\"/{slug}\" style=\"display:inline-block;padding:7px 13px;border:1px solid #e5e7eb;\
+border-radius:999px;text-decoration:none;color:inherit;background:#fff;font-size:.88rem;margin:0 8px 8px 0\">{name}</a>",
+            slug = h(&state_slug(code)),
+            name = h(&name)
+        ));
+    }
+
+    let mut cards = String::new();
+    for c in &cities {
+        cards.push_str(&geo_city_card(c, &us_state_name(&c.state)));
+    }
+
+    let app_html = format!(
+        "<section id=\"zh-cities-index\" style=\"max-width:1100px;margin:24px auto 48px;padding:0 20px;font-family:inherit;line-height:1.6;color:#111827\">\
+<h1 style=\"font-size:clamp(1.5rem,3vw,2rem);margin:0 0 14px\">All cities</h1>\
+<p style=\"margin:0 0 16px;max-width:70ch\">Every local business directory on {} — {} cities, each with its own front page, categories, reviews and deals. Pick the town you live in to browse its businesses.</p>\
+<div style=\"margin:0 0 22px\">{}</div>\
+<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px\">{}</div>\
+</section>",
+        h(&site),
+        n,
+        state_chips,
+        cards
+    );
+
+    let jsonld = vec![
+        serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            "name": title,
+            "description": description,
+            "url": canonical,
+        }),
+        breadcrumb_ld(&[(&site, &format!("{}/", base)), ("All cities", &canonical)]),
+    ];
+
+    let seo = Seo {
+        title,
+        description,
+        canonical: canonical.clone(),
+        og_type: "website".into(),
+        og_image: None,
+        jsonld,
+    };
+    let nav_html = nav_strip(
+        &breadcrumbs(&[
+            (site.as_str(), &format!("{}/", base)),
+            ("All cities", &canonical),
+        ]),
+        "",
+    );
+    let body = inject_static_document(spa_html, &seo, &site, &theme, &nav_html, &app_html);
+    Some(html_response(StatusCode::OK, body))
+}
+
+/// GET `/<state-slug>` — one crawlable page per state, listing every city in
+/// that state as a real link. Returns `None` when the slug names no state, so
+/// the dispatcher falls through to its existing 404 (never a soft one).
+async fn state_index_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    spa_html: &str,
+    slug: &str,
+) -> Option<Response<Body>> {
+    let cities = geo_cities(pool).await;
+    if cities.is_empty() {
+        return None;
+    }
+    // Resolve the URL slug to a state actually present among the directories.
+    let matched: Vec<&GeoCity> = cities
+        .iter()
+        .filter(|c| state_slug(&c.state).eq_ignore_ascii_case(slug))
+        .collect();
+    if matched.is_empty() {
+        return None;
+    }
+    let state_code = matched[0].state.clone();
+    let state_name = us_state_name(&state_code);
+
+    let base = origin(host, proto, fallback_domain);
+    let site = home_brand_name(pool).await;
+    let theme = crate::brand_theme::theme_for_home(pool).await;
+    let canonical = format!("{}/{}", base, slugify(slug));
+    let n = matched.len();
+
+    let title = format!("Local Businesses in {} | {}", state_name, site);
+    let description = clip(
+        &format!(
+            "Browse local businesses in {} — {} cities, each with its own listings, reviews and deals on {}.",
+            state_name, n, site
+        ),
+        158,
+    );
+
+    let mut cards = String::new();
+    for c in &matched {
+        cards.push_str(&geo_city_card(c, &state_name));
+    }
+
+    let app_html = format!(
+        "<section id=\"zh-state-index\" style=\"max-width:1100px;margin:24px auto 48px;padding:0 20px;font-family:inherit;line-height:1.6;color:#111827\">\
+<h1 style=\"font-size:clamp(1.5rem,3vw,2rem);margin:0 0 14px\">Local businesses in {}</h1>\
+<p style=\"margin:0 0 22px;max-width:70ch\">{} cities, each its own directory with its own front page, categories, reviews and deals. Pick your town to browse its businesses.</p>\
+<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px\">{}</div>\
+</section>",
+        h(&state_name),
+        n,
+        cards
+    );
+
+    let jsonld = vec![
+        serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            "name": title,
+            "description": description,
+            "url": canonical,
+            "about": {"@type": "AdministrativeArea", "name": state_name},
+        }),
+        breadcrumb_ld(&[
+            (&site, &format!("{}/", base)),
+            ("All cities", &format!("{}/cities", base)),
+            (&state_name, &canonical),
+        ]),
+    ];
+
+    let seo = Seo {
+        title,
+        description,
+        canonical: canonical.clone(),
+        og_type: "website".into(),
+        og_image: None,
+        jsonld,
+    };
+    let nav_html = nav_strip(
+        &breadcrumbs(&[
+            (site.as_str(), &format!("{}/", base)),
+            ("All cities", &format!("{}/cities", base)),
+            (&state_name, &canonical),
+        ]),
+        "",
+    );
+    let body = inject_static_document(spa_html, &seo, &site, &theme, &nav_html, &app_html);
+    Some(html_response(StatusCode::OK, body))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5991,6 +6422,14 @@ pub async fn try_render(
                 if let Some(resp) =
                     directory_home(pool, host, proto, fallback_domain, slug, spa_html).await
                 {
+                    Some(resp)
+                } else if slug.eq_ignore_ascii_case("cities") {
+                    // /cities — the network's all-cities index (line 52c).
+                    cities_index_page(pool, host, proto, fallback_domain, spa_html).await
+                } else if let Some(resp) =
+                    state_index_page(pool, host, proto, fallback_domain, spa_html, slug).await
+                {
+                    // /<state-slug> — the state drill-down page (line 52b).
                     Some(resp)
                 } else if let Some(dir) = directory_from_host(pool, host, fallback_domain).await {
                     match render_programmatic_page(pool, host, proto, fallback_domain, &dir, slug)
@@ -6140,14 +6579,19 @@ async fn apply_code_injection(
         return Some(resp);
     }
 
-    let row = sqlx::query(
+    let row = match sqlx::query(
         "SELECT head_injection, body_injection, footer_injection FROM directories WHERE slug = $1",
     )
     .bind(slug)
     .fetch_optional(pool)
     .await
-    .ok()
-    .flatten()?;
+    {
+        // No directory owns this slug (a network-level page such as /cities or
+        // /<state>, or a query failure) — there is no injection to apply, so
+        // hand the page back unchanged rather than dropping it.
+        Ok(Some(row)) => row,
+        _ => return Some(resp),
+    };
 
     let head = row
         .try_get::<Option<String>, _>("head_injection")
