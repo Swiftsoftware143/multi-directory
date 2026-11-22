@@ -303,6 +303,50 @@ pub async fn render_cities_index(
     };
 
     let footer = footer_html(&state.db).await;
+
+    // B-HERO: the homepage hero is configured in `homepage_config` (network scope, set via
+    // PUT /homepage-config/settings). Render it here so the write is actually visible.
+    let hero_cfg: Option<(
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT hero_headline, hero_subheadline, hero_image_url, hero_cta_text, hero_cta_url \
+             FROM homepage_config WHERE directory_id IS NULL AND enabled = true \
+             ORDER BY updated_at DESC LIMIT 1",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+    let (h_head, h_sub, h_img, h_cta_t, h_cta_u) =
+        hero_cfg.unwrap_or((None, None, None, None, None));
+    let hero_h1 = match h_head.clone().filter(|x| !x.trim().is_empty()) {
+        Some(t) => h(&t),
+        None => "Florida <span>Business Directory</span>".to_string(),
+    };
+    let hero_p = match h_sub.clone().filter(|x| !x.trim().is_empty()) {
+        Some(t) => h(&t),
+        None => "Browse top-rated local businesses across 10 Florida cities with thousands of listings, reviews, and deals.".to_string(),
+    };
+    let hero_style = h_img
+        .clone()
+        .filter(|x| !x.trim().is_empty())
+        .map(|i| format!("background:linear-gradient(rgba(20,20,50,.78),rgba(20,20,50,.86)),url('{}') center/cover no-repeat", i))
+        .unwrap_or_default();
+    let hero_cta = match (h_cta_t.clone(), h_cta_u.clone()) {
+        (Some(t), Some(u)) if !t.trim().is_empty() && !u.trim().is_empty() => {
+            format!("<a href=\"{}\" style=\"display:inline-block;margin-top:18px;padding:12px 26px;background:#f27f2f;color:#fff;border-radius:8px;font-weight:700;text-decoration:none\">{}</a>", h(&u), h(&t))
+        }
+        _ => String::new(),
+    };
+    let hero_html = format!(
+        "<div class=\"hero\" style=\"{}\"><h1>{}</h1><p>{}</p>{}</div>",
+        hero_style, hero_h1, hero_p, hero_cta
+    );
+
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -353,7 +397,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 {shell}
 <header><span class="logo">🌐 Zaar<span>Hub</span> <span style="font-weight:300;font-size:.85rem;opacity:.6;letter-spacing:0">Community</span></span></header>
 {crumbs}
-<div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 10 Florida cities with thousands of listings, reviews, and deals.</p></div>
+{hero}
 {picks}
 <div class="city-grid">{cities}</div>
 {explore}
@@ -361,6 +405,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 {cookie_banner}
 </body>
 </html>"#,
+        hero = hero_html,
         picks = picks_section,
         cities = cities_html,
         explore = explore_section(&[

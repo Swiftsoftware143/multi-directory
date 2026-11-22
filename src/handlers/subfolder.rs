@@ -844,6 +844,7 @@ fn city_hub_html(
     top: &[BizCard],
     intro: Option<&str>,
     cat_chips: &str,
+    hero_image: Option<&str>,
 ) -> String {
     let place = if dir.state.trim().is_empty() {
         h(&dir.city)
@@ -868,6 +869,12 @@ fn city_hub_html(
     out.push_str(
         "<div style=\"max-width:1180px;margin:0 auto;padding:26px 18px 6px;text-align:left\">",
     );
+    if let Some(img) = hero_image.filter(|i| !i.trim().is_empty()) {
+        out.push_str(&format!(
+            "<div style=\"width:100%;height:220px;background:linear-gradient(rgba(20,20,50,.20),rgba(20,20,50,.28)),url('{}') center/cover no-repeat;border-radius:12px;margin-bottom:18px\" aria-hidden=\"true\"></div>",
+            h(img)
+        ));
+    }
     out.push_str(&format!(
         "<h1 style=\"font-size:1.9rem;font-weight:800;color:#0f172a;margin:0 0 10px;line-height:1.2\">{} Business Directory</h1>",
         place
@@ -2564,6 +2571,19 @@ pub async fn directory_home(
         None => (None, None, None, None),
     };
 
+    // B-HERO: the city hero is configured in `homepage_config` (directory scope, set via
+    // PUT /homepage-config/settings). Prefer it; fall back to the legacy city_pages row.
+    let hc_hero: Option<String> = sqlx::query_scalar(
+        "SELECT hero_image_url FROM homepage_config \
+         WHERE directory_id = $1 AND enabled = true ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(dir.id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let hero_banner = hc_hero.or(hero.clone());
+
     let ov = seo_override(pool, "city", dir.id).await;
     // B119: the directory's SEO pattern for city pages (e.g. `{city} Business
     // Directory | ZaarHub`) is rendered here, so one pattern serves every city.
@@ -2590,7 +2610,10 @@ pub async fn directory_home(
         });
     let description = clip(&strip_tags(&description), 158);
 
-    let og_image = ov.as_ref().and_then(|o| o.og_image.clone()).or(hero);
+    let og_image = ov
+        .as_ref()
+        .and_then(|o| o.og_image.clone())
+        .or(hero_banner.clone());
 
     let total: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM businesses WHERE directory_id = $1 AND is_active = true",
@@ -2678,7 +2701,15 @@ pub async fn directory_home(
     // The city's own listings in the served HTML — see city_hub_html: they live inside
     // `#app`, which the SPA replaces on boot, so only non-JavaScript readers and crawlers
     // ever see them and no visitor gets the list twice.
-    let app_html = city_hub_html(&dir, &site, total, &top, city_intro.as_deref(), &cat_chips);
+    let app_html = city_hub_html(
+        &dir,
+        &site,
+        total,
+        &top,
+        city_intro.as_deref(),
+        &cat_chips,
+        hero_banner.as_deref(),
+    );
     let body = inject_city_document(spa_html, &seo, &site, &theme, dir.id, &nav_html, &app_html);
 
     Some(html_response(StatusCode::OK, body))
