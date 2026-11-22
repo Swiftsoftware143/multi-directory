@@ -116,7 +116,7 @@ pub async fn generate_programmatic_pages(
     let slug_pattern = dir.1.unwrap_or_else(|| "/{service}/{city}".into());
 
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true"
+        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true AND lower(name) NOT IN ('name','none','placeholder','other')"
     ).bind(dir_id).bind(&req.service_ids).fetch_all(&s.db).await?;
 
     let locations = sqlx::query_as::<_, (Uuid, String, String)>(
@@ -334,7 +334,7 @@ pub async fn suggest_topics(
     Path(dir_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let services = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT id, name FROM directory_services WHERE directory_id=$1 AND is_active=true",
+        "SELECT id, name FROM directory_services WHERE directory_id=$1 AND is_active=true AND lower(name) NOT IN ('name','none','placeholder','other')",
     )
     .bind(dir_id)
     .fetch_all(&s.db)

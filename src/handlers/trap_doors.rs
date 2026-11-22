@@ -118,7 +118,7 @@ pub async fn generate_trap_doors(
         .ok_or(AppError::NotFound("Directory".into()))?;
 
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true"
+        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true AND lower(name) NOT IN ('name','none','placeholder','other')"
     )
     .bind(dir_id)
     .bind(&req.service_ids)
@@ -239,7 +239,7 @@ pub async fn preview_trap_doors(
     ))?;
 
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true"
+        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND id=ANY($2) AND is_active=true AND lower(name) NOT IN ('name','none','placeholder','other')"
     )
     .bind(dir_id)
     .bind(&req.service_ids)
@@ -1022,7 +1022,7 @@ pub async fn scheduled_generate_trap_doors(
 ) -> ApiResult<impl IntoResponse> {
     // Fetch services, cities, day tags, time tags
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND is_active=true",
+        "SELECT id, name, slug FROM directory_services WHERE directory_id=$1 AND is_active=true AND lower(name) NOT IN ('name','none','placeholder','other')",
     )
     .bind(dir_id)
     .fetch_all(&s.db)

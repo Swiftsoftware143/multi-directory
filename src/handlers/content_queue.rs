@@ -441,7 +441,7 @@ async fn process_trap_door_job(s: &AppState, job: &ContentQueueItem) -> Result<S
 
     // Fetch services for this directory
     let services = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, name, slug FROM directory_services WHERE directory_id = $1 AND is_active = true",
+        "SELECT id, name, slug FROM directory_services WHERE directory_id = $1 AND is_active = true AND lower(name) NOT IN ('name','none','placeholder','other')",
     )
     .bind(dir_id)
     .fetch_all(&s.db)
