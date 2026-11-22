@@ -12613,6 +12613,10 @@
           var nbBtn = '<button class="btn btn-ghost btn-sm" type="button" data-nb-open="' + esc(r.id) +
             '" data-nb-dir="' + esc(r.directory_slug || '') + '" data-nb-name="' + esc(r.name || '') +
             '" data-nb-val="' + esc(r.neighbourhood || '') + '">🏘 Neighbourhood</button>';
+          // Work-queue line 86/90 (admin-side export): operator downloads a business's page-links
+          // spreadsheet from the admin console (same CSV the owner fetches in their back office).
+          var pageLinksBtn = '<button class="btn btn-ghost btn-sm" type="button" data-page-links="' +
+            esc(r.id) + '" data-page-links-name="' + esc(r.name || '') + '">📄 Page links</button>';
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') +
               (r.neighbourhood ? ' · 🏘 ' + esc(r.neighbourhood) : '') + '</td>' +
@@ -12621,7 +12625,7 @@
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + claimBtns + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + ' ' + nbBtn + ' ' + bookingWidgetBtn + ' ' + incentiveWidgetBtn + '</td></tr>';
+            '<td>' + claimBtns + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + ' ' + nbBtn + ' ' + bookingWidgetBtn + ' ' + incentiveWidgetBtn + ' ' + pageLinksBtn + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -12860,11 +12864,44 @@
       if (iw) { setIncentiveWidget(iw.getAttribute('data-incentive-toggle'), iw.getAttribute('data-incentive-dir'), iw.getAttribute('data-incentive-val'), iw.getAttribute('data-incentive-slug')); return; }
       var nb = ev.target.closest('[data-nb-open]');
       if (nb) { setNeighbourhood(nb.getAttribute('data-nb-open'), nb.getAttribute('data-nb-dir'), nb.getAttribute('data-nb-name'), nb.getAttribute('data-nb-val')); return; }
+      var pl = ev.target.closest('[data-page-links]');
+      if (pl) { downloadPageLinks(pl.getAttribute('data-page-links'), pl.getAttribute('data-page-links-name')); return; }
       var ca = ev.target.closest('[data-claim-approve]');
       if (ca) { decideClaim(ca.getAttribute('data-claim-approve'), 'approve', ca.getAttribute('data-claim-biz')); return; }
       var cr = ev.target.closest('[data-claim-reject]');
       if (cr) { decideClaim(cr.getAttribute('data-claim-reject'), 'reject', cr.getAttribute('data-claim-biz')); return; }
     });
+
+    // Work-queue line 86/90 (admin-side export): download a business's page-links spreadsheet from
+    // the admin console. Reuses the owner-scoped endpoint, which also authorizes super_admin (any
+    // business) and a directory owner (their own directory) via can_moderate.
+    function downloadPageLinks(id, name) {
+      var st = document.getElementById('bz-status');
+      if (st) st.textContent = 'Downloading page-links report' + (name ? ' for ' + name : '') + '…';
+      var h = {};
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      fetch(API + '/portal/business/' + encodeURIComponent(id) + '/page-links.csv', { headers: h })
+        .then(function (r) {
+          if (!r.ok) {
+            return r.json().catch(function () { return {}; }).then(function (d) {
+              throw new Error((d && d.message) || ('HTTP ' + r.status));
+            });
+          }
+          return r.blob().then(function (blob) {
+            var cd = r.headers.get('Content-Disposition') || '';
+            var m = cd.match(/filename="?([^";]+)"?/);
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = m ? m[1] : 'page-links.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(a.href);
+            if (st) st.textContent = '';
+          });
+        })
+        .catch(function (e) { if (st) st.textContent = 'Failed: ' + e.message; });
+    }
 
     function decideClaim(id, action, biz) {
       var msg = action === 'approve'
