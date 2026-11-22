@@ -2474,6 +2474,7 @@ async function loadMentions() {
     box.innerHTML = items.map(function (it) {
       var b = it.business || {};
       var m = it.metrics || {};
+      var a = m.trap_door_analytics || {};
       function block(title, c) {
         c = c || {};
         return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px">' +
@@ -2491,6 +2492,11 @@ async function loadMentions() {
           block('Blog posts', m.blog_post_mentions) +
           block('Sponsored articles', m.business_article_mentions) +
           block('City pages', m.trap_door_mentions) +
+        '</div>' +
+        '<div style="margin-top:10px;font-size:.82rem;color:var(--text-secondary)">' +
+          'City page performance — <b style="color:var(--text)">' + (a.impressions || 0) + '</b> views · ' +
+          '<b style="color:var(--text)">' + (a.clicks || 0) + '</b> clicks · ' +
+          '<b style="color:var(--text)">' + (a.conversions || 0) + '</b> leads' +
         '</div>' +
         '<div style="margin-top:12px">' +
           '<button class="btn btn-sm" onclick="downloadPageLinks(\'' + esc(b.id || '') + '\')">&#11015; Download report (CSV)</button>' +

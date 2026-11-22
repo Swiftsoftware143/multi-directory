@@ -27,11 +27,23 @@ pub struct MentionCounts {
     pub all_time: i64,
 }
 
+/// Rolled-up performance totals for a business's programmatic ("city") pages:
+/// the SUM of impressions / clicks / conversions across every published page
+/// that mentions the business. Backs the compact "views · clicks · leads"
+/// totals on the Mentions & Visibility card (work-queue line 86/90).
+#[derive(Debug, Serialize)]
+pub struct PageAnalytics {
+    pub impressions: i64,
+    pub clicks: i64,
+    pub conversions: i64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BusinessMetrics {
     pub blog_post_mentions: MentionCounts,
     pub business_article_mentions: MentionCounts,
     pub trap_door_mentions: MentionCounts,
+    pub trap_door_analytics: PageAnalytics,
     pub total_mentions: MentionCounts,
 }
 
@@ -133,6 +145,8 @@ pub async fn business_dashboard(
         let trapdoor_month =
             count_trapdoor_mentions(&s.db, business_id, MentionInterval::Days30).await?;
 
+        let trap_door_analytics = sum_trapdoor_analytics(&s.db, business_id).await?;
+
         let metrics = BusinessMetrics {
             blog_post_mentions: MentionCounts {
                 this_week: blog_week,
@@ -149,6 +163,7 @@ pub async fn business_dashboard(
                 this_month: trapdoor_month,
                 all_time: trapdoor_all,
             },
+            trap_door_analytics,
             total_mentions: MentionCounts {
                 this_week: blog_week + article_week + trapdoor_week,
                 this_month: blog_month + article_month + trapdoor_month,
@@ -442,6 +457,26 @@ async fn count_trapdoor_mentions(
         .await?;
 
     Ok(count)
+}
+
+/// SUM of impressions / clicks / conversions across every published programmatic
+/// page that mentions the business. `SUM(integer)` yields bigint, so the row is
+/// read as i64. A business mentioned by no page returns zeros (never an error).
+async fn sum_trapdoor_analytics(db: &sqlx::PgPool, business_id: Uuid) -> ApiResult<PageAnalytics> {
+    let (impressions, clicks, conversions) = sqlx::query_as::<_, (i64, i64, i64)>(concat!(
+        "SELECT COALESCE(SUM(impressions), 0), COALESCE(SUM(clicks), 0), ",
+        "COALESCE(SUM(conversions), 0) FROM programmatic_pages ",
+        "WHERE $1 = ANY(mentioned_business_ids) AND status = 'published'"
+    ))
+    .bind(business_id)
+    .fetch_one(db)
+    .await?;
+
+    Ok(PageAnalytics {
+        impressions,
+        clicks,
+        conversions,
+    })
 }
 
 // ── Local helper type (mirrors portal's ClaimedBusinessRow for local use) ──
