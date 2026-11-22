@@ -3,8 +3,10 @@
 //! and trap door (programmatic) pages.
 
 use axum::{
-    extract::{Extension, State},
-    response::IntoResponse,
+    body::Body,
+    extract::{Extension, Path, State},
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
@@ -206,6 +208,141 @@ pub async fn business_dashboard(
 }
 
 // ── Helper query functions ──
+
+/// GET /api/v1/portal/business/:business_id/page-links.csv
+///
+/// Downloads a CSV of every published programmatic ("city") page that mentions this
+/// business — one row per page with its public URL, title, service, city and per-page
+/// stats. This is the raw data behind the back-office "Download report" button
+/// (work-queue line 86/90): the compact card shows the count, the detail lives here.
+/// Owner-scoped via `can_moderate` (owner / claimant / directory owner / super_admin).
+pub async fn business_page_links_csv(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<Response> {
+    let biz_name: Option<String> = sqlx::query_scalar("SELECT name FROM businesses WHERE id = $1")
+        .bind(business_id)
+        .fetch_optional(&s.db)
+        .await?;
+    let biz_name = match biz_name {
+        Some(n) => n,
+        None => return Err(AppError::NotFound("Business not found".to_string())),
+    };
+
+    if !crate::handlers::reviews::can_moderate(&s.db, &claims, Some(business_id)).await? {
+        return Err(AppError::Forbidden(
+            "You can only download the report for a business you own or have claimed.".to_string(),
+        ));
+    }
+
+    let rows = sqlx::query_as::<_, PageLinkRow>(
+        r#"SELECT d.slug AS city_slug,
+                  COALESCE(n.root_domain, '') AS root_domain,
+                  pp.slug AS page_slug,
+                  COALESCE(pp.title, '') AS title,
+                  COALESCE(ds.name, '') AS service,
+                  pp.impressions,
+                  pp.clicks,
+                  pp.conversions
+           FROM programmatic_pages pp
+           JOIN directories d ON d.id = pp.directory_id
+           LEFT JOIN networks n ON n.id = d.network_id
+           LEFT JOIN directory_services ds ON ds.id = pp.service_id
+           WHERE $1 = ANY(pp.mentioned_business_ids) AND pp.status = 'published'
+           ORDER BY d.slug, pp.slug"#,
+    )
+    .bind(business_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let mut csv = String::from("Page URL,Title,Service,City,Impressions,Clicks,Leads\n");
+    for r in &rows {
+        let base = if r.root_domain.is_empty() {
+            format!("https://{}.{}", r.city_slug, s.config.base_domain)
+        } else {
+            format!("https://{}/{}", r.root_domain, r.city_slug)
+        };
+        let url = format!("{}/{}", base, r.page_slug);
+        csv.push_str(&csv_line(&[
+            &url,
+            &r.title,
+            &r.service,
+            &r.city_slug,
+            &r.impressions.to_string(),
+            &r.clicks.to_string(),
+            &r.conversions.to_string(),
+        ]));
+    }
+
+    let filename = format!(
+        "attachment; filename=\"zaarhub-page-links-{}.csv\"",
+        safe_filename(&biz_name)
+    );
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
+        .header(header::CONTENT_DISPOSITION, filename)
+        .body(Body::from(csv))
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// One published programmatic page that mentions a business, joined to its
+/// directory (city) and network (brand host) so the CSV can print a real URL.
+#[derive(Debug, sqlx::FromRow)]
+struct PageLinkRow {
+    city_slug: String,
+    root_domain: String,
+    page_slug: String,
+    title: String,
+    service: String,
+    impressions: i32,
+    clicks: i32,
+    conversions: i32,
+}
+
+/// Quote a CSV field only when it contains a comma, quote, CR or LF (RFC 4180).
+fn csv_line(fields: &[&str]) -> String {
+    let mut out = String::new();
+    for (i, f) in fields.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        if f.contains(',') || f.contains('"') || f.contains('\n') || f.contains('\r') {
+            out.push('"');
+            out.push_str(&f.replace('"', "\"\""));
+            out.push('"');
+        } else {
+            out.push_str(f);
+        }
+    }
+    out.push('\n');
+    out
+}
+
+/// Business name → filesystem-safe token for the Content-Disposition filename.
+fn safe_filename(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    while out.contains("--") {
+        out = out.replace("--", "-");
+    }
+    let trimmed = out.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "business".to_string()
+    } else {
+        trimmed
+    }
+}
 
 /// Time window for the dashboard mention counters. A closed compile-time set: each variant selects
 /// a COMPLETE statement literal, so no SQL text is ever assembled at run time (class-14 paydown,

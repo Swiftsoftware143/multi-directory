@@ -2492,11 +2492,36 @@ async function loadMentions() {
           block('Sponsored articles', m.business_article_mentions) +
           block('City pages', m.trap_door_mentions) +
         '</div>' +
+        '<div style="margin-top:12px">' +
+          '<button class="btn btn-sm" onclick="downloadPageLinks(\'' + esc(b.id || '') + '\')">&#11015; Download report (CSV)</button>' +
+        '</div>' +
         '</div>';
     }).join('');
   } catch (e) {
     box.innerHTML = '<div class="card"><p style="color:var(--danger)">Could not load mentions: ' + esc(e.message) + '</p>' +
       '<button class="btn btn-sm" onclick="loadMentions()">Retry</button></div>';
+  }
+}
+
+async function downloadPageLinks(businessId) {
+  try {
+    var token = localStorage.getItem('bizToken');
+    var h = {};
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    var r = await fetch(API + '/portal/business/' + encodeURIComponent(businessId) + '/page-links.csv', { headers: h });
+    if (!r.ok) { var e = await r.json().catch(function () { return {}; }); throw new Error(e.message || 'Download failed'); }
+    var blob = await r.blob();
+    var cd = r.headers.get('Content-Disposition') || '';
+    var m = cd.match(/filename="?([^";]+)"?/);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : 'page-links.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('Could not download the report: ' + e.message);
   }
 }
 
