@@ -5933,6 +5933,141 @@ async fn directory_from_host(
     load_directory(pool, label).await
 }
 
+/// General "what to expect / when to call" guidance for a service, keyed by the
+/// service's own `name`. This is GENERAL knowledge about the service category
+/// (work-queue PROGRAMMATIC PAGES line 82 source #3: "general ACCURATE content
+/// about the SERVICE"), never a claim about any specific business — a business's
+/// prices, founding year and policies are NOT here and are never invented. A name
+/// with no entry returns `None` and the section is omitted entirely ("nothing is
+/// better than wrong").
+fn service_guidance(name: &str) -> Option<(&'static str, &'static str)> {
+    let key = name.trim().to_lowercase();
+    let entry = match key.as_str() {
+        "chiropractor" => (
+            "Chiropractors diagnose and treat spinal and musculoskeletal problems, most often through manual adjustment. Most begin with a consultation and exam before any treatment.",
+            "back or neck pain, persistent headaches, or recovery after an injury, when you want a non-surgical option.",
+        ),
+        "physical therapy" => (
+            "Physical therapists help you regain strength and mobility after injury or surgery through guided exercise and hands-on care.",
+            "after surgery or an injury, or for chronic pain that limits daily movement.",
+        ),
+        "roofing" => (
+            "Roofers inspect, repair, and replace roofs. Most provide a free inspection and a written estimate before any work begins.",
+            "leaks, missing shingles, storm damage, or a roof nearing the end of its life.",
+        ),
+        "boat charter" => (
+            "Charter operators provide a boat and a captain for fishing, sightseeing, or private trips.",
+            "booking a trip, checking availability, or asking about group rates.",
+        ),
+        "catering" => (
+            "Caterers plan, prepare, and serve food for events, usually priced per guest.",
+            "discussing your event date, guest count, and menu.",
+        ),
+        "hvac" => (
+            "HVAC technicians install, service, and repair heating and cooling systems.",
+            "no heat or air conditioning, unusual noises, or a seasonal tune-up.",
+        ),
+        "property management" => (
+            "Property managers handle tenants, maintenance, and rent collection on behalf of rental owners.",
+            "you own a rental and want day-to-day management off your hands.",
+        ),
+        "coffee shop" => (
+            "Coffee shops serve espresso drinks, coffee, and light food, for dine-in or takeaway.",
+            "checking hours, the menu, or seating for a group.",
+        ),
+        "screen enclosures" => (
+            "Screen-enclosure contractors build and repair screened patios, lanais, and pool cages.",
+            "a new enclosure or torn screen in need of repair.",
+        ),
+        "landscaping" => (
+            "Landscapers design and maintain yards, from mowing and planting to hardscaping.",
+            "regular maintenance or a one-off landscape project.",
+        ),
+        "personal injury lawyer" => (
+            "Personal-injury lawyers represent people hurt in accidents and pursue compensation on their behalf.",
+            "soon after an injury; most offer a free initial consultation.",
+        ),
+        "medical spa" => (
+            "Medical spas offer cosmetic and wellness treatments under medical supervision.",
+            "booking a consultation or asking about a specific treatment.",
+        ),
+        "tattoo parlor" => (
+            "Tattoo studios provide custom tattoos and piercings by licensed artists.",
+            "booking a consultation, discussing a design, or asking about pricing.",
+        ),
+        "real estate agent" => (
+            "Real-estate agents help you buy, sell, or rent property.",
+            "you are ready to list a property or start looking.",
+        ),
+        "restaurant" => (
+            "Restaurants serve prepared meals for dine-in or takeaway.",
+            "reservations, opening hours, or takeout.",
+        ),
+        "electrician" => (
+            "Electricians install and repair wiring, panels, and fixtures.",
+            "outages, flickering lights, or new wiring.",
+        ),
+        "pet groomer" => (
+            "Pet groomers bathe, trim, and style pets.",
+            "booking a groom or asking about breed-specific care.",
+        ),
+        "hair salon" => (
+            "Hair salons offer cuts, colour, and styling.",
+            "booking an appointment or asking about services.",
+        ),
+        "tree service" => (
+            "Tree services trim, remove, and care for trees.",
+            "dead or storm-damaged trees, or routine trimming.",
+        ),
+        "accountant" => (
+            "Accountants prepare taxes, keep books, and advise on finances.",
+            "tax time or when you need bookkeeping help.",
+        ),
+        "plumber" => (
+            "Plumbers install and repair pipes, fixtures, and water systems.",
+            "leaks, clogs, or a remodel.",
+        ),
+        "seafood" => (
+            "Seafood restaurants specialise in fresh fish and shellfish dishes.",
+            "checking the catch of the day or booking a table.",
+        ),
+        "pizza" => (
+            "Pizzerias serve pizza and Italian dishes for dine-in, delivery, or pickup.",
+            "ordering or checking the delivery area.",
+        ),
+        "day spa" => (
+            "Day spas offer massages, facials, and relaxation treatments.",
+            "booking a treatment or asking about packages.",
+        ),
+        "auto repair" => (
+            "Auto-repair shops diagnose and fix vehicles.",
+            "breakdowns, warning lights, or routine service.",
+        ),
+        "fitness studio" => (
+            "Fitness studios offer classes and personal training.",
+            "schedules, memberships, or a trial class.",
+        ),
+        "dentist" => (
+            "Dentists provide exams, cleanings, and dental treatment.",
+            "booking a checkup or for tooth pain.",
+        ),
+        "pool service" => (
+            "Pool services clean and maintain pools.",
+            "weekly cleaning or repairs.",
+        ),
+        "cleaning services" => (
+            "Cleaning services clean homes and offices.",
+            "booking a one-time or recurring clean.",
+        ),
+        "veterinarian" => (
+            "Veterinarians provide medical care for pets.",
+            "checkups, vaccinations, or when a pet is unwell.",
+        ),
+        _ => return None,
+    };
+    Some(entry)
+}
+
 /// Server-render a stored programmatic page. The row's own `h1` / `meta_title` /
 /// `meta_description` / `content` are the page — nothing is invented here — and
 /// the rendered document carries the impression beacon the `/track` endpoint was
@@ -6055,6 +6190,22 @@ async fn render_programmatic_page(
         _ => format!("<p class=\"lede\">{}</p>", h(&description)),
     };
 
+    // General "what to expect / when to call" guidance for the SERVICE (work queue
+    // PROGRAMMATIC PAGES line 76/82). General category knowledge only, never a claim
+    // about a specific business; a name with no entry omits the section entirely.
+    let guidance = match service_name.as_deref().and_then(service_guidance) {
+        Some((what, when)) => {
+            let svc_label = service_name.as_deref().unwrap_or("this service");
+            format!(
+                "<section class=\"expect\" aria-label=\"What to expect\"><h2>What to expect when you hire a {}</h2><p>{}</p><p><strong>When to call:</strong> {}</p></section>",
+                h(svc_label),
+                what,
+                when,
+            )
+        }
+        None => String::new(),
+    };
+
     // Render the ACTUAL businesses for this service (work queue "PROGRAMMATIC PAGES" line 74/76):
     // the stored 223-char content blob alone is thin content a crawler filters, and the spec is
     // "FEATURES THE ACTUAL BUSINESSES on it". `directory_services.name` maps 1:1 to a
@@ -6113,6 +6264,7 @@ catch(e){{}}}})();</script>",
 <article class="detail article-body">
 <h1>{h1}</h1>
 {lede}
+{guidance}
 {content}
 {business_list}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}/businesses">Browse {city} businesses</a> &middot; <a href="{base}/{dslug}">More about {city}</a></p>
@@ -6128,6 +6280,7 @@ catch(e){{}}}})();</script>",
         crumbs = breadcrumbs(&crumbs_refs),
         h1 = h(&h1),
         lede = lede,
+        guidance = guidance,
         content = crate::template_engine::sanitize_html(&content),
         business_list = business_list,
         base = h(&base),
