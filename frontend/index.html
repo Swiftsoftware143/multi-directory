@@ -1541,6 +1541,50 @@ async function loadHomepage(){
   setTimeout(loadTicker, 500)
 }
 
+// Line 52d — the network homepage switches from city cards to a region -> state
+// -> city drill-down once it passes this many active cities. Below it, cards.
+var CITY_DRILLDOWN_THRESHOLD=30
+
+// Region -> state -> city names as plain hyperlinks (crawlable URLs), so ~100
+// cities stay one component instead of an unwieldy card grid. Each state links
+// its server-rendered /<state> page and every city its own /<city> page — never
+// a JS-only dropdown, so nothing is invisible to search.
+function buildCityDrilldown(cities){
+  var regions={},order=[]
+  for(var i=0;i<cities.length;i++){
+    var c=cities[i]
+    var reg=(c.region&&c.region.trim())||'United States'
+    var st=(c.state_name&&c.state_name.trim())||(c.state&&c.state.trim())||'Other'
+    if(!regions[reg]){regions[reg]={};order.push(reg)}
+    if(!regions[reg][st]){regions[reg][st]={slug:c.state_slug||'',cities:[]}}
+    regions[reg][st].cities.push(c)
+  }
+  order.sort(function(a,b){return a<b?-1:(a>b?1:0)})
+  var html=''
+  for(var r=0;r<order.length;r++){
+    var states=regions[order[r]]
+    var stNames=Object.keys(states).sort(function(a,b){return a<b?-1:(a>b?1:0)})
+    html+='<div style="margin-bottom:22px">'
+    html+='<h3 style="font-size:1rem;font-weight:700;margin:0 0 10px">'+esc(order[r])+'</h3>'
+    for(var s=0;s<stNames.length;s++){
+      var info=states[stNames[s]]
+      var head=info.slug
+        ?'<a href="/'+esc(info.slug)+'" style="font-weight:600;color:inherit;text-decoration:none;border-bottom:1px solid transparent">'+esc(stNames[s])+'</a>'
+        :'<span style="font-weight:600">'+esc(stNames[s])+'</span>'
+      html+='<div style="margin-bottom:10px;padding-left:12px;border-left:3px solid var(--primary)">'
+      html+='<div style="margin-bottom:6px">'+head+' <span style="color:var(--text-light);font-size:.8rem">· '+info.cities.length+' '+(info.cities.length===1?'city':'cities')+'</span></div>'
+      html+='<div style="display:flex;flex-wrap:wrap;gap:6px 16px">'
+      for(var ci=0;ci<info.cities.length;ci++){
+        var ct=info.cities[ci]
+        html+='<a href="/'+esc(ct.slug)+'" style="color:var(--primary);text-decoration:none;font-size:.9rem">'+esc(ct.name)+'</a>'
+      }
+      html+='</div></div>'
+    }
+    html+='</div>'
+  }
+  return html
+}
+
 function renderHomepageContent(d){
   var cities=d.cities||state.cities||[]
   var deals=d.featured_deals||[]
@@ -1611,19 +1655,28 @@ function renderHomepageContent(d){
     }
   }
 
-  // City cards
+  // City cards (below the drill-down threshold) or the region -> state -> city
+  // drill-down once the network passes it (line 52d).
   var cityCards=''
-  var emojis=['🌴','☀️','🏖️','🌆','🌲','🏙️','🌳','🏘️','⛰️','🌺']
-  for(var i=0;i<cities.length;i++){
-    var ct=cities[i];var em=emojis[i%emojis.length]
-    cityCards+='<a class="zh-city-card" href="/'+esc(ct.slug)+'">'+
-      '<div class="emoji">'+em+'</div>'+
-      '<h3>'+esc(ct.name)+'</h3>'+
-      '<p>'+esc(ct.description||((ct.name?ct.name+' ':'')+'business directory'))+'</p>'+
-      '<span class="count">'+(ct.business_count||0)+' local spots</span>'+
-      (ct.featured_image?'<div class="zh-featured-badge">⭐ Featured</div>':'')+
-    '</a>'
+  var cityNavHtml=''
+  if(cities.length>=CITY_DRILLDOWN_THRESHOLD){
+    cityNavHtml=buildCityDrilldown(cities)
+  }else{
+    var emojis=['🌴','☀️','🏖️','🌆','🌲','🏙️','🌳','🏘️','⛰️','🌺']
+    for(var i=0;i<cities.length;i++){
+      var ct=cities[i];var em=emojis[i%emojis.length]
+      cityCards+='<a class="zh-city-card" href="/'+esc(ct.slug)+'">'+
+        '<div class="emoji">'+em+'</div>'+
+        '<h3>'+esc(ct.name)+'</h3>'+
+        '<p>'+esc(ct.description||((ct.name?ct.name+' ':'')+'business directory'))+'</p>'+
+        '<span class="count">'+(ct.business_count||0)+' local spots</span>'+
+        (ct.featured_image?'<div class="zh-featured-badge">⭐ Featured</div>':'')+
+      '</a>'
+    }
   }
+  var citySectionBody=cityNavHtml
+    ? cityNavHtml
+    : ('<div class="zh-city-grid">'+(cityCards||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No communities available yet</div>')+'</div>')
 
   // Deals
   var dealsHtml=''
@@ -1802,7 +1855,7 @@ ${founderHtml?`<div class="zh-section" style="padding-top:24px;padding-bottom:24
     <div class="zh-section-header">
       <div><h2 class="zh-section-title">🏙️ Explore Communities</h2><p class="zh-section-sub">Find your local directory and discover what's around you</p></div>
     </div>
-    <div class="zh-city-grid">${cityCards||'<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-light)">No communities available yet</div>'}</div>
+    ${citySectionBody}
   </div>
 </div>`
   var secDeals=(deals.length?`

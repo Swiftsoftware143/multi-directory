@@ -141,7 +141,7 @@ const US_STATE_NAMES: &[(&str, &str)] = &[
 /// Full display name for a state code ("FL" → "Florida"). A two-letter code
 /// that is not a known US state (or a longer value already a full name) is
 /// returned unchanged.
-fn us_state_name(code: &str) -> String {
+pub(crate) fn us_state_name(code: &str) -> String {
     let c = code.trim();
     if c.len() == 2 {
         let up = c.to_ascii_uppercase();
@@ -170,7 +170,7 @@ fn slugify(s: &str) -> String {
 }
 
 /// The crawlable slug for a directory's stored state code ("FL" → "florida").
-fn state_slug(code: &str) -> String {
+pub(crate) fn state_slug(code: &str) -> String {
     slugify(&us_state_name(code))
 }
 
@@ -6351,6 +6351,38 @@ async fn state_index_page(
     Some(html_response(StatusCode::OK, body))
 }
 
+/// GET `/<state>/<city>` — the nested city alias (line 52d): `/florida/palm-bay`
+/// renders the same directory home as `/palm-bay`. `directory_home` already
+/// canonicalises to the top-level city URL (`/{slug}`), so the nested path adds
+/// no duplicate content — it only makes the region -> state -> city hierarchy a
+/// set of real crawlable URLs. Returns `None` when the first segment names no
+/// state or the second names no city inside it, so the dispatcher falls through
+/// to its existing 404 (never a soft one).
+async fn nested_city_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    spa_html: &str,
+    state_seg: &str,
+    city_seg: &str,
+) -> Option<Response<Body>> {
+    let cities = geo_cities(pool).await;
+    if cities.is_empty() {
+        return None;
+    }
+    let city = cities.iter().find(|c| {
+        state_slug(&c.state).eq_ignore_ascii_case(state_seg)
+            && c.slug.eq_ignore_ascii_case(city_seg)
+    })?;
+    // Render the canonical city home and apply that CITY's own code injection
+    // (the dispatcher's outer injection resolves the first segment, i.e. the
+    // state slug, which owns nothing) so the nested alias is byte-identical in
+    // behaviour to the top-level city URL.
+    let resp = directory_home(pool, host, proto, fallback_domain, &city.slug, spa_html).await;
+    apply_code_injection(pool, &city.slug, resp).await
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Dispatcher — called from the SPA fallback for unmatched GET paths.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6508,7 +6540,9 @@ pub async fn try_render(
                         }
                     }
                 } else {
-                    None
+                    // `/<state>/<city>` — the nested city alias (line 52d).
+                    nested_city_page(pool, host, proto, fallback_domain, spa_html, slug, short)
+                        .await
                 }
             }
             _ => None,

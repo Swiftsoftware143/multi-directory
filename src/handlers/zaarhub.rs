@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{ApiResult, AppError};
+use crate::handlers::subfolder::{state_slug, us_state_name};
 use crate::AppState;
 
 // ── Response types ──────────────────────────────────────────────────────────
@@ -474,26 +475,31 @@ pub async fn company_info(State(s): State<AppState>) -> ApiResult<Json<Value>> {
 /// If a network slug is provided, scopes data to that network
 pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
     // Featured/active cities with business counts
-    let cities = sqlx::query_as::<_, (Uuid, String, String, Option<String>, i64, Option<serde_json::Value>)>(
+    let cities = sqlx::query_as::<_, (Uuid, String, String, Option<String>, i64, Option<serde_json::Value>, String, String)>(
         r#"SELECT d.id, d.name, d.slug, d.description,
                   COALESCE((SELECT COUNT(*) FROM businesses b WHERE b.directory_id = d.id AND b.is_active = true), 0) as business_count,
-                  d.zaarhub_config
+                  d.zaarhub_config,
+                  COALESCE(NULLIF(btrim(d.state), ''), 'FL') AS state,
+                  COALESCE(NULLIF(btrim(d.region), ''), '') AS region
            FROM directories d
            WHERE (d.status = 'active' OR d.status IS NULL)
              AND (d.zaarhub_config->>'network_visible')::boolean = true
-           ORDER BY business_count DESC
-           LIMIT 20"#
+           ORDER BY business_count DESC"#
     )
     .fetch_all(&s.db)
     .await?;
 
     let city_list: Vec<Value> = cities
         .into_iter()
-        .map(|(id, name, slug, desc, count, zh_config)| {
+        .map(|(id, name, slug, desc, count, zh_config, state, region)| {
             let featured_url = zh_config.and_then(|c| {
                 c.get("featured_image_url")
                     .and_then(|v| v.as_str().map(|s| s.to_string()))
             });
+            // Geo fields so the homepage can switch from city cards to the
+            // region -> state -> city drill-down by count (work-queue line 52d).
+            let state_name = us_state_name(&state);
+            let state_slug = state_slug(&state);
             json!({
                 "id": id,
                 "name": name,
@@ -501,6 +507,10 @@ pub async fn get_homepage(State(s): State<AppState>) -> ApiResult<Json<Value>> {
                 "description": desc,
                 "business_count": count,
                 "featured_image": featured_url,
+                "state": state,
+                "state_name": state_name,
+                "state_slug": state_slug,
+                "region": region,
             })
         })
         .collect();
