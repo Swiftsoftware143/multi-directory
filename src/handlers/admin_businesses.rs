@@ -71,6 +71,7 @@ FROM (
            b.licensed,
            b.insured,
            b.neighbourhood,
+           COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled,
            (SELECT bm.meta_data->'hours' FROM business_meta bm
              WHERE bm.business_id = b.id AND bm.meta_data ? 'hours' LIMIT 1) AS hours,
            (SELECT bm.meta_data->>'response_time' FROM business_meta bm

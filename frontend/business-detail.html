@@ -306,6 +306,17 @@ a:hover{text-decoration:underline}
           </div>
         </div>
 
+        <!-- 📅 Book Online (ecosystem widget, work-queue "ECOSYSTEM WIDGETS" increment 1).
+             When the operator has flipped booking_widget_enabled for this business, the
+             CoreSwift booking calendar is embedded so the visitor books INSIDE the directory
+             instead of being hyperlinked off to the business site. Off = no widget, no empty box. -->
+        <div class="card" id="bookingWidgetCard" style="display:none">
+          <div class="card-title">📅 Book Online</div>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Pick a time that works — no phone call needed.</p>
+          <iframe id="bookingWidgetFrame" title="Book an appointment" loading="lazy"
+            style="width:100%;height:940px;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>
+        </div>
+
         <!-- Business Hours -->
         <div class="card">
           <div class="card-title">🕐 Business Hours</div>
@@ -815,6 +826,23 @@ function renderBusiness() {
   }
   const rail = document.getElementById('actionRail');
   if (rail) rail.classList.add('show');
+
+  // 📅 Book Online — ecosystem widget (work-queue "ECOSYSTEM WIDGETS"): when the operator has
+  // enabled the CoreSwift booking calendar for this business, embed it inline so the visitor
+  // books INSIDE the directory. Off (or a legacy `business_listings` row, which always reads
+  // false) leaves the card hidden — no widget, no empty box.
+  const bwCard = document.getElementById('bookingWidgetCard');
+  const bwFrame = document.getElementById('bookingWidgetFrame');
+  if (bwCard && bwFrame) {
+    if (b.booking_widget_enabled) {
+      const dirSlug = b.directory_slug || 'z';
+      bwFrame.src = '/api/v1/book/' + encodeURIComponent(dirSlug) + '/' + encodeURIComponent(b.id || '');
+      bwCard.style.display = '';
+    } else {
+      bwCard.style.display = 'none';
+      bwFrame.src = '';
+    }
+  }
 
   // Description
   document.getElementById('bizDescription').textContent = b.description || 'No description available.';

@@ -573,6 +573,7 @@ pub async fn update_business(
            neighbourhood = CASE WHEN $21 IS NULL THEN neighbourhood
                                 WHEN btrim($21) = '' THEN NULL
                                 ELSE btrim($21) END,
+           booking_widget_enabled = COALESCE($23, booking_widget_enabled),
            updated_at = NOW()
            WHERE id = $22 RETURNING *"#,
     )
@@ -598,6 +599,7 @@ pub async fn update_business(
     .bind(&req.license_number)
     .bind(&req.neighbourhood)
     .bind(business_id)
+    .bind(req.booking_widget_enabled)
     .fetch_one(&s.db)
     .await?;
 

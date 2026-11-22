@@ -1676,6 +1676,9 @@ struct BizDetail {
     business_id: Option<Uuid>,
     /// TRUE when the row came from `business_listings` (a different UUID space).
     is_listing: bool,
+    /// Ecosystem widgets (work-queue "ECOSYSTEM WIDGETS"): the operator turned the CoreSwift
+    /// booking calendar widget on for this business. FALSE for `business_listings` rows.
+    booking_widget_enabled: bool,
 }
 
 /// Where uploaded business images actually live (the container mounts this path at the
@@ -1896,7 +1899,8 @@ pub async fn get_business_detail(
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
-                      b.licensed, b.insured, b.neighbourhood
+                      b.licensed, b.insured, b.neighbourhood,
+                      COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled
                FROM businesses b
                WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true
                  AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
@@ -1913,7 +1917,8 @@ pub async fn get_business_detail(
                       COALESCE(b.longitude, b.lng) AS longitude,
                       b.rating, b.review_count, b.category_id,
                       b.images, b.logo_url, b.cover_url, b.claimed, b.verified,
-                      b.licensed, b.insured, b.neighbourhood
+                      b.licensed, b.insured, b.neighbourhood,
+                      COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled
                FROM businesses b
                WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true
                  AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
@@ -1959,6 +1964,9 @@ pub async fn get_business_detail(
             neighbourhood: r.try_get("neighbourhood")?,
             business_id: Some(r.try_get("id")?),
             is_listing: false,
+            booking_widget_enabled: r
+                .try_get::<Option<bool>, _>("booking_widget_enabled")?
+                .unwrap_or(false),
         }
     } else if let Ok(bid) = Uuid::parse_str(&id) {
         let r = sqlx::query(
@@ -2021,6 +2029,7 @@ pub async fn get_business_detail(
             neighbourhood: None,
             business_id: r.try_get("business_id")?,
             is_listing: true,
+            booking_widget_enabled: false,
         }
     } else {
         return Err(AppError::NotFound("Business not found".to_string()));
@@ -2284,6 +2293,8 @@ pub async fn get_business_detail(
         "licensed": biz.licensed,
         "insured": biz.insured,
         "neighbourhood": biz.neighbourhood,
+        // Ecosystem widgets: CoreSwift booking calendar switch (off = no widget, no empty box).
+        "booking_widget_enabled": biz.booking_widget_enabled,
         "source": if biz.is_listing { "listing" } else { "business" },
         "images": photos.clone(),
         "photos": photos,

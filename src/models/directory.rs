@@ -275,6 +275,10 @@ pub struct UpdateBusinessRequest {
     /// admin "Clear" action sends `{"response_time": ""}`); omitting the field entirely leaves
     /// the stored value untouched, so a partial update never wipes it by accident.
     pub response_time: Option<String>,
+    /// Ecosystem widgets (work-queue "ECOSYSTEM WIDGETS", increment 1): the operator turns the
+    /// CoreSwift booking calendar widget on/off per business. Absent leaves the stored value
+    /// untouched (partial update never wipes it); `false` turns it off; `true` turns it on.
+    pub booking_widget_enabled: Option<bool>,
 }
 
 /// Distinguish a field that is ABSENT from one explicitly set to JSON `null`. Plain
