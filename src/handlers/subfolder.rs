@@ -4023,6 +4023,22 @@ pub async fn business_detail(
         .map(|w| w.html())
         .unwrap_or_default();
 
+    // Thin-page gate (SEO gap 1): a listing with no description or no category is not
+    // offered to search engines — bare imports must not outrank the well-filled listings.
+    let thin = description_body.trim().is_empty() || category_id.is_none();
+    let mut start = shell_start(
+        &seo,
+        &site,
+        Some((dir.slug.as_str(), dir.name.as_str())),
+        &theme,
+    );
+    if thin {
+        start = start.replace(
+            "content=\"index,follow,max-image-preview:large\"",
+            "content=\"noindex,follow\"",
+        );
+    }
+
     let body = format!(
         r#"{start}{ctx}{crumbs}
 <div class="detail">
@@ -4040,12 +4056,7 @@ pub async fn business_detail(
 {related}
 {end}"#,
         ctx = ctx_script,
-        start = shell_start(
-            &seo,
-            &site,
-            Some((dir.slug.as_str(), dir.name.as_str())),
-            &theme
-        ),
+        start = start,
         crumbs = breadcrumbs(&crumb_pairs),
         logo = logo_html,
         hero = hero_html,
@@ -5632,10 +5643,13 @@ pub async fn sitemap(
         // GREATEST(updated_at, content_updated_at) — updated_at alone missed the description
         // writes (kanban t_23332bb8). The same values feed `biz_ts`, so the city hub and the
         // /businesses index inherit a listing's copy change instead of lagging behind it.
+        // Thin-page gate (SEO gap 1): a listing with no description or no category is served
+        // with `noindex` on its page, so it is not advertised here either.
         let biz: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
             "SELECT slug, GREATEST(updated_at, content_updated_at) AS updated_at FROM businesses \
              WHERE directory_id = $1 AND is_active = true \
              AND coalesce(slug,'') <> '' \
+             AND coalesce(trim(description),'') <> '' AND category_id IS NOT NULL \
              ORDER BY rating DESC NULLS LAST, slug, id LIMIT 20000",
         )
         .bind(dir_id)
