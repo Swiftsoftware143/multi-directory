@@ -6354,8 +6354,13 @@ async fn render_programmatic_page(
     let guidance = match service_name.as_deref().and_then(service_guidance) {
         Some(g) => {
             let svc_label = service_name.as_deref().unwrap_or("this service");
+            let article = match svc_label.chars().next().map(|c| c.to_ascii_lowercase()) {
+                Some('a') | Some('e') | Some('i') | Some('o') | Some('u') => "an",
+                _ => "a",
+            };
             let mut html = format!(
-                "<section class=\"expect\" aria-label=\"What to expect\"><h2>What to expect when you hire a {}</h2><p>{}</p><p><strong>When to call:</strong> {}</p>",
+                "<section class=\"expect\" aria-label=\"What to expect\"><h2>What to expect when you hire {} {}</h2><p>{}</p><p><strong>When to call:</strong> {}</p>",
+                article,
                 h(svc_label),
                 g.what,
                 g.when,
