@@ -6383,6 +6383,56 @@ async fn render_programmatic_page(
         None => String::new(),
     };
 
+    // Local area detail (work queue PROGRAMMATIC PAGES line 74/76): city-keyed prose
+    // about the area the directory actually serves, derived from its OWN listings —
+    // the published satellite towns. Real towns, real links to their crawlable town
+    // pages, no invented facts. A directory with no published satellite towns omits
+    // the section entirely (the lede names the city, and the business list spans it).
+    let local_area = {
+        let towns = local_town_entries(pool, dir.id, &dir.city).await;
+        let towns: Vec<&TownEntry> = towns.iter().filter(|t| !t.is_home && t.published).collect();
+        if towns.is_empty() {
+            String::new()
+        } else {
+            let links = towns
+                .iter()
+                .map(|t| {
+                    format!(
+                        "<a href=\"/{}/{}\">{}</a>",
+                        h(&dir.slug),
+                        h(&t.slug),
+                        h(&t.label)
+                    )
+                })
+                .collect::<Vec<_>>();
+            // Oxford join: "A, B and C".
+            let list = {
+                let mut s = String::new();
+                let n = links.len();
+                for (i, l) in links.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(if i == n - 1 { " and " } else { ", " });
+                    }
+                    s.push_str(l);
+                }
+                s
+            };
+            let svc_label = service_name.as_deref().unwrap_or("service");
+            let article = match svc_label.chars().next().map(|c| c.to_ascii_lowercase()) {
+                Some('a') | Some('e') | Some('i') | Some('o') | Some('u') => "an",
+                _ => "a",
+            };
+            format!(
+                "<section class=\"area\" aria-label=\"Local area\"><h2>Serving {} and nearby towns</h2><p>This directory covers {} and the surrounding area — {} — so you can find {} {} close to home, wherever you are in the area.</p></section>",
+                h(&dir.city),
+                h(&dir.city),
+                list,
+                article,
+                h(&svc_label.to_lowercase()),
+            )
+        }
+    };
+
     // Render the ACTUAL businesses for this service (work queue "PROGRAMMATIC PAGES" line 74/76):
     // the stored 223-char content blob alone is thin content a crawler filters, and the spec is
     // "FEATURES THE ACTUAL BUSINESSES on it". `directory_services.name` maps 1:1 to a
@@ -6442,6 +6492,7 @@ catch(e){{}}}})();</script>",
 <h1>{h1}</h1>
 {lede}
 {guidance}
+{local_area}
 {content}
 {business_list}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}/businesses">Browse {city} businesses</a> &middot; <a href="{base}/{dslug}">More about {city}</a></p>
@@ -6458,6 +6509,7 @@ catch(e){{}}}})();</script>",
         h1 = h(&h1),
         lede = lede,
         guidance = guidance,
+        local_area = local_area,
         content = crate::template_engine::sanitize_html(&content),
         business_list = business_list,
         base = h(&base),
