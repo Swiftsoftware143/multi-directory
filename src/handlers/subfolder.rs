@@ -5933,136 +5933,294 @@ async fn directory_from_host(
     load_directory(pool, label).await
 }
 
-/// General "what to expect / when to call" guidance for a service, keyed by the
-/// service's own `name`. This is GENERAL knowledge about the service category
-/// (work-queue PROGRAMMATIC PAGES line 82 source #3: "general ACCURATE content
-/// about the SERVICE"), never a claim about any specific business — a business's
-/// prices, founding year and policies are NOT here and are never invented. A name
-/// with no entry returns `None` and the section is omitted entirely ("nothing is
-/// better than wrong").
-fn service_guidance(name: &str) -> Option<(&'static str, &'static str)> {
+/// General knowledge about a service category: what to expect, when to call,
+/// typical cost guidance, and common questions. Keyed by the service's own
+/// `name` (work-queue PROGRAMMATIC PAGES line 82 source #3: "general ACCURATE
+/// content about the SERVICE"). None of this is a claim about any specific
+/// business — a business's prices, founding year and policies are NOT here and
+/// are never invented. Cost guidance is directional (what drives price, always
+/// get a written estimate), never a quote. A name with no entry returns `None`
+/// and the whole section is omitted ("nothing is better than wrong").
+struct ServiceGuidance {
+    what: &'static str,
+    when: &'static str,
+    cost: Option<&'static str>,
+    faqs: &'static [(&'static str, &'static str)],
+}
+
+fn service_guidance(name: &str) -> Option<ServiceGuidance> {
     let key = name.trim().to_lowercase();
     let entry = match key.as_str() {
-        "chiropractor" => (
-            "Chiropractors diagnose and treat spinal and musculoskeletal problems, most often through manual adjustment. Most begin with a consultation and exam before any treatment.",
-            "back or neck pain, persistent headaches, or recovery after an injury, when you want a non-surgical option.",
-        ),
-        "physical therapy" => (
-            "Physical therapists help you regain strength and mobility after injury or surgery through guided exercise and hands-on care.",
-            "after surgery or an injury, or for chronic pain that limits daily movement.",
-        ),
-        "roofing" => (
-            "Roofers inspect, repair, and replace roofs. Most provide a free inspection and a written estimate before any work begins.",
-            "leaks, missing shingles, storm damage, or a roof nearing the end of its life.",
-        ),
-        "boat charter" => (
-            "Charter operators provide a boat and a captain for fishing, sightseeing, or private trips.",
-            "booking a trip, checking availability, or asking about group rates.",
-        ),
-        "catering" => (
-            "Caterers plan, prepare, and serve food for events, usually priced per guest.",
-            "discussing your event date, guest count, and menu.",
-        ),
-        "hvac" => (
-            "HVAC technicians install, service, and repair heating and cooling systems.",
-            "no heat or air conditioning, unusual noises, or a seasonal tune-up.",
-        ),
-        "property management" => (
-            "Property managers handle tenants, maintenance, and rent collection on behalf of rental owners.",
-            "you own a rental and want day-to-day management off your hands.",
-        ),
-        "coffee shop" => (
-            "Coffee shops serve espresso drinks, coffee, and light food, for dine-in or takeaway.",
-            "checking hours, the menu, or seating for a group.",
-        ),
-        "screen enclosures" => (
-            "Screen-enclosure contractors build and repair screened patios, lanais, and pool cages.",
-            "a new enclosure or torn screen in need of repair.",
-        ),
-        "landscaping" => (
-            "Landscapers design and maintain yards, from mowing and planting to hardscaping.",
-            "regular maintenance or a one-off landscape project.",
-        ),
-        "personal injury lawyer" => (
-            "Personal-injury lawyers represent people hurt in accidents and pursue compensation on their behalf.",
-            "soon after an injury; most offer a free initial consultation.",
-        ),
-        "medical spa" => (
-            "Medical spas offer cosmetic and wellness treatments under medical supervision.",
-            "booking a consultation or asking about a specific treatment.",
-        ),
-        "tattoo parlor" => (
-            "Tattoo studios provide custom tattoos and piercings by licensed artists.",
-            "booking a consultation, discussing a design, or asking about pricing.",
-        ),
-        "real estate agent" => (
-            "Real-estate agents help you buy, sell, or rent property.",
-            "you are ready to list a property or start looking.",
-        ),
-        "restaurant" => (
-            "Restaurants serve prepared meals for dine-in or takeaway.",
-            "reservations, opening hours, or takeout.",
-        ),
-        "electrician" => (
-            "Electricians install and repair wiring, panels, and fixtures.",
-            "outages, flickering lights, or new wiring.",
-        ),
-        "pet groomer" => (
-            "Pet groomers bathe, trim, and style pets.",
-            "booking a groom or asking about breed-specific care.",
-        ),
-        "hair salon" => (
-            "Hair salons offer cuts, colour, and styling.",
-            "booking an appointment or asking about services.",
-        ),
-        "tree service" => (
-            "Tree services trim, remove, and care for trees.",
-            "dead or storm-damaged trees, or routine trimming.",
-        ),
-        "accountant" => (
-            "Accountants prepare taxes, keep books, and advise on finances.",
-            "tax time or when you need bookkeeping help.",
-        ),
-        "plumber" => (
-            "Plumbers install and repair pipes, fixtures, and water systems.",
-            "leaks, clogs, or a remodel.",
-        ),
-        "seafood" => (
-            "Seafood restaurants specialise in fresh fish and shellfish dishes.",
-            "checking the catch of the day or booking a table.",
-        ),
-        "pizza" => (
-            "Pizzerias serve pizza and Italian dishes for dine-in, delivery, or pickup.",
-            "ordering or checking the delivery area.",
-        ),
-        "day spa" => (
-            "Day spas offer massages, facials, and relaxation treatments.",
-            "booking a treatment or asking about packages.",
-        ),
-        "auto repair" => (
-            "Auto-repair shops diagnose and fix vehicles.",
-            "breakdowns, warning lights, or routine service.",
-        ),
-        "fitness studio" => (
-            "Fitness studios offer classes and personal training.",
-            "schedules, memberships, or a trial class.",
-        ),
-        "dentist" => (
-            "Dentists provide exams, cleanings, and dental treatment.",
-            "booking a checkup or for tooth pain.",
-        ),
-        "pool service" => (
-            "Pool services clean and maintain pools.",
-            "weekly cleaning or repairs.",
-        ),
-        "cleaning services" => (
-            "Cleaning services clean homes and offices.",
-            "booking a one-time or recurring clean.",
-        ),
-        "veterinarian" => (
-            "Veterinarians provide medical care for pets.",
-            "checkups, vaccinations, or when a pet is unwell.",
-        ),
+        "chiropractor" => ServiceGuidance {
+            what: "Chiropractors diagnose and treat spinal and musculoskeletal problems, most often through manual adjustment. Most begin with a consultation and exam before any treatment.",
+            when: "back or neck pain, persistent headaches, or recovery after an injury, when you want a non-surgical option.",
+            cost: Some("Costs depend on the practice and your insurance; many accept insurance and offer cash rates. Ask about treatment-plan pricing before you start."),
+            faqs: &[
+                ("Do I need a referral", "In most states no referral is required, though some insurance plans ask for one to cover care."),
+                ("How many visits will I need", "That depends on your condition; a thorough exam should come with a recommended plan you can review before committing."),
+            ],
+        },
+        "physical therapy" => ServiceGuidance {
+            what: "Physical therapists help you regain strength and mobility after injury or surgery through guided exercise and hands-on care.",
+            when: "after surgery or an injury, or for chronic pain that limits daily movement.",
+            cost: Some("Costs depend on your insurance; many plans cover physical therapy with a copay. Ask for a benefits check before your first visit."),
+            faqs: &[
+                ("Do I need a prescription", "It depends on your state and insurer — some require a referral, others allow direct access."),
+                ("How often will I go", "Typically one to three times a week, following a plan of care your therapist sets."),
+            ],
+        },
+        "roofing" => ServiceGuidance {
+            what: "Roofers inspect, repair, and replace roofs. Most provide a free inspection and a written estimate before any work begins.",
+            when: "leaks, missing shingles, storm damage, or a roof nearing the end of its life.",
+            cost: Some("Roof work is priced by square footage and material, with asphalt the most affordable and metal or tile at the high end. Always get a written estimate and compare warranties."),
+            faqs: &[
+                ("How long does a roof last", "Asphalt shingles commonly last 20–30 years, while metal and tile can last considerably longer."),
+                ("Do I need a permit", "Most roof replacements require a permit, which a licensed roofer usually pulls for you."),
+            ],
+        },
+        "boat charter" => ServiceGuidance {
+            what: "Charter operators provide a boat and a captain for fishing, sightseeing, or private trips.",
+            when: "booking a trip, checking availability, or asking about group rates.",
+            cost: Some("Charter pricing depends on boat size, trip length, and season. Ask what fuel, crew, and gratuity are included so the quote is complete."),
+            faqs: &[
+                ("Do I need a boating license", "No — a chartered boat comes with a licensed captain, so no license or experience is required."),
+                ("What is included", "Confirm whether fuel, fishing gear, and refreshments are in the price before booking."),
+            ],
+        },
+        "catering" => ServiceGuidance {
+            what: "Caterers plan, prepare, and serve food for events, usually priced per guest.",
+            when: "discussing your event date, guest count, and menu.",
+            cost: Some("Catering is typically priced per guest, with menu, staffing, and rentals driving the total. Request an itemized per-guest quote."),
+            faqs: &[
+                ("How far ahead should I book", "For weddings and large events several months ahead; smaller gatherings can often be booked weeks out."),
+                ("Can you handle dietary restrictions", "Most caterers accommodate common allergies and diets — confirm when you request the menu."),
+            ],
+        },
+        "hvac" => ServiceGuidance {
+            what: "HVAC technicians install, service, and repair heating and cooling systems.",
+            when: "no heat or air conditioning, unusual noises, or a seasonal tune-up.",
+            cost: Some("A routine tune-up is inexpensive; a full system replacement is a major purchase. Get written quotes and compare warranties before replacing."),
+            faqs: &[
+                ("How often should I service my system", "Most manufacturers recommend a tune-up twice a year, before heating and before cooling season."),
+                ("Repair or replace", "When the system is older and repairs approach a large share of replacement cost, replacement often makes more sense."),
+            ],
+        },
+        "property management" => ServiceGuidance {
+            what: "Property managers handle tenants, maintenance, and rent collection on behalf of rental owners.",
+            when: "you own a rental and want day-to-day management off your hands.",
+            cost: Some("Fees are usually a percentage of monthly rent plus a leasing fee. Confirm exactly what's included before signing."),
+            faqs: &[
+                ("What does a property manager handle", "Typically tenant placement, rent collection, maintenance, and compliance — confirm the scope in your agreement."),
+                ("Who handles emergency repairs", "Most managers coordinate repairs through approved vendors; confirm response times up front."),
+            ],
+        },
+        "coffee shop" => ServiceGuidance {
+            what: "Coffee shops serve espresso drinks, coffee, and light food, for dine-in or takeaway.",
+            when: "checking hours, the menu, or seating for a group.",
+            cost: None,
+            faqs: &[
+                ("Do you have seating and Wi-Fi", "Many coffee shops offer seating and Wi-Fi — check with the shop about space and time limits."),
+                ("Do you offer food", "Most coffee shops serve light food and pastries alongside drinks; check the menu."),
+            ],
+        },
+        "screen enclosures" => ServiceGuidance {
+            what: "Screen-enclosure contractors build and repair screened patios, lanais, and pool cages.",
+            when: "a new enclosure or torn screen in need of repair.",
+            cost: Some("Screen-enclosure pricing depends on size and materials. Get a written estimate and confirm the warranty."),
+            faqs: &[
+                ("How long does an enclosure last", "A well-built screen enclosure can last many years; the screen itself may need periodic rescreening."),
+                ("Can you repair torn screens", "Yes — most enclosure contractors repair or rescreen existing structures, not just build new ones."),
+            ],
+        },
+        "landscaping" => ServiceGuidance {
+            what: "Landscapers design and maintain yards, from mowing and planting to hardscaping.",
+            when: "regular maintenance or a one-off landscape project.",
+            cost: Some("Recurring mowing is priced per visit by yard size, while design and installation are quoted per project. Get a written scope before work begins."),
+            faqs: &[
+                ("How often should I have my lawn maintained", "Most lawns are maintained weekly or biweekly during the growing season."),
+                ("Can you handle design and install", "Many landscapers offer both recurring maintenance and one-off design and installation projects."),
+            ],
+        },
+        "personal injury lawyer" => ServiceGuidance {
+            what: "Personal-injury lawyers represent people hurt in accidents and pursue compensation on their behalf.",
+            when: "soon after an injury; most offer a free initial consultation.",
+            cost: Some("Most personal-injury lawyers work on contingency — no fee unless you recover — taking a percentage of the settlement. Confirm the fee before signing."),
+            faqs: &[
+                ("How much does it cost up front", "Most personal-injury lawyers work on contingency — no fee unless you recover."),
+                ("How soon should I call", "Soon after the injury; there are time limits to file, and evidence is easier to gather early."),
+            ],
+        },
+        "medical spa" => ServiceGuidance {
+            what: "Medical spas offer cosmetic and wellness treatments under medical supervision.",
+            when: "booking a consultation or asking about a specific treatment.",
+            cost: Some("Treatment pricing varies by service and provider. Ask for a price menu and package options before booking."),
+            faqs: &[
+                ("Are the treatments safe", "Medical spas operate under medical supervision — ask about the credentials of the provider performing your treatment."),
+                ("Do I need a consultation", "Most med spas begin with a consultation to recommend a treatment plan."),
+            ],
+        },
+        "tattoo parlor" => ServiceGuidance {
+            what: "Tattoo studios provide custom tattoos and piercings by licensed artists.",
+            when: "booking a consultation, discussing a design, or asking about pricing.",
+            cost: Some("Pricing depends on size, detail, and the artist's hourly rate. Ask for a quote at your consultation."),
+            faqs: &[
+                ("How do I book a tattoo", "Most studios start with a consultation to discuss the design, placement, and pricing."),
+                ("Is it clean and licensed", "Licensed studios follow health-department sanitation standards — ask to see their licensing."),
+            ],
+        },
+        "real estate agent" => ServiceGuidance {
+            what: "Real-estate agents help you buy, sell, or rent property.",
+            when: "you are ready to list a property or start looking.",
+            cost: Some("Agents are typically paid a commission from the sale, usually split between the buyer's and seller's agents. Confirm the commission in your listing agreement."),
+            faqs: &[
+                ("How is an agent paid", "Agents are typically paid a commission from the sale, usually split between the buyer's and seller's agents."),
+                ("Should I get pre-approved first", "Yes — a pre-approval shows sellers you can follow through and sharpens your search."),
+            ],
+        },
+        "restaurant" => ServiceGuidance {
+            what: "Restaurants serve prepared meals for dine-in or takeaway.",
+            when: "reservations, opening hours, or takeout.",
+            cost: None,
+            faqs: &[
+                ("Do I need a reservation", "Popular restaurants often recommend reservations, especially on weekends — call ahead."),
+                ("Do you offer takeout or delivery", "Many restaurants offer takeout and delivery; check the menu or call to confirm."),
+            ],
+        },
+        "electrician" => ServiceGuidance {
+            what: "Electricians install and repair wiring, panels, and fixtures.",
+            when: "outages, flickering lights, or new wiring.",
+            cost: Some("Small jobs are often billed by the hour, larger ones quoted up front. Ask for a written estimate and confirm the work is permitted and inspected."),
+            faqs: &[
+                ("Is the work permitted and inspected", "A licensed electrician should pull permits and arrange inspection where required."),
+                ("When should I call an electrician", "For outages, flickering lights, tripping breakers, or any new wiring."),
+            ],
+        },
+        "pet groomer" => ServiceGuidance {
+            what: "Pet groomers bathe, trim, and style pets.",
+            when: "booking a groom or asking about breed-specific care.",
+            cost: Some("Grooming is priced by pet size, coat, and services. Ask for a quote when booking."),
+            faqs: &[
+                ("How often should my pet be groomed", "It varies by breed and coat — many pets are groomed every four to eight weeks."),
+                ("What should I bring", "Proof of vaccinations is commonly required; bring any coat-care notes for your pet."),
+            ],
+        },
+        "hair salon" => ServiceGuidance {
+            what: "Hair salons offer cuts, colour, and styling.",
+            when: "booking an appointment or asking about services.",
+            cost: Some("Pricing varies by service, stylist, and salon. Most list prices when you book."),
+            faqs: &[
+                ("How do I book", "Most salons book by appointment; walk-ins depend on availability."),
+                ("Can I get a consultation first", "Many salons offer a consultation to discuss cut, colour, and styling before the service."),
+            ],
+        },
+        "tree service" => ServiceGuidance {
+            what: "Tree services trim, remove, and care for trees.",
+            when: "dead or storm-damaged trees, or routine trimming.",
+            cost: Some("Trimming is usually priced per tree or by the hour, and removal depends on tree size and access. Always get a written estimate."),
+            faqs: &[
+                ("Do I need a permit to remove a tree", "It depends on your city — a licensed tree service can tell you what's required."),
+                ("Are you insured", "A reputable tree service carries liability insurance and workers' compensation — ask to confirm."),
+            ],
+        },
+        "accountant" => ServiceGuidance {
+            what: "Accountants prepare taxes, keep books, and advise on finances.",
+            when: "tax time or when you need bookkeeping help.",
+            cost: Some("Accountants bill hourly or per return depending on complexity. Ask for a clear fee structure up front."),
+            faqs: &[
+                ("What should I bring", "Bring your income records, expenses, and last year's return to your first meeting."),
+                ("Do you handle bookkeeping or just taxes", "Many accountants offer both; confirm the scope before engaging."),
+            ],
+        },
+        "plumber" => ServiceGuidance {
+            what: "Plumbers install and repair pipes, fixtures, and water systems.",
+            when: "leaks, clogs, or a remodel.",
+            cost: Some("Small repairs are billed by the job or the hour, while larger jobs are quoted up front. Always ask for a written estimate."),
+            faqs: &[
+                ("Is the work guaranteed", "Most plumbers warrant their work for a period — ask about the warranty before work starts."),
+                ("Do I need a permit", "Larger jobs like repipes and water-heater replacement usually require a permit, which a licensed plumber handles."),
+            ],
+        },
+        "seafood" => ServiceGuidance {
+            what: "Seafood restaurants specialise in fresh fish and shellfish dishes.",
+            when: "checking the catch of the day or booking a table.",
+            cost: None,
+            faqs: &[
+                ("Is the seafood fresh", "Ask about the catch of the day and how it's sourced — most seafood restaurants feature daily specials."),
+                ("Do I need a reservation", "Seafood restaurants can fill up at dinner; call ahead for a table."),
+            ],
+        },
+        "pizza" => ServiceGuidance {
+            what: "Pizzerias serve pizza and Italian dishes for dine-in, delivery, or pickup.",
+            when: "ordering or checking the delivery area.",
+            cost: None,
+            faqs: &[
+                ("Do you deliver", "Many pizzerias deliver within a set area — check the delivery zone when you order."),
+                ("Can I customize toppings", "Most pizzerias let you build your own or modify a specialty pie."),
+            ],
+        },
+        "day spa" => ServiceGuidance {
+            what: "Day spas offer massages, facials, and relaxation treatments.",
+            when: "booking a treatment or asking about packages.",
+            cost: Some("Treatment pricing varies by service and duration; many offer packages. Ask for a service menu when booking."),
+            faqs: &[
+                ("What should I expect on a first visit", "You'll usually arrive early to relax, fill out a brief form, and discuss your treatment."),
+                ("Should I tip", "Gratuity is customary for spa services — check whether it's included in the package."),
+            ],
+        },
+        "auto repair" => ServiceGuidance {
+            what: "Auto-repair shops diagnose and fix vehicles.",
+            when: "breakdowns, warning lights, or routine service.",
+            cost: Some("Parts and labour are usually quoted before work begins. Ask for a written estimate and a warranty on parts and labour."),
+            faqs: &[
+                ("How do I know if a repair is needed", "Ask for the diagnosis in writing and a quote before authorizing any work."),
+                ("Is the work warranted", "Most shops warrant parts and labour — ask about the terms before you approve the repair."),
+            ],
+        },
+        "fitness studio" => ServiceGuidance {
+            what: "Fitness studios offer classes and personal training.",
+            when: "schedules, memberships, or a trial class.",
+            cost: Some("Pricing varies by class type and membership; many offer a first-class or trial rate. Ask about drop-in versus membership."),
+            faqs: &[
+                ("Can I try a class first", "Many studios offer a first-class or trial rate so you can decide before committing."),
+                ("What should I bring", "Comfortable clothes and water; studios usually provide the rest — check when you book."),
+            ],
+        },
+        "dentist" => ServiceGuidance {
+            what: "Dentists provide exams, cleanings, and dental treatment.",
+            when: "booking a checkup or for tooth pain.",
+            cost: Some("Routine exams and cleanings are often covered by insurance, while major work varies. Ask for a treatment plan with costs before scheduling."),
+            faqs: &[
+                ("How often should I go", "Most dentists recommend a checkup and cleaning every six months."),
+                ("Do you take my insurance", "Ask whether the practice accepts your plan and what your out-of-pocket will be."),
+            ],
+        },
+        "pool service" => ServiceGuidance {
+            what: "Pool services clean and maintain pools.",
+            when: "weekly cleaning or repairs.",
+            cost: Some("Weekly service is usually a flat monthly rate, while repairs and openings are billed separately. Ask what chemicals are included."),
+            faqs: &[
+                ("How often is service needed", "Most pools are serviced weekly for chemical balance and cleaning."),
+                ("What is included", "Confirm whether chemicals, filter cleaning, and equipment checks are in the service."),
+            ],
+        },
+        "cleaning services" => ServiceGuidance {
+            what: "Cleaning services clean homes and offices.",
+            when: "booking a one-time or recurring clean.",
+            cost: Some("One-time deep cleans cost more than recurring visits, which are often priced per visit or per square foot. Confirm what's included before booking."),
+            faqs: &[
+                ("Do I provide supplies", "Some cleaners bring their own supplies; others ask you to provide them — confirm when booking."),
+                ("One-time or recurring", "Most services offer both; recurring cleanings are usually priced lower per visit."),
+            ],
+        },
+        "veterinarian" => ServiceGuidance {
+            what: "Veterinarians provide medical care for pets.",
+            when: "checkups, vaccinations, or when a pet is unwell.",
+            cost: Some("Routine wellness visits are generally predictable, while emergency and surgical care varies. Ask for an estimate before treatment."),
+            faqs: &[
+                ("How often should my pet see the vet", "Annual wellness exams are standard; puppies, kittens, and seniors may need more frequent visits."),
+                ("What should I bring to a visit", "Your pet's records and a list of any concerns; bring a carrier or leash for safety."),
+            ],
+        },
         _ => return None,
     };
     Some(entry)
@@ -6194,14 +6352,28 @@ async fn render_programmatic_page(
     // PROGRAMMATIC PAGES line 76/82). General category knowledge only, never a claim
     // about a specific business; a name with no entry omits the section entirely.
     let guidance = match service_name.as_deref().and_then(service_guidance) {
-        Some((what, when)) => {
+        Some(g) => {
             let svc_label = service_name.as_deref().unwrap_or("this service");
-            format!(
-                "<section class=\"expect\" aria-label=\"What to expect\"><h2>What to expect when you hire a {}</h2><p>{}</p><p><strong>When to call:</strong> {}</p></section>",
+            let mut html = format!(
+                "<section class=\"expect\" aria-label=\"What to expect\"><h2>What to expect when you hire a {}</h2><p>{}</p><p><strong>When to call:</strong> {}</p>",
                 h(svc_label),
-                what,
-                when,
-            )
+                g.what,
+                g.when,
+            );
+            if let Some(cost) = g.cost {
+                html.push_str(&format!("<h3>What it typically costs</h3><p>{}</p>", cost,));
+            }
+            if !g.faqs.is_empty() {
+                html.push_str("<h3>Common questions</h3>");
+                for (q, a) in g.faqs {
+                    html.push_str(&format!(
+                        "<p class=\"faq\"><strong>{}?</strong> {}</p>",
+                        q, a,
+                    ));
+                }
+            }
+            html.push_str("</section>");
+            html
         }
         None => String::new(),
     };
