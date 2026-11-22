@@ -5615,6 +5615,40 @@ pub async fn sitemap(
     .await
     .unwrap_or_default();
 
+    // Long-term city navigation (work-queue line 52b/c): /cities (all-city index)
+    // and one /<state-slug> page per distinct state are real server-rendered
+    // crawlable pages, so they belong in the sitemap. They are derived from
+    // geo_cities — the SAME source the pages render — so a state URL can never be
+    // advertised for a state with no city. The nested /<state>/<city> aliases are
+    // deliberately NOT listed: each canonicalises to its /{city} home (no
+    // duplicate content).
+    let geo = geo_cities(pool).await;
+    if !geo.is_empty() {
+        let cities_ts: Option<chrono::DateTime<chrono::Utc>> = dirs
+            .iter()
+            .filter_map(|d| {
+                d.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("updated_at")
+                    .unwrap_or(None)
+            })
+            .max();
+        xml.push_str(&format!(
+            "  <url><loc>{}/cities</loc>{}</url>\n",
+            h(&base),
+            lastmod_xml(cities_ts)
+        ));
+        let mut listed_states = std::collections::HashSet::new();
+        for c in &geo {
+            if listed_states.insert(c.state.clone()) {
+                xml.push_str(&format!(
+                    "  <url><loc>{}/{}</loc>{}</url>\n",
+                    h(&base),
+                    h(&state_slug(&c.state)),
+                    lastmod_xml(cities_ts)
+                ));
+            }
+        }
+    }
+
     for d in &dirs {
         let dir_id: Uuid = d.try_get("id").unwrap_or_default();
         let dslug: String = d.try_get("slug").unwrap_or_default();
