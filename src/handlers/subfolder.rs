@@ -6055,6 +6055,41 @@ async fn render_programmatic_page(
         _ => format!("<p class=\"lede\">{}</p>", h(&description)),
     };
 
+    // Render the ACTUAL businesses for this service (work queue "PROGRAMMATIC PAGES" line 74/76):
+    // the stored 223-char content blob alone is thin content a crawler filters, and the spec is
+    // "FEATURES THE ACTUAL BUSINESSES on it". `directory_services.name` maps 1:1 to a
+    // `directory_categories.name`, so reuse `list_businesses` — the exact query the category page
+    // uses (in-city first, then rating/review_count) — with no invented facts: name, rating,
+    // review count and address are the stored Google-imported data. A service with no matching
+    // category (e.g. "Restaurant", which spans several food categories) lists nothing and the
+    // page stays content-only, never failing.
+    let biz_cards: Vec<BizCard> = match service_name.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(svc) => list_businesses(pool, dir, Some(svc), 10, 0).await,
+        None => Vec::new(),
+    };
+    let list_city = location_name
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(&dir.city);
+    let business_list = if biz_cards.is_empty() {
+        String::new()
+    } else {
+        let cards = biz_cards
+            .iter()
+            .map(|b| card_html(&dir.slug, b))
+            .collect::<Vec<_>>()
+            .join("");
+        let svc_label = service_name.as_deref().unwrap_or("businesses");
+        format!(
+            "<section class=\"explore\" aria-label=\"Top {} in {}\"><h2>Top {} in {}</h2><div class=\"grid\">{}</div></section>",
+            h(svc_label),
+            h(list_city),
+            h(svc_label),
+            h(list_city),
+            cards,
+        )
+    };
+
     // The beacon `POST /programmatic-pages/:page_id/track` was written for.
     // The endpoint is auth-exempt for POST only (see `auth_guard`).
     let beacon = format!(
@@ -6079,6 +6114,7 @@ catch(e){{}}}})();</script>",
 <h1>{h1}</h1>
 {lede}
 {content}
+{business_list}
 <p class="row" style="margin-top:24px"><a href="{base}/{dslug}/businesses">Browse {city} businesses</a> &middot; <a href="{base}/{dslug}">More about {city}</a></p>
 </article>
 {beacon}
@@ -6093,6 +6129,7 @@ catch(e){{}}}})();</script>",
         h1 = h(&h1),
         lede = lede,
         content = crate::template_engine::sanitize_html(&content),
+        business_list = business_list,
         base = h(&base),
         dslug = h(&dir.slug),
         city = h(&dir.city),
