@@ -6585,6 +6585,19 @@ catch(e){{}}}})();</script>",
         end = shell_end(&site, hq.as_deref()),
     );
 
+    // Thin-page quality gate (work queue PROGRAMMATIC PAGES line 80 step 5): a page
+    // that renders no service guidance and no businesses is thin content, so noindex
+    // it — the same `content="index,follow,max-image-preview:large"` → `noindex,follow`
+    // swap the listing thin-page gate uses. Substantial pages keep the default.
+    let body = if guidance.is_empty() && biz_cards.is_empty() {
+        body.replace(
+            "content=\"index,follow,max-image-preview:large\"",
+            "content=\"noindex,follow\"",
+        )
+    } else {
+        body
+    };
+
     PageRender::Rendered(html_response(StatusCode::OK, body))
 }
 
