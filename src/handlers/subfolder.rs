@@ -1362,6 +1362,7 @@ async fn brand_name_for(pool: &PgPool, dir: &DirectoryRec) -> String {
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct BizCard {
+    id: Uuid,
     name: String,
     slug: String,
     category: Option<String>,
@@ -1513,6 +1514,7 @@ async fn list_businesses(
         let category: Option<String> = r.try_get("category").unwrap_or(None);
         let city: Option<String> = r.try_get("city").unwrap_or(None);
         out.push(BizCard {
+            id: r.try_get("id").unwrap_or_default(),
             name,
             slug: r.try_get("slug").unwrap_or_default(),
             category,
@@ -2323,6 +2325,7 @@ async fn list_town_businesses(
     let mut out = Vec::new();
     for r in rows.unwrap_or_default() {
         out.push(BizCard {
+            id: r.try_get("id").unwrap_or_default(),
             name: r.try_get("name").unwrap_or_default(),
             slug: r.try_get("slug").unwrap_or_default(),
             category: r.try_get("category").unwrap_or(None),
@@ -3459,6 +3462,7 @@ pub async fn business_detail(
     // "in {city}" heading; only pages that genuinely run out borrow and widen.
     fn related_card(r: &sqlx::postgres::PgRow, dir_city: &str) -> BizCard {
         BizCard {
+            id: r.try_get("id").unwrap_or_default(),
             name: r.try_get("name").unwrap_or_default(),
             slug: r.try_get("slug").unwrap_or_default(),
             category: r.try_get("category").unwrap_or(None),
@@ -3489,7 +3493,7 @@ pub async fn business_detail(
     let mut same: Vec<BizCard> = Vec::new();
     if let Some(cat_id) = category_id {
         match sqlx::query(
-            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, b.city, \
+            "SELECT b.id, b.name, b.slug, b.rating, b.review_count, b.address, b.city, \
                     dc.name AS category \
              FROM businesses b \
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
@@ -3527,7 +3531,7 @@ pub async fn business_detail(
     let slots = 6usize.saturating_sub(same.len());
     if slots > 0 {
         match sqlx::query(
-            "SELECT b.name, b.slug, b.rating, b.review_count, b.address, b.city, \
+            "SELECT b.id, b.name, b.slug, b.rating, b.review_count, b.address, b.city, \
                     dc.name AS category \
              FROM businesses b \
              LEFT JOIN directory_categories dc ON dc.id = b.category_id \
@@ -6467,6 +6471,27 @@ async fn render_programmatic_page(
         Some(svc) => list_businesses(pool, dir, Some(svc), 10, 0).await,
         None => Vec::new(),
     };
+
+    // Attribute the businesses this page actually features back to the page row, so
+    // they surface in the business's own back-office ("pages live" card, work queue
+    // line 86/90). The renderer is the single place the list is decided, so writing it
+    // here keeps the attribution exactly in step with what is shown. `IS DISTINCT FROM`
+    // means a page with an unchanged list performs no write (steady-state: no UPDATE),
+    // and a page with no businesses writes nothing either.
+    if !biz_cards.is_empty() {
+        let ids: Vec<Uuid> = biz_cards.iter().map(|b| b.id).collect();
+        sqlx::query(
+            "UPDATE programmatic_pages SET mentioned_business_ids = $1 \
+             WHERE id = $2 AND mentioned_business_ids IS DISTINCT FROM $1",
+        )
+        .bind(&ids)
+        .bind(page_id)
+        .execute(pool)
+        .await
+        .map_err(|e| eprintln!("subfolder: mention backfill failed for {page_id}: {e}"))
+        .ok();
+    }
+
     let list_city = location_name
         .as_deref()
         .filter(|s| !s.trim().is_empty())
