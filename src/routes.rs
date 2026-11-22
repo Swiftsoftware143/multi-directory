@@ -2111,6 +2111,12 @@ pub fn create_router(s: AppState) -> Router {
             "/portal/business/:business_id/page-links.csv",
             get(business_dashboard::business_page_links_csv),
         )
+        // Owner-scoped PDF client report (work-queue line 86 item 3) — the same
+        // data as the CSV, rendered as a downloadable report.
+        .route(
+            "/portal/business/:business_id/report.pdf",
+            get(business_dashboard::business_report_pdf),
+        )
         // Owner-scoped listing meta (card B131): the business portal's CTA control used to
         // PUT a non-existent /biz/:id/meta and 404 on every save. Private (auth_guard below).
         .route(

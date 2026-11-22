@@ -303,6 +303,229 @@ pub async fn business_page_links_csv(
         .map_err(|e| AppError::Internal(e.to_string()))
 }
 
+/// GET /api/v1/portal/business/:business_id/report.pdf
+///
+/// A generated CLIENT REPORT (PDF) for the period: every published programmatic
+/// ("city") page that mentions the business, its public URL and its per-page
+/// performance, plus rolled-up totals. Work-queue line 86 item (3) — the
+/// downloadable report behind the back-office "Download report (PDF)" button.
+/// Owner-scoped via `can_moderate`; the PDF is rendered in-process with the
+/// `printpdf` built-in fonts, so there is no external renderer and no shell-out.
+pub async fn business_report_pdf(
+    State(s): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<Response> {
+    let biz_name: Option<String> = sqlx::query_scalar("SELECT name FROM businesses WHERE id = $1")
+        .bind(business_id)
+        .fetch_optional(&s.db)
+        .await?;
+    let biz_name = match biz_name {
+        Some(n) => n,
+        None => return Err(AppError::NotFound("Business not found".to_string())),
+    };
+
+    if !crate::handlers::reviews::can_moderate(&s.db, &claims, Some(business_id)).await? {
+        return Err(AppError::Forbidden(
+            "You can only download the report for a business you own or have claimed.".to_string(),
+        ));
+    }
+
+    let rows = sqlx::query_as::<_, PageLinkRow>(
+        r#"SELECT d.slug AS city_slug,
+                  COALESCE(n.root_domain, '') AS root_domain,
+                  pp.slug AS page_slug,
+                  COALESCE(pp.title, '') AS title,
+                  COALESCE(ds.name, '') AS service,
+                  pp.impressions,
+                  pp.clicks,
+                  pp.conversions
+           FROM programmatic_pages pp
+           JOIN directories d ON d.id = pp.directory_id
+           LEFT JOIN networks n ON n.id = d.network_id
+           LEFT JOIN directory_services ds ON ds.id = pp.service_id
+           WHERE $1 = ANY(pp.mentioned_business_ids) AND pp.status = 'published'
+           ORDER BY d.slug, pp.slug"#,
+    )
+    .bind(business_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    let totals = sum_trapdoor_analytics(&s.db, business_id).await?;
+    let generated = chrono::Utc::now().format("%B %e, %Y").to_string();
+    let bytes = build_report_pdf(&biz_name, &s.config.base_domain, &rows, &totals, &generated)
+        .map_err(AppError::Internal)?;
+
+    let filename = format!(
+        "attachment; filename=\"zaarhub-client-report-{}.pdf\"",
+        safe_filename(&biz_name)
+    );
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/pdf")
+        .header(header::CONTENT_DISPOSITION, filename)
+        .body(Body::from(bytes))
+        .map_err(|e| AppError::Internal(e.to_string()))
+}
+
+/// Build the report PDF entirely in-process. Each mentioned page is a compact
+/// block — service · city, title, URL, then its views/clicks/leads — with a
+/// header summary and a rule between blocks. Pages flow onto new sheets as
+/// needed. Built-in Helvetica fonts, so no font file or renderer is required.
+fn build_report_pdf(
+    biz_name: &str,
+    base_domain: &str,
+    rows: &[PageLinkRow],
+    totals: &PageAnalytics,
+    generated: &str,
+) -> Result<Vec<u8>, String> {
+    use printpdf::{BuiltinFont, Color, Mm, PdfDocument, Rgb};
+
+    let (doc, page_idx, layer_idx) =
+        PdfDocument::new("ZaarHub Client Report", Mm(210.0), Mm(297.0), "Report");
+    let font = doc
+        .add_builtin_font(BuiltinFont::Helvetica)
+        .map_err(|e| e.to_string())?;
+    let font_bold = doc
+        .add_builtin_font(BuiltinFont::HelveticaBold)
+        .map_err(|e| e.to_string())?;
+
+    let black = Color::Rgb(Rgb::new(0.0, 0.0, 0.0, None));
+    let gray = Color::Rgb(Rgb::new(0.35, 0.35, 0.35, None));
+
+    let mut layer = doc.get_page(page_idx).get_layer(layer_idx);
+    let mut y: f32 = 272.0;
+
+    // Header.
+    layer.set_fill_color(black.clone());
+    layer.use_text("Client Report", 16.0, Mm(15.0), Mm(y), &font_bold);
+    y -= 8.0;
+    layer.use_text(clip_str(biz_name, 80), 12.0, Mm(15.0), Mm(y), &font);
+    y -= 6.0;
+    layer.use_text(
+        format!("Generated {} · ZaarHub", generated),
+        9.0,
+        Mm(15.0),
+        Mm(y),
+        &font,
+    );
+    y -= 4.0;
+    layer.set_fill_color(gray.clone());
+    layer.use_text(
+        format!(
+            "{} city page(s) · {} views · {} clicks · {} leads",
+            rows.len(),
+            totals.impressions,
+            totals.clicks,
+            totals.conversions
+        ),
+        10.0,
+        Mm(15.0),
+        Mm(y),
+        &font_bold,
+    );
+    layer.set_fill_color(black.clone());
+    y -= 5.0;
+
+    draw_rule(&layer, y);
+    y -= 9.0;
+
+    // Per-page blocks.
+    for r in rows {
+        if y < 28.0 {
+            let (p, l) = doc.add_page(Mm(210.0), Mm(297.0), "Report");
+            layer = doc.get_page(p).get_layer(l);
+            y = 272.0;
+        }
+
+        let heading = match (r.service.trim(), r.city_slug.trim()) {
+            (s, c) if !s.is_empty() && !c.is_empty() => format!("{} · {}", s, c),
+            (s, _) if !s.is_empty() => s.to_string(),
+            (_, c) if !c.is_empty() => c.to_string(),
+            _ => r.page_slug.clone(),
+        };
+
+        layer.set_fill_color(black.clone());
+        layer.use_text(clip_str(&heading, 90), 9.5, Mm(15.0), Mm(y), &font_bold);
+        y -= 4.2;
+
+        layer.set_fill_color(gray.clone());
+        layer.use_text(clip_str(&r.title, 95), 8.0, Mm(15.0), Mm(y), &font);
+        y -= 3.8;
+
+        layer.use_text(
+            clip_str(&page_url(r, base_domain), 95),
+            7.0,
+            Mm(15.0),
+            Mm(y),
+            &font,
+        );
+        y -= 3.8;
+
+        layer.set_fill_color(black.clone());
+        layer.use_text(
+            format!(
+                "Views {} · Clicks {} · Leads {}",
+                r.impressions, r.clicks, r.conversions
+            ),
+            8.0,
+            Mm(15.0),
+            Mm(y),
+            &font,
+        );
+        y -= 5.0;
+
+        draw_rule(&layer, y);
+        y -= 7.0;
+    }
+
+    doc.save_to_bytes().map_err(|e| e.to_string())
+}
+
+/// Public URL for a programmatic page — network root domain when set, else the
+/// city subdomain on the base domain.
+fn page_url(r: &PageLinkRow, base_domain: &str) -> String {
+    let base = if r.root_domain.is_empty() {
+        format!("https://{}.{}", r.city_slug, base_domain)
+    } else {
+        format!("https://{}/{}", r.root_domain, r.city_slug)
+    };
+    format!("{}/{}", base, r.page_slug)
+}
+
+/// Draw a thin horizontal rule across the printable width at `y_mm`.
+fn draw_rule(layer: &printpdf::PdfLayerReference, y_mm: f32) {
+    layer.set_outline_color(printpdf::Color::Rgb(printpdf::Rgb::new(
+        0.78, 0.78, 0.78, None,
+    )));
+    layer.set_outline_thickness(0.35);
+    layer.add_line(printpdf::Line {
+        points: vec![
+            (
+                printpdf::Point::new(printpdf::Mm(15.0), printpdf::Mm(y_mm)),
+                false,
+            ),
+            (
+                printpdf::Point::new(printpdf::Mm(195.0), printpdf::Mm(y_mm)),
+                false,
+            ),
+        ],
+        is_closed: false,
+    });
+}
+
+/// Truncate to at most `max` chars, appending "..." — ASCII-only so it renders
+/// under the built-in Helvetica (Windows-1252) encoding.
+fn clip_str(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let clipped: String = s.chars().take(max).collect();
+        format!("{}...", clipped)
+    }
+}
+
 /// One published programmatic page that mentions a business, joined to its
 /// directory (city) and network (brand host) so the CSV can print a real URL.
 #[derive(Debug, sqlx::FromRow)]

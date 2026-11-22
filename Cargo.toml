@@ -45,3 +45,4 @@ tokio-util = { version = "0.7", features = ["io"] }
 trust-dns-resolver = { version = "0.23", features = ["tokio-runtime"] }
 tokio-retry = "0.3"
 base64 = "0.22"
+printpdf = "0.7"

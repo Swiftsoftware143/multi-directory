@@ -2499,7 +2499,8 @@ async function loadMentions() {
           '<b style="color:var(--text)">' + (a.conversions || 0) + '</b> leads' +
         '</div>' +
         '<div style="margin-top:12px">' +
-          '<button class="btn btn-sm" onclick="downloadPageLinks(\'' + esc(b.id || '') + '\')">&#11015; Download report (CSV)</button>' +
+          '<button class="btn btn-sm" onclick="downloadPageLinks(\'' + esc(b.id || '') + '\')">&#11015; Download report (CSV)</button> ' +
+          '<button class="btn btn-sm" onclick="downloadReportPdf(\'' + esc(b.id || '') + '\')">&#11015; Download report (PDF)</button>' +
         '</div>' +
         '</div>';
     }).join('');
@@ -2522,6 +2523,28 @@ async function downloadPageLinks(businessId) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = m ? m[1] : 'page-links.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('Could not download the report: ' + e.message);
+  }
+}
+
+async function downloadReportPdf(businessId) {
+  try {
+    var token = localStorage.getItem('bizToken');
+    var h = {};
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    var r = await fetch(API + '/portal/business/' + encodeURIComponent(businessId) + '/report.pdf', { headers: h });
+    if (!r.ok) { var e = await r.json().catch(function () { return {}; }); throw new Error(e.message || 'Download failed'); }
+    var blob = await r.blob();
+    var cd = r.headers.get('Content-Disposition') || '';
+    var m = cd.match(/filename="?([^";]+)"?/);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : 'client-report.pdf';
     document.body.appendChild(a);
     a.click();
     a.remove();
