@@ -2121,6 +2121,7 @@ async function loadCityPage(){
     // Every tracked event on a city page is attributed to that directory.
     window.__dir_id=dirId||null;window.__biz_ctx=null
     state.loyalty=await loadLoyalty(dirId)
+    state.homeConfig=await loadHomeConfig(dirId)
     renderCityPage(d)
     // Load ads for this city
     if(dirId){
@@ -2481,8 +2482,10 @@ function renderCityPage(d){
     <div class="zh-biz-grid">${cityTopRatedHtml}</div>
   </div>`:'')
 
+  var _cityHero=hpCfg().hero||{}
+  var _cityHeroBg=_cityHero.image_url?(' style="background-image:linear-gradient(rgba(15,23,42,.55),rgba(15,23,42,.65)),url(\''+esc(_cityHero.image_url)+'\');background-size:cover;background-position:center"'):''
   el.innerHTML=`
-<div class="zh-hero">
+<div class="zh-hero"${_cityHeroBg}>
   <div class="zh-hero-inner">
     <p id="zh-city-weather" style="font-size:.85rem;color:#94a3b8;margin-bottom:10px">🌤️ ${cityName} — Loading...</p>
     <h1>Discover & Support <span>${cityName}</span></h1>
