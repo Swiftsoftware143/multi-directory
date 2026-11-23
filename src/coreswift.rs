@@ -589,7 +589,22 @@ pub async fn push_claimed_business(
             .filter_map(|w| w.chars().next())
             .collect::<String>()
             .to_lowercase();
-        let interested_tag_name = format!("{}-biz-zh-interested", prefix);
+        // Card line 97: the tag is admin-configurable (directories.coreswift_tag_claimed) and
+        // falls back to the slug-derived name only when no tag is configured. The read is a
+        // compile-time literal and best-effort — a failed read never blocks the claim push.
+        let configured_tag: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT coreswift_tag_claimed FROM directories WHERE id = $1",
+        )
+        .bind(dir_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
+        let interested_tag_name =
+            configured_tag.unwrap_or_else(|| format!("{}-biz-zh-interested", prefix));
 
         // Find the tag on the ZaarHub parent tenant
         // Uses CoreSwift API; the tenants table is in the coreswift database, not multidirectory
@@ -2102,15 +2117,24 @@ const CLEAR_LINK_NETWORK: &str = "UPDATE networks SET \
            coreswift_personal_key_encrypted = NULL, coreswift_key_prefix = NULL, \
            coreswift_list_id_users = NULL, coreswift_list_id_businesses = NULL, \
            coreswift_list_id_suppliers = NULL, coreswift_list_id_sponsors = NULL, \
-           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL \
+           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL, \
+           coreswift_tag_claimed = NULL \
          WHERE id = $1";
 const CLEAR_LINK_DIRECTORY: &str = "UPDATE directories SET \
            coreswift_tenant_id = NULL, coreswift_base_url = NULL, \
            coreswift_personal_key_encrypted = NULL, coreswift_key_prefix = NULL, \
            coreswift_list_id_users = NULL, coreswift_list_id_businesses = NULL, \
            coreswift_list_id_suppliers = NULL, coreswift_list_id_sponsors = NULL, \
-           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL \
+           coreswift_list_id_claimed = NULL, coreswift_list_id_newsletter = NULL, \
+           coreswift_tag_claimed = NULL \
          WHERE id = $1";
+
+// Card line 97 — the claimed-business TAG is its own column, updated separately from the
+// six list ids above (the tag is a text name, not a uuid). Compile-time literals (gate 5d).
+const SAVE_TAG_NETWORK: &str = "UPDATE networks SET coreswift_tag_claimed = $1 WHERE id = $2";
+const SAVE_TAG_DIRECTORY: &str = "UPDATE directories SET coreswift_tag_claimed = $1 WHERE id = $2";
+const READ_TAG_NETWORK: &str = "SELECT coreswift_tag_claimed FROM networks WHERE id = $1";
+const READ_TAG_DIRECTORY: &str = "SELECT coreswift_tag_claimed FROM directories WHERE id = $1";
 
 type LinkRow = (
     Option<Uuid>,
@@ -2211,6 +2235,22 @@ async fn parent_network_id(db: &PgPool, directory_id: Uuid) -> Option<Uuid> {
         .flatten()
 }
 
+/// Read the configured claimed-business tag for one link (card line 97). `None` = no row or no
+/// tag set (the claim push then falls back to the slug-derived name).
+async fn read_claim_tag(db: &PgPool, scope: LinkScope, id: Uuid) -> Option<String> {
+    let sql = match scope {
+        LinkScope::Network => READ_TAG_NETWORK,
+        LinkScope::Directory => READ_TAG_DIRECTORY,
+    };
+    sqlx::query_scalar::<_, Option<String>>(sql)
+        .bind(id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+}
+
 /// Read the connection state of one network or directory (what the Admin Panel's card shows).
 /// `Ok(None)` = no such row. A directory reports both its own link and the network it inherits.
 pub async fn link_status(db: &PgPool, scope: LinkScope, id: Uuid) -> Result<Option<Value>, String> {
@@ -2218,6 +2258,9 @@ pub async fn link_status(db: &PgPool, scope: LinkScope, id: Uuid) -> Result<Opti
         return Ok(None);
     };
     let mut out = link_json(scope, id, &name, &row);
+    if let Some(tag) = read_claim_tag(db, scope, id).await {
+        out["claimed_tag"] = json!(tag);
+    }
 
     if scope == LinkScope::Directory {
         if let Some(nid) = parent_network_id(db, id).await {
@@ -2226,7 +2269,11 @@ pub async fn link_status(db: &PgPool, scope: LinkScope, id: Uuid) -> Result<Opti
                     Some(t) => json!(t),
                     None => json!(net_row.0),
                 };
-                out["inherits_from"] = link_json(LinkScope::Network, nid, &net_name, &net_row);
+                let mut net_json = link_json(LinkScope::Network, nid, &net_name, &net_row);
+                if let Some(t) = read_claim_tag(db, LinkScope::Network, nid).await {
+                    net_json["claimed_tag"] = json!(t);
+                }
+                out["inherits_from"] = net_json;
                 return Ok(Some(out));
             }
         }
@@ -2247,6 +2294,7 @@ pub async fn save_link(
     base_url: Option<String>,
     personal_key: Option<String>,
     lists: &Value,
+    claimed_tag: Option<String>,
 ) -> Result<Option<Value>, String> {
     let plain_key = personal_key
         .as_deref()
@@ -2283,6 +2331,28 @@ pub async fn save_link(
     if res.rows_affected() == 0 {
         return Ok(None);
     }
+
+    // Card line 97 — persist the claimed-business TAG (text) when the panel supplied it. Empty
+    // clears it back to the slug-derived fallback; absent leaves the stored value untouched.
+    if let Some(tag) = claimed_tag.as_ref() {
+        let trimmed = tag.trim();
+        let value: Option<&str> = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        };
+        let sql = match scope {
+            LinkScope::Network => SAVE_TAG_NETWORK,
+            LinkScope::Directory => SAVE_TAG_DIRECTORY,
+        };
+        sqlx::query(sql)
+            .bind(value)
+            .bind(id)
+            .execute(db)
+            .await
+            .map_err(|e| format!("DB error saving the CoreSwift claim tag: {e}"))?;
+    }
+
     tracing::info!(
         "[coreswift] link saved for {} {id} (tenant {tenant_id}, key {})",
         scope.as_str(),

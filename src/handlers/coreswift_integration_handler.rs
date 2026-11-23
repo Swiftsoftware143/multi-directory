@@ -537,6 +537,10 @@ pub struct LinkSaveRequest {
     pub personal_key: Option<String>,
     #[serde(default)]
     pub lists: Value,
+    /// Card line 97 — the tag applied to claimed-business contacts. Empty clears it (the claim
+    /// push falls back to the slug-derived name); absent leaves the stored value untouched.
+    #[serde(default)]
+    pub claimed_tag: Option<String>,
 }
 
 /// GET /api/v1/integrations/coreswift/connection/targets — the picker's own list: every
@@ -643,6 +647,7 @@ pub async fn coreswift_connection_save(
         req.base_url,
         req.personal_key,
         &req.lists,
+        req.claimed_tag,
     )
     .await
     .map_err(AppError::Internal)?
