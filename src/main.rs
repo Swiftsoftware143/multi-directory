@@ -45,7 +45,7 @@ mod webhook_dispatch;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::signal;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::EnvFilter;
 
 pub use error::AppError;
@@ -357,7 +357,13 @@ async fn main() {
 
     let app = routes::create_router(state.clone())
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        // Page speed / Core Web Vitals (work-queue line 72, gap #3): the SPA shell is a ~256KB
+        // inline-JS index.html replayed for every route, and it was being served UNCOMPRESSED
+        // (tower-http's compression-gzip feature was compiled in but the layer was never added).
+        // This layer is OUTERMOST, so every compressible response (HTML/JSON/CSV) is gzip'd when
+        // the client accepts it; images/PDFs are untouched by the default content-type predicate.
+        .layer(CompressionLayer::new());
 
     let addr = format!("{}:{}", config.host, config.port);
     tracing::info!("Starting Multi-Directory API server on {}", addr);
