@@ -3138,6 +3138,32 @@ pub async fn category_page(
         return None;
     }
 
+    // A "best-rated" ranking page exists only when the category has real ratings
+    // to rank (SEO gap 5). The link is emitted only then, never to a 404.
+    let rated: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM businesses b \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.directory_id = $1 AND b.is_active = true \
+           AND lower(coalesce(dc.name,'')) = lower($2) \
+           AND b.rating IS NOT NULL AND b.rating >= 4.0",
+    )
+    .bind(dir.id)
+    .bind(&cat_name)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    let best_link = if rated >= 2 {
+        format!(
+            "<p><a class=\"btn\" href=\"/{}/best-{}\">\u{2b50} See the best-rated {} in {} \u{2192}</a></p>",
+            h(&dir.slug),
+            h(&cat_slug),
+            h(&cat_name),
+            h(&dir.city)
+        )
+    } else {
+        String::new()
+    };
+
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
@@ -3216,6 +3242,7 @@ pub async fn category_page(
         r#"{start}{crumbs}
 <h1>{label}</h1>
 <p class="lede">Browse {n} businesses listed under {cat} in {city}, {state} — rated and reviewed by locals.</p>
+{best_link}
 <div class="grid">{cards}</div>
 <h2>More categories in {city}</h2>
 <div class="chips">{chips}</div>
@@ -3243,6 +3270,205 @@ pub async fn category_page(
         chips = chips,
         dir = h(&dir.slug),
         explore = explore,
+        best_link = best_link,
+        end = shell_end(&site, hq.as_deref()),
+    );
+
+    Some(html_response(StatusCode::OK, body))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Best-rated businesses — GET /<slug>/best-<category-slug>   (SEO gap 5)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// "best plumber in Palm Bay" is a high-intent query distinct from the category
+// page's "plumber in Palm Bay": the buyer already knows what they want and is
+// choosing between providers. This page targets that keyword with the
+// directory's OWN ratings — never invented — so only businesses carrying a real
+// 4.0+ rating are listed, ranked by rating then review count. A category with
+// fewer than two 4.0+ businesses publishes nothing (no thin page, no sitemap
+// entry), so every URL that resolves renders real ranked content.
+
+async fn best_in_city_page(
+    pool: &PgPool,
+    host: Option<&str>,
+    proto: &str,
+    fallback_domain: &str,
+    slug: &str,
+    best_cat: &str,
+) -> Option<Response<Body>> {
+    // `best-<category-slug>` — anything else is not this page.
+    let cat_slug = best_cat.strip_prefix("best-")?;
+    if cat_slug.is_empty() {
+        return None;
+    }
+    let dir = load_directory(pool, slug).await?;
+
+    // Resolve the category exactly like category_page (a directory's own row wins).
+    let row = sqlx::query(
+        "SELECT dc.name, dc.slug FROM directory_categories dc \
+         WHERE dc.slug = $1 AND (dc.directory_id = $2 OR dc.directory_id IS NULL) \
+         ORDER BY dc.directory_id NULLS LAST LIMIT 1",
+    )
+    .bind(cat_slug)
+    .bind(dir.id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()?;
+    let cat_name: String = row.try_get("name").unwrap_or_default();
+    if cat_name.is_empty() {
+        return None;
+    }
+
+    // Only genuinely-rated businesses qualify — "best" is a ranking, never a guess.
+    let best_rows = sqlx::query(
+        "SELECT b.id, b.name, b.slug, b.description, b.logo_url, b.rating, \
+                b.review_count, b.address, b.city, b.state, dc.name AS category \
+         FROM businesses b \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.directory_id = $1 AND b.is_active = true \
+           AND lower(coalesce(dc.name,'')) = lower($2) \
+           AND b.rating IS NOT NULL AND b.rating >= 4.0 \
+         ORDER BY b.rating DESC, b.review_count DESC, b.name ASC \
+         LIMIT 15",
+    )
+    .bind(dir.id)
+    .bind(&cat_name)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    // A single rated business is a thin page that competes with the category page
+    // for the same query — the same >= 2 threshold the category sitemap entry and
+    // the cross-link use, so a "best" page is never orphaned thin content.
+    if best_rows.len() < 2 {
+        return None;
+    }
+
+    let rated_total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM businesses b \
+         LEFT JOIN directory_categories dc ON dc.id = b.category_id \
+         WHERE b.directory_id = $1 AND b.is_active = true \
+           AND lower(coalesce(dc.name,'')) = lower($2) \
+           AND b.rating IS NOT NULL AND b.rating >= 4.0",
+    )
+    .bind(dir.id)
+    .bind(&cat_name)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    let dir_city = norm_city(&dir.city);
+    let mut items: Vec<BizCard> = Vec::new();
+    for r in best_rows {
+        let name: String = r.try_get("name").unwrap_or_default();
+        let category: Option<String> = r.try_get("category").unwrap_or(None);
+        let city: Option<String> = r.try_get("city").unwrap_or(None);
+        items.push(BizCard {
+            id: r.try_get("id").unwrap_or_default(),
+            name,
+            slug: r.try_get("slug").unwrap_or_default(),
+            category,
+            in_city: norm_city(city.as_deref().unwrap_or("")) == dir_city,
+            rating: r
+                .try_get::<Option<f64>, _>("rating")
+                .unwrap_or(None)
+                .unwrap_or(0.0),
+            review_count: r
+                .try_get::<Option<i32>, _>("review_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            address: r.try_get("address").unwrap_or(None),
+            city,
+            description: r.try_get("description").unwrap_or(None),
+        });
+    }
+
+    let theme = theme_for(pool, &dir).await;
+    let base = origin(host, proto, fallback_domain);
+    let site = brand_name_for(pool, &dir).await;
+    let hq = site_headquarters(pool).await;
+    let canonical = format!("{}/{}/best-{}", base, dir.slug, cat_slug);
+    let cat_url = format!("{}/{}/{}", base, dir.slug, cat_slug);
+    let label = format!("Best {} in {}, {}", cat_name, dir.city, dir.state);
+
+    // The admin's own category pattern serves this surface too, via a distinct
+    // page type so it never inherits the category page's (duplicate) title.
+    let (fb_title, fb_desc) = seo_pattern(
+        pool,
+        dir.id,
+        "best_category",
+        &[("category", cat_name.as_str())],
+    )
+    .await;
+    let title = fb_title.unwrap_or_else(|| format!("{} | {}", label, site));
+    let description = clip(
+        &fb_desc.unwrap_or_else(|| {
+            format!(
+                "The {} best-rated {} in {}, {}, ranked by customer reviews. Compare ratings and contact the top {} near you.",
+                rated_total, cat_name, dir.city, dir.state, cat_name
+            )
+        }),
+        158,
+    );
+
+    let mut jsonld = vec![serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": label,
+        "numberOfItems": rated_total,
+        "itemListElement": items.iter().enumerate().map(|(i, b)| serde_json::json!({
+            "@type": "ListItem",
+            "position": i + 1,
+            "url": format!("{}/{}/businesses/{}", base, dir.slug, b.slug),
+            "name": b.name,
+        })).collect::<Vec<_>>(),
+    })];
+    jsonld.push(breadcrumb_ld(&[
+        (&site, &format!("{}/", base)),
+        (&dir.name, &format!("{}/{}/", base, dir.slug)),
+        (&format!("{} in {}", cat_name, dir.city), &cat_url),
+        (&label, &canonical),
+    ]));
+
+    let seo = Seo {
+        title,
+        description,
+        canonical: canonical.clone(),
+        og_type: "website".into(),
+        og_image: None,
+        jsonld,
+    };
+
+    let cards: String = items.iter().map(|b| card_html(&dir.slug, b)).collect();
+
+    let body = format!(
+        r#"{start}{crumbs}
+<h1>{label}</h1>
+<p class="lede">The {n} best-rated {cat} in {city}, {state} — ranked by customer reviews, never paid placement.</p>
+<div class="grid">{cards}</div>
+<p><a class="btn" href="/{dir}/{cat_slug}">See every {cat} in {city} →</a> <a class="btn" href="/{dir}/businesses">All {city} businesses →</a></p>
+{end}"#,
+        start = shell_start(
+            &seo,
+            &site,
+            Some((dir.slug.as_str(), dir.name.as_str())),
+            &theme
+        ),
+        crumbs = breadcrumbs(&[
+            (&site, &format!("{}/", base)),
+            (&dir.name, &format!("{}/{}/", base, dir.slug)),
+            (&format!("{} in {}", cat_name, dir.city), &cat_url),
+            (&label, &canonical),
+        ]),
+        label = h(&label),
+        n = rated_total,
+        cat = h(&cat_name),
+        city = h(&dir.city),
+        state = h(&dir.state),
+        cards = cards,
+        dir = h(&dir.slug),
+        cat_slug = h(cat_slug),
         end = shell_end(&site, hq.as_deref()),
     );
 
@@ -5843,6 +6069,32 @@ pub async fn sitemap(
             ));
         }
 
+        // Best-rated ranking pages (`/<city>/best-<category-slug>`, SEO gap 5).
+        // Advertised only for a category with at least two 4.0+-rated listings,
+        // so the sitemap never points at a URL that renders nothing.
+        let best_cats: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+            "SELECT dc.slug, GREATEST(MAX(GREATEST(b.updated_at, b.content_updated_at)), \
+                                     MAX(dc.created_at)) AS lastmod \
+             FROM directory_categories dc \
+             JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
+             WHERE b.directory_id = $1 AND coalesce(dc.slug,'') <> '' \
+               AND b.rating IS NOT NULL AND b.rating >= 4.0 \
+             GROUP BY dc.slug HAVING COUNT(b.id) >= 2 ORDER BY dc.slug",
+        )
+        .bind(dir_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        for (cslug, cts) in &best_cats {
+            xml.push_str(&format!(
+                "  <url><loc>{base}/{d}/best-{c}</loc>{lm}</url>\n",
+                base = h(&base),
+                d = h(&dslug),
+                c = h(cslug),
+                lm = lastmod_xml(*cts)
+            ));
+        }
+
         // Satellite town pages (`/<city>/<town-slug>`, W26): one crawlable URL per town
         // inside the city's own local area with enough listings to be a real page. A town
         // below the threshold publishes nothing, so the sitemap never advertises a page
@@ -7095,6 +7347,12 @@ pub async fn try_render(
                                     slug,
                                     short
                                 )))
+                            } else if short.starts_with("best-") {
+                                // `/<city>/best-<category-slug>` — the high-intent ranking
+                                // page (SEO gap 5). Checked before the category arm so the
+                                // `best-` prefix is never mistaken for a category slug.
+                                best_in_city_page(pool, host, proto, fallback_domain, slug, short)
+                                    .await
                             } else if let Some(page) =
                                 category_page(pool, host, proto, fallback_domain, slug, short, "")
                                     .await
