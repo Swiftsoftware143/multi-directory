@@ -6095,6 +6095,45 @@ pub async fn sitemap(
             ));
         }
 
+        // Service × city programmatic pages (`/<city>/<service>-<city>`, SEO gap 4).
+        // The renderer answers index,follow only when the page renders service
+        // guidance OR at least one active business, so the sitemap advertises
+        // exactly those pages and never a URL that would carry `noindex`. The
+        // long-tail trap-door rows (day/time tags) are deliberately excluded:
+        // their keep-vs-delete disposition is still undecided (work queue
+        // PROGRAMMATIC PAGES line 80) and is a separate call.
+        let svc_pages: Vec<(String, String, bool, Option<chrono::DateTime<chrono::Utc>>)> =
+            sqlx::query_as(
+                "SELECT pp.slug, coalesce(ds.name,''), \
+                    EXISTS (SELECT 1 FROM businesses b \
+                            JOIN directory_categories dc ON dc.id = b.category_id \
+                            WHERE b.directory_id = pp.directory_id AND b.is_active = true \
+                              AND lower(coalesce(dc.name,'')) = lower(ds.name)) AS has_biz, \
+                    pp.updated_at \
+             FROM programmatic_pages pp \
+             LEFT JOIN directory_services ds ON ds.id = pp.service_id \
+             WHERE pp.directory_id = $1 AND pp.status = 'published' \
+               AND (pp.day_tags IS NULL OR array_length(pp.day_tags, 1) IS NULL) \
+               AND coalesce(pp.slug,'') <> '' \
+             ORDER BY pp.slug",
+            )
+            .bind(dir_id)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+        for (pslug, svc_name, has_biz, pts) in &svc_pages {
+            if service_guidance(svc_name).is_none() && !has_biz {
+                continue;
+            }
+            xml.push_str(&format!(
+                "  <url><loc>{base}/{d}/{p}</loc>{lm}</url>\n",
+                base = h(&base),
+                d = h(&dslug),
+                p = h(pslug),
+                lm = lastmod_xml(*pts)
+            ));
+        }
+
         // Satellite town pages (`/<city>/<town-slug>`, W26): one crawlable URL per town
         // inside the city's own local area with enough listings to be a real page. A town
         // below the threshold publishes nothing, so the sitemap never advertises a page
