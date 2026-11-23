@@ -2769,6 +2769,43 @@ async fn category_slug_for(pool: &PgPool, dir: &DirectoryRec, name: &str) -> Opt
     .filter(|s| !s.trim().is_empty())
 }
 
+/// The published service×city programmatic page whose service name matches this
+/// category (work queue SEO GAP AUDIT gap 4 REMAINING: "~3-click internal-link mesh
+/// (category -> programmatic) is still open"). The programmatic page already links UP
+/// to the category page (`cat_link` in `render_programmatic_page`); this returns the
+/// matching page so the category page can link DOWN to it, closing the mesh so every
+/// service×city page is reachable through real anchors, not the sitemap alone. Matches
+/// on the same name-keyed join the category page's own business list uses, so a
+/// category with no matching service (e.g. "Bars & Breweries") or whose service has no
+/// published page returns `None` and the category page never links a 404.
+async fn service_page_for(
+    pool: &PgPool,
+    dir: &DirectoryRec,
+    cat_name: &str,
+) -> Option<(String, String)> {
+    let row = sqlx::query(
+        "SELECT pp.slug, coalesce(ds.name,'') AS svc \
+         FROM programmatic_pages pp \
+         JOIN directory_services ds ON ds.id = pp.service_id \
+         WHERE pp.directory_id = $1 AND pp.status = 'published' \
+           AND (pp.day_tags IS NULL OR array_length(pp.day_tags, 1) IS NULL) \
+           AND lower(ds.name) = lower($2) \
+         ORDER BY pp.updated_at DESC LIMIT 1",
+    )
+    .bind(dir.id)
+    .bind(cat_name)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()?;
+    let slug: String = row.try_get("slug").unwrap_or_default();
+    let svc: String = row.try_get("svc").unwrap_or_default();
+    if slug.trim().is_empty() {
+        return None;
+    }
+    Some((slug, svc))
+}
+
 pub async fn businesses_page(
     pool: &PgPool,
     host: Option<&str>,
@@ -3164,6 +3201,20 @@ pub async fn category_page(
         String::new()
     };
 
+    // "Down to the service guide" internal link (work queue SEO GAP AUDIT gap 4
+    // REMAINING): the category page links to its matching service×city programmatic
+    // page — the reverse of the programmatic page's own link up to this category — so
+    // the two surfaces form a crawlable mesh. Only when a published page exists.
+    let service_link = match service_page_for(pool, &dir, &cat_name).await {
+        Some((svc_slug, svc_name)) => format!(
+            "<p><a class=\"btn\" href=\"/{}/{}\">\u{1f4d8} {} guide: what to expect, costs & FAQs \u{2192}</a></p>",
+            h(&dir.slug),
+            h(&svc_slug),
+            h(&svc_name),
+        ),
+        None => String::new(),
+    };
+
     let theme = theme_for(pool, &dir).await;
     let base = origin(host, proto, fallback_domain);
     let site = brand_name_for(pool, &dir).await;
@@ -3243,6 +3294,7 @@ pub async fn category_page(
 <h1>{label}</h1>
 <p class="lede">Browse {n} businesses listed under {cat} in {city}, {state} — rated and reviewed by locals.</p>
 {best_link}
+{service_link}
 <div class="grid">{cards}</div>
 <h2>More categories in {city}</h2>
 <div class="chips">{chips}</div>
@@ -3271,6 +3323,7 @@ pub async fn category_page(
         dir = h(&dir.slug),
         explore = explore,
         best_link = best_link,
+        service_link = service_link,
         end = shell_end(&site, hq.as_deref()),
     );
 
