@@ -240,6 +240,11 @@ pub const RESERVED_TOP_LEVEL: &[&str] = &[
     "zaarhub-sitemap.xml",
     "zaarhub-robots.txt",
     "sitemap.xml",
+    "sitemap-static.xml",
+    "sitemap-cities.xml",
+    "sitemap-categories.xml",
+    "sitemap-businesses.xml",
+    "sitemap-articles.xml",
     "robots.txt",
     "legal",
     "rfq-marketplace",
@@ -5862,44 +5867,133 @@ fn lastmod_xml(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
     }
 }
 
+/// The sections of the segmented sitemap. `GET /sitemap.xml` answers an index
+/// (`<sitemapindex>`) that names one child `<urlset>` per section, so Google
+/// reports discovery/indexing per section instead of one undifferentiated
+/// ~5,000-URL blob (SEO gap 4).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SitemapSection {
+    /// The index document itself.
+    Index,
+    /// Homepage, top-level content pages, legal pages, `/cities` and `/<state>`.
+    Static,
+    /// City hubs, `/businesses`, `/blog`, `/deals` and satellite towns.
+    Cities,
+    /// Category pages, `best-*` ranking pages and service×city programmatic pages.
+    Categories,
+    /// Business listing pages.
+    Businesses,
+    /// `business_articles` and `blog_posts`.
+    Articles,
+}
+
+/// A URL-set document opener (shared by every section).
+fn urlset_open() -> String {
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+     <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
+        .to_string()
+}
+
+/// Freshest modification timestamp across all published content: the homepage is a
+/// rollup of that content, so it is the page's own modification date and the
+/// conservative `lastmod` for the sitemap index's children.
+async fn site_lastmod(pool: &PgPool) -> Option<chrono::DateTime<chrono::Utc>> {
+    sqlx::query_as::<_, (Option<chrono::DateTime<chrono::Utc>>,)>(
+        "SELECT GREATEST(\
+             (SELECT max(updated_at) FROM directories WHERE status = 'active'), \
+             (SELECT max(updated_at) FROM blog_posts WHERE coalesce(published, true)), \
+             (SELECT max(updated_at) FROM business_articles WHERE status = 'published'), \
+             (SELECT max(updated_at) FROM deals))",
+    )
+    .fetch_one(pool)
+    .await
+    .map(|(t,)| t)
+    .unwrap_or(None)
+}
+
+/// An active directory row — the shared input to every per-directory section.
+struct ActiveDirectory {
+    id: Uuid,
+    slug: String,
+    city: String,
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+async fn active_directories(pool: &PgPool) -> Vec<ActiveDirectory> {
+    sqlx::query(
+        "SELECT id, slug, city, updated_at FROM directories WHERE status = 'active' ORDER BY slug",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| ActiveDirectory {
+        id: r.try_get::<Uuid, _>("id").unwrap_or_default(),
+        slug: r.try_get::<String, _>("slug").unwrap_or_default(),
+        city: r
+            .try_get::<Option<String>, _>("city")
+            .unwrap_or(None)
+            .unwrap_or_default(),
+        updated_at: r
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("updated_at")
+            .unwrap_or(None),
+    })
+    .collect()
+}
+
+/// The sitemap dispatcher. `section` selects which document is produced; every
+/// child fetches only the rows its section needs, so no request re-runs the whole
+/// site's queries.
 pub async fn sitemap(
     pool: &PgPool,
     host: Option<&str>,
     proto: &str,
     fallback_domain: &str,
+    section: SitemapSection,
 ) -> Response<Body> {
     let base = origin(host, proto, fallback_domain);
+    match section {
+        SitemapSection::Index => sitemap_index(&base, pool).await,
+        SitemapSection::Static => sitemap_static(pool, &base).await,
+        SitemapSection::Cities => sitemap_cities(pool, &base).await,
+        SitemapSection::Categories => sitemap_categories(pool, &base).await,
+        SitemapSection::Businesses => sitemap_businesses(pool, &base).await,
+        SitemapSection::Articles => sitemap_articles(pool, &base).await,
+    }
+}
+
+async fn sitemap_index(base: &str, pool: &PgPool) -> Response<Body> {
+    let lm = lastmod_xml(site_lastmod(pool).await);
     let mut xml = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-         <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
+         <sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
     );
+    for name in ["static", "cities", "categories", "businesses", "articles"] {
+        xml.push_str(&format!(
+            "  <sitemap><loc>{base}/sitemap-{name}.xml</loc>{lm}</sitemap>\n",
+            base = h(base),
+            name = name,
+            lm = lm.as_str(),
+        ));
+    }
+    xml.push_str("</sitemapindex>\n");
+    xml_response(StatusCode::OK, xml)
+}
 
-    // Site-wide pages carry the freshest timestamp of ANY published content: the
-    // homepage is a rollup of that content, so it is the page's own modification date.
-    let site_lastmod: Option<chrono::DateTime<chrono::Utc>> =
-        sqlx::query_as::<_, (Option<chrono::DateTime<chrono::Utc>>,)>(
-            "SELECT GREATEST(\
-                 (SELECT max(updated_at) FROM directories WHERE status = 'active'), \
-                 (SELECT max(updated_at) FROM blog_posts WHERE coalesce(published, true)), \
-                 (SELECT max(updated_at) FROM business_articles WHERE status = 'published'), \
-                 (SELECT max(updated_at) FROM deals))",
-        )
-        .fetch_one(pool)
-        .await
-        .map(|(t,)| t)
-        .unwrap_or(None);
+async fn sitemap_static(pool: &PgPool, base: &str) -> Response<Body> {
+    let mut xml = urlset_open();
+    let site_lm = site_lastmod(pool).await;
 
     xml.push_str(&format!(
         "  <url><loc>{}/</loc>{}</url>\n",
-        h(&base),
-        lastmod_xml(site_lastmod)
+        h(base),
+        lastmod_xml(site_lm)
     ));
 
-    // Site-wide landing pages that are real content (200 anonymous, linked from listing pages) but
-    // are not derived from a table row. Before W52 only the homepage and /claim were listed, so
-    // every other top-level content page was invisible to Google. The PREFERRED URL of each page
-    // is listed: extensionless where the router serves an extensionless alias, `.html` where the
-    // file is the only form served. A new top-level content page belongs here.
+    // Site-wide landing pages that are real content (200 anonymous, linked from listing
+    // pages) but are not derived from a table row. The PREFERRED URL of each page is
+    // listed: extensionless where the router serves an extensionless alias, `.html` where
+    // the file is the only form served. A new top-level content page belongs here.
     const TOP_LEVEL_CONTENT_PAGES: &[&str] = &[
         "/claim",
         "/grow",
@@ -5917,15 +6011,14 @@ pub async fn sitemap(
     for page in TOP_LEVEL_CONTENT_PAGES {
         xml.push_str(&format!(
             "  <url><loc>{}{}</loc>{}</url>\n",
-            h(&base),
+            h(base),
             h(page),
-            lastmod_xml(site_lastmod)
+            lastmod_xml(site_lm)
         ));
     }
 
-    // Legal pages are DB-driven (zaarhub_legal_pages), so their slugs are discovered from data
-    // rather than hardcoded: every published system-tenant legal page gets an entry matching the
-    // `/legal/<slug>` route (terms, privacy, contact, disclaimer, loyalty, …).
+    // Legal pages are DB-driven (zaarhub_legal_pages), so their slugs are discovered
+    // from data rather than hardcoded: every published system-tenant legal page.
     let legal_slugs: Vec<(String,)> = sqlx::query_as(
         "SELECT slug FROM zaarhub_legal_pages \
          WHERE tenant_id = $1 AND is_published = true AND coalesce(slug,'') <> '' \
@@ -5938,38 +6031,27 @@ pub async fn sitemap(
     for (slug,) in &legal_slugs {
         xml.push_str(&format!(
             "  <url><loc>{}/legal/{}</loc>{}</url>\n",
-            h(&base),
+            h(base),
             h(slug),
-            lastmod_xml(site_lastmod)
+            lastmod_xml(site_lm)
         ));
     }
 
-    let dirs = sqlx::query(
-        "SELECT id, slug, city, updated_at FROM directories WHERE status = 'active' ORDER BY slug",
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-
-    // Long-term city navigation (work-queue line 52b/c): /cities (all-city index)
-    // and one /<state-slug> page per distinct state are real server-rendered
-    // crawlable pages, so they belong in the sitemap. They are derived from
-    // geo_cities — the SAME source the pages render — so a state URL can never be
-    // advertised for a state with no city. The nested /<state>/<city> aliases are
-    // deliberately NOT listed: each canonicalises to its /{city} home (no
-    // duplicate content).
+    // Long-term city navigation (work-queue line 52b/c): /cities (all-city index) and one
+    // /<state-slug> page per distinct state. Derived from geo_cities — the SAME source the
+    // pages render — so a state URL can never be advertised for a state with no city. The
+    // nested /<state>/<city> aliases are deliberately NOT listed (canonicalised to /{city}).
     let geo = geo_cities(pool).await;
     if !geo.is_empty() {
-        let cities_ts: Option<chrono::DateTime<chrono::Utc>> = dirs
-            .iter()
-            .filter_map(|d| {
-                d.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("updated_at")
-                    .unwrap_or(None)
-            })
-            .max();
+        let cities_ts: Option<chrono::DateTime<chrono::Utc>> =
+            sqlx::query_as("SELECT max(updated_at) FROM directories WHERE status = 'active'")
+                .fetch_one(pool)
+                .await
+                .map(|(t,)| t)
+                .unwrap_or(None);
         xml.push_str(&format!(
             "  <url><loc>{}/cities</loc>{}</url>\n",
-            h(&base),
+            h(base),
             lastmod_xml(cities_ts)
         ));
         let mut listed_states = std::collections::HashSet::new();
@@ -5977,7 +6059,7 @@ pub async fn sitemap(
             if listed_states.insert(c.state.clone()) {
                 xml.push_str(&format!(
                     "  <url><loc>{}/{}</loc>{}</url>\n",
-                    h(&base),
+                    h(base),
                     h(&state_slug(&c.state)),
                     lastmod_xml(cities_ts)
                 ));
@@ -5985,36 +6067,18 @@ pub async fn sitemap(
         }
     }
 
-    for d in &dirs {
-        let dir_id: Uuid = d.try_get("id").unwrap_or_default();
-        let dslug: String = d.try_get("slug").unwrap_or_default();
-        let dir_ts: Option<chrono::DateTime<chrono::Utc>> = d.try_get("updated_at").unwrap_or(None);
+    xml.push_str("</urlset>\n");
+    xml_response(StatusCode::OK, xml)
+}
 
-        // Every per-page timestamp is gathered BEFORE emitting, so each entry carries
-        // the date of the rows the page is built from — never the date of the render.
-        //
-        // Per-city category pages (`/<city>/<category-slug>`). Only categories with
-        // at least two active listings are advertised: a one-listing category page is
-        // thin content, and the sitemap must never publish a URL that renders empty.
-        let cats: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-            "SELECT dc.slug, GREATEST(MAX(GREATEST(b.updated_at, b.content_updated_at)), \
-                                     MAX(dc.created_at)) AS lastmod \
-             FROM directory_categories dc \
-             JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
-             WHERE b.directory_id = $1 AND coalesce(dc.slug,'') <> '' \
-             GROUP BY dc.slug HAVING COUNT(b.id) >= 2 ORDER BY dc.slug",
-        )
-        .bind(dir_id)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
+async fn sitemap_cities(pool: &PgPool, base: &str) -> Response<Body> {
+    let mut xml = urlset_open();
+    for d in active_directories(pool).await {
+        let dir_id = d.id;
+        let dslug = &d.slug;
 
-        // Businesses (subfolder URLs). `lastmod` is the date the copy a visitor reads changed:
-        // GREATEST(updated_at, content_updated_at) — updated_at alone missed the description
-        // writes (kanban t_23332bb8). The same values feed `biz_ts`, so the city hub and the
-        // /businesses index inherit a listing's copy change instead of lagging behind it.
-        // Thin-page gate (SEO gap 1): a listing with no description or no category is served
-        // with `noindex` on its page, so it is not advertised here either.
+        // biz (for the city-hub / businesses-list lastmod) and blogs (for the blog-index
+        // lastmod) — the same queries as the former single document, so timestamps match.
         let biz: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
             "SELECT slug, GREATEST(updated_at, content_updated_at) AS updated_at FROM businesses \
              WHERE directory_id = $1 AND is_active = true \
@@ -6027,22 +6091,6 @@ pub async fn sitemap(
         .await
         .unwrap_or_default();
 
-        // Articles (business_articles — the SEO article system). Only PUBLISHED rows: the page
-        // route (article_page) serves `status='published'` alone, so an archived or draft slug
-        // listed here advertises a URL that renders nothing to a crawler. Archived probe copy
-        // reached the live sitemap this way.
-        let arts: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-            "SELECT slug, updated_at FROM business_articles WHERE directory_id = $1 \
-             AND status = 'published' AND coalesce(slug,'') <> '' \
-             ORDER BY created_at DESC, slug, id LIMIT 5000",
-        )
-        .bind(dir_id)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
-
-        // Blog posts (blog_posts — the CMS article system). Slugs dedup'd: the
-        // table has no unique constraint and duplicates would double-list a URL.
         let blogs: Vec<(
             String,
             Option<chrono::DateTime<chrono::Utc>>,
@@ -6068,63 +6116,91 @@ pub async fn sitemap(
             .map(|(t,)| t)
             .unwrap_or(None);
 
-        // A list page changes when something ON it changes, never earlier than the city
-        // row itself (`chain(dir_ts)` is the floor).
-        let biz_ts = biz.iter().filter_map(|(_, t)| *t).chain(dir_ts).max();
+        let biz_ts = biz.iter().filter_map(|(_, t)| *t).chain(d.updated_at).max();
         let blog_ts = blogs
             .iter()
             .filter_map(|(_, updated, created)| updated.or(*created))
-            .chain(dir_ts)
+            .chain(d.updated_at)
             .max();
-        let deal_ts = deals_ts.into_iter().chain(dir_ts).max();
+        let deal_ts = deals_ts.into_iter().chain(d.updated_at).max();
 
-        // The city landing page renders the city row AND that city's top-rated listings,
-        // so its lastmod is the newer of the two — the city row alone reported "unchanged
-        // since August" on six of ten cities whose listings had changed in November.
         xml.push_str(&format!(
             "  <url><loc>{base}/{slug}</loc>{lm}</url>\n",
-            base = h(&base),
-            slug = h(&dslug),
+            base = h(base),
+            slug = h(dslug),
             lm = lastmod_xml(biz_ts)
         ));
         xml.push_str(&format!(
             "  <url><loc>{base}/{slug}/businesses</loc>{lm}</url>\n",
-            base = h(&base),
-            slug = h(&dslug),
+            base = h(base),
+            slug = h(dslug),
             lm = lastmod_xml(biz_ts)
         ));
-        // The server-rendered city blog index and deals index — the two
-        // sub-paths Google should index per city (subfolder canonical form).
-        // A blog index with no published posts is a ~190-word navigation shell; listing it
-        // invites a thin-content verdict, so it is listed only once it has something to read.
         if !blogs.is_empty() {
             xml.push_str(&format!(
                 "  <url><loc>{base}/{slug}/blog</loc>{lm}</url>\n",
-                base = h(&base),
-                slug = h(&dslug),
+                base = h(base),
+                slug = h(dslug),
                 lm = lastmod_xml(blog_ts)
             ));
         }
         xml.push_str(&format!(
             "  <url><loc>{base}/{slug}/deals</loc>{lm}</url>\n",
-            base = h(&base),
-            slug = h(&dslug),
+            base = h(base),
+            slug = h(dslug),
             lm = lastmod_xml(deal_ts)
         ));
 
+        // Satellite town pages (`/<city>/<town-slug>`, W26): one crawlable URL per town
+        // inside the city's own local area with enough listings to be a real page.
+        if !d.city.trim().is_empty() {
+            let towns = local_town_entries(pool, dir_id, &d.city).await;
+            for t in towns.iter().filter(|t| !t.is_home && t.published) {
+                xml.push_str(&format!(
+                    "  <url><loc>{base}/{d}/{t}</loc>{lm}</url>\n",
+                    base = h(base),
+                    d = h(dslug),
+                    t = h(&t.slug),
+                    lm = lastmod_xml(d.updated_at)
+                ));
+            }
+        }
+    }
+    xml.push_str("</urlset>\n");
+    xml_response(StatusCode::OK, xml)
+}
+
+async fn sitemap_categories(pool: &PgPool, base: &str) -> Response<Body> {
+    let mut xml = urlset_open();
+    for d in active_directories(pool).await {
+        let dir_id = d.id;
+        let dslug = &d.slug;
+
+        // Per-city category pages (`/<city>/<category-slug>`). Only categories with at
+        // least two active listings are advertised (thin-content gate).
+        let cats: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+            "SELECT dc.slug, GREATEST(MAX(GREATEST(b.updated_at, b.content_updated_at)), \
+                                     MAX(dc.created_at)) AS lastmod \
+             FROM directory_categories dc \
+             JOIN businesses b ON b.category_id = dc.id AND b.is_active = true \
+             WHERE b.directory_id = $1 AND coalesce(dc.slug,'') <> '' \
+             GROUP BY dc.slug HAVING COUNT(b.id) >= 2 ORDER BY dc.slug",
+        )
+        .bind(dir_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
         for (cslug, cts) in &cats {
             xml.push_str(&format!(
                 "  <url><loc>{base}/{d}/{c}</loc>{lm}</url>\n",
-                base = h(&base),
-                d = h(&dslug),
+                base = h(base),
+                d = h(dslug),
                 c = h(cslug),
                 lm = lastmod_xml(*cts)
             ));
         }
 
         // Best-rated ranking pages (`/<city>/best-<category-slug>`, SEO gap 5).
-        // Advertised only for a category with at least two 4.0+-rated listings,
-        // so the sitemap never points at a URL that renders nothing.
         let best_cats: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
             "SELECT dc.slug, GREATEST(MAX(GREATEST(b.updated_at, b.content_updated_at)), \
                                      MAX(dc.created_at)) AS lastmod \
@@ -6141,20 +6217,14 @@ pub async fn sitemap(
         for (cslug, cts) in &best_cats {
             xml.push_str(&format!(
                 "  <url><loc>{base}/{d}/best-{c}</loc>{lm}</url>\n",
-                base = h(&base),
-                d = h(&dslug),
+                base = h(base),
+                d = h(dslug),
                 c = h(cslug),
                 lm = lastmod_xml(*cts)
             ));
         }
 
         // Service × city programmatic pages (`/<city>/<service>-<city>`, SEO gap 4).
-        // The renderer answers index,follow only when the page renders service
-        // guidance OR at least one active business, so the sitemap advertises
-        // exactly those pages and never a URL that would carry `noindex`. The
-        // long-tail trap-door rows (day/time tags) are deliberately excluded:
-        // their keep-vs-delete disposition is still undecided (work queue
-        // PROGRAMMATIC PAGES line 80) and is a separate call.
         let svc_pages: Vec<(String, String, bool, Option<chrono::DateTime<chrono::Utc>>)> =
             sqlx::query_as(
                 "SELECT pp.slug, coalesce(ds.name,''), \
@@ -6180,56 +6250,82 @@ pub async fn sitemap(
             }
             xml.push_str(&format!(
                 "  <url><loc>{base}/{d}/{p}</loc>{lm}</url>\n",
-                base = h(&base),
-                d = h(&dslug),
+                base = h(base),
+                d = h(dslug),
                 p = h(pslug),
                 lm = lastmod_xml(*pts)
             ));
         }
+    }
+    xml.push_str("</urlset>\n");
+    xml_response(StatusCode::OK, xml)
+}
 
-        // Satellite town pages (`/<city>/<town-slug>`, W26): one crawlable URL per town
-        // inside the city's own local area with enough listings to be a real page. A town
-        // below the threshold publishes nothing, so the sitemap never advertises a page
-        // that would render thin content or 404. The town rollup carries no timestamp of
-        // its own, so it takes the city's — conservative, never fresher than the truth.
-        let dcity: String = d
-            .try_get::<Option<String>, _>("city")
-            .unwrap_or(None)
-            .unwrap_or_default();
-        if !dcity.trim().is_empty() {
-            let towns = local_town_entries(pool, dir_id, &dcity).await;
-            for t in towns.iter().filter(|t| !t.is_home && t.published) {
-                xml.push_str(&format!(
-                    "  <url><loc>{base}/{d}/{t}</loc>{lm}</url>\n",
-                    base = h(&base),
-                    d = h(&dslug),
-                    t = h(&t.slug),
-                    lm = lastmod_xml(dir_ts)
-                ));
-            }
-        }
-
-        // Each listing page carries its own last edit.
+async fn sitemap_businesses(pool: &PgPool, base: &str) -> Response<Body> {
+    let mut xml = urlset_open();
+    for d in active_directories(pool).await {
+        let biz: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+            "SELECT slug, GREATEST(updated_at, content_updated_at) AS updated_at FROM businesses \
+             WHERE directory_id = $1 AND is_active = true \
+             AND coalesce(slug,'') <> '' \
+             AND coalesce(trim(description),'') <> '' AND category_id IS NOT NULL \
+             ORDER BY rating DESC NULLS LAST, slug, id LIMIT 20000",
+        )
+        .bind(d.id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
         for (bslug, bts) in &biz {
             xml.push_str(&format!(
                 "  <url><loc>{base}/{d}/businesses/{b}</loc>{lm}</url>\n",
-                base = h(&base),
-                d = h(&dslug),
+                base = h(base),
+                d = h(&d.slug),
                 b = h(bslug),
                 lm = lastmod_xml(*bts)
             ));
         }
+    }
+    xml.push_str("</urlset>\n");
+    xml_response(StatusCode::OK, xml)
+}
 
+async fn sitemap_articles(pool: &PgPool, base: &str) -> Response<Body> {
+    let mut xml = urlset_open();
+    for d in active_directories(pool).await {
+        // Articles (business_articles). Only PUBLISHED rows.
+        let arts: Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+            "SELECT slug, updated_at FROM business_articles WHERE directory_id = $1 \
+             AND status = 'published' AND coalesce(slug,'') <> '' \
+             ORDER BY created_at DESC, slug, id LIMIT 5000",
+        )
+        .bind(d.id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
         for (aslug, ats) in &arts {
             xml.push_str(&format!(
                 "  <url><loc>{base}/{d}/articles/{a}</loc>{lm}</url>\n",
-                base = h(&base),
-                d = h(&dslug),
+                base = h(base),
+                d = h(&d.slug),
                 a = h(aslug),
                 lm = lastmod_xml(*ats)
             ));
         }
 
+        // Blog posts (blog_posts). Slugs dedup'd: the table has no unique constraint.
+        let blogs: Vec<(
+            String,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<chrono::DateTime<chrono::Utc>>,
+        )> = sqlx::query_as(
+            "SELECT slug, updated_at, created_at FROM blog_posts WHERE directory_id = $1 \
+             AND coalesce(published, true) = true AND coalesce(slug,'') <> '' \
+             ORDER BY created_at DESC, slug, id LIMIT 5000",
+        )
+        .bind(d.id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
         let mut seen = std::collections::HashSet::new();
         for (bslug, bupd, bcreated) in &blogs {
             if !seen.insert(bslug.clone()) {
@@ -6237,14 +6333,13 @@ pub async fn sitemap(
             }
             xml.push_str(&format!(
                 "  <url><loc>{base}/{d}/blog/{b}</loc>{lm}</url>\n",
-                base = h(&base),
-                d = h(&dslug),
+                base = h(base),
+                d = h(&d.slug),
                 b = h(bslug),
                 lm = lastmod_xml(bupd.or(*bcreated))
             ));
         }
     }
-
     xml.push_str("</urlset>\n");
     xml_response(StatusCode::OK, xml)
 }
@@ -7701,14 +7796,47 @@ pub fn host_proto(headers: &axum::http::HeaderMap) -> (Option<String>, String) {
     (host, proto)
 }
 
-/// axum handler for `GET /sitemap.xml`.
+/// axum handler for `GET /sitemap.xml` — the sitemap INDEX.
 pub async fn sitemap_handler(
     axum::extract::State(s): axum::extract::State<crate::AppState>,
     headers: axum::http::HeaderMap,
 ) -> Response<Body> {
     let (host, proto) = host_proto(&headers);
-    sitemap(&s.db, host.as_deref(), &proto, &s.config.base_domain).await
+    sitemap(
+        &s.db,
+        host.as_deref(),
+        &proto,
+        &s.config.base_domain,
+        SitemapSection::Index,
+    )
+    .await
 }
+
+/// One handler per child sitemap section, sharing the dispatcher.
+macro_rules! sitemap_section_handler {
+    ($name:ident, $section:expr) => {
+        pub async fn $name(
+            axum::extract::State(s): axum::extract::State<crate::AppState>,
+            headers: axum::http::HeaderMap,
+        ) -> Response<Body> {
+            let (host, proto) = host_proto(&headers);
+            sitemap(
+                &s.db,
+                host.as_deref(),
+                &proto,
+                &s.config.base_domain,
+                $section,
+            )
+            .await
+        }
+    };
+}
+
+sitemap_section_handler!(sitemap_static_handler, SitemapSection::Static);
+sitemap_section_handler!(sitemap_cities_handler, SitemapSection::Cities);
+sitemap_section_handler!(sitemap_categories_handler, SitemapSection::Categories);
+sitemap_section_handler!(sitemap_businesses_handler, SitemapSection::Businesses);
+sitemap_section_handler!(sitemap_articles_handler, SitemapSection::Articles);
 
 /// axum handler for `GET /robots.txt`.
 pub async fn robots_handler(

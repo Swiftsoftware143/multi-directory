@@ -2826,6 +2826,17 @@ pub fn create_router(s: AppState) -> Router {
         // `/<directory-slug>/...` URLs. These shadow the static files of the same
         // name on purpose — the static copies are single-URL placeholders.
         .route("/sitemap.xml", get(subfolder::sitemap_handler))
+        .route("/sitemap-static.xml", get(subfolder::sitemap_static_handler))
+        .route("/sitemap-cities.xml", get(subfolder::sitemap_cities_handler))
+        .route(
+            "/sitemap-categories.xml",
+            get(subfolder::sitemap_categories_handler),
+        )
+        .route(
+            "/sitemap-businesses.xml",
+            get(subfolder::sitemap_businesses_handler),
+        )
+        .route("/sitemap-articles.xml", get(subfolder::sitemap_articles_handler))
         .route("/robots.txt", get(subfolder::robots_handler))
         // ── Blog RSS at the pretty URL the feed advertises (2026-10-10) ──
         // blog_seo's feed sets its channel link and `<atom:link rel="self">` to

@@ -201,6 +201,28 @@ async fn read_sitemap(
     }
 }
 
+/// Read every page URL the sitemap advertises. A sitemap INDEX (SEO gap 4) names
+/// child `<urlset>` documents instead of pages, so each child is fetched and its
+/// `<loc>` entries collected — the same public-first / local-fallback read as the
+/// index itself. A flat `<urlset>` (legacy) is parsed directly.
+async fn read_sitemap_locs(
+    client: &reqwest::Client,
+    sitemap_url: &str,
+    local_origin: &str,
+) -> Result<Vec<String>, String> {
+    let xml = read_sitemap(client, sitemap_url, local_origin).await?;
+    if xml.contains("<sitemapindex") {
+        let mut all: Vec<String> = Vec::new();
+        for child in parse_locs(&xml) {
+            let child_xml = read_sitemap(client, &child, local_origin).await?;
+            all.extend(parse_locs(&child_xml));
+        }
+        Ok(all)
+    } else {
+        Ok(parse_locs(&xml))
+    }
+}
+
 /// Fetch the sitemap, take its URLs, and submit them to IndexNow.
 ///
 /// Returns `(status_code, ok, detail, url_count)` — never panics on a bad engine
@@ -219,12 +241,10 @@ async fn submit_indexnow(
     key: &str,
     local_origin: &str,
 ) -> (Option<i32>, bool, Option<String>, usize) {
-    let xml = match read_sitemap(client, sitemap_url, local_origin).await {
-        Ok(t) => t,
+    let mut locs = match read_sitemap_locs(client, sitemap_url, local_origin).await {
+        Ok(l) => l,
         Err(e) => return (None, false, Some(e), 0),
     };
-
-    let mut locs = parse_locs(&xml);
     // The key file must live on the same host as the submitted urls, so derive the
     // host from the sitemap itself rather than a hardcoded domain. IndexNow wants
     // `host` WITHOUT a scheme; `keyLocation` is the full absolute URL.
