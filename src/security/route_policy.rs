@@ -360,8 +360,13 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     // RSS document, the same content the `/public/directories/:slug/blog/feed.xml`
     // arm serves (added 2026-10-10; the pretty path used to 404 as a "missing asset").
     ("GET", "/:slug/blog/feed.xml", "outer-ssr"),
-    // --- /sitemap.xml ------------------------------------------------
+    // --- /sitemap.xml (index + child sections, SEO gap 4) ------------
     ("GET", "/sitemap.xml", "outer-ssr"),
+    ("GET", "/sitemap-static.xml", "outer-ssr"),
+    ("GET", "/sitemap-cities.xml", "outer-ssr"),
+    ("GET", "/sitemap-categories.xml", "outer-ssr"),
+    ("GET", "/sitemap-businesses.xml", "outer-ssr"),
+    ("GET", "/sitemap-articles.xml", "outer-ssr"),
     // --- /spotlight --------------------------------------------------
     ("GET", "/spotlight/:directory_id", "spotlight"),
     // --- /submissions ------------------------------------------------
@@ -793,10 +798,12 @@ mod tests {
         // plus the photo-cache aggregate stats (GET /place-photo/cache-stats — hits/misses/billed
         // Google calls/bytes only, no keys or image bytes; anonymous so an external check can
         // measure the cache without a credential).
+        // plus the sitemap section children (GET /sitemap-{static,cities,categories,businesses,articles}.xml —
+        // the five segmented <urlset> documents the sitemap index names; SEO gap 4).
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            169,
-            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy, +1 photo cache stats)"
+            174,
+            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy, +1 photo cache stats, +5 sitemap section children)"
         );
     }
 }
