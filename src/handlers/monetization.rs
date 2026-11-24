@@ -2435,11 +2435,13 @@ async fn fan_out_booking(db: &sqlx::PgPool, booking_id: Uuid) {
 /// verify). A booking WITH one must resolve over CoreSwift's API, otherwise the confirmation is
 /// refused so the sale can retry rather than persist an unchecked reference.
 async fn validate_core_booking(db: &sqlx::PgPool, booking_id: Uuid) -> Result<(), AppError> {
-    let core_booking_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT core_booking_id FROM ad_bookings WHERE id = $1")
-            .bind(booking_id)
-            .fetch_optional(db)
-            .await?;
+    let core_booking_id: Option<Uuid> = sqlx::query_scalar::<_, Option<Uuid>>(
+        "SELECT core_booking_id FROM ad_bookings WHERE id = $1",
+    )
+    .bind(booking_id)
+    .fetch_optional(db)
+    .await?
+    .flatten();
 
     let Some(core) = core_booking_id else {
         return Ok(());

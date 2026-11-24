@@ -41,10 +41,12 @@ def env_val(key):
 
 def psql(sql):
     u = env_val("DATABASE_URL")
-    m = re.match(r"postgres://([^:***@]+)@([^:/]+):?(\d+)?/(\S+)", u)
-    env = dict(os.environ); env["PGPASSWORD"] = m.group(2)
-    r = subprocess.run(["psql", "-h", m.group(3), "-p", m.group(4) or "5432", "-U", m.group(1),
-                        "-d", m.group(5), "-tAqc", sql],
+    m = re.match(r"postgres(?:ql)?://([^:]+):([^@]+)@([^:/]+):?(\d+)?/(\S+)", u)
+    if not m:
+        raise SystemExit("cannot parse DATABASE_URL")
+    user, pwd, host, port, db = m.group(1), m.group(2), m.group(3), m.group(4) or "5432", m.group(5)
+    env = dict(os.environ); env["PGPASSWORD"] = pwd
+    r = subprocess.run(["psql", "-h", host, "-p", port, "-U", user, "-d", db, "-tAqc", sql],
                        capture_output=True, text=True, env=env, timeout=30)
     if r.returncode != 0:
         raise SystemExit("psql failed: " + r.stderr[:400])
