@@ -42,7 +42,7 @@ def psql(sql):
     m = re.match(r"postgres://([^:]+):([^@]+)@([^:/]+):?(\d+)?/(\S+)", u)
     env = dict(os.environ); env["PGPASSWORD"] = m.group(2)
     r = subprocess.run(["psql", "-h", m.group(3), "-p", m.group(4) or "5432", "-U", m.group(1),
-                        "-d", m.group(5), "-tAc", sql],
+                        "-d", m.group(5), "-tAqc", sql],
                        capture_output=True, text=True, env=env, timeout=30)
     if r.returncode != 0:
         raise SystemExit("psql failed: " + r.stderr[:400])
@@ -94,20 +94,22 @@ def main():
     token = mint_token(SUPER_ADMIN)
     print("minted super-admin token (len %d)" % len(token))
 
-    sponsor_id = psql(
-        "INSERT INTO sponsors (directory_id, business_id, status) "
-        "VALUES ('%s','%s','active') RETURNING id" % (DIRECTORY, BUSINESS))
-    creative_id = psql(
-        "INSERT INTO ad_creatives (sponsor_id, name, image_url, width, height, status) "
-        "VALUES ('%s','ZZ Ad Booking Test','https://example.test/ad.png',300,250,'approved') RETURNING id"
-        % sponsor_id)
-    print("seeded sponsor %s creative %s" % (sponsor_id, creative_id))
-
+    sponsor_id = None
+    creative_id = None
     booking_id = None
     record_ids = []
     start, end = "2026-12-01T00:00:00Z", "2026-12-31T00:00:00Z"
 
     try:
+        sponsor_id = psql(
+            "INSERT INTO sponsors (directory_id, business_id, status) "
+            "VALUES ('%s','%s','active') RETURNING id" % (DIRECTORY, BUSINESS))
+        creative_id = psql(
+            "INSERT INTO ad_creatives (sponsor_id, name, image_url, width, height, status) "
+            "VALUES ('%s','ZZ Ad Booking Test','https://example.test/ad.png',300,250,'approved') RETURNING id"
+            % sponsor_id)
+        print("seeded sponsor %s creative %s" % (sponsor_id, creative_id))
+
         # --- (a) create a booking with two positions ---
         st, body = http(MD, "POST", "/api/v1/ad-bookings", token=token, body={
             "directory_id": DIRECTORY, "sponsor_id": sponsor_id, "creative_id": creative_id,
@@ -178,8 +180,10 @@ def main():
             psql("DELETE FROM approval_queue WHERE item_id = '%s'" % booking_id)
             psql("DELETE FROM ad_schedules WHERE booking_id = '%s'" % booking_id)
             psql("DELETE FROM ad_bookings WHERE id = '%s'" % booking_id)
-        psql("DELETE FROM ad_creatives WHERE id = '%s'" % creative_id)
-        psql("DELETE FROM sponsors WHERE id = '%s'" % sponsor_id)
+        if creative_id:
+            psql("DELETE FROM ad_creatives WHERE id = '%s'" % creative_id)
+        if sponsor_id:
+            psql("DELETE FROM sponsors WHERE id = '%s'" % sponsor_id)
         print("cleanup: purged sponsor/creative/booking/schedules/approval + ad_fulfillment rows")
 
     failed = [r for r in results if not r[1]]
