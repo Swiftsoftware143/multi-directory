@@ -1766,6 +1766,7 @@ pub struct AdSchedule {
     pub approved_at: Option<chrono::DateTime<chrono::Utc>>,
     pub approved_by: Option<Uuid>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub booking_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1798,6 +1799,32 @@ pub struct CreateScheduleRequest {
     pub start_date: chrono::DateTime<chrono::Utc>,
     pub end_date: chrono::DateTime<chrono::Utc>,
     pub auto_renew: Option<bool>,
+}
+
+// ── Bookings (a booking groups N schedule positions) ─────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AdBooking {
+    pub id: Uuid,
+    pub directory_id: Uuid,
+    pub sponsor_id: Uuid,
+    pub created_by: Option<Uuid>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub status: String,
+    pub external_payment_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateBookingRequest {
+    pub directory_id: Uuid,
+    pub sponsor_id: Uuid,
+    pub creative_id: Uuid,
+    pub start_date: chrono::DateTime<chrono::Utc>,
+    pub end_date: chrono::DateTime<chrono::Utc>,
+    pub auto_renew: Option<bool>,
+    pub external_payment_ref: Option<String>,
+    /// One schedule is created per position, so a Full Takeover is ONE booking with N positions.
+    pub ad_zone_ids: Vec<Uuid>,
 }
 
 /// GET /api/v1/monetization/schedules — list ad schedules
@@ -1968,7 +1995,7 @@ pub async fn create_schedule(
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
            RETURNING id, directory_id, ad_zone_id, sponsor_id, creative_id,
                      start_date, end_date, price_monthly, total_price, status,
-                     auto_renew, created_by, approved_at, approved_by, created_at"#,
+                     auto_renew, created_by, approved_at, approved_by, created_at, booking_id"#,
     )
     .bind(dir_id)
     .bind(req.ad_zone_id)
@@ -2020,7 +2047,7 @@ pub async fn update_schedule(
            WHERE id = $3
            RETURNING id, directory_id, ad_zone_id, sponsor_id, creative_id,
                      start_date, end_date, price_monthly, total_price, status,
-                     auto_renew, created_by, approved_at, approved_by, created_at"#,
+                     auto_renew, created_by, approved_at, approved_by, created_at, booking_id"#,
     )
     .bind(status)
     .bind(creative_id)
@@ -2028,6 +2055,15 @@ pub async fn update_schedule(
     .fetch_optional(&s.db)
     .await?
     .ok_or_else(|| AppError::NotFound("Schedule not found".to_string()))?;
+
+    // Fan the fulfillment row out on activation / archive it on cancel. Idempotent by design
+    // (upsert by booking_ref+position; archive skips already-archived rows), so a re-run or a
+    // direct status write never doubles the object or leaves a cancelled position live.
+    match schedule.status.as_str() {
+        "active" => write_fulfillment_for_schedule(&s.db, id).await,
+        "cancelled" => archive_fulfillment_for_schedule(&s.db, id).await,
+        _ => {}
+    }
 
     Ok(Json(json!(schedule)))
 }
@@ -2037,6 +2073,10 @@ pub async fn delete_schedule(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Archive the fulfillment row BEFORE deleting the schedule: once the schedule row is gone,
+    // its booking_id + zone_key (the archive key) are unrecoverable.
+    archive_fulfillment_for_schedule(&s.db, id).await;
+
     let result = sqlx::query("DELETE FROM ad_schedules WHERE id = $1")
         .bind(id)
         .execute(&s.db)
@@ -2046,6 +2086,339 @@ pub async fn delete_schedule(
         return Err(AppError::NotFound("Schedule not found".to_string()));
     }
     Ok(Json(json!({"status": "deleted"})))
+}
+
+// ── Bookings (a booking groups N schedule positions) ─────────────────────────
+
+/// POST /api/v1/monetization/bookings — create ONE booking + one schedule per position.
+/// A Full Takeover is therefore a single booking carrying N positions, not N loose schedules.
+pub async fn create_booking(
+    State(s): State<AppState>,
+    Json(req): Json<CreateBookingRequest>,
+) -> ApiResult<impl IntoResponse> {
+    if req.end_date <= req.start_date {
+        return Err(AppError::Validation(
+            "end_date must be after start_date".to_string(),
+        ));
+    }
+    if req.ad_zone_ids.is_empty() {
+        return Err(AppError::Validation(
+            "at least one ad_zone_id is required".to_string(),
+        ));
+    }
+
+    // The directory must match the sponsor's own directory (single source of truth, as in
+    // create_schedule); the operator states the directory, the sponsor row must agree.
+    let sponsor_dir: Uuid = sqlx::query_scalar("SELECT directory_id FROM sponsors WHERE id = $1")
+        .bind(req.sponsor_id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Sponsor not found".to_string()))?;
+    if sponsor_dir != req.directory_id {
+        return Err(AppError::Validation(format!(
+            "sponsor belongs to directory {sponsor_dir}, not {}",
+            req.directory_id
+        )));
+    }
+    let dir_id = req.directory_id;
+
+    // Load every zone's price and confirm it belongs to this directory (or is a network-wide zone).
+    let mut zone_prices: Vec<(Uuid, rust_decimal::Decimal)> = Vec::new();
+    for zid in &req.ad_zone_ids {
+        let zone: Option<(Option<Uuid>, Option<rust_decimal::Decimal>)> =
+            sqlx::query_as("SELECT directory_id, price_monthly FROM ad_zones WHERE id = $1")
+                .bind(*zid)
+                .fetch_optional(&s.db)
+                .await?;
+        let Some((zone_dir, price)) = zone else {
+            return Err(AppError::NotFound(format!("Ad zone {zid} not found")));
+        };
+        if let Some(zd) = zone_dir {
+            if zd != dir_id {
+                return Err(AppError::Validation(format!(
+                    "Ad zone {zid} belongs to a different directory"
+                )));
+            }
+        }
+        zone_prices.push((*zid, price.unwrap_or(rust_decimal::Decimal::ZERO)));
+    }
+
+    // Total price = monthly price × ceiling(days / 30), the same rule create_schedule uses.
+    let days = (req.end_date - req.start_date).num_days().max(1) as f64;
+    let months = (days / 30.0).ceil();
+    let months_dec = rust_decimal::Decimal::try_from(months).unwrap_or(rust_decimal::Decimal::ZERO);
+
+    let mut tx = s.db.begin().await?;
+
+    let booking = sqlx::query_as::<_, AdBooking>(
+        r#"INSERT INTO ad_bookings (directory_id, sponsor_id, status, external_payment_ref)
+           VALUES ($1, $2, 'pending', $3)
+           RETURNING id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref"#,
+    )
+    .bind(dir_id)
+    .bind(req.sponsor_id)
+    .bind(req.external_payment_ref.as_deref())
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let mut schedule_ids: Vec<Uuid> = Vec::with_capacity(req.ad_zone_ids.len());
+    for (zid, price) in &zone_prices {
+        let total = *price * months_dec;
+        let sid: Uuid = sqlx::query_scalar(
+            r#"INSERT INTO ad_schedules (directory_id, ad_zone_id, sponsor_id, creative_id,
+                  start_date, end_date, price_monthly, total_price, status, auto_renew, booking_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
+               RETURNING id"#,
+        )
+        .bind(dir_id)
+        .bind(*zid)
+        .bind(req.sponsor_id)
+        .bind(req.creative_id)
+        .bind(req.start_date)
+        .bind(req.end_date)
+        .bind(*price)
+        .bind(total)
+        .bind(req.auto_renew.unwrap_or(false))
+        .bind(booking.id)
+        .fetch_one(&mut *tx)
+        .await?;
+        schedule_ids.push(sid);
+    }
+
+    tx.commit().await?;
+
+    // One approval for the WHOLE booking (activation fans out every position, not one row).
+    sqlx::query(
+        r#"INSERT INTO approval_queue (directory_id, item_type, item_id, status)
+           VALUES ($1, 'ad_booking', $2, 'pending')
+           ON CONFLICT (item_type, item_id) DO NOTHING"#,
+    )
+    .bind(dir_id)
+    .bind(booking.id)
+    .execute(&s.db)
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "booking": booking, "schedule_ids": schedule_ids })),
+    ))
+}
+
+/// GET /api/v1/monetization/bookings — list bookings (optional ?directory_id=)
+pub async fn list_bookings(
+    State(s): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> ApiResult<impl IntoResponse> {
+    let bookings: Vec<AdBooking> = if let Some(dir) = q.get("directory_id") {
+        let dir_uuid = Uuid::parse_str(dir)
+            .map_err(|_| AppError::Validation("invalid directory_id".to_string()))?;
+        sqlx::query_as::<_, AdBooking>(
+            "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref \
+             FROM ad_bookings WHERE directory_id = $1 ORDER BY created_at DESC",
+        )
+        .bind(dir_uuid)
+        .fetch_all(&s.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, AdBooking>(
+            "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref \
+             FROM ad_bookings ORDER BY created_at DESC",
+        )
+        .fetch_all(&s.db)
+        .await?
+    };
+
+    Ok(Json(bookings))
+}
+
+/// GET /api/v1/monetization/bookings/:id — one booking + its schedule positions
+pub async fn get_booking(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let booking = sqlx::query_as::<_, AdBooking>(
+        "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref \
+         FROM ad_bookings WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Booking not found".to_string()))?;
+
+    let schedules: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM ad_schedules WHERE booking_id = $1 ORDER BY created_at")
+            .bind(id)
+            .fetch_all(&s.db)
+            .await?;
+
+    Ok(Json(
+        json!({ "booking": booking, "schedule_ids": schedules }),
+    ))
+}
+
+// ── Ad-fulfillment fan-out (bookings → CoreSwift `ad_fulfillment` object) ─────
+
+/// The one fulfillment row's inputs, resolved from a schedule row. `booking_ref` is the
+/// booking's id (text) and `position` the zone's `zone_key`, the object's composite key.
+struct FulfillmentInput {
+    booking_ref: String,
+    position: String,
+    city: String,
+    issue_date: String,
+    buyer_email: String,
+}
+
+/// Resolve the fields one fulfillment row needs for a schedule. `None` means the schedule has no
+/// booking (a legacy row) — there is no `ad_bookings.id` to use as `booking_ref`, so nothing is
+/// written (and the caller logs it) rather than inventing a key outside the schema.
+async fn fulfillment_input(
+    db: &sqlx::PgPool,
+    schedule_id: Uuid,
+) -> Result<Option<FulfillmentInput>, AppError> {
+    let row = sqlx::query_as::<
+        _,
+        (
+            Option<Uuid>,
+            Option<String>,
+            Option<String>,
+            chrono::NaiveDate,
+            Option<String>,
+        ),
+    >(
+        r#"SELECT s.booking_id, z.zone_key, d.city, s.start_date::date, b.email
+           FROM ad_schedules s
+           JOIN ad_zones z ON z.id = s.ad_zone_id
+           JOIN directories d ON d.id = s.directory_id
+           JOIN sponsors sp ON sp.id = s.sponsor_id
+           JOIN businesses b ON b.id = sp.business_id
+           WHERE s.id = $1"#,
+    )
+    .bind(schedule_id)
+    .fetch_optional(db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Schedule not found".to_string()))?;
+
+    let (booking_id, zone_key, city, issue_date, email) = row;
+    let Some(booking_id) = booking_id else {
+        return Ok(None);
+    };
+    let position =
+        zone_key.ok_or_else(|| AppError::Validation("ad zone has no zone_key".to_string()))?;
+    let city = city.ok_or_else(|| AppError::Validation("directory has no city".to_string()))?;
+
+    Ok(Some(FulfillmentInput {
+        booking_ref: booking_id.to_string(),
+        position,
+        city,
+        issue_date: issue_date.format("%Y-%m-%d").to_string(),
+        buyer_email: email.unwrap_or_default(),
+    }))
+}
+
+/// Write the fulfillment row for ONE schedule (one position). Idempotent: re-running the
+/// activation upserts the same row instead of inserting a second.
+async fn write_fulfillment_for_schedule(db: &sqlx::PgPool, schedule_id: Uuid) {
+    let Some(key) = crate::ad_fulfillment::fulfillment_key() else {
+        tracing::warn!(
+            "[ad_fulfillment] CORESWIFT_AD_FULFILLMENT_KEY not set — skipping fulfillment for schedule {schedule_id}"
+        );
+        return;
+    };
+    let base = crate::ad_fulfillment::base_url();
+
+    let input = match fulfillment_input(db, schedule_id).await {
+        Ok(Some(i)) => i,
+        Ok(None) => {
+            tracing::warn!(
+                "[ad_fulfillment] schedule {schedule_id} has no booking — nothing to fan out"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::error!("[ad_fulfillment] cannot resolve schedule {schedule_id}: {e}");
+            return;
+        }
+    };
+
+    // An unmapped city FAILS LOUDLY: we never write a value outside the object's enum.
+    let Some(city) = crate::ad_fulfillment::normalize_city(&input.city) else {
+        tracing::error!(
+            "[ad_fulfillment] directory city {:?} is not in the ad_fulfillment city enum — refusing to write schedule {schedule_id}",
+            input.city
+        );
+        return;
+    };
+
+    let row = crate::ad_fulfillment::FulfillmentRow {
+        booking_ref: input.booking_ref,
+        position: input.position.clone(),
+        city,
+        issue_date: input.issue_date,
+        buyer_email: input.buyer_email,
+    };
+
+    match crate::ad_fulfillment::upsert(&key, &base, &row).await {
+        Ok((rec_id, inserted)) => {
+            if inserted {
+                tracing::info!(
+                    "[ad_fulfillment] wrote {} for schedule {schedule_id} (record {rec_id})",
+                    row.position
+                );
+            } else {
+                tracing::info!(
+                    "[ad_fulfillment] replay — {}/{} unchanged (record {rec_id})",
+                    row.booking_ref,
+                    row.position
+                );
+            }
+        }
+        Err(e) => tracing::error!("[ad_fulfillment] upsert failed for schedule {schedule_id}: {e}"),
+    }
+}
+
+/// Fan a whole booking out: write one fulfillment row per position.
+async fn fan_out_booking(db: &sqlx::PgPool, booking_id: Uuid) {
+    let schedules: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM ad_schedules WHERE booking_id = $1 ORDER BY created_at")
+            .bind(booking_id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+    for sid in schedules {
+        write_fulfillment_for_schedule(db, sid).await;
+    }
+}
+
+/// Archive the fulfillment row for ONE schedule's position (soft-delete on the object).
+async fn archive_fulfillment_for_schedule(db: &sqlx::PgPool, schedule_id: Uuid) {
+    let Some(key) = crate::ad_fulfillment::fulfillment_key() else {
+        return;
+    };
+    let base = crate::ad_fulfillment::base_url();
+    let input = match fulfillment_input(db, schedule_id).await {
+        Ok(Some(i)) => i,
+        Ok(None) | Err(_) => return,
+    };
+    match crate::ad_fulfillment::archive(&key, &base, &input.booking_ref, Some(&input.position))
+        .await
+    {
+        Ok(n) => tracing::info!("[ad_fulfillment] archived {n} row(s) for schedule {schedule_id}"),
+        Err(e) => {
+            tracing::error!("[ad_fulfillment] archive failed for schedule {schedule_id}: {e}")
+        }
+    }
+}
+
+/// Archive every position of a cancelled booking.
+async fn archive_fulfillment_for_booking(_db: &sqlx::PgPool, booking_id: Uuid) {
+    let Some(key) = crate::ad_fulfillment::fulfillment_key() else {
+        return;
+    };
+    let base = crate::ad_fulfillment::base_url();
+    match crate::ad_fulfillment::archive(&key, &base, &booking_id.to_string(), None).await {
+        Ok(n) => tracing::info!("[ad_fulfillment] archived {n} row(s) for booking {booking_id}"),
+        Err(e) => tracing::error!("[ad_fulfillment] archive failed for booking {booking_id}: {e}"),
+    }
 }
 
 // ── Active Ads (for public rendering) ────────────────────────────────────────
@@ -2265,10 +2638,44 @@ pub async fn update_approval(
                 .await?;
         }
         "ad_schedule" => {
-            sqlx::query("UPDATE ad_schedules SET status = $1, approved_at = CASE WHEN $1 = 'active' THEN NOW() ELSE NULL END WHERE id = $2")
+            sqlx::query("UPDATE ad_schedules SET status = $1, approved_at = CASE WHEN $1 = 'active' THEN NOW() ELSE NULL END, updated_at = NOW() WHERE id = $2")
                 .bind(if status == "approved" { "active" } else { "cancelled" })
                 .bind(item.1)
                 .execute(&s.db).await?;
+
+            // Fan the fulfillment row out on activation, archive it on cancel (idempotent).
+            if status == "approved" {
+                write_fulfillment_for_schedule(&s.db, item.1).await;
+            } else {
+                archive_fulfillment_for_schedule(&s.db, item.1).await;
+            }
+        }
+        "ad_booking" => {
+            // One approval for the whole booking: activate (or cancel) the parent AND every
+            // position, then fan out (or archive) all of them together.
+            let schedule_status = if status == "approved" {
+                "active"
+            } else {
+                "cancelled"
+            };
+            sqlx::query("UPDATE ad_bookings SET status = $1 WHERE id = $2")
+                .bind(schedule_status)
+                .bind(item.1)
+                .execute(&s.db)
+                .await?;
+            sqlx::query(
+                "UPDATE ad_schedules SET status = $1, approved_at = CASE WHEN $1 = 'active' THEN NOW() ELSE NULL END, updated_at = NOW() WHERE booking_id = $2",
+            )
+            .bind(schedule_status)
+            .bind(item.1)
+            .execute(&s.db)
+            .await?;
+
+            if status == "approved" {
+                fan_out_booking(&s.db, item.1).await;
+            } else {
+                archive_fulfillment_for_booking(&s.db, item.1).await;
+            }
         }
         _ => {}
     }

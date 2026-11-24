@@ -1329,6 +1329,11 @@ pub fn create_router(s: AppState) -> Router {
             "/schedules/:id",
             put(monetization::update_schedule).delete(monetization::delete_schedule),
         )
+        .route(
+            "/bookings",
+            get(monetization::list_bookings).post(monetization::create_booking),
+        )
+        .route("/bookings/:id", get(monetization::get_booking))
         // .route("/ads/active/:directory_id", get(monetization::get_active_ads)) -- moved to public
         .route(
             "/earnings/:directory_id",

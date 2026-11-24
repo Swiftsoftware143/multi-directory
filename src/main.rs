@@ -8,6 +8,7 @@
 #![allow(clippy::doc_lazy_continuation)] // doc-comment list layout in handler headers
 #![allow(clippy::doc_overindented_list_items)] // same, the over-indented variant
 #![recursion_limit = "256"]
+mod ad_fulfillment;
 #[allow(dead_code)] // CoreSwift integration surface — owned by the CoreSwift lane (item 19).
 mod coreswift;
 mod email;
