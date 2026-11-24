@@ -261,6 +261,13 @@ pub async fn create_directory(
     // every ownership-scoped surface (MCP key_auth, tenant_scope) the moment it is created.
     let owner_id = tenant_scope::caller_user(&claims)?;
 
+    // t_6a165e41 — a directory is created WITH its own MCP credential, in the SAME transaction:
+    // the INSERT and the directory-key mint commit together, so a committed directory never exists
+    // without a key (a defect) and a rolled-back create leaves no orphan key. The mint seals the
+    // key under PROVIDER_KEY_ENC_SECRET (fails closed if the secret is missing), so a seal failure
+    // rolls the whole create back.
+    let mut tx = s.db.begin().await?;
+
     let mut directory = sqlx::query_as::<_, Directory>(
         r#"INSERT INTO directories (name, slug, description, status, template, color_scheme, network_id, url_type, url_value, custom_domain, city, template_config, head_injection, body_injection, footer_injection, email_signature_html, email_signature_text, state, support_email, contact_email, contact_phone, legal_name, industry_slug, owner_id, region, country)
            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
@@ -292,8 +299,25 @@ pub async fn create_directory(
     .bind(owner_id)
     .bind(&req.region)
     .bind(&req.country)
-    .fetch_one(&s.db)
+    .fetch_one(&mut *tx)
     .await?;
+
+    // The directory-scoped MCP key, minted on the SAME connection so it commits with the row.
+    let minted_key = crate::handlers::api_key_auto::mint_directory_key(
+        &mut tx,
+        owner_id,
+        directory.id,
+        &format!("directory:{slug}"),
+    )
+    .await?;
+
+    tx.commit().await?;
+
+    tracing::info!(
+        "[directory] created '{}' with its MCP credential (prefix {})",
+        slug,
+        minted_key.prefix
+    );
 
     // If network_mode="new_network", create the network and link it
     if network_mode == "new_network" {

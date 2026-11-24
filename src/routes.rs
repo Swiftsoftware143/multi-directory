@@ -2860,6 +2860,12 @@ pub fn create_router(s: AppState) -> Router {
         // uploaded through POST /api/v1/admin/media/upload. MUST be a real route (the SPA
         // fallback used to swallow /uploads/* and every stored asset url was dead).
         .route("/uploads/*path", get(audience::serve_media))
+        // ── MCP door ──
+        // POST /admin/mcp — the admin MCP door (kanban t_6a165e41). Its OWN credential (an `md_…`
+        // API key, resolved per-call by the door) is the boundary: the door answers 401 with the
+        // JSON-RPC unauthorized code itself, so it is mounted PUBLIC (security/route_policy.rs)
+        // and never behind auth_guard's session-JWT requirement.
+        .route("/admin/mcp", post(crate::mcp::handle))
         .nest("/api/v1", all_routes)
         .fallback_service(tower::service_fn(
             move |req: axum::http::Request<axum::body::Body>| {

@@ -118,6 +118,11 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     // cannot also require a session JWT — that made it uncallable (401 for every caller). The
     // hash-only lookup below means only the full key verifies; the prefix alone never does.
     ("POST", "/api-keys/verify", "api-key-verify"),
+    // --- /admin/mcp --------------------------------------------------
+    // The MCP door's OWN credential IS the bearer API key (md_…), resolved per-call by the door.
+    // The door is its own boundary — it answers 401 with the JSON-RPC code — so it cannot also sit
+    // behind auth_guard's session JWT (which would turn every door call into a session 401).
+    ("POST", "/admin/mcp", "mcp-door"),
     // --- /articles ---------------------------------------------------
     // The public READ of a business/sponsored article, promised by the served help page
     // ("GET /api/v1/articles/:slug — Serve article publicly"). Anonymous by design: it is a
@@ -800,10 +805,12 @@ mod tests {
         // measure the cache without a credential).
         // plus the sitemap section children (GET /sitemap-{static,cities,categories,businesses,articles}.xml —
         // the five segmented <urlset> documents the sitemap index names; SEO gap 4).
+        // plus the MCP door (POST /admin/mcp — the door is its own credential boundary, kanban
+        // t_6a165e41, so it cannot sit behind auth_guard's session JWT).
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            174,
-            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy, +1 photo cache stats, +5 sitemap section children)"
+            175,
+            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy, +1 photo cache stats, +5 sitemap section children, +1 admin MCP door)"
         );
     }
 }

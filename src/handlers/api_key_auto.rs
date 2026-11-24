@@ -85,6 +85,45 @@ pub async fn mint_on(
     })
 }
 
+/// Mint a DIRECTORY-scoped key on directory creation (kanban t_6a165e41). Unlike [`mint_on`]'s
+/// account keys, this one records which directory it belongs to in `api_keys.directory_id` — the
+/// single id the MCP door filters on. `tenant_id` stays NULL: a directory key is not a customer
+/// tenant. Called inside the directory-creation transaction so a committed directory never exists
+/// without a key (a defect) and a rolled-back create leaves no orphan key row.
+pub async fn mint_directory_key(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    directory_id: Uuid,
+    name: &str,
+) -> Result<MintedKey, AppError> {
+    let (full, hash, prefix) = generate();
+    let sealed = crypto::seal_in(&mut *conn, &full)
+        .await
+        .map_err(|e| AppError::Internal(format!("could not seal the directory API key: {e}")))?;
+
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO api_keys (id, user_id, tenant_id, directory_id, name, key_hash, key_prefix, key_encrypted) \
+         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7)",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(directory_id)
+    .bind(name)
+    .bind(&hash)
+    .bind(&prefix)
+    .bind(&sealed)
+    .execute(&mut *conn)
+    .await?;
+
+    Ok(MintedKey {
+        id,
+        name: name.to_string(),
+        raw_key: full,
+        prefix,
+    })
+}
+
 #[derive(Deserialize)]
 pub struct RevealRequest {
     /// The caller's CURRENT password — a stolen session token must not be enough to read a live
