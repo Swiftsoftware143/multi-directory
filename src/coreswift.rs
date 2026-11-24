@@ -47,6 +47,85 @@ lazy_static::lazy_static! {
         .expect("Failed to build reqwest client");
 }
 
+fn truncate(s: &str, n: usize) -> String {
+    if s.len() <= n {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..n])
+    }
+}
+
+/// Validate a soft `core_booking_id` reference against CoreSwift's booking engine.
+///
+/// `ad_bookings.core_booking_id` is a NULLABLE soft reference to CoreSwift's `booking_bookings`
+/// (a separate Postgres database, so a real FK is impossible). The only read surface CoreSwift
+/// exposes for that table is the MCP door's `coreswift_list_bookings`, so this calls that tool
+/// with the `csk_` key the ad_fulfillment writer already holds and checks whether the id appears.
+///
+/// `Ok(true)`  = the id resolves.
+/// `Ok(false)` = CoreSwift answered and the id is NOT among its bookings.
+/// `Err(_)`    = the check itself could not be made (no key, unreachable, malformed reply) — the
+///               caller must treat this as unverifiable and fail closed rather than write a
+///               persisted-but-unchecked reference.
+pub async fn core_booking_resolves(core_booking_id: Uuid) -> Result<bool, String> {
+    let Some(key) = crate::ad_fulfillment::fulfillment_key() else {
+        return Err("no CoreSwift key configured — cannot verify core_booking_id".to_string());
+    };
+    let url = format!("{}/api/mcp", coreswift_url());
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "coreswift_list_bookings",
+            "arguments": { "limit": 200 }
+        }
+    });
+
+    let resp = HTTP
+        .post(&url)
+        .bearer_auth(&key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("CoreSwift MCP unreachable: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!(
+            "CoreSwift MCP list_bookings {status}: {}",
+            truncate(&text, 200)
+        ));
+    }
+    let v: Value =
+        serde_json::from_str(&text).map_err(|e| format!("CoreSwift MCP bad reply: {e}"))?;
+
+    // A tool-level failure (`isError: true`) means the read did not run; that is unverifiable,
+    // not "the id is absent".
+    if v.pointer("/result/isError").and_then(|b| b.as_bool()) == Some(true) {
+        return Err(format!(
+            "CoreSwift MCP list_bookings error: {}",
+            truncate(&text, 200)
+        ));
+    }
+
+    let target = core_booking_id.to_string();
+    let found = v
+        .pointer("/result/structuredContent/items")
+        .and_then(|i| i.as_array())
+        .map(|items| {
+            items.iter().any(|it| {
+                it.get("id")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.eq_ignore_ascii_case(&target))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+
+    Ok(found)
+}
+
 /// Resolve CoreSwift config for a directory.
 /// Returns (tenant_id, claimed_list_id, newsletter_list_id, sponsors_list_id).
 /// Checks directory-level first, then falls back to parent network.

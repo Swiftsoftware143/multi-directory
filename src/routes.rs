@@ -1334,6 +1334,10 @@ pub fn create_router(s: AppState) -> Router {
             get(monetization::list_bookings).post(monetization::create_booking),
         )
         .route("/ad-bookings/:id", get(monetization::get_booking))
+        .route(
+            "/ad-bookings/:id/activate",
+            post(monetization::activate_booking),
+        )
         // .route("/ads/active/:directory_id", get(monetization::get_active_ads)) -- moved to public
         .route(
             "/earnings/:directory_id",

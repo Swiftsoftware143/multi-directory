@@ -1812,6 +1812,8 @@ pub struct AdBooking {
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     pub status: String,
     pub external_payment_ref: Option<String>,
+    pub confirmed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub core_booking_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1825,6 +1827,9 @@ pub struct CreateBookingRequest {
     pub external_payment_ref: Option<String>,
     /// One schedule is created per position, so a Full Takeover is ONE booking with N positions.
     pub ad_zone_ids: Vec<Uuid>,
+    /// Soft reference to the CoreSwift `booking_bookings` row that drove this sale, when one did.
+    /// Validated over CoreSwift's API at confirmation; never a FK (separate databases).
+    pub core_booking_id: Option<Uuid>,
 }
 
 /// GET /api/v1/monetization/schedules — list ad schedules
@@ -2056,13 +2061,11 @@ pub async fn update_schedule(
     .await?
     .ok_or_else(|| AppError::NotFound("Schedule not found".to_string()))?;
 
-    // Fan the fulfillment row out on activation / archive it on cancel. Idempotent by design
-    // (upsert by booking_ref+position; archive skips already-archived rows), so a re-run or a
-    // direct status write never doubles the object or leaves a cancelled position live.
-    match schedule.status.as_str() {
-        "active" => write_fulfillment_for_schedule(&s.db, id).await,
-        "cancelled" => archive_fulfillment_for_schedule(&s.db, id).await,
-        _ => {}
+    // Activation records publishing only — it no longer writes (or re-writes) the artwork chase.
+    // The ad_fulfillment rows are written once at CONFIRMATION, so flipping a schedule active here
+    // must not touch the object. Cancelling still archives (idempotent).
+    if schedule.status.as_str() == "cancelled" {
+        archive_fulfillment_for_schedule(&s.db, id).await;
     }
 
     Ok(Json(json!(schedule)))
@@ -2151,13 +2154,14 @@ pub async fn create_booking(
     let mut tx = s.db.begin().await?;
 
     let booking = sqlx::query_as::<_, AdBooking>(
-        r#"INSERT INTO ad_bookings (directory_id, sponsor_id, status, external_payment_ref)
-           VALUES ($1, $2, 'pending', $3)
-           RETURNING id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref"#,
+        r#"INSERT INTO ad_bookings (directory_id, sponsor_id, status, external_payment_ref, core_booking_id)
+           VALUES ($1, $2, 'pending', $3, $4)
+           RETURNING id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref, confirmed_at, core_booking_id"#,
     )
     .bind(dir_id)
     .bind(req.sponsor_id)
     .bind(req.external_payment_ref.as_deref())
+    .bind(req.core_booking_id)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -2213,7 +2217,7 @@ pub async fn list_bookings(
         let dir_uuid = Uuid::parse_str(dir)
             .map_err(|_| AppError::Validation("invalid directory_id".to_string()))?;
         sqlx::query_as::<_, AdBooking>(
-            "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref \
+            "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref, confirmed_at, core_booking_id \
              FROM ad_bookings WHERE directory_id = $1 ORDER BY created_at DESC",
         )
         .bind(dir_uuid)
@@ -2221,7 +2225,7 @@ pub async fn list_bookings(
         .await?
     } else {
         sqlx::query_as::<_, AdBooking>(
-            "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref \
+            "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref, confirmed_at, core_booking_id \
              FROM ad_bookings ORDER BY created_at DESC",
         )
         .fetch_all(&s.db)
@@ -2237,7 +2241,7 @@ pub async fn get_booking(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let booking = sqlx::query_as::<_, AdBooking>(
-        "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref \
+        "SELECT id, directory_id, sponsor_id, created_by, created_at, status, external_payment_ref, confirmed_at, core_booking_id \
          FROM ad_bookings WHERE id = $1",
     )
     .bind(id)
@@ -2254,6 +2258,44 @@ pub async fn get_booking(
     Ok(Json(
         json!({ "booking": booking, "schedule_ids": schedules }),
     ))
+}
+
+/// POST /api/v1/monetization/ad-bookings/:id/activate — activate a CONFIRMED booking.
+///
+/// Activation records publishing only: the booking and every position move `confirmed` → `active`.
+/// It writes NO ad_fulfillment rows — those were already written at confirmation, so the artwork
+/// chase (keyed on `confirmed_at`) does not restart when the schedule goes live.
+pub async fn activate_booking(
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let booking: Option<(String,)> = sqlx::query_as("SELECT status FROM ad_bookings WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?;
+
+    let Some((status,)) = booking else {
+        return Err(AppError::NotFound("Booking not found".to_string()));
+    };
+    if status != "confirmed" {
+        return Err(AppError::Conflict(format!(
+            "booking must be 'confirmed' before activation (it is '{status}')"
+        )));
+    }
+
+    sqlx::query("UPDATE ad_bookings SET status = 'active' WHERE id = $1")
+        .bind(id)
+        .execute(&s.db)
+        .await?;
+    sqlx::query(
+        "UPDATE ad_schedules SET status = 'active', approved_at = NOW(), updated_at = NOW() \
+         WHERE booking_id = $1 AND status = 'confirmed'",
+    )
+    .bind(id)
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(json!({ "status": "active", "booking_id": id })))
 }
 
 // ── Ad-fulfillment fan-out (bookings → CoreSwift `ad_fulfillment` object) ─────
@@ -2386,6 +2428,31 @@ async fn fan_out_booking(db: &sqlx::PgPool, booking_id: Uuid) {
             .unwrap_or_default();
     for sid in schedules {
         write_fulfillment_for_schedule(db, sid).await;
+    }
+}
+
+/// Fail-closed check on `ad_bookings.core_booking_id`. A booking without one passes (nothing to
+/// verify). A booking WITH one must resolve over CoreSwift's API, otherwise the confirmation is
+/// refused so the sale can retry rather than persist an unchecked reference.
+async fn validate_core_booking(db: &sqlx::PgPool, booking_id: Uuid) -> Result<(), AppError> {
+    let core_booking_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT core_booking_id FROM ad_bookings WHERE id = $1")
+            .bind(booking_id)
+            .fetch_optional(db)
+            .await?;
+
+    let Some(core) = core_booking_id else {
+        return Ok(());
+    };
+
+    match crate::coreswift::core_booking_resolves(core).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(AppError::Validation(format!(
+            "core_booking_id {core} does not resolve to a CoreSwift booking"
+        ))),
+        Err(e) => Err(AppError::ServiceUnavailable(format!(
+            "cannot verify core_booking_id against CoreSwift: {e}"
+        ))),
     }
 }
 
@@ -2606,6 +2673,13 @@ pub async fn update_approval(
             .await?
             .ok_or_else(|| AppError::NotFound("Approval not found".to_string()))?;
 
+    // Confirming an ad booking WRITES the artwork chase. A soft core_booking_id reference must
+    // be verified BEFORE anything is recorded — a persisted-but-unchecked id is the defect this
+    // guards against, and a booking left half-confirmed is worse than one that retries whole.
+    if item.0 == "ad_booking" && status == "approved" {
+        validate_core_booking(&s.db, item.1).await?;
+    }
+
     // Update approval queue status
     sqlx::query("UPDATE approval_queue SET status = $1, reviewed_at = NOW() WHERE id = $2")
         .bind(status)
@@ -2643,37 +2717,45 @@ pub async fn update_approval(
                 .bind(item.1)
                 .execute(&s.db).await?;
 
-            // Fan the fulfillment row out on activation, archive it on cancel (idempotent).
-            if status == "approved" {
-                write_fulfillment_for_schedule(&s.db, item.1).await;
-            } else {
+            // Approving a standalone schedule is ACTIVATION (publishing only). The artwork chase
+            // is written at CONFIRMATION — which only the booking path has — so this must not
+            // write. Cancelling still archives the position (idempotent).
+            if status != "approved" {
                 archive_fulfillment_for_schedule(&s.db, item.1).await;
             }
         }
         "ad_booking" => {
-            // One approval for the whole booking: activate (or cancel) the parent AND every
-            // position, then fan out (or archive) all of them together.
-            let schedule_status = if status == "approved" {
-                "active"
-            } else {
-                "cancelled"
-            };
-            sqlx::query("UPDATE ad_bookings SET status = $1 WHERE id = $2")
-                .bind(schedule_status)
+            // One approval for the WHOLE booking. APPROVING = CONFIRMING: the confirmation email
+            // goes out here, so this is the moment the artwork chase writes one row per position
+            // (artwork_status='Requested', ran=false). Activation is a SEPARATE later step that
+            // only records publishing. Rejecting cancels the parent and every position together.
+            if status == "approved" {
+                sqlx::query(
+                    "UPDATE ad_bookings SET status = 'confirmed', confirmed_at = NOW() WHERE id = $1",
+                )
                 .bind(item.1)
                 .execute(&s.db)
                 .await?;
-            sqlx::query(
-                "UPDATE ad_schedules SET status = $1, approved_at = CASE WHEN $1 = 'active' THEN NOW() ELSE NULL END, updated_at = NOW() WHERE booking_id = $2",
-            )
-            .bind(schedule_status)
-            .bind(item.1)
-            .execute(&s.db)
-            .await?;
+                sqlx::query(
+                    "UPDATE ad_schedules SET status = 'confirmed', updated_at = NOW() WHERE booking_id = $1",
+                )
+                .bind(item.1)
+                .execute(&s.db)
+                .await?;
 
-            if status == "approved" {
                 fan_out_booking(&s.db, item.1).await;
             } else {
+                sqlx::query("UPDATE ad_bookings SET status = 'cancelled' WHERE id = $1")
+                    .bind(item.1)
+                    .execute(&s.db)
+                    .await?;
+                sqlx::query(
+                    "UPDATE ad_schedules SET status = 'cancelled', updated_at = NOW() WHERE booking_id = $1",
+                )
+                .bind(item.1)
+                .execute(&s.db)
+                .await?;
+
                 archive_fulfillment_for_booking(&s.db, item.1).await;
             }
         }
