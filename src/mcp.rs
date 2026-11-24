@@ -370,8 +370,8 @@ fn registry(pool: PgPool) -> Registry {
                     .map_err(db_err)?;
                     let walk_score = walk.map(|r| {
                         json!({
-                            "walk_score": r.get::<Option<f64>, _>("walk_score"),
-                            "bike_score": r.get::<Option<f64>, _>("bike_score"),
+                            "walk_score": r.get::<Option<i32>, _>("walk_score"),
+                            "bike_score": r.get::<Option<i32>, _>("bike_score"),
                             "refreshed_at": r.get::<Option<DateTime<Utc>>, _>("refreshed_at"),
                         })
                     });
@@ -601,8 +601,8 @@ fn registry(pool: PgPool) -> Registry {
                                 "id": r.get::<Uuid, _>("id"),
                                 "ad_zone_id": r.get::<Uuid, _>("ad_zone_id"),
                                 "sponsor_id": r.get::<Uuid, _>("sponsor_id"),
-                                "start_date": r.get::<Option<chrono::NaiveDate>, _>("start_date"),
-                                "end_date": r.get::<Option<chrono::NaiveDate>, _>("end_date"),
+                                "start_date": r.get::<Option<DateTime<Utc>>, _>("start_date"),
+                                "end_date": r.get::<Option<DateTime<Utc>>, _>("end_date"),
                                 "price_monthly": r.get::<Option<f64>, _>("price_monthly"),
                                 "total_price": r.get::<Option<f64>, _>("total_price"),
                                 "total_earned": r.get::<Option<f64>, _>("total_earned"),
