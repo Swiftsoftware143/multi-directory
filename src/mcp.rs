@@ -692,7 +692,7 @@ fn registry(pool: PgPool) -> Registry {
                         .iter()
                         .map(|r| {
                             json!({
-                                "id": r.get::<Uuid, _>("id"),
+                                "id": r.get::<i64, _>("id"),
                                 "scope": r.get::<Option<String>, _>("scope"),
                                 "url": r.get::<Option<String>, _>("url"),
                                 "first_submitted_at": r.get::<Option<DateTime<Utc>>, _>("first_submitted_at"),
