@@ -73,18 +73,23 @@ impl CredentialResolver for ApiKeyResolver {
             return Err(AuthError::Invalid);
         };
 
-        // key_hash, directory_id, key is_active, expires_at, owner role, owner is_active
+        // key_hash, directory_id, directory slug, key label, owner email, key is_active,
+        // expires_at, owner role, owner is_active
         let rows: Vec<(
             String,
             Option<Uuid>,
+            Option<String>,
+            String,
+            String,
             bool,
             Option<DateTime<Utc>>,
             String,
             bool,
         )> = sqlx::query_as(
-            "SELECT k.key_hash, k.directory_id, COALESCE(k.is_active, true), k.expires_at, \
-                        u.role, COALESCE(u.is_active, true) \
+            "SELECT k.key_hash, k.directory_id, d.slug, k.name, u.email, \
+                        COALESCE(k.is_active, true), k.expires_at, u.role, COALESCE(u.is_active, true) \
                    FROM api_keys k JOIN users u ON u.id = k.user_id \
+                   LEFT JOIN directories d ON d.id = k.directory_id \
                   WHERE k.key_prefix = $1",
         )
         .bind(prefix)
@@ -99,7 +104,18 @@ impl CredentialResolver for ApiKeyResolver {
         let now = Utc::now();
         let mut has_live = false;
         let mut has_dead = false;
-        for (key_hash, directory_id, key_active, expires_at, role, user_active) in rows {
+        for (
+            key_hash,
+            directory_id,
+            directory_slug,
+            key_name,
+            owner_email,
+            key_active,
+            expires_at,
+            role,
+            user_active,
+        ) in rows
+        {
             let expired = expires_at.is_some_and(|e| e <= now);
             if !key_active || expired || !user_active {
                 has_dead = true;
@@ -110,15 +126,25 @@ impl CredentialResolver for ApiKeyResolver {
                 continue;
             }
 
+            // The audited subject names the credential by SLUG + key LABEL — never any bytes of
+            // the key itself (the `md_…` prefix is still part of the secret). This is the fleet
+            // standard (ADASwift t_dfc5b182, MissedCall t_9e143c06): an audit log that stores a
+            // fragment of the credential it audited is how a leak guard finds keys in a log dir.
+            let label = key_name.trim();
+            let label = if label.is_empty() { "unnamed" } else { label };
+
             match directory_id {
                 // A directory-scoped key: the directory must still exist, else the key is revoked.
                 Some(dir) => {
                     if !self.directory_live(dir).await? {
                         return Err(AuthError::Revoked);
                     }
-                    return Ok(
-                        Caller::new(format!("api_key:{prefix}"), Role::Workspace).with_tenant(dir)
-                    );
+                    let slug = directory_slug.as_deref().unwrap_or("unknown");
+                    return Ok(Caller::new(
+                        format!("directory:{slug}:key:{label}"),
+                        Role::Workspace,
+                    )
+                    .with_tenant(dir));
                 }
                 // An unscoped key is the operator's alone: only a super_admin may see every
                 // directory. A live key owned by anyone else is refused outright.
@@ -126,7 +152,10 @@ impl CredentialResolver for ApiKeyResolver {
                     if role != "super_admin" {
                         return Err(AuthError::Invalid);
                     }
-                    return Ok(Caller::new(format!("operator:{prefix}"), Role::Admin));
+                    return Ok(Caller::new(
+                        format!("operator:{owner_email}:key:{label}"),
+                        Role::Admin,
+                    ));
                 }
             }
         }
