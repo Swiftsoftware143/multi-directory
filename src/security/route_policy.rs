@@ -158,10 +158,6 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/campaign/:slug/:business_id", "campaign-widget"),
     // --- /bookings ---------------------------------------------------
     ("POST", "/bookings", "booking-create"),
-    // --- /bookmarks --------------------------------------------------
-    ("GET", "/bookmarks", "bookmarks"),
-    ("GET", "/bookmarks/count/:business_id", "bookmarks-count"),
-    ("POST", "/bookmarks/toggle", "bookmarks-toggle"),
     // --- /business-articles ------------------------------------------
     ("POST", "/business-articles/:id/track", "article-track"),
     // --- /businesses -------------------------------------------------
@@ -437,7 +433,6 @@ pub const PUBLIC_ROUTES: &[PublicRoute] = &[
     ("GET", "/zaarhub/deals", "zaarhub-public"),
     ("GET", "/zaarhub/editors-picks", "zaarhub-public"),
     ("GET", "/zaarhub/events", "zaarhub-public"),
-    ("GET", "/zaarhub/featured", "zaarhub-public"),
     ("GET", "/zaarhub/homepage", "zaarhub-public"),
     ("GET", "/zaarhub/listings/:id", "zaarhub-public"),
     ("GET", "/zaarhub/listings/:id/offers", "zaarhub-public"),

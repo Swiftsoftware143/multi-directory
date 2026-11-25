@@ -37,12 +37,6 @@ pub struct SearchQuery {
     pub per_page: Option<i32>,
 }
 
-#[derive(Deserialize)]
-pub struct FeaturedQuery {
-    pub page: Option<i32>,
-    pub per_page: Option<i32>,
-}
-
 // ── Helper ─────────────────────────────────────────────────────
 
 fn default_page(page: Option<i32>) -> i32 {
@@ -809,49 +803,6 @@ fn offer_json(r: &sqlx::postgres::PgRow) -> Value {
         "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").unwrap_or_default(),
         "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").unwrap_or_default(),
     })
-}
-
-/// Get featured listings across all cities
-pub async fn featured_listings(
-    State(state): State<AppState>,
-    Query(q): Query<FeaturedQuery>,
-) -> ApiResult<Json<Value>> {
-    let page = default_page(q.page);
-    let per_page = default_per_page(q.per_page);
-
-    let count_row =
-        sqlx::query("SELECT COUNT(*) AS cnt FROM business_listings WHERE is_featured = true")
-            .fetch_one(&state.db)
-            .await?;
-    let total: i64 = count_row.get("cnt");
-
-    let rows = sqlx::query(
-        "SELECT bl.* FROM business_listings bl \
-         WHERE bl.is_featured = true \
-         ORDER BY bl.rating DESC NULLS LAST, bl.business_name ASC \
-         LIMIT $1 OFFSET $2",
-    )
-    .bind(per_page as i64)
-    .bind(offset(page, per_page) as i64)
-    .fetch_all(&state.db)
-    .await?;
-
-    let listings: Vec<Value> = rows.iter().map(listing_json).collect();
-    let total_pages = if total == 0 {
-        0
-    } else {
-        ((total as f64) / (per_page as f64)).ceil() as i32
-    };
-
-    Ok(Json(json!({
-        "listings": listings,
-        "pagination": {
-            "page": page,
-            "per_page": per_page,
-            "total": total,
-            "total_pages": total_pages
-        }
-    })))
 }
 
 // ── Editor's Picks API ─────────────────────────────────────────

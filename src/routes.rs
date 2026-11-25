@@ -1261,16 +1261,6 @@ pub fn create_router(s: AppState) -> Router {
                 .put(monetization::update_subscription)
                 .delete(monetization::delete_subscription),
         )
-        .route(
-            "/monetization/ad-zones",
-            get(monetization::list_ad_zones).post(monetization::create_ad_zone),
-        )
-        .route(
-            "/monetization/ad-zones/:id",
-            get(monetization::get_ad_zone)
-                .put(monetization::update_ad_zone)
-                .delete(monetization::delete_ad_zone),
-        )
         // ??? Original monetization routes (keep backward compat)
         .route(
             "/tiers",
@@ -2136,13 +2126,6 @@ pub fn create_router(s: AppState) -> Router {
             "/visitor/recommendations",
             get(visitors::list_recommendations),
         )
-        // ? Visitor bookmarks / saved places — alternate scoped routes
-        .route("/bookmarks", get(visitors::list_favorites))
-        .route("/bookmarks/toggle", post(visitors::toggle_bookmark))
-        .route(
-            "/bookmarks/count/:business_id",
-            get(visitors::get_bookmark_count),
-        )
         // ? Micro-Polls (v2: public GET, visitor/require auth for vote/create/close)
         .route("/polls", get(polls::list_polls).post(polls::create_poll))
         .route("/polls/:id", get(polls::get_poll))
@@ -2344,7 +2327,6 @@ pub fn create_router(s: AppState) -> Router {
         .route("/zaarhub/listings/:id", get(zaarhub_cities::get_listing))
         .route("/zaarhub/categories", get(zaarhub_cities::list_categories))
         .route("/zaarhub/search", get(zaarhub_cities::search_listings))
-        .route("/zaarhub/featured", get(zaarhub_cities::featured_listings))
         // ??? Editor's Picks (public GET + admin PATCH)
         .route(
             "/zaarhub/editors-picks",
