@@ -689,6 +689,25 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       <span id="ctaSaveResult" style="margin-left:8px;font-size:.8rem"></span>
     </div>
 
+    <!-- 💳 Booking Checkout (work-queue "BOOKING CHECKOUT") -->
+    <div id="bookingCheckoutSection" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+      <h3 style="font-size:1rem;margin-bottom:4px">💳 Booking Checkout</h3>
+      <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Let customers pay for a booking right on your listing. Paste the checkout URL or embed code from your payment tool (Stripe, Square, PayPal, etc.) — it appears inline after the booking calendar with a smooth reveal, instead of a link that sends them off the page.</p>
+      <div class="form-group">
+        <label>Checkout URL or embed code</label>
+        <input type="text" id="bookingCheckoutUrl" placeholder="https://… or a pasted &lt;iframe&gt;/embed snippet" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+      </div>
+      <div class="form-group">
+        <label>When should they pay?</label>
+        <select id="bookingChargeTiming" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem">
+          <option value="after">After they book (pay later)</option>
+          <option value="at_booking">At booking (pay up-front, like a consultant)</option>
+        </select>
+      </div>
+      <button onclick="saveBookingCheckout()" class="btn btn-primary btn-sm" style="margin-top:8px">💾 Save checkout</button>
+      <span id="bookingCheckoutResult" style="margin-left:8px;font-size:.8rem"></span>
+    </div>
+
 
     <div class="section-title" style="margin-top:32px">🎁 Business Tools</div>
     <div class="section-subtitle" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">Create deals, discounts and coupons for your business listing.</div>
@@ -1778,6 +1797,23 @@ async function saveCtaType() {
   }
 }
 
+// 💳 Booking Checkout (work-queue "BOOKING CHECKOUT") — save the owner's checkout embed/timing.
+async function saveBookingCheckout() {
+  if (!_selectedBizId) return;
+  var url = document.getElementById('bookingCheckoutUrl').value;
+  var timing = document.getElementById('bookingChargeTiming').value;
+  try {
+    await pu('/portal/business/' + _selectedBizId + '/meta', {
+      booking_checkout_url: url || '',
+      booking_charge_timing: timing || 'after'
+    });
+    document.getElementById('bookingCheckoutResult').textContent = '✅ Saved';
+    setTimeout(function(){ document.getElementById('bookingCheckoutResult').textContent = ''; }, 2000);
+  } catch(e) {
+    document.getElementById('bookingCheckoutResult').textContent = '❌ ' + e.message;
+  }
+}
+
 // Load connected services + business tools (deals & surveys) when dashboard is ready
 var _origLoadDashboard = loadDashboard;
 loadDashboard = function() {
@@ -2229,6 +2265,14 @@ function setMyBiz(list) {
       plan: sub.tier_name || null
     };
   }).filter(function (b) { return !!b.id; });
+  // 💳 Booking Checkout: surface the saved value so the owner sees what's set (work-queue
+  // "BOOKING CHECKOUT"). The profile row now carries booking_checkout_url/booking_charge_timing.
+  var firstRow = (list || [])[0];
+  var bizObj = firstRow ? (firstRow.business || {}) : {};
+  if (document.getElementById('bookingCheckoutUrl')) {
+    document.getElementById('bookingCheckoutUrl').value = bizObj.booking_checkout_url || '';
+    document.getElementById('bookingChargeTiming').value = bizObj.booking_charge_timing || 'after';
+  }
   ['clBiz', 'msgBiz', 'bkBiz', 'rvBiz', 'phBiz', 'vfBiz', 'plBiz', 'pl2Biz'].forEach(fillBizSelect);
   // renderBusinesses used biz[0].id, which is undefined for /portal/business/profile rows —
   // that silently disabled the ads/earnings block below. Point it at the real id.

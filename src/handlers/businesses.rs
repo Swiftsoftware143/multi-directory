@@ -578,6 +578,10 @@ pub async fn update_business(
            incentive_campaign_slug = CASE WHEN $25 IS NULL THEN incentive_campaign_slug
                                           WHEN btrim($25) = '' THEN NULL
                                           ELSE btrim($25) END,
+           booking_checkout_url = CASE WHEN $26 IS NULL THEN booking_checkout_url
+                                       WHEN btrim($26) = '' THEN NULL
+                                       ELSE btrim($26) END,
+           booking_charge_timing = COALESCE($27, booking_charge_timing),
            updated_at = NOW()
            WHERE id = $22 RETURNING *"#,
     )
@@ -606,6 +610,8 @@ pub async fn update_business(
     .bind(req.booking_widget_enabled)
     .bind(req.incentive_widget_enabled)
     .bind(&req.incentive_campaign_slug)
+    .bind(&req.booking_checkout_url)
+    .bind(&req.booking_charge_timing)
     .fetch_one(&s.db)
     .await?;
 

@@ -447,6 +447,15 @@ a:hover{text-decoration:underline}
           </form>
         </div>
 
+        <!-- 💳 Booking Checkout (work-queue "BOOKING CHECKOUT"): the owner's inline payment embed,
+             rendered after the booking/calendar section and revealed with a smooth transition.
+             Timing: 'after' = pay once the booking is submitted; 'at_booking' = pay up-front. -->
+        <div class="card" id="bookingCheckoutCard" style="display:none">
+          <div class="card-title">💳 Pay for your booking</div>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Complete your payment below to finish the booking.</p>
+          <div id="bookingCheckoutHost" style="width:100%"></div>
+        </div>
+
         <!-- Local Q&A (card B90, Nextdoor-style) -->
         <div class="card" id="qaCard">
           <div class="card-title">❓ Questions &amp; Answers</div>
@@ -872,6 +881,9 @@ function renderBusiness() {
       iwFrame.src = '';
     }
   }
+
+  // 💳 Booking Checkout (work-queue "BOOKING CHECKOUT") — render the owner's inline payment embed.
+  renderBookingCheckout();
 
   // Description
   document.getElementById('bizDescription').textContent = b.description || 'No description available.';
@@ -1568,6 +1580,9 @@ async function submitAppointment(e) {
     if (resp.ok) {
       fb.innerHTML = '<div class="msg-success">✅ Appointment requested! The business will confirm it.</div>';
       document.getElementById('bookForm').reset();
+      // 💳 Booking Checkout (work-queue "BOOKING CHECKOUT"): for "pay after" timing, surface the
+      // owner's inline payment embed now that the booking is in — a smooth reveal, no link-out.
+      revealBookingCheckout();
     } else {
       fb.innerHTML = '<div class="msg-error">❌ ' + esc(data.message || (typeof data.error === 'string' ? data.error : '') || 'Could not send the request — please try again.') + '</div>';
     }
@@ -1576,6 +1591,61 @@ async function submitAppointment(e) {
   } finally {
     btn.disabled = false; btn.textContent = prev;
   }
+}
+
+// 💳 Booking Checkout (work-queue "BOOKING CHECKOUT") — render the owner's inline payment embed
+// after the booking/calendar section. Timing: 'after' reveals it once the booking is submitted;
+// 'at_booking' reveals it up-front (pay-to-book, consultant-style). A URL or <iframe> paste is
+// loaded as an iframe src; any other embed is rendered in a sandboxed, opaque-origin iframe so its
+// script can never reach this page's DOM or the visitor's ZaarHub token.
+function renderBookingCheckout() {
+  const host = document.getElementById('bookingCheckoutHost');
+  const card = document.getElementById('bookingCheckoutCard');
+  if (!host || !card) return;
+  const raw = (bizData && bizData.booking_checkout_url) || '';
+  const timing = (bizData && bizData.booking_charge_timing) || 'after';
+  host.innerHTML = '';
+  if (!raw || !String(raw).trim()) { card.style.display = 'none'; return; }
+
+  const cleaned = String(raw).trim();
+  let src = '';
+  const iframeMatch = cleaned.match(/src=["']([^"']+)["']/i);
+  if (iframeMatch) {
+    src = iframeMatch[1];
+  } else if (/^https?:\/\//i.test(cleaned) || (cleaned.indexOf('.') > 0 && cleaned.indexOf(' ') < 0)) {
+    src = cleaned;
+  }
+
+  if (src) {
+    host.innerHTML = '<iframe src="' + esc(src) + '" title="Checkout" loading="lazy" style="width:100%;min-height:520px;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>';
+  } else {
+    const doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0">' + cleaned + '</body></html>';
+    host.innerHTML = '<iframe sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox" srcdoc="' + esc(doc) + '" title="Checkout" style="width:100%;min-height:520px;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>';
+  }
+
+  if (timing === 'at_booking') {
+    revealBookingCheckout();
+  } else {
+    card.style.display = 'none';
+  }
+}
+
+function revealBookingCheckout() {
+  const card = document.getElementById('bookingCheckoutCard');
+  const host = document.getElementById('bookingCheckoutHost');
+  if (!card || !host) return;
+  if (!host.innerHTML.trim()) return; // no checkout configured — nothing to reveal
+  card.style.display = '';
+  card.style.opacity = '0';
+  card.style.transform = 'translateY(12px)';
+  card.style.transition = 'opacity .4s ease, transform .4s ease';
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      card.style.opacity = '1';
+      card.style.transform = 'translateY(0)';
+    });
+  });
+  if (card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ── Gallery & Lightbox ──

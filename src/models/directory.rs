@@ -200,6 +200,13 @@ pub struct Business {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub enriched_at: Option<DateTime<Utc>>,
+    /// Booking checkout embed (work-queue "BOOKING CHECKOUT"): an iframe URL or embed snippet the
+    /// owner pastes so a visitor pays INLINE after the booking calendar instead of following a
+    /// checkout link off the directory. Public (rendered on the listing). NULL = none.
+    pub booking_checkout_url: Option<String>,
+    /// When the checkout surfaces: 'after' (pay once the booking is confirmed) or 'at_booking'
+    /// (pay up-front to book, consultant-style). Public; NULL treated as 'after'.
+    pub booking_charge_timing: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -288,6 +295,13 @@ pub struct UpdateBusinessRequest {
     /// operator can drop the link without deleting the row); omitting the field leaves the
     /// stored value untouched.
     pub incentive_campaign_slug: Option<String>,
+    /// Booking checkout embed (work-queue "BOOKING CHECKOUT"): iframe URL or embed snippet the
+    /// owner pastes so a visitor pays inline after the booking calendar. An empty/whitespace
+    /// string CLEARS it; omitting the field leaves it untouched.
+    pub booking_checkout_url: Option<String>,
+    /// Booking checkout timing: 'after' (pay once confirmed) or 'at_booking' (pay up-front).
+    /// Omitted = unchanged.
+    pub booking_charge_timing: Option<String>,
 }
 
 /// Distinguish a field that is ABSENT from one explicitly set to JSON `null`. Plain

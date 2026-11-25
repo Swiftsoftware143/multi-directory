@@ -101,8 +101,9 @@ pub async fn business_dashboard(
 
     for claim in &claims_rows {
         // ── Fetch business details (with category name from join) ──
-        let biz = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<serde_json::Value>)>(
-            r#"SELECT b.id, b.name, dc.name as category, b.city, b.state, b.phone, b.website, b.images
+        let biz = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<serde_json::Value>, Option<String>, Option<String>)>(
+            r#"SELECT b.id, b.name, dc.name as category, b.city, b.state, b.phone, b.website, b.images,
+                      b.booking_checkout_url, b.booking_charge_timing
                FROM businesses b
                LEFT JOIN directory_categories dc ON dc.id = b.category_id
                WHERE b.id = $1"#
@@ -112,7 +113,7 @@ pub async fn business_dashboard(
         .await?;
 
         let business_profile = match biz {
-            Some((id, name, category, city, state, phone, website, images)) => BusinessProfile {
+            Some((
                 id,
                 name,
                 category,
@@ -121,6 +122,19 @@ pub async fn business_dashboard(
                 phone,
                 website,
                 images,
+                booking_checkout_url,
+                booking_charge_timing,
+            )) => BusinessProfile {
+                id,
+                name,
+                category,
+                city,
+                state,
+                phone,
+                website,
+                images,
+                booking_checkout_url,
+                booking_charge_timing,
             },
             None => continue,
         };

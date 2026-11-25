@@ -41,6 +41,8 @@ pub struct BusinessProfile {
     pub phone: Option<String>,
     pub website: Option<String>,
     pub images: Option<Value>,
+    pub booking_checkout_url: Option<String>,
+    pub booking_charge_timing: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -229,8 +231,9 @@ pub async fn business_profile(
 
     for claim in &claims_rows {
         // Fetch business details (with category name from join)
-        let biz = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<Value>)>(
-            r#"SELECT b.id, b.name, dc.name as category, b.city, b.state, b.phone, b.website, b.images
+        let biz = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<Value>, Option<String>, Option<String>)>(
+            r#"SELECT b.id, b.name, dc.name as category, b.city, b.state, b.phone, b.website, b.images,
+                      b.booking_checkout_url, b.booking_charge_timing
                FROM businesses b
                LEFT JOIN directory_categories dc ON dc.id = b.category_id
                WHERE b.id = $1"#
@@ -240,7 +243,7 @@ pub async fn business_profile(
         .await?;
 
         let business_profile = match biz {
-            Some((id, name, category, city, state, phone, website, images)) => BusinessProfile {
+            Some((
                 id,
                 name,
                 category,
@@ -249,6 +252,19 @@ pub async fn business_profile(
                 phone,
                 website,
                 images,
+                booking_checkout_url,
+                booking_charge_timing,
+            )) => BusinessProfile {
+                id,
+                name,
+                category,
+                city,
+                state,
+                phone,
+                website,
+                images,
+                booking_checkout_url,
+                booking_charge_timing,
             },
             None => continue,
         };
@@ -1139,6 +1155,11 @@ pub async fn update_directory_features(
 #[derive(Debug, Deserialize)]
 pub struct UpdateBusinessMetaRequest {
     pub cta_type: Option<String>,
+    /// Booking checkout embed (work-queue "BOOKING CHECKOUT"): iframe URL or embed snippet the
+    /// owner pastes. An empty/whitespace string CLEARS it; omitting the field leaves it untouched.
+    pub booking_checkout_url: Option<String>,
+    /// 'after' (pay once confirmed) or 'at_booking' (pay up-front to book). Omitted = unchanged.
+    pub booking_charge_timing: Option<String>,
 }
 
 pub async fn update_business_meta(
@@ -1194,7 +1215,45 @@ pub async fn update_business_meta(
         .await?;
     }
 
-    Ok(Json(
-        json!({ "status": "updated", "cta_type": req.cta_type }),
-    ))
+    // Booking checkout embed (work-queue "BOOKING CHECKOUT"): store verbatim — the listing page
+    // interprets it safely. Empty/whitespace CLEARS it; omitting the field leaves it untouched.
+    if let Some(ref url) = req.booking_checkout_url {
+        let trimmed = url.trim();
+        let value: Option<String> = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+        sqlx::query(
+            "UPDATE businesses SET booking_checkout_url = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(value)
+        .bind(business_id)
+        .execute(&s.db)
+        .await?;
+    }
+
+    // Booking charge timing: exactly two valid values; anything else (including empty) is 'after'.
+    if let Some(ref timing) = req.booking_charge_timing {
+        let t = timing.trim();
+        let value = if t == "at_booking" {
+            "at_booking"
+        } else {
+            "after"
+        };
+        sqlx::query(
+            "UPDATE businesses SET booking_charge_timing = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(value)
+        .bind(business_id)
+        .execute(&s.db)
+        .await?;
+    }
+
+    Ok(Json(json!({
+        "status": "updated",
+        "cta_type": req.cta_type,
+        "booking_checkout_url": req.booking_checkout_url,
+        "booking_charge_timing": req.booking_charge_timing,
+    })))
 }
