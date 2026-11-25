@@ -1332,13 +1332,14 @@ async function buyPlan(plan, bid, cycle) {
     var r = await po('/subscriptions/upgrade', { business_id: bid, plan_id: plan.id, billing_cycle: cycle });
     return { ok: true, message: 'Plan changed to ' + (r.plan || name) + '.' };
   }
-  // The operator can paste an EMBEDDABLE checkout (iframe URL or embed code) on the tier. That
-  // renders INLINE here (smooth reveal) instead of bouncing the owner to a payment page in a new
-  // tab — the "checkout link that links out" is replaced by an embedded form.
-  if (plan.checkout_embed) {
+  // The operator can paste an EMBEDDABLE checkout on the tier — one per billing cycle, because
+  // ScalePay's priceConfig holds a single price object. Pick the embed for the cycle being bought
+  // and render it INLINE (smooth reveal) instead of a link-out.
+  var embed = cycle === 'yearly' ? plan.checkout_embed_yearly : plan.checkout_embed_monthly;
+  if (embed) {
     return {
       ok: true,
-      checkout_embed: plan.checkout_embed,
+      checkout_embed: embed,
       message: 'Complete your purchase of ' + name + ' ($' + money(price) + (cycle === 'yearly' ? '/yr' : '/mo') + ') below. Your plan switches on once the payment is confirmed.'
     };
   }

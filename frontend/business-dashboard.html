@@ -216,12 +216,12 @@ function renderSubscriptionSection(subData, planInfo, plans){
     if (!list.length) {
       h += '<p style="font-size:.85rem;color:var(--text-secondary)">No plans are published yet — please contact us.</p>';
     } else {
-      _planCheckoutEmbeds = list.map(function(p){ return p.checkout_embed || ''; });
+      _planCheckoutEmbeds = list.map(function(p){ return p.checkout_embed_monthly || ''; });
       h += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
       for (var i = 0; i < list.length; i++) {
         var p = list[i];
         var price = parseFloat(p.price_monthly || 0);
-        var buyBtn = p.checkout_embed
+        var buyBtn = p.checkout_embed_monthly
           ? '<button class="btn btn-primary" style="display:inline-block;border:none;cursor:pointer" onclick="openPlanCheckoutIdx(' + i + ')">Choose this plan</button>'
           : (p.plan_sales_page_url
               ? '<a class="btn btn-primary" style="display:inline-block;text-decoration:none" href="' + esc(p.plan_sales_page_url) + '" target="_blank" rel="noopener" data-plan="' + esc(p.slug || p.id) + '">Choose this plan</a>'
