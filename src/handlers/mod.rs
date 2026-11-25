@@ -23,6 +23,7 @@ pub mod import_export;
 pub mod legal;
 pub mod loyalty_messaging;
 pub mod monetization;
+pub mod newsletter_admin;
 pub mod public;
 pub mod public_pages;
 pub mod qa;

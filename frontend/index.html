@@ -2134,7 +2134,7 @@ var NEWSLETTER_URLS={
   'winter-garden':'https://rootedinwintergarden.com/register',
   'apopka':'https://rootedinapopka.com/register'
 };
-function setNewsletterAd(slug){
+function setNewsletterAd(slug, urlOverride){
   var a=document.getElementById('zh-newsletter-ad');
   var img=document.getElementById('zh-newsletter-ad-img');
   if(!a||!img)return;
@@ -2142,7 +2142,7 @@ function setNewsletterAd(slug){
   var base='/assets/newsletter/'+slug;
   img.src=base+'.jpg';
   img.srcset=base+'.jpg 1x, '+base+'@2x.jpg 2x';
-  var url=NEWSLETTER_URLS[slug];
+  var url=urlOverride||NEWSLETTER_URLS[slug];
   if(url){a.href=url;a.target='_blank';a.rel='noopener';}
   else{a.href='#zh-newsletter';a.removeAttribute('target');a.removeAttribute('rel');}
   a.style.display='flex';
@@ -2153,6 +2153,8 @@ async function loadCityPage(){
   setNewsletterAd(slug)
   try{
     var d=await g('/zaarhub/cities/'+slug)
+    // DB-configured registration URL (admin panel) overrides the built-in map.
+    if(d.directory&&d.directory.newsletter_registration_url){setNewsletterAd(slug, d.directory.newsletter_registration_url)}
     // Card B90 local feed: city-scoped multi-source activity (fail-silent).
     try{var act=await g('/zaarhub/activity?directory='+encodeURIComponent(slug));if(act&&act.length){d.activity_feed=act}}catch(_e){}
     var dirId=d.directory&&d.directory.id

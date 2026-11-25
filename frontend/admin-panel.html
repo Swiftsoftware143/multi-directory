@@ -609,6 +609,7 @@
         <a href="#sc-reuse-section">♻️ Repurpose &amp; Links</a>
         <a href="#sc-blog-section">📰 Blog Templates</a>
         <a href="#sc-news-section">✉️ Newsletters</a>
+        <a href="#newsletter-adverts-section">📬 Newsletter Adverts</a>
         <a href="#sc-land-section">🚀 Landing Pages</a>
         <a href="#mcp-section" id="nav-mcp">🤖 MCP / Bot Access</a>
         <a href="#developer-api-section" id="nav-developer-api">🧩 API Access &amp; Webhooks</a>
@@ -2483,6 +2484,16 @@
           <button class="btn btn-accent btn-sm" type="button" onclick="window.__scNewsCreate()">＋ Add newsletter</button>
         </div>
         <div id="sc-news-preview" class="feature-subtitle" style="margin-top:10px"></div>
+      </div>
+
+      <div class="feature-card" id="newsletter-adverts-section">
+        <h3>📬 Newsletter Adverts</h3>
+        <p class="feature-subtitle">Each city runs its own newsletter on its own domain. Set the registration link and upload the advert image (300×250, plus an optional 600×500 retina). The advert shows on that city's pages and links to its registration page.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__newsletterAdvertsLoad()">↻ Refresh</button>
+          <span class="feature-status" id="nl-adv-status"></span>
+        </div>
+        <div id="nl-adv-list"></div>
       </div>
 
       <div class="feature-card" id="sc-land-section">
@@ -10404,6 +10415,60 @@
       return apiFetch('DELETE', '/newsletters/' + id)
         .then(function () { showToast('Newsletter deleted'); return window.__scNewsLoad(); })
         .catch(function (e) { scMsg('news', 'Delete failed: ' + e.message, false); });
+    };
+
+    // ── 8a. Newsletter adverts (per-city registration URL + advert image) ──────
+    window.__newsletterAdvertsLoad = function () {
+      var box = document.getElementById('nl-adv-list');
+      var st = document.getElementById('nl-adv-status');
+      if (st) st.textContent = '';
+      return apiGet('/admin/newsletter-config').then(function (list) {
+        if (!box) return;
+        list = list || [];
+        if (!list.length) { box.innerHTML = '<p class="feature-subtitle">No directories.</p>'; return; }
+        var h = '<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr>' +
+          '<th style="text-align:left">City</th><th style="text-align:left">Registration link</th><th style="text-align:center">Advert</th><th style="text-align:right">Actions</th></tr></thead><tbody>';
+        list.forEach(function (c) {
+          var url = c.registration_url || '';
+          h += '<tr style="border-top:1px solid var(--border)">' +
+            '<td style="padding:6px 4px"><b>' + esc(c.name || c.slug) + '</b></td>' +
+            '<td style="padding:6px 4px;min-width:240px"><input class="input nl-adv-url" data-slug="' + esc(c.slug) + '" value="' + esc(url) + '" placeholder="https://…/register" style="width:100%"></td>' +
+            '<td style="padding:6px 4px;text-align:center"><img src="/assets/newsletter/' + esc(c.slug) + '.jpg" style="height:36px;width:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" onerror="this.style.opacity=.2"></td>' +
+            '<td style="padding:6px 4px;text-align:right;white-space:nowrap">' +
+              '<button class="btn btn-accent btn-sm" type="button" onclick="window.__newsletterAdvertSave(\'' + esc(c.slug) + '\')">Save</button> ' +
+              '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__newsletterAdvertPick(\'' + esc(c.slug) + '\')">Image</button>' +
+            '</td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table>';
+      }).catch(function (e) { if (st) st.textContent = 'Failed: ' + e.message; });
+    };
+    window.__newsletterAdvertSave = function (slug) {
+      var input = document.querySelector('.nl-adv-url[data-slug="' + slug + '"]');
+      var url = input ? input.value.trim() : '';
+      var st = document.getElementById('nl-adv-status');
+      if (st) st.textContent = 'Saving…';
+      return apiPut('/admin/newsletter-config/' + encodeURIComponent(slug), { registration_url: url || null })
+        .then(function () { showToast('Saved'); return window.__newsletterAdvertsLoad(); })
+        .catch(function (e) { if (st) st.textContent = 'Save failed: ' + e.message; });
+    };
+    window.__newsletterAdvertPick = function (slug) {
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = function () {
+        if (!inp.files || !inp.files.length) return;
+        var st = document.getElementById('nl-adv-status');
+        if (st) st.textContent = 'Uploading…';
+        var fd = new FormData();
+        fd.append('image', inp.files[0]);
+        var headers = {};
+        var authToken = token || localStorage.getItem('md_admin_token');
+        if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+        fetch(API_BASE + '/admin/newsletter-config/' + encodeURIComponent(slug) + '/image', { method: 'POST', headers: headers, body: fd })
+          .then(function (res) { return res.json().then(function (d) { if (!res.ok) throw new Error(d.message || ('HTTP ' + res.status)); return d; }); })
+          .then(function () { showToast('Image uploaded'); return window.__newsletterAdvertsLoad(); })
+          .catch(function (e) { if (st) st.textContent = 'Upload failed: ' + e.message; });
+      };
+      inp.click();
     };
 
     // ── 8. Landing pages ───────────────────────────────────────────────────────

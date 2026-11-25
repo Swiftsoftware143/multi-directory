@@ -438,6 +438,22 @@ pub fn create_router(s: AppState) -> Router {
             delete(admin_businesses::remove_placement)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Newsletter advert management (t_5306e167): per-city registration URL + image ──
+        .route(
+            "/admin/newsletter-config",
+            get(newsletter_admin::list_newsletter_config)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/newsletter-config/:slug",
+            put(newsletter_admin::update_newsletter_config)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/newsletter-config/:slug/image",
+            post(newsletter_admin::upload_newsletter_image)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ── Supplier PROSPECTING (card B80): internal-only sourcing surface ─────────────
         // Search the free/open enrichment source for candidate suppliers, save a candidate as
         // an internal prospect (a `businesses` row with status='prospect' — hidden from public),

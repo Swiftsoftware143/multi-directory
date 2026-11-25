@@ -37,6 +37,9 @@ pub struct Directory {
     pub contact_email: Option<String>,
     pub contact_phone: Option<String>,
     pub legal_name: Option<String>,
+    /// External /register page for this city's own newsletter (Letterman). NULL = none yet.
+    #[sqlx(default)]
+    pub newsletter_registration_url: Option<String>,
     pub template_config: Option<serde_json::Value>,
     pub tracking_enabled: Option<bool>,
     pub feature_config: Option<serde_json::Value>,
