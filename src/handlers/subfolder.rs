@@ -6344,6 +6344,25 @@ async fn sitemap_articles(pool: &PgPool, base: &str) -> Response<Body> {
     xml_response(StatusCode::OK, xml)
 }
 
+/// Public, anonymous catalogue READ paths the city pages fetch. robots.txt allows these (and
+/// only these) under /api/; every other /api/ path stays blocked by `Disallow: /api/`.
+/// Longest-match wins. This is the SINGLE source of truth — the `Allow:` lines are generated
+/// from it, never hand-typed, so a new public read endpoint is added here and nowhere else.
+/// A fetch added to a page whose path is missing here makes the page render empty to Google
+/// (soft-404) while still looking perfect in a browser.
+const PUBLIC_READ_ALLOW: &[&str] = &[
+    "/api/v1/zaarhub/cities",
+    "/api/v1/zaarhub/homepage",
+    "/api/v1/zaarhub/search",
+    "/api/v1/directories/",
+    "/api/v1/businesses/",
+    "/api/v1/place-photo/",
+    "/api/v1/city-requests",
+    "/api/v1/deals",
+    "/api/v1/events",
+    "/api/v1/ads/",
+];
+
 pub fn robots(host: Option<&str>, proto: &str, fallback_domain: &str) -> Response<Body> {
     // kanban t_0b3cce4d — ONE sitemap, advertised by the BRAND host only, and the
     // brand host comes from `networks.root_domain` (data). Each hostname used to
@@ -6359,14 +6378,11 @@ pub fn robots(host: Option<&str>, proto: &str, fallback_domain: &str) -> Respons
          Disallow: /auth/\n\
          # Public, anonymous catalogue reads — the city pages paint their listings from\n\
          # these. With them blocked, Google's renderer saw 18 of 437 businesses and called\n\
-         # the page thin. Longest-match wins, so every other /api/ path stays blocked.\n\
-         Allow: /api/v1/zaarhub/cities\n\
-         Allow: /api/v1/zaarhub/homepage\n\
-         Allow: /api/v1/zaarhub/search\n\
-         Allow: /api/v1/deals\n\
-         Allow: /api/v1/events\n\
-         Allow: /api/v1/ads/\n",
+         # the page thin. Longest-match wins, so every other /api/ path stays blocked.\n",
     );
+    for path in PUBLIC_READ_ALLOW {
+        body.push_str(&format!("Allow: {}\n", path));
+    }
     if let Some(brand) = crate::seo_canonical::sitemap_origin(host) {
         body.push_str(&format!("\nSitemap: {}/sitemap.xml\n", brand));
     }

@@ -703,7 +703,7 @@ function showReferralSection(){
 
 async function loadReferralPortalData(){
   try{
-    var codeR=await g('/api/v1/visitor/referrals');
+    var codeR=await g('/visitor/referrals');
     var code=codeR.referral_code||'';
     var link='zaarhub.com/login?ref='+code;
     var balanceR=codeR;
