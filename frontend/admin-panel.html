@@ -1328,6 +1328,20 @@
         <h3>🤖 MCP / Bot Access</h3>
         <p class="feature-subtitle">Connect a bot to run the directory. A bot's key only reaches the
           directory(ies) its owner controls — it can never touch another owner's directory.</p>
+        <!-- §6.4 (plan docs/fleet-per-account-keys-and-mcp-2026-11-25.md): the MCP panel's key card
+             sits at the TOP with View + Copy ONLY. Rotate/revoke live on the API Access card (the
+             original location); this card never offers a rotate/regenerate control. Operator-only,
+             matching the directory-key surface it reads. -->
+        <div id="mcp-key-card" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px;margin:14px 0">
+          <div style="font-weight:600;margin-bottom:4px">🔑 Your directory key</div>
+          <p style="font-size:.8rem;color:var(--text-secondary);margin:0 0 8px">The server accepts a directory&rsquo;s own API key as the Bearer token. It is listed by prefix only — press <b>View</b> to see it (one click, every view recorded) or <b>Copy</b> to put it on the clipboard without showing it. To replace a key, use <a href="#developer-api-section" style="color:var(--accent)">API Access &amp; Webhooks</a> — rotation happens there, never here.</p>
+          <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+            <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;min-width:220px">City / directory
+              <select class="pk-input" id="mcp-dir" onchange="window.__mcpKeyLoad()"></select></label>
+          </div>
+          <div id="mcp-key-list"></div>
+          <div class="feature-status" id="mcp-key-status"></div>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;margin:14px 0">
           <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px">
             <div style="font-weight:600;margin-bottom:4px">Read — MCP endpoint</div>
@@ -3523,6 +3537,11 @@
       // same directory list, so it must populate once the list arrives (not before, when empty).
       var dk = document.getElementById('dk-dir');
       if (dk && !dk.options.length) dk.innerHTML = dirOptionsHtml();
+      // §6.4: the MCP panel's key card picks a city from the same list. Fill it, then load the
+      // key for the first city so the card is populated the moment the operator opens the panel.
+      var mk = document.getElementById('mcp-dir');
+      if (mk && !mk.options.length) mk.innerHTML = dirOptionsHtml();
+      if (window.__mcpKeyLoad) window.__mcpKeyLoad();
     };
 
     // ===== 🌐 Domains, subdomains & subfolders per directory (Feature 2) =====
@@ -11455,6 +11474,11 @@
     function akStatus(id, msg, ok) { var el = document.getElementById(id); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
 
     function loadApiAccess() {
+      // §6.4: the MCP panel's key card reads the operator-only directory-key surface, so it shows
+      // only to super_admin. Everyone else sees the endpoints but no key card (their own account
+      // key lives on the API Access card below).
+      var mcpCard = document.getElementById('mcp-key-card');
+      if (mcpCard) mcpCard.style.display = akIsOperator() ? '' : 'none';
       // David 2026-11-11: customers (visitor accounts) hold no API key, so the whole card and its
       // nav entry are hidden for them — only business, supplier and staff accounts see a key screen.
       if (user && user.role === 'visitor') {
@@ -11598,6 +11622,7 @@
             + '<td>' + akFmt(k.last_used_at) + '</td>'
             + '<td style="text-align:right;white-space:nowrap">'
               + (k.is_active === false ? '' : '<button class="btn btn-ghost btn-sm" data-dkid="' + akEsc(k.id) + '" onclick="window.__dkReveal(this)">View</button> '
+                + '<button class="btn btn-ghost btn-sm" data-dkid="' + akEsc(k.id) + '" onclick="window.__dkCopyKey(this)">Copy</button> '
                 + '<button class="btn btn-ghost btn-sm" data-dkid="' + akEsc(k.id) + '" onclick="window.__dkRotate(this)">Rotate</button> '
                 + '<button class="btn btn-ghost btn-sm" data-dkid="' + akEsc(k.id) + '" onclick="window.__dkRevoke(this)">Revoke</button>')
             + '</td></tr>';
@@ -11635,6 +11660,29 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inp.value);
       dkStatus('Key copied.', true);
     };
+    // §6.3 (plan docs/fleet-per-account-keys-and-mcp-2026-11-25.md): Copy fetches the sealed value
+    // through the SAME session-only reveal View uses, then writes it to the clipboard WITHOUT
+    // rendering it — the secret never touches the DOM or `dk-new`. Every reveal is audited
+    // server-side (an api_key_reveals row), so a Copy and a View each leave their own row.
+    window.__dkCopyKey = function (el) {
+      var dirId = dkDirId(); var id = el.getAttribute('data-dkid'); if (!dirId || !id) return;
+      apiPost('/directories/' + dirId + '/api-keys/' + id + '/reveal', {}).then(function (d) {
+        if (!d || !d.key) { dkStatus('Could not read the key — use View.', false); return; }
+        var ok = false;
+        try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(d.key); ok = true; } } catch (e) { ok = false; }
+        if (!ok) {
+          // Fallback that never shows the value: a throwaway off-screen textarea, removed right after.
+          try {
+            var ta = document.createElement('textarea');
+            ta.value = d.key; ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(ta); ta.select();
+            ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+          } catch (e) { ok = false; }
+        }
+        dkStatus(ok ? 'Key copied — not shown on screen.' : 'Could not copy — use View and copy it manually.', ok);
+      }).catch(function (e) { dkStatus('Copy failed: ' + e.message, false); });
+    };
     window.__dkRotate = function (el) {
       var dirId = dkDirId(); var id = el.getAttribute('data-dkid'); if (!dirId || !id) return;
       if (!window.confirm('Rotate this city\u2019s key? The current key stops working immediately.')) return;
@@ -11652,6 +11700,68 @@
       if (!window.confirm('Revoke this city\u2019s key? Anything using it stops working immediately.')) return;
       apiFetch('DELETE', '/directories/' + dirId + '/api-keys/' + id).then(function () { dkStatus('Key revoked.', true); loadDirectoryKeys(); })
         .catch(function (e) { dkStatus('Revoke failed: ' + e.message, false); });
+    };
+
+    // ===== 🤖 MCP panel key card (plan §6.4) — View + Copy ONLY, never a rotate/regenerate control =====
+    function mcpDirId() {
+      var sel = document.getElementById('mcp-dir');
+      return sel && sel.value ? sel.value : null;
+    }
+    function loadMcpKey() {
+      var box = document.getElementById('mcp-key-list'); if (!box) return;
+      var sel = document.getElementById('mcp-dir');
+      if (sel && !sel.options.length) sel.innerHTML = dirOptionsHtml();
+      var dirId = mcpDirId();
+      if (!dirId) { box.innerHTML = '<p style="font-size:.82rem;color:var(--text-secondary)">Pick a city to see its MCP key.</p>'; return; }
+      apiGet('/directories/' + dirId + '/api-keys').then(function (d) {
+        var rows = (d && d.keys) || [];
+        var k = null;
+        for (var i = 0; i < rows.length; i++) { if (rows[i].is_active !== false) { k = rows[i]; break; } }
+        if (!k) { box.innerHTML = '<p style="font-size:.82rem;color:var(--text-secondary)">This city has no active key.</p>'; return; }
+        box.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+          + '<code>' + akEsc(k.prefix) + '…</code>'
+          + '<span style="font-size:.8rem;color:var(--text-secondary)">' + akEsc(k.name) + '</span>'
+          + '<button class="btn btn-ghost btn-sm" data-mkdir="' + akEsc(dirId) + '" data-mkid="' + akEsc(k.id) + '" onclick="window.__mcpView(this)">View</button>'
+          + '<button class="btn btn-ghost btn-sm" data-mkdir="' + akEsc(dirId) + '" data-mkid="' + akEsc(k.id) + '" onclick="window.__mcpCopy(this)">Copy</button>'
+          + '</div>';
+      }).catch(function (e) { box.innerHTML = '<p style="font-size:.82rem;color:#ef4444">Could not load: ' + akEsc(e.message) + '</p>'; });
+    }
+    window.__mcpKeyLoad = loadMcpKey;
+    window.__mcpView = function (el) {
+      var dirId = el.getAttribute('data-mkdir'); var id = el.getAttribute('data-mkid'); if (!dirId || !id) return;
+      apiPost('/directories/' + dirId + '/api-keys/' + id + '/reveal', {}).then(function (d) {
+        var box = document.getElementById('mcp-key-list'); if (!box) return;
+        box.innerHTML = '<b>Directory key ' + akEsc(d.prefix) + '…</b>'
+          + '<div style="margin-top:6px;display:flex;gap:8px;align-items:center">'
+          + '<input readonly id="mcp-view-val" value="' + akEsc(d.key) + '" style="flex:1;font-family:monospace;font-size:.78rem" onclick="this.select()">'
+          + '<button class="btn btn-accent btn-sm" onclick="window.__mcpViewCopy()">Copy</button>'
+          + '<button class="btn btn-ghost btn-sm" onclick="window.__mcpKeyLoad()">Hide</button></div>';
+      }).catch(function (e) { var s = document.getElementById('mcp-key-status'); if (s) { s.textContent = 'Could not show key: ' + e.message; s.style.color = '#ef4444'; } });
+    };
+    window.__mcpViewCopy = function () {
+      var inp = document.getElementById('mcp-view-val'); if (!inp) return;
+      inp.select();
+      try { document.execCommand('copy'); } catch (e) { /* stays selected */ }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inp.value);
+    };
+    window.__mcpCopy = function (el) {
+      var dirId = el.getAttribute('data-mkdir'); var id = el.getAttribute('data-mkid'); if (!dirId || !id) return;
+      var s = document.getElementById('mcp-key-status');
+      apiPost('/directories/' + dirId + '/api-keys/' + id + '/reveal', {}).then(function (d) {
+        if (!d || !d.key) { if (s) { s.textContent = 'Could not read the key — use View.'; s.style.color = '#ef4444'; } return; }
+        var ok = false;
+        try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(d.key); ok = true; } } catch (e) { ok = false; }
+        if (!ok) {
+          try {
+            var ta = document.createElement('textarea');
+            ta.value = d.key; ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(ta); ta.select();
+            ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+          } catch (e) { ok = false; }
+        }
+        if (s) { s.textContent = ok ? 'Key copied — not shown on screen.' : 'Could not copy — use View and copy it manually.'; s.style.color = ok ? '#22c55e' : '#ef4444'; }
+      }).catch(function (e) { if (s) { s.textContent = 'Copy failed: ' + e.message; s.style.color = '#ef4444'; } });
     };
 
     function loadWebhooks() {

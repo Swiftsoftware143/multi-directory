@@ -1198,12 +1198,17 @@ a:hover{text-decoration:underline}
 <div class="card" id="mcp-bot">
   <h3><span class="emoji">🤖</span> 26. MCP / Bot Access</h3>
   <p>Multi-Directory is administered by bots over two doors. The admin panel's <strong>🤖 MCP / Bot Access</strong> tab
-     shows both addresses, and <strong>🧩 API Access &amp; Webhooks</strong> is where the key comes from.</p>
+     shows both addresses, and <strong>🧩 API Access &amp; Webhooks</strong> is where a directory key is issued and replaced.</p>
   <ul>
-    <li><strong>Read — MCP endpoint:</strong> <code>https://mcp.swiftsoftware.net/mcp</code></li>
+    <li><strong>Read — MCP endpoint:</strong> <code>https://hooks.mcontrol.fyi/mcp</code></li>
     <li><strong>Write — API endpoint:</strong> <code>https://zaarhub.com/api/v1</code></li>
   </ul>
-  <p>Give a bot both addresses plus an <strong>API key</strong>. The key is what keeps directories separate: a directory
+  <p>The <strong>MCP / Bot Access</strong> tab shows a <strong>key card at the top</strong>: pick a directory and its key is
+     listed by prefix only, with <strong>View</strong> (shows the full key — one click, and every view is recorded) and
+     <strong>Copy</strong> (puts it on your clipboard without showing it on screen). That card never rotates a key. To
+     replace one, go to <strong>🧩 API Access &amp; Webhooks → Directory keys (MCP door)</strong>, which keeps
+     <strong>View, Copy, Rotate and Revoke</strong>.</p>
+  <p>Give a bot both addresses plus a directory's API key. The key is what keeps directories separate: a directory
      owner's key reaches only their own directory; the operator's key reaches every directory. A bot for one directory
      can never control another.</p>
   <p>MCP here is for the platform operator or a directory's own key, not for a company account. An account-level key

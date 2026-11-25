@@ -303,11 +303,14 @@ pub async fn create_directory(
     .await?;
 
     // The directory-scoped MCP key, minted on the SAME connection so it commits with the row.
+    // Label is the fleet-wide §6.5 string `MCP — <account>` (plan docs/fleet-per-account-keys-
+    // and-mcp-2026-11-25.md), so an auto-provisioned directory key is indistinguishable in the UI
+    // from one deliberately minted for a per-directory bot.
     let minted_key = crate::handlers::api_key_auto::mint_directory_key(
         &mut tx,
         owner_id,
         directory.id,
-        &format!("directory:{slug}"),
+        &format!("MCP — {}", req.name),
     )
     .await?;
 
