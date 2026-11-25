@@ -1364,6 +1364,24 @@
         <div id="ak-list"></div>
         <div class="feature-status" id="ak-status"></div>
 
+        <div id="dk-block" style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+            <div style="font-weight:600;font-size:.9rem">🔑 Directory keys (MCP door)</div>
+            <span style="font-size:.75rem;color:var(--text-secondary)">One key per city, scoped to that city alone, for <code>/admin/mcp</code>. Operator-only.</span>
+          </div>
+          <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;min-width:220px">City / directory
+              <select class="pk-input" id="dk-dir" onchange="window.__dkLoad()"></select></label>
+            <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px">New key name
+              <input class="pk-input" id="dk-name" placeholder="e.g. Palm Bay CEO bot"></label>
+            <button class="btn btn-accent btn-sm" onclick="window.__dkMint()">+ Mint key</button>
+            <span style="display:flex;align-items:flex-end"><button class="btn btn-ghost btn-sm" onclick="window.__dkLoad()">↻ Refresh</button></span>
+          </div>
+          <div id="dk-new" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px;font-size:.82rem"></div>
+          <div id="dk-list"></div>
+          <div class="feature-status" id="dk-status"></div>
+        </div>
+
         <div id="wh-block">
         <div style="display:flex;align-items:center;gap:12px;margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
           <div style="font-weight:600;font-size:.9rem">Webhooks</div>
@@ -3501,6 +3519,10 @@
       // Bulk export refused with "Pick a directory for the bulk export." (the routes worked).
       var e = document.getElementById('ex-dir');
       if (e && !e.value) e.innerHTML = dirOptionsHtml();
+      // kanban t_421ba945: the per-city MCP-key picker (directory API keys) is filled from the
+      // same directory list, so it must populate once the list arrives (not before, when empty).
+      var dk = document.getElementById('dk-dir');
+      if (dk && !dk.options.length) dk.innerHTML = dirOptionsHtml();
     };
 
     // ===== 🌐 Domains, subdomains & subfolders per directory (Feature 2) =====
@@ -11456,6 +11478,9 @@
         : 'Your API key lets an outside app (your website, a CRM, a reporting tool) work with your listings using your own permissions. Keep it secret — anyone holding it can act as you. You can show it or replace it here at any time.';
       if (mk) mk.style.display = isOp ? '' : 'none';
       if (wh) wh.style.display = isOp ? '' : 'none';
+      var dkb = document.getElementById('dk-block');
+      if (dkb) dkb.style.display = isOp ? '' : 'none';
+      if (isOp) loadDirectoryKeys();
 
       // Operator: every account's key rows. Everyone else: strictly their OWN key, which is
       // minted with the account at signup and is otherwise unreachable — /api-keys is
@@ -11545,6 +11570,89 @@
       if (!window.confirm('Delete this API key permanently? Anything using it stops working.')) return;
       apiFetch('DELETE', '/api-keys/' + id).then(function () { akStatus('ak-status', 'Key deleted.', true); loadApiKeys(); })
         .catch(function (e) { akStatus('ak-status', 'Delete failed: ' + e.message, false); });
+    };
+
+    // ===== 🔑 Directory API keys (MCP door) — per-city credential, operator-only (kanban t_421ba945) =====
+    // /directories/:id/api-keys is operator-guarded and directory-scoped: list/mint/rotate/revoke/reveal
+    // a city's ONE key for /admin/mcp. A key can never span two cities; a foreign city id answers 404.
+    function dkStatus(msg, ok) { var el = document.getElementById('dk-status'); if (!el) return; el.textContent = msg || ''; el.style.color = ok ? '#22c55e' : '#ef4444'; }
+    function dkDirId() {
+      var sel = document.getElementById('dk-dir');
+      return sel && sel.value ? sel.value : null;
+    }
+    function loadDirectoryKeys() {
+      var box = document.getElementById('dk-list'); if (!box) return;
+      var sel = document.getElementById('dk-dir');
+      if (sel && !sel.options.length) sel.innerHTML = dirOptionsHtml();
+      var dirId = dkDirId();
+      if (!dirId) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">Pick a city to see its key.</p>'; return; }
+      apiGet('/directories/' + dirId + '/api-keys').then(function (d) {
+        var rows = (d && d.keys) || [];
+        if (!rows.length) { box.innerHTML = '<p style="font-size:.85rem;color:var(--text-secondary)">This city has no key yet — mint one above.</p>'; return; }
+        var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="text-align:left;color:var(--text-secondary)"><th style="padding:6px 4px">Name</th><th>Key</th><th>Status</th><th>Last used</th><th></th></tr></thead><tbody>';
+        rows.forEach(function (k) {
+          h += '<tr style="border-top:1px solid var(--border)">'
+            + '<td style="padding:6px 4px">' + akEsc(k.name) + '</td>'
+            + '<td><code>' + akEsc(k.prefix) + '…</code></td>'
+            + '<td>' + (k.is_active === false ? '<span style="color:#ef4444">revoked</span>' : '<span style="color:#22c55e">active</span>') + '</td>'
+            + '<td>' + akFmt(k.last_used_at) + '</td>'
+            + '<td style="text-align:right;white-space:nowrap">'
+              + (k.is_active === false ? '' : '<button class="btn btn-ghost btn-sm" data-dkid="' + akEsc(k.id) + '" onclick="window.__dkReveal(this)">View</button> '
+                + '<button class="btn btn-ghost btn-sm" data-dkid="' + akEsc(k.id) + '" onclick="window.__dkRotate(this)">Rotate</button> '
+                + '<button class="btn btn-ghost btn-sm" data-dkid="' + akEsc(k.id) + '" onclick="window.__dkRevoke(this)">Revoke</button>')
+            + '</td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table>';
+      }).catch(function (e) { box.innerHTML = '<p style="font-size:.85rem;color:#ef4444">Could not load: ' + akEsc(e.message) + '</p>'; });
+    }
+    window.__dkLoad = loadDirectoryKeys;
+    window.__dkMint = function () {
+      var dirId = dkDirId(); if (!dirId) { dkStatus('Pick a city first.', false); return; }
+      var name = (document.getElementById('dk-name').value || '').trim() || 'directory key';
+      apiPost('/directories/' + dirId + '/api-keys', { name: name }).then(function (k) {
+        document.getElementById('dk-name').value = '';
+        var out = document.getElementById('dk-new'); out.style.display = 'block';
+        out.innerHTML = '<b>Copy this key now — it is shown only once.</b><div style="margin-top:6px"><code style="word-break:break-all">' + akEsc(k.key || '(no key returned)') + '</code></div>';
+        dkStatus('Key minted for this city.', true); loadDirectoryKeys();
+      }).catch(function (e) { dkStatus('Mint failed: ' + e.message, false); });
+    };
+    window.__dkReveal = function (el) {
+      var dirId = dkDirId(); var id = el.getAttribute('data-dkid'); if (!dirId || !id) return;
+      var pw = window.prompt('Enter YOUR account password to show this key. Every view is recorded.');
+      if (!pw) return;
+      apiPost('/directories/' + dirId + '/api-keys/' + id + '/reveal', { password: pw }).then(function (d) {
+        var out = document.getElementById('dk-new'); out.style.display = 'block';
+        out.innerHTML = '<b>Directory key ' + akEsc(d.prefix) + '…</b>'
+          + '<div style="margin-top:6px;display:flex;gap:8px;align-items:center">'
+          + '<input readonly id="dk-view-val" value="' + akEsc(d.key) + '" style="flex:1;font-family:monospace;font-size:.78rem" onclick="this.select()">'
+          + '<button class="btn btn-accent btn-sm" onclick="window.__dkCopy()">Copy</button></div>';
+        dkStatus('Key shown — the same key as before.', true);
+      }).catch(function (e) { dkStatus('Could not show key: ' + e.message, false); });
+    };
+    window.__dkCopy = function () {
+      var inp = document.getElementById('dk-view-val'); if (!inp) return;
+      inp.select();
+      try { document.execCommand('copy'); } catch (e) { /* the value stays selected */ }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inp.value);
+      dkStatus('Key copied.', true);
+    };
+    window.__dkRotate = function (el) {
+      var dirId = dkDirId(); var id = el.getAttribute('data-dkid'); if (!dirId || !id) return;
+      if (!window.confirm('Rotate this city\u2019s key? The current key stops working immediately.')) return;
+      apiPost('/directories/' + dirId + '/api-keys/' + id + '/rotate', {}).then(function (d) {
+        var out = document.getElementById('dk-new'); out.style.display = 'block';
+        out.innerHTML = '<b>New key ' + akEsc(d.prefix) + '… — the old one no longer works.</b>'
+          + '<div style="margin-top:6px;display:flex;gap:8px;align-items:center">'
+          + '<input readonly id="dk-view-val" value="' + akEsc(d.key || '') + '" style="flex:1;font-family:monospace;font-size:.78rem" onclick="this.select()">'
+          + '<button class="btn btn-accent btn-sm" onclick="window.__dkCopy()">Copy</button></div>';
+        dkStatus('Key rotated.', true); loadDirectoryKeys();
+      }).catch(function (e) { dkStatus('Rotate failed: ' + e.message, false); });
+    };
+    window.__dkRevoke = function (el) {
+      var dirId = dkDirId(); var id = el.getAttribute('data-dkid'); if (!dirId || !id) return;
+      if (!window.confirm('Revoke this city\u2019s key? Anything using it stops working immediately.')) return;
+      apiFetch('DELETE', '/directories/' + dirId + '/api-keys/' + id).then(function () { dkStatus('Key revoked.', true); loadDirectoryKeys(); })
+        .catch(function (e) { dkStatus('Revoke failed: ' + e.message, false); });
     };
 
     function loadWebhooks() {

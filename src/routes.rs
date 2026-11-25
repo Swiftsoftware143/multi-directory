@@ -1744,6 +1744,31 @@ pub fn create_router(s: AppState) -> Router {
             "/me/api-keys/:id/regenerate",
             post(api_key_auto::regenerate_api_key),
         )
+        // ── a DIRECTORY's own key (kanban t_421ba945) ──────────────────────────────────────
+        // Operator-only, directory-scoped: mint / list / rotate / revoke / reveal the one credential
+        // a per-directory principal uses against /admin/mcp. Every query is scoped by directory_id,
+        // so a key can never span two directories and a foreign directory id answers 404.
+        .route(
+            "/directories/:id/api-keys",
+            get(api_key_auto::list_directory_keys)
+                .post(api_key_auto::create_directory_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/directories/:id/api-keys/:key_id",
+            delete(api_key_auto::revoke_directory_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/directories/:id/api-keys/:key_id/rotate",
+            post(api_key_auto::rotate_directory_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/directories/:id/api-keys/:key_id/reveal",
+            post(api_key_auto::reveal_directory_key)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ??? Phase 4: Webhook management
         .route(
             "/webhooks",

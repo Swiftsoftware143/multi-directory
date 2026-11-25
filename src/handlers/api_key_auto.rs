@@ -17,7 +17,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -411,4 +411,294 @@ pub async fn my_keys(
         .collect();
 
     Ok(Json(json!({ "keys": keys })))
+}
+
+// ── Directory-scoped key management (kanban t_421ba945) ──────────────────────────
+//
+// Every DIRECTORY carries exactly one credential that lets a per-directory principal reach the MCP
+// door scoped to that directory (kanban t_6a165e41). `mint_directory_key` created it at directory
+// creation time; these handlers are the MANAGE half of that mint: list / mint / rotate / revoke /
+// reveal a directory's own key, never one key spanning two directories. Each handler resolves the
+// directory id FIRST (a foreign or missing directory answers 404, never 403 — the 404-not-403 rule
+// the MCP door already follows) and scopes every query with `directory_id = $N`, so a key id that
+// belongs to another directory is indistinguishable from one that does not exist.
+
+/// The role-aware gate for every directory-key handler. The route_layer (`operator_guard`) already
+/// keeps the surface operator-only; this re-checks the claim so a future route re-wiring can never
+/// silently open a credential-minting surface to a tenant role.
+fn operator_user(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<(crate::auth::models::Claims, Uuid), AppError> {
+    let (claims, user_id, _tenant) = caller(headers, state)?;
+    if !crate::auth::middleware::is_super_admin(&claims) {
+        return Err(AppError::Forbidden(
+            "Only the platform operator can manage directory keys".to_string(),
+        ));
+    }
+    Ok((claims, user_id))
+}
+
+async fn directory_exists(state: &AppState, directory_id: Uuid) -> Result<bool, AppError> {
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM directories WHERE id = $1)")
+        .bind(directory_id)
+        .fetch_one(&state.db)
+        .await?;
+    Ok(exists)
+}
+
+/// GET /api/v1/directories/:id/api-keys — the keys this directory holds (prefix only, never the
+/// secret). One active key per directory is the norm; revoked keys stay for audit.
+pub async fn list_directory_keys(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(directory_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let (_claims, _user_id) = operator_user(&headers, &state)?;
+    if !directory_exists(&state, directory_id).await? {
+        return Err(AppError::NotFound("Directory not found".to_string()));
+    }
+
+    let rows = sqlx::query(
+        "SELECT id, name, key_prefix, is_active, last_used_at, created_at,
+                (key_encrypted IS NOT NULL) AS recoverable
+         FROM api_keys WHERE directory_id = $1 ORDER BY created_at DESC",
+    )
+    .bind(directory_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let keys: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.get::<Uuid, _>("id"),
+                "name": r.get::<String, _>("name"),
+                "prefix": r.get::<String, _>("key_prefix"),
+                "is_active": r.get::<bool, _>("is_active"),
+                "last_used_at": r.get::<Option<DateTime<Utc>>, _>("last_used_at"),
+                "created_at": r.get::<DateTime<Utc>, _>("created_at"),
+                "recoverable": r.get::<bool, _>("recoverable"),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "keys": keys })))
+}
+
+#[derive(Deserialize)]
+pub struct CreateDirectoryKeyRequest {
+    pub name: String,
+}
+
+/// POST /api/v1/directories/:id/api-keys — mint a fresh directory key. The plaintext is returned
+/// ONCE here (and stays sealed at rest for the reveal route); it is the operator's job to hand it
+/// to the per-directory principal through the vault, never a message or log.
+pub async fn create_directory_key(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(directory_id): Path<Uuid>,
+    Json(req): Json<CreateDirectoryKeyRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let (_claims, user_id) = operator_user(&headers, &state)?;
+    if !directory_exists(&state, directory_id).await? {
+        return Err(AppError::NotFound("Directory not found".to_string()));
+    }
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return Err(AppError::Validation("Key name is required".to_string()));
+    }
+
+    let mut tx = state.db.begin().await?;
+    let minted = mint_directory_key(&mut tx, user_id, directory_id, &name).await?;
+    tx.commit().await?;
+
+    tracing::info!(
+        key = %minted.id,
+        directory = %directory_id,
+        key_prefix = %minted.prefix,
+        operator = %user_id,
+        "directory API key MINTED"
+    );
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "id": minted.id.to_string(),
+            "directory_id": directory_id.to_string(),
+            "name": minted.name,
+            "prefix": minted.prefix,
+            "key": minted.raw_key,
+            "note": "Shown once here. Store it now — it can be viewed again (reveal) after re-entering your password."
+        })),
+    ))
+}
+
+/// POST /api/v1/directories/:id/api-keys/:key_id/rotate — one atomic retire-and-issue. The
+/// replacement stays bound to the SAME directory and owner; the old key is revoked (is_active =
+/// false, matching revoke and the fleet contract) in the same transaction, so a directory can never
+/// be left keyless and a rotation can never silently widen a key to another directory.
+pub async fn rotate_directory_key(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((directory_id, id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<impl IntoResponse> {
+    let (_claims, _user_id) = operator_user(&headers, &state)?;
+    if !directory_exists(&state, directory_id).await? {
+        return Err(AppError::NotFound("Directory not found".to_string()));
+    }
+
+    let row = sqlx::query(
+        "SELECT user_id, name FROM api_keys WHERE id = $1 AND directory_id = $2 AND is_active = true",
+    )
+    .bind(id)
+    .bind(directory_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
+    let owner_id: Uuid = row.get("user_id");
+    let name: String = row.get("name");
+
+    let mut tx = state.db.begin().await?;
+    let minted = mint_directory_key(&mut tx, owner_id, directory_id, &name).await?;
+    sqlx::query("UPDATE api_keys SET is_active = false, updated_at = NOW() WHERE id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    tracing::info!(
+        new_key = %minted.id,
+        old_key = %id,
+        directory = %directory_id,
+        key_prefix = %minted.prefix,
+        "directory API key ROTATED — the previous key no longer authenticates"
+    );
+
+    Ok(Json(json!({
+        "id": minted.id.to_string(),
+        "rotated_from": id.to_string(),
+        "directory_id": directory_id.to_string(),
+        "name": minted.name,
+        "prefix": minted.prefix,
+        "key": minted.raw_key,
+        "note": "The previous key no longer works. This one can be viewed and copied again at any time."
+    })))
+}
+
+/// DELETE /api/v1/directories/:id/api-keys/:key_id — revoke. Keeps the row and clears `is_active`
+/// (David's written contract: `is_active = false` on revoke), so the key stops authenticating
+/// everywhere at once while its record stays for support and audit. A key id that belongs to a
+/// different directory, or a directory that does not exist, answers 404.
+pub async fn revoke_directory_key(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((directory_id, id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<impl IntoResponse> {
+    let (_claims, _user_id) = operator_user(&headers, &state)?;
+    if !directory_exists(&state, directory_id).await? {
+        return Err(AppError::NotFound("Directory not found".to_string()));
+    }
+
+    let result = sqlx::query(
+        "UPDATE api_keys SET is_active = false, updated_at = NOW() WHERE id = $1 AND directory_id = $2",
+    )
+    .bind(id)
+    .bind(directory_id)
+    .execute(&state.db)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("API key not found".to_string()));
+    }
+
+    tracing::info!(
+        key = %id,
+        directory = %directory_id,
+        "directory API key REVOKED"
+    );
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/v1/directories/:id/api-keys/:key_id/reveal — show the full key again. Re-authenticates
+/// the operator's own password first (a stolen session token must not be enough to read a live
+/// credential), then decrypts the sealed copy and writes an `api_key_reveals` audit row.
+pub async fn reveal_directory_key(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((directory_id, id)): Path<(Uuid, Uuid)>,
+    Json(req): Json<RevealRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let (_claims, user_id) = operator_user(&headers, &state)?;
+    if !directory_exists(&state, directory_id).await? {
+        return Err(AppError::NotFound("Directory not found".to_string()));
+    }
+
+    let row = sqlx::query(
+        "SELECT key_prefix, key_encrypted FROM api_keys WHERE id = $1 AND directory_id = $2 AND is_active = true",
+    )
+    .bind(id)
+    .bind(directory_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
+    let prefix: String = row.get("key_prefix");
+    let sealed: Option<String> = row.get("key_encrypted");
+
+    // ── re-authenticate the operator ────────────────────────────────────────────────────────────
+    let stored: Option<String> =
+        sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1 AND is_active = true")
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await?;
+    let stored = stored.ok_or(AppError::Unauthorized)?;
+    if !crate::security::password_check::matches(&stored, &req.password) {
+        return Err(AppError::InvalidCredentials);
+    }
+
+    let sealed = sealed.ok_or_else(|| {
+        AppError::Conflict(
+            "This key was created before keys were stored recoverably, so it cannot be displayed. \
+             Rotate it to get a key you can view and copy."
+                .to_string(),
+        )
+    })?;
+    let full = crypto::open_in(&state.db, &sealed).await.map_err(|e| {
+        tracing::error!(error = %e, key = %id, "directory API key reveal: sealed copy could not be opened");
+        AppError::Internal(
+            "This key could not be opened by the server's encryption key. Rotate it.".to_string(),
+        )
+    })?;
+    if full.is_empty() {
+        return Err(AppError::Internal(
+            "This key could not be opened by the server's encryption key. Rotate it.".to_string(),
+        ));
+    }
+
+    if let Err(e) = sqlx::query(
+        "INSERT INTO api_key_reveals (id, key_id, tenant_id, user_id, key_prefix, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(id)
+    .bind(None::<Uuid>)
+    .bind(user_id)
+    .bind(&prefix)
+    .bind(client_ip(&headers))
+    .bind(headers.get("user-agent").and_then(|v| v.to_str().ok()))
+    .execute(&state.db)
+    .await
+    {
+        tracing::error!(error = %e, key = %id, "directory API key reveal: audit row could not be written");
+    }
+    tracing::info!(
+        key = %id,
+        key_prefix = %prefix,
+        operator = %user_id,
+        ip = ?client_ip(&headers),
+        "directory API key REVEALED"
+    );
+
+    Ok(Json(
+        json!({ "id": id.to_string(), "prefix": prefix, "key": full }),
+    ))
 }
