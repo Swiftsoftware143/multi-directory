@@ -802,10 +802,12 @@ mod tests {
         // the five segmented <urlset> documents the sitemap index names; SEO gap 4).
         // plus the MCP door (POST /admin/mcp — the door is its own credential boundary, kanban
         // t_6a165e41, so it cannot sit behind auth_guard's session JWT).
+        // minus 4 dead routes deleted in 909df28 (bookmarks GET/POST ×3 + zaarhub/featured): the
+        // routes were removed, so their allowlist entries went with them and the count drops 175→171.
         assert_eq!(
             PUBLIC_ROUTES.len(),
-            175,
-            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy, +1 photo cache stats, +5 sitemap section children, +1 admin MCP door)"
+            171,
+            "allowlist size moved off the measured 165 (+1 IndexNow key file, +1 B187 api-key verify, +1 blog RSS self url, +1 public article read, +1 directory branding, +1 public business reviews, +1 zaarhub company footer, +1 public listing photo proxy, +1 photo cache stats, +5 sitemap section children, +1 admin MCP door, -4 dead routes 909df28 bookmarks×3 + zaarhub/featured)"
         );
     }
 }
