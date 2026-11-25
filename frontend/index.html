@@ -2120,7 +2120,20 @@ async function loadBlogPage(){
 
 // ── City Page ──
 // Per-city newsletter advert in the footer. One image per city under
-// /assets/newsletter/<slug>.jpg (+ @2x). Homepage (no city) hides it.
+// /assets/newsletter/<slug>.jpg (+ @2x); links to that city's own newsletter
+// registration page. Homepage (no city) hides it.
+var NEWSLETTER_URLS={
+  'palm-bay':'https://palmbaypulse.com/register',
+  'palm-coast':'https://palmcoastinsider.com/register',
+  'st-petersburg':'https://baybreezebulletin.com/register',
+  'hollywood':'https://broadwalkbeat.com/register',
+  'pompano-beach':'https://pompanosheartbeat.com/register',
+  'boca-raton':'https://bocaluxeledger.com/register',
+  'st-cloud':'https://stcloudpulse.com/register',
+  'lake-nona':'https://lakenonaunpacked.com/register',
+  'winter-garden':'https://rootedinwintergarden.com/register',
+  'apopka':'https://rootedinapopka.com/register'
+};
 function setNewsletterAd(slug){
   var a=document.getElementById('zh-newsletter-ad');
   var img=document.getElementById('zh-newsletter-ad-img');
@@ -2129,6 +2142,9 @@ function setNewsletterAd(slug){
   var base='/assets/newsletter/'+slug;
   img.src=base+'.jpg';
   img.srcset=base+'.jpg 1x, '+base+'@2x.jpg 2x';
+  var url=NEWSLETTER_URLS[slug];
+  if(url){a.href=url;a.target='_blank';a.rel='noopener';}
+  else{a.href='#zh-newsletter';a.removeAttribute('target');a.removeAttribute('rel');}
   a.style.display='flex';
 }
 async function loadCityPage(){
@@ -2171,9 +2187,6 @@ function renderCityPage(d){
   var cityName=esc(dirInfo.name||toTitle(state.slug))
   var bizCount=(d.stats&&d.stats.total_businesses)||biz.length
   var desc=esc(dirInfo.description||'Explore '+cityName)
-  // The company Headquarters (ONE value for the whole company, from zaarhub_site_config): shown on
-  // every city page. A city needs no address of its own (David's MD STRUCTURE rule).
-  var hqLine=dirInfo.headquarters?'<p class="zh-hero-hq" style="font-size:.9rem;color:#cbd5e1;margin-top:6px">🏢 Headquarters: '+esc(dirInfo.headquarters)+'</p>':''
 
   // ── Grouped category dropdown + top pill shortcuts ──
   var groups={}
@@ -2512,7 +2525,6 @@ function renderCityPage(d){
     <p id="zh-city-weather" style="font-size:.85rem;color:#94a3b8;margin-bottom:10px">🌤️ ${cityName} — Loading...</p>
     <h1>Discover & Support <span>${cityName}</span></h1>
     <p>${desc}</p>
-    ${hqLine}
     <div class="zh-hero-categories">
       <a class="zh-hero-cat" href="javascript:void(0)" onclick="filterCity('',this)"${state.filterCategory?'':_pillActive}>🔍 All${bizCount?' ('+bizCount+')':''}</a>
       ${heroPills}

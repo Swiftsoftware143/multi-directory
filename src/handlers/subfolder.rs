@@ -1220,6 +1220,24 @@ pub(crate) fn public_topbar(site_name: &str, dir_label: Option<(&str, &str)>) ->
     )
 }
 
+/// The external registration page for a city's newsletter. Each of the 10 cities runs its own
+/// independent newsletter on its own domain (Letterman); the advert image links here.
+pub fn newsletter_registration_url(slug: &str) -> Option<&'static str> {
+    Some(match slug {
+        "palm-bay" => "https://palmbaypulse.com/register",
+        "palm-coast" => "https://palmcoastinsider.com/register",
+        "st-petersburg" => "https://baybreezebulletin.com/register",
+        "hollywood" => "https://broadwalkbeat.com/register",
+        "pompano-beach" => "https://pompanosheartbeat.com/register",
+        "boca-raton" => "https://bocaluxeledger.com/register",
+        "st-cloud" => "https://stcloudpulse.com/register",
+        "lake-nona" => "https://lakenonaunpacked.com/register",
+        "winter-garden" => "https://rootedinwintergarden.com/register",
+        "apopka" => "https://rootedinapopka.com/register",
+        _ => return None,
+    })
+}
+
 /// Inline newsletter signup — on EVERY public page, not just the footer
 /// (card B89). Posts to the per-directory subscriber endpoint when the page
 /// belongs to a city, and to the network/global endpoint otherwise.
@@ -1228,13 +1246,36 @@ pub(crate) fn newsletter_block(dir_label: Option<(&str, &str)>) -> String {
         Some((slug, _)) => format!("/api/v1/directories/{}/subscribers", h(slug)),
         None => "/api/v1/directories/newsletter".to_string(),
     };
+    // Per-city newsletter advert banner above the signup form. Links to that city's own
+    // newsletter registration page (its own domain). No advert on non-city pages.
+    let advert = match dir_label {
+        Some((slug, _)) => {
+            let img = format!(
+                "<img src=\"/assets/newsletter/{s}.jpg\" srcset=\"/assets/newsletter/{s}.jpg 1x, /assets/newsletter/{s}@2x.jpg 2x\" alt=\"Local newsletter\" loading=\"lazy\" style=\"max-width:300px;width:100%;height:auto;border-radius:12px;display:block\">",
+                s = h(slug),
+            );
+            match newsletter_registration_url(slug) {
+                Some(url) => format!(
+                    "<a href=\"{url}\" target=\"_blank\" rel=\"noopener\" style=\"display:block;max-width:300px;margin:0 auto 16px\">{img}</a>",
+                    url = url,
+                    img = img,
+                ),
+                None => format!(
+                    "<div style=\"max-width:300px;margin:0 auto 16px\">{img}</div>",
+                    img = img,
+                ),
+            }
+        }
+        None => String::new(),
+    };
     format!(
-        "<form class=\"zh-newsletter\" data-endpoint=\"{endpoint}\">\
+        "<div class=\"zh-newsletter-wrap\">{advert}<form class=\"zh-newsletter\" data-endpoint=\"{endpoint}\">\
 <label class=\"zh-nl-label\" for=\"zh-nl-email\">\u{1f4e7} Get local news &amp; deals by email</label>\
 <input id=\"zh-nl-email\" type=\"email\" name=\"email\" required placeholder=\"you@example.com\" aria-label=\"Email address\">\
 <button type=\"submit\">Subscribe</button>\
 <span class=\"zh-nl-msg\" role=\"status\" aria-live=\"polite\"></span>\
-</form>",
+</form></div>",
+        advert = advert,
         endpoint = endpoint,
     )
 }
