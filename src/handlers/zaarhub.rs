@@ -1684,6 +1684,11 @@ struct BizDetail {
     incentive_widget_enabled: bool,
     /// The business's IncentiveSwift campaign slug (its external id there). None when unset.
     incentive_campaign_slug: Option<String>,
+    /// Booking checkout embed (work-queue "BOOKING CHECKOUT"): iframe URL or embed snippet the
+    /// owner pasted so a visitor pays inline after the booking calendar. None for listing rows.
+    booking_checkout_url: Option<String>,
+    /// 'after' (pay once confirmed) or 'at_booking' (pay up-front). None for listing rows.
+    booking_charge_timing: Option<String>,
 }
 
 /// Where uploaded business images actually live (the container mounts this path at the
@@ -1907,7 +1912,9 @@ pub async fn get_business_detail(
                       b.licensed, b.insured, b.neighbourhood,
                       COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled,
                       COALESCE(b.incentive_widget_enabled, false) AS incentive_widget_enabled,
-                      b.incentive_campaign_slug AS incentive_campaign_slug
+                      b.incentive_campaign_slug AS incentive_campaign_slug,
+                      b.booking_checkout_url AS booking_checkout_url,
+                      COALESCE(b.booking_charge_timing, 'after') AS booking_charge_timing
                FROM businesses b
                WHERE b.id = $1 AND b.directory_id = $2 AND b.is_active = true
                  AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
@@ -1927,7 +1934,9 @@ pub async fn get_business_detail(
                       b.licensed, b.insured, b.neighbourhood,
                       COALESCE(b.booking_widget_enabled, false) AS booking_widget_enabled,
                       COALESCE(b.incentive_widget_enabled, false) AS incentive_widget_enabled,
-                      b.incentive_campaign_slug AS incentive_campaign_slug
+                      b.incentive_campaign_slug AS incentive_campaign_slug,
+                      b.booking_checkout_url AS booking_checkout_url,
+                      COALESCE(b.booking_charge_timing, 'after') AS booking_charge_timing
                FROM businesses b
                WHERE b.slug = $1 AND b.directory_id = $2 AND b.is_active = true
                  AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')"#,
@@ -1980,6 +1989,8 @@ pub async fn get_business_detail(
                 .try_get::<Option<bool>, _>("incentive_widget_enabled")?
                 .unwrap_or(false),
             incentive_campaign_slug: r.try_get("incentive_campaign_slug")?,
+            booking_checkout_url: r.try_get("booking_checkout_url")?,
+            booking_charge_timing: r.try_get("booking_charge_timing")?,
         }
     } else if let Ok(bid) = Uuid::parse_str(&id) {
         let r = sqlx::query(
@@ -2045,6 +2056,8 @@ pub async fn get_business_detail(
             booking_widget_enabled: false,
             incentive_widget_enabled: false,
             incentive_campaign_slug: None,
+            booking_checkout_url: None,
+            booking_charge_timing: None,
         }
     } else {
         return Err(AppError::NotFound("Business not found".to_string()));
@@ -2313,6 +2326,9 @@ pub async fn get_business_detail(
         // Ecosystem widgets increment 2: IncentiveSwift campaign widget (off/blank slug = none).
         "incentive_widget_enabled": biz.incentive_widget_enabled,
         "incentive_campaign_slug": biz.incentive_campaign_slug,
+        // Booking checkout (work-queue "BOOKING CHECKOUT"): inline payment embed after the calendar.
+        "booking_checkout_url": biz.booking_checkout_url,
+        "booking_charge_timing": biz.booking_charge_timing,
         "source": if biz.is_listing { "listing" } else { "business" },
         "images": photos.clone(),
         "photos": photos,
