@@ -2139,7 +2139,7 @@ function setNewsletterAd(slug, urlOverride){
   var img=document.getElementById('zh-newsletter-ad-img');
   if(!a||!img)return;
   if(!slug){a.style.display='none';return;}
-  var base='/assets/newsletter/'+slug;
+  var base='/uploads/newsletter/'+slug;
   img.src=base+'.jpg';
   img.srcset=base+'.jpg 1x, '+base+'@2x.jpg 2x';
   var url=urlOverride||NEWSLETTER_URLS[slug];

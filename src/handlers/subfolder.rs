@@ -1251,7 +1251,7 @@ pub(crate) fn newsletter_block(dir_label: Option<(&str, &str)>) -> String {
     let advert = match dir_label {
         Some((slug, _)) => {
             let img = format!(
-                "<img src=\"/assets/newsletter/{s}.jpg\" srcset=\"/assets/newsletter/{s}.jpg 1x, /assets/newsletter/{s}@2x.jpg 2x\" alt=\"Local newsletter\" loading=\"lazy\" style=\"max-width:300px;width:100%;height:auto;border-radius:12px;display:block\">",
+                "<img src=\"/uploads/newsletter/{s}.jpg\" srcset=\"/uploads/newsletter/{s}.jpg 1x, /uploads/newsletter/{s}@2x.jpg 2x\" alt=\"Local newsletter\" loading=\"lazy\" style=\"max-width:300px;width:100%;height:auto;border-radius:12px;display:block\">",
                 s = h(slug),
             );
             match newsletter_registration_url(slug) {

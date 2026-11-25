@@ -2,18 +2,22 @@
 //! (work-queue t_5306e167 follow-up, David 2026-11-25).
 //!
 //! Each city runs its OWN newsletter on its own domain (Letterman). The public pages show that
-//! city's advert image (served from /assets/newsletter/<slug>.jpg + @2x) and link it to the
+//! city's advert image (served from /uploads/newsletter/<slug>.jpg + @2x) and link it to the
 //! city's registration page. The admin sets both here instead of a code change.
 //!
 //!   GET  /admin/newsletter-config             list every directory's slug/name/registration URL
 //!   PUT  /admin/newsletter-config/:slug       set the registration URL (blank = clear)
-//!   POST /admin/newsletter-config/:slug/image multipart upload of the advert (fields `image`
-//!                                              = 1x, `image2x` = 2x; 2x optional, falls back to 1x)
+//!   POST /admin/newsletter-config/:slug/image upload the advert as JSON base64
+//!                                              (`image_base64` = 1x, `image2x_base64` = 2x optional)
 //!
-//! Operator-guarded (same as the rest of the /admin surface).
+//! The advert bytes are stored in the PERSISTENT uploads root (bind-mounted
+//! `/opt/swift/www/zaarhub.com/uploads`, NOT the git checkout), so a rebuild cannot wipe them.
+//! Auth: `auth_guard` accepts an issued `md_…` API key (it resolves the key to the owner's session
+//! and rewrites the header to a short-lived JWT), and `operator_guard` then checks the role — so
+//! both a console session and the ZaarHub CEO bot's issued key reach these routes.
 
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Path, State},
     response::IntoResponse,
     Json,
 };
@@ -23,6 +27,10 @@ use sqlx::Row;
 
 use crate::error::{ApiResult, AppError};
 use crate::AppState;
+
+/// The persistent uploads root — the same bind-mounted store the audience media lives in
+/// (`audience::serve_media` serves it back through `/uploads/*`). NOT git-tracked.
+const UPLOADS_ROOT: &str = "/opt/swift/www/zaarhub.com/uploads";
 
 /// GET /admin/newsletter-config
 pub async fn list_newsletter_config(State(s): State<AppState>) -> ApiResult<impl IntoResponse> {
@@ -70,21 +78,6 @@ pub async fn update_newsletter_config(
     Ok(Json(json!({ "slug": slug, "registration_url": url })))
 }
 
-/// Resolve the newsletter assets directory (the same bind-mounted `frontend/assets/newsletter`
-/// the SPA static server reads). Prefers the container path, then the baremetal checkout.
-fn newsletter_assets_dir() -> Result<std::path::PathBuf, AppError> {
-    [
-        "/opt/swift/multidirectory-rust/frontend/assets/newsletter",
-        "/opt/swift/apps/multi-directory/frontend/assets/newsletter",
-        "./frontend/assets/newsletter",
-    ]
-    .iter()
-    .map(std::path::Path::new)
-    .find(|p| p.is_dir())
-    .map(|p| p.to_path_buf())
-    .ok_or_else(|| AppError::Internal("newsletter assets dir not found".to_string()))
-}
-
 fn is_safe_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug
@@ -92,11 +85,23 @@ fn is_safe_slug(slug: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// POST /admin/newsletter-config/:slug/image
+/// The persistent newsletter advert directory (bind-mounted, survives rebuild).
+fn newsletter_dir() -> std::path::PathBuf {
+    std::path::Path::new(UPLOADS_ROOT).join("newsletter")
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewsletterImageUpload {
+    pub image_base64: String,
+    #[serde(default)]
+    pub image2x_base64: Option<String>,
+}
+
+/// POST /admin/newsletter-config/:slug/image — JSON base64 upload (1x + optional 2x).
 pub async fn upload_newsletter_image(
     State(s): State<AppState>,
     Path(slug): Path<String>,
-    mut multipart: Multipart,
+    Json(body): Json<NewsletterImageUpload>,
 ) -> ApiResult<impl IntoResponse> {
     if !is_safe_slug(&slug) {
         return Err(AppError::Validation("invalid slug".to_string()));
@@ -110,36 +115,27 @@ pub async fn upload_newsletter_image(
         return Err(AppError::NotFound("Directory not found".to_string()));
     }
 
-    let mut img1: Option<Vec<u8>> = None;
-    let mut img2x: Option<Vec<u8>> = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| AppError::Validation(e.to_string()))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-        let bytes = field
-            .bytes()
-            .await
-            .map_err(|e| AppError::Validation(e.to_string()))?;
-        if bytes.is_empty() {
-            continue;
-        }
-        match name.as_str() {
-            "image" => img1 = Some(bytes.to_vec()),
-            "image2x" => img2x = Some(bytes.to_vec()),
-            _ => {}
-        }
-    }
+    use base64::Engine;
+    let img1 = base64::engine::general_purpose::STANDARD
+        .decode(body.image_base64.trim())
+        .map_err(|e| AppError::Validation(format!("bad base64 (1x): {e}")))?;
+    let img2x = match body.image2x_base64 {
+        Some(b2) if !b2.trim().is_empty() => base64::engine::general_purpose::STANDARD
+            .decode(b2.trim())
+            .map_err(|e| AppError::Validation(format!("bad base64 (2x): {e}")))?,
+        _ => img1.clone(),
+    };
 
-    let img1 = img1.ok_or_else(|| AppError::Validation("missing 'image' file (1x)".to_string()))?;
-    let img2x = img2x.unwrap_or_else(|| img1.clone());
-
-    let dir = newsletter_assets_dir()?;
+    let dir = newsletter_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| AppError::Internal(e.to_string()))?;
     std::fs::write(dir.join(format!("{}.jpg", slug)), &img1)
         .map_err(|e| AppError::Internal(e.to_string()))?;
     std::fs::write(dir.join(format!("{}@2x.jpg", slug)), &img2x)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    Ok(Json(json!({ "slug": slug, "saved": true })))
+    Ok(Json(json!({
+        "slug": slug,
+        "url": format!("/uploads/newsletter/{slug}.jpg"),
+        "saved": true,
+    })))
 }

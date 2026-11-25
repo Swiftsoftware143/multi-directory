@@ -10824,7 +10824,7 @@
           h += '<tr style="border-top:1px solid var(--border)">' +
             '<td style="padding:6px 4px"><b>' + esc(c.name || c.slug) + '</b></td>' +
             '<td style="padding:6px 4px;min-width:240px"><input class="input nl-adv-url" data-slug="' + esc(c.slug) + '" value="' + esc(url) + '" placeholder="https://…/register" style="width:100%"></td>' +
-            '<td style="padding:6px 4px;text-align:center"><img src="/assets/newsletter/' + esc(c.slug) + '.jpg" style="height:36px;width:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" onerror="this.style.opacity=.2"></td>' +
+            '<td style="padding:6px 4px;text-align:center"><img src="/uploads/newsletter/' + esc(c.slug) + '.jpg" style="height:36px;width:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" onerror="this.style.opacity=.2"></td>' +
             '<td style="padding:6px 4px;text-align:right;white-space:nowrap">' +
               '<button class="btn btn-accent btn-sm" type="button" onclick="window.__newsletterAdvertSave(\'' + esc(c.slug) + '\')">Save</button> ' +
               '<button class="btn btn-ghost btn-sm" type="button" onclick="window.__newsletterAdvertPick(\'' + esc(c.slug) + '\')">Image</button>' +
@@ -10848,16 +10848,17 @@
       inp.onchange = function () {
         if (!inp.files || !inp.files.length) return;
         var st = document.getElementById('nl-adv-status');
-        if (st) st.textContent = 'Uploading…';
-        var fd = new FormData();
-        fd.append('image', inp.files[0]);
-        var headers = {};
-        var authToken = token || localStorage.getItem('md_admin_token');
-        if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
-        fetch(API_BASE + '/admin/newsletter-config/' + encodeURIComponent(slug) + '/image', { method: 'POST', headers: headers, body: fd })
-          .then(function (res) { return res.json().then(function (d) { if (!res.ok) throw new Error(d.message || ('HTTP ' + res.status)); return d; }); })
-          .then(function () { showToast('Image uploaded'); return window.__newsletterAdvertsLoad(); })
-          .catch(function (e) { if (st) st.textContent = 'Upload failed: ' + e.message; });
+        if (st) st.textContent = 'Reading…';
+        var reader = new FileReader();
+        reader.onload = function () {
+          var dataUrl = String(reader.result);
+          var b64 = dataUrl.split(',')[1] || dataUrl;
+          if (st) st.textContent = 'Uploading…';
+          apiFetch('POST', '/admin/newsletter-config/' + encodeURIComponent(slug) + '/image', { image_base64: b64 })
+            .then(function () { showToast('Image uploaded'); return window.__newsletterAdvertsLoad(); })
+            .catch(function (e) { if (st) st.textContent = 'Upload failed: ' + e.message; });
+        };
+        reader.readAsDataURL(inp.files[0]);
       };
       inp.click();
     };
