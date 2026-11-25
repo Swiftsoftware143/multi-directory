@@ -233,6 +233,17 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
       </div>
     </div>
 
+    <!-- Polls — GET /api/v1/polls?status=active + POST /api/v1/polls/:id/vote.
+         The polls routes had a live backend and no visitor surface (fleet feature-reachability
+         audit t_afaddbda); an operator creates/closes polls in the admin panel. -->
+    <div class="section" id="pollsSection">
+      <div class="section-title">🗳️ Polls</div>
+      <div class="section-subtitle">Quick questions from local businesses — cast a vote and see how the community answered.</div>
+      <div id="pollsList">
+        <div class="empty-state"><div class="icon">🗳️</div><h3>No active polls</h3><p>Check back soon.</p></div>
+      </div>
+    </div>
+
     <!-- Saved Deals -->
     <div class="section">
       <div class="section-title">🎟️ Saved Deals</div>
@@ -440,6 +451,9 @@ async function loadDashboard() {
     loadMyBookings();
     loadCommunity();
 
+    // t_afaddbda: active polls + vote (the routes had no reader before).
+    loadPolls();
+
     hide('loadingState');
     show('dashboardContent');
   } catch(e) {
@@ -604,6 +618,51 @@ async function loadNetworkActivity() {
     }).join('');
   } catch (e) {
     box.innerHTML = '<div class="empty-state"><p>Could not load network activity right now (' + esc(e.message) + ').</p></div>';
+  }
+}
+
+async function loadPolls() {
+  var box = document.getElementById('pollsList');
+  if (!box) return;
+  try {
+    var data = await g('/polls?status=active');
+    var polls = (data && data.polls) || [];
+    if (!polls.length) {
+      box.innerHTML = '<div class="empty-state"><div class="icon">🗳️</div><h3>No active polls</h3><p>Check back soon.</p></div>';
+      return;
+    }
+    box.innerHTML = polls.map(function (p) {
+      var total = p.total_votes || 0;
+      var options = (p.options || []).map(function (o, i) {
+        var votes = (p.option_votes && p.option_votes[i]) || 0;
+        var pct = total ? Math.round(votes * 100 / total) : 0;
+        var mine = (p.user_vote != null && p.user_vote === i);
+        return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+          '<button class="btn ' + (mine ? 'btn-primary' : 'btn-ghost') + '" onclick="votePoll(\'' + esc(p.id) + '\',' + i + ')">' + esc(o) + '</button>' +
+          '<div style="flex:1;height:6px;background:var(--border,#334155);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--primary,#f27f2f)"></div></div>' +
+          '<span style="font-size:.8rem;color:var(--text-secondary);white-space:nowrap">' + votes + ' (' + pct + '%)</span>' +
+        '</div>';
+      }).join('');
+      return '<div class="deal-card" style="margin-bottom:12px">' +
+        '<div style="font-weight:600;margin-bottom:10px">' + esc(p.question) + '</div>' + options +
+        '<div style="font-size:.8rem;color:var(--text-secondary);margin-top:6px">' + total + ' vote(s)</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state"><div class="icon">🗳️</div><h3>Could not load polls</h3><p>' + esc(e.message) + '</p></div>';
+  }
+}
+
+async function votePoll(pollId, optionIndex) {
+  try {
+    var token = localStorage.getItem('visitorToken');
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    var r = await fetch(API + '/polls/' + pollId + '/vote', { method: 'POST', headers: h, body: JSON.stringify({ option_index: optionIndex }) });
+    if (!r.ok) { var e = await r.json().catch(function () { return {}; }); throw new Error(e.message || 'Vote failed'); }
+    loadPolls();
+  } catch (e) {
+    alert('Vote failed: ' + e.message);
   }
 }
 

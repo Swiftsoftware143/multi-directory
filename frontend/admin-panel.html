@@ -589,6 +589,7 @@
         <a href="#clearinghouse-section">🏦 Clearinghouse</a>
         <a href="#loyalty-programme-section">⭐ Loyalty Programmes</a>
         <a href="#transfers-section">🔄 Transfers</a>
+        <a href="#polls-section">🗳️ Polls</a>
         <a href="#data-enrichment-section">🧭 Data Enrichment</a>
         <a href="#data-company-section">🧪 Data Company</a>
         <a href="#ad-zones-section">📢 Ad Zones</a>
@@ -598,6 +599,7 @@
         <a href="#referral-section">🎁 Referrals</a>
         <a href="#signup-reward-section">🪙 Signup Rewards</a>
         <a href="#ad-revenue-section">💰 Ad Revenue</a>
+        <a href="#ad-bookings-section">📅 Ad Bookings</a>
         <a href="#submissions-section">📥 Submission Queue</a>
         <a href="#reviews-moderation-section">⭐ Reviews</a>
         <a href="#sitemap-config-section">🗺️ Sitemaps</a>
@@ -616,6 +618,8 @@
         <a href="#articles-section">📰 Sponsored Articles</a>
         <a href="#b2b-features-section">🏢 B2B Toggles</a>
         <a href="#zaarhub-nav-section">🧠 Loyalty</a>
+        <a href="#legal-pages-section">📄 Legal Pages</a>
+        <a href="#site-config-section">⚙️ Site Config</a>
         <a class="nav-out" href="/guides/admin-guide.html#david-setup-checklist">✅ Setup Checklist</a>
         <a href="/admin-ops">🧰 Operator Console</a>
         <span class="nav-sep">|</span>
@@ -1322,6 +1326,82 @@
         <div class="feature-status" id="cl-status"></div>
       </div>
 
+      <!-- 📄 Legal Pages — GET|POST /zaarhub/admin/legal, GET|DELETE /zaarhub/admin/legal/:slug.
+           These routes had a live backend and no caller (fleet feature-reachability audit). The
+           public /legal/:slug pages render from zaarhub_legal_pages, so the operator must be able
+           to edit them here, not in SQL. Content may use the platform merge fields; an unknown
+           field is refused on save. -->
+      <div class="feature-card" id="legal-pages-section">
+        <h3>📄 Legal Pages
+          <span class="pk-badge" id="lp-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">The platform's own legal pages, served at <code>/legal/:slug</code>. The slug is the URL path; pages marked <b>in footer</b> appear on every public page. Edit an existing page or add a new one — saving by an existing slug updates it.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:0 1 170px">Slug (URL path)
+            <input class="pk-input" id="lp-slug" placeholder="e.g. about"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 260px">Title
+            <input class="pk-input" id="lp-title" placeholder="Page title"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;width:90px">Order
+            <input class="pk-input" id="lp-order" type="number" value="0"></label>
+        </div>
+        <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-bottom:8px">Body
+          <textarea class="pk-input" id="lp-content" rows="5" placeholder="Legal page body…"></textarea></label>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:6px"><input type="checkbox" id="lp-published" checked> published</label>
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:6px"><input type="checkbox" id="lp-footer"> show in footer</label>
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__lpSave()">💾 Save page</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__lpNew()">New</button>
+          <span class="feature-status" id="lp-status"></span>
+        </div>
+        <div id="lp-list"></div>
+      </div>
+
+      <!-- ⚙️ Site Config — GET|PATCH /zaarhub/admin/config. The single-row zaarhub_site_config table
+           had a backend and no caller. One card to edit the network's name, colours, social and
+           contact identity without SQL. -->
+      <div class="feature-card" id="site-config-section">
+        <h3>⚙️ Site Config</h3>
+        <p class="feature-subtitle">The network's name, tagline, colours and contact identity (the one row in <code>zaarhub_site_config</code>). Save applies immediately.</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 220px">Site name
+            <input class="pk-input" id="sc-site-name"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 260px">Tagline
+            <input class="pk-input" id="sc-tagline"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:0 1 130px">Primary colour
+            <input class="pk-input" id="sc-primary" placeholder="#f27f2f"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:0 1 130px">Secondary colour
+            <input class="pk-input" id="sc-secondary" placeholder="#16a34a"></label>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 260px">Logo URL
+            <input class="pk-input" id="sc-logo"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 260px">Favicon URL
+            <input class="pk-input" id="sc-favicon"></label>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 200px">Google Analytics ID
+            <input class="pk-input" id="sc-ga" placeholder="G-XXXXXXX"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 200px">Facebook App ID
+            <input class="pk-input" id="sc-fb"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 200px">Twitter handle
+            <input class="pk-input" id="sc-twitter"></label>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 240px">Contact email
+            <input class="pk-input" id="sc-email"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 200px">Contact phone
+            <input class="pk-input" id="sc-phone"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 120px">Copyright year
+            <input class="pk-input" id="sc-copy"></label>
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;flex:1 1 240px">Headquarters
+            <input class="pk-input" id="sc-hq"></label>
+        </div>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__scSave()">💾 Save config</button>
+          <span class="feature-status" id="sc-status"></span>
+        </div>
+      </div>
+
       <!-- 🤖 MCP / Bot Access — the two endpoints a bot needs, plus a pointer to the key it
            is authorised with. Access is scoped by the key's owner (directory owner -> their
            directory; operator -> every directory), which the app enforces server-side. -->
@@ -1662,7 +1742,51 @@
           <button class="btn btn-accent btn-sm" onclick="window.__revCreateCreative()">+ Add creative</button>
         </div>
         <div id="rev-creatives"></div>
+        <h4 style="margin:18px 0 6px;font-size:.95rem">Pending approvals</h4>
+        <div id="rev-approvals"></div>
         <div class="feature-status" id="rev-status"></div>
+      </div>
+
+      <!-- 📅 Ad Bookings — GET|POST /ad-bookings, GET /ad-bookings/:id, POST /ad-bookings/:id/activate.
+           A booking groups N schedule positions (one per ad slot in a takeover); approving it in the
+           approval queue confirms it, and activation publishes the confirmed booking. Backend live,
+           no caller until now. -->
+      <div class="feature-card" id="ad-bookings-section">
+        <h3>📅 Ad Bookings</h3>
+        <p class="feature-subtitle">An ad booking groups the schedule positions a sponsor buys. Create a booking, then confirm it from the <b>Pending approvals</b> queue in Ad Revenue (approving a booking confirms it), then <b>Activate</b> it here to publish every position.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="pk-input" id="bk-directory" onchange="window.__bkLoad()"></select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__bkLoad()">↻ Refresh</button>
+        </div>
+        <div class="pk-controls" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <select class="pk-input" id="bk-sponsor"></select>
+          <select class="pk-input" id="bk-creative"></select>
+          <input class="pk-input" id="bk-start" type="date" title="Start date">
+          <input class="pk-input" id="bk-end" type="date" title="End date">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__bkCreate()">+ Create booking</button>
+        </div>
+        <div id="bk-list"></div>
+        <div class="feature-status" id="bk-status"></div>
+      </div>
+
+      <!-- 🗳️ Polls — GET|POST /polls, POST /polls/:id/close. Micro-polls visitors vote on
+           (create/list/close were backend-only; list+vote live in the visitor portal). -->
+      <div class="feature-card" id="polls-section">
+        <h3>🗳️ Polls</h3>
+        <p class="feature-subtitle">Micro-polls visitors vote on. Create a poll with 2–20 options, then close it when done. Votes are visitor-scoped and upserted — re-voting replaces the earlier vote.</p>
+        <div class="pk-controls" style="margin-bottom:10px">
+          <select class="pk-input" id="pl-directory" onchange="window.__plLoad()"></select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.__plLoad()">↻ Refresh</button>
+        </div>
+        <div class="pk-controls" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <input class="pk-input" id="pl-question" placeholder="Question" style="flex:1 1 300px">
+          <input class="pk-input" id="pl-ends" type="date" title="Ends at (optional)">
+          <button class="btn btn-accent btn-sm" type="button" onclick="window.__plCreate()">+ Create poll</button>
+        </div>
+        <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;margin-bottom:10px">Options (one per line, 2–20)
+          <textarea class="pk-input" id="pl-options" rows="3" placeholder="Yes&#10;No&#10;Maybe"></textarea></label>
+        <div id="pl-list"></div>
+        <div class="feature-status" id="pl-status"></div>
       </div>
 
       <!-- 🔄 Ownership Transfers (Round 11 / T2) — move a listing between owners.
@@ -5453,6 +5577,10 @@
           loadAdZones();
           // kanban t_14927725: ad revenue + sponsor creatives are directory-scoped too.
           loadAdRevenue();
+          // t_afaddbda: ad bookings are directory-scoped the same way (backend live, no caller).
+          loadBookings();
+          // t_afaddbda: polls are directory-scoped the same way (backend live, no caller).
+          loadPolls();
           // Feature 1/2 (2026-09-29): the key-scope and domain panels are directory-scoped, so
           // their pickers can only be filled once the directory list exists.
           window.__mdFillDirectorySelects();
@@ -6167,7 +6295,11 @@
             '<div class="pk-title">' + pkEsc(c.name) + ' <span class="pk-badge ' + (c.status === 'approved' ? 'pk-ok' : 'pk-missing') + '">' + pkEsc(c.status) + '</span>' +
             (c.is_active === false ? ' <span class="pk-badge pk-missing">inactive</span>' : '') + '</div>' +
             '<div class="pk-desc">' + (c.width || '?') + '×' + (c.height || '?') + (c.target_url ? ' · <code>' + pkEsc(c.target_url) + '</code>' : '') + '</div></div>' +
-          '<div class="pk-desc" style="margin-top:4px"><a href="' + pkEsc(c.image_url) + '" target="_blank" rel="noopener">' + pkEsc(c.image_url) + '</a></div></div>';
+          '<div class="pk-desc" style="margin-top:4px"><a href="' + pkEsc(c.image_url) + '" target="_blank" rel="noopener">' + pkEsc(c.image_url) + '</a></div>' +
+          '<div class="pk-controls" style="margin-top:6px">' +
+            '<button class="btn btn-ghost btn-sm" onclick="window.__revEditCreative(\'' + pkEsc(c.id) + '\')">Edit</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="window.__revDeleteCreative(\'' + pkEsc(c.id) + '\')">Delete</button>' +
+          '</div></div>';
       }).join('');
     }
 
@@ -6215,6 +6347,7 @@
           }
           revStatus(revSponsors.length + ' sponsor(s) · ' + revSlots.length + ' slot size(s)', true);
           window.__revCreatives();
+          loadApprovals();
         })
         .catch(function (e) { revStatus('Could not load ad revenue: ' + e.message, false); });
     }
@@ -6258,6 +6391,242 @@
     window.__revLoad = loadAdRevenue;
     window.__revCreatives = loadCreatives;
     window.__revCreateCreative = createCreative;
+
+    // Edit / delete a creative (PUT|DELETE /creatives/:id) — the two halves of the creative
+    // lifecycle that were backend-only; the list/create half already lived here.
+    window.__revEditCreative = function (id) {
+      var name = prompt('Creative name:', '');
+      if (name === null) return;
+      var target = prompt('Target URL (optional):', '');
+      if (target === null) return;
+      var body = {};
+      if (name.trim()) body.name = name.trim();
+      if (target.trim()) body.target_url = target.trim();
+      apiPut('/creatives/' + id, body).then(function () {
+        showToast('Creative updated');
+        return loadCreatives();
+      }).catch(function (e) { revStatus('Update failed: ' + e.message, false); });
+    };
+    window.__revDeleteCreative = function (id) {
+      if (!confirm('Delete this creative?')) return;
+      apiFetch('DELETE', '/creatives/' + id).then(function () {
+        showToast('Creative deleted');
+        return loadCreatives();
+      }).catch(function (e) { revStatus('Delete failed: ' + e.message, false); });
+    };
+
+    // Approvals queue (GET /approvals?directory_id=, PUT /approvals/:id/status). Sponsors and
+    // creatives auto-enter the queue; approving/rejecting here cascades to the item and, for an
+    // ad_booking, CONFIRMS it so it can be activated. Backend live, no caller until now.
+    function loadApprovals() {
+      var box = document.getElementById('rev-approvals');
+      if (!box) return;
+      var sel = document.getElementById('rev-directory');
+      var did = sel ? sel.value : '';
+      if (!did) { box.innerHTML = '<div class="empty-state"><p>Select a directory to see its pending approvals.</p></div>'; return; }
+      apiGet('/approvals?directory_id=' + encodeURIComponent(did) + '&status=pending').then(function (rows) {
+        rows = Array.isArray(rows) ? rows : [];
+        if (!rows.length) { box.innerHTML = '<div class="empty-state"><p>No pending approvals.</p></div>'; return; }
+        box.innerHTML = rows.map(function (a) {
+          return '<div class="pk-row"><div class="pk-head">' +
+            '<div class="pk-title">' + pkEsc(a.item_type || 'item') + ' <span class="pk-badge pk-missing">pending</span></div>' +
+            '<div class="pk-desc">item ' + pkEsc(a.item_id) + ' · ' + pkEsc(a.submitted_at || '') + '</div></div>' +
+            '<div class="pk-controls">' +
+              '<button class="btn btn-accent btn-sm" onclick="window.__revApprove(\'' + pkEsc(a.id) + '\')">Approve</button>' +
+              '<button class="btn btn-ghost btn-sm" onclick="window.__revReject(\'' + pkEsc(a.id) + '\')">Reject</button>' +
+            '</div></div>';
+        }).join('');
+      }).catch(function (e) { box.innerHTML = '<div class="empty-state"><p>Could not load approvals: ' + pkEsc(e.message) + '</p></div>'; });
+    }
+    window.__revApprove = function (id) {
+      apiPut('/approvals/' + id + '/status', { status: 'approved' }).then(function () {
+        showToast('Approved');
+        loadApprovals();
+        window.__revCreatives();
+      }).catch(function (e) { revStatus('Approve failed: ' + e.message, false); });
+    };
+    window.__revReject = function (id) {
+      apiPut('/approvals/' + id + '/status', { status: 'rejected' }).then(function () {
+        showToast('Rejected');
+        loadApprovals();
+      }).catch(function (e) { revStatus('Reject failed: ' + e.message, false); });
+    };
+
+    // ===== Ad Bookings (GET|POST /ad-bookings, POST /ad-bookings/:id/activate) =====
+    function bkStatus(msg, ok) {
+      var el = document.getElementById('bk-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+    function bkFillDirectories() {
+      var sel = document.getElementById('bk-directory');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '';
+      (directories || []).forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d.id;
+        o.textContent = (d.name || 'Directory') + ' (' + (d.slug || '') + ')';
+        sel.appendChild(o);
+      });
+      if (current) sel.value = current;
+    }
+    function bkLoadSponsors() {
+      var sel = document.getElementById('bk-sponsor');
+      var did = document.getElementById('bk-directory').value;
+      if (!sel || !did) { if (sel) sel.innerHTML = ''; return; }
+      apiGet('/sponsors?directory_id=' + encodeURIComponent(did)).then(function (rows) {
+        sel.innerHTML = (rows.length ? '' : '<option value="">— no sponsors —</option>');
+        rows.forEach(function (sp) {
+          var o = document.createElement('option');
+          o.value = sp.id;
+          o.textContent = (sp.business_name || 'Business') + ' · ' + (sp.status || 'pending');
+          sel.appendChild(o);
+        });
+        bkLoadCreatives();
+      }).catch(function (e) { bkStatus('Could not load sponsors: ' + e.message, false); });
+    }
+    function bkLoadCreatives() {
+      var sel = document.getElementById('bk-creative');
+      var sid = document.getElementById('bk-sponsor').value;
+      if (!sel || !sid) { if (sel) sel.innerHTML = ''; return; }
+      apiGet('/sponsors/' + sid + '/creatives').then(function (rows) {
+        sel.innerHTML = (rows.length ? '' : '<option value="">— no creatives —</option>');
+        rows.forEach(function (c) {
+          var o = document.createElement('option');
+          o.value = c.id;
+          o.textContent = (c.name || 'creative') + ' (' + (c.width || '?') + '×' + (c.height || '?') + ')';
+          sel.appendChild(o);
+        });
+      }).catch(function (e) { bkStatus('Could not load creatives: ' + e.message, false); });
+    }
+    function bkRender(list) {
+      var box = document.getElementById('bk-list');
+      if (!box) return;
+      if (!list.length) { box.innerHTML = '<div class="empty-state"><p>No ad bookings for this directory yet.</p></div>'; return; }
+      box.innerHTML = list.map(function (b) {
+        var st = b.status || 'pending';
+        var cls = st === 'active' ? 'pk-ok' : (st === 'confirmed' ? 'pk-ok' : 'pk-missing');
+        return '<div class="pk-row"><div class="pk-head">' +
+          '<div class="pk-title">Booking <span class="pk-badge ' + cls + '">' + pkEsc(st) + '</span>' +
+            (b.external_payment_ref ? ' <span class="pk-desc">ref <code>' + pkEsc(b.external_payment_ref) + '</code></span>' : '') + '</div>' +
+          '<div class="pk-desc">' + pkEsc(b.created_at || '') + ' · sponsor ' + pkEsc(b.sponsor_id) + '</div></div>' +
+          (st === 'confirmed' ? '<div class="pk-controls"><button class="btn btn-accent btn-sm" onclick="window.__bkActivate(\'' + pkEsc(b.id) + '\')">Activate</button></div>' : '') +
+          '</div>';
+      }).join('');
+      bkStatus(list.length + ' booking(s)', true);
+    }
+    function loadBookings() {
+      bkFillDirectories();
+      var did = document.getElementById('bk-directory').value;
+      var box = document.getElementById('bk-list');
+      if (!did) { if (box) box.innerHTML = '<div class="empty-state"><p>Select a directory.</p></div>'; return; }
+      bkLoadSponsors();
+      apiGet('/ad-bookings?directory_id=' + encodeURIComponent(did)).then(function (rows) {
+        bkRender(Array.isArray(rows) ? rows : []);
+      }).catch(function (e) { bkStatus('Could not load bookings: ' + e.message, false); });
+    }
+    window.__bkLoad = loadBookings;
+    window.__bkCreate = function () {
+      var did = document.getElementById('bk-directory').value;
+      var sid = document.getElementById('bk-sponsor').value;
+      var cid = document.getElementById('bk-creative').value;
+      var start = document.getElementById('bk-start').value;
+      var end = document.getElementById('bk-end').value;
+      if (!did || !sid || !cid) { bkStatus('Directory, sponsor and creative are required.', false); return; }
+      if (!start || !end) { bkStatus('Start and end dates are required.', false); return; }
+      apiPost('/ad-bookings', {
+        directory_id: did, sponsor_id: sid, creative_id: cid,
+        start_date: new Date(start + 'T00:00:00Z').toISOString(),
+        end_date: new Date(end + 'T23:59:59Z').toISOString()
+      }).then(function () {
+        showToast('Booking created — confirm it from Pending approvals, then activate it.');
+        loadBookings();
+      }).catch(function (e) { bkStatus('Create failed: ' + e.message, false); });
+    };
+    window.__bkActivate = function (id) {
+      if (!confirm('Activate this confirmed booking?')) return;
+      apiPost('/ad-bookings/' + id + '/activate', {}).then(function () {
+        showToast('Booking activated');
+        loadBookings();
+      }).catch(function (e) { bkStatus('Activate failed: ' + e.message, false); });
+    };
+
+    // ===== Polls (GET|POST /polls, POST /polls/:id/close) =====
+    // Create/list/close were backend-only; list+vote for visitors live in the visitor portal.
+    function plStatus(msg, ok) {
+      var el = document.getElementById('pl-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+    function plFillDirectories() {
+      var sel = document.getElementById('pl-directory');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '';
+      (directories || []).forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d.id;
+        o.textContent = (d.name || 'Directory') + ' (' + (d.slug || '') + ')';
+        sel.appendChild(o);
+      });
+      if (current) sel.value = current;
+    }
+    function plRender(list) {
+      var box = document.getElementById('pl-list');
+      if (!box) return;
+      if (!list.length) { box.innerHTML = '<div class="empty-state"><p>No polls for this directory yet.</p></div>'; return; }
+      box.innerHTML = list.map(function (p) {
+        var st = p.status || 'active';
+        var opts = (p.options || []).map(function (o, i) {
+          var votes = (p.option_votes && p.option_votes[i]) || 0;
+          return '<div class="pk-desc">' + pkEsc(o) + ' — <b>' + votes + '</b> vote(s)</div>';
+        }).join('');
+        return '<div class="pk-row"><div class="pk-head">' +
+          '<div class="pk-title">' + pkEsc(p.question) + ' <span class="pk-badge ' + (st === 'active' ? 'pk-ok' : 'pk-missing') + '">' + pkEsc(st) + '</span></div>' +
+          '<div class="pk-desc">' + (p.total_votes || 0) + ' total votes' + (p.ends_at ? ' · ends ' + pkEsc(p.ends_at) : '') + '</div></div>' +
+          opts +
+          (st === 'active' ? '<div class="pk-controls"><button class="btn btn-ghost btn-sm" onclick="window.__plClose(\'' + pkEsc(p.id) + '\')">Close poll</button></div>' : '') +
+          '</div>';
+      }).join('');
+      plStatus(list.length + ' poll(s)', true);
+    }
+    function loadPolls() {
+      plFillDirectories();
+      var did = document.getElementById('pl-directory').value;
+      var box = document.getElementById('pl-list');
+      if (!did) { if (box) box.innerHTML = '<div class="empty-state"><p>Select a directory.</p></div>'; return; }
+      apiGet('/polls?directory_id=' + encodeURIComponent(did)).then(function (data) {
+        plRender((data && data.polls) || []);
+      }).catch(function (e) { plStatus('Could not load polls: ' + e.message, false); });
+    }
+    window.__plLoad = loadPolls;
+    window.__plCreate = function () {
+      var did = document.getElementById('pl-directory').value;
+      var question = document.getElementById('pl-question').value.trim();
+      var options = (document.getElementById('pl-options').value || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+      var ends = document.getElementById('pl-ends').value;
+      if (!did || !question) { plStatus('Directory and question are required.', false); return; }
+      if (options.length < 2) { plStatus('At least 2 options are required.', false); return; }
+      var body = { directory_id: did, question: question, options: options };
+      if (ends) body.ends_at = new Date(ends + 'T23:59:59Z').toISOString();
+      apiPost('/polls', body).then(function () {
+        showToast('Poll created');
+        document.getElementById('pl-question').value = '';
+        document.getElementById('pl-options').value = '';
+        document.getElementById('pl-ends').value = '';
+        loadPolls();
+      }).catch(function (e) { plStatus('Create failed: ' + e.message, false); });
+    };
+    window.__plClose = function (id) {
+      if (!confirm('Close this poll?')) return;
+      apiPost('/polls/' + id + '/close', {}).then(function () {
+        showToast('Poll closed');
+        loadPolls();
+      }).catch(function (e) { plStatus('Close failed: ' + e.message, false); });
+    };
 
     // ===== Demand Analytics (Round 11 / T1) =====
     // Filters come from the server (window choices, categories, directories are all
@@ -14405,6 +14774,127 @@
     if (document.readyState !== 'loading') setTimeout(init, 300);
     // The panel swaps pages (login -> dashboard) without a reload; re-check when that happens.
     document.addEventListener('click', function () { setTimeout(init, 150); }, true);
+
+    // ===== Legal Pages + Site Config (fleet feature-reachability audit t_afaddbda) =====
+    // /zaarhub/admin/legal (GET|POST), /zaarhub/admin/legal/:slug (GET|DELETE) and
+    // /zaarhub/admin/config (GET|PATCH) all had a live backend and no caller. The public
+    // /legal/:slug pages render from zaarhub_legal_pages, so an operator must edit them here.
+    function lpStatus(msg, ok) {
+      var el = document.getElementById('lp-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+    function lpEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function lpLoad() {
+      var list = document.getElementById('lp-list');
+      var badge = document.getElementById('lp-badge');
+      if (!list) return;
+      apiGet('/zaarhub/admin/legal').then(function (data) {
+        var pages = (data && data.pages) || [];
+        if (badge) badge.textContent = pages.length + ' page(s)';
+        if (!pages.length) {
+          list.innerHTML = '<div class="empty-state"><p>No legal pages yet.</p></div>';
+          lpStatus('0 pages', true);
+          return;
+        }
+        list.innerHTML = pages.map(function (p) {
+          return '<div class="pk-row">' +
+            '<div class="pk-head">' +
+              '<div class="pk-title">' + lpEsc(p.title) +
+                (p.is_published ? '' : ' <span class="pk-badge pk-missing">draft</span>') +
+                (p.show_in_footer ? ' <span class="pk-badge pk-ok">footer</span>' : '') + '</div>' +
+              '<div class="pk-desc">/legal/' + lpEsc(p.slug) + ' · order ' + (p.display_order || 0) + '</div>' +
+            '</div>' +
+            '<div class="pk-controls">' +
+              '<button class="btn btn-ghost btn-sm" onclick="window.__lpEdit(\'' + lpEsc(p.slug) + '\')">Edit</button>' +
+              '<button class="btn btn-ghost btn-sm" onclick="window.__lpDelete(\'' + lpEsc(p.slug) + '\')">Delete</button>' +
+            '</div></div>';
+        }).join('');
+        lpStatus(pages.length + ' page(s)', true);
+      }).catch(function (e) { lpStatus('Could not load pages: ' + e.message, false); });
+    }
+    window.__lpNew = function () {
+      document.getElementById('lp-slug').value = '';
+      document.getElementById('lp-title').value = '';
+      document.getElementById('lp-content').value = '';
+      document.getElementById('lp-order').value = '0';
+      document.getElementById('lp-published').checked = true;
+      document.getElementById('lp-footer').checked = false;
+      lpStatus('', true);
+    };
+    window.__lpSave = function () {
+      var slug = (document.getElementById('lp-slug').value || '').trim();
+      var title = document.getElementById('lp-title').value.trim();
+      if (!slug || !title) { lpStatus('Slug and title are required.', false); return; }
+      var body = {
+        slug: slug,
+        title: title,
+        content: document.getElementById('lp-content').value,
+        is_published: document.getElementById('lp-published').checked,
+        show_in_footer: document.getElementById('lp-footer').checked,
+        display_order: parseInt(document.getElementById('lp-order').value || '0', 10) || 0
+      };
+      apiPost('/zaarhub/admin/legal', body).then(function (r) {
+        showToast((r.created ? 'Created' : 'Updated') + ' legal page /' + slug);
+        lpLoad();
+      }).catch(function (e) { lpStatus('Save failed: ' + e.message, false); });
+    };
+    window.__lpEdit = function (slug) {
+      apiGet('/zaarhub/admin/legal/' + encodeURIComponent(slug)).then(function (p) {
+        document.getElementById('lp-slug').value = p.slug || '';
+        document.getElementById('lp-title').value = p.title || '';
+        document.getElementById('lp-content').value = p.content || '';
+        document.getElementById('lp-order').value = p.display_order || 0;
+        document.getElementById('lp-published').checked = !!p.is_published;
+        document.getElementById('lp-footer').checked = !!p.show_in_footer;
+        lpStatus('Editing /' + slug, true);
+      }).catch(function (e) { lpStatus('Could not open page: ' + e.message, false); });
+    };
+    window.__lpDelete = function (slug) {
+      if (!confirm('Delete legal page /' + slug + '?')) return;
+      apiFetch('DELETE', '/zaarhub/admin/legal/' + encodeURIComponent(slug)).then(function () {
+        showToast('Deleted /' + slug);
+        lpLoad();
+      }).catch(function (e) { lpStatus('Delete failed: ' + e.message, false); });
+    };
+
+    function scStatus(msg, ok) {
+      var el = document.getElementById('sc-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = ok ? '#22c55e' : 'var(--text-muted, #8aa0b8)';
+    }
+    var SC_FIELDS = { 'sc-site-name': 'site_name', 'sc-tagline': 'site_tagline', 'sc-primary': 'primary_color',
+      'sc-secondary': 'secondary_color', 'sc-logo': 'logo_url', 'sc-favicon': 'favicon_url',
+      'sc-ga': 'google_analytics_id', 'sc-fb': 'facebook_app_id', 'sc-twitter': 'twitter_handle',
+      'sc-email': 'contact_email', 'sc-phone': 'contact_phone', 'sc-copy': 'copyright_year', 'sc-hq': 'headquarters' };
+    function scLoad() {
+      apiGet('/zaarhub/admin/config').then(function (c) {
+        Object.keys(SC_FIELDS).forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = (c && c[SC_FIELDS[id]]) || '';
+        });
+        scStatus('loaded', true);
+      }).catch(function (e) { scStatus('Could not load config: ' + e.message, false); });
+    }
+    window.__scSave = function () {
+      var body = {};
+      Object.keys(SC_FIELDS).forEach(function (id) {
+        var el = document.getElementById(id);
+        body[SC_FIELDS[id]] = el ? el.value : '';
+      });
+      apiFetch('PATCH', '/zaarhub/admin/config', body).then(function () {
+        showToast('Site config saved');
+        scLoad();
+      }).catch(function (e) { scStatus('Save failed: ' + e.message, false); });
+    };
+
+    document.addEventListener('DOMContentLoaded', function () { lpLoad(); scLoad(); });
   })();
   </script>
 </body>
