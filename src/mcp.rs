@@ -146,8 +146,15 @@ impl CredentialResolver for ApiKeyResolver {
                     )
                     .with_tenant(dir));
                 }
-                // An unscoped key is the operator's alone: only a super_admin may see every
-                // directory. A live key owned by anyone else is refused outright.
+                // An unscoped key (`directory_id IS NULL`) is the operator's alone: only a
+                // super_admin may see every directory. A live key owned by anyone else is refused
+                // here BY DESIGN — including a portfolio/company ACCOUNT key minted at signup
+                // (`role = admin`, no directory). MD's MCP door serves only the platform operator
+                // and directory-scoped keys, never a customer account. CEO decision 2026-11-25
+                // (kanban t_b98182b2): the five customer apps satisfy the "MCP per principal"
+                // ruling; MD is the named exception because its only public artefact is a city
+                // directory, and minting one provisions a CoreSwift workspace plus a public page.
+                // Revisit if a company buys MD or asks to manage its own directory.
                 None => {
                     if role != "super_admin" {
                         return Err(AuthError::Invalid);
