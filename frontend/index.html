@@ -112,10 +112,6 @@ a:hover{text-decoration:underline}
 .zh-ad-ph .ph-title{font-weight:700;font-size:.92rem;color:var(--text)}
 .zh-ad-ph .ph-sub{font-size:.74rem;line-height:1.4}
 .zh-ad-ph .ph-cta{display:inline-block;margin-top:8px;font-size:.74rem;font-weight:600;color:#fff;background:var(--primary);text-decoration:none;border-radius:100px;padding:6px 16px}
-.zh-ad-ph-news{background:linear-gradient(135deg,#0f172a,#1a3a6b);border:1px solid #1e293b;color:#cbd5e1}
-.zh-ad-ph-news .ph-title{color:#fff}
-.zh-ad-ph-news .ph-sub{color:#94a3b8}
-.zh-ad-ph-news .ph-cta{background:var(--warm);color:#fff}
 
 
 /* ── Fix mobile touch targets min 44px ── */
@@ -2136,7 +2132,7 @@ async function loadCityPage(){
     // Load ads for this city
     if(dirId){
       setTimeout(function(){loadAdsForDirectory(dirId, [
-        {zoneKey:'sidebar_top',containerId:'ad-sidebar',ph:'newsletter'},
+        {zoneKey:'sidebar_top',containerId:'ad-sidebar'},
         {zoneKey:'footer_banner',containerId:'ad-footer'}
       ])}, 200);
     }
@@ -3734,7 +3730,7 @@ async function fetchActiveAds(dirId){
 }
 
 // Render a single ad slot at the given container
-function renderAdSlot(zoneKey, containerId, ads, ph){
+function renderAdSlot(zoneKey, containerId, ads){
   var container=document.getElementById(containerId);
   if(!container)return;
   var group=ads[zoneKey];
@@ -3742,19 +3738,11 @@ function renderAdSlot(zoneKey, containerId, ads, ph){
     container.classList.remove('active');
     container.classList.add('ad-empty');
     container.style.display='';
-    if(ph==='newsletter'){
-      container.innerHTML='<div class="zh-ad-ph zh-ad-ph-news">'+
-        '<div class="ph-title">📬 Local Newsletter</div>'+
-        '<div class="ph-sub">Get weekly deals, events &amp; news — free.</div>'+
-        '<a class="ph-cta" href="#zh-newsletter">Subscribe →</a>'+
-        '</div>';
-    }else{
-      container.innerHTML='<div class="zh-ad-ph">'+
-        '<div class="ph-title">📢 Your Ad Here</div>'+
-        '<div class="ph-sub">Reach local customers with a banner here.</div>'+
-        '<a class="ph-cta" href="/portal">Advertise with us →</a>'+
-        '</div>';
-    }
+    container.innerHTML='<div class="zh-ad-ph">'+
+      '<div class="ph-title">📢 Your Ad Here</div>'+
+      '<div class="ph-sub">Reach local customers with a banner here.</div>'+
+      '<a class="ph-cta" href="/portal">Advertise with us →</a>'+
+      '</div>';
     return;
   }
   container.classList.remove('ad-empty');
@@ -4120,7 +4108,7 @@ async function loadAdsForDirectory(dirId, zones){
   var hasAny=false;
   for(var i=0;i<zones.length;i++){
     var z=zones[i];
-    renderAdSlot(z.zoneKey, z.containerId, ads, z.ph);
+    renderAdSlot(z.zoneKey, z.containerId, ads);
     if(ads[z.zoneKey]&&ads[z.zoneKey].length)hasAny=true;
   }
   return hasAny;
