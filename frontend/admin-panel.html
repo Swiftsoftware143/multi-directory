@@ -2966,6 +2966,29 @@
       </div>
     </div>
 
+    <!-- Satellite cities (t_5306e167): a paid business's home + satellite/secondary-office cities.
+         Auto by default (written when a subscription activates); this panel edits by exception. -->
+    <div id="bz-cities-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+      <div class="feature-card" style="background:#fff;max-width:560px;width:100%;margin:24px">
+        <h3>🌆 Cities <span id="bz-cities-who" style="font-weight:400;opacity:.7"></span></h3>
+        <p class="feature-subtitle">Home city + the cities this business appears in. <b>Satellite</b> = the plan's marketing reach (capped). A <b>secondary office</b> is a real branch — it never counts against the cap and is never removed by lapse. Written automatically when a subscription goes active; add or remove individual cities here by exception.</p>
+        <div id="bz-cities-plan" style="font-size:.8rem;margin-bottom:10px"></div>
+        <div id="bz-cities-list" style="max-height:260px;overflow:auto;margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid #eee;padding-top:10px">
+          <select id="bz-cities-add-dir" style="flex:1;min-width:170px"></select>
+          <select id="bz-cities-add-type" style="width:170px">
+            <option value="satellite">Satellite (plan)</option>
+            <option value="secondary_office">Secondary office (real)</option>
+          </select>
+          <button class="btn btn-accent btn-sm" type="button" data-cities-add>+ Add</button>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+          <button class="btn btn-ghost btn-sm" type="button" data-cities-close>Close</button>
+        </div>
+        <span class="feature-status" id="bz-cities-status"></span>
+      </div>
+    </div>
+
     <!-- 🏬 Suppliers / B2B (kanban B51) — the second front, visible and moderatable.
          Suppliers are businesses tagged with a supplier business_type (farm / distributor /
          wholesaler / manufacturer / association / supplier). This is visibility + moderation
@@ -12628,6 +12651,10 @@
           // spreadsheet from the admin console (same CSV the owner fetches in their back office).
           var pageLinksBtn = '<button class="btn btn-ghost btn-sm" type="button" data-page-links="' +
             esc(r.id) + '" data-page-links-name="' + esc(r.name || '') + '">📄 Page links</button>';
+          // Satellite cities (t_5306e167): a paid business's home + satellite/secondary-office
+          // cities. Opens the "Cities" panel where an employee can add/remove individual cities.
+          var citiesBtn = '<button class="btn btn-ghost btn-sm" type="button" data-cities-open="' +
+            esc(r.id) + '" data-cities-name="' + esc(r.name || '') + '">🌆 Cities</button>';
           html += '<tr><td><b>' + esc(r.name) + '</b></td>' +
             '<td>' + esc(r.city || '') + (r.state ? ', ' + esc(r.state) : '') +
               (r.neighbourhood ? ' · 🏘 ' + esc(r.neighbourhood) : '') + '</td>' +
@@ -12636,7 +12663,7 @@
             '<td>' + esc(owner) + '</td>' +
             '<td>' + rating + '</td>' +
             '<td>' + sync + '</td>' +
-            '<td>' + claimBtns + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + ' ' + nbBtn + ' ' + bookingWidgetBtn + ' ' + incentiveWidgetBtn + ' ' + checkoutBtn + ' ' + pageLinksBtn + '</td></tr>';
+            '<td>' + claimBtns + view + ' ' + toggle + ' ' + invite + ' ' + trustBtns + ' ' + hoursBtn + ' ' + responseBtn + ' ' + nbBtn + ' ' + bookingWidgetBtn + ' ' + incentiveWidgetBtn + ' ' + checkoutBtn + ' ' + pageLinksBtn + ' ' + citiesBtn + '</td></tr>';
         });
         html += '</tbody></table>';
         el.innerHTML = html;
@@ -12834,6 +12861,81 @@
       document.getElementById('bz-rt-modal').style.display = 'flex';
     }
     function closeResponseEditor() { document.getElementById('bz-rt-modal').style.display = 'none'; rtEditing = null; }
+
+    // Satellite cities (t_5306e167): open/close the "Cities" panel for one business.
+    var citiesEditing = null;
+    function openCities(id, name) {
+      citiesEditing = id;
+      document.getElementById('bz-cities-who').textContent = name ? ('“' + name + '”') : '';
+      document.getElementById('bz-cities-status').textContent = '';
+      document.getElementById('bz-cities-list').innerHTML = 'Loading…';
+      document.getElementById('bz-cities-modal').style.display = 'flex';
+      var dd = document.getElementById('bz-cities-add-dir');
+      dd.innerHTML = '<option value="">Loading cities…</option>';
+      api('/directories').then(function (res) {
+        var list = Array.isArray(res) ? res : (res.directories || res.data || []);
+        dd.innerHTML = '<option value="">Select a city…</option>' + list.map(function (d) {
+          return '<option value="' + esc(d.id) + '">' + esc(d.name || d.slug) + ' (' + esc(d.slug) + ')</option>';
+        }).join('');
+      }).catch(function () { dd.innerHTML = '<option value="">(could not load)</option>'; });
+      renderCities();
+    }
+    function closeCities() { document.getElementById('bz-cities-modal').style.display = 'none'; citiesEditing = null; }
+    function renderCities() {
+      if (!citiesEditing) return;
+      var id = citiesEditing;
+      api('/admin/businesses/' + encodeURIComponent(id) + '/placements').then(function (d) {
+        document.getElementById('bz-cities-plan').innerHTML =
+          'Plan: <b>' + esc(d.plan || 'Listed') + '</b> · satellite cap <b>' + d.satellite_used + '/' + d.satellite_cap +
+          '</b> · home: <b>' + esc(d.home_slug || '') + '</b>';
+        var rows = d.placements || [];
+        var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.82rem">' +
+          '<thead><tr><th>City</th><th>Type</th><th></th></tr></thead><tbody>';
+        html += '<tr><td><b>' + esc(d.home_slug || '') + '</b></td><td><span class="badge">home</span></td><td></td></tr>';
+        rows.forEach(function (p) {
+          var badge = p.placement_type === 'secondary_office'
+            ? '<span class="badge" style="background:#0b5c6b">secondary office</span>'
+            : '<span class="badge">satellite</span>';
+          html += '<tr><td>' + esc(p.name || p.slug) + '</td><td>' + badge + '</td>' +
+            '<td style="text-align:right"><button class="btn btn-ghost btn-sm" type="button" data-city-remove="' +
+            esc(p.directory_id) + '">✖</button></td></tr>';
+        });
+        if (!rows.length) html += '<tr><td colspan="3" style="opacity:.6">No satellite or secondary-office cities.</td></tr>';
+        html += '</tbody></table>';
+        document.getElementById('bz-cities-list').innerHTML = html;
+        document.getElementById('bz-cities-status').textContent = '';
+      }).catch(function (e) {
+        document.getElementById('bz-cities-status').textContent = 'Failed: ' + e.message;
+      });
+    }
+    function citiesAdd() {
+      if (!citiesEditing) return;
+      var dir = document.getElementById('bz-cities-add-dir').value;
+      var type = document.getElementById('bz-cities-add-type').value;
+      if (!dir) { document.getElementById('bz-cities-status').textContent = 'Pick a city first.'; return; }
+      var h = { 'Content-Type': 'application/json' };
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      document.getElementById('bz-cities-status').textContent = 'Adding…';
+      fetch(API + '/admin/businesses/' + encodeURIComponent(citiesEditing) + '/placements', {
+        method: 'POST', headers: h, body: JSON.stringify({ directory_id: dir, placement_type: type })
+      }).then(function (r) {
+        return r.json().then(function (d) { if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status)); return d; });
+      }).then(function () { renderCities(); })
+        .catch(function (e) { document.getElementById('bz-cities-status').textContent = 'Failed: ' + e.message; });
+    }
+    function citiesRemove(dirId) {
+      if (!citiesEditing) return;
+      var h = {};
+      var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      document.getElementById('bz-cities-status').textContent = 'Removing…';
+      fetch(API + '/admin/businesses/' + encodeURIComponent(citiesEditing) + '/placements/' + encodeURIComponent(dirId), {
+        method: 'DELETE', headers: h
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error((d && d.message) || ('HTTP ' + r.status)); });
+        return {};
+      }).then(function () { renderCities(); })
+        .catch(function (e) { document.getElementById('bz-cities-status').textContent = 'Failed: ' + e.message; });
+    }
     function saveResponse(clear) {
       if (!rtEditing) return;
       var st = document.getElementById('bz-rt-status');
@@ -12886,6 +12988,10 @@
       if (ev.target.closest('[data-rt-cancel]')) { closeResponseEditor(); return; }
       if (ev.target.closest('[data-rt-clear]')) { saveResponse(true); return; }
       if (ev.target.closest('[data-rt-save]')) { saveResponse(false); return; }
+      if (ev.target.closest('[data-cities-add]')) { citiesAdd(); return; }
+      if (ev.target.closest('[data-cities-close]')) { closeCities(); return; }
+      var crm = ev.target.closest('[data-city-remove]');
+      if (crm) { citiesRemove(crm.getAttribute('data-city-remove')); return; }
       var pub = ev.target.closest('[data-lc-publish]');
       if (pub) { setLifecycle(pub.getAttribute('data-lc-publish'), pub.getAttribute('data-lc-dir'), 'active'); return; }
       var hide = ev.target.closest('[data-lc-hide]');
@@ -12904,6 +13010,8 @@
       if (ck) { setBookingCheckout(ck.getAttribute('data-checkout-open'), ck.getAttribute('data-checkout-dir'), ck.getAttribute('data-checkout-name'), ck.getAttribute('data-checkout-url'), ck.getAttribute('data-checkout-timing')); return; }
       var pl = ev.target.closest('[data-page-links]');
       if (pl) { downloadPageLinks(pl.getAttribute('data-page-links'), pl.getAttribute('data-page-links-name')); return; }
+      var ct = ev.target.closest('[data-cities-open]');
+      if (ct) { openCities(ct.getAttribute('data-cities-open'), ct.getAttribute('data-cities-name')); return; }
       var ca = ev.target.closest('[data-claim-approve]');
       if (ca) { decideClaim(ca.getAttribute('data-claim-approve'), 'approve', ca.getAttribute('data-claim-biz')); return; }
       var cr = ev.target.closest('[data-claim-reject]');

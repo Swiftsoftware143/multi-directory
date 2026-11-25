@@ -1381,6 +1381,11 @@ async fn handle_checkout_completed(
                     .await?;
                 }
 
+                // Satellite cities: a PAID plan activates from money, so this is the trigger that
+                // writes the placements (home + same-region satellites up to the tier cap). Auto by
+                // default; the admin console then edits individual cities by exception.
+                let _ = crate::entitlements::sync_placements(db, business_id).await;
+
                 tracing::info!(
                     business_id = %business_id,
                     plan_id = %plan_id,
